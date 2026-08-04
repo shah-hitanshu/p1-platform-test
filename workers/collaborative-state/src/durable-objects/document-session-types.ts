@@ -54,12 +54,16 @@ export const SYNC_IDLE_TIMEOUT_MS = 5000;
 // Agent Edit Session Types
 // =============================================================================
 
+export type { SessionOwner } from '../types';
+
 /**
  * Active edit session tracking
  */
-export interface AgentEditSession {
+export interface EditSession {
   id: string;
-  agentId: string;
+  /** The actor the session belongs to, from the identity the Worker verified. */
+  ownerId: string;
+  ownerType: 'user' | 'agent';
   trigger: import('../types').CheckpointTrigger;
   intent: string;
   targetRegions: string[];
@@ -67,6 +71,16 @@ export interface AgentEditSession {
   startedAt: number;
   conflicted?: boolean;
   conflictReason?: string;
+}
+
+/**
+ * An edit session as persisted before sessions could be owned by a person.
+ * `agentId` is read as an agent owner when restoring.
+ */
+export interface StoredEditSession extends Omit<EditSession, 'ownerId' | 'ownerType'> {
+  ownerId?: string;
+  ownerType?: 'user' | 'agent';
+  agentId?: string;
 }
 
 /**

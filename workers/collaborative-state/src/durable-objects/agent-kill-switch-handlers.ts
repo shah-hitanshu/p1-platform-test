@@ -36,12 +36,12 @@ export async function handleKickAgent(
     return deps.errorResponse(400, `reason exceeds maximum length of ${String(MAX_REASON_LENGTH)}`);
   }
 
-  // Find the agent's active edit session
-  let sessionToRemove: { id: string; agentId: string } | undefined;
+  // The kill switch reaches agents only; a person's session is not an agent's to end.
+  let sessionToRemove: { id: string; ownerId: string } | undefined;
   let sessionKey: string | undefined;
 
   for (const [key, session] of deps.editSessions.entries()) {
-    if (session.agentId === parsed.agentId) {
+    if (session.ownerType === 'agent' && session.ownerId === parsed.agentId) {
       sessionToRemove = session;
       sessionKey = key;
       break;
@@ -97,14 +97,14 @@ export async function handleKickAllAgents(
 
   const kickedBy = request.headers.get('X-Actor-Id') ?? 'unknown';
 
-  // Collect all agent IDs before clearing
+  // Collect the agent-owned sessions; person-owned sessions are left running.
   const kickedAgents: string[] = [];
-  for (const session of deps.editSessions.values()) {
-    kickedAgents.push(session.agentId);
+  for (const [key, session] of deps.editSessions.entries()) {
+    if (session.ownerType === 'agent') {
+      kickedAgents.push(session.ownerId);
+      deps.editSessions.delete(key);
+    }
   }
-
-  // Clear all edit sessions
-  deps.editSessions.clear();
   await deps.persistEditSessions();
 
   // Clear all agent presences
@@ -132,15 +132,17 @@ export async function handleKickAllAgents(
 export function handleGetActiveAgents(
   deps: AgentPolitenessDeps,
 ): Response {
-  const agents = Array.from(deps.editSessions.values()).map((session) => ({
-    agentId: session.agentId,
-    sessionId: session.id,
-    regions: session.targetRegions,
-    trigger: session.trigger,
-    intent: session.intent,
-    startedAt: session.startedAt,
-    conflicted: session.conflicted,
-  }));
+  const agents = Array.from(deps.editSessions.values())
+    .filter((session) => session.ownerType === 'agent')
+    .map((session) => ({
+      agentId: session.ownerId,
+      sessionId: session.id,
+      regions: session.targetRegions,
+      trigger: session.trigger,
+      intent: session.intent,
+      startedAt: session.startedAt,
+      conflicted: session.conflicted,
+    }));
 
   return deps.jsonResponse(200, { agents });
 }

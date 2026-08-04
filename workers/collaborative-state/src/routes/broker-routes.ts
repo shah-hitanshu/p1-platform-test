@@ -13,6 +13,8 @@ import { signState, verifyAndParseState } from '../auth/oauth/state-signing.js';
 import type { LoginTransaction } from '../durable-objects/broker-transaction.js';
 import type { Env } from '../index.js';
 import { authenticate } from '../middleware/authentication.js';
+import { getCachedSiteAllowedOrigins } from '../services/site-service.js';
+import { resolveBrokerRedirectUrl } from '../auth/broker/redirect-origin.js';
 
 function generateNonce(): string {
   const bytes = new Uint8Array(16);
@@ -79,13 +81,21 @@ export async function handleBrokerRoutes(
     }
 
     let redirectUrl: string | undefined;
+    let proposedRedirectUrl: string | undefined;
     let prompt: string | undefined;
     const contentType = request.headers.get('Content-Type');
     if (contentType?.includes('application/json') === true) {
       try {
-        const body: { redirectUrl?: string; prompt?: string } = await request.json();
+        const body: {
+          redirectUrl?: string;
+          proposedRedirectUrl?: string;
+          prompt?: string;
+        } = await request.json();
         if (typeof body.redirectUrl === 'string' && body.redirectUrl !== '') {
           redirectUrl = body.redirectUrl;
+        }
+        if (typeof body.proposedRedirectUrl === 'string' && body.proposedRedirectUrl !== '') {
+          proposedRedirectUrl = body.proposedRedirectUrl;
         }
         const ALLOWED_PROMPTS = new Set(['login', 'none', 'consent', 'select_account']);
         if (typeof body.prompt === 'string' && ALLOWED_PROMPTS.has(body.prompt)) {
@@ -94,6 +104,31 @@ export async function handleBrokerRoutes(
       } catch {
         // No body or invalid JSON is fine
       }
+    }
+
+    // PCC-3531: only this worker can check a proposed origin against the
+    // authenticated site's registered origins. No proposal means no lookup.
+    let redirectWarning: string | undefined;
+    if (proposedRedirectUrl !== undefined) {
+      let allowedOrigins: string[] | null = null;
+      try {
+        allowedOrigins = await getCachedSiteAllowedOrigins(principal.siteId);
+      } catch (err) {
+        // A failed lookup must not become a way to get a proposal honoured.
+        console.error(
+          '[broker/login] allowed-origins lookup failed; ignoring proposed redirect:',
+          err instanceof Error ? err.message : String(err),
+        );
+      }
+
+      const resolved = resolveBrokerRedirectUrl({
+        proposedRedirectUrl,
+        fallbackRedirectUrl: redirectUrl,
+        allowedOrigins,
+        environment: env.ENVIRONMENT,
+      });
+      redirectUrl = resolved.redirectUrl;
+      redirectWarning = resolved.warning;
     }
 
     // Create a new transaction using Durable Object
@@ -123,7 +158,12 @@ export async function handleBrokerRoutes(
     const origin = getPublicOrigin(request, env);
     const loginUrl = `${origin}/broker/login/${tx.id}`;
 
-    return jsonResponse({ transactionId: tx.id, loginUrl });
+    return jsonResponse({
+      transactionId: tx.id,
+      loginUrl,
+      // Set only on rejection; the login still succeeds on the fallback.
+      ...(redirectWarning !== undefined ? { warning: redirectWarning } : {}),
+    });
   }
 
   // GET /broker/login/:txId — redirect user to Auth0

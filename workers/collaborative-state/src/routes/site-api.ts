@@ -19,7 +19,7 @@ import {
   InvalidSiteParamsError,
 } from '../services';
 import { assertPermission, getSiteRole, AuthorizationError } from '../auth/authorization';
-import { validatePagination } from './validation';
+import { validatePagination, validateAllowedOriginPatterns } from './validation';
 import type { ScreenshotProducerEnv } from '../queues/screenshot-producer';
 import { query } from '../db';
 
@@ -57,6 +57,7 @@ interface CreateSiteBody {
 interface UpdateSiteBody {
   name?: string;
   url?: string | null;
+  pantheonSiteId?: string | null;
   workflowSettings?: Partial<WorkflowSettings>;
   allowedOrigins?: string[];
 }
@@ -102,13 +103,16 @@ async function handleCreateSite(
 ): Promise<Response> {
   const body = await parseJsonBody<CreateSiteBody>(request);
 
-  // Validate required fields
-  if (body.pantheonSiteId === undefined || body.pantheonSiteId.trim() === '') {
-    return errorResponse('pantheonSiteId is required', 400);
-  }
-
   if (body.name === undefined || body.name.trim() === '') {
     return errorResponse('name is required', 400);
+  }
+
+  // PCC-3531: nothing is stored yet, so every entry is new and gets validated.
+  if (body.allowedOrigins !== undefined) {
+    const originsError = validateAllowedOriginPatterns(body.allowedOrigins);
+    if (originsError !== undefined) {
+      return errorResponse(originsError, 400);
+    }
   }
 
   const site = await createSite(
@@ -213,15 +217,37 @@ async function handleUpdateSite(
 
   const body = await parseJsonBody<UpdateSiteBody>(request);
 
+  // PCC-3531: validate only origins that are not already stored. Read the row
+  // directly rather than through getCachedSiteAllowedOrigins — a stale cache
+  // could classify a recently-added origin as new and reject a resend of it.
+  if (body.allowedOrigins !== undefined) {
+    // A null row is not treated as a 404 here — the dispatcher already resolved
+    // the site's main branch to get this far. It falls through as "nothing
+    // stored", which validates every entry: stricter, never more permissive.
+    const existingSite = await getSite(context.siteId);
+
+    const originsError = validateAllowedOriginPatterns(
+      body.allowedOrigins,
+      existingSite?.allowedOrigins,
+    );
+    if (originsError !== undefined) {
+      return errorResponse(originsError, 400);
+    }
+  }
+
   const params: Parameters<typeof updateSite>[1] = {
     name: body.name,
     workflowSettings: body.workflowSettings,
     allowedOrigins: body.allowedOrigins,
   };
-  // Preserve url-key presence: only set when the request contained it, so the
-  // service can distinguish "leave as-is" (omitted) from "clear" (null).
+  // Preserve key presence for clearable fields: only set when the request
+  // contained them, so the service can distinguish "leave as-is" (omitted)
+  // from "clear" (null).
   if ('url' in body) {
     params.url = body.url;
+  }
+  if ('pantheonSiteId' in body) {
+    params.pantheonSiteId = body.pantheonSiteId;
   }
 
   const updatedSite = await updateSite(context.siteId, params, env);

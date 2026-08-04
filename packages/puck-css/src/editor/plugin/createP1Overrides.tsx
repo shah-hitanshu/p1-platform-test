@@ -6,7 +6,7 @@
  */
 
 import React from 'react';
-import { ActionBar } from '@puckeditor/core';
+import { ActionBar, FieldLabel } from '@puckeditor/core';
 import type { Checkpoint, DocumentVersion, PuckData, ActorPresence } from '@pantheon-systems/css-client';
 import type { SaveStatus } from '../../core/types.js';
 import { SaveIndicator } from '../components/SaveIndicator.js';
@@ -15,7 +15,10 @@ import { AgentActivityBanner } from '../../collaboration/components/AgentActivit
 import { PublishedStatusBadge } from '../components/PublishedStatusBadge.js';
 import { ActionBarPinButton } from '../../features/content-type-templates/ui/ActionBarPinButton.js';
 import { P1InspectorFields } from '../components/P1InspectorFields.js';
+import { CollapsibleFieldSection } from '../components/CollapsibleFieldSection.js';
+import { CollapsibleFieldContext } from '../components/collapsibleSectionContext.js';
 import { PreviewPanelOverlay } from '../components/PreviewPanelOverlay.js';
+import { fieldGuidanceFieldTypes } from './fieldGuidance.js';
 // NOTE: PuckDataSynchronizer is NOT imported here - it's used in P1Plugin instead
 // because headerActions renders outside Puck's context where usePuck() doesn't work.
 
@@ -197,6 +200,52 @@ function makePreviewOverride(options: P1OverridesOptions) {
   );
 }
 
+/**
+ * An object field opting into a collapsible section. `metadata` is Puck's
+ * per-field extension point (`BaseField.metadata`), so this needs no Puck change.
+ */
+interface CollapsibleObjectField {
+  label?: string;
+  objectFields?: Record<string, unknown>;
+  metadata?: { collapsible?: boolean; defaultCollapsed?: boolean };
+}
+
+interface FieldLabelOverrideProps {
+  children?: React.ReactNode;
+  icon?: React.ReactNode;
+  label: string;
+  el?: 'label' | 'div';
+  readOnly?: boolean;
+}
+
+/**
+ * Renders an opted-in field group's label row as a disclosure. Puck hands a
+ * label override the field's content as `children`, so the group's own label
+ * becomes the toggle — there is no second header and nothing to suppress.
+ *
+ * The context is cleared for descendants so a nested group inside a collapsible
+ * one keeps its ordinary label.
+ */
+function P1FieldLabel(props: FieldLabelOverrideProps): React.ReactElement {
+  const collapsible = React.useContext(CollapsibleFieldContext);
+
+  if (collapsible && props.el === 'div') {
+    return (
+      <CollapsibleFieldContext.Provider value={null}>
+        <CollapsibleFieldSection
+          label={props.label}
+          defaultCollapsed={collapsible.defaultCollapsed}
+          count={collapsible.count}
+        >
+          {props.children}
+        </CollapsibleFieldSection>
+      </CollapsibleFieldContext.Provider>
+    );
+  }
+
+  return <FieldLabel {...props} />;
+}
+
 export function createP1Overrides(options: P1OverridesOptions): PuckOverrides {
   const {
     // New getter-based API (preferred)
@@ -255,6 +304,34 @@ export function createP1Overrides(options: P1OverridesOptions): PuckOverrides {
     fields: ({ children }: { children: React.ReactNode }) => (
       <P1InspectorFields>{children}</P1InspectorFields>
     ),
+    fieldLabel: P1FieldLabel,
+    fieldTypes: {
+      ...fieldGuidanceFieldTypes,
+      // Marks an opted-in object field for P1FieldLabel, which owns the rendering
+      // because it is the only override that receives the label. Object fields
+      // without `metadata.collapsible` pass through untouched.
+      object: ({
+        field,
+        children,
+      }: {
+        field: CollapsibleObjectField;
+        children: React.ReactNode;
+      }) =>
+        field.metadata?.collapsible ? (
+          <CollapsibleFieldContext.Provider
+            value={{
+              defaultCollapsed: field.metadata.defaultCollapsed,
+              // Derived from the resolved field set, so omitting a field — how
+              // role gating will hide one — moves the count with it.
+              count: Object.keys(field.objectFields ?? {}).length,
+            }}
+          >
+            {children}
+          </CollapsibleFieldContext.Provider>
+        ) : (
+          <>{children}</>
+        ),
+    },
     outline: makePreviewOverride(options),
     headerActions: ({ children }) => {
       // Read presence/agent values lazily from options (Proxy) each render

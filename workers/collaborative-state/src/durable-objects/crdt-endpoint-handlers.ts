@@ -19,7 +19,8 @@ import {
   MAX_CONFLICT_REASON_LENGTH,
 } from '../constants/security-limits';
 import type {
-  AgentEditSession,
+  EditSession,
+  SessionOwner,
   SessionInfo,
   ApplyRequest,
   SnapshotResponse,
@@ -51,7 +52,7 @@ export interface CrdtEndpointDeps {
   env: DocumentSessionEnv;
   storage: DurableObjectStorage;
   sessionInfo: SessionInfo;
-  editSessions: Map<string, AgentEditSession>;
+  editSessions: Map<string, EditSession>;
   activityDetector: ActivityDetector;
   syncManager: PostgresSyncManager;
   getWebSockets: () => WebSocket[];
@@ -127,23 +128,41 @@ export async function handleApplyOperations(
   // Determine actorType from verified header or client header (default to 'user')
   const actorTypeHeader = request.headers.get('X-Verified-Actor-Type')
     ?? request.headers.get('X-Actor-Type');
-  const isAgent = actorTypeHeader === 'agent';
+  const actor: SessionOwner = {
+    id: body.actorId,
+    type: actorTypeHeader === 'agent' ? 'agent' : 'user',
+  };
 
-  // Agents must provide a valid editSessionId
-  if (isAgent) {
-    const editSessionId = (body as { editSessionId?: string }).editSessionId;
-    if (editSessionId === undefined || editSessionId === '') {
-      return errorResponse(400, 'editSessionId is required for agents');
-    }
+  const ownSession = Array.from(deps.editSessions.values()).find(
+    (session) => session.ownerId === actor.id && session.ownerType === actor.type,
+  );
 
-    // Validate the session exists and belongs to this agent
+  // An agent always edits inside a session. A person does so whenever they hold
+  // one, so the regions they reserved and the checkpoint they took cover the
+  // edits they make. A person holding no session edits directly, which is how
+  // the editor works.
+  const editSessionId = (body as { editSessionId?: string }).editSessionId;
+  if (
+    (actor.type === 'agent' || ownSession !== undefined)
+    && (editSessionId === undefined || editSessionId === '')
+  ) {
+    // Name the open session, so a caller that lost track of it can either apply
+    // within it or end it rather than only learning that something is missing.
+    return errorResponse(
+      400,
+      ownSession !== undefined
+        ? `editSessionId is required; this actor holds edit session ${ownSession.id}`
+        : 'editSessionId is required',
+    );
+  }
+
+  if (editSessionId !== undefined && editSessionId !== '') {
     const session = deps.editSessions.get(editSessionId);
     if (!session) {
       return errorResponse(403, 'Invalid or expired edit session');
     }
-
-    if (session.agentId !== body.actorId) {
-      return errorResponse(403, 'Edit session belongs to a different agent');
+    if (session.ownerId !== actor.id || session.ownerType !== actor.type) {
+      return errorResponse(403, 'Edit session belongs to a different actor');
     }
   }
 
@@ -208,59 +227,69 @@ export async function handleApplyOperations(
   const update = Y.encodeStateAsUpdate(ydoc);
   deps.broadcastUpdate(update);
 
-  // Use actorType from earlier header check
-  const actorType = actorTypeHeader ?? 'user';
-
   // Extract regions (paths) from operations
   const regions = body.operations
     .map((op) => op.path)
     .filter((path): path is string => typeof path === 'string');
 
-  // Track agent conflicts for response
-  const agentConflicts: { agentId: string; regions: string[]; sessionId: string }[] = [];
+  // Sessions this actor's edits have reached into.
+  const sessionConflicts: {
+    ownerId: string;
+    ownerType: 'user' | 'agent';
+    regions: string[];
+    sessionId: string;
+  }[] = [];
 
-  // Record human activity for the activity detector (if actor is a user)
-  if (actorType === 'user') {
+  // Only a person's edits make agents wait out the idle timeout.
+  if (actor.type === 'user') {
     // Schedule cleanup alarm for HTTP-only clients (idempotent if already scheduled)
     void deps.scheduleCleanupAlarm();
     deps.activityDetector.recordHumanActivity(body.actorId, regions);
+  }
 
-    // Check for conflicts with active agent edit sessions
-    // Optimized: early termination once conflict found, limited region collection
-    for (const session of deps.editSessions.values()) {
-      const overlappingRegions: string[] = [];
-      let conflictFound = false;
+  // Edits landing in a region another session reserved put that session in
+  // conflict, whichever kind of actor made them. Reservation stops two sessions
+  // declaring the same region, but not an actor editing outside what it declared.
+  // Optimized: early termination once conflict found, limited region collection
+  for (const session of deps.editSessions.values()) {
+    // An actor's own session is not in conflict with that actor's own edits.
+    if (session.ownerId === actor.id && session.ownerType === actor.type) {
+      continue;
+    }
 
-      // Use labeled loops for early termination
-      regionCheck:
-      for (const humanRegion of regions) {
-        for (const agentRegion of session.targetRegions) {
-          if (regionsOverlap(humanRegion, agentRegion)) {
-            overlappingRegions.push(agentRegion);
-            conflictFound = true;
-            // Limit collected regions to prevent memory issues
-            if (overlappingRegions.length >= MAX_CONFLICT_REGIONS_TO_REPORT) {
-              break regionCheck;
-            }
+    const overlappingRegions: string[] = [];
+    let conflictFound = false;
+
+    // Use labeled loops for early termination
+    regionCheck:
+    for (const editedRegion of regions) {
+      for (const reservedRegion of session.targetRegions) {
+        if (regionsOverlap(editedRegion, reservedRegion)) {
+          overlappingRegions.push(reservedRegion);
+          conflictFound = true;
+          // Limit collected regions to prevent memory issues
+          if (overlappingRegions.length >= MAX_CONFLICT_REGIONS_TO_REPORT) {
+            break regionCheck;
           }
         }
       }
+    }
 
-      if (conflictFound) {
-        // Mark session as conflicted
-        session.conflicted = true;
-        // Build reason with truncation for security
-        let reason = `Human activity in overlapping regions: ${overlappingRegions.join(', ')}`;
-        if (reason.length > MAX_CONFLICT_REASON_LENGTH) {
-          reason = reason.substring(0, MAX_CONFLICT_REASON_LENGTH - 3) + '...';
-        }
-        session.conflictReason = reason;
-        agentConflicts.push({
-          agentId: session.agentId,
-          regions: overlappingRegions,
-          sessionId: session.id,
-        });
+    if (conflictFound) {
+      session.conflicted = true;
+      const actorLabel = actor.type === 'user' ? 'Human' : 'Agent';
+      // Build reason with truncation for security
+      let reason = `${actorLabel} activity in overlapping regions: ${overlappingRegions.join(', ')}`;
+      if (reason.length > MAX_CONFLICT_REASON_LENGTH) {
+        reason = reason.substring(0, MAX_CONFLICT_REASON_LENGTH - 3) + '...';
       }
+      session.conflictReason = reason;
+      sessionConflicts.push({
+        ownerId: session.ownerId,
+        ownerType: session.ownerType,
+        regions: overlappingRegions,
+        sessionId: session.id,
+      });
     }
   }
 
@@ -274,21 +303,20 @@ export async function handleApplyOperations(
   // actorId (the OAuth subject, cross-checked against the verified id above)
   // is the fallback for agents and unresolved principals.
   const verifiedDbUserId = request.headers.get('X-Verified-Db-User-Id') ?? undefined;
-  await deps.syncManager.scheduleSync(verifiedDbUserId ?? body.actorId, actorType as 'user' | 'agent', {
+  await deps.syncManager.scheduleSync(verifiedDbUserId ?? body.actorId, actor.type, {
     ...(verifiedEmail !== undefined ? { actorEmail: verifiedEmail } : {}),
     ...(verifiedName !== undefined ? { actorName: verifiedName } : {}),
   });
 
   const root = ydoc.getMap('root');
-  const response: ApplyResponse & { agentConflicts?: typeof agentConflicts } = {
+  const response: ApplyResponse & { sessionConflicts?: typeof sessionConflicts } = {
     success: true,
     snapshot: root.toJSON(),
     operationsApplied: body.operations.length,
   };
 
-  // Include agent conflicts in response if any were detected
-  if (agentConflicts.length > 0) {
-    response.agentConflicts = agentConflicts;
+  if (sessionConflicts.length > 0) {
+    response.sessionConflicts = sessionConflicts;
   }
 
   return new Response(

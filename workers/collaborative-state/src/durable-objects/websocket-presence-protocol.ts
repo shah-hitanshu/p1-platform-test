@@ -17,7 +17,7 @@ import {
   MAX_FOCUS_REGIONS_PER_REQUEST,
 } from '../constants/security-limits';
 import type {
-  AgentEditSession,
+  EditSession,
   SessionInfo,
   DocumentSessionEnv,
 } from './document-session-types';
@@ -51,7 +51,7 @@ export interface PresenceProtocolDeps {
   sessionInfo: SessionInfo;
   presenceManager: PresenceManager;
   activityDetector: ActivityDetector;
-  editSessions: Map<string, AgentEditSession>;
+  editSessions: Map<string, EditSession>;
   getWebSockets: () => WebSocket[];
   getAllConnections: () => [WebSocket, ConnectionMeta][];
   syncManager: {

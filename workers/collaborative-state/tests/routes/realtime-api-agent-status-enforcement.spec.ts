@@ -1,17 +1,15 @@
 /**
- * Phase 7.4: Edit Workflow Status Enforcement - TDD Tests
+ * Edit workflow status enforcement.
  *
- * Tests for integrating agent status validation into the Realtime API's
- * agent edit workflow endpoints. Ensures suspended/disabled agents are
- * rejected at the Worker level BEFORE forwarding requests to the Durable Object.
+ * Suspended or disabled agents are rejected at the Worker level BEFORE the
+ * request reaches the Durable Object. The status is checked against the
+ * authenticated agent principal, never against a caller-supplied X-Agent-Id.
  *
  * Endpoints protected:
- * - can-agent-edit: Required check (agentId from body/header merge)
- * - agent-edit-start: Required check (agentId from body/header merge)
- * - agent-edit-complete: Optional check (only if X-Agent-Id header present)
- * - agent-edit-abort: Optional check (only if X-Agent-Id header present)
- *
- * These tests are written BEFORE implementation following TDD methodology.
+ * - can-agent-edit
+ * - agent-edit-start
+ * - agent-edit-complete
+ * - agent-edit-abort
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -126,17 +124,32 @@ function createMockAgent(status: 'active' | 'suspended' | 'disabled', id = 'agen
   };
 }
 
-const defaultPrincipal: AuthenticatedPrincipal = {
+const agentPrincipal: AuthenticatedPrincipal = {
+  id: 'agent-123',
+  type: 'agent',
+  pantheonSiteRoles: { 'site-1': 'admin', 'site-123': 'admin' },
+  tokenExpiry: new Date(Date.now() + 3600000).toISOString(),
+  authProvider: 'agent_key',
+};
+const agentContext: RealtimeRouteContext = { principal: agentPrincipal };
+
+const userPrincipal: AuthenticatedPrincipal = {
   id: 'test-actor',
   type: 'user',
   email: 'test@example.com',
-  pantheonSiteRoles: { 'site-123': 'admin' },
+  pantheonSiteRoles: { 'site-1': 'admin', 'site-123': 'admin' },
   tokenExpiry: new Date(Date.now() + 3600000).toISOString(),
   authProvider: 'mock',
 };
-const defaultContext: RealtimeRouteContext = { principal: defaultPrincipal };
+const userContext: RealtimeRouteContext = { principal: userPrincipal };
 
-describe('Phase 7.4: Edit Workflow Status Enforcement', () => {
+const editBody = {
+  trigger: 'autonomous',
+  intent: 'Update content',
+  targetRegions: ['/content'],
+};
+
+describe('Edit workflow status enforcement', () => {
   let mockEnv: MockEnv;
   let mockStub: MockDurableObjectStub;
   let mockId: MockDurableObjectId;
@@ -194,20 +207,12 @@ describe('Phase 7.4: Edit Workflow Status Enforcement', () => {
         'https://example.com/api/sites/site-1/branches/branch-1/documents/page/can-agent-edit',
         {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Origin: 'http://localhost:3000',
-          },
-          body: JSON.stringify({
-            agentId: 'agent-123',
-            trigger: 'autonomous',
-            intent: 'Update content',
-            targetRegions: ['/content'],
-          }),
+          headers: { 'Content-Type': 'application/json', Origin: 'http://localhost:3000' },
+          body: JSON.stringify(editBody),
         },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
+      const result = await handleRealtimeRoutes(request, mockEnv, agentContext);
       const response = assertNotNull(result);
 
       expect(response.status).toBe(403);
@@ -225,20 +230,12 @@ describe('Phase 7.4: Edit Workflow Status Enforcement', () => {
         'https://example.com/api/sites/site-1/branches/branch-1/documents/page/can-agent-edit',
         {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Origin: 'http://localhost:3000',
-          },
-          body: JSON.stringify({
-            agentId: 'agent-123',
-            trigger: 'autonomous',
-            intent: 'Update content',
-            targetRegions: ['/content'],
-          }),
+          headers: { 'Content-Type': 'application/json', Origin: 'http://localhost:3000' },
+          body: JSON.stringify(editBody),
         },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
+      const result = await handleRealtimeRoutes(request, mockEnv, agentContext);
       const response = assertNotNull(result);
 
       expect(response.status).toBe(403);
@@ -256,30 +253,20 @@ describe('Phase 7.4: Edit Workflow Status Enforcement', () => {
         'https://example.com/api/sites/site-1/branches/branch-1/documents/page/can-agent-edit',
         {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Origin: 'http://localhost:3000',
-          },
-          body: JSON.stringify({
-            agentId: 'nonexistent-agent',
-            trigger: 'autonomous',
-            intent: 'Update content',
-            targetRegions: ['/content'],
-          }),
+          headers: { 'Content-Type': 'application/json', Origin: 'http://localhost:3000' },
+          body: JSON.stringify(editBody),
         },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
+      const result = await handleRealtimeRoutes(request, mockEnv, agentContext);
       const response = assertNotNull(result);
 
       expect(response.status).toBe(404);
-      const body = await response.json();
-      expect(body.error).toContain('not found');
     });
 
     it('should return 500 on database lookup error', async () => {
       const { getAgentById } = await import('../../src/services/agent-service');
-      vi.mocked(getAgentById).mockRejectedValue(new Error('Database connection failed'));
+      vi.mocked(getAgentById).mockRejectedValue(new Error('Database error'));
 
       const { handleRealtimeRoutes } = await import('../../src/routes/realtime-api');
 
@@ -287,20 +274,12 @@ describe('Phase 7.4: Edit Workflow Status Enforcement', () => {
         'https://example.com/api/sites/site-1/branches/branch-1/documents/page/can-agent-edit',
         {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Origin: 'http://localhost:3000',
-          },
-          body: JSON.stringify({
-            agentId: 'agent-123',
-            trigger: 'autonomous',
-            intent: 'Update content',
-            targetRegions: ['/content'],
-          }),
+          headers: { 'Content-Type': 'application/json', Origin: 'http://localhost:3000' },
+          body: JSON.stringify(editBody),
         },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
+      const result = await handleRealtimeRoutes(request, mockEnv, agentContext);
       const response = assertNotNull(result);
 
       expect(response.status).toBe(500);
@@ -316,20 +295,12 @@ describe('Phase 7.4: Edit Workflow Status Enforcement', () => {
         'https://example.com/api/sites/site-1/branches/branch-1/documents/page/can-agent-edit',
         {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Origin: 'http://localhost:3000',
-          },
-          body: JSON.stringify({
-            agentId: 'agent-123',
-            trigger: 'autonomous',
-            intent: 'Update content',
-            targetRegions: ['/content'],
-          }),
+          headers: { 'Content-Type': 'application/json', Origin: 'http://localhost:3000' },
+          body: JSON.stringify(editBody),
         },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
+      const result = await handleRealtimeRoutes(request, mockEnv, agentContext);
       const response = assertNotNull(result);
 
       expect(response.status).toBe(200);
@@ -346,23 +317,36 @@ describe('Phase 7.4: Edit Workflow Status Enforcement', () => {
         'https://example.com/api/sites/site-1/branches/branch-1/documents/page/can-agent-edit',
         {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Origin: 'http://localhost:3000',
-          },
-          body: JSON.stringify({
-            agentId: 'agent-123',
-            trigger: 'autonomous',
-            intent: 'Update content',
-            targetRegions: ['/content'],
-          }),
+          headers: { 'Content-Type': 'application/json', Origin: 'http://localhost:3000' },
+          body: JSON.stringify(editBody),
         },
       );
 
-      await handleRealtimeRoutes(request, mockEnv, defaultContext);
+      await handleRealtimeRoutes(request, mockEnv, agentContext);
 
-      // Durable Object should NOT be called
       expect(mockStub.fetch).not.toHaveBeenCalled();
+    });
+
+    it('should let a user principal through without any status lookup', async () => {
+      const { getAgentById } = await import('../../src/services/agent-service');
+
+      const { handleRealtimeRoutes } = await import('../../src/routes/realtime-api');
+
+      const request = new Request(
+        'https://example.com/api/sites/site-1/branches/branch-1/documents/page/can-agent-edit',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Origin: 'http://localhost:3000' },
+          body: JSON.stringify(editBody),
+        },
+      );
+
+      const result = await handleRealtimeRoutes(request, mockEnv, userContext);
+      const response = assertNotNull(result);
+
+      expect(response.status).toBe(200);
+      expect(vi.mocked(getAgentById)).not.toHaveBeenCalled();
+      expect(mockStub.fetch).toHaveBeenCalled();
     });
   });
 
@@ -377,20 +361,12 @@ describe('Phase 7.4: Edit Workflow Status Enforcement', () => {
         'https://example.com/api/sites/site-1/branches/branch-1/documents/page/agent-edit-start',
         {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Origin: 'http://localhost:3000',
-          },
-          body: JSON.stringify({
-            agentId: 'agent-123',
-            trigger: 'autonomous',
-            intent: 'Start editing',
-            targetRegions: ['/content'],
-          }),
+          headers: { 'Content-Type': 'application/json', Origin: 'http://localhost:3000' },
+          body: JSON.stringify(editBody),
         },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
+      const result = await handleRealtimeRoutes(request, mockEnv, agentContext);
       const response = assertNotNull(result);
 
       expect(response.status).toBe(403);
@@ -406,20 +382,12 @@ describe('Phase 7.4: Edit Workflow Status Enforcement', () => {
         'https://example.com/api/sites/site-1/branches/branch-1/documents/page/agent-edit-start',
         {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Origin: 'http://localhost:3000',
-          },
-          body: JSON.stringify({
-            agentId: 'agent-123',
-            trigger: 'autonomous',
-            intent: 'Start editing',
-            targetRegions: ['/content'],
-          }),
+          headers: { 'Content-Type': 'application/json', Origin: 'http://localhost:3000' },
+          body: JSON.stringify(editBody),
         },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
+      const result = await handleRealtimeRoutes(request, mockEnv, agentContext);
       const response = assertNotNull(result);
 
       expect(response.status).toBe(403);
@@ -435,24 +403,15 @@ describe('Phase 7.4: Edit Workflow Status Enforcement', () => {
         'https://example.com/api/sites/site-1/branches/branch-1/documents/page/agent-edit-start',
         {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Origin: 'http://localhost:3000',
-          },
-          body: JSON.stringify({
-            agentId: 'agent-123',
-            trigger: 'autonomous',
-            intent: 'Start editing',
-            targetRegions: ['/content'],
-          }),
+          headers: { 'Content-Type': 'application/json', Origin: 'http://localhost:3000' },
+          body: JSON.stringify(editBody),
         },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
+      const result = await handleRealtimeRoutes(request, mockEnv, agentContext);
       const response = assertNotNull(result);
 
       expect(response.status).toBe(200);
-      expect(mockStub.fetch).toHaveBeenCalled();
     });
 
     it('should NOT call Durable Object when agent rejected', async () => {
@@ -465,27 +424,19 @@ describe('Phase 7.4: Edit Workflow Status Enforcement', () => {
         'https://example.com/api/sites/site-1/branches/branch-1/documents/page/agent-edit-start',
         {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Origin: 'http://localhost:3000',
-          },
-          body: JSON.stringify({
-            agentId: 'agent-123',
-            trigger: 'autonomous',
-            intent: 'Start editing',
-            targetRegions: ['/content'],
-          }),
+          headers: { 'Content-Type': 'application/json', Origin: 'http://localhost:3000' },
+          body: JSON.stringify(editBody),
         },
       );
 
-      await handleRealtimeRoutes(request, mockEnv, defaultContext);
+      await handleRealtimeRoutes(request, mockEnv, agentContext);
 
       expect(mockStub.fetch).not.toHaveBeenCalled();
     });
   });
 
-  describe('agent-edit-complete with X-Agent-Id header', () => {
-    it('should return 403 when header present and agent suspended', async () => {
+  describe('agent-edit-complete status enforcement', () => {
+    it('should return 403 when the authenticated agent is suspended', async () => {
       const { getAgentById } = await import('../../src/services/agent-service');
       vi.mocked(getAgentById).mockResolvedValue(createMockAgent('suspended'));
 
@@ -495,24 +446,18 @@ describe('Phase 7.4: Edit Workflow Status Enforcement', () => {
         'https://example.com/api/sites/site-1/branches/branch-1/documents/page/agent-edit-complete',
         {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Origin: 'http://localhost:3000',
-            'X-Agent-Id': 'agent-123', // Header present - check status
-          },
-          body: JSON.stringify({
-            editSessionId: 'session-123',
-          }),
+          headers: { 'Content-Type': 'application/json', Origin: 'http://localhost:3000' },
+          body: JSON.stringify({ editSessionId: 'session-123' }),
         },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
+      const result = await handleRealtimeRoutes(request, mockEnv, agentContext);
       const response = assertNotNull(result);
 
       expect(response.status).toBe(403);
     });
 
-    it('should return 403 when header present and agent disabled', async () => {
+    it('should return 403 when the authenticated agent is disabled', async () => {
       const { getAgentById } = await import('../../src/services/agent-service');
       vi.mocked(getAgentById).mockResolvedValue(createMockAgent('disabled'));
 
@@ -522,24 +467,18 @@ describe('Phase 7.4: Edit Workflow Status Enforcement', () => {
         'https://example.com/api/sites/site-1/branches/branch-1/documents/page/agent-edit-complete',
         {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Origin: 'http://localhost:3000',
-            'X-Agent-Id': 'agent-123',
-          },
-          body: JSON.stringify({
-            editSessionId: 'session-123',
-          }),
+          headers: { 'Content-Type': 'application/json', Origin: 'http://localhost:3000' },
+          body: JSON.stringify({ editSessionId: 'session-123' }),
         },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
+      const result = await handleRealtimeRoutes(request, mockEnv, agentContext);
       const response = assertNotNull(result);
 
       expect(response.status).toBe(403);
     });
 
-    it('should allow request when header present and agent active', async () => {
+    it('should allow request when the authenticated agent is active', async () => {
       const { getAgentById } = await import('../../src/services/agent-service');
       vi.mocked(getAgentById).mockResolvedValue(createMockAgent('active'));
 
@@ -549,57 +488,19 @@ describe('Phase 7.4: Edit Workflow Status Enforcement', () => {
         'https://example.com/api/sites/site-1/branches/branch-1/documents/page/agent-edit-complete',
         {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Origin: 'http://localhost:3000',
-            'X-Agent-Id': 'agent-123',
-          },
-          body: JSON.stringify({
-            editSessionId: 'session-123',
-          }),
+          headers: { 'Content-Type': 'application/json', Origin: 'http://localhost:3000' },
+          body: JSON.stringify({ editSessionId: 'session-123' }),
         },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
+      const result = await handleRealtimeRoutes(request, mockEnv, agentContext);
       const response = assertNotNull(result);
 
       expect(response.status).toBe(200);
       expect(mockStub.fetch).toHaveBeenCalled();
     });
 
-    it('should allow request when X-Agent-Id header NOT present (backwards compat)', async () => {
-      const { getAgentById } = await import('../../src/services/agent-service');
-      // Should NOT even look up the agent if no header
-      vi.mocked(getAgentById).mockImplementation(() => {
-        throw new Error('Should not be called');
-      });
-
-      const { handleRealtimeRoutes } = await import('../../src/routes/realtime-api');
-
-      const request = new Request(
-        'https://example.com/api/sites/site-1/branches/branch-1/documents/page/agent-edit-complete',
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Origin: 'http://localhost:3000',
-            // No X-Agent-Id header
-          },
-          body: JSON.stringify({
-            editSessionId: 'session-123',
-          }),
-        },
-      );
-
-      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
-      const response = assertNotNull(result);
-
-      // Should pass through to Durable Object
-      expect(response.status).toBe(200);
-      expect(mockStub.fetch).toHaveBeenCalled();
-    });
-
-    it('should handle lowercase x-agent-id header', async () => {
+    it('checks the authenticated agent even when no X-Agent-Id header is present', async () => {
       const { getAgentById } = await import('../../src/services/agent-service');
       vi.mocked(getAgentById).mockResolvedValue(createMockAgent('suspended'));
 
@@ -609,26 +510,47 @@ describe('Phase 7.4: Edit Workflow Status Enforcement', () => {
         'https://example.com/api/sites/site-1/branches/branch-1/documents/page/agent-edit-complete',
         {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Origin: 'http://localhost:3000',
-            'x-agent-id': 'agent-123', // lowercase
-          },
-          body: JSON.stringify({
-            editSessionId: 'session-123',
-          }),
+          headers: { 'Content-Type': 'application/json', Origin: 'http://localhost:3000' },
+          body: JSON.stringify({ editSessionId: 'session-123' }),
         },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
+      const result = await handleRealtimeRoutes(request, mockEnv, agentContext);
       const response = assertNotNull(result);
 
       expect(response.status).toBe(403);
+      expect(vi.mocked(getAgentById)).toHaveBeenCalledWith('agent-123');
+    });
+
+    it('ignores a conflicting X-Agent-Id header and checks the authenticated agent', async () => {
+      const { getAgentById } = await import('../../src/services/agent-service');
+      vi.mocked(getAgentById).mockResolvedValue(createMockAgent('suspended', 'header-agent'));
+
+      const { handleRealtimeRoutes } = await import('../../src/routes/realtime-api');
+
+      const request = new Request(
+        'https://example.com/api/sites/site-1/branches/branch-1/documents/page/agent-edit-complete',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Origin: 'http://localhost:3000',
+            'X-Agent-Id': 'header-agent',
+          },
+          body: JSON.stringify({ editSessionId: 'session-123' }),
+        },
+      );
+
+      const result = await handleRealtimeRoutes(request, mockEnv, agentContext);
+      const response = assertNotNull(result);
+
+      expect(response.status).toBe(403);
+      expect(vi.mocked(getAgentById)).toHaveBeenCalledWith('agent-123');
     });
   });
 
-  describe('agent-edit-abort with X-Agent-Id header', () => {
-    it('should return 403 when header present and agent suspended', async () => {
+  describe('agent-edit-abort status enforcement', () => {
+    it('should return 403 when the authenticated agent is suspended', async () => {
       const { getAgentById } = await import('../../src/services/agent-service');
       vi.mocked(getAgentById).mockResolvedValue(createMockAgent('suspended'));
 
@@ -638,30 +560,20 @@ describe('Phase 7.4: Edit Workflow Status Enforcement', () => {
         'https://example.com/api/sites/site-1/branches/branch-1/documents/page/agent-edit-abort',
         {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Origin: 'http://localhost:3000',
-            'X-Agent-Id': 'agent-123',
-          },
-          body: JSON.stringify({
-            editSessionId: 'session-123',
-            reason: 'Agent was suspended',
-          }),
+          headers: { 'Content-Type': 'application/json', Origin: 'http://localhost:3000' },
+          body: JSON.stringify({ editSessionId: 'session-123', reason: 'Agent was suspended' }),
         },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
+      const result = await handleRealtimeRoutes(request, mockEnv, agentContext);
       const response = assertNotNull(result);
 
       expect(response.status).toBe(403);
     });
 
-    it('should allow request when header NOT present', async () => {
+    it('checks the authenticated agent even when no X-Agent-Id header is present', async () => {
       const { getAgentById } = await import('../../src/services/agent-service');
-      // Should NOT be called
-      vi.mocked(getAgentById).mockImplementation(() => {
-        throw new Error('Should not be called');
-      });
+      vi.mocked(getAgentById).mockResolvedValue(createMockAgent('suspended'));
 
       const { handleRealtimeRoutes } = await import('../../src/routes/realtime-api');
 
@@ -669,25 +581,19 @@ describe('Phase 7.4: Edit Workflow Status Enforcement', () => {
         'https://example.com/api/sites/site-1/branches/branch-1/documents/page/agent-edit-abort',
         {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Origin: 'http://localhost:3000',
-            // No X-Agent-Id header
-          },
-          body: JSON.stringify({
-            editSessionId: 'session-123',
-          }),
+          headers: { 'Content-Type': 'application/json', Origin: 'http://localhost:3000' },
+          body: JSON.stringify({ editSessionId: 'session-123' }),
         },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
+      const result = await handleRealtimeRoutes(request, mockEnv, agentContext);
       const response = assertNotNull(result);
 
-      expect(response.status).toBe(200);
-      expect(mockStub.fetch).toHaveBeenCalled();
+      expect(response.status).toBe(403);
+      expect(vi.mocked(getAgentById)).toHaveBeenCalledWith('agent-123');
     });
 
-    it('should allow request when header present and agent active', async () => {
+    it('should allow request when the authenticated agent is active', async () => {
       const { getAgentById } = await import('../../src/services/agent-service');
       vi.mocked(getAgentById).mockResolvedValue(createMockAgent('active'));
 
@@ -697,18 +603,12 @@ describe('Phase 7.4: Edit Workflow Status Enforcement', () => {
         'https://example.com/api/sites/site-1/branches/branch-1/documents/page/agent-edit-abort',
         {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Origin: 'http://localhost:3000',
-            'X-Agent-Id': 'agent-123',
-          },
-          body: JSON.stringify({
-            editSessionId: 'session-123',
-          }),
+          headers: { 'Content-Type': 'application/json', Origin: 'http://localhost:3000' },
+          body: JSON.stringify({ editSessionId: 'session-123' }),
         },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
+      const result = await handleRealtimeRoutes(request, mockEnv, agentContext);
       const response = assertNotNull(result);
 
       expect(response.status).toBe(200);
@@ -726,20 +626,12 @@ describe('Phase 7.4: Edit Workflow Status Enforcement', () => {
         'https://example.com/api/sites/site-1/branches/branch-1/documents/page/can-agent-edit',
         {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Origin: 'http://localhost:3000',
-          },
-          body: JSON.stringify({
-            agentId: 'agent-123',
-            trigger: 'autonomous',
-            intent: 'Update content',
-            targetRegions: ['/content'],
-          }),
+          headers: { 'Content-Type': 'application/json', Origin: 'http://localhost:3000' },
+          body: JSON.stringify(editBody),
         },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
+      const result = await handleRealtimeRoutes(request, mockEnv, agentContext);
       const response = assertNotNull(result);
 
       expect(response.status).toBe(403);
@@ -756,20 +648,12 @@ describe('Phase 7.4: Edit Workflow Status Enforcement', () => {
         'https://example.com/api/sites/site-1/branches/branch-1/documents/page/can-agent-edit',
         {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Origin: 'http://localhost:3000',
-          },
-          body: JSON.stringify({
-            agentId: 'nonexistent',
-            trigger: 'autonomous',
-            intent: 'Update content',
-            targetRegions: ['/content'],
-          }),
+          headers: { 'Content-Type': 'application/json', Origin: 'http://localhost:3000' },
+          body: JSON.stringify(editBody),
         },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
+      const result = await handleRealtimeRoutes(request, mockEnv, agentContext);
       const response = assertNotNull(result);
 
       expect(response.status).toBe(404);
@@ -786,20 +670,12 @@ describe('Phase 7.4: Edit Workflow Status Enforcement', () => {
         'https://example.com/api/sites/site-1/branches/branch-1/documents/page/can-agent-edit',
         {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Origin: 'http://localhost:3000',
-          },
-          body: JSON.stringify({
-            agentId: 'agent-123',
-            trigger: 'autonomous',
-            intent: 'Update content',
-            targetRegions: ['/content'],
-          }),
+          headers: { 'Content-Type': 'application/json', Origin: 'http://localhost:3000' },
+          body: JSON.stringify(editBody),
         },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
+      const result = await handleRealtimeRoutes(request, mockEnv, agentContext);
       const response = assertNotNull(result);
 
       expect(response.status).toBe(500);
@@ -807,14 +683,13 @@ describe('Phase 7.4: Edit Workflow Status Enforcement', () => {
     });
   });
 
-  describe('Agent ID from headers in can-agent-edit/agent-edit-start', () => {
-    it('should validate agent status using merged agentId from headers', async () => {
+  describe('Status is checked against the authenticated agent, not a header', () => {
+    it('uses the authenticated agent id even when a different X-Agent-Id is sent', async () => {
       const { getAgentById } = await import('../../src/services/agent-service');
       vi.mocked(getAgentById).mockResolvedValue(createMockAgent('suspended', 'header-agent'));
 
       const { handleRealtimeRoutes } = await import('../../src/routes/realtime-api');
 
-      // agentId comes from X-Agent-Id header, body is empty
       const request = new Request(
         'https://example.com/api/sites/site-1/branches/branch-1/documents/page/can-agent-edit',
         {
@@ -827,15 +702,15 @@ describe('Phase 7.4: Edit Workflow Status Enforcement', () => {
             'X-Agent-Intent': 'Update content',
             'X-Agent-Target-Regions': '/content',
           },
-          body: JSON.stringify({}), // Empty body - all from headers
+          body: JSON.stringify({}),
         },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
+      const result = await handleRealtimeRoutes(request, mockEnv, agentContext);
       const response = assertNotNull(result);
 
       expect(response.status).toBe(403);
-      expect(vi.mocked(getAgentById)).toHaveBeenCalledWith('header-agent');
+      expect(vi.mocked(getAgentById)).toHaveBeenCalledWith('agent-123');
     });
   });
 });

@@ -1,0 +1,70 @@
+/**
+ * Collapsible section
+ *
+ * Shared by the blocks drawer's category sections and the inspector's field
+ * groups, so both read as the same control. See CollapsibleSectionHeader.tsx.
+ *
+ * A module, so names are scoped by the bundler and need no `p1-` prefixing.
+ */
+
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 4px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+}
+
+.toggle:focus-visible {
+  outline: 2px solid var(--pds-color-interactive-primary, var(--puck-css-primary));
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.title {
+  flex: 1;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--pds-color-text-secondary, var(--puck-css-text-secondary));
+}
+
+.toggle:hover .title {
+  color: var(--pds-color-text-primary, var(--puck-css-text));
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--pds-color-text-secondary, var(--puck-css-text-secondary));
+  flex-shrink: 0;
+}
+
+.count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 99px;
+  background: var(--pds-color-badge-silver-background, #f0f0f0);
+  color: var(--pds-color-badge-silver-foreground, #9a9a9a);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  box-sizing: border-box;
+}
+
+/* Field groups sit inside Puck's field padding, unlike the drawer's categories.
+   The ancestor stays global — P1InspectorFields applies it as a string literal
+   and consumers theme against it. */
+:global(.p1-inspector-fields) .toggle {
+  padding: 10px 16px;
+}

@@ -47,6 +47,7 @@ import {
   type DocumentVersion,
 } from '../services/document-types';
 import { buildDocumentSkeletonFromTemplate } from '../services/document-skeleton';
+import { applyTitleToSnapshot } from '../services/document-title';
 import { assertPermission, AuthorizationError, getEffectiveRole } from '../auth/authorization';
 import { templateMetadata } from './template-api';
 import { validatePagination } from './validation';
@@ -351,9 +352,10 @@ async function handleCreateDocumentOnBranch(
   // Check if template is deprecated before creating a document from it,
   // and default template_version to current version when not provided.
   let resolvedTemplateVersion = body.templateVersion;
-  let snapshotForCreate = body.title
-    ? { title: body.title, ...body.snapshot }
-    : body.snapshot;
+  let snapshotForCreate: Record<string, unknown> | undefined =
+    body.title === undefined
+      ? body.snapshot
+      : applyTitleToSnapshot(body.snapshot, body.title);
   if (body.templateId !== undefined && body.templateId !== '') {
     // Templates commonly live on main and inherit into feature branches via
     // copy-on-write fallback, so resolve the template's latest version through

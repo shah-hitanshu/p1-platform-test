@@ -88,7 +88,7 @@ Never use \`remove\` followed by \`add\` to reposition a component — array ind
  *
  */
 export function buildContextNote(context: ChatContext): string {
-  const isExisting = !!(context.documentId || context.puckData);
+  const isExisting = !!context.documentId;
   // A newly created page has a documentId, so it would otherwise be labelled "existing document"
   // directly above a line saying it was just created and is empty.
   const header = context.newPage

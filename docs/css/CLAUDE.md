@@ -77,6 +77,14 @@ If findings from the security review are remediated, be sure to commit the chang
 # User interface language review
 Use the Pantheon Design System UI Writing skill to review major pieces of work progress.
 
+# Data backfills
+One-off data conversions are scripts, not migrations, and run from the **Run Backfill**
+GitHub Action — dry run first, `execute` second. Before writing or running one, read
+`docs/BACKFILLS.md`: it covers the two-file shape, the `db:<name>`/`db:<name>:execute`
+pair the workflow depends on, how to register a new one, and the non-negotiables
+(dry-run default, idempotent, append new versions rather than rewriting rows, latest
+version only, report skip reasons).
+
 # Database Configuration
 PostgreSQL runs in a Docker container. Always use `docker exec` to interact with it — do not attempt local `psql` commands.
 

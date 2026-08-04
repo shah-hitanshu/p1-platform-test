@@ -43,14 +43,13 @@ export interface RouteParams {
 /** Default allowed origins for development */
 export const DEFAULT_CORS_ORIGINS = 'http://localhost:3000,http://localhost:8787';
 
-/** Allowed headers for realtime API routes (includes agent context headers) */
+/** Allowed headers for realtime API routes (includes declarative agent context headers) */
 export const REALTIME_ALLOWED_HEADERS = [
   'Content-Type',
   'X-Actor-Id',
   'X-Actor-Type',
   'Upgrade',
-  // Phase 7.3: Agent context headers
-  'X-Agent-Id',
+  // Declarative agent context; identity is derived from the verified credential
   'X-Agent-Trigger',
   'X-Agent-Requested-By',
   'X-Agent-Intent',
@@ -97,6 +96,13 @@ export function validateParamLengths(params: RouteParams): string | null {
 export function parseRoute(pathname: string): RouteParams | null {
   // Pattern: /api/sites/{siteId}/branches/{branchId}/documents/{documentPath}[/action]
   // Actions: edits, connect, can-agent-edit, agent-edit-start, agent-edit-complete, agent-edit-abort, focus-regions
+  //
+  // TODO: rename the four session actions to owner-neutral spellings — can-edit,
+  // edit-session-start, edit-session-complete, edit-session-abort. A session is
+  // owned by a signed-in person as readily as by an agent, so the agent- prefix
+  // understates them. The matching DocumentSession endpoints, the same list in
+  // route-parser.ts, and docs/openapi.yaml have to move in the same change, or
+  // the neutral naming stops at the route boundary.
   const actionPattern = 'edits|connect|can-agent-edit|agent-edit-start|agent-edit-complete|agent-edit-abort|agent-stop|focus-regions';
   const pattern = new RegExp(
     `^/api/sites/([^/]+)/branches/([^/]+)/documents/(.+?)(?:/(${actionPattern}))?$`,

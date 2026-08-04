@@ -102,7 +102,7 @@ export async function listDocumentsOnBranch(
         LIMIT 1
       ) pub ON true
       LEFT JOIN LATERAL (
-        SELECT dv_snap.snapshot->>'title' AS snapshot_title,
+        SELECT COALESCE(dv_snap.snapshot->'root'->'props'->>'title', dv_snap.snapshot->>'title') AS snapshot_title,
           dv_snap.created_at AS latest_version_at,
           dv_snap.created_by_id AS last_modified_by_id,
           dv_snap.created_by_type AS last_modified_by_type
@@ -170,7 +170,7 @@ export async function listDocumentsOnBranch(
         LIMIT 1
       ) pub ON true
       LEFT JOIN LATERAL (
-        SELECT dv_snap.snapshot->>'title' AS snapshot_title,
+        SELECT COALESCE(dv_snap.snapshot->'root'->'props'->>'title', dv_snap.snapshot->>'title') AS snapshot_title,
           dv_snap.created_at AS latest_version_at,
           dv_snap.created_by_id AS last_modified_by_id,
           dv_snap.created_by_type AS last_modified_by_type
@@ -241,7 +241,7 @@ export async function listDocumentsOnBranch(
       LIMIT 1
     ) pub ON true
     LEFT JOIN LATERAL (
-      SELECT dv_snap.snapshot->>'title' AS snapshot_title,
+      SELECT COALESCE(dv_snap.snapshot->'root'->'props'->>'title', dv_snap.snapshot->>'title') AS snapshot_title,
         dv_snap.created_at AS latest_version_at,
         dv_snap.created_by_id AS last_modified_by_id,
         dv_snap.created_by_type AS last_modified_by_type

@@ -482,7 +482,9 @@ paths:
 
     patch:
       summary: Update site
-      description: Updates site name or workflow settings.
+      description: >-
+        Updates site name, URL, linked Pantheon site ID, workflow settings, or
+        allowed origins. Only the properties present in the request body change.
       operationId: updateSite
       tags: [Sites]
       requestBody:
@@ -500,6 +502,12 @@ paths:
                 $ref: '#/components/schemas/Site'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          description: Site with pantheonSiteId already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
     delete:
       summary: Archive site (soft delete)
@@ -3722,13 +3730,26 @@ components:
           format: uuid
         pantheonSiteId:
           type: string
+          description: >-
+            The linked hosting site's ID. Omitted from the response until a user
+            links one.
         organizationId:
           type: string
           format: uuid
         name:
           type: string
+        url:
+          type: string
+          format: uri
+          description: >-
+            Public URL of the site. Omitted from the response when unset.
         workflowSettings:
           $ref: '#/components/schemas/WorkflowSettings'
+        allowedOrigins:
+          type: array
+          items:
+            type: string
+          description: Allowed origin patterns for OAuth redirect URI validation.
         createdAt:
           type: string
           format: date-time
@@ -3743,25 +3764,49 @@ components:
 
     CreateSiteRequest:
       type: object
-      required: [pantheonSiteId, name]
+      required: [name]
       properties:
         pantheonSiteId:
           type: string
+          description: >-
+            Optional. Blank or omitted stores no linked hosting site; it can be
+            set later via PATCH.
         name:
           type: string
         organizationId:
           type: string
           format: uuid
+        url:
+          type: string
+          format: uri
         workflowSettings:
           $ref: '#/components/schemas/WorkflowSettings'
+        allowedOrigins:
+          type: array
+          items:
+            type: string
 
     UpdateSiteRequest:
       type: object
+      description: >-
+        Omitted properties are left unchanged. `url` and `pantheonSiteId` accept
+        an explicit null to clear the stored value.
       properties:
         name:
           type: string
+        url:
+          type: string
+          format: uri
+          nullable: true
+        pantheonSiteId:
+          type: string
+          nullable: true
         workflowSettings:
           $ref: '#/components/schemas/WorkflowSettings'
+        allowedOrigins:
+          type: array
+          items:
+            type: string
 
     SiteListResponse:
       allOf:

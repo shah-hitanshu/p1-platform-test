@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useMemo, useSyncExternalStore } from 'react';
+import { useRef, useCallback, useMemo, useSyncExternalStore } from 'react';
 import type { ChatMessage, ChatContext } from './types.js';
 import { acquireChatSession, type SendMessageOptions } from './chatSession.js';
 
@@ -22,19 +22,25 @@ export interface UseAgentChatReturn {
   isLoading: boolean;
   /** True while the WebSocket for the current scope is open and usable. */
   ready: boolean;
+  /** True between an unexpected disconnect and the next reconnect attempt. */
+  reconnecting: boolean;
+  /** False until persisted history has been answered for — distinguishes empty from pending. */
+  historyLoaded: boolean;
+  /** True when the last turn failed and can be resent. */
+  canRetry: boolean;
   clearMessages: () => void;
+  /** Stop the turn in flight, keeping whatever it already streamed. */
+  stop: () => void;
+  /** Resend the turn that failed. */
+  retry: () => void;
 }
 
 /**
- * Thin view over the module-level {@link acquireChatSession session store}. The
- * socket and messages live in the store keyed by `agentId`, so the conversation and
- * an in-progress stream survive this component remounting (Puck remounts plugin
- * panels while a new page hydrates). Switching `agentId` attaches to a different
- * conversation; the previous one lingers briefly then is reaped.
+ * Thin view over the module-level {@link acquireChatSession session store}, so a conversation
+ * and an in-progress stream survive this component remounting. Switching `agentId` attaches
+ * to a different conversation; the previous one is reaped shortly after.
  */
 export function useAgentChat({ agentUrl, agentId, getContext }: UseAgentChatOptions): UseAgentChatReturn {
-  const [input, setInput] = useState('');
-
   // Auth and ids get a new closure identity every render, but the conversation they
   // describe doesn't — read them through a ref so the session isn't re-acquired.
   const getContextRef = useRef(getContext);
@@ -51,24 +57,33 @@ export function useAgentChat({ agentUrl, agentId, getContext }: UseAgentChatOpti
   const state = useSyncExternalStore(session.subscribe, session.getState, session.getState);
 
   const submit = useCallback(async () => {
-    const text = input.trim();
+    const text = state.draft.trim();
     if (!text || state.isLoading) return;
-    setInput('');
+    session.setDraft('');
     await session.sendMessage(text);
-  }, [input, state.isLoading, session]);
+  }, [state.draft, state.isLoading, session]);
 
   const clearMessages = useCallback(() => {
     void session.clearMessages();
   }, [session]);
 
+  const retry = useCallback(() => {
+    void session.retry();
+  }, [session]);
+
   return {
     messages: state.messages,
-    input,
-    setInput,
+    input: state.draft,
+    setInput: session.setDraft,
     submit,
     sendMessage: session.sendMessage,
     isLoading: state.isLoading,
     ready: state.ready,
+    reconnecting: state.reconnecting,
+    historyLoaded: state.historyLoaded,
+    canRetry: state.retry !== null,
     clearMessages,
+    stop: session.stop,
+    retry,
   };
 }

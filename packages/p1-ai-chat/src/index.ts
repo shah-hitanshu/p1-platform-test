@@ -6,6 +6,10 @@ import type { AIChatPluginOptions } from './types.js';
 export type {
   AIChatPluginOptions,
   ChatMessage,
+  // Part of ChatMessage's public shape, so consumers reading `parts` can name the type,
+  // and narrow it to the prose variant.
+  MessagePart,
+  TextPart,
   ChatContext,
   ToolCallStatus,
   DraftRequest,

@@ -1,19 +1,20 @@
 /**
- * Agent Politeness System - Phase 2.3: Agent Edit Permission Service
+ * Agent Politeness System - Phase 2.3: Edit Permission Service
  *
- * Manages agent edit permissions based on activity detection and agent status.
+ * Decides whether a session owner may edit, from activity detection and — for
+ * agents — registry status.
  * Based on collaborative-state-system-architecture-v2.3.md
  */
 
-import type { AgentStatus } from '../types';
-import { ActivityDetector } from './activity-detection-service';
+import type { AgentStatus, SessionOwner } from '../types';
+import { ActivityDetector, type ConflictScopeOptions } from './activity-detection-service';
 
 /**
- * Context provided by agent when requesting edit permission.
+ * Context supplied when a session owner requests edit permission.
  */
-export interface AgentEditContext {
-  agentId: string;
-  trigger: 'human_requested' | 'autonomous';
+export interface EditPermissionContext {
+  owner: SessionOwner;
+  trigger: 'human_requested' | 'autonomous' | 'manual';
   requestedById?: string;
   intent: string;
   targetRegions: string[];
@@ -21,9 +22,9 @@ export interface AgentEditContext {
 }
 
 /**
- * Result of agent edit permission check.
+ * Result of an edit permission check.
  */
-export interface AgentEditPermission {
+export interface EditPermission {
   allowed: boolean;
   reason?: 'human_active' | 'region_conflict' | 'agent_suspended';
   retryAfterMs?: number;
@@ -36,9 +37,9 @@ export interface AgentEditPermission {
 export type GetAgentStatusFn = (agentId: string) => Promise<AgentStatus>;
 
 /**
- * Options for creating AgentEditPermissionService.
+ * Options for creating EditPermissionService.
  */
-export interface AgentEditPermissionServiceOptions {
+export interface EditPermissionServiceOptions {
   activityDetector: ActivityDetector;
   /**
    * Optional function to get agent status.
@@ -48,36 +49,39 @@ export interface AgentEditPermissionServiceOptions {
 }
 
 /**
- * Service for managing agent edit permissions.
- *
- * Combines activity detection with agent status checks to determine
- * whether an agent can proceed with editing a document.
+ * Service deciding whether a session owner can edit a document.
  *
  * Permission rules:
- * 1. Agent must be active (not suspended or disabled)
- * 2. Human-requested work is always allowed (if agent is active)
- * 3. Autonomous work must wait for idle timeout
- * 4. Region conflicts are checked even after idle timeout
+ * 1. An agent must be active (not suspended or disabled)
+ * 2. A region another actor occupies conflicts, whatever the trigger
+ * 3. Autonomous work additionally waits for the human idle timeout
  */
-export class AgentEditPermissionService {
+export class EditPermissionService {
   private activityDetector: ActivityDetector;
   private getAgentStatusFn?: GetAgentStatusFn;
 
-  constructor(options: AgentEditPermissionServiceOptions) {
+  constructor(options: EditPermissionServiceOptions) {
     this.activityDetector = options.activityDetector;
     this.getAgentStatusFn = options.getAgentStatus;
   }
 
   /**
-   * Check if an agent can edit based on current state.
+   * Check whether a session owner can edit, given current activity.
    *
-   * @param context - Agent edit context
+   * Registry status is an agent-only concept, so it is consulted only for an
+   * agent owner. The owner's own claim on a region never counts against it —
+   * for an agent that exclusion is a no-op, since agents register no regions.
+   * The idle timeout gates autonomous agent work only: waiting for people to go
+   * quiet is a courtesy agents owe them, not one a person owes themselves. A
+   * person's session is held to the region check alone, whatever it declares as
+   * its trigger.
+   *
+   * @param context - Session owner and declared intent
    * @returns Permission result with allowed flag and reason if denied
    */
-  async canAgentEdit(context: AgentEditContext): Promise<AgentEditPermission> {
-    // Check agent status first (applies to all triggers)
-    if (this.getAgentStatusFn) {
-      const status = await this.getAgentStatusFn(context.agentId);
+  async canEdit(context: EditPermissionContext): Promise<EditPermission> {
+    if (context.owner.type === 'agent' && this.getAgentStatusFn) {
+      const status = await this.getAgentStatusFn(context.owner.id);
       if (status === 'suspended' || status === 'disabled') {
         return {
           allowed: false,
@@ -86,11 +90,11 @@ export class AgentEditPermissionService {
       }
     }
 
-    // Check for region conflicts (applies to all triggers, including human-requested).
-    // A human focused on /content/4 should block agent edits to /content/4/props/...
-    // even when the human explicitly requested the edit.
+    // Region conflicts apply to every trigger. Someone focused on /content/4
+    // blocks edits to /content/4/props/... even when they asked for them.
     const conflictingRegions = this.activityDetector.getConflictingRegions(
       context.targetRegions,
+      { excludeActorId: context.owner.id },
     );
     if (conflictingRegions.length > 0) {
       return {
@@ -100,23 +104,15 @@ export class AgentEditPermissionService {
       };
     }
 
-    // Human-requested work is allowed if no region conflicts
-    if (context.trigger === 'human_requested') {
+    if (context.owner.type === 'user' || context.trigger !== 'autonomous') {
       return { allowed: true };
     }
 
-    // For autonomous work, also check idle timeout
-    const activityResult = this.activityDetector.canAgentProceed({
-      trigger: context.trigger,
-      targetRegions: context.targetRegions,
-    });
-
-    if (!activityResult.allowed) {
+    if (!this.activityDetector.isHumanIdle()) {
       return {
         allowed: false,
-        reason: activityResult.reason,
-        retryAfterMs: activityResult.retryAfterMs,
-        conflictingRegions: activityResult.conflictingRegions,
+        reason: 'human_active',
+        retryAfterMs: this.activityDetector.getTimeUntilIdle(),
       };
     }
 
@@ -161,8 +157,8 @@ export class AgentEditPermissionService {
   /**
    * Get regions that conflict with the given target regions.
    */
-  getConflictingRegions(targetRegions: string[]): string[] {
-    return this.activityDetector.getConflictingRegions(targetRegions);
+  getConflictingRegions(targetRegions: string[], options?: ConflictScopeOptions): string[] {
+    return this.activityDetector.getConflictingRegions(targetRegions, options);
   }
 
   /**

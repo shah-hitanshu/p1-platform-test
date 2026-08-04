@@ -2,7 +2,7 @@
  * Phase 4: DocumentSession Agent Politeness Integration Tests (TDD)
  *
  * Tests for integrating Agent Politeness services (PresenceManager, ActivityDetector,
- * AgentEditPermissionService) into the DocumentSession Durable Object.
+ * EditPermissionService) into the DocumentSession Durable Object.
  *
  * Agent Edit Workflow Endpoints:
  * - /can-agent-edit: Check if agent can proceed with editing
@@ -345,7 +345,7 @@ describe('Phase 4.3: Agent Edit Permission Integration', () => {
 
       const request = new Request('http://localhost/can-agent-edit', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'X-Verified-Actor-Id': 'agent-123', 'Content-Type': 'application/json' },
         body: JSON.stringify({
           agentId: 'agent-123',
           trigger: 'autonomous',
@@ -387,7 +387,7 @@ describe('Phase 4.3: Agent Edit Permission Integration', () => {
       // Now check agent permission for overlapping region
       const request = new Request('http://localhost/can-agent-edit', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'X-Verified-Actor-Id': 'agent-123', 'Content-Type': 'application/json' },
         body: JSON.stringify({
           agentId: 'agent-123',
           trigger: 'autonomous',
@@ -414,7 +414,7 @@ describe('Phase 4.3: Agent Edit Permission Integration', () => {
 
       const request = new Request('http://localhost/can-agent-edit', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'X-Verified-Actor-Id': 'agent-123', 'Content-Type': 'application/json' },
         body: JSON.stringify({
           agentId: 'agent-123',
           trigger: 'human_requested',
@@ -440,7 +440,7 @@ describe('Phase 4.3: Agent Edit Permission Integration', () => {
 
       const request = new Request('http://localhost/can-agent-edit', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'X-Verified-Actor-Id': 'agent-123', 'Content-Type': 'application/json' },
         body: JSON.stringify({
           agentId: 'agent-123',
           trigger: 'autonomous',
@@ -501,7 +501,7 @@ describe('Phase 4.4: Agent Edit Workflow', () => {
 
       const request = new Request('http://localhost/agent-edit-start', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'X-Verified-Actor-Id': 'agent-123', 'Content-Type': 'application/json' },
         body: JSON.stringify({
           agentId: 'agent-123',
           trigger: 'autonomous',
@@ -530,7 +530,7 @@ describe('Phase 4.4: Agent Edit Workflow', () => {
 
       const request = new Request('http://localhost/agent-edit-start', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'X-Verified-Actor-Id': 'agent-123', 'Content-Type': 'application/json' },
         body: JSON.stringify({
           agentId: 'agent-123',
           trigger: 'human_requested',
@@ -560,7 +560,7 @@ describe('Phase 4.4: Agent Edit Workflow', () => {
       await session.fetch(
         new Request('http://localhost/agent-edit-start', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'X-Verified-Actor-Id': 'agent-123', 'Content-Type': 'application/json' },
           body: JSON.stringify({
             agentId: 'agent-123',
             trigger: 'autonomous',
@@ -593,10 +593,10 @@ describe('Phase 4.4: Agent Edit Workflow', () => {
       await session.fetch(
         new Request('http://localhost/agent-edit-start', {
           method: 'POST',
-          headers: {
+          headers: { 'X-Verified-Actor-Id': 'agent-123',
             'Content-Type': 'application/json',
-            'X-Acting-User-Id': 'user-uuid-456',
-            'X-Acting-User-Name': 'Chris Yates',
+            'X-Verified-Requested-By-Id': 'user-uuid-456',
+            'X-Verified-Requested-By-Name': 'Chris Yates',
           },
           body: JSON.stringify({
             agentId: 'agent-123',
@@ -631,10 +631,10 @@ describe('Phase 4.4: Agent Edit Workflow', () => {
       await session.fetch(
         new Request('http://localhost/agent-edit-start', {
           method: 'POST',
-          headers: {
+          headers: { 'X-Verified-Actor-Id': 'agent-456',
             'Content-Type': 'application/json',
-            'X-Acting-User-Id': 'user-uuid-456',
-            'X-Acting-User-Name': 'Chris Yates',
+            'X-Verified-Requested-By-Id': 'user-uuid-456',
+            'X-Verified-Requested-By-Name': 'Chris Yates',
           },
           body: JSON.stringify({
             agentId: 'agent-456',
@@ -657,7 +657,7 @@ describe('Phase 4.4: Agent Edit Workflow', () => {
       expect(agentPresence.requestedByName).toBeUndefined();
     });
 
-    it('should omit requestedByName when X-Acting-User-Name header is absent on human_requested trigger', async () => {
+    it('should omit requestedByName when no requester name is forwarded on human_requested trigger', async () => {
       const { DocumentSession } = await import(
         '../../src/durable-objects/document-session'
       );
@@ -669,9 +669,9 @@ describe('Phase 4.4: Agent Edit Workflow', () => {
       await session.fetch(
         new Request('http://localhost/agent-edit-start', {
           method: 'POST',
-          headers: {
+          headers: { 'X-Verified-Actor-Id': 'agent-789',
             'Content-Type': 'application/json',
-            'X-Acting-User-Id': 'user-uuid-789',
+            'X-Verified-Requested-By-Id': 'user-uuid-789',
           },
           body: JSON.stringify({
             agentId: 'agent-789',
@@ -721,7 +721,7 @@ describe('Phase 4.4: Agent Edit Workflow', () => {
       // Try to start autonomous edit on same region
       const request = new Request('http://localhost/agent-edit-start', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'X-Verified-Actor-Id': 'agent-123', 'Content-Type': 'application/json' },
         body: JSON.stringify({
           agentId: 'agent-123',
           trigger: 'autonomous',
@@ -756,7 +756,7 @@ describe('Phase 4.4: Agent Edit Workflow', () => {
       const startResponse = await session.fetch(
         new Request('http://localhost/agent-edit-start', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'X-Verified-Actor-Id': 'agent-123', 'Content-Type': 'application/json' },
           body: JSON.stringify({
             agentId: 'agent-123',
             trigger: 'human_requested',
@@ -771,7 +771,7 @@ describe('Phase 4.4: Agent Edit Workflow', () => {
       // Complete the edit session
       const request = new Request('http://localhost/agent-edit-complete', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'X-Verified-Actor-Id': 'agent-123', 'Content-Type': 'application/json' },
         body: JSON.stringify({
           editSessionId: startBody.editSessionId,
         }),
@@ -797,7 +797,7 @@ describe('Phase 4.4: Agent Edit Workflow', () => {
       const startResponse = await session.fetch(
         new Request('http://localhost/agent-edit-start', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'X-Verified-Actor-Id': 'agent-123', 'Content-Type': 'application/json' },
           body: JSON.stringify({
             agentId: 'agent-123',
             trigger: 'human_requested',
@@ -813,7 +813,7 @@ describe('Phase 4.4: Agent Edit Workflow', () => {
       const completeResponse = await session.fetch(
         new Request('http://localhost/agent-edit-complete', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'X-Verified-Actor-Id': 'agent-123', 'Content-Type': 'application/json' },
           body: JSON.stringify({
             editSessionId: startBody.editSessionId,
           }),
@@ -842,7 +842,7 @@ describe('Phase 4.4: Agent Edit Workflow', () => {
       const startResponse = await session.fetch(
         new Request('http://localhost/agent-edit-start', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'X-Verified-Actor-Id': 'agent-123', 'Content-Type': 'application/json' },
           body: JSON.stringify({
             agentId: 'agent-123',
             trigger: 'human_requested',
@@ -858,7 +858,7 @@ describe('Phase 4.4: Agent Edit Workflow', () => {
       await session.fetch(
         new Request('http://localhost/agent-edit-complete', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'X-Verified-Actor-Id': 'agent-123', 'Content-Type': 'application/json' },
           body: JSON.stringify({
             editSessionId: startBody.editSessionId,
           }),
@@ -893,7 +893,7 @@ describe('Phase 4.4: Agent Edit Workflow', () => {
       const startResponse = await session.fetch(
         new Request('http://localhost/agent-edit-start', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'X-Verified-Actor-Id': 'agent-persist-test', 'Content-Type': 'application/json' },
           body: JSON.stringify({
             agentId: 'agent-persist-test',
             trigger: 'human_requested',
@@ -909,7 +909,7 @@ describe('Phase 4.4: Agent Edit Workflow', () => {
       const response = await session.fetch(
         new Request('http://localhost/agent-edit-complete', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'X-Verified-Actor-Id': 'agent-persist-test', 'Content-Type': 'application/json' },
           body: JSON.stringify({
             editSessionId: startBody.editSessionId,
           }),
@@ -974,7 +974,7 @@ describe('Phase 4.4: Agent Edit Workflow', () => {
       const startResponse = await session.fetch(
         new Request('http://localhost/agent-edit-start', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'X-Verified-Actor-Id': 'agent-123', 'Content-Type': 'application/json' },
           body: JSON.stringify({
             agentId: 'agent-123',
             trigger: 'autonomous',
@@ -989,7 +989,7 @@ describe('Phase 4.4: Agent Edit Workflow', () => {
       // Abort the edit session
       const request = new Request('http://localhost/agent-edit-abort', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'X-Verified-Actor-Id': 'agent-123', 'Content-Type': 'application/json' },
         body: JSON.stringify({
           editSessionId: startBody.editSessionId,
           reason: 'User requested abort',
@@ -1019,7 +1019,7 @@ describe('Phase 4.4: Agent Edit Workflow', () => {
       const startResponse = await session.fetch(
         new Request('http://localhost/agent-edit-start', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'X-Verified-Actor-Id': 'agent-123', 'Content-Type': 'application/json' },
           body: JSON.stringify({
             agentId: 'agent-123',
             trigger: 'human_requested',
@@ -1035,7 +1035,7 @@ describe('Phase 4.4: Agent Edit Workflow', () => {
       await session.fetch(
         new Request('http://localhost/agent-edit-abort', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'X-Verified-Actor-Id': 'agent-123', 'Content-Type': 'application/json' },
           body: JSON.stringify({
             editSessionId: startBody.editSessionId,
           }),
@@ -1070,7 +1070,7 @@ describe('Phase 4.4: Agent Edit Workflow', () => {
       const startResponse = await session.fetch(
         new Request('http://localhost/agent-edit-start', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'X-Verified-Actor-Id': 'agent-123', 'Content-Type': 'application/json' },
           body: JSON.stringify({
             agentId: 'agent-123',
             trigger: 'human_requested',
@@ -1084,7 +1084,7 @@ describe('Phase 4.4: Agent Edit Workflow', () => {
 
       const request = new Request('http://localhost/agent-edit-abort', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'X-Verified-Actor-Id': 'agent-123', 'Content-Type': 'application/json' },
         body: JSON.stringify({
           editSessionId: startBody.editSessionId,
           reason: 'Conflict detected with human work',
@@ -1132,7 +1132,7 @@ describe('Phase 4.4: Agent Edit Workflow', () => {
       await session.fetch(
         new Request('http://localhost/agent-edit-start', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'X-Verified-Actor-Id': 'agent-to-stop', 'Content-Type': 'application/json' },
           body: JSON.stringify({
             agentId: 'agent-to-stop',
             trigger: 'autonomous',
@@ -1200,7 +1200,7 @@ describe('Phase 4.4: Agent Edit Workflow', () => {
       await session.fetch(
         new Request('http://localhost/agent-edit-start', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'X-Verified-Actor-Id': 'agent-with-presence', 'Content-Type': 'application/json' },
           body: JSON.stringify({
             agentId: 'agent-with-presence',
             trigger: 'human_requested',
@@ -1247,7 +1247,7 @@ describe('Phase 4.4: Agent Edit Workflow', () => {
       await session.fetch(
         new Request('http://localhost/agent-edit-start', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'X-Verified-Actor-Id': 'agent-session-test', 'Content-Type': 'application/json' },
           body: JSON.stringify({
             agentId: 'agent-session-test',
             trigger: 'human_requested',
@@ -1320,7 +1320,7 @@ describe('Phase 4.4: Agent Edit Workflow', () => {
       await session.fetch(
         new Request('http://localhost/agent-edit-start', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'X-Verified-Actor-Id': 'agent-123', 'Content-Type': 'application/json' },
           body: JSON.stringify({
             agentId: 'agent-123',
             trigger: 'human_requested',
@@ -1337,7 +1337,7 @@ describe('Phase 4.4: Agent Edit Workflow', () => {
       expect(response.status).toBe(200);
       const body = (await response.json());
       expect(body.sessions.length).toBe(1);
-      expect(body.sessions[0].agentId).toBe('agent-123');
+      expect(body.sessions[0].ownerId).toBe('agent-123');
     });
 
     it('should prevent concurrent edit sessions from same agent', async () => {
@@ -1353,7 +1353,7 @@ describe('Phase 4.4: Agent Edit Workflow', () => {
       await session.fetch(
         new Request('http://localhost/agent-edit-start', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'X-Verified-Actor-Id': 'agent-123', 'Content-Type': 'application/json' },
           body: JSON.stringify({
             agentId: 'agent-123',
             trigger: 'human_requested',
@@ -1367,7 +1367,7 @@ describe('Phase 4.4: Agent Edit Workflow', () => {
       const response = await session.fetch(
         new Request('http://localhost/agent-edit-start', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'X-Verified-Actor-Id': 'agent-123', 'Content-Type': 'application/json' },
           body: JSON.stringify({
             agentId: 'agent-123',
             trigger: 'human_requested',
@@ -1554,7 +1554,7 @@ describe('Phase 4.6: Agent /apply Session Enforcement', () => {
       const startResponse = await session.fetch(
         new Request('http://localhost/agent-edit-start', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'X-Verified-Actor-Id': 'agent-123', 'Content-Type': 'application/json' },
           body: JSON.stringify({
             agentId: 'agent-123',
             trigger: 'human_requested',
@@ -1600,7 +1600,7 @@ describe('Phase 4.6: Agent /apply Session Enforcement', () => {
       const startResponse = await session.fetch(
         new Request('http://localhost/agent-edit-start', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'X-Verified-Actor-Id': 'agent-123', 'Content-Type': 'application/json' },
           body: JSON.stringify({
             agentId: 'agent-123',
             trigger: 'human_requested',
@@ -1703,7 +1703,7 @@ describe('Phase A: Orphaned Session Cleanup', () => {
       const startResponse = await session.fetch(
         new Request('http://localhost/agent-edit-start', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'X-Verified-Actor-Id': 'agent-orphan-test', 'Content-Type': 'application/json' },
           body: JSON.stringify({
             agentId: 'agent-orphan-test',
             trigger: 'human_requested',
@@ -1797,7 +1797,7 @@ describe('Phase A: Orphaned Session Cleanup', () => {
       const start1 = await session.fetch(
         new Request('http://localhost/agent-edit-start', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'X-Verified-Actor-Id': 'agent-orphan-1', 'Content-Type': 'application/json' },
           body: JSON.stringify({
             agentId: 'agent-orphan-1',
             trigger: 'human_requested',
@@ -1811,7 +1811,7 @@ describe('Phase A: Orphaned Session Cleanup', () => {
       const start2 = await session.fetch(
         new Request('http://localhost/agent-edit-start', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'X-Verified-Actor-Id': 'agent-orphan-2', 'Content-Type': 'application/json' },
           body: JSON.stringify({
             agentId: 'agent-orphan-2',
             trigger: 'human_requested',
@@ -1887,7 +1887,7 @@ describe('Phase A: Orphaned Session Cleanup', () => {
       const startResp = await session.fetch(
         new Request('http://localhost/agent-edit-start', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'X-Verified-Actor-Id': 'agent-persist-test', 'Content-Type': 'application/json' },
           body: JSON.stringify({
             agentId: 'agent-persist-test',
             trigger: 'human_requested',
@@ -2023,7 +2023,7 @@ describe('Phase A: Orphaned Session Cleanup', () => {
       const startResponse = await session.fetch(
         new Request('http://localhost/agent-edit-start', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'X-Verified-Actor-Id': 'agent-rollback-test', 'Content-Type': 'application/json' },
           body: JSON.stringify({
             agentId: 'agent-rollback-test',
             trigger: 'autonomous',
@@ -2091,7 +2091,7 @@ describe('Phase A: Orphaned Session Cleanup', () => {
       const startResponse = await session.fetch(
         new Request('http://localhost/agent-edit-start', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'X-Verified-Actor-Id': 'agent-no-rollback', 'Content-Type': 'application/json' },
           body: JSON.stringify({
             agentId: 'agent-no-rollback',
             trigger: 'human_requested',
@@ -2141,7 +2141,7 @@ describe('Phase A: Orphaned Session Cleanup', () => {
       const startResponse = await session.fetch(
         new Request('http://localhost/agent-edit-start', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'X-Verified-Actor-Id': 'agent-fail-rollback', 'Content-Type': 'application/json' },
           body: JSON.stringify({
             agentId: 'agent-fail-rollback',
             trigger: 'autonomous',
@@ -2188,7 +2188,7 @@ describe('Phase A: Orphaned Session Cleanup', () => {
       const startResponse = await session1.fetch(
         new Request('http://localhost/agent-edit-start', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'X-Verified-Actor-Id': 'agent-restore-test', 'Content-Type': 'application/json' },
           body: JSON.stringify({
             agentId: 'agent-restore-test',
             trigger: 'autonomous',
@@ -2264,7 +2264,7 @@ describe('Phase A: Orphaned Session Cleanup', () => {
       const startResponse = await session1.fetch(
         new Request('http://localhost/agent-edit-start', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'X-Verified-Actor-Id': 'agent-restore-keep', 'Content-Type': 'application/json' },
           body: JSON.stringify({
             agentId: 'agent-restore-keep',
             trigger: 'human_requested',
@@ -2309,6 +2309,145 @@ describe('Phase A: Orphaned Session Cleanup', () => {
 
       vi.useRealTimers();
     });
+  });
+});
+
+describe('Verified identity enforcement', () => {
+  it('ignores a can-agent-edit body agentId that differs from the verified identity', async () => {
+    const { DocumentSession } = await import('../../src/durable-objects/document-session');
+    const session = new DocumentSession(createMockState(), createMockEnv());
+
+    const response = await session.fetch(
+      new Request('http://localhost/can-agent-edit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Verified-Actor-Id': 'agent-999' },
+        body: JSON.stringify({
+          agentId: 'agent-123',
+          trigger: 'autonomous',
+          targetRegions: ['/content/0'],
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+  });
+
+  it('attributes an edit session to the verified identity, not the body agentId', async () => {
+    const { DocumentSession } = await import('../../src/durable-objects/document-session');
+    const session = new DocumentSession(createMockState(), createMockEnv());
+
+    const startResponse = await session.fetch(
+      new Request('http://localhost/agent-edit-start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Verified-Actor-Id': 'agent-999' },
+        body: JSON.stringify({
+          agentId: 'agent-123',
+          trigger: 'autonomous',
+          intent: 'Test',
+          targetRegions: ['/content/0'],
+        }),
+      }),
+    );
+    expect(startResponse.status).toBe(200);
+    const startBody = await startResponse.json();
+
+    // The body claimed agent-123, but the session is owned by the verified
+    // agent-999, so agent-123 cannot complete it.
+    const completeAsBody = await session.fetch(
+      new Request('http://localhost/agent-edit-complete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Verified-Actor-Id': 'agent-123' },
+        body: JSON.stringify({ editSessionId: startBody.editSessionId }),
+      }),
+    );
+    expect(completeAsBody.status).toBe(403);
+  });
+
+  it('rejects completing an edit session owned by a different agent', async () => {
+    const { DocumentSession } = await import('../../src/durable-objects/document-session');
+    const session = new DocumentSession(createMockState(), createMockEnv());
+
+    const startResponse = await session.fetch(
+      new Request('http://localhost/agent-edit-start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Verified-Actor-Id': 'agent-123' },
+        body: JSON.stringify({
+          agentId: 'agent-123',
+          trigger: 'autonomous',
+          intent: 'Test',
+          targetRegions: ['/content/0'],
+        }),
+      }),
+    );
+    const startBody = await startResponse.json();
+
+    const response = await session.fetch(
+      new Request('http://localhost/agent-edit-complete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Verified-Actor-Id': 'agent-999' },
+        body: JSON.stringify({ editSessionId: startBody.editSessionId }),
+      }),
+    );
+
+    expect(response.status).toBe(403);
+  });
+
+  it('allows the owning agent to complete its own edit session', async () => {
+    const { DocumentSession } = await import('../../src/durable-objects/document-session');
+    const session = new DocumentSession(createMockState(), createMockEnv());
+
+    const startResponse = await session.fetch(
+      new Request('http://localhost/agent-edit-start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Verified-Actor-Id': 'agent-123' },
+        body: JSON.stringify({
+          agentId: 'agent-123',
+          trigger: 'autonomous',
+          intent: 'Test',
+          targetRegions: ['/content/0'],
+        }),
+      }),
+    );
+    const startBody = await startResponse.json();
+
+    const response = await session.fetch(
+      new Request('http://localhost/agent-edit-complete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Verified-Actor-Id': 'agent-123' },
+        body: JSON.stringify({ editSessionId: startBody.editSessionId }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+  });
+
+  it('rejects aborting an edit session owned by a different agent', async () => {
+    const { DocumentSession } = await import('../../src/durable-objects/document-session');
+    const session = new DocumentSession(createMockState(), createMockEnv());
+
+    const startResponse = await session.fetch(
+      new Request('http://localhost/agent-edit-start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Verified-Actor-Id': 'agent-123' },
+        body: JSON.stringify({
+          agentId: 'agent-123',
+          trigger: 'autonomous',
+          intent: 'Test',
+          targetRegions: ['/content/0'],
+        }),
+      }),
+    );
+    const startBody = await startResponse.json();
+
+    const response = await session.fetch(
+      new Request('http://localhost/agent-edit-abort', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Verified-Actor-Id': 'agent-999' },
+        body: JSON.stringify({ editSessionId: startBody.editSessionId }),
+      }),
+    );
+
+    expect(response.status).toBe(403);
   });
 });
 

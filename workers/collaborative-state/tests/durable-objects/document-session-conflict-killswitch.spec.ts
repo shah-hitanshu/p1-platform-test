@@ -158,7 +158,7 @@ describe('Phase 6: Conflict Notification & Kill Switch', () => {
       await session.fetch(
         new Request('http://localhost/agent-edit-start', {
           method: 'POST',
-          headers: {
+          headers: { 'X-Verified-Actor-Id': 'agent-123',
             'Content-Type': 'application/json',
             'X-Actor-Id': 'agent-123',
             'X-Actor-Type': 'agent',
@@ -201,7 +201,7 @@ describe('Phase 6: Conflict Notification & Kill Switch', () => {
       // The agent's session should be marked as conflicted or aborted
       expect(editSessions.sessions).toBeDefined();
       const agentSession = editSessions.sessions.find(
-        (s: { agentId: string }) => s.agentId === 'agent-123',
+        (s: { ownerId: string }) => s.ownerId === 'agent-123',
       );
       // After human conflict, the session should be marked for abort
       expect(
@@ -222,7 +222,7 @@ describe('Phase 6: Conflict Notification & Kill Switch', () => {
       await session.fetch(
         new Request('http://localhost/agent-edit-start', {
           method: 'POST',
-          headers: {
+          headers: { 'X-Verified-Actor-Id': 'agent-123',
             'Content-Type': 'application/json',
             'X-Actor-Id': 'agent-123',
             'X-Actor-Type': 'agent',
@@ -267,7 +267,7 @@ describe('Phase 6: Conflict Notification & Kill Switch', () => {
       const editSessions = await editSessionsResponse.json();
 
       const agentSession = editSessions.sessions.find(
-        (s: { agentId: string }) => s.agentId === 'agent-123',
+        (s: { ownerId: string }) => s.ownerId === 'agent-123',
       );
       expect(agentSession).toBeDefined();
       expect(agentSession.conflicted).toBeFalsy();
@@ -286,7 +286,7 @@ describe('Phase 6: Conflict Notification & Kill Switch', () => {
       await session.fetch(
         new Request('http://localhost/agent-edit-start', {
           method: 'POST',
-          headers: {
+          headers: { 'X-Verified-Actor-Id': 'agent-123',
             'Content-Type': 'application/json',
             'X-Actor-Id': 'agent-123',
             'X-Actor-Type': 'agent',
@@ -322,9 +322,9 @@ describe('Phase 6: Conflict Notification & Kill Switch', () => {
       const body = await applyResponse.json();
 
       // Response should include info about affected agent sessions
-      expect(body.agentConflicts).toBeDefined();
-      expect(body.agentConflicts.length).toBeGreaterThan(0);
-      expect(body.agentConflicts[0].agentId).toBe('agent-123');
+      expect(body.sessionConflicts).toBeDefined();
+      expect(body.sessionConflicts.length).toBeGreaterThan(0);
+      expect(body.sessionConflicts[0].ownerId).toBe('agent-123');
     });
   });
 
@@ -342,7 +342,7 @@ describe('Phase 6: Conflict Notification & Kill Switch', () => {
       await session.fetch(
         new Request('http://localhost/agent-edit-start', {
           method: 'POST',
-          headers: {
+          headers: { 'X-Verified-Actor-Id': 'agent-123',
             'Content-Type': 'application/json',
             'X-Actor-Id': 'agent-123',
             'X-Actor-Type': 'agent',
@@ -391,7 +391,7 @@ describe('Phase 6: Conflict Notification & Kill Switch', () => {
       await session.fetch(
         new Request('http://localhost/agent-edit-start', {
           method: 'POST',
-          headers: {
+          headers: { 'X-Verified-Actor-Id': 'agent-123',
             'Content-Type': 'application/json',
             'X-Actor-Id': 'agent-123',
             'X-Actor-Type': 'agent',
@@ -502,7 +502,7 @@ describe('Phase 6: Conflict Notification & Kill Switch', () => {
       await session.fetch(
         new Request('http://localhost/agent-edit-start', {
           method: 'POST',
-          headers: {
+          headers: { 'X-Verified-Actor-Id': 'agent-123',
             'Content-Type': 'application/json',
             'X-Actor-Id': 'agent-123',
             'X-Actor-Type': 'agent',
@@ -547,7 +547,7 @@ describe('Phase 6: Conflict Notification & Kill Switch', () => {
       await session.fetch(
         new Request('http://localhost/agent-edit-start', {
           method: 'POST',
-          headers: {
+          headers: { 'X-Verified-Actor-Id': 'agent-123',
             'Content-Type': 'application/json',
             'X-Actor-Id': 'agent-123',
             'X-Actor-Type': 'agent',
@@ -598,7 +598,7 @@ describe('Phase 6: Conflict Notification & Kill Switch', () => {
       await session.fetch(
         new Request('http://localhost/agent-edit-start', {
           method: 'POST',
-          headers: {
+          headers: { 'X-Verified-Actor-Id': 'agent-123',
             'Content-Type': 'application/json',
             'X-Actor-Id': 'agent-123',
             'X-Actor-Type': 'agent',
@@ -657,7 +657,7 @@ describe('Phase 6: Conflict Notification & Kill Switch', () => {
       await session.fetch(
         new Request('http://localhost/agent-edit-start', {
           method: 'POST',
-          headers: {
+          headers: { 'X-Verified-Actor-Id': 'agent-123',
             'Content-Type': 'application/json',
             'X-Actor-Id': 'agent-123',
             'X-Actor-Type': 'agent',
@@ -674,7 +674,7 @@ describe('Phase 6: Conflict Notification & Kill Switch', () => {
       await session.fetch(
         new Request('http://localhost/agent-edit-start', {
           method: 'POST',
-          headers: {
+          headers: { 'X-Verified-Actor-Id': 'agent-456',
             'Content-Type': 'application/json',
             'X-Actor-Id': 'agent-456',
             'X-Actor-Type': 'agent',

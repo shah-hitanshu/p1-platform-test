@@ -67,7 +67,12 @@ export function P1InspectorFields({
       dispatch({ type: 'setUi', ui: { itemSelector: null } } as never);
     }
     if (tab === 'block' && !itemSelector && contentLength > 0) {
-      dispatch({ type: 'setUi', ui: { itemSelector: { zone: 'default-zone', index: 0 } } } as never);
+      // Puck indexes the root zone as `rootDroppableId` (`root:default-zone`);
+      // the bare zone name resolves to no zone, so getItem() selects nothing.
+      dispatch({
+        type: 'setUi',
+        ui: { itemSelector: { zone: 'root:default-zone', index: 0 } },
+      } as never);
     }
   };
 
@@ -97,7 +102,13 @@ export function P1InspectorFields({
 
   const template = templateFromRegistryPath(css?.currentDocument?.path, css?.templates);
   if (template && !itemSelector && css?.updateTemplate) {
-    return <P1TemplateFields>{children}</P1TemplateFields>;
+    // Guarded like the main return — without this, template fields stay editable
+    // while viewing a read-only historical version.
+    return (
+      <ReadOnlyFieldsGuard isReadOnly={isReadOnly}>
+        <P1TemplateFields>{children}</P1TemplateFields>
+      </ReadOnlyFieldsGuard>
+    );
   }
 
   return (

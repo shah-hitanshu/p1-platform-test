@@ -3206,3 +3206,325 @@ Also: a run interrupted between the writes and the cleanup is detected as `parti
 - Reply to the eight review comments and re-request review; PR #136 is `CHANGES_REQUESTED` and is the only branch in the stack not yet approved.
 - The PR description predates both the version guard and these fixes and needs updating before re-review.
 - `packages/p1-next-sdk/src/pages-handler.tsx:112` still prints the repo-only `docs/` path in the #135 dev warning.
+
+## PCC-3406 Page Metadata — Phase 0: de-risk and settle the snapshot shape (2026-07-30)
+
+**Status:** Complete
+**Branch:** `feat/3406`
+**Commits:** `e14a590` (spike + findings)
+
+### Context
+
+PCC-3406 stores explicit page metadata, lets editors author it in the Puck
+sidebar, and renders it into `<head>`. Phase 0 exists because the plan's largest
+front-end risk was unverified: role-gated field editing, in a codebase where
+`useAutoSave` persists the entire Puck snapshot on every keystroke-debounce, so
+anything written into `root.props` for the editor's benefit becomes content.
+
+Full plan: `~/pantheon/claude-output/pcc-3406-page-metadata-plan-5.html`.
+Spike harness and findings: `packages/puck-css/spike/pcc-3406/`.
+
+### Decisions
+
+- **Page metadata lives in the Puck snapshot at `root.props._meta`**, not in the
+  CSS structures-metadata subsystem. That subsystem models per-collection-appearance
+  metadata and its branch inheritance is broken — branch creation stopped copying
+  `branch_document_metadata`, so a new workstream would see empty metadata instead
+  of inheriting main's, failing the ticket's workstream requirement outright. Its
+  *design* is reused (Ajv validation, strict/warn/none enforcement), not its tables.
+  Amendment against `architecture-v2.4.md` Decisions 8/9 is committed on
+  `docs/3406-architecture-amendment` in `collaborative-state-system`.
+- **Decision 1 — role gating goes through `resolveFields`, never data-level
+  `readOnly`.** Puck's per-field read-only map lives on `BaseData`, which `RootData`
+  extends — it is document data, so writing it from a role check would persist one
+  user's permissions into the content. `resolveFields` is config-level and nothing
+  it returns is persisted. Gating is therefore field *omission*, which the spike
+  confirmed works. Omission is UX, not security: the client holds the full
+  definition set regardless, so server-side rejection (subtask 18) is the
+  enforcement.
+- **Decision 2 — `_meta` stays a single Puck object field.** The spike confirmed
+  keys can be omitted from inside an object field's `objectFields`, so per-field
+  gating needs no flattening to prefixed root props. The remaining argument for
+  flattening is scheduling only: if the root-prop applier fix (subtask 23) slips,
+  flattening becomes the pragmatic hedge.
+- **Q1 — empty-means-inherit, not copy-on-create** (user decision). The ticket says
+  title/description should be "automatically pasted" into the og/twitter fields; a
+  literal copy goes stale the moment the page title changes. Store empty, resolve at
+  render, fall back to title/description. Accepted consequence: in Phase 1 the
+  fields read as blank to an editor, because showing the inherited value as a
+  placeholder needs the render-time channel that lands in Phase 4. **Phase 1's demo
+  must not promise the placeholder.**
+- **Template default *values* go at the template document's own `root.props._meta`**,
+  not under `_template`. `EDITOR_PRIVATE_ROOT_PROPS` (`migration-service.ts:573`) is
+  stripped from both sides of patch extraction, so values stored there provably
+  cannot propagate. Definitions stay at `_template.metadataFields`, where being
+  stripped from value propagation is correct.
+
+### Verification
+
+- 9 assertions against real Puck 0.21.1, all green:
+  `pnpm --filter @pantheon-systems/puck-css test:spike:3406`. Lint 0 errors.
+- Confirmed the autosave payload stays clean: with inherited values and a role
+  passed via `<Puck metadata>` and a field edited, `root.props` keys are exactly
+  `['_meta','title']` — no `_seo`, no role, no `readOnly` on `root`.
+- Pre-existing and unrelated, verified identical on a stashed clean tree: the
+  package's `test` fails 42 tests (auth/token-refresh, avatar).
+- **Gotcha: `pnpm --filter @pantheon-systems/puck-css build` fails on its own** with
+  two TS errors in `VersionTimeline.tsx` claiming `sourceVersionId` is missing on
+  `DocumentVersion`. The field is declared (`css-client/src/types.ts:102`) — the
+  filtered build resolves a stale `css-client` dist, and because the build cleans
+  first (`40762a6`), a failed run leaves no dist at all, which then breaks
+  `apps/p1-starter`'s tests at import resolution. Build from the root so turbo
+  orders the dependency; `pnpm build` is clean.
+
+### Gotcha: every existing Puck test in this package tests a stub
+
+`packages/puck-css/vitest.config.ts` aliases `@puckeditor/core` to
+`src/__mocks__/@puckeditor/core.ts` — 20 lines, no store, no fields slice, no
+`resolveFields`. A role-gating test written in the normal test directory would have
+proved nothing. The spike has its own vitest config that drops the alias, plus the
+jsdom polyfills real Puck needs (`matchMedia`, `localStorage`, `ResizeObserver`,
+`DOMMatrixReadOnly`). **The Phase 1 regression test that enforces the
+no-derived-state rule must run un-aliased or it is theatre.**
+
+### What the spike changed in the plan
+
+- **Subtask 21 (inherited-value placeholders) needs a different design.** The fields
+  slice has no `metadata` subscription — changing `<Puck metadata>` after mount
+  produced zero additional resolver calls. Inherited values read via
+  `params.metadata` inside `resolveFields` would be baked in at first resolve and
+  never refresh, which is fatal for defaults delivered asynchronously by react-query.
+  Placeholders must be read at field-render time via a custom renderer using
+  `usePuck`, or resolved before Puck mounts.
+- **Two risks the plan overstated.** Role changes already re-resolve, because
+  `useP1Editor.ts:572` sets `puckKey = \`css-${css.userRole}\`` and the app passes it
+  as `<Puck key>`, remounting Puck wholesale — which matters because the fields slice
+  subscribes only to `nodes[id||"root"]` and *not* to `config`. And the Page tab is
+  not a staleness hazard: it is an `itemSelector` dispatch, which changes the fields
+  slice's effect dep. The `getComponentConfig` mis-resolution is real — confirmed it
+  returns the selected Block's config when asked for the root — but the post-resolve
+  guard discards the result and `FieldsInternal` renders only when `fields.id === id`,
+  so the worst observed outcome is an empty panel, never wrong fields.
+- **A third claimable bug.** `P1InspectorFields.tsx:70` dispatches
+  `itemSelector: { zone: 'default-zone', index: 0 }`, but the live zone index holds
+  exactly one key — `root:default-zone` (`rootDroppableId`). `getItem()` finds
+  nothing, so clicking **Block** with nothing selected silently no-ops. Fold into
+  subtask 7 alongside the `ReadOnlyFieldsGuard` bypass.
+
+### Follow-up
+
+- Still open from §6: Q2, Q9, Q10 (block Phase 4 estimation), Q7 (blocks Phase 6,
+  needs the MCP surface owner), Q5 (scope — tag manager and JSON-LD in or out).
+- Confirm the storage decision with whoever authored `metadata-service.ts` and
+  Architecture Decisions 8/9.
+- Scope subtask 23 (root-prop applier: four defects, one of which writes a bogus
+  flat key rather than no-opping). Phase 5 depends on it entirely, and if it slips
+  the Decision 2 hedge reopens.
+- Decide where the un-aliased Puck test config lives long-term: promote the spike
+  config into the workspace, or un-stub `@puckeditor/core` for specific tests.
+- The plan's instruction to mirror changes into
+  `packages/create-p1-starter-kit/template/` is obsolete — that directory is
+  generated from `apps/p1-starter` by `scripts/build-template.js` and deleted by
+  `clean`. Editing the app *is* editing the starter kit.
+
+## PCC-3406 Page Metadata — Phase 1 (partial): fixed field set + sidebar (2026-07-31)
+
+**Status:** Subtasks 5, 6, 7 complete. Subtask 8 (render og/twitter tags) not started.
+**Branches:** `feat/3406-root-meta-fields` → `feat/3406-sidebar-panel` (stacked on `feat/3406`)
+**Commits:** `d21fa58` / `e902d17` (field set, tests first) · `95baf1b` / `f3ca927` (sidebar, tests first)
+
+### What shipped
+
+The eight og/twitter fields at `root.props._meta`, flat inside one object field,
+edited in the Page tab inside a collapsible group that starts collapsed. Nothing
+renders into `<head>` yet — that is subtask 8, so this slice is not yet
+demo-able end to end.
+
+### Decisions
+
+- **Flat and static** (user decision). No `resolveFields`, no admin-defined fields,
+  and no `{{ }}` template resolution on the new fields — `title`/`description` keep
+  theirs. Role gating stays in Phase 4.
+- **Ungrouped inside `_meta`.** Grouping as SEO / Open Graph / Twitter would mean
+  nesting object fields, deepening the prop paths that subtask 23's applier fix has
+  to handle. Not deferred — **dropped** (user decision, 2026-08-03): the sub-grouping
+  appears in neither the ticket nor the prototype, and was invented during planning.
+  The single collapsible group stays, since the prototype has one.
+- **No feature flag.** The plan called for one, but the field set lives in the app's
+  own root config rather than in `puck-css`, so a package-level flag cannot hide it
+  without `resolveFields` — which "static only" rules out.
+- **The collapsible group is `fieldLabel`, not a second header.** Puck's object
+  field always renders its own label row (`label: label || name`, so blanking the
+  label yields the raw prop name) and the component rendering it is injected by
+  `AutoField`, out of reach of `fieldTypes`. But `fieldLabel` receives both the
+  label *and* the field's content as `children`, so the label row itself becomes the
+  disclosure. `fieldTypes.object` only marks an opted-in field via context.
+  An earlier attempt rendered a second header and hid Puck's with a CSS `:has` hook
+  into Puck's hashed classes; that was replaced, and the rule deleted.
+- **`CategoryHeader` extracted as `CollapsibleSectionHeader`**, shared with the
+  blocks drawer. Its 13 tests passing unchanged is what proves the extraction was
+  behaviour-preserving.
+- **Styles became a CSS module**, dropping hand-rolled BEM prefixes. The one
+  cross-component rule keeps a `:global(.p1-inspector-fields)` ancestor because
+  `P1InspectorFields` applies that class as a string literal and consumers theme
+  against it.
+
+### Bugs fixed in passing
+
+- `P1TemplateFields` returned above `ReadOnlyFieldsGuard`, so template fields stayed
+  editable on a read-only historical version.
+- The Block tab dispatched `itemSelector` zone `'default-zone'`; Puck indexes the
+  root zone as `'root:default-zone'` (`rootDroppableId`), so `getItem()` resolved
+  nothing and the tab silently did nothing. Found by the Phase 0 spike.
+- Expanding a field group makes the sidebar overflow, and the arriving scrollbar
+  reclaimed its width, reflowing every field. `scrollbar-gutter: stable` on
+  `_Sidebar` reserves it.
+
+### Verification
+
+- TDD throughout: red tests committed before each implementation (`d21fa58`,
+  `95baf1b`). puck-css 2237 passing / 209 files; p1-starter 142/142; lint 0 errors;
+  package build exit 0.
+- Three failing files are pre-existing and unrelated: `P1AuthProvider.avatar`,
+  `token-refresh-auth`, `p1-editor-header-wiring`.
+- The `scrollbar-gutter` rule is covered by a content assertion in
+  `PuckEditorTheme.test.ts` — verified red by removing the rule, then green.
+
+### Gotcha: don't run a root `pnpm build` while a dev server is up
+
+`next dev` and `next build` share `apps/p1-starter/.next` (dev artifacts under
+`.next/dev/`, both using `.next/cache`), and `next build` does not clean it. A
+production build run against a live dev server left the editor serving CSS with
+pre-rename class names, surviving page reloads, until
+`pnpm --filter p1-starter run clean`. Build the affected package instead
+(`pnpm --filter @pantheon-systems/puck-css run build`).
+
+### Gotcha: `pnpm --filter <pkg> clean` is a no-op
+
+It resolves to pnpm 11's builtin `clean` and fails with `Unknown option:
+'recursive'` — the same collision `40762a6` fixed for the root script. The working
+form is `pnpm --filter <pkg> run clean`.
+
+### Follow-up
+
+- [ ] Subtask 8: render og/twitter tags and the resolution order, minus the template
+      and site tiers. Until it lands, nothing in `_meta` reaches `<head>`.
+- [ ] Backend subtasks 3 and 4 (canonicalize page title, then backfill) are in
+      `collaborative-state-system` — a separate stack; #4 wants its own deploy.
+- [ ] Rework subtask 21: the fields slice has no `metadata` subscription, so
+      inherited-value placeholders read via `params.metadata` inside `resolveFields`
+      are baked in at first resolve and never refresh.
+- [ ] Puck-upgrade smoke test. ~54 selectors hook Puck's internal class names
+      across `PuckEditorTheme.css` and `styles.css`; a Puck refactor breaks them
+      silently. Asserting a few computed styles (nav width, sidebar visibility,
+      canvas root) would catch it.
+- [ ] Decide whether `next dev` should use its own `distDir`, so a production build
+      cannot corrupt a running dev server's artifacts.
+
+## PCC-3406 Page Metadata — Phase 1: head tags, field guidance, `{{ }}` (2026-08-03)
+
+**Status:** Subtask 8 complete. Phase 1 is feature-complete on the front end.
+**Branches:** `feat/3406-a-test-harness` → `feat/3406-b-editor-mechanics` →
+`feat/3406-c-page-metadata`
+
+### Note on the stack
+
+This work first landed as nine stacked PRs (#156–#168), which grew that way because
+each decision was reviewed as its own PR during the session. The result revised
+itself: `components/puck/root.tsx` was touched by six of them and
+`puck-root-meta.test.ts` by five, so a reviewer would have watched the field set be
+defined, relabelled, retyped and relabelled again. Collapsing saved only 4% of the
+diff (3487 → 3341 lines), which is the tell — the churn was small, the *depth* was
+the problem. The whole stack is under 700 lines of production code; the rest is
+tests, config and this file.
+
+Regrouped into three PRs by concern rather than by the order the work happened. The
+originals stay open for reference. **Practice going forward:** when a change revises
+something already in the stack and not yet reviewed, amend that PR rather than
+stacking another, and keep PROGRESS to one commit per phase — seven PRs editing this
+file guarantees a conflict cascade.
+
+### What shipped
+
+`buildPageMetadata` maps `_meta` into Next's `Metadata`, resolving authored value →
+derived from title/description → omit. In the inspector, each field carries help
+text, and a field that inherits shows its inherited value as a placeholder that
+tracks the source as it is edited. The two fixed-vocabulary fields are dropdowns.
+The six free-text fields resolve `{{ }}`.
+
+### Decisions
+
+- **The inherited value is a `placeholder`, never a value.** The design mock shows it
+  looking like content in the field. Writing it there would be persisted —
+  `useAutoSave` saves the whole snapshot — and the field would stop inheriting for
+  good.
+- **Labels are the tag names** (`og:title`, `twitter:card`), not friendly rewrites
+  (user decision). Anyone editing these works from a checklist that names the tags,
+  and "Social title" makes them guess which tag it writes.
+- **Dropdown options come from the lists `buildPageMetadata` validates against**, in
+  `lib/seo-metadata.consts.ts`, so an option cannot offer a value the renderer
+  rejects. `oneOf` validation stays: the API and MCP write `root.props` directly and
+  never see the dropdown.
+- **The default option's value is empty, and its label states the outcome**
+  ("Website (default)"). Storing `website` was considered and rejected: it freezes a
+  value into every page, and a page holding an explicit value can never pick up a
+  **template default** in Phase 3 — `og:type` is the field that tier exists for,
+  since a blog template wants `article`. Phase 5 would then see the divergence as a
+  conflict rather than a clean apply.
+- **`og:type` and `twitter:card` are excluded from `{{ }}`**: their values are checked
+  against a union, so a template could only resolve to something the renderer
+  rejects.
+- **Placeholder and default-label chains mirror `buildPageMetadata`** — `twitter:title`
+  falls back to `ogTitle` before `title`, `twitter:image` to `ogImage`, and the card
+  default is `summary_large_image` only when an image resolves. A hint that disagreed
+  with the emitted tag would be worse than none.
+- **One group, named for what it holds.** The prototype shows `title`/`description`
+  ungrouped above a single **SOCIAL & SHARING** group with a field count. The
+  SEO / Open Graph / Twitter sub-grouping is **dropped**, not deferred (user decision):
+  it appears in neither the ticket nor the prototype and was invented in planning.
+  Nesting would also deepen the prop paths subtask 23's applier fix must handle.
+- **The count is derived** from the group's resolved `objectFields`. Ours reads 8 where
+  the prototype reads 9 — it counts `og:url` and `og:site_name`, and we author
+  neither: the canonical URL is derived from the request (3407's review) and the site
+  name is site-level `_seo`.
+
+### Why `resolveFields` is safe here, when the spike said it wasn't
+
+Phase 0 found that `metadata` changes do not re-resolve fields, so placeholders read
+from `params.metadata` would be baked in at first resolve. Root props are a different
+subscription: the fields slice subscribes to the root node, so editing the title
+*does* re-resolve. `tests-puck/field-guidance.test.tsx` asserts exactly that against
+real Puck — it is the test that keeps the two cases apart, and the reason the site
+and template tiers are not attempted here.
+
+### Bug found while wiring `{{ }}`
+
+The context load is a network round trip, so it is gated on something on the page
+carrying a template. That gate read `title` and `description` only — so a page whose
+sole template lived in `_meta` would have loaded no context and shipped the raw
+`{{ }}` into the tag. The gate now includes the metadata fields, and there is a
+regression test named for that case. Within a load, only the fields carrying `{{` are
+resolved.
+
+### Verification
+
+- puck-css real-Puck suite 19/19; p1-starter 203/203; lint 0 errors; package build
+  exit 0.
+- The 42 failures in `P1AuthProvider.avatar`, `token-refresh-auth` and
+  `p1-editor-header-wiring` are pre-existing and unrelated — verified by stashing.
+- `apps/p1-starter` typechecks with one pre-existing error (top-level `await` in
+  `remote-datasource-fetchers.test.ts`).
+
+### Follow-up
+
+- [ ] Help text is visual only: it renders as a sibling of Puck's label, so no
+      `aria-describedby` ties it to the input. Reaching the input means replacing
+      Puck's field renderer rather than wrapping it.
+- [ ] `og:locale` and `og:image` ship whatever is typed. A bogus image value is
+      resolved against `metadataBase`, so it becomes an absolute URL on whatever host
+      Next guesses when `NEXT_PUBLIC_SITE_URL` is unset.
+- [ ] Subtask 21 is half-answered: page-tier placeholders work through
+      `resolveFields`. Site and template tiers still need a render-time read
+      (`usePuck` in a custom renderer) or to be resolved before Puck mounts.
+- [ ] Decide whether to trim leading/trailing whitespace on the way into the tags — a
+      title authored with a leading space carried it into `og:title`.

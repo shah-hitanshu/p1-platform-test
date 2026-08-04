@@ -142,6 +142,10 @@
   --puck-color-grey-04: var(--pds-color-fg-default);
 }
 
+.puck-editor-theme [class*="_Sidebar"] {
+  scrollbar-gutter: stable;
+}
+
 /* ── Plugin rail nav icon normalization ─────────────────────────────────── */
 /* All icons in the left nav rail must be a uniform 20×20px.
    Puck's native SVGs, PDS Icon SVGs, and our mask-image pseudo-elements

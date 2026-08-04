@@ -40,8 +40,8 @@ const VALID_TRIGGERS = ['human_requested', 'autonomous'] as const;
  * Parsed agent context from request headers.
  */
 export interface AgentContext {
-  /** Agent UUID from X-Agent-Id header */
-  agentId: string;
+  /** Agent UUID from X-Agent-Id, when supplied. Declarative context, not identity. */
+  agentId?: string;
   /** Trigger type from X-Agent-Trigger header */
   trigger?: 'human_requested' | 'autonomous';
   /** User who requested the work (for human_requested trigger) */
@@ -69,13 +69,26 @@ export interface AgentContextValidationResult {
 // =============================================================================
 
 /**
- * Check if request headers contain agent context.
+ * Header names carrying agent context. `Headers.has` is case-insensitive,
+ * so lowercase variants are covered.
+ */
+const AGENT_CONTEXT_HEADERS = [
+  'X-Agent-Id',
+  'X-Agent-Trigger',
+  'X-Agent-Requested-By',
+  'X-Agent-Intent',
+  'X-Agent-Operation-Type',
+  'X-Agent-Target-Regions',
+] as const;
+
+/**
+ * Check if request headers contain any agent context.
  *
  * @param headers - Request headers
- * @returns True if X-Agent-Id header is present
+ * @returns True if any X-Agent-* header is present
  */
 export function hasAgentContext(headers: Headers): boolean {
-  return headers.has('X-Agent-Id') || headers.has('x-agent-id');
+  return AGENT_CONTEXT_HEADERS.some((name) => headers.has(name));
 }
 
 /**
@@ -92,18 +105,19 @@ function getHeader(headers: Headers, name: string): string | null {
 /**
  * Parse agent context from request headers.
  *
- * Headers are case-insensitive per HTTP spec. Returns null if no
- * X-Agent-Id header is present (no agent context).
+ * Headers are case-insensitive per HTTP spec. Returns null when no
+ * X-Agent-* header is present. Parsed values are declarative context, not
+ * identity.
  *
  * @param headers - Request headers
  * @returns Parsed agent context or null if no agent headers
  */
 export function parseAgentContext(headers: Headers): AgentContext | null {
-  // Check for X-Agent-Id header (required for agent context)
-  const agentId = getHeader(headers, 'X-Agent-Id');
-  if (agentId === null || agentId === '') {
+  if (!hasAgentContext(headers)) {
     return null;
   }
+
+  const agentId = getHeader(headers, 'X-Agent-Id') ?? undefined;
 
   // Parse trigger - validate before casting
   const triggerValue = getHeader(headers, 'X-Agent-Trigger');
@@ -156,7 +170,7 @@ export function parseAgentContext(headers: Headers): AgentContext | null {
  * Validate agent context fields.
  *
  * Checks:
- * - agentId is required and valid format
+ * - agentId, when present, is valid format (declarative only, not required)
  * - trigger is valid enum value
  * - requestedById is required when trigger is human_requested
  * - intent and operationType are within length limits
@@ -168,10 +182,8 @@ export function parseAgentContext(headers: Headers): AgentContext | null {
 export function validateAgentContext(context: Partial<AgentContext>): AgentContextValidationResult {
   const errors: string[] = [];
 
-  // Validate agentId
-  if (context.agentId === undefined || context.agentId.trim() === '') {
-    errors.push('agentId is required');
-  } else {
+  // agentId is declarative metadata; validate its format only when present.
+  if (context.agentId !== undefined && context.agentId.trim() !== '') {
     if (context.agentId.length > MAX_ACTOR_ID_LENGTH) {
       errors.push(`agentId exceeds maximum length of ${String(MAX_ACTOR_ID_LENGTH)}`);
     }

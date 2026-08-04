@@ -1,8 +1,8 @@
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
-import { toOpenAiTools, type RawTool } from './tool-defs.js';
+import type { RawTool } from './tool-defs.js';
 import { AnthropicTransport } from './anthropic.js';
-import { restApiBase, fetchOption } from './gateway.js';
+import { OpenAITransport } from './openai.js';
 
 // A model provider transport abstracts the two Cloudflare AI Gateway REST endpoints:
 //   - /ai/v1/chat/completions (OpenAI-compatible) — @cf/* (Workers AI), openai/*, google-ai-studio/*
@@ -54,9 +54,29 @@ export interface CompletionResult {
   usage?: CompletionUsage;
 }
 
+/** Fired while a completion is in flight. Best-effort; the resolved result is authoritative. */
+export interface StreamHandlers {
+  /** A chunk of assistant text, in order. Concatenating every delta yields the final content. */
+  onText(delta: string): void;
+  /** Fired once per call as soon as its name is known, before its arguments finish streaming. */
+  onToolCallStart(call: { id: string; name: string }): void;
+}
+
 /** Sends a completion request to a provider and returns a normalized result. */
 export interface ModelTransport {
+  /** Non-streaming completion. Kept for callers that only need the final result (e.g. the cache smoke test). */
   complete(req: CompletionRequest): Promise<CompletionResult>;
+  /**
+   * Streaming completion, returning the same normalized result once the stream closes.
+   * `signal` aborts the HTTP request, so a cancelled turn stops paying for output tokens.
+   */
+  stream(req: CompletionRequest, handlers: StreamHandlers, signal?: AbortSignal): Promise<CompletionResult>;
+}
+
+/** True when `err` is a request abort (either SDK, or the underlying fetch) rather than a failure. */
+export function isAbortError(err: unknown): boolean {
+  if (err instanceof OpenAI.APIUserAbortError || err instanceof Anthropic.APIUserAbortError) return true;
+  return err instanceof Error && err.name === 'AbortError';
 }
 
 /** Everything a transport needs to talk to the AI Gateway REST API. */
@@ -98,54 +118,4 @@ export function apiErrorStatus(err: unknown): number | undefined {
   if (err instanceof OpenAI.APIError) return err.status;
   if (err instanceof Anthropic.APIError) return err.status;
   return undefined;
-}
-
-class OpenAITransport implements ModelTransport {
-  private readonly client: OpenAI;
-  private readonly model: string;
-  private readonly tools: OpenAI.Chat.Completions.ChatCompletionFunctionTool[];
-
-  constructor(cfg: TransportConfig) {
-    this.client = new OpenAI({
-      apiKey: cfg.apiToken,
-      baseURL: `${restApiBase(cfg.accountId)}/v1`,
-      defaultHeaders: { 'cf-aig-gateway-id': cfg.gatewayId },
-      ...fetchOption(cfg.fetcher),
-    });
-    this.model = cfg.model; // full provider/model string
-    this.tools = toOpenAiTools(cfg.tools);
-  }
-
-  async complete(req: CompletionRequest): Promise<CompletionResult> {
-    const completion = await this.client.chat.completions.create({
-      model: this.model,
-      max_tokens: req.maxTokens,
-      messages: [{ role: 'system', content: req.system }, ...req.messages],
-      tools: this.tools,
-      tool_choice: 'auto',
-    });
-
-    const choice = completion.choices[0]?.message;
-    if (!choice) throw new Error('Model returned no choices');
-
-    const toolCalls = (choice.tool_calls ?? []).filter(
-      (tc): tc is FnToolCall => tc.type === 'function',
-    );
-
-    return {
-      content: choice.content ?? '',
-      toolCalls,
-      usage: mapOpenAiUsage(completion.usage),
-    };
-  }
-}
-
-function mapOpenAiUsage(usage: OpenAI.CompletionUsage | undefined): CompletionUsage | undefined {
-  if (!usage) return undefined;
-  return {
-    inputTokens: usage.prompt_tokens,
-    outputTokens: usage.completion_tokens,
-    // OpenAI/Gemini/Workers AI cache automatically and only report a read count.
-    cacheReadInputTokens: usage.prompt_tokens_details?.cached_tokens,
-  };
 }

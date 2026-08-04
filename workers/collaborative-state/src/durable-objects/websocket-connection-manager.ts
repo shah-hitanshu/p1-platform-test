@@ -28,7 +28,7 @@ import {
   MAX_PENDING_PUCK_ACTIONS_BYTES,
 } from '../constants/security-limits';
 import type {
-  AgentEditSession,
+  EditSession,
   SessionInfo,
   DocumentSessionEnv,
 } from './document-session-types';
@@ -62,7 +62,7 @@ export interface WebSocketConnectionDeps {
   initialized: boolean;
   presenceManager: PresenceManager;
   activityDetector: ActivityDetector;
-  editSessions: Map<string, AgentEditSession>;
+  editSessions: Map<string, EditSession>;
   messageRates: Map<string, RateLimitEntry>;
 
   // Helper functions from the class

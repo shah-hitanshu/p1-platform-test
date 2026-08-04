@@ -152,6 +152,22 @@ describe('validateOps', () => {
       // unknown_component_type short-circuits prop validation for that component
       expect(errors.some((e) => e.code === 'unknown_component_type')).toBe(true);
     });
+
+    it('falls back to the registry key when a schema is missing .name (e.g. a hand-built cross-boundary registry)', () => {
+      // ComponentSchema.name is required for in-repo callers, but validateOps is a
+      // public boundary — simulate a caller-supplied registry entry that omits it.
+      const nameless = { defaultProps: {} } as unknown as ComponentSchema;
+      const registryWithNamelessEntry: Record<string, ComponentSchema> = {
+        ...registry,
+        Banner: nameless,
+      };
+      const ops = [op('add', 'content.0', component('InventedWidget', {}))];
+      const { errors } = validateOps({ operations: ops, registry: registryWithNamelessEntry });
+      // Keys are normalized (lowercased) before this point, so the fallback
+      // surfaces the normalized key rather than the original casing.
+      expect(errors[0].message).toContain('banner');
+      expect(errors[0].message).not.toContain('undefined');
+    });
   });
 
   describe('invalid_prop_key', () => {
@@ -655,6 +671,54 @@ describe('validateOps', () => {
       const { errors } = validateOps({ operations: ops, registry });
       expect(errors.find((e) => e.code === 'unknown_component_type')?.opIndex).toBe(2);
       expect(errors.find((e) => e.code === 'invalid_prop_key')?.opIndex).toBe(3);
+    });
+  });
+
+  // Registry casing regression (PCC-3437 follow-up): registry document paths
+  // are lowercased server-side, but a component's real name (e.g.
+  // "LeadCapture") is preserved in the descriptor snapshot. Lookups must be
+  // case-insensitive regardless of which casing the registry keys or the
+  // component's `type` happen to use.
+  describe('case-insensitive registry lookup', () => {
+    const leadCaptureSchema: ComponentSchema = {
+      name: 'LeadCapture',
+      defaultProps: { headline: '' },
+      fields: [{ name: 'headline', type: 'text' }],
+    };
+
+    it('matches a PascalCase component type against a lowercase-keyed registry entry', () => {
+      // Mirrors what a path-derived registry key looks like post-normalizePath.
+      const reg = { leadcapture: leadCaptureSchema };
+      const ops = [op('add', 'content.0', component('LeadCapture', { headline: 'Sign up' }))];
+      const { errors } = validateOps({ operations: ops, registry: reg });
+      expect(errors).toHaveLength(0);
+    });
+
+    it('matches a lowercase component type against an original-case-keyed registry entry', () => {
+      const reg = { LeadCapture: leadCaptureSchema };
+      const ops = [op('add', 'content.0', component('leadcapture', { headline: 'Sign up' }))];
+      const { errors } = validateOps({ operations: ops, registry: reg });
+      expect(errors).toHaveLength(0);
+    });
+
+    it('still reports unknown_component_type for a genuinely unregistered type', () => {
+      const reg = { leadcapture: leadCaptureSchema };
+      const ops = [op('add', 'content.0', component('TotallyMadeUp', {}))];
+      const { errors } = validateOps({ operations: ops, registry: reg });
+      expect(errors).toHaveLength(1);
+      expect(errors[0].code).toBe('unknown_component_type');
+      // Error message surfaces the registry's real display name, not the raw key.
+      expect(errors[0].message).toContain('LeadCapture');
+    });
+
+    it('resolves a case-mismatched type on a targeted prop-path write (validatePropPathOp)', () => {
+      const reg = { leadcapture: leadCaptureSchema };
+      const currentSnapshot = {
+        content: [component('LeadCapture', { headline: 'Old' })],
+      };
+      const ops = [op('replace', 'content.0.props.headline', 'New headline')];
+      const { errors } = validateOps({ operations: ops, registry: reg, currentSnapshot });
+      expect(errors).toHaveLength(0);
     });
   });
 });

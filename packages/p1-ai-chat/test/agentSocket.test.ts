@@ -3,9 +3,10 @@ import {
   createWebsocketConnectionUrl,
   frameLabel,
   isServerMessage,
+  connectionErrorLabel,
   parseServerMessage,
   sendToAgent,
-} from './agentSocket.js';
+} from '../src/agentSocket.js';
 
 describe('createWebsocketConnectionUrl', () => {
   it('swaps http for the ws scheme', () => {
@@ -64,6 +65,29 @@ describe('isServerMessage', () => {
     expect(isServerMessage({ type: 'history' })).toBe(false);
     expect(isServerMessage({ type: 'history', history: 'nope' })).toBe(false);
   });
+
+  it('accepts a replayed turn carrying ordered parts', () => {
+    const parts = [
+      { type: 'text', text: 'reading' },
+      { type: 'tool', tool: { name: 'get_document', result: { ok: true } } },
+    ];
+    expect(isServerMessage({
+      type: 'history',
+      history: [{ role: 'assistant', content: 'reading', parts }],
+    })).toBe(true);
+  });
+
+  it('rejects a replayed part whose payload does not match its type', () => {
+    const withParts = (parts: unknown) =>
+      isServerMessage({ type: 'history', history: [{ role: 'assistant', content: '', parts }] });
+
+    expect(withParts('nope')).toBe(false);
+    expect(withParts([{ type: 'text' }])).toBe(false);
+    expect(withParts([{ type: 'text', text: 42 }])).toBe(false);
+    expect(withParts([{ type: 'tool' }])).toBe(false);
+    expect(withParts([{ type: 'tool', tool: { name: 42 } }])).toBe(false);
+    expect(withParts([{ type: 'mystery' }])).toBe(false);
+  });
 });
 
 describe('sendToAgent', () => {
@@ -101,5 +125,66 @@ describe('frameLabel', () => {
     expect(frameLabel({ type: 'done' })).toBe('done');
     expect(frameLabel({ type: 'token', content: 'x' })).toBe('token');
     expect(frameLabel({ type: 'history', history: [] })).toBe('history');
+  });
+});
+
+describe('isServerMessage — version skew and render safety', () => {
+  /**
+   * A pre-tool-id Worker sends tool frames with no `toolCallId`. Requiring the field rejected
+   * those frames wholesale, so no tool row appeared at all, instead of falling back to
+   * matching by name (see `resolveToolPart`).
+   */
+  it('accepts a tool frame with no toolCallId', () => {
+    expect(isServerMessage({ type: 'tool_end', toolName: 'get_document', toolResult: {} })).toBe(true);
+  });
+
+  it('rejects a tool frame whose toolCallId is the wrong type', () => {
+    expect(isServerMessage({ type: 'tool_start', toolName: 'get_document', toolCallId: 7 })).toBe(false);
+  });
+
+  /**
+   * `turnId` alone decides whether a frame is applied. A non-string one compared unequal to
+   * every turn, so every frame tested as stale and the turn hung until the watchdog fired.
+   */
+  it('rejects a frame whose turnId is not a string', () => {
+    expect(isServerMessage({ type: 'token', content: 'hi', turnId: null })).toBe(false);
+    expect(isServerMessage({ type: 'done', turnId: 3 })).toBe(false);
+  });
+
+  /**
+   * History entries are dereferenced during render (`part.text.trim()`), where a throw takes
+   * the whole editor tree down — so the shape is checked on the way in.
+   */
+  it('rejects history entries that would crash rendering', () => {
+    expect(isServerMessage({ type: 'history', history: [null] })).toBe(false);
+    expect(isServerMessage({ type: 'history', history: [{ role: 'assistant' }] })).toBe(false);
+    expect(isServerMessage({ type: 'history', history: [{ role: 'nope', content: 'x' }] })).toBe(false);
+    expect(isServerMessage({ type: 'history', history: [{ role: 'assistant', content: 'x', toolCalls: [{}] }] })).toBe(false);
+  });
+
+  it('accepts a replayed turn carrying the legacy flat call list', () => {
+    expect(isServerMessage({
+      type: 'history',
+      history: [{ role: 'assistant', content: 'done', toolCalls: [{ name: 'get_document', result: {} }] }],
+    })).toBe(true);
+  });
+});
+
+describe('connectionErrorLabel', () => {
+  it('names each reason the agent can reject a connection', () => {
+    expect(connectionErrorLabel('Authentication failed')).toBe('authentication failed');
+    expect(connectionErrorLabel('Not authorized for this conversation')).toBe(
+      'not authorized for this conversation',
+    );
+    expect(connectionErrorLabel('Invalid message format')).toBe('invalid frame');
+    expect(connectionErrorLabel('Binary messages not supported')).toBe('binary frame');
+  });
+
+  // The point of mapping rather than sanitizing: nothing agent-supplied reaches the log, so a
+  // crafted error can't forge an entry however it is escaped.
+  it('returns a literal for anything it does not recognize', () => {
+    expect(connectionErrorLabel('bad\n[p1-ai-chat] forged entry')).toBe('unrecognized');
+    expect(connectionErrorLabel('x'.repeat(500))).toBe('unrecognized');
+    expect(connectionErrorLabel('')).toBe('unrecognized');
   });
 });

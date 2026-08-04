@@ -8,20 +8,60 @@ export interface ChatContext {
   newPage?: boolean;
 }
 
+/**
+ * One ordered piece of an assistant turn, which interleaves prose and tool calls ("I'll read
+ * the page" → read → "That page is empty").
+ *
+ * **Array position is the chronology** — there is no sequence field, so parts must never be
+ * reordered in state. (`turnBlocks` groups them for display; that is a view transform.)
+ */
+export type MessagePart =
+  | TextPart
+  | { type: 'tool'; tool: ToolCallStatus };
+
+/**
+ * A prose run. Carried through to `TurnBlock` unchanged: grouping a turn for display only
+ * affects the tool side, so the two unions share this variant rather than restating it.
+ */
+export type TextPart = { type: 'text'; id: string; text: string };
+
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
+  /**
+   * Concatenated text of the turn. Retained because it is what the agent persists,
+   * so replayed history arrives in this shape; also the cheap "has this turn said
+   * anything yet" check. Prefer {@link messageParts} for rendering.
+   */
   content: string;
+  /** Ordered parts. Canonical when present; absent on turns replayed from history. */
+  parts?: MessagePart[];
+  /** Flat tool list. Legacy shape, still used by replayed history (see {@link messageParts}). */
   toolCalls?: ToolCallStatus[];
   error?: string;
   isStreaming?: boolean;
+  /**
+   * The user stopped this turn. Distinct from `error`: nothing went wrong, so it reads as
+   * a note rather than a failure, and whatever streamed before the stop is kept.
+   */
+  stopped?: boolean;
 }
 
 export interface ToolCallStatus {
+  /**
+   * Provider tool-call id, used to pair a streamed `tool_end` with the call that
+   * produced it. Absent on turns replayed from history, which are already terminal
+   * and so never need matching.
+   */
+  id?: string;
   name: string;
   input?: unknown;
   result?: unknown;
-  status: 'running' | 'done' | 'error';
+  /**
+   * `abandoned`: the turn ended while this call was in flight, so no `tool_end` is coming.
+   * Not `error` — it may have succeeded server-side, we just never heard back.
+   */
+  status: 'running' | 'done' | 'error' | 'abandoned';
 }
 
 /**
@@ -75,18 +115,74 @@ export interface RestoredToolCall {
   result?: unknown;
 }
 
+/** Per-turn overrides for a programmatic send. */
+export interface SendMessageOptions {
+  /**
+   * Override the turn's `documentPath` so the agent edits this page instead of the
+   * sidebar's currently-open document. Used to draft into a just-created page.
+   */
+  documentPath?: string;
+  /**
+   * Tell the agent this page was just created empty for this brief, so it drafts without
+   * asking. Travels in the turn's context, so it never appears in the visible transcript.
+   */
+  newPage?: boolean;
+}
+
+/**
+ * One ordered piece of a replayed assistant turn. Carries the position that `content` plus a
+ * flat `toolCalls` could not, so a reopened conversation renders as it happened rather than
+ * all prose followed by all calls.
+ */
+export type RestoredPart =
+  | { type: 'text'; text: string }
+  | { type: 'tool'; tool: RestoredToolCall };
+
 /** A stored turn replayed from the agent, ready to be mapped into a ChatMessage. */
 export interface RestoredMessage {
   role: 'user' | 'assistant';
   content: string;
+  /** Ordered parts. Canonical when present; absent from a Worker predating them. */
+  parts?: RestoredPart[];
+  /** Flat call list, used when `parts` is absent. */
   toolCalls?: RestoredToolCall[];
+}
+
+/**
+ * Frames belonging to a single turn carry the `turnId` the client minted for it, so a late
+ * frame from a finished turn isn't applied to the one now running. Optional: a Worker
+ * predating the field sends none, and its frames go to the current turn.
+ */
+interface TurnScoped {
+  turnId?: string;
 }
 
 // Server → client message types
 export type ServerMessage =
-  | { type: 'token'; content: string }
-  | { type: 'done' }
-  | { type: 'error'; error: string }
-  | { type: 'tool_start'; toolName: string; toolInput?: unknown }
-  | { type: 'tool_end'; toolName: string; toolResult?: unknown }
-  | { type: 'history'; history: RestoredMessage[] };
+  | ({ type: 'token'; content: string } & TurnScoped)
+  | ({ type: 'done' } & TurnScoped)
+  | ({
+      type: 'error';
+      error: string;
+      /**
+       * A failure belonging to the socket, not a turn (rejected `get_history`/`clear`,
+       * unparseable frame). Absent on turn errors and on older Workers.
+       */
+      scope?: 'connection';
+    } & TurnScoped)
+  | ({ type: 'tool_start'; toolCallId?: string; toolName: string; toolInput?: unknown } & TurnScoped)
+  | ({
+      type: 'tool_end';
+      toolCallId?: string;
+      toolName: string;
+      toolInput?: unknown;
+      toolResult?: unknown;
+    } & TurnScoped)
+  | { type: 'history'; history: RestoredMessage[] }
+  // The agent confirming it stopped the turn. Usually redundant, since the panel ends the
+  // turn the moment Stop is pressed, but it is also how a cancel triggered server-side
+  // (by a clear) reports back.
+  | ({ type: 'cancelled' } & TurnScoped)
+  // Acknowledges a 'clear'. The local view is cleared optimistically, so nothing acts on
+  // this — it's in the union so the exhaustive switch doesn't treat it as unknown.
+  | { type: 'cleared' };

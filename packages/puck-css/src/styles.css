@@ -252,7 +252,6 @@
   overflow: hidden !important;
 }
 
-
 /* ============================================
    Utility: Visually Hidden (screen reader only)
    ============================================ */
@@ -1164,7 +1163,6 @@
   border-color: var(--puck-css-primary);
   box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
 }
-
 
 .css-plugin-create-form {
   display: flex;
@@ -2173,7 +2171,6 @@
   gap: 8px;
   flex-shrink: 0;
 }
-
 
 /* ============================================
    Focus Region Highlighting
@@ -3404,61 +3401,6 @@ svg.lucide-layers {
   outline-offset: 2px;
 }
 
-.p1-blocks-drawer__cat-btn {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 10px 4px;
-  background: none;
-  border: none;
-  cursor: pointer;
-  text-align: left;
-}
-
-.p1-blocks-drawer__cat-btn:focus-visible {
-  outline: 2px solid var(--pds-color-interactive-primary, var(--puck-css-primary));
-  outline-offset: 2px;
-  border-radius: 4px;
-}
-
-.p1-blocks-drawer__cat-title {
-  flex: 1;
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--pds-color-text-secondary, var(--puck-css-text-secondary));
-}
-
-.p1-blocks-drawer__cat-btn:hover .p1-blocks-drawer__cat-title {
-  color: var(--pds-color-text-primary, var(--puck-css-text));
-}
-
-.p1-blocks-drawer__cat-meta {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--pds-color-text-secondary, var(--puck-css-text-secondary));
-  flex-shrink: 0;
-}
-
-.p1-blocks-drawer__cat-count {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
-  border-radius: 99px;
-  background: var(--pds-color-badge-silver-background, #f0f0f0);
-  color: var(--pds-color-badge-silver-foreground, #9a9a9a);
-  font-size: 10px;
-  font-weight: 600;
-  line-height: 1;
-  box-sizing: border-box;
-}
-
 .p1-blocks-drawer__grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -3502,3 +3444,4 @@ svg.lucide-layers {
   white-space: nowrap;
   color: var(--pds-color-text-primary, var(--puck-css-text));
 }
+

@@ -22,11 +22,11 @@ import {
   PERSIST_DEBOUNCE_MS,
 } from '../constants/security-limits';
 import type {
-  AgentEditSession,
+  EditSession,
   SessionInfo,
   DocumentSessionEnv,
 } from './document-session-types';
-import { rollbackToAgentCheckpoint } from './agent-checkpoint-client';
+import { rollbackToSessionCheckpoint } from './session-checkpoint-client';
 import { SYNC_SCHEDULE_KEY } from './postgres-sync-manager';
 import type { PostgresSyncManager, SyncSchedule } from './postgres-sync-manager';
 
@@ -40,7 +40,7 @@ export interface AlarmCleanupDeps {
   sessionInfo: SessionInfo;
   presenceManager: PresenceManager;
   activityDetector: ActivityDetector;
-  editSessions: Map<string, AgentEditSession>;
+  editSessions: Map<string, EditSession>;
   syncManager: PostgresSyncManager;
   getConnectionCount: () => number;
   getWebSockets: () => WebSocket[];
@@ -189,11 +189,11 @@ export async function runCleanup(deps: AlarmCleanupDeps): Promise<{
       // Roll back to pre-edit checkpoint if one exists (autonomous sessions)
       if (session.checkpointId !== undefined) {
         try {
-          const rolledBack = await rollbackToAgentCheckpoint(
+          const rolledBack = await rollbackToSessionCheckpoint(
             deps.env,
             deps.sessionInfo,
             session.checkpointId,
-            session.agentId,
+            { id: session.ownerId, type: session.ownerType },
             'Orphaned edit session expired without completion',
           );
           if (rolledBack) {
@@ -214,8 +214,8 @@ export async function runCleanup(deps: AlarmCleanupDeps): Promise<{
       }
 
       deps.editSessions.delete(id);
-      deps.presenceManager.unregisterByActorId(session.agentId);
-      deps.pushPresenceUpdate('leave', session.agentId);
+      deps.presenceManager.unregisterByActorId(session.ownerId);
+      deps.pushPresenceUpdate('leave', session.ownerId);
       sessionsCleared++;
     }
   }

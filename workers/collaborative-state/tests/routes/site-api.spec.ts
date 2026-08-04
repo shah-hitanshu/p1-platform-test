@@ -121,8 +121,25 @@ describe('Phase 7.1.1b: Site API Routes', () => {
       expect(body.workflowSettings.mergeApprovalMode).toBe('required');
     });
 
-    it('should return 400 for missing pantheonSiteId', async () => {
+    it('should create a site without a pantheonSiteId', async () => {
       const { handleSiteRoutes } = await import('../../src/routes/site-api');
+      const services = await import('../../src/services');
+
+      vi.mocked(services.createSite).mockResolvedValueOnce({
+        id: 'site-uuid',
+        name: 'Marketing Website',
+        workflowSettings: {
+          mergeApprovalMode: 'optional',
+          minApprovers: 1,
+          allowSelfApproval: true,
+          approverMode: 'both',
+          approverMinRole: 'EDITOR',
+        },
+        allowedOrigins: [],
+        createdAt: '2026-01-24T10:00:00.000Z',
+        updatedAt: '2026-01-24T10:00:00.000Z',
+        archivedAt: null,
+      });
 
       const request = new Request('https://api.example.com/api/sites', {
         method: 'POST',
@@ -136,9 +153,9 @@ describe('Phase 7.1.1b: Site API Routes', () => {
         principal: { id: 'user-1', type: 'user' },
       });
 
-      expect(response.status).toBe(400);
+      expect(response.status).toBe(201);
       const body = await response.json();
-      expect(body.error).toContain('pantheonSiteId');
+      expect(body.pantheonSiteId).toBeUndefined();
     });
 
     it('should return 400 for missing name', async () => {
@@ -807,6 +824,104 @@ describe('Phase 7.1.1b: Site API Routes', () => {
       expect(body.name).toBe('Updated Website Name');
     });
 
+    it('should pass pantheonSiteId through to updateSite when present', async () => {
+      const { handleSiteRoutes } = await import('../../src/routes/site-api');
+      const services = await import('../../src/services');
+
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+        id: 'main-branch-id',
+        siteId: 'site-1',
+        name: 'main',
+        isMain: true,
+        status: 'active',
+        createdAt: '2026-01-24T10:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+      });
+
+      vi.mocked(services.updateSite).mockResolvedValueOnce({
+        id: 'site-1',
+        pantheonSiteId: 'pantheon-2',
+        name: 'Marketing Website',
+        allowedOrigins: [],
+        workflowSettings: {
+          mergeApprovalMode: 'optional',
+          minApprovers: 1,
+          allowSelfApproval: true,
+          approverMode: 'both',
+          approverMinRole: 'EDITOR',
+        },
+        createdAt: '2026-01-24T10:00:00.000Z',
+        updatedAt: '2026-01-24T10:30:00.000Z',
+        archivedAt: null,
+      });
+
+      const request = new Request('https://api.example.com/api/sites/site-1', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pantheonSiteId: 'pantheon-2' }),
+      });
+
+      const response = await handleSiteRoutes(request, {
+        siteId: 'site-1',
+        principal: { id: 'user-1', type: 'user' },
+      });
+
+      expect(response.status).toBe(200);
+      expect(services.updateSite).toHaveBeenCalledWith(
+        'site-1',
+        expect.objectContaining({ pantheonSiteId: 'pantheon-2' }),
+        undefined,
+      );
+    });
+
+    it('should omit pantheonSiteId from updateSite params when absent', async () => {
+      const { handleSiteRoutes } = await import('../../src/routes/site-api');
+      const services = await import('../../src/services');
+
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+        id: 'main-branch-id',
+        siteId: 'site-1',
+        name: 'main',
+        isMain: true,
+        status: 'active',
+        createdAt: '2026-01-24T10:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+      });
+
+      vi.mocked(services.updateSite).mockResolvedValueOnce({
+        id: 'site-1',
+        pantheonSiteId: 'pantheon-1',
+        name: 'Renamed',
+        allowedOrigins: [],
+        workflowSettings: {
+          mergeApprovalMode: 'optional',
+          minApprovers: 1,
+          allowSelfApproval: true,
+          approverMode: 'both',
+          approverMinRole: 'EDITOR',
+        },
+        createdAt: '2026-01-24T10:00:00.000Z',
+        updatedAt: '2026-01-24T10:30:00.000Z',
+        archivedAt: null,
+      });
+
+      const request = new Request('https://api.example.com/api/sites/site-1', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Renamed' }),
+      });
+
+      await handleSiteRoutes(request, {
+        siteId: 'site-1',
+        principal: { id: 'user-1', type: 'user' },
+      });
+
+      const params = vi.mocked(services.updateSite).mock.calls[0]?.[1];
+      expect(params).not.toHaveProperty('pantheonSiteId');
+    });
+
     it('should update workflow settings (partial)', async () => {
       const { handleSiteRoutes } = await import('../../src/routes/site-api');
       const services = await import('../../src/services');
@@ -1427,6 +1542,282 @@ describe('Phase 7.1.1b: Site API Routes', () => {
       const createSiteCall = vi.mocked(services.createSite).mock.calls[0][0];
       const allowedOriginsValue = createSiteCall.allowedOrigins;
       expect(allowedOriginsValue === undefined || allowedOriginsValue.length === 0).toBe(true);
+    });
+
+    // PCC-3531: patterns reached the database unvalidated. Rejecting at the write
+    // boundary is what makes the stored list trustworthy enough to gate redirects.
+    describe('origin pattern validation on write (PCC-3531)', () => {
+      it('rejects a protocol-less origin on POST and does not create the site', async () => {
+        const { handleSiteRoutes } = await import('../../src/routes/site-api');
+        const services = await import('../../src/services');
+
+        const request = new Request('https://api.example.com/api/sites', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            pantheonSiteId: 'site-abc-999',
+            name: 'New Site',
+            allowedOrigins: ['*-mysite.pantheonsite.io'],
+          }),
+        });
+
+        const response = await handleSiteRoutes(request, {
+          principal: {
+            id: 'user-1',
+            type: 'user',
+            pantheonSiteRoles: {},
+            tokenExpiry: '2030-01-01T00:00:00.000Z',
+          },
+        });
+
+        expect(response.status).toBe(400);
+        const body = await response.json();
+        expect((body as { error: string }).error).toContain('*-mysite.pantheonsite.io');
+        expect(services.createSite).not.toHaveBeenCalled();
+      });
+
+      it('rejects an over-broad wildcard on POST', async () => {
+        const { handleSiteRoutes } = await import('../../src/routes/site-api');
+        const services = await import('../../src/services');
+
+        const request = new Request('https://api.example.com/api/sites', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            pantheonSiteId: 'site-abc-998',
+            name: 'New Site',
+            allowedOrigins: ['https://*.com'],
+          }),
+        });
+
+        const response = await handleSiteRoutes(request, {
+          principal: {
+            id: 'user-1',
+            type: 'user',
+            pantheonSiteRoles: {},
+            tokenExpiry: '2030-01-01T00:00:00.000Z',
+          },
+        });
+
+        expect(response.status).toBe(400);
+        expect(services.createSite).not.toHaveBeenCalled();
+      });
+
+      it('rejects a newly added invalid origin on PATCH and does not update', async () => {
+        const { handleSiteRoutes } = await import('../../src/routes/site-api');
+        const services = await import('../../src/services');
+
+        vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+          id: 'main-branch-id',
+          updatedAt: '2026-01-24T10:00:00.000Z',
+          archivedAt: null,
+          siteId: 'site-1',
+          name: 'main',
+          isMain: true,
+          status: 'active',
+          createdAt: '2026-01-24T10:00:00.000Z',
+          createdById: 'user-1',
+          createdByType: 'user',
+        });
+
+        vi.mocked(services.getSite).mockResolvedValueOnce({
+          id: 'site-1',
+          pantheonSiteId: 'pantheon-1',
+          archivedAt: null,
+          name: 'Site Name',
+          allowedOrigins: ['https://existing.example.com'],
+          workflowSettings: {
+            mergeApprovalMode: 'optional',
+            minApprovers: 1,
+            allowSelfApproval: true,
+            approverMode: 'both',
+            approverMinRole: 'EDITOR',
+          },
+          createdAt: '2026-01-24T10:00:00.000Z',
+          updatedAt: '2026-01-24T10:00:00.000Z',
+        });
+
+        const request = new Request('https://api.example.com/api/sites/site-1', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            allowedOrigins: ['https://existing.example.com', 'evil.example.com'],
+          }),
+        });
+
+        const response = await handleSiteRoutes(request, {
+          siteId: 'site-1',
+          principal: {
+            id: 'user-1',
+            type: 'user',
+            pantheonSiteRoles: {},
+            tokenExpiry: '2030-01-01T00:00:00.000Z',
+          },
+        });
+
+        expect(response.status).toBe(400);
+        const body = await response.json();
+        expect((body as { error: string }).error).toContain('evil.example.com');
+        expect(services.updateSite).not.toHaveBeenCalled();
+      });
+
+      // Callers resend the entire array, so whole-array validation would leave a
+      // site holding a legacy row unable to remove it.
+      it('allows removing an origin from a site whose stored rows are invalid', async () => {
+        const { handleSiteRoutes } = await import('../../src/routes/site-api');
+        const services = await import('../../src/services');
+
+        const legacyRows = ['*-mysite.pantheonsite.io', 'https://*.com'];
+
+        vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+          id: 'main-branch-id',
+          updatedAt: '2026-01-24T10:00:00.000Z',
+          archivedAt: null,
+          siteId: 'site-1',
+          name: 'main',
+          isMain: true,
+          status: 'active',
+          createdAt: '2026-01-24T10:00:00.000Z',
+          createdById: 'user-1',
+          createdByType: 'user',
+        });
+
+        vi.mocked(services.getSite).mockResolvedValueOnce({
+          id: 'site-1',
+          pantheonSiteId: 'pantheon-1',
+          archivedAt: null,
+          name: 'Site Name',
+          allowedOrigins: legacyRows,
+          workflowSettings: {
+            mergeApprovalMode: 'optional',
+            minApprovers: 1,
+            allowSelfApproval: true,
+            approverMode: 'both',
+            approverMinRole: 'EDITOR',
+          },
+          createdAt: '2026-01-24T10:00:00.000Z',
+          updatedAt: '2026-01-24T10:00:00.000Z',
+        });
+
+        vi.mocked(services.updateSite).mockResolvedValueOnce({
+          id: 'site-1',
+          pantheonSiteId: 'pantheon-1',
+          archivedAt: null,
+          name: 'Site Name',
+          allowedOrigins: ['https://*.com'],
+          workflowSettings: {
+            mergeApprovalMode: 'optional',
+            minApprovers: 1,
+            allowSelfApproval: true,
+            approverMode: 'both',
+            approverMinRole: 'EDITOR',
+          },
+          createdAt: '2026-01-24T10:00:00.000Z',
+          updatedAt: '2026-01-24T10:30:00.000Z',
+        });
+
+        const request = new Request('https://api.example.com/api/sites/site-1', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ allowedOrigins: ['https://*.com'] }),
+        });
+
+        const response = await handleSiteRoutes(request, {
+          siteId: 'site-1',
+          principal: {
+            id: 'user-1',
+            type: 'user',
+            pantheonSiteRoles: {},
+            tokenExpiry: '2030-01-01T00:00:00.000Z',
+          },
+        });
+
+        expect(response.status).toBe(200);
+        expect(services.updateSite).toHaveBeenCalledWith(
+          'site-1',
+          expect.objectContaining({ allowedOrigins: ['https://*.com'] }),
+          undefined,
+        );
+      });
+
+      it('accepts a valid Pantheon branch wildcard on PATCH', async () => {
+        const { handleSiteRoutes } = await import('../../src/routes/site-api');
+        const services = await import('../../src/services');
+
+        vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+          id: 'main-branch-id',
+          updatedAt: '2026-01-24T10:00:00.000Z',
+          archivedAt: null,
+          siteId: 'site-1',
+          name: 'main',
+          isMain: true,
+          status: 'active',
+          createdAt: '2026-01-24T10:00:00.000Z',
+          createdById: 'user-1',
+          createdByType: 'user',
+        });
+
+        vi.mocked(services.getSite).mockResolvedValueOnce({
+          id: 'site-1',
+          pantheonSiteId: 'pantheon-1',
+          archivedAt: null,
+          name: 'Site Name',
+          allowedOrigins: [],
+          workflowSettings: {
+            mergeApprovalMode: 'optional',
+            minApprovers: 1,
+            allowSelfApproval: true,
+            approverMode: 'both',
+            approverMinRole: 'EDITOR',
+          },
+          createdAt: '2026-01-24T10:00:00.000Z',
+          updatedAt: '2026-01-24T10:00:00.000Z',
+        });
+
+        vi.mocked(services.updateSite).mockResolvedValueOnce({
+          id: 'site-1',
+          pantheonSiteId: 'pantheon-1',
+          archivedAt: null,
+          name: 'Site Name',
+          allowedOrigins: ['https://*-mysite.pantheonsite.io'],
+          workflowSettings: {
+            mergeApprovalMode: 'optional',
+            minApprovers: 1,
+            allowSelfApproval: true,
+            approverMode: 'both',
+            approverMinRole: 'EDITOR',
+          },
+          createdAt: '2026-01-24T10:00:00.000Z',
+          updatedAt: '2026-01-24T10:30:00.000Z',
+        });
+
+        const request = new Request('https://api.example.com/api/sites/site-1', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            allowedOrigins: ['https://*-mysite.pantheonsite.io'],
+          }),
+        });
+
+        const response = await handleSiteRoutes(request, {
+          siteId: 'site-1',
+          principal: {
+            id: 'user-1',
+            type: 'user',
+            pantheonSiteRoles: {},
+            tokenExpiry: '2030-01-01T00:00:00.000Z',
+          },
+        });
+
+        expect(response.status).toBe(200);
+        expect(services.updateSite).toHaveBeenCalledWith(
+          'site-1',
+          expect.objectContaining({
+            allowedOrigins: ['https://*-mysite.pantheonsite.io'],
+          }),
+          undefined,
+        );
+      });
     });
 
     it('POST /api/sites passes url to createSite', async () => {

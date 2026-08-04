@@ -34,10 +34,10 @@ repos after these SHAs: `git format-patch <sha>..origin/main` in the source repo
 
 | Source repo | Synced through | Now lives at |
 |---|---|---|
-| collaborative-state-system | `51e3eed` | workers/collaborative-state, workers/css-mcp-server, packages/p1-content-validator, terraform/, docker/, examples/, scripts/css |
-| puck-css-integration | `53f93c8` | packages/{css-client,puck-css,p1-next-sdk,create-p1-starter-kit,eslint-config}, apps/p1-starter, e2e/, root tooling configs |
-| p1-chatbot | `1c3302d` | workers/p1-agent, packages/p1-ai-chat, scripts/p1-chatbot |
-| p1-media-r2 | `2ed98d2` | workers/p1-media, packages/p1-media-r2, terraform/media |
+| collaborative-state-system | `1f6f7c7` | workers/collaborative-state, workers/css-mcp-server, packages/p1-content-validator, terraform/, docker/, examples/, scripts/css |
+| puck-css-integration | `450846e` | packages/{css-client,puck-css,p1-next-sdk,create-p1-starter-kit,eslint-config}, apps/p1-starter, e2e/, root tooling configs |
+| p1-chatbot | `843acbe` | workers/p1-agent, packages/p1-ai-chat, scripts/p1-chatbot |
+| p1-media-r2 | `3a740ca` | workers/p1-media, packages/p1-media-r2, terraform/media |
 
 Original import SHAs (2026-07-21): css `dc72ece`, puck `8844569`, chatbot `4b53e5a`, media `bcabbc4`.
 

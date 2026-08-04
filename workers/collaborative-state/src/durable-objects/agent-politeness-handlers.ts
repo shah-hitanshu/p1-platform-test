@@ -7,11 +7,11 @@
  * document-session.ts.
  */
 
-import type { PresenceManager } from '../services/presence-service';
+import { type PresenceManager, regionsOverlap } from '../services/presence-service';
 import type {
   ActivityDetector,
 } from '../services/activity-detection-service';
-import type { AgentEditPermissionService } from '../services/agent-edit-permission-service';
+import type { EditPermissionService } from '../services/edit-permission-service';
 import type { Organization } from '../types';
 import {
   MAX_INTENT_LENGTH,
@@ -22,7 +22,8 @@ import {
 } from '../constants/security-limits';
 
 import type {
-  AgentEditSession,
+  EditSession,
+  SessionOwner,
   CanAgentEditRequest,
   AgentEditStartRequest,
   AgentEditCompleteRequest,
@@ -34,10 +35,10 @@ import type {
 
 import { validateActorId } from './session-validators';
 import {
-  createAgentPreEditCheckpoint,
-  createAgentPostEditCheckpoint,
-  rollbackToAgentCheckpoint,
-} from './agent-checkpoint-client';
+  createSessionPreEditCheckpoint,
+  createSessionPostEditCheckpoint,
+  rollbackToSessionCheckpoint,
+} from './session-checkpoint-client';
 
 // =============================================================================
 // Dependency interface
@@ -50,10 +51,10 @@ import {
 export interface AgentPolitenessDeps {
   env: DocumentSessionEnv;
   sessionInfo: SessionInfo;
-  editSessions: Map<string, AgentEditSession>;
+  editSessions: Map<string, EditSession>;
   presenceManager: PresenceManager;
   activityDetector: ActivityDetector;
-  agentEditPermissionService: AgentEditPermissionService;
+  editPermissionService: EditPermissionService;
   cachedOrganization: Organization | null | undefined;
   getConnectionCount: () => number;
   persistEditSessions: () => Promise<void>;
@@ -63,6 +64,116 @@ export interface AgentPolitenessDeps {
   scheduleCleanupAlarm: () => Promise<void>;
   jsonResponse: (status: number, data: unknown) => Response;
   errorResponse: (status: number, message: string) => Response;
+}
+
+// =============================================================================
+// Verified identity
+// =============================================================================
+
+/**
+ * The identity the Worker verified from the credential and forwarded as
+ * X-Verified-Actor-Id. The DO is only reachable through the Worker, so this is
+ * the authoritative acting agent. Null for internal calls made without it.
+ */
+function verifiedActorId(request: Request): string | null {
+  const value = request.headers.get('X-Verified-Actor-Id');
+  return value !== null && value !== '' ? value : null;
+}
+
+/**
+ * The kind of actor the Worker verified. Anything other than an explicit `user`
+ * is an agent, so an unset header keeps the pre-existing agent behaviour.
+ */
+function verifiedActorType(request: Request): 'user' | 'agent' {
+  return request.headers.get('X-Verified-Actor-Type') === 'user' ? 'user' : 'agent';
+}
+
+/**
+ * The session owner acting on this request, from verified headers only. A
+ * declared owner in the body is ignored.
+ */
+function actingOwner(request: Request): SessionOwner | null {
+  const id = verifiedActorId(request);
+  return id === null ? null : { id, type: verifiedActorType(request) };
+}
+
+/** The owner recorded on a session. */
+function sessionOwner(session: EditSession): SessionOwner {
+  return { id: session.ownerId, type: session.ownerType };
+}
+
+/**
+ * Which of the requested regions another open session already holds.
+ *
+ * An open session reserves its target regions against every other actor, so two
+ * sessions cannot claim overlapping regions whoever owns them. The caller's own
+ * session is skipped — reopening a reservation is a different condition.
+ */
+function regionsHeldByOtherSessions(
+  editSessions: Map<string, EditSession>,
+  owner: SessionOwner,
+  targetRegions: string[],
+): string[] {
+  const held = new Set<string>();
+  for (const session of editSessions.values()) {
+    if (session.ownerId === owner.id && session.ownerType === owner.type) {
+      continue;
+    }
+    for (const target of targetRegions) {
+      if (session.targetRegions.some((reserved) => regionsOverlap(target, reserved))) {
+        held.add(target);
+      }
+    }
+  }
+  return Array.from(held);
+}
+
+/**
+ * The name to publish for a session owner. The Worker resolves both — an agent's
+ * registry name into X-Agent-Name, a person's provider name into X-Verified-Name
+ * — because neither is reachable from the DO. Falls back to the owner id.
+ */
+function ownerDisplayName(request: Request, owner: SessionOwner): string {
+  const header = owner.type === 'user' ? 'X-Verified-Name' : 'X-Agent-Name';
+  const raw = request.headers.get(header) ?? owner.id;
+  return raw.trim().slice(0, MAX_ACTING_USER_NAME_LENGTH) || owner.id;
+}
+
+/**
+ * The identity a session's checkpoints are written against. Presence identifies a
+ * person by their provider subject, but rows reference app.users.id, so the
+ * resolved database id wins when the Worker supplies it.
+ */
+function checkpointOwner(request: Request, owner: SessionOwner): SessionOwner {
+  if (owner.type !== 'user') {
+    return owner;
+  }
+  const dbUserId = request.headers.get('X-Verified-Db-User-Id');
+  return dbUserId !== null && dbUserId !== ''
+    ? { id: dbUserId, type: 'user' }
+    : owner;
+}
+
+/**
+ * Only the actor that owns an edit session may act on it. Both the id and the
+ * kind must match, so an agent cannot act on a person's session by presenting
+ * the same identifier. Completing and aborting mutate and roll back content, so
+ * an unidentified caller is refused rather than allowed through. Returns an
+ * error response when the caller is not the owner, or null to proceed.
+ */
+function requireSessionOwner(
+  deps: AgentPolitenessDeps,
+  request: Request,
+  session: EditSession,
+): Response | null {
+  const acting = actingOwner(request);
+  if (acting === null) {
+    return deps.errorResponse(400, 'a verified actor is required');
+  }
+  if (acting.id !== session.ownerId || acting.type !== session.ownerType) {
+    return deps.errorResponse(403, 'Edit session belongs to a different actor');
+  }
+  return null;
 }
 
 // =============================================================================
@@ -85,9 +196,9 @@ export async function handleCanAgentEdit(
 
   const rawBody = body as Record<string, unknown>;
 
-  // Validate required fields before type narrowing
-  if (typeof rawBody.agentId !== 'string' || rawBody.agentId.length === 0) {
-    return deps.errorResponse(400, 'agentId is required');
+  const owner = actingOwner(request);
+  if (owner === null) {
+    return deps.errorResponse(400, 'a verified actor is required');
   }
 
   if (rawBody.trigger !== 'human_requested' && rawBody.trigger !== 'autonomous') {
@@ -96,10 +207,9 @@ export async function handleCanAgentEdit(
 
   const parsed = body as CanAgentEditRequest;
 
-  // Validate agentId format
-  const agentIdError = validateActorId(parsed.agentId);
-  if (agentIdError !== null) {
-    return deps.errorResponse(400, agentIdError);
+  const ownerIdError = validateActorId(owner.id);
+  if (ownerIdError !== null) {
+    return deps.errorResponse(400, ownerIdError);
   }
 
   // Validate target regions - REQUIRED for agent politeness enforcement
@@ -114,21 +224,38 @@ export async function handleCanAgentEdit(
     return deps.errorResponse(400, `targetRegions exceeds maximum of ${String(MAX_TARGET_REGIONS)}`);
   }
 
-  // Check permission using AgentEditPermissionService
-  const permission = await deps.agentEditPermissionService.canAgentEdit({
-    agentId: parsed.agentId,
+  const permission = await deps.editPermissionService.canEdit({
+    owner,
     trigger: parsed.trigger,
     intent: '', // not available for pre-flight permission check
     targetRegions,
   });
 
-  // Get conflicting regions
-  const conflictingRegions = deps.agentEditPermissionService.getConflictingRegions(targetRegions);
+  const heldByOthers = regionsHeldByOtherSessions(deps.editSessions, owner, targetRegions);
+
+  if (!permission.allowed) {
+    // Regions describe a region conflict. A suspension or an active person is
+    // not about any region, so none are named.
+    return deps.jsonResponse(200, {
+      allowed: false,
+      reason: permission.reason,
+      conflictingRegions: permission.reason === 'region_conflict'
+        ? Array.from(new Set([...(permission.conflictingRegions ?? []), ...heldByOthers]))
+        : [],
+    });
+  }
+
+  if (heldByOthers.length > 0) {
+    return deps.jsonResponse(200, {
+      allowed: false,
+      reason: 'region_conflict',
+      conflictingRegions: heldByOthers,
+    });
+  }
 
   return deps.jsonResponse(200, {
-    allowed: permission.allowed,
-    reason: permission.reason,
-    conflictingRegions,
+    allowed: true,
+    conflictingRegions: [],
   });
 }
 
@@ -148,9 +275,9 @@ export async function handleAgentEditStart(
 
   const rawBody = body as Record<string, unknown>;
 
-  // Validate required fields before type narrowing
-  if (typeof rawBody.agentId !== 'string' || rawBody.agentId.length === 0) {
-    return deps.errorResponse(400, 'agentId is required');
+  const owner = actingOwner(request);
+  if (owner === null) {
+    return deps.errorResponse(400, 'a verified actor is required');
   }
 
   if (rawBody.trigger !== 'human_requested' && rawBody.trigger !== 'autonomous') {
@@ -167,10 +294,9 @@ export async function handleAgentEditStart(
 
   const parsed = body as AgentEditStartRequest;
 
-  // Validate agentId format
-  const agentIdError = validateActorId(parsed.agentId);
-  if (agentIdError !== null) {
-    return deps.errorResponse(400, agentIdError);
+  const ownerIdError = validateActorId(owner.id);
+  if (ownerIdError !== null) {
+    return deps.errorResponse(400, ownerIdError);
   }
 
   // Validate target regions - REQUIRED for agent politeness enforcement
@@ -185,16 +311,15 @@ export async function handleAgentEditStart(
     return deps.errorResponse(400, `targetRegions exceeds maximum of ${String(MAX_TARGET_REGIONS)}`);
   }
 
-  // Check if agent already has an active edit session
+  // One open session per actor per document.
   for (const existingSession of deps.editSessions.values()) {
-    if (existingSession.agentId === parsed.agentId) {
-      return deps.errorResponse(409, 'Agent already has an active edit session');
+    if (existingSession.ownerId === owner.id && existingSession.ownerType === owner.type) {
+      return deps.errorResponse(409, 'Actor already has an active edit session');
     }
   }
 
-  // Check permission
-  const permission = await deps.agentEditPermissionService.canAgentEdit({
-    agentId: parsed.agentId,
+  const permission = await deps.editPermissionService.canEdit({
+    owner,
     trigger: parsed.trigger,
     intent: parsed.intent,
     targetRegions,
@@ -204,26 +329,34 @@ export async function handleAgentEditStart(
     return deps.jsonResponse(403, {
       allowed: false,
       reason: permission.reason,
+      conflictingRegions: permission.conflictingRegions,
     });
   }
 
-  // Agent name is resolved by the Worker before forwarding (DB available there, not in DO).
-  // Fall back to agentId only if the header is absent. Cap length defensively.
-  const rawAgentName = request.headers.get('X-Agent-Name') ?? parsed.agentId;
-  const agentName = rawAgentName.trim().slice(0, MAX_ACTING_USER_NAME_LENGTH) || parsed.agentId;
+  const heldByOthers = regionsHeldByOtherSessions(deps.editSessions, owner, targetRegions);
+  if (heldByOthers.length > 0) {
+    return deps.jsonResponse(403, {
+      allowed: false,
+      reason: 'region_conflict',
+      conflictingRegions: heldByOthers,
+    });
+  }
+
+  const displayName = ownerDisplayName(request, owner);
 
   // Generate edit session ID using cryptographically secure random
   const editSessionId = `edit-${crypto.randomUUID()}`;
 
-  // Create checkpoint for autonomous work via internal API
+  // A person's session always takes a checkpoint: it is their only rollback
+  // boundary. An agent's does so for autonomous work.
   let checkpointId: string | undefined;
-  if (parsed.trigger === 'autonomous') {
-    checkpointId = await createAgentPreEditCheckpoint(
+  if (owner.type === 'user' || parsed.trigger === 'autonomous') {
+    checkpointId = await createSessionPreEditCheckpoint(
       deps.env,
       deps.sessionInfo,
-      parsed.agentId,
+      checkpointOwner(request, owner),
       parsed.intent,
-      parsed.trigger,
+      owner.type === 'user' ? 'manual' : parsed.trigger,
       targetRegions,
     );
   }
@@ -231,10 +364,10 @@ export async function handleAgentEditStart(
   // Schedule cleanup alarm for HTTP-only clients (idempotent if already scheduled)
   void deps.scheduleCleanupAlarm();
 
-  // Create edit session
-  const newSession: AgentEditSession = {
+  const newSession: EditSession = {
     id: editSessionId,
-    agentId: parsed.agentId,
+    ownerId: owner.id,
+    ownerType: owner.type,
     trigger: parsed.trigger,
     intent: parsed.intent,
     targetRegions,
@@ -245,26 +378,28 @@ export async function handleAgentEditStart(
   deps.editSessions.set(editSessionId, newSession);
   await deps.persistEditSessions();
 
-  // Extract acting-user identity from headers (set by MCP server / chatbot for human_requested sessions)
+  // Who asked an agent to do this work. The Worker resolves it from the
+  // credential and forwards it verified, so only an agent acting for someone
+  // carries one; a person owning the session is already named as the actor.
   let requestedById: string | undefined;
   let requestedByName: string | undefined;
   if (parsed.trigger === 'human_requested') {
-    const rawId = request.headers.get('X-Acting-User-Id');
+    const rawId = request.headers.get('X-Verified-Requested-By-Id');
     if (rawId !== null && rawId.trim() !== '') {
       requestedById = rawId.trim().slice(0, MAX_ACTOR_ID_LENGTH);
     }
-    const rawName = request.headers.get('X-Acting-User-Name');
+    const rawName = request.headers.get('X-Verified-Requested-By-Name');
     const trimmedName = rawName !== null ? rawName.trim() : '';
     if (trimmedName !== '') {
       requestedByName = trimmedName.slice(0, MAX_ACTING_USER_NAME_LENGTH);
     }
   }
 
-  // Register agent presence with focus regions and editing state
+  // Publish the owner as an editor holding the reserved regions.
   deps.presenceManager.register({
-    actorId: parsed.agentId,
-    actorType: 'agent',
-    name: agentName,
+    actorId: owner.id,
+    actorType: owner.type,
+    name: displayName,
     focusRegions: targetRegions,
     intent: parsed.intent,
     state: 'editing',
@@ -307,13 +442,18 @@ export async function handleAgentEditComplete(
     return deps.errorResponse(404, 'Edit session not found');
   }
 
+  const notOwnerError = requireSessionOwner(deps, request, session);
+  if (notOwnerError !== null) {
+    return notOwnerError;
+  }
+
   // Create post-edit checkpoint if there was a pre-edit checkpoint
   let postCheckpointId: string | undefined;
   if (session.checkpointId !== undefined) {
-    postCheckpointId = await createAgentPostEditCheckpoint(
+    postCheckpointId = await createSessionPostEditCheckpoint(
       deps.env,
       deps.sessionInfo,
-      session.agentId,
+      checkpointOwner(request, sessionOwner(session)),
       session.intent,
       session.checkpointId,
       session.targetRegions,
@@ -322,7 +462,7 @@ export async function handleAgentEditComplete(
 
   // Clear agent's presence and persist to storage immediately
   // (prevents stale presence from being restored on DO hibernation wake)
-  deps.presenceManager.unregisterByActorId(session.agentId);
+  deps.presenceManager.unregisterByActorId(session.ownerId);
   await deps.persistPresence();
 
   // Remove the edit session
@@ -358,31 +498,36 @@ export async function handleAgentEditAbort(
     return deps.errorResponse(400, 'editSessionId is required');
   }
 
-  if (parsed.reason !== undefined && parsed.reason.length > MAX_REASON_LENGTH) {
-    return deps.errorResponse(400, `reason exceeds maximum length of ${String(MAX_REASON_LENGTH)}`);
-  }
-
   // Find the edit session
   const session = deps.editSessions.get(parsed.editSessionId);
   if (session === undefined) {
     return deps.errorResponse(404, 'Edit session not found');
   }
 
+  const notOwnerError = requireSessionOwner(deps, request, session);
+  if (notOwnerError !== null) {
+    return notOwnerError;
+  }
+
+  if (parsed.reason !== undefined && parsed.reason.length > MAX_REASON_LENGTH) {
+    return deps.errorResponse(400, `reason exceeds maximum length of ${String(MAX_REASON_LENGTH)}`);
+  }
+
   // Rollback if there was a checkpoint (for autonomous work)
   let rolledBack = false;
   if (session.checkpointId !== undefined) {
-    rolledBack = await rollbackToAgentCheckpoint(
+    rolledBack = await rollbackToSessionCheckpoint(
       deps.env,
       deps.sessionInfo,
       session.checkpointId,
-      session.agentId,
+      checkpointOwner(request, sessionOwner(session)),
       parsed.reason,
     );
   }
 
   // Clear agent's presence and persist to storage immediately
   // (prevents stale presence from being restored on DO hibernation wake)
-  deps.presenceManager.unregisterByActorId(session.agentId);
+  deps.presenceManager.unregisterByActorId(session.ownerId);
   await deps.persistPresence();
 
   // Remove the edit session
@@ -426,11 +571,11 @@ export async function handleAgentStop(
     return deps.errorResponse(400, `reason exceeds maximum length of ${String(MAX_REASON_LENGTH)}`);
   }
 
-  // Find the edit session by agentId
-  let session: AgentEditSession | undefined;
+  // Only an agent's session can be stopped this way; a person ends their own.
+  let session: EditSession | undefined;
   let sessionId: string | undefined;
   for (const [id, s] of deps.editSessions.entries()) {
-    if (s.agentId === parsed.agentId) {
+    if (s.ownerType === 'agent' && s.ownerId === parsed.agentId) {
       session = s;
       sessionId = id;
       break;
@@ -449,18 +594,18 @@ export async function handleAgentStop(
   // Rollback if there was a checkpoint (for autonomous work)
   let rolledBack = false;
   if (session.checkpointId !== undefined) {
-    rolledBack = await rollbackToAgentCheckpoint(
+    rolledBack = await rollbackToSessionCheckpoint(
       deps.env,
       deps.sessionInfo,
       session.checkpointId,
-      session.agentId,
+      sessionOwner(session),
       parsed.reason ?? 'Stopped by human user',
     );
   }
 
   // Clear agent's presence and persist to storage immediately
   // (prevents stale presence from being restored on DO hibernation wake)
-  deps.presenceManager.unregisterByActorId(session.agentId);
+  deps.presenceManager.unregisterByActorId(session.ownerId);
   await deps.persistPresence();
 
   // Remove the edit session
@@ -484,7 +629,8 @@ export function handleGetEditSessions(
 ): Response {
   const sessions = Array.from(deps.editSessions.values()).map((session) => ({
     id: session.id,
-    agentId: session.agentId,
+    ownerId: session.ownerId,
+    ownerType: session.ownerType,
     trigger: session.trigger,
     intent: session.intent,
     targetRegions: session.targetRegions,

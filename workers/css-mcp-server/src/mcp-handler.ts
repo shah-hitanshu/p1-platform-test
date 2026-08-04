@@ -72,20 +72,6 @@ const MUTATION_TOOLS = new Set<string>([
   'rename_page',
 ]);
 
-// Edit-session lease tools resolve a registered agent on the backend, so a human
-// (user-principal) caller cannot use them. They are registered only when the
-// caller presents an agent key; a human caller gets reads and document creation.
-//
-// TODO(PCC-3308): interim gating. Once edit sessions can be owned by a user
-// principal, un-gate these for human callers.
-const AGENT_ONLY_TOOLS = new Set<string>([
-  'check_edit_permission',
-  'start_edit_session',
-  'apply_document_edits',
-  'complete_edit_session',
-  'abort_edit_session',
-]);
-
 interface ToolErrorResult {
   [x: string]: unknown;
   content: { type: 'text'; text: string }[];
@@ -146,15 +132,10 @@ export function createMcpServer(config: McpHandlerConfig): McpServer {
     version: config.serverVersion,
   });
 
-  const isAgentCaller = config.agentApiKey !== undefined && config.agentApiKey !== '';
-
   // registerTool infers a tool's argument type from a static inputSchema;
   // indexing schemas and handlers by name yields unions instead, so the args
   // and handler are cast at the call site.
   for (const { name, description } of getToolDefinitions()) {
-    if (!isAgentCaller && AGENT_ONLY_TOOLS.has(name)) {
-      continue;
-    }
     const toolName = name as keyof ToolHandlers;
     server.registerTool(
       name,

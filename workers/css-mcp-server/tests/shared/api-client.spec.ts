@@ -338,7 +338,9 @@ describe('McpApiClient', () => {
       const [url, options] = mockFetch.mock.calls[0];
       expect(url).toContain('/can-agent-edit');
       expect(options.method).toBe('POST');
-      expect(options.headers['X-Agent-Id']).toBe('agent-uuid-1');
+      // Identity is derived from the credential; no X-Agent-Id or body agentId is sent.
+      expect(options.headers['X-Agent-Id']).toBeUndefined();
+      expect(JSON.parse(options.body).agentId).toBeUndefined();
       expect(options.headers['X-Agent-Trigger']).toBe('autonomous');
     });
   });
@@ -431,7 +433,8 @@ describe('McpApiClient', () => {
       });
 
       const [, options] = mockFetch.mock.calls[0];
-      expect(options.headers['X-Agent-Id']).toBe('agent-uuid-1');
+      // Identity is derived from the credential; no X-Agent-Id is sent.
+      expect(options.headers['X-Agent-Id']).toBeUndefined();
       expect(result.checkpointId).toBe('cp-after-1');
     });
   });
@@ -569,6 +572,38 @@ describe('McpApiClient', () => {
       expect(url).not.toContain('%2F'); // no path encoding — it is a UUID segment
       expect(result.snapshot).toEqual({ name: 'HeroBlock', descriptorHash: 'abc' });
       expect(result.id).toBe('ver-1');
+    });
+  });
+
+  // Registry casing regression (PCC-3437 follow-up): registry document paths
+  // are lowercased server-side (normalizePath), so the path-derived name
+  // ("leadcapture") no longer matches the component's real, original-case
+  // name. fetchRegistrySchemas must key/report by the descriptor snapshot's
+  // own preserved-case `name` field instead.
+  describe('fetchRegistrySchemas', () => {
+    it('keys the returned schemas case-insensitively and preserves the descriptor\'s original-case name', async () => {
+      const { McpApiClient } = await import('../../src/shared/api-client.js');
+      const client = new McpApiClient(defaultConfig);
+
+      mockFetch.mockResolvedValueOnce(createMockResponse(true, {
+        documents: [
+          { id: 'doc-lc', path: '/_registry/components/leadcapture', siteId: 'site-1', archived: false, createdAt: '', updatedAt: '' },
+        ],
+      }));
+      mockFetch.mockResolvedValueOnce(createMockResponse(true, {
+        id: 'ver-1',
+        documentId: 'doc-lc',
+        versionNumber: 1,
+        snapshot: { name: 'LeadCapture', defaultProps: { headline: '' } },
+      }));
+
+      const schemas = await client.fetchRegistrySchemas('site-1', 'branch-1');
+
+      // The map key is normalized to lowercase for case-insensitive lookup...
+      expect(schemas.leadcapture).toBeDefined();
+      expect(schemas.LeadCapture).toBeUndefined();
+      // ...while the schema's own `name` field preserves the real casing for display.
+      expect(schemas.leadcapture.name).toBe('LeadCapture');
     });
   });
 

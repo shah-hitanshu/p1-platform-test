@@ -15,21 +15,21 @@
  * - POST /api/sites/{siteId}/branches/{branchId}/documents/{documentPath}/agent-stop - Stop agent (human-initiated)
  * - OPTIONS /api/sites/{siteId}/branches/{branchId}/documents/* - CORS preflight
  *
- * Phase 7.3: Agent Context Headers Integration
- * Agent context can be provided via X-Agent-* headers in addition to body params:
- * - X-Agent-Id: agent UUID
+ * Agent Context
+ * The acting agent's identity comes from the authenticated principal. Callers
+ * supply only declarative context, via X-Agent-* headers or body params (body
+ * takes precedence):
  * - X-Agent-Trigger: human_requested | autonomous
  * - X-Agent-Requested-By: user UUID (when human_requested)
  * - X-Agent-Intent: description of what agent is doing
  * - X-Agent-Operation-Type: category
  * - X-Agent-Target-Regions: comma-separated JSON paths
- *
- * Headers are merged with body params, with body params taking precedence.
  */
 
 import {
   type RealtimeEnv,
   type RealtimeRouteContext,
+  type CorsPattern,
   parseRoute,
   validateParamLengths,
   generateSessionId,
@@ -57,6 +57,43 @@ import { UUID_RE } from '../utils/branch-ref';
 
 // Re-export for consumers
 export type { RealtimeRouteContext } from './realtime-utils';
+
+/**
+ * Edit sessions belong to an actor that can be held accountable for them: a
+ * registered agent, or a signed-in person. A service credential is shared, so it
+ * identifies no one and cannot own a session. Returns a 403 response for any
+ * other principal, or null to proceed.
+ */
+function requireSessionOwnerPrincipal(
+  context: RealtimeRouteContext,
+  origin: string | null,
+  patterns: CorsPattern[],
+): Response | null {
+  if (context.principal.type !== 'agent' && context.principal.type !== 'user') {
+    return errorResponse(
+      403,
+      'An edit session requires an authenticated agent or user',
+      origin,
+      patterns,
+    );
+  }
+  return null;
+}
+
+/**
+ * Agent registry status gates an agent and has no counterpart for a person,
+ * whose authority is the role check every realtime action already runs.
+ */
+async function validateOwnerStatus(
+  context: RealtimeRouteContext,
+  origin: string | null,
+  patterns: CorsPattern[],
+): Promise<Response | null> {
+  if (context.principal.type !== 'agent') {
+    return null;
+  }
+  return validateAgentStatusForEdit(context.principal.id, origin, patterns);
+}
 
 /**
  * Handle real-time API routes
@@ -219,33 +256,25 @@ export async function handleRealtimeRoutes(
       return errorResponse(405, 'Method not allowed. Use POST for can-agent-edit.', origin, patterns);
     }
 
-    // Validate request body
-    const authedAgentId = context.principal.type === 'agent' ? context.principal.id : undefined;
-    const bodyResult = await validateAgentEditBody(request, origin, patterns, authedAgentId);
+    const notOwnerError = requireSessionOwnerPrincipal(context, origin, patterns);
+    if (notOwnerError !== null) {
+      return notOwnerError;
+    }
+
+    const bodyResult = await validateAgentEditBody(
+      request, origin, patterns, context.principal.id,
+    );
     if (bodyResult instanceof Response) {
       return bodyResult;
     }
 
-    // For an agent principal the key is authoritative: a body or X-Agent-Id that
-    // resolves to a different agent would attribute the session to someone else.
-    // TODO(PCC-3297): superseded when X-Agent-Id is dropped as an identity input.
-    if (authedAgentId !== undefined && bodyResult.agentId !== authedAgentId) {
-      return errorResponse(403, 'Agent ID does not match authenticated identity', origin, patterns);
-    }
-
-    // Phase 7.4: Validate agent status before forwarding to DO
-    const statusError = await validateAgentStatusForEdit(
-      bodyResult.agentId,
-      origin,
-      patterns,
-    );
+    const statusError = await validateOwnerStatus(context, origin, patterns);
     if (statusError !== null) {
       return statusError;
     }
 
     targetEndpoint = '/can-agent-edit';
 
-    // Forward with validated body and original headers
     forwardedRequest = new Request(`http://internal${targetEndpoint}`, {
       method: 'POST',
       headers: request.headers,
@@ -257,49 +286,41 @@ export async function handleRealtimeRoutes(
       return errorResponse(405, 'Method not allowed. Use POST for agent-edit-start.', origin, patterns);
     }
 
-    // Validate request body
-    const authedAgentId = context.principal.type === 'agent' ? context.principal.id : undefined;
-    const bodyResult = await validateAgentEditBody(request, origin, patterns, authedAgentId);
+    const notOwnerError = requireSessionOwnerPrincipal(context, origin, patterns);
+    if (notOwnerError !== null) {
+      return notOwnerError;
+    }
+
+    const bodyResult = await validateAgentEditBody(
+      request, origin, patterns, context.principal.id,
+    );
     if (bodyResult instanceof Response) {
       return bodyResult;
     }
 
-    // For an agent principal the key is authoritative: a body or X-Agent-Id that
-    // resolves to a different agent would attribute the session to someone else.
-    // TODO(PCC-3297): superseded when X-Agent-Id is dropped as an identity input.
-    if (authedAgentId !== undefined && bodyResult.agentId !== authedAgentId) {
-      return errorResponse(403, 'Agent ID does not match authenticated identity', origin, patterns);
-    }
-
-    // Phase 7.4: Validate agent status before forwarding to DO
-    const statusError = await validateAgentStatusForEdit(
-      bodyResult.agentId,
-      origin,
-      patterns,
-    );
+    const statusError = await validateOwnerStatus(context, origin, patterns);
     if (statusError !== null) {
       return statusError;
     }
 
     targetEndpoint = '/agent-edit-start';
 
-    // Look up agent name in Worker context — DB is available here but not inside the DO.
-    // Pass the resolved name as X-Agent-Name so the DO doesn't need its own DB lookup.
-    let resolvedAgentName = bodyResult.agentId;
-    try {
-      const agent = await getAgentById(bodyResult.agentId);
-      resolvedAgentName = agent?.name ?? bodyResult.agentId;
-    } catch (error) {
-      console.warn('Failed to look up agent name, falling back to agentId:', error);
+    // X-Agent-Name is Worker-set, so a caller-supplied value never survives.
+    // An agent's display name comes from the registry, resolved here because the
+    // DO cannot query it; a person's comes from the verified identity headers.
+    const forwardedHeaders = new Headers(request.headers);
+    forwardedHeaders.delete('X-Agent-Name');
+    if (context.principal.type === 'agent') {
+      let resolvedAgentName = context.principal.id;
+      try {
+        const agent = await getAgentById(context.principal.id);
+        resolvedAgentName = agent?.name ?? context.principal.id;
+      } catch (error) {
+        console.warn('Failed to look up agent name, falling back to agentId:', error);
+      }
+      forwardedHeaders.set('X-Agent-Name', resolvedAgentName);
     }
 
-    const forwardedHeaders = new Headers(request.headers);
-    // Explicitly delete any caller-supplied X-Agent-Name before setting the
-    // Worker-resolved value — prevents external callers from spoofing the header.
-    forwardedHeaders.delete('X-Agent-Name');
-    forwardedHeaders.set('X-Agent-Name', resolvedAgentName);
-
-    // Forward with validated body and original headers
     forwardedRequest = new Request(`http://internal${targetEndpoint}`, {
       method: 'POST',
       headers: forwardedHeaders,
@@ -311,28 +332,23 @@ export async function handleRealtimeRoutes(
       return errorResponse(405, 'Method not allowed. Use POST for agent-edit-complete.', origin, patterns);
     }
 
-    // Validate request body
+    const notOwnerError = requireSessionOwnerPrincipal(context, origin, patterns);
+    if (notOwnerError !== null) {
+      return notOwnerError;
+    }
+
     const bodyResult = await validateEditSessionBody(request, origin, patterns);
     if (bodyResult instanceof Response) {
       return bodyResult;
     }
 
-    // Phase 7.4: Validate agent status if X-Agent-Id header present
-    const headerAgentId = request.headers.get('X-Agent-Id') ?? request.headers.get('x-agent-id');
-    if (headerAgentId !== null && headerAgentId !== '') {
-      const statusError = await validateAgentStatusForEdit(
-        headerAgentId,
-        origin,
-        patterns,
-      );
-      if (statusError !== null) {
-        return statusError;
-      }
+    const statusError = await validateOwnerStatus(context, origin, patterns);
+    if (statusError !== null) {
+      return statusError;
     }
 
     targetEndpoint = '/agent-edit-complete';
 
-    // Forward with validated body and original headers
     forwardedRequest = new Request(`http://internal${targetEndpoint}`, {
       method: 'POST',
       headers: request.headers,
@@ -344,28 +360,24 @@ export async function handleRealtimeRoutes(
       return errorResponse(405, 'Method not allowed. Use POST for agent-edit-abort.', origin, patterns);
     }
 
+    const notOwnerError = requireSessionOwnerPrincipal(context, origin, patterns);
+    if (notOwnerError !== null) {
+      return notOwnerError;
+    }
+
     // Validate request body (reason is optional)
     const bodyResult = await validateEditSessionBody(request, origin, patterns, false);
     if (bodyResult instanceof Response) {
       return bodyResult;
     }
 
-    // Phase 7.4: Validate agent status if X-Agent-Id header present
-    const headerAgentId = request.headers.get('X-Agent-Id') ?? request.headers.get('x-agent-id');
-    if (headerAgentId !== null && headerAgentId !== '') {
-      const statusError = await validateAgentStatusForEdit(
-        headerAgentId,
-        origin,
-        patterns,
-      );
-      if (statusError !== null) {
-        return statusError;
-      }
+    const statusError = await validateOwnerStatus(context, origin, patterns);
+    if (statusError !== null) {
+      return statusError;
     }
 
     targetEndpoint = '/agent-edit-abort';
 
-    // Forward with validated body and original headers
     forwardedRequest = new Request(`http://internal${targetEndpoint}`, {
       method: 'POST',
       headers: request.headers,
@@ -492,6 +504,7 @@ export async function handleRealtimeRoutes(
       'X-Verified-Actor-Id', 'X-Verified-Actor-Type',
       'X-Verified-Auth-Provider', 'X-Verified-Email',
       'X-Verified-Name', 'X-Verified-Avatar-Url', 'X-Verified-Db-User-Id',
+      'X-Verified-Requested-By-Id', 'X-Verified-Requested-By-Name',
     ]) {
       headersWithVerified.delete(h);
     }
@@ -512,6 +525,15 @@ export async function handleRealtimeRoutes(
     }
     if (context.principal.avatarUrl !== undefined) {
       headersWithVerified.set('X-Verified-Avatar-Url', context.principal.avatarUrl);
+    }
+    // The person an agent is acting for. extractActingUser resolves this from
+    // the request only for an agent principal, so a person acting for
+    // themselves carries none and the DO names them from the verified actor.
+    if (context.principal.actingUserId !== undefined) {
+      headersWithVerified.set('X-Verified-Requested-By-Id', context.principal.actingUserId);
+    }
+    if (context.principal.actingUserName !== undefined) {
+      headersWithVerified.set('X-Verified-Requested-By-Name', context.principal.actingUserName);
     }
     // Note: duplex is required when request has a streaming body
     const requestInit: RequestInit = {

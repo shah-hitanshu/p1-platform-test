@@ -1,6 +1,39 @@
 import type { ComponentSchema, ComponentField, FetchRegistryOpts } from './types.js';
 
 // ---------------------------------------------------------------------------
+// Registry key normalization
+//
+// Document paths (including "_registry/components/{Name}") are lowercased
+// server-side on write (see workers/src/services/document-types.ts
+// normalizePath), but the component's real, original-case name is preserved
+// in the descriptor snapshot body's own `name` field. Lookups against the
+// registry must therefore be case-insensitive, while the schema's `name`
+// (what's stored/displayed to callers) stays the true original case.
+//
+// Mirrors the `registryComponentKey` pattern established in p1-chatbot /
+// puck-css-integration#122 for the client-side registry — same name, same
+// approach, so both sides of the registry stay consistent.
+// ---------------------------------------------------------------------------
+
+export function registryComponentKey(name: string): string {
+  return name.toLowerCase();
+}
+
+const REGISTRY_COMPONENTS_PATH_PREFIX = '_registry/components/';
+
+/**
+ * Derives a component's fallback name from its registry document path
+ * (e.g. "_registry/components/leadcapture" -> "leadcapture"). This is a
+ * fallback only — paths are lowercased server-side, so the result does not
+ * reflect the component's real casing (e.g. "LeadCapture"). The descriptor
+ * snapshot's own `name` field (see `snapshotToComponentSchema`) is the
+ * source of truth for the real, original-case name.
+ */
+export function componentNameFromPath(path: string): string {
+  return path.slice(REGISTRY_COMPONENTS_PATH_PREFIX.length);
+}
+
+// ---------------------------------------------------------------------------
 // Shared snapshot → ComponentSchema transformation
 // Used by both fetchRegistry (raw fetch path) and McpApiClient.fetchRegistrySchemas
 // (circuit-breaker-wrapped path) to ensure consistent extraction logic.
@@ -10,8 +43,13 @@ export function snapshotToComponentSchema(
   name: string,
   snapshot: Record<string, unknown>,
 ): ComponentSchema {
+  // Prefer the descriptor's own preserved-case name over the caller-supplied
+  // (often path-derived, lowercased) name — the snapshot body is the source
+  // of truth for the component's real casing (e.g. "LeadCapture").
+  const resolvedName =
+    typeof snapshot.name === 'string' && snapshot.name !== '' ? snapshot.name : name;
   return {
-    name,
+    name: resolvedName,
     defaultProps: (snapshot.defaultProps as Record<string, unknown> | undefined) ?? {},
     allowedAdditionalProps: Array.isArray(snapshot.allowedAdditionalProps)
       ? (snapshot.allowedAdditionalProps as string[])
@@ -96,14 +134,17 @@ export async function fetchRegistry(
 
   await Promise.all(
     documents.map(async (doc) => {
-      const name = doc.path.slice('_registry/components/'.length);
+      // Path-derived name is a fallback only — snapshotToComponentSchema
+      // prefers the descriptor's own preserved-case name.
+      const pathName = componentNameFromPath(doc.path);
       const versionUrl =
         `${base}/api/sites/${siteId}/branches/${branchId}/documents/${doc.id}/versions/latest`;
       try {
         const vRes = await fetch(versionUrl, { method: 'GET', headers, signal: opts.signal });
         if (!vRes.ok) return;
         const { snapshot } = (await vRes.json()) as { snapshot: Record<string, unknown> };
-        schemas[name] = snapshotToComponentSchema(name, snapshot);
+        const schema = snapshotToComponentSchema(pathName, snapshot);
+        schemas[registryComponentKey(schema.name)] = schema;
       } catch {
         // Skip components that fail to fetch — don't block the rest
       }
@@ -149,7 +190,7 @@ export async function listRegistryVersions(
   };
 
   return documents.map((doc) => ({
-    name: doc.path.slice('_registry/components/'.length),
+    name: componentNameFromPath(doc.path),
     versionId: doc.id, // document id as proxy until backend exposes versionId
   }));
 }

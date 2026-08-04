@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { useAgentChat } from './useAgentChat.js';
-import type { ChatContext } from './types.js';
+import { useAgentChat } from '../src/useAgentChat.js';
+import type { ChatContext } from '../src/types.js';
 
 /** Minimal controllable WebSocket stand-in — captures sent frames, opens on demand. */
 class MockWebSocket {

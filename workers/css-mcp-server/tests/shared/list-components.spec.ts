@@ -62,6 +62,42 @@ describe('list_components tool', () => {
     expect(secondUrl).not.toContain('%2F_registry'); // must not use encoded path
   });
 
+  // Registry casing regression (PCC-3437 follow-up): the document path is
+  // lowercased server-side, but the descriptor snapshot's own `name` field
+  // preserves the component's real case. list_components must surface that
+  // preserved-case name to the calling agent, not the lowercased path.
+  it('surfaces the descriptor snapshot\'s original-case name, not the lowercased path', async () => {
+    const { McpApiClient } = await import('../../src/shared/api-client.js');
+    const { createToolHandlers } = await import('../../src/shared/tools.js');
+    const client = new McpApiClient(defaultConfig);
+    const handlers = createToolHandlers(client);
+
+    mockFetch.mockResolvedValueOnce(createMockResponse(true, {
+      documents: [
+        { id: 'doc-lc', path: '/_registry/components/leadcapture', siteId: 'site-1', archived: false, createdAt: '', updatedAt: '' },
+      ],
+    }));
+
+    mockFetch.mockResolvedValueOnce(createMockResponse(true, {
+      id: 'ver-1',
+      documentId: 'doc-lc',
+      versionNumber: 1,
+      snapshot: {
+        name: 'LeadCapture',
+        provenance: 'site',
+        fields: [{ type: 'text', name: 'headline', label: 'Headline' }],
+        defaultProps: { headline: '' },
+      },
+    }));
+
+    const result = await handlers.list_components({ site_id: 'site-1', branch_id: 'branch-1' });
+
+    expect(result.isError).toBeFalsy();
+    const text = result.content[0].text;
+    expect(text).toContain('LeadCapture');
+    expect(text).not.toContain('leadcapture (');
+  });
+
   it('returns a graceful message when no components are registered', async () => {
     const { McpApiClient } = await import('../../src/shared/api-client.js');
     const { createToolHandlers } = await import('../../src/shared/tools.js');

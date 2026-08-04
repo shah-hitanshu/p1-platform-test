@@ -1,4 +1,5 @@
 import type { EditOperation, ValidateInput, ValidationError, ComponentSchema, ComponentField } from './types.js';
+import { registryComponentKey } from './registry.js';
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -132,7 +133,7 @@ function validateComponent(
     });
   }
 
-  const schema = registry[comp.type];
+  const schema = registry[registryComponentKey(comp.type)];
   if (!schema) {
     errors.push({
       opIndex,
@@ -140,7 +141,7 @@ function validateComponent(
       code: 'unknown_component_type',
       message:
         `Unknown component type "${comp.type}" at "${path}". ` +
-        `Use list_components to see available types: ${Object.keys(registry).join(', ')}.`,
+        `Use list_components to see available types: ${Object.entries(registry).map(([key, s]) => s.name ?? key).join(', ')}.`,
     });
     return;
   }
@@ -240,7 +241,7 @@ function validatePropPathOp(
   const val = getAtPath(snapshot, componentPath);
   if (!isPuckComponentShape(val)) return;
 
-  const schema = registry[val.type];
+  const schema = registry[registryComponentKey(val.type)];
   if (!schema) return; // unknown type — caught elsewhere when the component is replaced
 
   // Case A: path ends exactly at .props — content is the full props object
@@ -335,6 +336,17 @@ export function validateOps(input: ValidateInput): { errors: ValidationError[] }
     return { errors: [] };
   }
 
+  // Defense-in-depth: re-key the registry by its case-insensitive lookup key,
+  // regardless of what casing the caller's keys already use. Registry
+  // producers (fetchRegistry / McpApiClient.fetchRegistrySchemas) already key
+  // by registryComponentKey, but validateOps normalizes independently so a
+  // caller-supplied registry (e.g. a hand-built one, or one that changes its
+  // convention later) can't silently reintroduce case-sensitive misses.
+  const normalizedRegistry: Record<string, ComponentSchema> = {};
+  for (const [key, schema] of Object.entries(registry)) {
+    normalizedRegistry[registryComponentKey(key)] = schema;
+  }
+
   const zonesKey = config.zonesKey ?? 'zones';
   const warnOnZonesUsage = config.warnOnZonesUsage ?? true;
   const errors: ValidationError[] = [];
@@ -367,11 +379,11 @@ export function validateOps(input: ValidateInput): { errors: ValidationError[] }
     // Snapshot-based validation: catches targeted prop writes where the content
     // is a primitive and the component type must be resolved from the live document.
     if (currentSnapshot !== undefined) {
-      validatePropPathOp(op, opIndex, currentSnapshot, registry, errors);
+      validatePropPathOp(op, opIndex, currentSnapshot, normalizedRegistry, errors);
     }
 
     // Content-shape validation: catches component replacements and slot content.
-    validateContent(op.content, registry, opIndex, op.path, errors, zonesKey, warnOnZonesUsage);
+    validateContent(op.content, normalizedRegistry, opIndex, op.path, errors, zonesKey, warnOnZonesUsage);
   }
 
   return { errors };

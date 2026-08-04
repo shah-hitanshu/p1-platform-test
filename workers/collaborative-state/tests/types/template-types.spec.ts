@@ -56,12 +56,14 @@ describe('Template Type Extensions', () => {
         'pre_merge',
         'post_merge',
         'publish',
+        'session_pre_edit',
+        'session_post_edit',
         'agent_pre_edit',
         'agent_post_edit',
         'pre_migration',
       ];
 
-      expect(types).toHaveLength(8);
+      expect(types).toHaveLength(10);
       expect(types).toContain('pre_migration');
     });
   });

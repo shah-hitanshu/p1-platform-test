@@ -6,9 +6,24 @@
  * Durable Object storage so they survive DO eviction/re-instantiation.
  */
 
-import type { AgentEditSession } from './document-session-types';
+import type { EditSession, StoredEditSession } from './document-session-types';
 import { EDIT_SESSIONS_STORAGE_KEY } from './document-session-types';
-import { MAX_EDIT_SESSION_AGE_MS } from '../constants/security-limits';
+
+/**
+ * Read a stored session's owner. A record naming only `agentId` predates
+ * person-owned sessions, so it is an agent's.
+ */
+function storedSessionOwner(
+  stored: StoredEditSession,
+): { id: string; type: 'user' | 'agent' } | null {
+  if (stored.ownerId !== undefined && stored.ownerId !== '') {
+    return { id: stored.ownerId, type: stored.ownerType ?? 'agent' };
+  }
+  if (stored.agentId !== undefined && stored.agentId !== '') {
+    return { id: stored.agentId, type: 'agent' };
+  }
+  return null;
+}
 
 /**
  * Persist all edit sessions to DO storage.
@@ -19,9 +34,9 @@ import { MAX_EDIT_SESSION_AGE_MS } from '../constants/security-limits';
  */
 export async function persistEditSessions(
   storage: DurableObjectStorage,
-  editSessions: Map<string, AgentEditSession>,
+  editSessions: Map<string, EditSession>,
 ): Promise<void> {
-  const sessions: Record<string, AgentEditSession> = {};
+  const sessions: Record<string, EditSession> = {};
   for (const [key, session] of editSessions) {
     sessions[key] = session;
   }
@@ -29,38 +44,47 @@ export async function persistEditSessions(
 }
 
 /**
- * Restore edit sessions from DO storage into the in-memory Map.
- * Called during initialization to recover sessions after DO eviction.
- * Filters out sessions that have exceeded MAX_EDIT_SESSION_AGE_MS.
+ * Read persisted edit sessions, resolving each record's owner. A record naming
+ * no owner is dropped rather than restored unattributable.
  *
- * @param storage - Durable Object storage instance
- * @param editSessions - The in-memory edit sessions Map to populate
+ * Callers apply their own age and rollback policy to the result.
+ *
+ * @param stored - The raw value read from DO storage
+ * @returns Sessions by id, empty when the value is absent or unparseable
  */
-export async function restoreEditSessions(
-  storage: DurableObjectStorage,
-  editSessions: Map<string, AgentEditSession>,
-): Promise<void> {
-  try {
-    const stored = await storage.get(EDIT_SESSIONS_STORAGE_KEY);
-    if (typeof stored !== 'string') {
-      return;
-    }
-
-    const sessions = JSON.parse(stored) as Record<string, AgentEditSession>;
-    const now = Date.now();
-
-    for (const [key, session] of Object.entries(sessions)) {
-      // Skip sessions that have exceeded the maximum age
-      if (now - session.startedAt > MAX_EDIT_SESSION_AGE_MS) {
-        continue;
-      }
-      editSessions.set(key, session);
-    }
-
-    if (editSessions.size > 0) {
-      console.log(`Restored ${String(editSessions.size)} edit session(s) from storage`);
-    }
-  } catch (error) {
-    console.warn('Failed to restore edit sessions from storage:', error);
+export function parseStoredEditSessions(stored: unknown): Map<string, EditSession> {
+  const sessions = new Map<string, EditSession>();
+  if (typeof stored !== 'string') {
+    return sessions;
   }
+
+  let parsed: Record<string, StoredEditSession>;
+  try {
+    parsed = JSON.parse(stored) as Record<string, StoredEditSession>;
+  } catch (error) {
+    console.warn('Failed to parse stored edit sessions:', error);
+    return sessions;
+  }
+
+  for (const [key, session] of Object.entries(parsed)) {
+    const owner = storedSessionOwner(session);
+    if (owner === null) {
+      console.warn(`Discarding stored edit session ${key}: no owner recorded`);
+      continue;
+    }
+    sessions.set(key, {
+      id: session.id,
+      ownerId: owner.id,
+      ownerType: owner.type,
+      trigger: session.trigger,
+      intent: session.intent,
+      targetRegions: session.targetRegions,
+      checkpointId: session.checkpointId,
+      startedAt: session.startedAt,
+      conflicted: session.conflicted,
+      conflictReason: session.conflictReason,
+    });
+  }
+
+  return sessions;
 }

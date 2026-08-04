@@ -1,15 +1,14 @@
 /**
- * Agent Politeness System - Phase 7.2: Agent Status Middleware
+ * Agent Politeness System - Phase 7.2: Agent Status Check
  *
- * Middleware that validates agent status before allowing operations.
- * When X-Agent-Id header is present, looks up agent in registry and
- * rejects requests if agent is suspended or disabled.
+ * Resolves an agent's registry status (active / suspended / disabled) so
+ * callers can reject operations by a suspended or disabled agent.
  *
  * @see collaborative-state-system-architecture-v2.3.md
  */
 
 import { getAgentById } from '../services/agent-service';
-import { parseAgentContext, type AgentContext } from '../services/agent-context-service';
+import type { AgentContext } from '../services/agent-context-service';
 import type { RegisteredAgent } from '../types';
 
 // =============================================================================
@@ -30,14 +29,6 @@ export interface AgentStatusResult {
   agent?: RegisteredAgent;
 }
 
-/**
- * Middleware function type.
- */
-export type MiddlewareFunction = (
-  request: Request,
-  next: () => Promise<Response>,
-) => Promise<Response>;
-
 // =============================================================================
 // Agent Status Check
 // =============================================================================
@@ -51,21 +42,22 @@ export type MiddlewareFunction = (
 export async function checkAgentStatus(
   agentContext: AgentContext | null,
 ): Promise<AgentStatusResult> {
-  // No agent context means no agent restriction
-  if (agentContext === null) {
+  // No agent context, or context without an agent identity, means no agent restriction
+  const agentId = agentContext?.agentId;
+  if (agentId === undefined || agentId === '') {
     return { allowed: true };
   }
 
   try {
     // Look up agent in registry
-    const agent = await getAgentById(agentContext.agentId);
+    const agent = await getAgentById(agentId);
 
     // Agent not found
     if (agent === null) {
       return {
         allowed: false,
         reason: 'agent_not_found',
-        message: `Agent with ID '${agentContext.agentId}' not found in registry`,
+        message: `Agent with ID '${agentId}' not found in registry`,
       };
     }
 
@@ -119,88 +111,3 @@ export async function checkAgentStatus(
   }
 }
 
-// =============================================================================
-// Header Parsing Helper
-// =============================================================================
-
-/**
- * Parse agent context from request headers.
- * Re-exports from agent-context-service for convenience.
- *
- * @param request - The HTTP request
- * @returns Parsed agent context or null
- */
-export function parseAgentHeaders(request: Request): AgentContext | null {
-  return parseAgentContext(request.headers);
-}
-
-// =============================================================================
-// Middleware Factory
-// =============================================================================
-
-/**
- * Create middleware that checks agent status on requests.
- *
- * When X-Agent-Id header is present:
- * - Looks up agent in registry
- * - Returns 403 if agent is suspended
- * - Returns 403 if agent is disabled
- * - Returns 404 if agent not found
- * - Returns 500 on database error
- *
- * When no agent headers are present, passes through.
- *
- * @returns Middleware function
- */
-export function createAgentStatusMiddleware(): MiddlewareFunction {
-  return async (request: Request, next: () => Promise<Response>): Promise<Response> => {
-    // Parse agent context from headers
-    const agentContext = parseAgentHeaders(request);
-
-    // No agent headers - pass through
-    if (agentContext === null) {
-      return next();
-    }
-
-    // Check agent status
-    const result = await checkAgentStatus(agentContext);
-
-    // Allowed - pass through
-    if (result.allowed) {
-      return next();
-    }
-
-    // Build error response based on reason
-    let status: number;
-    switch (result.reason) {
-      case 'agent_not_found':
-        status = 404;
-        break;
-      case 'agent_suspended':
-      case 'agent_disabled':
-        status = 403;
-        break;
-      case 'lookup_error':
-      default:
-        status = 500;
-        break;
-    }
-
-    const errorMessage = result.message !== undefined && result.message !== ''
-      ? result.message
-      : 'Agent access denied';
-
-    return new Response(
-      JSON.stringify({
-        error: errorMessage,
-        reason: result.reason,
-      }),
-      {
-        status,
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      },
-    );
-  };
-}

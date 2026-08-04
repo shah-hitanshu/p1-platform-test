@@ -49,6 +49,14 @@ export interface FocusInfo {
 }
 
 /**
+ * Narrows which actors' claims count when looking for conflicts.
+ */
+export interface ConflictScopeOptions {
+  /** A region held only by this actor is not a conflict for it. */
+  excludeActorId?: string;
+}
+
+/**
  * Serialized state of ActivityDetector.
  */
 export interface ActivityDetectorState {
@@ -70,6 +78,9 @@ export class ActivityDetector {
   private idleTimeoutMs: number;
   private lastHumanActivityAt: number | null = null;
   private activeRegions = new Set<string>();
+  // Which actors have edited each active region, so an actor's own claim can be
+  // excluded from its conflict lookups.
+  private activeRegionOwners = new Map<string, Set<string>>();
   private humanFocusRegions = new Map<string, FocusInfo>();
 
   // Cache for flattened focus regions - invalidated on mutations
@@ -122,7 +133,7 @@ export class ActivityDetector {
    * Record human activity with optional regions being edited.
    * Regions are silently ignored if MAX_ACTIVE_REGIONS limit is reached.
    */
-  recordHumanActivity(_actorId: string, regions?: string[]): void {
+  recordHumanActivity(actorId: string, regions?: string[]): void {
     this.lastHumanActivityAt = Date.now();
 
     if (regions) {
@@ -132,6 +143,12 @@ export class ActivityDetector {
           break;
         }
         this.activeRegions.add(region);
+        let owners = this.activeRegionOwners.get(region);
+        if (owners === undefined) {
+          owners = new Set<string>();
+          this.activeRegionOwners.set(region, owners);
+        }
+        owners.add(actorId);
       }
     }
   }
@@ -193,6 +210,7 @@ export class ActivityDetector {
    */
   clearRegions(): void {
     this.activeRegions.clear();
+    this.activeRegionOwners.clear();
   }
 
   // =========================================================================
@@ -295,13 +313,29 @@ export class ActivityDetector {
    * Uses overlap detection to check parent/child relationships.
    *
    * @param region - Region to check
+   * @param excludeActorId - Ignore this actor's own focus
    * @returns true if region overlaps with any focus region
    */
-  isRegionFocused(region: string): boolean {
-    // Use cached flat list for O(n) lookup instead of O(n*m)
-    for (const focusRegion of this.getCachedFocusRegions()) {
-      if (regionsOverlap(region, focusRegion)) {
-        return true;
+  isRegionFocused(region: string, excludeActorId?: string): boolean {
+    if (excludeActorId === undefined) {
+      // Use cached flat list for O(n) lookup instead of O(n*m)
+      for (const focusRegion of this.getCachedFocusRegions()) {
+        if (regionsOverlap(region, focusRegion)) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    // The flat cache drops actor attribution, so scoped lookups walk per actor.
+    for (const [actorId, focusInfo] of this.humanFocusRegions) {
+      if (actorId === excludeActorId) {
+        continue;
+      }
+      for (const focusRegion of focusInfo.regions) {
+        if (regionsOverlap(region, focusRegion)) {
+          return true;
+        }
       }
     }
     return false;
@@ -314,10 +348,16 @@ export class ActivityDetector {
   /**
    * Check if a region is currently active (being edited by humans).
    * Uses overlap detection to check parent/child relationships.
+   *
+   * @param region - Region to check
+   * @param excludeActorId - Ignore regions this actor alone has edited
    */
-  isRegionActive(region: string): boolean {
+  isRegionActive(region: string, excludeActorId?: string): boolean {
     for (const activeRegion of this.activeRegions) {
-      if (regionsOverlap(region, activeRegion)) {
+      if (!regionsOverlap(region, activeRegion)) {
+        continue;
+      }
+      if (excludeActorId === undefined || this.isHeldByOther(activeRegion, excludeActorId)) {
         return true;
       }
     }
@@ -328,10 +368,30 @@ export class ActivityDetector {
    * Get regions from the target list that conflict with active or focused regions.
    * Checks both operation-derived active regions and proactive focus regions.
    */
-  getConflictingRegions(targetRegions: string[]): string[] {
+  getConflictingRegions(targetRegions: string[], options?: ConflictScopeOptions): string[] {
+    const excludeActorId = options?.excludeActorId;
     return targetRegions.filter((target) =>
-      this.isRegionActive(target) || this.isRegionFocused(target),
+      this.isRegionActive(target, excludeActorId)
+      || this.isRegionFocused(target, excludeActorId),
     );
+  }
+
+  /**
+   * Whether an active region has an editor other than the given actor. A region
+   * with no recorded owner counts as held, so an unattributed claim still
+   * conflicts.
+   */
+  private isHeldByOther(activeRegion: string, excludeActorId: string): boolean {
+    const owners = this.activeRegionOwners.get(activeRegion);
+    if (owners === undefined) {
+      return true;
+    }
+    for (const owner of owners) {
+      if (owner !== excludeActorId) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**
@@ -340,6 +400,7 @@ export class ActivityDetector {
   reset(): void {
     this.lastHumanActivityAt = null;
     this.activeRegions.clear();
+    this.activeRegionOwners.clear();
     this.humanFocusRegions.clear();
     this.invalidateFocusCache();
   }

@@ -5566,3 +5566,289 @@ Separately, service API tokens (sat_) with `read:all`/`read:published`/`read:dra
 
 #### Security Review
 Clean — no actionable findings. All SQL queries parameterized, authorization enforced on all endpoints, name validation prevents path traversal, includeSnapshot operates under existing canView authorization.
+
+---
+
+## Page title canonicalization (PCC-3406, 2026-08-03)
+
+**Branch:** `fix/3406-canonical-page-title`
+**Commits:** `90d64e7` (tests, red state) · `478f1af` (implementation)
+
+Supporting work for page-level metadata: `og:title` derives from the page title
+when the authored social title is empty, so the title needs one unambiguous home.
+
+### Problem
+
+A page's title had two homes. `POST .../documents` with a `title` wrote it at the
+snapshot's **top level** (`{ title, ...snapshot }`), while a document created from
+a template got it from `buildDocumentSkeletonFromTemplate` at
+**`root.props.title`**. All three listing projections in
+`branch-document-service.ts` read `snapshot->>'title'` only — so every
+template-created page appeared untitled in the dashboard.
+
+The editor also autosaves the title at `root.props.title`, since that is where
+Puck's root field lives, which made the top-level copy stale as soon as anyone
+renamed a page.
+
+### What changed
+
+- **`services/document-title.ts`** (new). `applyTitleToSnapshot` writes only to
+  `root.props.title`; `readSnapshotTitle` prefers it and falls back to the legacy
+  top level.
+- **`routes/document-api.ts`** — the non-template create path uses it.
+- **`services/branch-document-service.ts`** — the three projections became
+  `COALESCE(dv_snap.snapshot->'root'->'props'->>'title', dv_snap.snapshot->>'title')`.
+
+### Key decisions
+
+- **`root.props.title` is canonical.** It is what the editor writes and what the
+  template skeleton already produced; the top-level copy was the outlier.
+- **A title already in the snapshot wins** over the `title` argument. The snapshot
+  is authored content; the argument only seeds a document that has none. This
+  preserves the previous precedence, where the spread let the snapshot's own title
+  override the argument.
+- **Reads coalesce rather than requiring the backfill first.** Listings are
+  correct for both shapes the moment this lands, which turns the backfill into
+  cleanup and lets it take its own deploy without holding the fix hostage.
+
+### Tests
+
+- 12 unit tests for the write shaping and read fallback.
+- 4 integration tests for the projection, because it is SQL and only a real
+  database proves it. Verified in both directions: with the old projection the two
+  canonical-location cases fail while the legacy case still passes.
+- Two existing assertions in `tests/routes/document-api.spec.ts` were updated with
+  permission — they asserted the top-level location this change moves away from.
+- Full suite 3737 passing / 219 files. Typecheck 2924 errors, exactly the `main`
+  baseline (the repo's `tsc --noEmit` and `pnpm lint` are both already red on
+  `main`; this branch adds nothing to either).
+
+### Gotcha: Postgres runs under podman, not docker
+
+This file and `CLAUDE.md` both say `docker exec css-postgres ...`, but there is no
+docker binary on the dev machine — the container runs under podman
+(`/opt/podman/bin/podman exec css-postgres ...`). Integration tests connect over
+TCP so they are unaffected, but the documented psql examples do not work as
+written.
+
+### Remaining
+
+- Backfill existing top-level-title snapshots into `root.props.title`, then the
+  projection's legacy arm can be dropped. Its own PR and its own deploy, since it
+  is the one irreversible step.
+- Security review still to run for this pair, once the backfill lands.
+
+## Page title backfill (PCC-3406, 2026-08-03)
+
+**Branch:** `fix/3406-backfill-page-titles` (stacked on `fix/3406-canonical-page-title`)
+**Commits:** `b5b8065` (tests, red state) · `f24b3a2` (implementation)
+
+Cleanup half of the title canonicalization. Listings COALESCE both locations, so
+this is not required for correctness; once every environment has run it, the
+legacy arm of that projection can be dropped.
+
+### Shape
+
+- `services/page-title-backfill.ts` — `classifyTitleBackfill` (pure) decides
+  convert/skip; `backfillPageTitles` sweeps the latest version of each document.
+- `db/backfill-page-titles.ts` — dry run by default, `--execute` to write,
+  `--site=<uuid>` to scope, matching the other two backfills.
+
+### Key decisions
+
+- **Latest version only, and append rather than rewrite.** 1536 of 2663
+  `document_versions` rows carry a forward patch and no snapshot, so there is
+  nothing to edit in place, and mutating patches would corrupt the chain
+  reconstruction replays. Writing a new version keeps the baseline/diff
+  invariants owned by the version service, as `template-content-backfill` does.
+- **A snapshot carrying both locations is still converted**, dropping the stale
+  top-level copy and keeping the canonical value — the editor autosaves the
+  canonical one, so the top-level copy is the stale one.
+- **Candidates are not filtered on `snapshot IS NOT NULL`.** The existing
+  template backfill does filter, which would silently drop rows. Here an
+  unreadable latest snapshot is reported as `unreadable` so it is visible.
+
+### Corrected mid-implementation
+
+An earlier claim that "roughly a sixth of latest versions are stored as a forward
+patch" was wrong — it misread `patch IS NOT NULL` as implying no snapshot. **No**
+latest version lacks a snapshot; the 30 such rows carry both. The latest-only
+decision still holds, on the 1536 non-latest diff rows. One integration test was
+renamed accordingly, from claiming to convert a patch-stored latest version to
+what it actually proves: an edited page converts without its history being
+rewritten.
+
+### Found: two double-encoded snapshots
+
+The dry run surfaced two documents whose latest snapshot is stored
+double-encoded — `jsonb_typeof(snapshot) = 'string'`, holding a JSON string of
+the object rather than the object (`_registry/templates/blog-template` and
+`thingfromsecondbranch` in the dev database; 2 of 1127 non-null snapshots).
+
+They matter beyond this backfill: `snapshot->'root'->'props'->>'title'` and
+`snapshot->>'title'` both return NULL against a jsonb string, so **those pages
+show no title in listings regardless of the canonicalization**. That is a
+separate pre-existing data bug, not something this work introduces or fixes, and
+it wants its own ticket. The repo already has a
+`batch-sync.jsonb-serialization` integration test, suggesting a known history.
+
+### Tests
+
+- 9 unit tests for the convert/skip decision, including idempotency and junk types.
+- 5 integration tests: dry run writes nothing, a legacy title moves, an edited
+  page converts without history being rewritten, already-canonical is untouched,
+  and a second run converts nothing.
+- Full suite 3746 passing / 220 files. Typecheck 2924, the `main` baseline. Lint
+  clean in the changed files.
+
+### Gotcha: backfill scripts need the createRequire workaround
+
+`fast-json-patch`'s CJS entry uses `Object.assign(exports, ...)`, which Node's ESM
+loader cannot bind by name, so any script importing the version service dies at
+module load under tsx. `adopt-slot-ids.ts` already documents the fix — route the
+imports through `createRequire` — and this script reuses it.
+`db:backfill-template-content-shape` does **not**, and currently cannot run at
+all; worth fixing separately.
+
+### Remaining
+
+- Run the dry run per environment before executing, and only after the worker
+  writing the canonical location is deployed there.
+- Drop the projection's legacy COALESCE arm once every environment is backfilled.
+- Security review for the two-PR pair.
+### Allowed-Origin Write Validation (PCC-3531 Phase 1)
+
+#### Problem
+
+`app.sites.allowed_origins` was added in April (migration 031) for "OAuth redirect URI
+validation" with wildcard support "for Pantheon branch URLs", but no redirect-validation consumer
+was ever written — CORS enforcement (PCC-3334) is its only reader. Origin patterns reached the
+database unvalidated, so two classes of bad row were storable:
+
+- **protocol-less** (e.g. `*-mysite.pantheonsite.io`) — `parseOriginPatterns` drops anything
+  failing `/^https?:\/\//`, so the row stores cleanly and matches nothing. This was the exact form
+  migration 031's own comment documented, and the retired admin SPA's input placeholder taught it.
+- **over-broad** (e.g. `https://*.com`) — `escapeRegex` does not escape `*`, so this compiles to
+  `^https://[a-zA-Z0-9-]+\.com$` and matches `https://evil.com`.
+
+This phase is groundwork for removing the per-environment `P1_SITE_URL` requirement, which cannot
+be fixed operationally: multidevs are created after provisioning and silently inherit the
+site-level secret value. Full design in `puck-css-integration` at
+`docs/plans/2026-07-30-redirect-origin-validation.md` (PR #152).
+
+#### Implementation
+
+- `routes/validation.ts` — `validateAllowedOriginPatterns(next, stored?)` plus
+  `MAX_ALLOWED_ORIGINS` (50, matching `MAX_PATTERNS` in `utils/cors.ts`). Rejects: missing
+  protocol, bare `*`, path/query/trailing slash, multiple wildcards, a wildcard outside the
+  leftmost label, a wildcard on a public suffix (requires ≥3 host labels), and over-cap arrays.
+- `routes/site-api.ts` — wired into `POST /api/sites` (validates all entries; nothing stored yet)
+  and `PATCH /api/sites/{siteId}` (validates only entries not already stored).
+- `migrations/048_fix_allowed_origins_comment.sql` — corrects 031's column comment. 031 left as
+  applied history; the runner tracks migrations by name and will not re-run it.
+
+#### Key Decisions
+
+- **Diff-scoped validation.** Callers resend the whole array on every change, so validating
+  everything would leave a site holding a legacy invalid row unable even to remove it. Only
+  entries absent from the stored array are checked.
+- **`getSite`, not `getCachedSiteAllowedOrigins`,** on the PATCH path — a stale 5-minute cache
+  could classify a recently-added origin as new and reject a legitimate resend.
+- **A null site row is not a 404** in the update handler; the dispatcher already resolved the
+  site's main branch to reach it. It falls through as "nothing stored", validating every entry —
+  stricter, never more permissive. This also avoided modifying the pre-existing T65b test, which
+  does not mock `getSite`.
+- **No public-suffix list.** `*.co.uk` passes the ≥3-label rule. The patterns this serves
+  (`*-site.pantheonsite.io`) are unaffected; tightening further needs a PSL and was left out.
+- **`allowed_origins` stays one dual-use list** (user decision) — adding an entry locks down CORS
+  and enables redirect validation in the same action. A separate `allowed_redirect_origins` column
+  was rejected as two lists to keep in sync. Accepted because no unavoidable lockout exists: the
+  dashboard is protected by the production `CORS_ORIGINS` value, localhost is always allowed, and
+  one hyphen-prefix wildcard covers every environment. The one realistic mode is apex vs `www`,
+  which the dashboard editor will detect and offer rather than explain in help text.
+- **Rejected: recording observed origins per site** to drive that UI. It would eliminate the
+  mistake rather than warn about it, but the failure is recoverable within minutes and it means
+  new tracking, storage and retention to maintain.
+
+#### Tests
+
+- Tests committed at `81d80ebe` (red: 25 failures in `validation.spec.ts`, 3 in `site-api.spec.ts`),
+  implementation at `3ba09987` (green), CORS lockout pins at `2cd2ea63`.
+- `validation.spec.ts` — 40 cases across accept, silent-drop, over-broad, never-matchable, cap, and
+  diff-scoping (including that a site with stored invalid rows can still remove one).
+- `site-api.spec.ts` — 400s naming the offending entry on POST and PATCH; the removal path on a
+  site whose stored rows are invalid.
+- `cors.spec.ts` — pins the dual-use flip and its bounds: env-level origins survive it, the
+  dashboard cannot be locked out under the production value, apex and `www` are distinct, and the
+  wildcard requires its hyphen.
+- Full suite: 211 files / 3683 tests passing, 0 type errors. Lint 475 problems — exact parity with
+  pristine `origin/main`, measured in a separate worktree; 0 attributable to these files.
+
+#### Rollout Note
+
+sbx1 and staging set `CORS_ORIGINS: "*"`, which merges a `wildcard-all` pattern and short-circuits
+`isOriginAllowed`. **Per-site restriction is completely inert in those environments** — the CORS
+flip cannot be rehearsed outside production, and a green check there proves nothing about it.
+
+### Broker Redirect-Origin Validation (PCC-3531 Phase 2)
+
+#### Problem
+
+An app behind Pantheon's proxy cannot determine its own public origin: `new URL(request.url).origin`
+resolves to the internal listener, so post-login redirects go to `localhost` unless every
+environment sets `P1_SITE_URL`. The browser knows the right origin but had no way to say so, and an
+unvalidated caller-supplied origin was correctly rejected in `puck-css-integration` PR #70 as too
+high a security risk.
+
+Phase 2 lets the app *propose* an origin and makes CCR the arbiter, since it is the only party that
+authenticates the site — the app cannot validate its own origin, which is the original bug.
+
+#### Implementation
+
+- `src/auth/broker/redirect-origin.ts` — `resolveBrokerRedirectUrl()`, a pure decision function:
+  no proposal → the caller's value unchanged (and no origins lookup at all); proposal matching a
+  registered origin → honoured; anything else → the caller's value plus a warning.
+- `src/routes/broker-routes.ts` — `POST /broker/login` accepts `proposedRedirectUrl`, resolves it
+  against `getCachedSiteAllowedOrigins`, and returns any warning alongside the normal 200.
+
+#### Key Decisions
+
+- **Not built on `buildCorsPatterns` or `isOriginAllowed`.** The first returns `wildcard-all` for an
+  empty array by design (keeping CORS open for unconfigured sites), so reusing it would honour every
+  proposal on every site that has registered nothing — a silent no-op precisely where it matters.
+  The second returns true for any localhost origin before consulting a pattern, which would let a
+  production login redirect to a local server. The pattern *parser* is shared so operators learn one
+  syntax.
+- **Localhost is gated on `ENVIRONMENT`**, allowed only for `local`/`sbx1`/`sandbox`. An unset
+  binding reads as production, so a missing variable can never widen what a deployed worker accepts.
+- **A legacy bare `*` row is ignored for redirects** while still opening CORS. Phase 1 rejects new
+  ones at the write boundary, but pre-existing rows would otherwise authorise any redirect — exactly
+  the design PR #70 rejected.
+- **`URL().origin` is compared, not the raw string**, which defeats userinfo smuggling such as
+  `https://registered.example@evil.com`, whose real origin is `evil.com`. Opaque origins (`data:`,
+  `blob:`) are refused.
+- **A failed origins lookup is caught and treated as "nothing registered"**, so a database blip
+  cannot become a way to get a proposal honoured.
+- **Fail-back, not fail-closed.** A rejected proposal returns the caller's own value and a 200, so a
+  site that has registered nothing behaves exactly as it did before. This is deliberate: it
+  guarantees no site regresses during rollout, and it is why any UI must not claim login is
+  "blocked" without registered origins.
+- **Warning shape:** rides alongside the normal response without changing its status, names the
+  rejected origin, carries no markup, and does not echo the registered list back to the caller.
+
+#### Tests
+
+- Tests committed red at `02fe6426` (`redirect-origin.spec.ts` collected 0 tests; 2 of 20 route
+  tests failing), implementation green at `eb8d49db`.
+- 25 resolver cases + 6 route cases, including the fail-open trap asserted explicitly (empty
+  `allowed_origins` ⇒ proposal ignored), no-proposal requests performing no lookup, the legacy `*`
+  row, userinfo smuggling, scheme downgrade, apex-vs-`www`, and a throwing lookup.
+- Full suite: 212 files / 3718 tests passing, 0 type errors. Lint 115 and typecheck 2774 — exact
+  parity with phase 1, 0 attributable to these files.
+
+#### Rollout Note
+
+Nothing changes for any site until origins are registered, and there is currently no UI that can
+write them (the CCR admin SPA was retired in #170). Interim population is a direct
+`PATCH /api/sites/{siteId}`. Also note sbx1 and staging set `CORS_ORIGINS: "*"`, so the CORS half of
+`allowed_origins` is inert there — only the redirect half is testable outside production.

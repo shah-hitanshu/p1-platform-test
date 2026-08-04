@@ -1,0 +1,13 @@
+/**
+ * Help text under an inspector field.
+ *
+ * A module, so names are scoped by the bundler and need no `p1-` prefixing.
+ */
+
+.help {
+  display: block;
+  margin: -8px 0 12px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--pds-color-text-secondary, var(--puck-css-text-secondary));
+}

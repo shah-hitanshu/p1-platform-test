@@ -6,9 +6,10 @@
  * of how many entry points import it.
  */
 
-import { initializeStores } from "./index";
+import { PRODUCTION_BASE_URL } from "../../core/config.js";
 import type { PageStore, EditorMetaStore, RemoteDatasourceDefStore } from "./types";
 import { createP1PageStore, type P1StoreClient, type P1ContentClientInterface } from "./p1-store";
+import { initializeStores } from "./index";
 
 export interface P1DataConfig {
   /** Base URL of the API. */
@@ -50,11 +51,16 @@ export function ensureInitialized(dataConfig: P1DataConfig): Promise<void> {
 }
 
 async function doInit(cfg: P1DataConfig): Promise<void> {
-  const { p1BaseUrl, p1SiteId } = cfg;
+  const { p1SiteId } = cfg;
+  // Same fallback as createNextConfig/createNextContentClient (PCC-3282):
+  // an unset p1BaseUrl (no CSS_BASE_URL / NEXT_PUBLIC_CSS_BASE_URL) should
+  // resolve to the production backend rather than leaving init — and every
+  // login/render request that awaits it — broken.
+  const p1BaseUrl = cfg.p1BaseUrl ?? PRODUCTION_BASE_URL;
 
-  if (!p1BaseUrl || !p1SiteId) {
+  if (!p1SiteId) {
     throw new Error(
-      "Missing required config: p1BaseUrl and p1SiteId must be set.",
+      "Missing required config: p1SiteId must be set.",
     );
   }
 

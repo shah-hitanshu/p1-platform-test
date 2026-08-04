@@ -41,11 +41,16 @@ export type BranchStatus = 'active' | 'review' | 'merged' | 'archived';
  * - pre_merge: Created before a merge operation
  * - post_merge: Created after a merge operation
  * - publish: Created when content is published to main (drives branch inheritance)
- * - agent_pre_edit: Created before an agent starts editing (for rollback)
- * - agent_post_edit: Created after an agent completes editing (for audit)
+ * - session_pre_edit: Created before an edit session starts (for rollback)
+ * - session_post_edit: Created after an edit session completes (for audit)
+ * - agent_pre_edit: A session_pre_edit written before sessions could be owned by a person
+ * - agent_post_edit: A session_post_edit written before sessions could be owned by a person
  * - pre_migration: Created before a template migration operation (for rollback)
+ *
+ * Whether a session checkpoint belongs to a person or an agent is recorded in
+ * created_by_type, not in the type.
  */
-export type CheckpointType = 'manual' | 'auto' | 'pre_merge' | 'post_merge' | 'publish' | 'agent_pre_edit' | 'agent_post_edit' | 'pre_migration';
+export type CheckpointType = 'manual' | 'auto' | 'pre_merge' | 'post_merge' | 'publish' | 'session_pre_edit' | 'session_post_edit' | 'agent_pre_edit' | 'agent_post_edit' | 'pre_migration';
 
 /**
  * Source of a document version creation.

@@ -471,15 +471,15 @@ export type {
   ActivityDetectorState,
 } from './activity-detection-service';
 
-// Agent Edit Permission Service
-export { AgentEditPermissionService } from './agent-edit-permission-service';
+// Edit Permission Service
+export { EditPermissionService } from './edit-permission-service';
 
 export type {
-  AgentEditContext,
-  AgentEditPermission,
+  EditPermissionContext,
+  EditPermission,
   GetAgentStatusFn,
-  AgentEditPermissionServiceOptions,
-} from './agent-edit-permission-service';
+  EditPermissionServiceOptions,
+} from './edit-permission-service';
 
 // Agent Context Service (Phase 7.1)
 export {

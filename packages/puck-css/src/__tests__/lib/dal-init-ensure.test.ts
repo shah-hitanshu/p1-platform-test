@@ -50,6 +50,7 @@ vi.mock('../../data/dal/index', () => ({
 }));
 
 import { ensureInitialized, _resetInit } from '../../data/dal/init';
+import { PRODUCTION_BASE_URL } from '../../core/config';
 import type { Data } from '@puckeditor/core';
 
 // Track pages created during initialization for testing
@@ -67,16 +68,22 @@ describe('ensureInitialized', () => {
     vi.restoreAllMocks();
   });
 
-  it('throws when p1BaseUrl is missing', async () => {
+  it('falls back to PRODUCTION_BASE_URL when p1BaseUrl is missing', async () => {
     await expect(
       ensureInitialized({ p1SiteId: 'site-1' }),
-    ).rejects.toThrow('p1BaseUrl and p1SiteId must be set');
+    ).resolves.toBeUndefined();
+
+    expect(mockInitializeStores).toHaveBeenCalledOnce();
   });
 
   it('throws when p1SiteId is missing', async () => {
     await expect(
       ensureInitialized({ p1BaseUrl: 'https://api.example.com' }),
-    ).rejects.toThrow('p1BaseUrl and p1SiteId must be set');
+    ).rejects.toThrow('p1SiteId must be set');
+  });
+
+  it('uses PRODUCTION_BASE_URL as the default backend host', () => {
+    expect(PRODUCTION_BASE_URL).toBe('https://ccr.p1.pantheon.io');
   });
 
   it('does not call branches.list at init when p1BranchId is omitted', async () => {

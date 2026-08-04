@@ -76,6 +76,7 @@ export type { P1StoreConfig, P1StoreClient } from "./data/dal/p1-store.js";
 // directly.
 export type { SeoMetadata } from "@pantheon-systems/css-client";
 export { ensureInitialized, getSharedP1Client, getSharedSiteId, getSharedBranchId, createAuthenticatedClient, type P1DataConfig } from "./data/dal/init.js";
+export { PRODUCTION_BASE_URL } from "./core/config.js";
 export { runWithAuthToken } from "./data/dal/request-auth.js";
 
 export {

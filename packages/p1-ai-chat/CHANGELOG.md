@@ -1,5 +1,27 @@
 # @pantheon-systems/p1-ai-chat
 
+## 0.3.0
+
+### Minor Changes
+
+- 2ebb9af: Make the chat panel reliable and interruptible.
+
+  **Stop a turn that's in progress.** While the agent is working, Send becomes Stop. Pressing it ends the turn straight away: the agent stops the model, skips any steps it hadn't started, and closes the page it had open for editing.
+
+  **Replies stream as they're written.** Text appears as the model produces it, and each step the agent takes appears as it begins, rather than everything arriving at once when the turn ends. A spinner runs through the pauses in between, so a turn that is thinking no longer looks like one that has died.
+
+  **See what the agent did, in the order it did it.** Prose and steps interleave the way they happened — "I'll read the page", then the step, then "that page is empty" — and a step stays where it was made instead of jumping to a summary once it finishes. Each step is named in plain language ("Applying changes · 3 edits") and shows its own outcome, with the underlying error kept behind a disclosure when one fails.
+
+  **Replies render as formatted markdown.** Tables, task lists, strikethrough and bare links now display properly, where a table previously arrived as rows of literal pipes. Tables are sized to the panel with wrapping cells rather than needing to be scrolled row by row. Markdown that is still being written renders as what it will become, instead of flashing raw syntax as it arrives.
+
+  **The panel no longer gets stuck.** Clearing the conversation mid-reply, a dropped connection, an agent that went quiet, and pressing Stop while signing in each used to leave the composer disabled. Connections now retry on their own, and a turn that fails offers "Try again", which replaces the failed exchange rather than stacking a second copy beneath it.
+
+  **Conversations are kept.** Every turn after the first was being discarded once a conversation had been cleared, and a single page edit could push everything else out of storage — so reopening the panel showed one stale exchange no matter how much had been said. History is now retained, and a reopened conversation reads in the order it happened.
+
+  **Accessibility.** The transcript is ordinary navigable content rather than a live region that read the entire conversation aloud on every streamed word; announcements now come from a single status line. Each turn names its speaker, which alignment alone never conveyed.
+
+  **A more compact composer.** Send shares a row with the keyboard hint instead of taking one of its own, returning space to the transcript in a panel that has little to spare.
+
 ## 0.2.0
 
 ### Minor Changes

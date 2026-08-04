@@ -25,7 +25,7 @@ import { requestSiteScreenshot, type ScreenshotProducerEnv } from '../queues/scr
  * Parameters for creating a new site.
  */
 export interface CreateSiteParams {
-  pantheonSiteId: string;
+  pantheonSiteId?: string;
   name: string;
   url?: string;
   workflowSettings?: Partial<WorkflowSettings>;
@@ -39,11 +39,13 @@ export interface CreateSiteParams {
 /**
  * Parameters for updating a site.
  *
- * `url: null` clears the column. `url: undefined` (or omitted) leaves it untouched.
+ * For `url` and `pantheonSiteId`, null clears the column and undefined (or
+ * omitted) leaves it untouched.
  */
 export interface UpdateSiteParams {
   name?: string;
   url?: string | null;
+  pantheonSiteId?: string | null;
   workflowSettings?: Partial<WorkflowSettings>;
   allowedOrigins?: string[];
 }
@@ -78,7 +80,7 @@ export interface ListSitesOptions {
  */
 interface SiteRow {
   id: string;
-  pantheon_site_id: string;
+  pantheon_site_id: string | null;
   name: string;
   url: string | null;
   workflow_settings: WorkflowSettings | string;
@@ -154,7 +156,7 @@ function parseWorkflowSettings(
 function mapRowToSite(row: SiteRow): Site {
   return {
     id: row.id,
-    pantheonSiteId: row.pantheon_site_id,
+    pantheonSiteId: row.pantheon_site_id ?? undefined,
     name: row.name,
     url: row.url ?? undefined,
     workflowSettings: parseWorkflowSettings(row.workflow_settings),
@@ -180,6 +182,16 @@ function assertValidUrl(value: string): void {
       `url scheme not allowed: ${parsed.protocol} (must be http or https)`,
     );
   }
+}
+
+/**
+ * Normalizes a Pantheon site ID input: blank or missing becomes null.
+ */
+function normalizePantheonSiteId(
+  value: string | null | undefined,
+): string | null {
+  const trimmed = value?.trim() ?? '';
+  return trimmed === '' ? null : trimmed;
 }
 
 /**
@@ -241,12 +253,10 @@ export async function createSite(
   env?: ScreenshotProducerEnv,
 ): Promise<Site> {
   // Validate required fields
-  if (!params.pantheonSiteId || params.pantheonSiteId.trim() === '') {
-    throw new InvalidSiteParamsError('pantheonSiteId is required');
-  }
   if (!params.name || params.name.trim() === '') {
     throw new InvalidSiteParamsError('name is required');
   }
+  const pantheonSiteId = normalizePantheonSiteId(params.pantheonSiteId);
   if (params.url !== undefined) {
     assertValidUrl(params.url);
   }
@@ -264,7 +274,7 @@ export async function createSite(
        VALUES ($1, $2, $3, $4, $5)
        RETURNING *`,
       [
-        params.pantheonSiteId,
+        pantheonSiteId,
         params.name,
         params.url ?? null,
         JSON.stringify(workflowSettings),
@@ -336,8 +346,8 @@ export async function createSite(
     return site;
   } catch (error) {
     await query('ROLLBACK');
-    if (isUniqueConstraintViolation(error)) {
-      throw new DuplicatePantheonSiteIdError(params.pantheonSiteId);
+    if (isUniqueConstraintViolation(error) && pantheonSiteId !== null) {
+      throw new DuplicatePantheonSiteIdError(pantheonSiteId);
     }
     throw error;
   }
@@ -408,6 +418,9 @@ export async function updateSite(
     assertValidUrl(urlValue);
   }
 
+  const pantheonSiteIdProvided = 'pantheonSiteId' in updates;
+  const pantheonSiteIdValue = normalizePantheonSiteId(updates.pantheonSiteId);
+
   const wantUrlChangeDetection = env !== undefined && urlProvided;
   let priorUrl: string | undefined;
 
@@ -426,23 +439,27 @@ export async function updateSite(
       ...updates.workflowSettings,
     };
 
-    const result = await query<SiteRow>(
+    const result = await runSiteUpdate(
       `UPDATE app.sites
        SET name = COALESCE($1, name),
            url = CASE WHEN $2::boolean THEN $3 ELSE url END,
-           workflow_settings = $4,
-           allowed_origins = COALESCE($5::text[], allowed_origins),
+           pantheon_site_id = CASE WHEN $4::boolean THEN $5 ELSE pantheon_site_id END,
+           workflow_settings = $6,
+           allowed_origins = COALESCE($7::text[], allowed_origins),
            updated_at = NOW()
-       WHERE id = $6
+       WHERE id = $8
        RETURNING *`,
       [
         updates.name ?? null,
         urlProvided,
         urlValue,
+        pantheonSiteIdProvided,
+        pantheonSiteIdValue,
         JSON.stringify(mergedSettings),
         updates.allowedOrigins ?? null,
         siteId,
       ],
+      pantheonSiteIdValue,
     );
 
     const updatedRow1 = result.rows[0];
@@ -460,21 +477,25 @@ export async function updateSite(
     priorUrl = existing?.url;
   }
 
-  const result = await query<SiteRow>(
+  const result = await runSiteUpdate(
     `UPDATE app.sites
      SET name = COALESCE($1, name),
          url = CASE WHEN $2::boolean THEN $3 ELSE url END,
-         allowed_origins = COALESCE($4::text[], allowed_origins),
+         pantheon_site_id = CASE WHEN $4::boolean THEN $5 ELSE pantheon_site_id END,
+         allowed_origins = COALESCE($6::text[], allowed_origins),
          updated_at = NOW()
-     WHERE id = $5
+     WHERE id = $7
      RETURNING *`,
     [
       updates.name ?? null,
       urlProvided,
       urlValue,
+      pantheonSiteIdProvided,
+      pantheonSiteIdValue,
       updates.allowedOrigins ?? null,
       siteId,
     ],
+    pantheonSiteIdValue,
   );
 
   const updatedRow2 = result.rows[0];
@@ -485,6 +506,23 @@ export async function updateSite(
   const updated = mapRowToSite(updatedRow2);
   await maybeEnqueueOnUrlChange(env, updated, priorUrl);
   return updated;
+}
+
+// Runs an update statement that may touch pantheon_site_id, translating its
+// unique-constraint violation into the domain error the routes map to a 409.
+async function runSiteUpdate(
+  sql: string,
+  values: unknown[],
+  pantheonSiteIdValue: string | null,
+): Promise<{ rows: SiteRow[] }> {
+  try {
+    return await query<SiteRow>(sql, values);
+  } catch (error) {
+    if (isUniqueConstraintViolation(error) && pantheonSiteIdValue !== null) {
+      throw new DuplicatePantheonSiteIdError(pantheonSiteIdValue);
+    }
+    throw error;
+  }
 }
 
 async function maybeEnqueueOnUrlChange(

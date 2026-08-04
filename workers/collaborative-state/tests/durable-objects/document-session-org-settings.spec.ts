@@ -328,7 +328,7 @@ describe('Phase 5: Organization Settings Integration', () => {
       // Check if agent can edit (should be denied due to recent activity)
       const request = new Request('http://localhost/can-agent-edit', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'X-Verified-Actor-Id': 'agent-123', 'Content-Type': 'application/json' },
         body: JSON.stringify({
           agentId: 'agent-123',
           trigger: 'autonomous',

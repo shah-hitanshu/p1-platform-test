@@ -8,6 +8,7 @@ import type {
   CompletionUsage,
   FnToolCall,
   ModelTransport,
+  StreamHandlers,
   TransportConfig,
 } from './model.js';
 
@@ -40,12 +41,11 @@ function coerceText(content: unknown): string {
 type Intermediate = { role: 'user' | 'assistant'; content: Anthropic.ContentBlockParam[] };
 
 /**
- * Convert OpenAI-shaped history to Anthropic messages, applying the rules that keep the
- * request valid: empty assistant text blocks are omitted (Anthropic rejects them), tool
- * results become `tool_result` blocks inside a user message, orphaned tool results (no
- * matching `tool_use`) are dropped, and consecutive same-role messages are merged
- * (Anthropic requires strict user/assistant alternation and all tool_results for one
- * assistant turn in a single user message).
+ * Convert OpenAI-shaped history to Anthropic messages: drop empty assistant text blocks and
+ * orphaned tool results, turn results into `tool_result` blocks inside a user message, and
+ * merge consecutive same-role messages (Anthropic requires strict alternation).
+ *
+ * Live whenever `AGENT_MODEL` carries an `anthropic/` prefix, which selects this transport.
  */
 export function toAnthropicMessages(history: ChatMessage[]): Anthropic.MessageParam[] {
   const seenToolUseIds = new Set<string>();
@@ -193,14 +193,37 @@ export class AnthropicTransport implements ModelTransport {
     this.tools = toAnthropicTools(cfg.tools);
   }
 
-  async complete(req: CompletionRequest): Promise<CompletionResult> {
-    const msg = await this.client.messages.create({
+  /** Request body shared by the streaming and non-streaming paths, so cache breakpoints can't drift between them. */
+  private body(req: CompletionRequest): Omit<Anthropic.MessageCreateParams, 'stream'> {
+    return {
       model: this.model,
       max_tokens: req.maxTokens,
       system: [{ type: 'text', text: req.system, cache_control: EPHEMERAL }],
       tools: this.tools,
       messages: withRollingBreakpoint(toAnthropicMessages(req.messages)),
-    });
-    return fromAnthropicResponse(msg);
+    };
+  }
+
+  async complete(req: CompletionRequest): Promise<CompletionResult> {
+    return fromAnthropicResponse(await this.client.messages.create(this.body(req)));
+  }
+
+  async stream(
+    req: CompletionRequest,
+    handlers: StreamHandlers,
+    signal?: AbortSignal,
+  ): Promise<CompletionResult> {
+    const stream = this.client.messages.stream(this.body(req), { signal });
+
+    for await (const event of stream) {
+      if (event.type === 'content_block_start' && event.content_block.type === 'tool_use') {
+        handlers.onToolCallStart({ id: event.content_block.id, name: event.content_block.name });
+      } else if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+        handlers.onText(event.delta.text);
+      }
+    }
+
+    // finalMessage() reassembles the blocks, so the non-streaming normalizer applies.
+    return fromAnthropicResponse(await stream.finalMessage());
   }
 }

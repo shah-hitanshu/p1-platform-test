@@ -37,6 +37,7 @@ import {
 import { handleInternalRoutes } from './routes/internal-api';
 import { handleBrokerRoutes } from './routes/broker-routes';
 import { getCachedSiteAllowedOrigins } from './services/site-service';
+import { stripInboundTrustedHeaders } from './utils/trusted-headers';
 
 // Queue consumer (Phase 5.1)
 import { handleSyncQueue } from './queues/sync-consumer';
@@ -76,6 +77,10 @@ export default {
       url.pathname = normalizedPathname;
       req = new Request(url.toString(), request);
     }
+
+    // Trusted identity headers are injected by this Worker after authentication;
+    // drop any a client supplied so they can never reach a Durable Object.
+    req = stripInboundTrustedHeaders(req);
 
     const path = normalizedPathname;
     const origin = req.headers.get('Origin');

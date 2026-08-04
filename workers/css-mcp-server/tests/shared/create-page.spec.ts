@@ -236,4 +236,97 @@ describe('create_page tool', () => {
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toContain('already exists');
   });
+
+  // Registry casing regression (PCC-3437 follow-up): registry document paths
+  // are lowercased server-side (normalizePath), but the descriptor snapshot
+  // preserves the component's real case. Validation must key/lookup off that
+  // preserved-case name, not the lowercased path, so a PascalCase component
+  // type like "LeadCapture" is not rejected as unknown_component_type.
+  describe('with validation enabled — registry casing', () => {
+    const validatingConfig = {
+      baseUrl: 'http://localhost:8787',
+      agentId: 'agent-1',
+      agentApiKey: 'aak_test',
+      enableValidation: true,
+    };
+
+    it('accepts a PascalCase component type even though its registry path was lowercased', async () => {
+      const { McpApiClient } = await import('../../src/shared/api-client.js');
+      const { createToolHandlers } = await import('../../src/shared/tools.js');
+      const client = new McpApiClient(validatingConfig);
+      const handlers = createToolHandlers(client);
+
+      // 1. listDocuments at the registry path prefix — path is lowercased
+      //    server-side, so it reads "leadcapture" even though the component's
+      //    real name is "LeadCapture".
+      mockFetch.mockResolvedValueOnce(createMockResponse(true, {
+        documents: [
+          { id: 'doc-lc', path: '/_registry/components/leadcapture', siteId: 'site-1', archived: false, createdAt: '', updatedAt: '' },
+        ],
+      }));
+
+      // 2. getDocumentLatestVersion for that doc — the snapshot body preserves
+      //    the real, original-case name.
+      mockFetch.mockResolvedValueOnce(createMockResponse(true, {
+        id: 'ver-1',
+        documentId: 'doc-lc',
+        versionNumber: 1,
+        snapshot: {
+          name: 'LeadCapture',
+          defaultProps: { headline: '' },
+          fields: [{ name: 'headline', type: 'text' }],
+        },
+      }));
+
+      // 3. The actual document + version creation call.
+      mockFetch.mockResolvedValueOnce(createMockResponse(
+        true,
+        {
+          document: { id: 'doc-new', path: '/landing', siteId: 'site-1', archived: false, createdAt: '', updatedAt: '' },
+          version: { id: 'ver-2', versionNumber: 1, snapshot: {}, documentId: 'doc-new', branchId: 'branch-1', source: 'edit', createdById: '', createdByType: 'agent', createdAt: '' },
+        },
+        201,
+      ));
+
+      const result = await handlers.create_page({
+        site_id: 'site-1',
+        branch_id: 'branch-1',
+        document_path: '/landing',
+        components: [{ type: 'LeadCapture', props: { headline: 'Sign up' } }],
+      });
+
+      expect(result.content[0].text).not.toContain('unknown_component_type');
+      expect(result.isError).toBeFalsy();
+      expect(mockFetch).toHaveBeenCalledTimes(3);
+    });
+
+    it('rejects a genuinely unknown component type even with a populated registry', async () => {
+      const { McpApiClient } = await import('../../src/shared/api-client.js');
+      const { createToolHandlers } = await import('../../src/shared/tools.js');
+      const client = new McpApiClient(validatingConfig);
+      const handlers = createToolHandlers(client);
+
+      mockFetch.mockResolvedValueOnce(createMockResponse(true, {
+        documents: [
+          { id: 'doc-lc', path: '/_registry/components/leadcapture', siteId: 'site-1', archived: false, createdAt: '', updatedAt: '' },
+        ],
+      }));
+      mockFetch.mockResolvedValueOnce(createMockResponse(true, {
+        id: 'ver-1',
+        documentId: 'doc-lc',
+        versionNumber: 1,
+        snapshot: { name: 'LeadCapture', defaultProps: {} },
+      }));
+
+      const result = await handlers.create_page({
+        site_id: 'site-1',
+        branch_id: 'branch-1',
+        document_path: '/landing',
+        components: [{ type: 'TotallyMadeUp', props: {} }],
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('unknown_component_type');
+    });
+  });
 });

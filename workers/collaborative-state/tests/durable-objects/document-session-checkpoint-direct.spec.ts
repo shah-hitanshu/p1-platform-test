@@ -1,8 +1,8 @@
 /**
  * Phase 6.3: Checkpoint Bypass for Queue Tests
  *
- * Tests that DocumentSession checkpoint methods (createAgentPreEditCheckpoint,
- * createAgentPostEditCheckpoint, rollbackToAgentCheckpoint) use direct
+ * Tests that DocumentSession checkpoint methods (createSessionPreEditCheckpoint,
+ * createSessionPostEditCheckpoint, rollbackToSessionCheckpoint) use direct
  * Hyperdrive database access when available, falling back to HTTP.
  *
  * Key behaviors:
@@ -208,12 +208,12 @@ describe('Phase 6.3: Checkpoint Bypass for Queue', () => {
       const snapshotReq = new Request('http://localhost/snapshot');
       await session.fetch(snapshotReq);
 
-      // Trigger agent-edit-start which calls createAgentPreEditCheckpoint
+      // Trigger agent-edit-start which calls createSessionPreEditCheckpoint
       const editStartReq = new Request(
         'http://localhost/agent-edit-start',
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'X-Verified-Actor-Id': 'agent-1', 'Content-Type': 'application/json' },
           body: JSON.stringify({
             agentId: 'agent-1',
             trigger: 'autonomous',
@@ -233,7 +233,7 @@ describe('Phase 6.3: Checkpoint Bypass for Queue', () => {
       expect(checkpointService.createCheckpoint).toHaveBeenCalledWith(
         expect.objectContaining({
           branchId: 'cccccccc-0000-4000-8000-000000000001',
-          checkpointType: 'agent_pre_edit',
+          checkpointType: 'session_pre_edit',
           createdById: 'agent-1',
           createdByType: 'agent',
         }),
@@ -283,7 +283,7 @@ describe('Phase 6.3: Checkpoint Bypass for Queue', () => {
         'http://localhost/agent-edit-start',
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'X-Verified-Actor-Id': 'agent-1', 'Content-Type': 'application/json' },
           body: JSON.stringify({
             agentId: 'agent-1',
             trigger: 'autonomous',
@@ -300,7 +300,7 @@ describe('Phase 6.3: Checkpoint Bypass for Queue', () => {
         'http://localhost/agent-edit-complete',
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'X-Verified-Actor-Id': 'agent-1', 'Content-Type': 'application/json' },
           body: JSON.stringify({
             editSessionId: startResult.editSessionId,
           }),
@@ -316,7 +316,7 @@ describe('Phase 6.3: Checkpoint Bypass for Queue', () => {
         checkpointService.createCheckpoint as ReturnType<typeof vi.fn>
       ).mock.calls[1][0];
       expect(secondCall).toMatchObject({
-        checkpointType: 'agent_post_edit',
+        checkpointType: 'session_post_edit',
         createdById: 'agent-1',
       });
     });
@@ -368,7 +368,7 @@ describe('Phase 6.3: Checkpoint Bypass for Queue', () => {
         'http://localhost/agent-edit-start',
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'X-Verified-Actor-Id': 'agent-1', 'Content-Type': 'application/json' },
           body: JSON.stringify({
             agentId: 'agent-1',
             trigger: 'autonomous',
@@ -440,7 +440,7 @@ describe('Phase 6.3: Checkpoint Bypass for Queue', () => {
         'http://localhost/agent-edit-start',
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'X-Verified-Actor-Id': 'agent-1', 'Content-Type': 'application/json' },
           body: JSON.stringify({
             agentId: 'agent-1',
             trigger: 'autonomous',
@@ -482,7 +482,7 @@ describe('Phase 6.3: Checkpoint Bypass for Queue', () => {
         'http://localhost/agent-edit-start',
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'X-Verified-Actor-Id': 'agent-1', 'Content-Type': 'application/json' },
           body: JSON.stringify({
             agentId: 'agent-1',
             trigger: 'autonomous',

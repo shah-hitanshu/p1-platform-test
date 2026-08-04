@@ -57,7 +57,7 @@ interface OrganizationRow {
  */
 interface SiteRow {
   id: string;
-  pantheon_site_id: string;
+  pantheon_site_id: string | null;
   organization_id: string | null;
   name: string;
   url: string | null;
@@ -176,7 +176,7 @@ function mapRowToOrganization(row: OrganizationRow): Organization {
 function mapRowToSite(row: SiteRow): Site {
   return {
     id: row.id,
-    pantheonSiteId: row.pantheon_site_id,
+    pantheonSiteId: row.pantheon_site_id ?? undefined,
     organizationId: row.organization_id ?? undefined,
     name: row.name,
     url: row.url ?? undefined,

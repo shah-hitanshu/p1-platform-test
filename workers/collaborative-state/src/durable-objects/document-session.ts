@@ -18,8 +18,8 @@ import {
   BROADCAST_DEBOUNCE_MS,
   MAX_EDIT_SESSION_AGE_MS,
 } from '../constants/security-limits';
-import { AgentEditPermissionService } from '../services/agent-edit-permission-service';
-import type { AgentEditSession, SessionInfo, DocumentSessionEnv } from './document-session-types';
+import { EditPermissionService } from '../services/edit-permission-service';
+import type { EditSession, SessionInfo, DocumentSessionEnv } from './document-session-types';
 import { YDOC_STORAGE_KEY, EDIT_SESSIONS_STORAGE_KEY, BRANCH_VERSION_STORAGE_KEY } from './document-session-types';
 import { PostgresSyncManager } from './postgres-sync-manager';
 import {
@@ -37,8 +37,9 @@ import {
 } from './websocket-utils';
 import {
   persistEditSessions as persistEditSessionsFn,
+  parseStoredEditSessions,
 } from './edit-session-store';
-import { rollbackToAgentCheckpoint } from './agent-checkpoint-client';
+import { rollbackToSessionCheckpoint } from './session-checkpoint-client';
 import {
   persistPresence as persistPresenceFn,
   restorePresence as restorePresenceFn,
@@ -136,8 +137,8 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
   private presenceManager: PresenceManager;
   private presencePersistPending = false;
   private readonly activityDetector: ActivityDetector;
-  private readonly agentEditPermissionService: AgentEditPermissionService;
-  private readonly editSessions = new Map<string, AgentEditSession>();
+  private readonly editPermissionService: EditPermissionService;
+  private readonly editSessions = new Map<string, EditSession>();
   private cachedOrganization: Organization | null | undefined = undefined;
   private orgSettingsLoaded = false;
 
@@ -148,7 +149,7 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
     this.initialized = false;
     this.presenceManager = new PresenceManager();
     this.activityDetector = new ActivityDetector({ idleTimeoutMs: DEFAULT_IDLE_TIMEOUT_MS });
-    this.agentEditPermissionService = new AgentEditPermissionService({
+    this.editPermissionService = new EditPermissionService({
       activityDetector: this.activityDetector,
     });
     this.syncManager = new PostgresSyncManager(
@@ -356,9 +357,12 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
       const allPresences = this.presenceManager.getAll();
       let orphanedCount = 0;
       for (const presence of allPresences) {
+        // Only agents are reaped here: an agent editing always has a session
+        // behind it, whereas a person can be editing over a websocket with no
+        // session at all. Abandoned human presence expires by staleness instead.
         if (presence.actorType === 'agent' && presence.state === 'editing') {
           const hasSession = Array.from(this.editSessions.values()).some(
-            (s) => s.agentId === presence.actorId,
+            (s) => s.ownerId === presence.actorId,
           );
           if (!hasSession) {
             this.presenceManager.unregisterByActorId(presence.actorId);
@@ -508,27 +512,28 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
    */
   private async restoreEditSessions(): Promise<void> {
     try {
-      const stored = await this.state.storage.get(EDIT_SESSIONS_STORAGE_KEY);
-      if (typeof stored !== 'string') {
+      const sessions = parseStoredEditSessions(
+        await this.state.storage.get(EDIT_SESSIONS_STORAGE_KEY),
+      );
+      if (sessions.size === 0) {
         return;
       }
 
-      const sessions = JSON.parse(stored) as Record<string, AgentEditSession>;
       const now = Date.now();
       let expiredCount = 0;
       let rolledBackCount = 0;
 
-      for (const [key, session] of Object.entries(sessions)) {
+      for (const [key, session] of sessions) {
         // Roll back and discard sessions that have exceeded the maximum age
         if (now - session.startedAt > MAX_EDIT_SESSION_AGE_MS) {
           expiredCount++;
           if (session.checkpointId !== undefined) {
             try {
-              const rolledBack = await rollbackToAgentCheckpoint(
+              const rolledBack = await rollbackToSessionCheckpoint(
                 this.env,
                 this.sessionInfo,
                 session.checkpointId,
-                session.agentId,
+                { id: session.ownerId, type: session.ownerType },
                 'Expired edit session rolled back on DO restore',
               );
               if (rolledBack) {
@@ -546,7 +551,7 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
             }
           }
           // Clean up presence for the expired agent
-          this.presenceManager.unregisterByActorId(session.agentId);
+          this.presenceManager.unregisterByActorId(session.ownerId);
           continue;
         }
         this.editSessions.set(key, session);
@@ -789,7 +794,7 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
       editSessions: this.editSessions,
       presenceManager: this.presenceManager,
       activityDetector: this.activityDetector,
-      agentEditPermissionService: this.agentEditPermissionService,
+      editPermissionService: this.editPermissionService,
       cachedOrganization: this.cachedOrganization,
       getConnectionCount: () => this.getConnectionCount(),
       persistEditSessions: () => this.persistEditSessions(),

@@ -46,6 +46,25 @@ describe('Agent Politeness Phase 7.1: Agent Context Parser', () => {
         expect(result?.trigger).toBeUndefined();
       });
 
+      it('should parse declarative fields when X-Agent-Id is absent', async () => {
+        const { parseAgentContext } = await import(
+          '../../src/services/agent-context-service'
+        );
+        const headers = new Headers({
+          'X-Agent-Trigger': 'autonomous',
+          'X-Agent-Intent': 'Scheduled refresh',
+          'X-Agent-Target-Regions': '/content',
+        });
+
+        const result = parseAgentContext(headers);
+
+        expect(result).not.toBeNull();
+        expect(result?.agentId).toBeUndefined();
+        expect(result?.trigger).toBe('autonomous');
+        expect(result?.intent).toBe('Scheduled refresh');
+        expect(result?.targetRegions).toEqual(['/content']);
+      });
+
       it('should parse full agent context with all headers', async () => {
         const { parseAgentContext } = await import(
           '../../src/services/agent-context-service'
@@ -155,7 +174,7 @@ describe('Agent Politeness Phase 7.1: Agent Context Parser', () => {
 
   describe('validateAgentContext', () => {
     describe('agentId validation', () => {
-      it('should reject empty agentId', async () => {
+      it('accepts an absent agentId since it is declarative only', async () => {
         const { validateAgentContext } = await import(
           '../../src/services/agent-context-service'
         );
@@ -165,8 +184,7 @@ describe('Agent Politeness Phase 7.1: Agent Context Parser', () => {
 
         const result = validateAgentContext(context);
 
-        expect(result.valid).toBe(false);
-        expect(result.errors).toContain('agentId is required');
+        expect(result.errors).not.toContain('agentId is required');
       });
 
       it('should reject agentId exceeding max length', async () => {

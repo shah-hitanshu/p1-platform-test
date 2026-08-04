@@ -1,12 +1,13 @@
 /**
- * Phase 7.3: Realtime API Agent Headers Integration - TDD Tests
+ * Realtime API agent context integration.
  *
- * Tests for integrating X-Agent-* headers into the Realtime API endpoints.
- * Agents can provide context via headers in addition to request body params,
- * ensuring consistency with the REST API pattern.
+ * The acting agent's identity is derived from the verified credential on the
+ * authenticated principal. Declarative context (trigger, intent, operation
+ * type, target regions) arrives via X-Agent-* headers or body params, with
+ * body params taking precedence. A caller-supplied X-Agent-Id is ignored for
+ * identity and never reaches the Durable Object.
  *
- * Headers supported:
- * - X-Agent-Id: agent UUID
+ * Declarative headers:
  * - X-Agent-Trigger: human_requested | autonomous
  * - X-Agent-Requested-By: user UUID (when human_requested)
  * - X-Agent-Intent: description of what agent is doing
@@ -17,6 +18,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { RealtimeRouteContext } from '../../src/routes/realtime-api';
 import type { AuthenticatedPrincipal, Branch } from '../../src/types';
+import type { RealtimeEnv } from '../../src/routes/realtime-utils';
 
 // Phase 7.4: Mock the agent service for status validation
 vi.mock('../../src/services/agent-service', () => ({
@@ -123,17 +125,26 @@ interface MockEnv {
   CORS_ORIGINS?: string;
 }
 
-const defaultPrincipal: AuthenticatedPrincipal = {
+const agentPrincipal: AuthenticatedPrincipal = {
+  id: 'agent-from-key',
+  type: 'agent',
+  pantheonSiteRoles: { 'site-1': 'admin', 'site-123': 'admin' },
+  tokenExpiry: new Date(Date.now() + 3600000).toISOString(),
+  authProvider: 'agent_key',
+};
+const agentContext: RealtimeRouteContext = { principal: agentPrincipal };
+
+const userPrincipal: AuthenticatedPrincipal = {
   id: 'test-actor',
   type: 'user',
   email: 'test@example.com',
-  pantheonSiteRoles: { 'site-123': 'admin' },
+  pantheonSiteRoles: { 'site-1': 'admin', 'site-123': 'admin' },
   tokenExpiry: new Date(Date.now() + 3600000).toISOString(),
   authProvider: 'mock',
 };
-const defaultContext: RealtimeRouteContext = { principal: defaultPrincipal };
+const userContext: RealtimeRouteContext = { principal: userPrincipal };
 
-describe('Phase 7.3: Realtime API Agent Headers Integration', () => {
+describe('Realtime API agent context integration', () => {
   let mockEnv: MockEnv;
   let mockStub: MockDurableObjectStub;
   let mockId: MockDurableObjectId;
@@ -187,7 +198,7 @@ describe('Phase 7.3: Realtime API Agent Headers Integration', () => {
   });
 
   describe('CORS header allowlist', () => {
-    it('should include X-Agent-* headers in Access-Control-Allow-Headers', async () => {
+    it('allows declarative agent headers but not the identity header', async () => {
       const { handleRealtimeRoutes } = await import('../../src/routes/realtime-api');
 
       const request = new Request(
@@ -197,24 +208,24 @@ describe('Phase 7.3: Realtime API Agent Headers Integration', () => {
           headers: {
             Origin: 'http://localhost:3000',
             'Access-Control-Request-Method': 'POST',
-            'Access-Control-Request-Headers': 'X-Agent-Id, X-Agent-Trigger',
+            'Access-Control-Request-Headers': 'X-Agent-Trigger',
           },
         },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
+      const result = await handleRealtimeRoutes(request, mockEnv, agentContext);
       const response = assertNotNull(result);
 
       expect(response.status).toBe(204);
       const allowedHeaders = response.headers.get('Access-Control-Allow-Headers');
       expect(allowedHeaders).toBeDefined();
-      expect(allowedHeaders).toContain('X-Agent-Id');
       expect(allowedHeaders).toContain('X-Agent-Trigger');
+      expect(allowedHeaders).not.toContain('X-Agent-Id');
     });
   });
 
-  describe('Headers-only agent context for /can-agent-edit', () => {
-    it('should accept agent context from X-Agent-* headers only', async () => {
+  describe('Declarative agent context via X-Agent-* headers for /can-agent-edit', () => {
+    it('derives identity from the key and takes declarative fields from headers', async () => {
       const { handleRealtimeRoutes } = await import('../../src/routes/realtime-api');
 
       const request = new Request(
@@ -223,24 +234,23 @@ describe('Phase 7.3: Realtime API Agent Headers Integration', () => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'X-Agent-Id': 'agent-123',
+            'X-Agent-Id': 'spoofed-agent',
             'X-Agent-Trigger': 'human_requested',
             'X-Agent-Requested-By': 'user-456',
             'X-Agent-Intent': 'Update page title',
             'X-Agent-Target-Regions': '/content/title, /content/description',
           },
-          body: JSON.stringify({}), // Empty body - all context from headers
+          body: JSON.stringify({}),
         },
       );
 
-      await handleRealtimeRoutes(request, mockEnv, defaultContext);
+      await handleRealtimeRoutes(request, mockEnv, agentContext);
 
-      // Verify DO was called with merged context
       expect(mockStub.fetch).toHaveBeenCalled();
       const fetchedRequest = mockStub.fetch.mock.calls[0][0] as Request;
       const body = await fetchedRequest.json();
 
-      expect(body.agentId).toBe('agent-123');
+      expect(body.agentId).toBe('agent-from-key');
       expect(body.trigger).toBe('human_requested');
       expect(body.intent).toBe('Update page title');
       expect(body.targetRegions).toContain('/content/title');
@@ -256,7 +266,6 @@ describe('Phase 7.3: Realtime API Agent Headers Integration', () => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'X-Agent-Id': 'agent-123',
             'X-Agent-Trigger': 'autonomous',
             'X-Agent-Intent': 'Reorganize content',
             'X-Agent-Target-Regions': '/a, /b, /c',
@@ -265,7 +274,7 @@ describe('Phase 7.3: Realtime API Agent Headers Integration', () => {
         },
       );
 
-      await handleRealtimeRoutes(request, mockEnv, defaultContext);
+      await handleRealtimeRoutes(request, mockEnv, agentContext);
 
       const fetchedRequest = mockStub.fetch.mock.calls[0][0] as Request;
       const body = await fetchedRequest.json();
@@ -276,7 +285,7 @@ describe('Phase 7.3: Realtime API Agent Headers Integration', () => {
       expect(body.targetRegions).toContain('/c');
     });
 
-    it('should handle case-insensitive headers', async () => {
+    it('should handle case-insensitive declarative headers', async () => {
       const { handleRealtimeRoutes } = await import('../../src/routes/realtime-api');
 
       const request = new Request(
@@ -285,7 +294,6 @@ describe('Phase 7.3: Realtime API Agent Headers Integration', () => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'x-agent-id': 'agent-lowercase',
             'x-agent-trigger': 'autonomous',
             'x-agent-intent': 'Test case insensitivity',
             'x-agent-target-regions': '/test',
@@ -294,18 +302,18 @@ describe('Phase 7.3: Realtime API Agent Headers Integration', () => {
         },
       );
 
-      await handleRealtimeRoutes(request, mockEnv, defaultContext);
+      await handleRealtimeRoutes(request, mockEnv, agentContext);
 
       const fetchedRequest = mockStub.fetch.mock.calls[0][0] as Request;
       const body = await fetchedRequest.json();
 
-      expect(body.agentId).toBe('agent-lowercase');
+      expect(body.agentId).toBe('agent-from-key');
       expect(body.trigger).toBe('autonomous');
     });
   });
 
-  describe('Body params override headers', () => {
-    it('should use body param when both header and body provide agentId', async () => {
+  describe('Body params override headers for declarative fields', () => {
+    it('uses body declarative params over headers; identity stays the key', async () => {
       const { handleRealtimeRoutes } = await import('../../src/routes/realtime-api');
 
       const request = new Request(
@@ -320,7 +328,7 @@ describe('Phase 7.3: Realtime API Agent Headers Integration', () => {
             'X-Agent-Target-Regions': '/header/region',
           },
           body: JSON.stringify({
-            agentId: 'body-agent', // Body takes precedence
+            agentId: 'body-agent',
             trigger: 'human_requested',
             intent: 'Body intent',
             targetRegions: ['/body/region'],
@@ -328,12 +336,12 @@ describe('Phase 7.3: Realtime API Agent Headers Integration', () => {
         },
       );
 
-      await handleRealtimeRoutes(request, mockEnv, defaultContext);
+      await handleRealtimeRoutes(request, mockEnv, agentContext);
 
       const fetchedRequest = mockStub.fetch.mock.calls[0][0] as Request;
       const body = await fetchedRequest.json();
 
-      expect(body.agentId).toBe('body-agent');
+      expect(body.agentId).toBe('agent-from-key');
       expect(body.trigger).toBe('human_requested');
       expect(body.intent).toBe('Body intent');
       expect(body.targetRegions).toEqual(['/body/region']);
@@ -348,32 +356,30 @@ describe('Phase 7.3: Realtime API Agent Headers Integration', () => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'X-Agent-Id': 'agent-from-header',
             'X-Agent-Trigger': 'autonomous',
-            'X-Agent-Intent': 'Intent from header',
+            'X-Agent-Intent': 'Header intent',
             'X-Agent-Target-Regions': '/header/region',
           },
           body: JSON.stringify({
-            // Only override intent, use header values for the rest
-            intent: 'Overridden intent from body',
+            intent: 'Body intent',
           }),
         },
       );
 
-      await handleRealtimeRoutes(request, mockEnv, defaultContext);
+      await handleRealtimeRoutes(request, mockEnv, agentContext);
 
       const fetchedRequest = mockStub.fetch.mock.calls[0][0] as Request;
       const body = await fetchedRequest.json();
 
-      expect(body.agentId).toBe('agent-from-header');
+      expect(body.agentId).toBe('agent-from-key');
       expect(body.trigger).toBe('autonomous');
-      expect(body.intent).toBe('Overridden intent from body'); // Body overrides
-      expect(body.targetRegions).toContain('/header/region'); // From header
+      expect(body.intent).toBe('Body intent');
+      expect(body.targetRegions).toEqual(['/header/region']);
     });
   });
 
-  describe('Headers-only agent context for /agent-edit-start', () => {
-    it('should accept agent context from headers for agent-edit-start', async () => {
+  describe('Declarative agent context for /agent-edit-start', () => {
+    it('derives identity from the key for agent-edit-start', async () => {
       const { handleRealtimeRoutes } = await import('../../src/routes/realtime-api');
 
       const request = new Request(
@@ -382,7 +388,7 @@ describe('Phase 7.3: Realtime API Agent Headers Integration', () => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'X-Agent-Id': 'agent-start',
+            'X-Agent-Id': 'spoofed-agent',
             'X-Agent-Trigger': 'autonomous',
             'X-Agent-Intent': 'Starting autonomous work',
             'X-Agent-Target-Regions': '/content',
@@ -391,12 +397,12 @@ describe('Phase 7.3: Realtime API Agent Headers Integration', () => {
         },
       );
 
-      await handleRealtimeRoutes(request, mockEnv, defaultContext);
+      await handleRealtimeRoutes(request, mockEnv, agentContext);
 
       const fetchedRequest = mockStub.fetch.mock.calls[0][0] as Request;
       const body = await fetchedRequest.json();
 
-      expect(body.agentId).toBe('agent-start');
+      expect(body.agentId).toBe('agent-from-key');
       expect(body.trigger).toBe('autonomous');
       expect(body.intent).toBe('Starting autonomous work');
     });
@@ -412,7 +418,6 @@ describe('Phase 7.3: Realtime API Agent Headers Integration', () => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'X-Agent-Id': 'agent-123',
             'X-Agent-Trigger': 'autonomous',
             'X-Agent-Intent': 'Refactoring content',
             'X-Agent-Operation-Type': 'content_update',
@@ -422,7 +427,7 @@ describe('Phase 7.3: Realtime API Agent Headers Integration', () => {
         },
       );
 
-      await handleRealtimeRoutes(request, mockEnv, defaultContext);
+      await handleRealtimeRoutes(request, mockEnv, agentContext);
 
       const fetchedRequest = mockStub.fetch.mock.calls[0][0] as Request;
       const body = await fetchedRequest.json();
@@ -431,18 +436,15 @@ describe('Phase 7.3: Realtime API Agent Headers Integration', () => {
     });
   });
 
-  describe('Validation with headers', () => {
-    it('should return 400 when agentId is missing from both headers and body', async () => {
+  describe('Validation', () => {
+    it('succeeds without an agentId in body or header when authenticated as an agent', async () => {
       const { handleRealtimeRoutes } = await import('../../src/routes/realtime-api');
 
       const request = new Request(
         'https://example.com/api/sites/site-1/branches/branch-1/documents/page/can-agent-edit',
         {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Agent-Trigger': 'autonomous',
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             trigger: 'autonomous',
             intent: 'Test',
@@ -451,12 +453,11 @@ describe('Phase 7.3: Realtime API Agent Headers Integration', () => {
         },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
-      const response = assertNotNull(result);
+      await handleRealtimeRoutes(request, mockEnv, agentContext);
 
-      expect(response.status).toBe(400);
-      const body = await response.json();
-      expect(body.error).toContain('agentId');
+      const fetchedRequest = mockStub.fetch.mock.calls[0][0] as Request;
+      const body = await fetchedRequest.json();
+      expect(body.agentId).toBe('agent-from-key');
     });
 
     it('should return 400 when trigger is invalid', async () => {
@@ -468,7 +469,6 @@ describe('Phase 7.3: Realtime API Agent Headers Integration', () => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'X-Agent-Id': 'agent-123',
             'X-Agent-Trigger': 'invalid_trigger',
             'X-Agent-Intent': 'Test',
             'X-Agent-Target-Regions': '/test',
@@ -477,40 +477,12 @@ describe('Phase 7.3: Realtime API Agent Headers Integration', () => {
         },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
+      const result = await handleRealtimeRoutes(request, mockEnv, agentContext);
       const response = assertNotNull(result);
 
       expect(response.status).toBe(400);
       const body = await response.json();
       expect(body.error).toContain('trigger');
-    });
-
-    it('should validate agentId length from header', async () => {
-      const { handleRealtimeRoutes } = await import('../../src/routes/realtime-api');
-
-      const longAgentId = 'a'.repeat(200); // Exceeds 128 char limit
-
-      const request = new Request(
-        'https://example.com/api/sites/site-1/branches/branch-1/documents/page/can-agent-edit',
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Agent-Id': longAgentId,
-            'X-Agent-Trigger': 'autonomous',
-            'X-Agent-Intent': 'Test',
-            'X-Agent-Target-Regions': '/test',
-          },
-          body: JSON.stringify({}),
-        },
-      );
-
-      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
-      const response = assertNotNull(result);
-
-      expect(response.status).toBe(400);
-      const body = await response.json();
-      expect(body.error).toContain('agentId');
     });
 
     it('should validate intent length from header', async () => {
@@ -524,7 +496,6 @@ describe('Phase 7.3: Realtime API Agent Headers Integration', () => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'X-Agent-Id': 'agent-123',
             'X-Agent-Trigger': 'autonomous',
             'X-Agent-Intent': longIntent,
             'X-Agent-Target-Regions': '/test',
@@ -533,7 +504,7 @@ describe('Phase 7.3: Realtime API Agent Headers Integration', () => {
         },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
+      const result = await handleRealtimeRoutes(request, mockEnv, agentContext);
       const response = assertNotNull(result);
 
       expect(response.status).toBe(400);
@@ -553,7 +524,6 @@ describe('Phase 7.3: Realtime API Agent Headers Integration', () => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'X-Agent-Id': 'agent-123',
             'X-Agent-Trigger': 'autonomous',
             'X-Agent-Intent': 'Test',
             'X-Agent-Target-Regions': manyRegions,
@@ -562,7 +532,7 @@ describe('Phase 7.3: Realtime API Agent Headers Integration', () => {
         },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
+      const result = await handleRealtimeRoutes(request, mockEnv, agentContext);
       const response = assertNotNull(result);
 
       expect(response.status).toBe(400);
@@ -581,23 +551,21 @@ describe('Phase 7.3: Realtime API Agent Headers Integration', () => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'X-Agent-Id': 'agent-123',
             'X-Agent-Trigger': 'autonomous',
             'X-Agent-Intent': 'Test',
-            'X-Agent-Target-Regions': '', // Empty
+            'X-Agent-Target-Regions': '',
           },
           body: JSON.stringify({
-            targetRegions: ['/from/body'], // Body provides regions
+            targetRegions: ['/from/body'],
           }),
         },
       );
 
-      await handleRealtimeRoutes(request, mockEnv, defaultContext);
+      await handleRealtimeRoutes(request, mockEnv, agentContext);
 
       const fetchedRequest = mockStub.fetch.mock.calls[0][0] as Request;
       const body = await fetchedRequest.json();
 
-      // Body regions should be used
       expect(body.targetRegions).toEqual(['/from/body']);
     });
 
@@ -610,7 +578,6 @@ describe('Phase 7.3: Realtime API Agent Headers Integration', () => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'X-Agent-Id': 'agent-123',
             'X-Agent-Trigger': 'autonomous',
             'X-Agent-Intent': 'Test without regions header',
           },
@@ -620,7 +587,7 @@ describe('Phase 7.3: Realtime API Agent Headers Integration', () => {
         },
       );
 
-      await handleRealtimeRoutes(request, mockEnv, defaultContext);
+      await handleRealtimeRoutes(request, mockEnv, agentContext);
 
       const fetchedRequest = mockStub.fetch.mock.calls[0][0] as Request;
       const body = await fetchedRequest.json();
@@ -629,121 +596,7 @@ describe('Phase 7.3: Realtime API Agent Headers Integration', () => {
     });
   });
 
-  describe('Backwards compatibility', () => {
-    it('should still work with body-only requests (no headers)', async () => {
-      const { handleRealtimeRoutes } = await import('../../src/routes/realtime-api');
-
-      const request = new Request(
-        'https://example.com/api/sites/site-1/branches/branch-1/documents/page/can-agent-edit',
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            // No X-Agent-* headers
-          },
-          body: JSON.stringify({
-            agentId: 'body-only-agent',
-            trigger: 'autonomous',
-            intent: 'Body-only request',
-            targetRegions: ['/body'],
-          }),
-        },
-      );
-
-      await handleRealtimeRoutes(request, mockEnv, defaultContext);
-
-      const fetchedRequest = mockStub.fetch.mock.calls[0][0] as Request;
-      const body = await fetchedRequest.json();
-
-      expect(body.agentId).toBe('body-only-agent');
-      expect(body.trigger).toBe('autonomous');
-      expect(body.intent).toBe('Body-only request');
-    });
-  });
-
-  describe('Forward headers to Durable Object', () => {
-    it('should forward X-Agent-* headers to Durable Object', async () => {
-      const { handleRealtimeRoutes } = await import('../../src/routes/realtime-api');
-
-      const request = new Request(
-        'https://example.com/api/sites/site-1/branches/branch-1/documents/page/can-agent-edit',
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Agent-Id': 'agent-for-do',
-            'X-Agent-Trigger': 'autonomous',
-            'X-Agent-Intent': 'Test header forwarding',
-            'X-Agent-Target-Regions': '/test',
-            'X-Agent-Operation-Type': 'test_operation',
-          },
-          body: JSON.stringify({}),
-        },
-      );
-
-      await handleRealtimeRoutes(request, mockEnv, defaultContext);
-
-      const fetchedRequest = mockStub.fetch.mock.calls[0][0] as Request;
-
-      // Headers should be forwarded
-      expect(fetchedRequest.headers.get('X-Agent-Id')).toBe('agent-for-do');
-      expect(fetchedRequest.headers.get('X-Agent-Trigger')).toBe('autonomous');
-      expect(fetchedRequest.headers.get('X-Agent-Intent')).toBe('Test header forwarding');
-      expect(fetchedRequest.headers.get('X-Agent-Operation-Type')).toBe('test_operation');
-    });
-  });
-
-  describe('/edits endpoint header support', () => {
-    it('should pass X-Agent-* headers through for /edits endpoint', async () => {
-      const { handleRealtimeRoutes } = await import('../../src/routes/realtime-api');
-
-      const editorContext: RealtimeRouteContext = {
-        principal: { ...defaultPrincipal, id: 'agent-editor' },
-      };
-
-      const request = new Request(
-        'https://example.com/api/sites/site-1/branches/branch-1/documents/page/edits',
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Actor-Id': 'agent-editor',
-            'X-Actor-Type': 'agent',
-            'X-Agent-Id': 'agent-editor',
-            'X-Agent-Trigger': 'human_requested',
-            'X-Agent-Requested-By': 'user-123',
-            'X-Agent-Intent': 'Editing on behalf of user',
-            'X-Agent-Target-Regions': '/content',
-          },
-          body: JSON.stringify({
-            operations: [{ type: 'set', path: 'title', value: 'Updated' }],
-            actorId: 'agent-editor',
-          }),
-        },
-      );
-
-      await handleRealtimeRoutes(request, mockEnv, editorContext);
-
-      const fetchedRequest = mockStub.fetch.mock.calls[0][0] as Request;
-
-      // Agent headers should be forwarded
-      expect(fetchedRequest.headers.get('X-Agent-Id')).toBe('agent-editor');
-      expect(fetchedRequest.headers.get('X-Agent-Trigger')).toBe('human_requested');
-      expect(fetchedRequest.headers.get('X-Agent-Requested-By')).toBe('user-123');
-    });
-  });
-
-  describe('Agent id derived from the authenticated key', () => {
-    const agentKeyContext: RealtimeRouteContext = {
-      principal: {
-        id: 'agent-from-key',
-        type: 'agent',
-        pantheonSiteRoles: { 'site-1': 'admin' },
-        tokenExpiry: new Date(Date.now() + 3600000).toISOString(),
-        authProvider: 'agent_key',
-      },
-    };
-
+  describe('Identity is the verified key, not the caller', () => {
     const editBody = {
       trigger: 'autonomous',
       intent: 'Autonomous edit',
@@ -762,7 +615,7 @@ describe('Phase 7.3: Realtime API Agent Headers Integration', () => {
         },
       );
 
-      await handleRealtimeRoutes(request, mockEnv, agentKeyContext);
+      await handleRealtimeRoutes(request, mockEnv, agentContext);
 
       const fetchedRequest = mockStub.fetch.mock.calls[0][0] as Request;
       const body = await fetchedRequest.json();
@@ -781,16 +634,14 @@ describe('Phase 7.3: Realtime API Agent Headers Integration', () => {
         },
       );
 
-      await handleRealtimeRoutes(request, mockEnv, agentKeyContext);
+      await handleRealtimeRoutes(request, mockEnv, agentContext);
 
       const fetchedRequest = mockStub.fetch.mock.calls[0][0] as Request;
       const body = await fetchedRequest.json();
       expect(body.agentId).toBe('agent-from-key');
     });
 
-    // TODO(PCC-3297): interim. Once X-Agent-Id is no longer read as an identity
-    // input, a mismatched header is ignored rather than 403'd — remove this test.
-    it('rejects an X-Agent-Id that conflicts with the authenticated agent', async () => {
+    it('ignores a conflicting X-Agent-Id header and uses the key identity', async () => {
       const { handleRealtimeRoutes } = await import('../../src/routes/realtime-api');
 
       const request = new Request(
@@ -802,12 +653,34 @@ describe('Phase 7.3: Realtime API Agent Headers Integration', () => {
         },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv, agentKeyContext);
-      const response = assertNotNull(result);
-      expect(response.status).toBe(403);
+      await handleRealtimeRoutes(request, mockEnv, agentContext);
+
+      const fetchedRequest = mockStub.fetch.mock.calls[0][0] as Request;
+      const body = await fetchedRequest.json();
+      expect(body.agentId).toBe('agent-from-key');
     });
 
-    it('does not derive an agent id for a non-agent principal', async () => {
+    it('ignores an agentId body field and uses the key identity', async () => {
+      const { handleRealtimeRoutes } = await import('../../src/routes/realtime-api');
+
+      const request = new Request(
+        'https://example.com/api/sites/site-1/branches/branch-1/documents/page/agent-edit-start',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...editBody, agentId: 'body-agent' }),
+        },
+      );
+
+      await handleRealtimeRoutes(request, mockEnv, agentContext);
+
+      const fetchedRequest = mockStub.fetch.mock.calls[0][0] as Request;
+      const body = await fetchedRequest.json();
+      expect(body.agentId).toBe('agent-from-key');
+    });
+
+    it('starts a session for a user principal without resolving an agent name', async () => {
+      const { getAgentById } = await import('../../src/services/agent-service');
       const { handleRealtimeRoutes } = await import('../../src/routes/realtime-api');
 
       const request = new Request(
@@ -819,9 +692,156 @@ describe('Phase 7.3: Realtime API Agent Headers Integration', () => {
         },
       );
 
-      const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
+      const result = await handleRealtimeRoutes(request, mockEnv, userContext);
       const response = assertNotNull(result);
-      expect(response.status).toBe(400);
+      expect(response.status).toBe(200);
+      expect(mockStub.fetch).toHaveBeenCalled();
+      expect(vi.mocked(getAgentById)).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Forward headers to Durable Object', () => {
+    const startBody = {
+      trigger: 'autonomous',
+      intent: 'Autonomous edit',
+      targetRegions: ['/content'],
+    };
+
+    it('forwards declarative X-Agent-* headers and the key-derived agentId to the DO', async () => {
+      const { handleRealtimeRoutes } = await import('../../src/routes/realtime-api');
+
+      const request = new Request(
+        'https://example.com/api/sites/site-1/branches/branch-1/documents/page/can-agent-edit',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Agent-Id': 'spoofed-agent',
+            'X-Agent-Trigger': 'autonomous',
+            'X-Agent-Intent': 'Test header forwarding',
+            'X-Agent-Target-Regions': '/test',
+            'X-Agent-Operation-Type': 'test_operation',
+          },
+          body: JSON.stringify({}),
+        },
+      );
+
+      await handleRealtimeRoutes(request, mockEnv, agentContext);
+
+      const fetchedRequest = mockStub.fetch.mock.calls[0][0] as Request;
+      const body = await fetchedRequest.json();
+
+      // Identity is the verified key regardless of the spoofed X-Agent-Id.
+      expect(body.agentId).toBe('agent-from-key');
+      expect(fetchedRequest.headers.get('X-Agent-Trigger')).toBe('autonomous');
+      expect(fetchedRequest.headers.get('X-Agent-Intent')).toBe('Test header forwarding');
+      expect(fetchedRequest.headers.get('X-Agent-Operation-Type')).toBe('test_operation');
+    });
+
+    it('forwards the acting user resolved for an agent principal', async () => {
+      const { handleRealtimeRoutes } = await import('../../src/routes/realtime-api');
+
+      const actingContext: RealtimeRouteContext = {
+        principal: {
+          ...agentPrincipal,
+          actingUserId: 'auth0|ada',
+          actingUserName: 'Ada Lovelace',
+        },
+      };
+
+      const request = new Request(
+        'https://example.com/api/sites/site-1/branches/branch-1/documents/page/agent-edit-start',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(startBody),
+        },
+      );
+
+      await handleRealtimeRoutes(request, mockEnv as unknown as RealtimeEnv, actingContext);
+
+      const fetchedRequest = mockStub.fetch.mock.calls[0]?.[0] as Request;
+      expect(fetchedRequest.headers.get('X-Verified-Requested-By-Id')).toBe('auth0|ada');
+      expect(fetchedRequest.headers.get('X-Verified-Requested-By-Name')).toBe('Ada Lovelace');
+    });
+
+    it('forwards no acting user for a principal that resolved none', async () => {
+      const { handleRealtimeRoutes } = await import('../../src/routes/realtime-api');
+
+      const request = new Request(
+        'https://example.com/api/sites/site-1/branches/branch-1/documents/page/agent-edit-start',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(startBody),
+        },
+      );
+
+      await handleRealtimeRoutes(request, mockEnv as unknown as RealtimeEnv, userContext);
+
+      const fetchedRequest = mockStub.fetch.mock.calls[0]?.[0] as Request;
+      expect(fetchedRequest.headers.get('X-Verified-Requested-By-Id')).toBeNull();
+      expect(fetchedRequest.headers.get('X-Verified-Requested-By-Name')).toBeNull();
+    });
+
+    it('drops an inbound requested-by header the caller supplied', async () => {
+      const { handleRealtimeRoutes } = await import('../../src/routes/realtime-api');
+
+      const request = new Request(
+        'https://example.com/api/sites/site-1/branches/branch-1/documents/page/agent-edit-start',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Verified-Requested-By-Id': 'auth0|forged',
+            'X-Verified-Requested-By-Name': 'Forged Requester',
+          },
+          body: JSON.stringify(startBody),
+        },
+      );
+
+      await handleRealtimeRoutes(request, mockEnv as unknown as RealtimeEnv, userContext);
+
+      const fetchedRequest = mockStub.fetch.mock.calls[0]?.[0] as Request;
+      expect(fetchedRequest.headers.get('X-Verified-Requested-By-Id')).toBeNull();
+      expect(fetchedRequest.headers.get('X-Verified-Requested-By-Name')).toBeNull();
+    });
+  });
+
+  describe('/edits endpoint header support', () => {
+    it('should pass X-Agent-* headers through for /edits endpoint', async () => {
+      const { handleRealtimeRoutes } = await import('../../src/routes/realtime-api');
+
+      const editorContext: RealtimeRouteContext = {
+        principal: { ...userPrincipal, id: 'agent-editor' },
+      };
+
+      const request = new Request(
+        'https://example.com/api/sites/site-1/branches/branch-1/documents/page/edits',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Actor-Id': 'agent-editor',
+            'X-Actor-Type': 'agent',
+            'X-Agent-Trigger': 'human_requested',
+            'X-Agent-Requested-By': 'user-123',
+            'X-Agent-Intent': 'Editing on behalf of user',
+            'X-Agent-Target-Regions': '/content',
+          },
+          body: JSON.stringify({
+            operations: [{ type: 'set', path: 'title', value: 'Updated' }],
+            actorId: 'agent-editor',
+          }),
+        },
+      );
+
+      await handleRealtimeRoutes(request, mockEnv, editorContext);
+
+      const fetchedRequest = mockStub.fetch.mock.calls[0]?.[0] as Request;
+
+      expect(fetchedRequest.headers.get('X-Agent-Trigger')).toBe('human_requested');
+      expect(fetchedRequest.headers.get('X-Agent-Requested-By')).toBe('user-123');
     });
   });
 });

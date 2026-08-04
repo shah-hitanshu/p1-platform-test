@@ -10,7 +10,11 @@
 import type { McpApiClientConfig, ActingUser } from './types.js';
 import { getBackendBreaker } from '../circuit-breaker.js';
 import type { ComponentSchema, TemplateSnapshot } from '@pantheon-systems/p1-content-validator';
-import { snapshotToComponentSchema } from '@pantheon-systems/p1-content-validator';
+import {
+  snapshotToComponentSchema,
+  registryComponentKey,
+  componentNameFromPath,
+} from '@pantheon-systems/p1-content-validator';
 
 // =============================================================================
 // Types
@@ -18,7 +22,7 @@ import { snapshotToComponentSchema } from '@pantheon-systems/p1-content-validato
 
 export interface SiteInfo {
   id: string;
-  pantheonSiteId: string;
+  pantheonSiteId?: string;
   name: string;
   createdAt: string;
 }
@@ -361,15 +365,9 @@ export class McpApiClient {
     return headers;
   }
 
-  /** X-Agent-Id header for an agent with a local id; empty when the backend derives it from the key. */
-  private agentIdHeader(): Record<string, string> {
-    return this.agentId !== undefined && this.agentId !== ''
-      ? { 'X-Agent-Id': this.agentId }
-      : {};
-  }
-
   /**
-   * Build agent context headers for edit operations
+   * Build declarative agent-context headers for edit operations. Identity comes
+   * from the forwarded credential, so no identity header is sent.
    */
   private getAgentEditHeaders(
     intent: string,
@@ -380,7 +378,6 @@ export class McpApiClient {
   ): Record<string, string> {
     const headers: Record<string, string> = {
       ...this.getHeaders(),
-      ...this.agentIdHeader(),
       'X-Agent-Trigger': trigger,
       'X-Agent-Intent': intent,
       'X-Agent-Target-Regions': targetRegions.join(', '),
@@ -1085,7 +1082,6 @@ export class McpApiClient {
       method: 'POST',
       headers,
       body: JSON.stringify({
-        agentId: this.agentId,
         trigger: request.trigger,
         intent: request.intent,
         targetRegions: request.targetRegions,
@@ -1125,7 +1121,6 @@ export class McpApiClient {
       method: 'POST',
       headers,
       body: JSON.stringify({
-        agentId: this.agentId,
         trigger: request.trigger,
         intent: request.intent,
         targetRegions: request.targetRegions,
@@ -1165,10 +1160,7 @@ export class McpApiClient {
     );
     const response = await this.doFetch(url, {
       method: 'POST',
-      headers: {
-        ...this.getHeaders(),
-        ...this.agentIdHeader(),
-      },
+      headers: this.getHeaders(),
       body: JSON.stringify({ editSessionId: request.editSessionId }),
     });
     return this.handleResponse<CompleteAgentEditResponse>(response);
@@ -1187,10 +1179,7 @@ export class McpApiClient {
     }
     const response = await this.doFetch(url, {
       method: 'POST',
-      headers: {
-        ...this.getHeaders(),
-        ...this.agentIdHeader(),
-      },
+      headers: this.getHeaders(),
       body: JSON.stringify(body),
     });
     return this.handleResponse<AbortAgentEditResponse>(response);
@@ -1258,11 +1247,16 @@ export class McpApiClient {
 
     await Promise.all(
       docs.documents.map(async (doc) => {
-        const name = doc.path.slice('_registry/components/'.length);
+        // Path-derived name is a fallback only — snapshotToComponentSchema
+        // prefers the descriptor's own preserved-case name, and the registry
+        // key is normalized so lookups stay case-insensitive regardless of
+        // which casing is used to reference it.
+        const pathName = componentNameFromPath(doc.path);
         try {
           const version = await this.getDocumentLatestVersion(siteId, branchId, doc.id);
           // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
-          schemas[name] = snapshotToComponentSchema(name, version.snapshot);
+          const schema = snapshotToComponentSchema(pathName, version.snapshot);
+          schemas[registryComponentKey(schema.name)] = schema;
         } catch {
           // Skip components that fail to fetch — don't block other schemas
         }

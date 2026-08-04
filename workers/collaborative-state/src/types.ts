@@ -51,6 +51,7 @@ export type {
   Document,
   DocumentVersion,
   Checkpoint,
+  SessionOwner,
   DocumentConflict,
   StructureMergeConflict,
   ConflictDetails,

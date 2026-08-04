@@ -1,0 +1,116 @@
+name: Run Backfill
+
+# Runs a one-off data backfill against an environment's database, independently
+# of deploys. Dry run unless `execute` is set.
+#
+# Registering a new backfill: add its name to the `script` options below. The name
+# is the middle of the `db:<name>` / `db:<name>:execute` script pair in
+# workers/package.json. See docs/BACKFILLS.md.
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment"
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+      script:
+        description: "Which backfill to run"
+        required: true
+        type: choice
+        options:
+          - backfill-page-titles
+          - adopt-slot-ids
+      execute:
+        description: "Write changes. Leave off for a dry-run report first"
+        required: false
+        type: boolean
+        default: false
+      site_id:
+        description: "Optional site UUID to scope the run to"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: 24
+
+      - name: Enable corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Authenticate to GCP
+        uses: pantheon-systems/common-gh/auth-wif@0a1dafc525b4ffa9fcfbfcf1c889dc0251c0c4e4 # main @ 2026-06
+        with:
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Start Cloud SQL Auth Proxy
+        env:
+          INSTANCE: ${{ vars.CLOUDSQL_INSTANCE_CONNECTION_NAME }}
+        run: |
+          URL="https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.21.2"
+          curl "$URL/cloud-sql-proxy.linux.amd64" -o cloud-sql-proxy
+          chmod +x cloud-sql-proxy
+          ./cloud-sql-proxy --port 5432 --auto-iam-authn "$INSTANCE" &
+          for _ in $(seq 1 30); do
+            (echo > /dev/tcp/localhost/5432) >/dev/null 2>&1 && break
+            sleep 1
+          done
+
+      - name: Run backfill
+        env:
+          POSTGRES_SET_ROLE: cssuser
+          # Nothing is interpolated into the shell below: every dispatch input and
+          # repo variable travels through the environment, so no value can become
+          # part of a command. Wiz flags `${{ }}` inside a `run:` block as script
+          # injection regardless of how constrained the value is, and it is right to
+          # — a `choice` input is safe today only because GitHub validates it.
+          SCRIPT: ${{ inputs.script }}
+          EXECUTE: ${{ inputs.execute }}
+          SITE_ID: ${{ inputs.site_id }}
+          ENVIRONMENT: ${{ inputs.environment }}
+          SERVICE_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT }}
+          DB_NAME: ${{ vars.CLOUDSQL_DB_NAME }}
+        run: |
+          set -euo pipefail
+
+          if [ -n "$SITE_ID" ] && ! printf '%s' "$SITE_ID" | grep -Eq '^[0-9a-fA-F-]{36}$'; then
+            echo "site_id must be a UUID" >&2
+            exit 1
+          fi
+
+          IAM_USER="${SERVICE_ACCOUNT%.gserviceaccount.com}"
+          ENC_USER="${IAM_USER//@/%40}" # @ must be percent-encoded in the URI userinfo
+          export POSTGRES_CONNECTION_STRING="postgresql://${ENC_USER}@localhost:5432/${DB_NAME}"
+
+          TARGET="db:$SCRIPT"
+          if [ "$EXECUTE" = "true" ]; then
+            TARGET="$TARGET:execute"
+            echo "::warning::Writing changes to $ENVIRONMENT via $TARGET"
+          else
+            echo "Dry run. Re-dispatch with execute to apply."
+          fi
+
+          # `run` plus `--` so the script's flags are forwarded rather than being
+          # parsed by pnpm itself.
+          if [ -n "$SITE_ID" ]; then
+            pnpm --filter collaborative-state-worker run "$TARGET" -- "--site=$SITE_ID"
+          else
+            pnpm --filter collaborative-state-worker run "$TARGET"
+          fi

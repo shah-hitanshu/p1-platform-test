@@ -161,6 +161,16 @@ describe('PuckEditorTheme.css', () => {
       );
     });
 
+    it('reserves the sidebar scrollbar gutter so expanding a field group does not reflow', () => {
+      const css = readThemeCSS();
+      // The sidebar is the scroll container, so an arriving scrollbar reclaims
+      // its width and shifts every field. Reserving the gutter is what keeps a
+      // collapsible field group from moving the panel when it expands.
+      expect(css).toMatch(
+        /\.puck-editor-theme \[class\*="_Sidebar"\]\s*\{[^}]*scrollbar-gutter:\s*stable[^}]*\}/,
+      );
+    });
+
     it('does not use a bare body selector, which would leak into the preview iframe', () => {
       const css = readThemeCSS();
       // The preview iframe renders its own <body>. Because this stylesheet is a

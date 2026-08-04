@@ -1,8 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import { renderHook } from '@testing-library/react';
-import { useDraftRequest } from './useDraftRequest.js';
-import { createDraftRequestChannel } from './draftRequestChannel.js';
-import type { DraftRequest } from './types.js';
+import { useDraftRequest } from '../src/useDraftRequest.js';
+import { createDraftRequestChannel } from '../src/draftRequestChannel.js';
+import type { DraftRequest } from '../src/types.js';
 
 const request = (brief: string, documentPath = '/target'): DraftRequest => ({ brief, documentPath });
 

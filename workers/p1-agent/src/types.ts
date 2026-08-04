@@ -34,10 +34,7 @@ export interface ChatContext {
   branchId: string;
   documentPath: string;
   documentId?: string;
-  puckData?: Record<string, unknown>;
   token: string; // CSS auth token
-  userId?: string;
-  userEmail?: string;
   /**
    * The turn was seeded from the Create Page modal against a page that was just created
    * empty for it. Changes the brief's contract: the user asked for a page and expects one,
@@ -47,19 +44,54 @@ export interface ChatContext {
 }
 
 export type IncomingMessage =
-  | { type: 'chat'; message: string; context: ChatContext }
+  // `turnId` is minted by the client and echoed on every frame this turn produces, so the
+  // client can tell which turn a frame belongs to. Optional for version skew: an older
+  // client simply sends none, and gets unstamped frames back.
+  | { type: 'chat'; message: string; context: ChatContext; turnId?: string }
   | { type: 'get_history'; token: string }
-  | { type: 'clear'; token: string };
+  | { type: 'clear'; token: string }
+  // Stop the turn in flight. Carries no token, unlike get_history/clear: a Stop press
+  // must take effect immediately, and a token round trip would let the agent keep
+  // mutating the page meanwhile. It is authorized structurally instead — only the
+  // connection that started the turn can cancel it, so a guessed Durable Object key
+  // cannot interrupt someone else's draft.
+  | { type: 'cancel' };
 
-export interface OutgoingMessage {
-  type: 'token' | 'done' | 'error' | 'tool_start' | 'tool_end' | 'cleared' | 'history';
-  content?: string;
-  toolName?: string;
-  toolInput?: unknown;
-  toolResult?: unknown;
-  error?: string;
-  history?: RestoredMessage[];
+/** Optional for version skew: a client predating the field sends none and gets none back. */
+interface TurnScoped {
+  turnId?: string;
 }
+
+/**
+ * A frame produced by a turn, and so eligible for a `turnId`. Stamping a conversation-scoped
+ * frame would let a `history` reply end whichever turn was streaming.
+ */
+export type TurnFrame =
+  | { type: 'token'; content: string }
+  | { type: 'done' }
+  | {
+      type: 'error';
+      error: string;
+      /** The connection's failure, not a turn's. Without it the client ends the live turn. */
+      scope?: 'connection';
+    }
+  // toolCallId pairs a result with its own call; toolName alone misattributes a turn that
+  // issues two calls to the same tool.
+  | { type: 'tool_start'; toolCallId: string; toolName: string }
+  | {
+      type: 'tool_end';
+      toolCallId: string;
+      toolName: string;
+      toolInput: Record<string, unknown>;
+      toolResult: unknown;
+    }
+  | { type: 'cancelled' };
+
+/** Everything the agent can send. Mirrors `ServerMessage` in the plugin. */
+export type OutgoingMessage =
+  | (TurnFrame & TurnScoped)
+  | { type: 'history'; history: RestoredMessage[] }
+  | { type: 'cleared' };
 
 /**
  * A single tool call, flattened for UI replay. Carries the (trimmed) result that
@@ -71,15 +103,22 @@ export interface RestoredToolCall {
   result?: unknown;
 }
 
+/** One ordered piece of a replayed assistant turn, carrying the position `content` cannot. */
+export type RestoredPart =
+  | { type: 'text'; text: string }
+  | { type: 'tool'; tool: RestoredToolCall };
+
 /**
- * Persisted conversation collapsed into one entry per visible chat bubble — the
- * shape the plugin renders. All the assistant/tool messages the agentic loop
- * produced for a single user turn are merged into one assistant entry so replay
- * matches what streaming showed live.
+ * Persisted conversation collapsed into one entry per visible chat bubble — the shape the
+ * plugin renders. One user turn's assistant/tool messages merge into one entry.
  */
 export interface RestoredMessage {
   role: 'user' | 'assistant';
+  /** The turn's prose, concatenated. Prefer {@link parts}, which carries it in position. */
   content: string;
+  /** Ordered parts of an assistant turn. Absent on a user turn. */
+  parts?: RestoredPart[];
+  /** Flat call list, superseded by {@link parts} and retained for version skew. */
   toolCalls?: RestoredToolCall[];
 }
 

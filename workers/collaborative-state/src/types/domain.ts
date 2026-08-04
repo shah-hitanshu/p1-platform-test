@@ -103,7 +103,8 @@ export interface RegisteredAgent {
  */
 export interface Site {
   id: string;
-  pantheonSiteId: string;
+  /** The linked hosting site's ID; absent until a user links one. */
+  pantheonSiteId?: string;
   /** Organization this site belongs to (for agent configuration) */
   organizationId?: string;
   name: string;
@@ -241,6 +242,15 @@ export interface Checkpoint {
   createdById: string;
   createdByType: 'user' | 'agent' | 'system';
   createdAt: string;
+}
+
+/**
+ * The actor an edit session belongs to. Edit permission, checkpoint
+ * attribution, presence, and the session-owner check all read from it.
+ */
+export interface SessionOwner {
+  id: string;
+  type: 'user' | 'agent';
 }
 
 // =============================================================================

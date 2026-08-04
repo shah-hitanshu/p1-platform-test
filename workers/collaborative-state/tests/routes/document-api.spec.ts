@@ -1256,7 +1256,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         expect(response.status).toBe(201);
         expect(services.createDocumentOnBranch).toHaveBeenCalledWith(
           expect.objectContaining({
-            snapshot: { title: 'About Us' },
+            snapshot: { root: { props: { title: 'About Us' } } },
           }),
         );
       });
@@ -1380,7 +1380,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         expect(response.status).toBe(201);
         expect(services.createDocumentOnBranch).toHaveBeenCalledWith(
           expect.objectContaining({
-            snapshot: { title: 'Contact', content: [] },
+            snapshot: { content: [], root: { props: { title: 'Contact' } } },
           }),
         );
       });

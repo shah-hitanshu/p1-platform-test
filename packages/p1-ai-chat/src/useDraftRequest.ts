@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type { DraftRequest, DraftRequestChannel } from './types.js';
+import { isDevBuild } from './devBuild.js';
 
 /**
  * Compare document paths tolerantly. The publisher (the Create Page modal) and the
@@ -18,20 +19,6 @@ function normalizePath(p: string | undefined): string {
  * screen while the user is wondering why nothing happened.
  */
 const UNMATCHED_WARN_MS = 10_000;
-
-/** Browser-only package with no `@types/node`, so `process` needs a local declaration. */
-declare const process: { env: { NODE_ENV?: string } };
-
-function isDevBuild(): boolean {
-  // Written as the literal `process.env.NODE_ENV` on purpose: that is the exact
-  // expression bundlers substitute at build time, so a production bundle compiles this
-  // down to a constant. Reading it off `globalThis` instead defeats the substitution,
-  // leaves the value undefined in the browser, and ships the warning to real editors.
-  const nodeEnv = typeof process === 'undefined' ? undefined : process.env.NODE_ENV;
-  // Absent means unknown, and unknown is treated as "not dev". Better to lose the
-  // diagnostic in an exotic setup than to print console noise in someone's editor.
-  return nodeEnv !== undefined && nodeEnv !== 'production';
-}
 
 function warnUnmatched(request: DraftRequest, currentPath: string | undefined): void {
   // A mismatch here is silent by nature: the gate simply never opens, so the brief never

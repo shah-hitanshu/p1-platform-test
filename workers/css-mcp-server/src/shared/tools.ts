@@ -20,6 +20,7 @@ import {
 import {
   validateOps as _validateOps,
   validateDocumentStructure,
+  componentNameFromPath,
 } from '@pantheon-systems/p1-content-validator';
 import type { ValidationError, StructuralConformanceError } from '@pantheon-systems/p1-content-validator';
 
@@ -1587,7 +1588,10 @@ export function createToolHandlers(
 
         await Promise.all(
           docs.documents.map(async (doc) => {
-            const name = doc.path.slice('_registry/components/'.length);
+            // Path-derived name is a fallback only — the descriptor's own
+            // `name` field below is the source of truth for what callers
+            // should use as the type.
+            const pathName = componentNameFromPath(doc.path);
             try {
               // Use doc.id (UUID) — NOT doc.path. The backend versions/latest route
               // performs a UUID-based lookup; passing a path would return 404.
@@ -1597,6 +1601,7 @@ export function createToolHandlers(
                 doc.id,
               );
               const descriptor = version.snapshot;
+              const name = typeof descriptor.name === 'string' && descriptor.name !== '' ? descriptor.name : pathName;
               const provenance = typeof descriptor.provenance === 'string' ? descriptor.provenance : 'site';
               const fields = Array.isArray(descriptor.fields) ? descriptor.fields : [];
               const ai = descriptor.ai as { instructions?: string } | undefined;
@@ -1612,7 +1617,7 @@ export function createToolHandlers(
 
               componentLines.push(`- ${name} (${label}) [${provenance}] — ${fieldNote}${aiNote}`);
             } catch {
-              componentLines.push(`- ${name} [error fetching descriptor]`);
+              componentLines.push(`- ${pathName} [error fetching descriptor]`);
             }
           }),
         );

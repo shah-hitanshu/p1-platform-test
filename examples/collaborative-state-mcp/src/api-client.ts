@@ -17,7 +17,7 @@ export interface ApiClientConfig {
 
 export interface SiteInfo {
   id: string;
-  pantheonSiteId: string;
+  pantheonSiteId?: string;
   name: string;
   createdAt: string;
 }

@@ -118,3 +118,6 @@ stackit submit                    # Submit all PRs
 
 Run `/stackit` for the full skill, or `/stack-status` to check current state.
 <!-- stackit:end -->
+
+# Creating a Pull Request
+- When creating a PR, use `.github/pull_request_template.md` as the description structure — follow its HTML-comment instructions and delete sections marked optional that don't apply; never invent your own headings.

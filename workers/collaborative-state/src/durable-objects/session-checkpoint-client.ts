@@ -3,18 +3,23 @@ import {
   createCheckpoint as createCheckpointDirect,
   revertToCheckpoint as revertToCheckpointDirect,
 } from '../services/checkpoint-service';
-import type { DocumentSessionEnv, SessionInfo } from './document-session-types';
+import type { CheckpointTrigger } from '../types';
+import type {
+  DocumentSessionEnv,
+  SessionInfo,
+  SessionOwner,
+} from './document-session-types';
 
 /**
- * Create a pre-edit checkpoint for an agent.
+ * Create a pre-edit checkpoint for a session owner.
  * Phase 6.3: Tries direct Hyperdrive DB access first, falls back to HTTP.
  */
-export async function createAgentPreEditCheckpoint(
+export async function createSessionPreEditCheckpoint(
   env: DocumentSessionEnv,
   sessionInfo: SessionInfo,
-  agentId: string,
+  owner: SessionOwner,
   intent: string,
-  trigger: 'human_requested' | 'autonomous',
+  trigger: CheckpointTrigger,
   targetRegions: string[],
 ): Promise<string | undefined> {
   // Phase 6.3: Try direct Hyperdrive first
@@ -26,16 +31,16 @@ export async function createAgentPreEditCheckpoint(
         async () =>
           createCheckpointDirect({
             branchId: sessionInfo.branchId,
-            checkpointType: 'agent_pre_edit',
-            createdById: agentId,
-            createdByType: 'agent',
+            checkpointType: 'session_pre_edit',
+            createdById: owner.id,
+            createdByType: owner.type,
             description: `Pre-edit checkpoint: ${intent}`,
             trigger,
             affectedRegions: targetRegions,
             forceFullSnapshot: true,
           }),
       );
-      console.log(`Created pre-edit checkpoint ${result.checkpoint.id} for agent ${agentId} (direct DB)`);
+      console.log(`Created pre-edit checkpoint ${result.checkpoint.id} for ${owner.type} ${owner.id} (direct DB)`);
       return result.checkpoint.id;
     } catch (error) {
       console.warn('Direct DB checkpoint failed, falling back to HTTP:', error);
@@ -59,7 +64,8 @@ export async function createAgentPreEditCheckpoint(
       },
       body: JSON.stringify({
         branchId: sessionInfo.branchId,
-        agentId,
+        ownerId: owner.id,
+        ownerType: owner.type,
         intent,
         trigger,
         targetRegions,
@@ -76,7 +82,7 @@ export async function createAgentPreEditCheckpoint(
     const rawResult: unknown = await response.json();
     const result = rawResult as { checkpointId: string };
     const { checkpointId } = result;
-    console.log(`Created pre-edit checkpoint ${checkpointId} for agent ${agentId}`);
+    console.log(`Created pre-edit checkpoint ${checkpointId} for ${owner.type} ${owner.id}`);
     return checkpointId;
   } catch (error) {
     console.error('Error creating pre-edit checkpoint:', error);
@@ -85,17 +91,20 @@ export async function createAgentPreEditCheckpoint(
 }
 
 /**
- * Create a post-edit checkpoint for an agent.
+ * Create a post-edit checkpoint for a session owner.
  * Phase 6.3: Tries direct Hyperdrive DB access first, falls back to HTTP.
  */
-export async function createAgentPostEditCheckpoint(
+export async function createSessionPostEditCheckpoint(
   env: DocumentSessionEnv,
   sessionInfo: SessionInfo,
-  agentId: string,
+  owner: SessionOwner,
   intent: string,
   preEditCheckpointId: string,
   affectedRegions: string[],
 ): Promise<string | undefined> {
+  // A person's session is deliberate work, so its checkpoints are 'manual'.
+  const trigger: CheckpointTrigger = owner.type === 'user' ? 'manual' : 'autonomous';
+
   // Phase 6.3: Try direct Hyperdrive first
   if (env.HYPERDRIVE !== undefined) {
     try {
@@ -105,15 +114,15 @@ export async function createAgentPostEditCheckpoint(
         async () =>
           createCheckpointDirect({
             branchId: sessionInfo.branchId,
-            checkpointType: 'agent_post_edit',
-            createdById: agentId,
-            createdByType: 'agent',
+            checkpointType: 'session_post_edit',
+            createdById: owner.id,
+            createdByType: owner.type,
             description: `Post-edit checkpoint: ${intent}`,
-            trigger: 'autonomous',
+            trigger,
             affectedRegions,
           }),
       );
-      console.log(`Created post-edit checkpoint ${result.checkpoint.id} for agent ${agentId} (direct DB)`);
+      console.log(`Created post-edit checkpoint ${result.checkpoint.id} for ${owner.type} ${owner.id} (direct DB)`);
       return result.checkpoint.id;
     } catch (error) {
       console.warn('Direct DB post-edit checkpoint failed, falling back to HTTP:', error);
@@ -137,8 +146,10 @@ export async function createAgentPostEditCheckpoint(
       },
       body: JSON.stringify({
         branchId: sessionInfo.branchId,
-        agentId,
+        ownerId: owner.id,
+        ownerType: owner.type,
         intent,
+        trigger,
         preEditCheckpointId,
         affectedRegions,
       }),
@@ -153,7 +164,7 @@ export async function createAgentPostEditCheckpoint(
     const rawResult: unknown = await response.json();
     const result = rawResult as { checkpointId: string };
     const { checkpointId } = result;
-    console.log(`Created post-edit checkpoint ${checkpointId} for agent ${agentId}`);
+    console.log(`Created post-edit checkpoint ${checkpointId} for ${owner.type} ${owner.id}`);
     return checkpointId;
   } catch (error) {
     console.error('Error creating post-edit checkpoint:', error);
@@ -165,11 +176,11 @@ export async function createAgentPostEditCheckpoint(
  * Rollback to a pre-edit checkpoint.
  * Phase 6.3: Tries direct Hyperdrive DB access first, falls back to HTTP.
  */
-export async function rollbackToAgentCheckpoint(
+export async function rollbackToSessionCheckpoint(
   env: DocumentSessionEnv,
   _sessionInfo: SessionInfo,
   checkpointId: string,
-  agentId: string,
+  owner: SessionOwner,
   reason?: string,
 ): Promise<boolean> {
   // Phase 6.3: Try direct Hyperdrive first
@@ -181,8 +192,8 @@ export async function rollbackToAgentCheckpoint(
         async () =>
           revertToCheckpointDirect({
             checkpointId,
-            createdById: agentId,
-            createdByType: 'agent',
+            createdById: owner.id,
+            createdByType: owner.type,
             message: reason,
           }),
       );
@@ -216,7 +227,8 @@ export async function rollbackToAgentCheckpoint(
       },
       body: JSON.stringify({
         checkpointId,
-        agentId,
+        ownerId: owner.id,
+        ownerType: owner.type,
         reason,
       }),
     });

@@ -98,6 +98,7 @@
     "lint": "eslint src",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:spike:3406": "vitest run --config spike/pcc-3406/vitest.config.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -118,7 +119,7 @@
     "@types/lodash.isequal": "^4.5.8",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
-    "@vitejs/plugin-react": "^4.7.0",
+    "@vitejs/plugin-react": "^6.0.5",
     "jsdom": "^24.1.3",
     "react-toastify": "^11.0.5",
     "typescript": "^5.9.3",

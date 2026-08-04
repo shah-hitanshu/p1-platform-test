@@ -546,7 +546,7 @@ describe('Phase 1.2: Internal API Routes', () => {
       const mockCheckpoint = {
         id: 'checkpoint-uuid-789',
         branchId: 'branch-uuid-123',
-        checkpointType: 'agent_pre_edit' as const,
+        checkpointType: 'session_pre_edit' as const,
         createdById: 'agent-uuid-456',
         createdByType: 'agent' as const,
         createdAt: '2026-01-28T10:00:00.000Z',
@@ -581,7 +581,7 @@ describe('Phase 1.2: Internal API Routes', () => {
 
       expect(checkpointService.createCheckpoint).toHaveBeenCalledWith({
         branchId: 'branch-uuid-123',
-        checkpointType: 'agent_pre_edit',
+        checkpointType: 'session_pre_edit',
         createdById: 'agent-uuid-456',
         createdByType: 'agent',
         description: 'Pre-edit checkpoint: Update hero section',
@@ -714,7 +714,7 @@ describe('Phase 1.2: Internal API Routes', () => {
       const mockCheckpoint = {
         id: 'checkpoint-uuid-post',
         branchId: 'branch-uuid-123',
-        checkpointType: 'agent_post_edit' as const,
+        checkpointType: 'session_post_edit' as const,
         createdById: 'agent-uuid-456',
         createdByType: 'agent' as const,
         createdAt: '2026-01-28T10:05:00.000Z',
@@ -749,7 +749,7 @@ describe('Phase 1.2: Internal API Routes', () => {
 
       expect(checkpointService.createCheckpoint).toHaveBeenCalledWith({
         branchId: 'branch-uuid-123',
-        checkpointType: 'agent_post_edit',
+        checkpointType: 'session_post_edit',
         createdById: 'agent-uuid-456',
         createdByType: 'agent',
         description: 'Post-edit checkpoint: Update hero section',

@@ -22,7 +22,7 @@ import {
   BranchNotFoundError,
   CheckpointNotFoundError,
 } from '../services/checkpoint-service';
-import type { CheckpointTrigger } from '../types';
+import type { CheckpointTrigger, SessionOwner } from '../types';
 
 // =============================================================================
 // Types
@@ -68,7 +68,7 @@ interface InternalPublishBody {
  */
 interface AgentCheckpointStartBody {
   branchId: string;
-  agentId: string;
+  owner: SessionOwner;
   intent: string;
   trigger: CheckpointTrigger;
   targetRegions?: string[];
@@ -80,7 +80,7 @@ interface AgentCheckpointStartBody {
  */
 interface AgentCheckpointCompleteBody {
   branchId: string;
-  agentId: string;
+  owner: SessionOwner;
   intent: string;
   preEditCheckpointId: string;
   trigger?: CheckpointTrigger;
@@ -92,7 +92,7 @@ interface AgentCheckpointCompleteBody {
  */
 interface AgentCheckpointRollbackBody {
   checkpointId: string;
-  agentId: string;
+  owner: SessionOwner;
   reason?: string;
 }
 
@@ -379,6 +379,35 @@ async function handleInternalPublish(request: Request): Promise<Response> {
 // Agent Checkpoint Handlers (Agent Politeness Protocol)
 // =============================================================================
 
+/**
+ * Resolve the session owner a checkpoint request is acting for. `ownerId` and
+ * `ownerType` are given together, so an owner is never attributed to a kind the
+ * caller did not state. A bare `agentId` names an agent owner, which is how
+ * callers predating person-owned sessions identify themselves.
+ */
+function resolveSessionOwner(
+  data: Record<string, unknown>,
+): { valid: false; error: string } | { valid: true; owner: SessionOwner } {
+  if (data.ownerId !== undefined || data.ownerType !== undefined) {
+    if (typeof data.ownerId !== 'string' || data.ownerId.trim() === '') {
+      return { valid: false, error: 'ownerId is required and must be a non-empty string' };
+    }
+    if (data.ownerType !== 'user' && data.ownerType !== 'agent') {
+      return { valid: false, error: 'ownerType must be "user" or "agent"' };
+    }
+    return { valid: true, owner: { id: data.ownerId, type: data.ownerType } };
+  }
+
+  if (typeof data.agentId === 'string' && data.agentId.trim() !== '') {
+    return { valid: true, owner: { id: data.agentId, type: 'agent' } };
+  }
+
+  return {
+    valid: false,
+    error: 'agentId or ownerId is required and must be a non-empty string',
+  };
+}
+
 /** Validation result type for agent checkpoint start */
 type AgentCheckpointStartValidation =
   | { valid: false; error: string }
@@ -398,8 +427,9 @@ function validateAgentCheckpointStartBody(body: unknown): AgentCheckpointStartVa
     return { valid: false, error: 'branchId is required and must be a non-empty string' };
   }
 
-  if (typeof data.agentId !== 'string' || data.agentId.trim() === '') {
-    return { valid: false, error: 'agentId is required and must be a non-empty string' };
+  const ownerResult = resolveSessionOwner(data);
+  if (!ownerResult.valid) {
+    return { valid: false, error: ownerResult.error };
   }
 
   if (typeof data.intent !== 'string' || data.intent.trim() === '') {
@@ -414,7 +444,7 @@ function validateAgentCheckpointStartBody(body: unknown): AgentCheckpointStartVa
     valid: true,
     data: {
       branchId: data.branchId,
-      agentId: data.agentId,
+      owner: ownerResult.owner,
       intent: data.intent,
       trigger: data.trigger,
       targetRegions: Array.isArray(data.targetRegions) ? data.targetRegions as string[] : undefined,
@@ -442,8 +472,9 @@ function validateAgentCheckpointCompleteBody(body: unknown): AgentCheckpointComp
     return { valid: false, error: 'branchId is required and must be a non-empty string' };
   }
 
-  if (typeof data.agentId !== 'string' || data.agentId.trim() === '') {
-    return { valid: false, error: 'agentId is required and must be a non-empty string' };
+  const ownerResult = resolveSessionOwner(data);
+  if (!ownerResult.valid) {
+    return { valid: false, error: ownerResult.error };
   }
 
   if (typeof data.intent !== 'string' || data.intent.trim() === '') {
@@ -458,7 +489,7 @@ function validateAgentCheckpointCompleteBody(body: unknown): AgentCheckpointComp
     valid: true,
     data: {
       branchId: data.branchId,
-      agentId: data.agentId,
+      owner: ownerResult.owner,
       intent: data.intent,
       preEditCheckpointId: data.preEditCheckpointId,
       trigger: typeof data.trigger === 'string' ? data.trigger as CheckpointTrigger : undefined,
@@ -486,15 +517,16 @@ function validateAgentCheckpointRollbackBody(body: unknown): AgentCheckpointRoll
     return { valid: false, error: 'checkpointId is required and must be a non-empty string' };
   }
 
-  if (typeof data.agentId !== 'string' || data.agentId.trim() === '') {
-    return { valid: false, error: 'agentId is required and must be a non-empty string' };
+  const ownerResult = resolveSessionOwner(data);
+  if (!ownerResult.valid) {
+    return { valid: false, error: ownerResult.error };
   }
 
   return {
     valid: true,
     data: {
       checkpointId: data.checkpointId,
-      agentId: data.agentId,
+      owner: ownerResult.owner,
       reason: typeof data.reason === 'string' ? data.reason : undefined,
     },
   };
@@ -523,9 +555,9 @@ async function handleAgentCheckpointStart(request: Request): Promise<Response> {
   try {
     const result = await createCheckpoint({
       branchId: data.branchId,
-      checkpointType: 'agent_pre_edit',
-      createdById: data.agentId,
-      createdByType: 'agent',
+      checkpointType: 'session_pre_edit',
+      createdById: data.owner.id,
+      createdByType: data.owner.type,
       description: `Pre-edit checkpoint: ${data.intent}`,
       trigger: data.trigger,
       affectedRegions: data.targetRegions,
@@ -568,11 +600,11 @@ async function handleAgentCheckpointComplete(request: Request): Promise<Response
   try {
     const result = await createCheckpoint({
       branchId: data.branchId,
-      checkpointType: 'agent_post_edit',
-      createdById: data.agentId,
-      createdByType: 'agent',
+      checkpointType: 'session_post_edit',
+      createdById: data.owner.id,
+      createdByType: data.owner.type,
       description: `Post-edit checkpoint: ${data.intent}`,
-      trigger: data.trigger ?? 'autonomous',
+      trigger: data.trigger ?? (data.owner.type === 'user' ? 'manual' : 'autonomous'),
       affectedRegions: data.affectedRegions,
     });
 
@@ -612,8 +644,8 @@ async function handleAgentCheckpointRollback(request: Request): Promise<Response
   try {
     const result = await revertToCheckpoint({
       checkpointId: data.checkpointId,
-      createdById: data.agentId,
-      createdByType: 'agent',
+      createdById: data.owner.id,
+      createdByType: data.owner.type,
       message: data.reason,
     });
 

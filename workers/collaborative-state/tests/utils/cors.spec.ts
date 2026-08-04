@@ -423,4 +423,75 @@ describe('buildCorsPatterns', () => {
       expect(isOriginAllowed('https://localhost', patterns)).toBe(true);
     });
   });
+
+  // PCC-3531: allowed_origins is dual-use — these rows are also PCC-3334's CORS
+  // switch, so adding the first one flips a site from default-open to restrictive
+  // and starts refusing unlisted origins, including a 403 on realtime connect.
+  // Pinned so that side effect cannot change silently.
+  describe('adding the first allowed origin flips a site to restrictive (PCC-3531)', () => {
+    const customDomain = 'https://www.client.com';
+    const branchWildcard = 'https://*-mysite.pantheonsite.io';
+
+    it('allows an unlisted custom domain while no origins are configured', () => {
+      const patterns = buildCorsPatterns(undefined, []);
+      expect(isOriginAllowed(customDomain, patterns)).toBe(true);
+    });
+
+    it('refuses that same custom domain once any origin is configured', () => {
+      const patterns = buildCorsPatterns(undefined, [branchWildcard]);
+      expect(isOriginAllowed(customDomain, patterns)).toBe(false);
+    });
+
+    it('keeps refusing it when the configured list covers only branch URLs', () => {
+      const patterns = buildCorsPatterns(undefined, [branchWildcard]);
+      expect(isOriginAllowed('https://live-mysite.pantheonsite.io', patterns)).toBe(true);
+      expect(isOriginAllowed(customDomain, patterns)).toBe(false);
+    });
+
+    it('allows both once the custom domain is added explicitly', () => {
+      const patterns = buildCorsPatterns(undefined, [branchWildcard, customDomain]);
+      expect(isOriginAllowed('https://live-mysite.pantheonsite.io', patterns)).toBe(true);
+      expect(isOriginAllowed(customDomain, patterns)).toBe(true);
+    });
+
+    // Env patterns are merged, not replaced — the mitigation that bounds the
+    // blast radius, so it is pinned alongside the flip.
+    it('preserves env-level origins across the flip', () => {
+      const dashboard = 'https://content.pantheon.io';
+      const patterns = buildCorsPatterns(dashboard, [branchWildcard]);
+      expect(isOriginAllowed(dashboard, patterns)).toBe(true);
+      expect(isOriginAllowed(customDomain, patterns)).toBe(false);
+    });
+
+    // Production sets CORS_ORIGINS to the dashboard, so an operator cannot lock
+    // themselves out of the UI that manages this list.
+    it('cannot lock the dashboard out under the production env value', () => {
+      const patterns = buildCorsPatterns('https://content.pantheon.io', [branchWildcard]);
+      expect(isOriginAllowed('https://content.pantheon.io', patterns)).toBe(true);
+    });
+
+    // sbx1/staging set CORS_ORIGINS to "*", so per-site restriction is inert
+    // there — the flip cannot be rehearsed outside production.
+    it('is inert when the env value is a bare wildcard (sbx1/staging)', () => {
+      const patterns = buildCorsPatterns('*', [branchWildcard]);
+      expect(isOriginAllowed(customDomain, patterns)).toBe(true);
+      expect(isOriginAllowed('https://anything-at-all.example', patterns)).toBe(true);
+    });
+
+    // Pantheon serves environments as live-<site>.pantheonsite.io. Pins the
+    // matcher boundary: the wildcard requires its hyphen.
+    it('matches prefixed Pantheon environment hosts but not a bare host', () => {
+      const patterns = buildCorsPatterns(undefined, [branchWildcard]);
+      expect(isOriginAllowed('https://live-mysite.pantheonsite.io', patterns)).toBe(true);
+      expect(isOriginAllowed('https://mysite.pantheonsite.io', patterns)).toBe(false);
+    });
+
+    // The one lockout an operator can realistically walk into; phase 4's editor
+    // detects it and offers the sibling.
+    it('treats apex and www as distinct origins', () => {
+      const patterns = buildCorsPatterns(undefined, ['https://www.client.com']);
+      expect(isOriginAllowed('https://www.client.com', patterns)).toBe(true);
+      expect(isOriginAllowed('https://client.com', patterns)).toBe(false);
+    });
+  });
 });

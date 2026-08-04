@@ -1,8 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import type OpenAI from 'openai';
-import { trimHistory, sanitizeHistory, trimForHistory, buildRestoredHistory } from './history.js';
+import { trimHistory, sanitizeHistory, appendTurn, trimForHistory, buildRestoredHistory, turnMayCommit, turnHasOutput } from './history.js';
 import { buildContextNote } from './prompt.js';
 import { injectPuckIds } from './tools.js';
+import { ChatAgent } from './agent.js';
+import type { Connection, ConnectionContext } from 'agents';
 
 type Msg = OpenAI.Chat.Completions.ChatCompletionMessageParam;
 
@@ -18,85 +20,79 @@ const assistantWithTool = (id: string): Msg => ({
 const toolResult = (id: string): Msg => ({ role: 'tool', tool_call_id: id, content: 'ok' });
 
 describe('trimHistory', () => {
+  /** One exchange: a brief, `calls` tool calls each answered, then a closing reply. */
+  const exchange = (n: number, calls: number): Msg[] => [
+    user(`brief ${n}`),
+    ...Array.from({ length: calls }, (_, i) => [assistantWithTool(`t${n}-${i}`), toolResult(`t${n}-${i}`)]).flat(),
+    assistant(`reply ${n}`),
+  ];
+
   it('returns history unchanged when under the limit', () => {
     const h = [user('hello'), assistant('hi')];
-    expect(trimHistory(h, 20)).toEqual(h);
+    expect(trimHistory(h, 20, 3)).toEqual(h);
   });
 
-  it('returns history unchanged when exactly at the limit', () => {
-    const h = Array.from({ length: 20 }, (_, i) => (i % 2 === 0 ? user(`msg ${i}`) : assistant(`reply ${i}`)));
-    expect(trimHistory(h, 20)).toHaveLength(20);
+  it('keeps the most recent exchanges and drops the oldest', () => {
+    const h = [1, 2, 3, 4].flatMap(n => [user(`brief ${n}`), assistant(`reply ${n}`)]);
+
+    const result = trimHistory(h, 2, 3);
+
+    expect(result.map(m => m.content)).toEqual(['brief 3', 'reply 3', 'brief 4', 'reply 4']);
   });
 
-  it('trims to maxLength when history starts cleanly on a user message', () => {
-    const h = Array.from({ length: 22 }, (_, i) => (i % 2 === 0 ? user(`msg ${i}`) : assistant(`reply ${i}`)));
-    const result = trimHistory(h, 20);
-    expect(result).toHaveLength(20);
-    expect(result[0].role).toBe('user');
-    expect(typeof result[0].content).toBe('string');
+  it('keeps every exchange of a tool-heavy conversation', () => {
+    const h = [1, 2, 3].flatMap(n => exchange(n, 8));
+
+    const briefs = trimHistory(h).filter(m => m.role === 'user').map(m => m.content);
+
+    expect(briefs).toEqual(['brief 1', 'brief 2', 'brief 3']);
   });
 
-  // Regression test: slice(-N) cutting into a tool turn would leave an orphaned
-  // tool message (a tool result with no preceding assistant tool_call) at the start
-  // of history, which the model API rejects.
-  it('skips leading orphaned tool messages after trimming', () => {
-    const h: Msg[] = [
-      user('first'),             // 0
-      assistantWithTool('t1'),   // 1
-      toolResult('t1'),          // 2  ← orphaned once 0-1 are cut
-      assistant('done with t1'), // 3
-      user('second'),            // 4
-      assistantWithTool('t2'),   // 5
-      toolResult('t2'),          // 6
-      assistant('done with t2'), // 7
-      user('third'),             // 8
-      assistant('reply'),        // 9
-      // pad to 22 messages with plain turns
-      ...Array.from({ length: 12 }, (_, i) => (i % 2 === 0 ? user(`pad ${i}`) : assistant(`pad reply ${i}`))),
-    ];
+  it('never empties history while any user message survives', () => {
+    const h = exchange(1, 30);
 
-    const result = trimHistory(h, 20);
+    const result = trimHistory(h);
 
-    // Result must never start with an orphaned tool message
-    expect(result[0].role).toBe('user');
+    expect(result.length).toBeGreaterThan(0);
+    expect(result[0]).toEqual(user('brief 1'));
   });
 
-  it('returns empty array when no clean user message exists in the trimmed window', () => {
-    // Degenerate case: the trimmed window holds only assistant/tool turns
-    const h: Msg[] = [
-      user('real start'),         // 0 — gets cut off
-      assistantWithTool('t1'),    // 1
-      toolResult('t1'),           // 2
-      assistantWithTool('t2'),    // 3
-      toolResult('t2'),           // 4
-    ];
-    // maxLength=2 cuts to [assistantWithTool('t2'), toolResult('t2')] — no clean user msg
-    const result = trimHistory(h, 2);
-    expect(result).toEqual([]);
+  it('reduces older exchanges to what was said, keeping tool traffic only for recent ones', () => {
+    const h = [1, 2, 3].flatMap(n => exchange(n, 2));
+
+    const result = trimHistory(h, 20, 1);
+
+    expect(result.slice(0, 4)).toEqual([
+      user('brief 1'), assistant('reply 1'),
+      user('brief 2'), assistant('reply 2'),
+    ]);
+    expect(result.filter(m => m.role === 'tool')).toHaveLength(2);
   });
 
-  it('does not trim when the slice already starts on a clean user message', () => {
-    const h: Msg[] = [
-      user('clean start'),
-      assistant('reply'),
-      user('second'),
-      assistant('reply2'),
-    ];
-    // Limit larger than history — no trimming needed
-    const result = trimHistory(h, 10);
-    expect(result).toHaveLength(4);
-    expect(result[0]).toEqual(user('clean start'));
+  // A tool result whose call was dropped is exactly what the model API rejects.
+  it('never starts with an orphaned tool result', () => {
+    const h = [1, 2, 3].flatMap(n => exchange(n, 4));
+
+    for (const max of [1, 2, 3]) {
+      const result = trimHistory(h, max, 1);
+      expect(result[0].role).toBe('user');
+    }
+  });
+
+  it('keeps the newest exchange rather than everything when given a zero budget', () => {
+    const h = [1, 2, 3].flatMap(n => [user(`brief ${n}`), assistant(`reply ${n}`)]);
+
+    expect(trimHistory(h, 0, 3).map(m => m.content)).toEqual(['brief 3', 'reply 3']);
   });
 
   it('sanitizes even when history is under the limit', () => {
     const h = [
-      toolResult('orphan'),  // bad leading entry, but length=3 < maxLength=20
+      toolResult('orphan'),  // bad leading entry, but well under the exchange cap
       assistant('reply'),
       user('clean message'),
     ];
-    const result = trimHistory(h, 20);
-    // Should sanitize even though length <= maxLength — strips up to first clean user message
-    expect(result).toEqual([user('clean message')]);
+
+    expect(trimHistory(h, 20, 3)).toEqual([user('clean message')]);
   });
 });
 
@@ -147,6 +143,188 @@ describe('sanitizeHistory', () => {
     const legacyUser = { role: 'user', content: [{ type: 'text', text: 'hi' }] } as unknown as Msg;
     const h = [legacyUser, assistant('reply'), user('clean')];
     expect(sanitizeHistory(h)).toEqual([user('clean')]);
+  });
+
+  // A cancelled turn is persisted mid-loop, so it can announce calls that never ran.
+  // Leaving them in breaks the *next* turn, not the one that was interrupted.
+  it('strips a tool call that never got a result', () => {
+    const h = [user('build a page'), assistantWithTool('t1')];
+    expect(sanitizeHistory(h)).toEqual([user('build a page')]);
+  });
+
+  it('keeps what the agent said when dropping its unanswered calls', () => {
+    const spoke: Msg = {
+      role: 'assistant',
+      content: 'Adding the FAQ section now.',
+      tool_calls: [{ id: 't1', type: 'function', function: { name: 'some_tool', arguments: '{}' } }],
+    };
+    expect(sanitizeHistory([user('go'), spoke])).toEqual([
+      user('go'),
+      assistant('Adding the FAQ section now.'),
+    ]);
+  });
+
+  it('keeps the answered calls of a partly-executed batch', () => {
+    const batch: Msg = {
+      role: 'assistant',
+      content: '',
+      tool_calls: [
+        { id: 't1', type: 'function', function: { name: 'some_tool', arguments: '{}' } },
+        { id: 't2', type: 'function', function: { name: 'some_tool', arguments: '{}' } },
+      ],
+    };
+    const result = sanitizeHistory([user('go'), batch, toolResult('t1')]);
+
+    expect(result).toHaveLength(3);
+    expect((result[1] as { tool_calls: { id: string }[] }).tool_calls.map(c => c.id)).toEqual(['t1']);
+    expect(result[2]).toEqual(toolResult('t1'));
+  });
+
+  it('drops a tool result whose call is gone, wherever it sits', () => {
+    const h = [user('first'), assistant('ok'), toolResult('ghost'), user('second')];
+    expect(sanitizeHistory(h)).toEqual([user('first'), assistant('ok'), user('second')]);
+  });
+});
+
+describe('buildRestoredHistory — ordered parts', () => {
+  const call = (id: string, name: string): Msg => ({
+    role: 'assistant',
+    content: '',
+    tool_calls: [{ id, type: 'function', function: { name, arguments: '{}' } }],
+  });
+
+  it('records prose and calls in the order they happened', () => {
+    const h: Msg[] = [
+      user('build it'),
+      { role: 'assistant', content: "I'll read the page." },
+      call('t1', 'get_document'),
+      toolResult('t1'),
+      { role: 'assistant', content: 'That page is empty.' },
+      call('t2', 'apply_document_edits'),
+      toolResult('t2'),
+      { role: 'assistant', content: 'Done.' },
+    ];
+
+    const [, assistantTurn] = buildRestoredHistory(h);
+
+    expect(assistantTurn.parts?.map(p => (p.type === 'text' ? p.text : `tool:${p.tool.name}`))).toEqual([
+      "I'll read the page.",
+      'tool:get_document',
+      'That page is empty.',
+      'tool:apply_document_edits',
+      'Done.',
+    ]);
+  });
+
+  it('pairs each call with the result it returned', () => {
+    const h: Msg[] = [
+      user('go'),
+      call('t1', 'apply_document_edits'),
+      { role: 'tool', tool_call_id: 't1', content: '{"success":true,"operationsApplied":3}' } as Msg,
+    ];
+
+    const [, assistantTurn] = buildRestoredHistory(h);
+    const part = assistantTurn.parts?.[0];
+
+    expect(part?.type).toBe('tool');
+    expect(part?.type === 'tool' && part.tool.result).toEqual({ success: true, operationsApplied: 3 });
+  });
+
+  it('omits parts from a user turn', () => {
+    const [userTurn] = buildRestoredHistory([user('hi'), assistant('hello')]);
+
+    expect(userTurn.parts).toBeUndefined();
+    expect(userTurn.toolCalls).toBeUndefined();
+  });
+});
+
+describe('turnHasOutput', () => {
+  it('is false for a turn stopped before the model replied', () => {
+    expect(turnHasOutput([user('hi')])).toBe(false);
+  });
+
+  it('is false for an assistant entry that said nothing and called nothing', () => {
+    expect(turnHasOutput([user('hi'), assistant('')])).toBe(false);
+  });
+
+  it('is true once any prose has streamed', () => {
+    expect(turnHasOutput([user('hi'), assistant('Hi the')])).toBe(true);
+  });
+
+  it('is true for a turn that ran a tool', () => {
+    expect(turnHasOutput([user('go'), assistantWithTool('t1'), toolResult('t1')])).toBe(true);
+  });
+});
+
+describe('turnMayCommit', () => {
+  it('lets a turn commit when the conversation has never been cleared', () => {
+    expect(turnMayCommit(undefined, 0)).toBe(true);
+  });
+
+  it('blocks a turn that a clear landed on top of', () => {
+    expect(turnMayCommit(1, 0)).toBe(false);
+  });
+
+  it('lets a turn commit in a conversation cleared before it began', () => {
+    expect(turnMayCommit(2, 2)).toBe(true);
+  });
+
+  it('blocks a turn that a second clear landed on top of', () => {
+    expect(turnMayCommit(3, 2)).toBe(false);
+  });
+});
+
+describe('appendTurn', () => {
+  it('appends a turn to the conversation as stored', () => {
+    const stored = [user('first'), assistant('reply')];
+    expect(appendTurn(stored, [user('second'), assistant('second reply')], 20)).toEqual([
+      user('first'),
+      assistant('reply'),
+      user('second'),
+      assistant('second reply'),
+    ]);
+  });
+
+  // The race this exists for: a clear commits while the model streams. Reading state at
+  // commit time means the turn lands on the empty conversation instead of resurrecting
+  // everything it started from.
+  it('does not resurrect a conversation cleared while the turn ran', () => {
+    expect(appendTurn([], [user('second'), assistant('second reply')], 20)).toEqual([
+      user('second'),
+      assistant('second reply'),
+    ]);
+  });
+
+  // Same race between two tabs: whoever commits second must keep the other's turn.
+  it('keeps a turn another writer committed first', () => {
+    const committedByOtherTab = [user('theirs'), assistant('their reply')];
+    expect(appendTurn(committedByOtherTab, [user('mine'), assistant('my reply')], 20)).toEqual([
+      user('theirs'),
+      assistant('their reply'),
+      user('mine'),
+      assistant('my reply'),
+    ]);
+  });
+
+  it('trims to the exchange limit, keeping the newest', () => {
+    const stored = [1, 2, 3].flatMap(n => [user(`old ${n}`), assistant(`reply ${n}`)]);
+
+    const result = appendTurn(stored, [user('newest'), assistant('newest reply')], 2, 3);
+
+    expect(result.map(m => m.content)).toEqual(['old 3', 'reply 3', 'newest', 'newest reply']);
+  });
+
+  it('drops an interrupted turn\'s unanswered calls as it commits', () => {
+    const interrupted: Msg[] = [
+      user('build a page'),
+      { role: 'assistant', content: 'Reading the page.', tool_calls: [
+        { id: 't1', type: 'function', function: { name: 'some_tool', arguments: '{}' } },
+      ] },
+    ];
+    expect(appendTurn([], interrupted, 20)).toEqual([
+      user('build a page'),
+      assistant('Reading the page.'),
+    ]);
   });
 });
 
@@ -226,7 +404,11 @@ describe('buildRestoredHistory', () => {
     ]);
     expect(restored).toEqual([
       { role: 'user', content: 'hi' },
-      { role: 'assistant', content: 'hello there' },
+      {
+        role: 'assistant',
+        content: 'hello there',
+        parts: [{ type: 'text', text: 'hello there' }],
+      },
     ]);
   });
 
@@ -381,5 +563,22 @@ describe('buildContextNote', () => {
     expect(note).toContain('Site ID: s1');
     expect(note).toContain('Branch ID: b1');
     expect(note).toContain('Document: /pricing');
+  });
+});
+
+describe('ChatAgent state protocol', () => {
+  // On the prototype: constructing the agent needs a live Durable Object.
+  const connection = { id: 'c1' } as unknown as Connection;
+
+  it('sends no protocol messages, which would carry state to an unauthorized connection', () => {
+    expect(ChatAgent.prototype.shouldSendProtocolMessages(connection, {} as ConnectionContext)).toBe(false);
+  });
+
+  it('rejects a state update originating from a client', () => {
+    expect(() => ChatAgent.prototype.validateStateChange({ conversationHistory: [] }, connection)).toThrow();
+  });
+
+  it("accepts the agent's own state update", () => {
+    expect(() => ChatAgent.prototype.validateStateChange({ conversationHistory: [] }, 'server')).not.toThrow();
   });
 });

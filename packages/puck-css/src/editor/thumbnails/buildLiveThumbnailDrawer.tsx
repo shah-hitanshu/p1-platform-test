@@ -19,9 +19,10 @@ import React from 'react';
 import { Drawer, usePuck } from '@puckeditor/core';
 import { Icon, IconButton } from '@pantheon-systems/pds-toolkit-react';
 import type { PuckOverrides } from '../plugin/index.js';
-import { ThumbnailCard, DEFAULT_THUMBNAIL_HEIGHT } from './ThumbnailCard.js';
 import { useP1Puck } from '../../core/P1PuckContext.js';
 import { PreviewPanelOverlay } from '../components/PreviewPanelOverlay.js';
+import { CollapsibleSectionHeader } from '../components/CollapsibleSectionHeader.js';
+import { ThumbnailCard, DEFAULT_THUMBNAIL_HEIGHT } from './ThumbnailCard.js';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type RenderConfig = any;
@@ -36,7 +37,6 @@ export interface LiveThumbnailDrawerOptions {
 }
 
 const OTHER_KEY = '__other';
-
 
 interface Section {
   key: string;
@@ -80,41 +80,6 @@ function DrawerCloseButton({ onClose }: { onClose?: () => void }) {
         onClose?.();
       }}
     />
-  );
-}
-
-// ─── Category header ──────────────────────────────────────────────────────────
-
-function CategoryHeader({
-  id,
-  controlsId,
-  title,
-  count,
-  open,
-  onToggle,
-}: {
-  id: string;
-  controlsId: string;
-  title: string;
-  count: number;
-  open: boolean;
-  onToggle: () => void;
-}) {
-  return (
-    <button
-      id={id}
-      type="button"
-      onClick={onToggle}
-      aria-expanded={open}
-      aria-controls={controlsId}
-      className="p1-blocks-drawer__cat-btn"
-    >
-      <span className="p1-blocks-drawer__cat-title">{title}</span>
-      <span className="p1-blocks-drawer__cat-meta">
-        <span className="p1-blocks-drawer__cat-count">{count}</span>
-        <Icon iconName={open ? 'angleUp' : 'angleDown'} iconSize="s" />
-      </span>
-    </button>
   );
 }
 
@@ -190,7 +155,7 @@ function LiveThumbnailDrawer({
           const gridId = `p1-cat-grid-${section.key}`;
           return (
             <section key={section.key} aria-labelledby={btnId}>
-              <CategoryHeader
+              <CollapsibleSectionHeader
                 id={btnId}
                 controlsId={gridId}
                 title={section.title}

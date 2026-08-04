@@ -411,7 +411,7 @@ describe('DocumentSession /update-focus-regions endpoint', () => {
       // Agent tries to edit the same region
       const agentRequest = new Request('http://localhost/can-agent-edit', {
         method: 'POST',
-        headers: {
+        headers: { 'X-Verified-Actor-Id': 'agent-456',
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -455,7 +455,7 @@ describe('DocumentSession /update-focus-regions endpoint', () => {
       // Agent tries to edit a different region
       const agentRequest = new Request('http://localhost/can-agent-edit', {
         method: 'POST',
-        headers: {
+        headers: { 'X-Verified-Actor-Id': 'agent-456',
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({

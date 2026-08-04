@@ -529,6 +529,30 @@ describe('Agent Politeness Phase 1.3: Organization Service', () => {
 
       expect(result).toEqual([]);
     });
+
+    it('should map a null pantheon_site_id to undefined', async () => {
+      const { getSitesByOrganization } = await import('../../src/services/organization-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValue({
+        rows: [
+          {
+            id: 'site-1',
+            pantheon_site_id: null,
+            name: 'Site One',
+            organization_id: 'org-uuid-123',
+            workflow_settings: { mergeApprovalMode: 'optional' },
+            created_at: '2026-01-26T10:00:00.000Z',
+            updated_at: '2026-01-26T10:00:00.000Z',
+          },
+        ],
+      });
+
+      const result = await getSitesByOrganization('org-uuid-123');
+
+      expect(result[0].pantheonSiteId).toBeUndefined();
+      expect('pantheonSiteId' in JSON.parse(JSON.stringify(result[0]))).toBe(false);
+    });
   });
 
   describe('getOrganizationForSite', () => {

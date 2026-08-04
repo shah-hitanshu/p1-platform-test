@@ -46,7 +46,7 @@ describe('Phase 3.1: Site Service', () => {
   // Mock site row type (database format)
   interface MockSiteRow {
     id: string;
-    pantheon_site_id: string;
+    pantheon_site_id: string | null;
     name: string;
     workflow_settings: WorkflowSettings;
     allowed_origins: string[] | null;
@@ -155,15 +155,35 @@ describe('Phase 3.1: Site Service', () => {
       ).rejects.toThrow(DuplicatePantheonSiteIdError);
     });
 
-    it('should validate required pantheonSiteId field', async () => {
-      const { createSite, InvalidSiteParamsError } = await import('../../src/services/site-service');
+    it('should create a site without a pantheonSiteId, storing null', async () => {
+      const { createSite } = await import('../../src/services/site-service');
+      const db = await import('../../src/db');
 
-      await expect(
-        createSite({
-          pantheonSiteId: '',
-          name: 'Site',
-        }),
-      ).rejects.toThrow(InvalidSiteParamsError);
+      const mockRow = createMockSiteRow({ pantheon_site_id: null });
+      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+
+      const result = await createSite({ name: 'Unlinked Site' });
+
+      expect(result.pantheonSiteId).toBeUndefined();
+      const insertCall = vi
+        .mocked(db.query)
+        .mock.calls.find(([sql]) => sql.includes('INSERT INTO app.sites'));
+      expect(insertCall?.[1]?.[0]).toBeNull();
+    });
+
+    it('should store null when pantheonSiteId is blank', async () => {
+      const { createSite } = await import('../../src/services/site-service');
+      const db = await import('../../src/db');
+
+      const mockRow = createMockSiteRow({ pantheon_site_id: null });
+      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+
+      await createSite({ pantheonSiteId: '   ', name: 'Site' });
+
+      const insertCall = vi
+        .mocked(db.query)
+        .mock.calls.find(([sql]) => sql.includes('INSERT INTO app.sites'));
+      expect(insertCall?.[1]?.[0]).toBeNull();
     });
 
     it('should validate required name field', async () => {
@@ -459,6 +479,100 @@ describe('Phase 3.1: Site Service', () => {
       // Should preserve existing settings not being updated
       expect(result?.workflowSettings.allowSelfApproval).toBe(true);
       expect(result?.workflowSettings.mergeApprovalMode).toBe('required');
+    });
+
+    it('should update pantheonSiteId', async () => {
+      const { updateSite } = await import('../../src/services/site-service');
+      const db = await import('../../src/db');
+
+      const updatedRow = createMockSiteRow({
+        id: 'site-123',
+        pantheon_site_id: 'new-pantheon-id',
+      });
+      vi.mocked(db.query).mockResolvedValue({ rows: [updatedRow] });
+
+      const result = await updateSite('site-123', {
+        pantheonSiteId: 'new-pantheon-id',
+      });
+
+      expect(result?.pantheonSiteId).toBe('new-pantheon-id');
+      const [sql, values] = vi.mocked(db.query).mock.calls[0] ?? [];
+      expect(sql).toContain('pantheon_site_id = CASE');
+      expect(values).toContain('new-pantheon-id');
+    });
+
+    it('should clear pantheonSiteId when null is passed', async () => {
+      const { updateSite } = await import('../../src/services/site-service');
+      const db = await import('../../src/db');
+
+      const updatedRow = createMockSiteRow({
+        id: 'site-123',
+        pantheon_site_id: null,
+      });
+      vi.mocked(db.query).mockResolvedValue({ rows: [updatedRow] });
+
+      const result = await updateSite('site-123', { pantheonSiteId: null });
+
+      expect(result?.pantheonSiteId).toBeUndefined();
+      // The presence flag ($4) must be true so the CASE writes the null ($5).
+      const [, values] = vi.mocked(db.query).mock.calls[0] ?? [];
+      expect(values?.[3]).toBe(true);
+      expect(values?.[4]).toBeNull();
+    });
+
+    it('should leave pantheonSiteId untouched when omitted', async () => {
+      const { updateSite } = await import('../../src/services/site-service');
+      const db = await import('../../src/db');
+
+      const updatedRow = createMockSiteRow({ id: 'site-123' });
+      vi.mocked(db.query).mockResolvedValue({ rows: [updatedRow] });
+
+      await updateSite('site-123', { name: 'New Name' });
+
+      // The presence flag ($4) must be false so the CASE keeps the column.
+      const [, values] = vi.mocked(db.query).mock.calls[0] ?? [];
+      expect(values?.[3]).toBe(false);
+    });
+
+    it('should update pantheonSiteId alongside workflowSettings', async () => {
+      const { updateSite } = await import('../../src/services/site-service');
+      const db = await import('../../src/db');
+
+      const currentRow = createMockSiteRow({ id: 'site-123' });
+      const updatedRow = createMockSiteRow({
+        id: 'site-123',
+        pantheon_site_id: 'new-pantheon-id',
+      });
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [currentRow] })
+        .mockResolvedValueOnce({ rows: [updatedRow] });
+
+      const result = await updateSite('site-123', {
+        workflowSettings: { mergeApprovalMode: 'required' },
+        pantheonSiteId: 'new-pantheon-id',
+      });
+
+      expect(result?.pantheonSiteId).toBe('new-pantheon-id');
+      const [sql, values] = vi.mocked(db.query).mock.calls[1] ?? [];
+      expect(sql).toContain('pantheon_site_id = CASE');
+      expect(values?.[3]).toBe(true);
+      expect(values?.[4]).toBe('new-pantheon-id');
+      expect(values?.[7]).toBe('site-123');
+    });
+
+    it('should throw DuplicatePantheonSiteIdError when the new id is taken', async () => {
+      const { updateSite, DuplicatePantheonSiteIdError } = await import(
+        '../../src/services/site-service'
+      );
+      const db = await import('../../src/db');
+
+      const error = new Error('duplicate key value violates unique constraint');
+      (error as NodeJS.ErrnoException).code = '23505';
+      vi.mocked(db.query).mockRejectedValue(error);
+
+      await expect(
+        updateSite('site-123', { pantheonSiteId: 'taken-id' }),
+      ).rejects.toThrow(DuplicatePantheonSiteIdError);
     });
 
     it('should update updatedAt timestamp', async () => {

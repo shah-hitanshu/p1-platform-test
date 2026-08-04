@@ -89,8 +89,9 @@ const VALID_TRIGGERS = ['human_requested', 'autonomous'] as const;
  * Validate POST request body for /can-agent-edit and /agent-edit-start endpoints
  * Returns parsed body or error response
  *
- * Phase 7.3: Merges X-Agent-* headers with body params.
- * Body params take precedence over headers for backwards compatibility.
+ * `agentId` is the verified acting agent, supplied by the caller. The
+ * declarative fields (trigger, intent, operationType, targetRegions) are merged
+ * from body params and X-Agent-* headers, with body params taking precedence.
  */
 export interface AgentEditRequestBody {
   agentId: string;
@@ -104,7 +105,7 @@ export async function validateAgentEditBody(
   request: Request,
   origin: string | null,
   patterns: CorsPattern[],
-  fallbackAgentId?: string,
+  agentId: string,
 ): Promise<AgentEditRequestBody | Response> {
   // Check Content-Type
   const contentType = request.headers.get('Content-Type');
@@ -128,15 +129,7 @@ export async function validateAgentEditBody(
 
   const bodyObj = body as Record<string, unknown>;
 
-  // Phase 7.3: Parse X-Agent-* headers
   const headerContext: AgentContext | null = parseAgentContext(request.headers);
-
-  // Merge identity sources by precedence: body param, X-Agent-Id header, then the
-  // authenticated agent key. The fallback lets a key-authenticated agent omit the
-  // header entirely and still be attributed.
-  const agentId = (typeof bodyObj.agentId === 'string' && bodyObj.agentId.length > 0
-    ? bodyObj.agentId
-    : headerContext?.agentId) ?? fallbackAgentId;
 
   const trigger = typeof bodyObj.trigger === 'string' && bodyObj.trigger.length > 0
     ? bodyObj.trigger
@@ -164,8 +157,7 @@ export async function validateAgentEditBody(
     targetRegions = undefined; // Neither source provided targetRegions
   }
 
-  // Validate required fields after merge
-  if (agentId === undefined || agentId === '') {
+  if (agentId === '') {
     return errorResponse(400, 'Missing or invalid required field: agentId', origin, patterns);
   }
 

@@ -33,6 +33,8 @@
     "db:backfill-template-content-shape:execute": "tsx src/db/backfill-template-content-shape.ts --execute",
     "db:adopt-slot-ids": "tsx src/db/adopt-slot-ids.ts",
     "db:adopt-slot-ids:execute": "tsx src/db/adopt-slot-ids.ts --execute",
+    "db:backfill-page-titles": "tsx src/db/backfill-page-titles.ts",
+    "db:backfill-page-titles:execute": "tsx src/db/backfill-page-titles.ts --execute",
     "cf:login": "wrangler login",
     "cf:whoami": "wrangler whoami",
     "cf:tail": "wrangler tail",

@@ -40,6 +40,7 @@ vi.mock('../../src/middleware/agent-status-middleware', () => ({
 import * as documentService from '../../src/services/document-service';
 import * as branchService from '../../src/services/branch-service';
 import * as authorization from '../../src/auth/authorization';
+import * as agentStatusMiddleware from '../../src/middleware/agent-status-middleware';
 import type { AuthenticatedPrincipal, Branch } from '../../src/types';
 
 /**
@@ -128,6 +129,9 @@ describe('Auth Phase 4: WebSocket Authentication & Authorization', () => {
 
     // Mock hasPermission to allow by default
     vi.mocked(authorization.hasPermission).mockResolvedValue(true);
+
+    // Agent status defaults to allowed; individual tests override as needed
+    vi.mocked(agentStatusMiddleware.checkAgentStatus).mockResolvedValue({ allowed: true });
 
     // PCC-3458: resolve any branch ref to a branch matching the fixtures
     vi.mocked(branchService.getBranchByName).mockImplementation(

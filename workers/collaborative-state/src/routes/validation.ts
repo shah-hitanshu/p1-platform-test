@@ -86,6 +86,137 @@ export function estimateJsonSize(obj: unknown): number {
   return new TextEncoder().encode(JSON.stringify(obj)).length;
 }
 
+/** Matches MAX_PATTERNS in utils/cors.ts; entries beyond it never take effect. */
+export const MAX_ALLOWED_ORIGINS = 50;
+
+/**
+ * Mirrors what utils/cors.ts parseOriginPatterns accepts, and additionally
+ * rejects patterns that parse but are too broad to be safe.
+ *
+ * Collects every applicable reason rather than stopping at the first, so a
+ * caller sees all of an entry's problems in one round trip.
+ *
+ * @param entry - Candidate pattern
+ * @returns All reasons the entry is invalid; empty when it is acceptable
+ */
+function validateOriginPattern(entry: string): string[] {
+  if (entry === '') {
+    return ['must not be empty'];
+  }
+
+  // Parses to wildcard-all, permitting every origin.
+  if (entry === '*') {
+    return ['must not be a bare wildcard; list origins explicitly'];
+  }
+
+  // Readers parse the stored array by joining it with commas (see
+  // validateAllowedOriginPatterns), so a comma inside a single entry would
+  // become a pattern separator and one row would expand into several.
+  // Security-review follow-up (e63a0d67): rejected outright, since there is no
+  // legitimate use case for a comma inside one entry — each origin is its own
+  // array entry — and splitting instead of rejecting would let one API call
+  // smuggle several origins in behind what looks like one entry.
+  if (entry.includes(',')) {
+    return ['must not contain a comma; add each origin as its own entry'];
+  }
+
+  const reasons: string[] = [];
+
+  // parseOriginPatterns silently skips entries without a protocol, so they would
+  // store cleanly and match nothing.
+  const hasProtocol = /^https?:\/\//.test(entry);
+  if (!hasProtocol) {
+    reasons.push('must start with https:// or http://');
+  }
+
+  const wildcardCount = (entry.match(/\*/g) ?? []).length;
+  if (wildcardCount > 1) {
+    reasons.push('must contain at most one *');
+  }
+
+  // The remaining checks need a parseable host, which requires a protocol.
+  if (hasProtocol) {
+    // An Origin header never carries a path, query or fragment, so such an entry
+    // could never match. Checked on the raw string: a wildcard breaks URL().
+    const afterProtocol = entry.slice(entry.indexOf('://') + 3);
+    if (afterProtocol === '') {
+      reasons.push('must include a host');
+    } else {
+      if (/[/?#]/.test(afterProtocol)) {
+        reasons.push('must be an origin only, with no path, query or trailing slash');
+      }
+
+      if (wildcardCount === 1) {
+        // Strip any path/query/fragment first so it can't skew the label count.
+        const [hostOnly = ''] = afterProtocol.split(/[/?#]/);
+        const labels = hostOnly.split('.');
+        // split() always yields at least one element; the default is for
+        // noUncheckedIndexedAccess, which types labels[0] as possibly undefined.
+        const [leftmostLabel = ''] = labels;
+
+        // '*' expands to one DNS label, so only the leftmost position is meaningful.
+        if (!leftmostLabel.includes('*')) {
+          reasons.push('may only use * in the leftmost label');
+        } else if (labels.length < 3) {
+          // Blocks https://*.com, where the wildcard sits on a public suffix and
+          // matches every domain under it. Limitation: no public-suffix list, so
+          // *.co.uk passes; tightening that needs a PSL.
+          reasons.push(
+            'is too broad; * must be below a registrable domain (e.g. https://*-site.pantheonsite.io)',
+          );
+        }
+      }
+    }
+  }
+
+  return reasons;
+}
+
+/**
+ * Validates allowed-origin patterns submitted for a site.
+ *
+ * Diff-scoped: only entries not already stored are checked. Callers resend the
+ * whole array on every change, so validating all of it would leave a site holding
+ * a legacy invalid row unable to remove it.
+ *
+ * Every invalid entry (and every reason each one fails) is collected into a
+ * single message, rather than returning as soon as the first is found.
+ *
+ * @param nextOrigins - The full array the caller wants to store
+ * @param storedOrigins - Origins currently stored for the site, if any
+ * @returns Message describing every offending entry, or undefined if acceptable
+ */
+export function validateAllowedOriginPatterns(
+  nextOrigins: string[],
+  storedOrigins?: string[],
+): string | undefined {
+  if (nextOrigins.length > MAX_ALLOWED_ORIGINS) {
+    return (
+      'allowedOrigins cannot exceed ' + String(MAX_ALLOWED_ORIGINS) + ' entries'
+    );
+  }
+
+  const alreadyStored = new Set(storedOrigins ?? []);
+  const failures: string[] = [];
+
+  for (const entry of nextOrigins) {
+    if (alreadyStored.has(entry)) {
+      continue;
+    }
+
+    const reasons = validateOriginPattern(entry);
+    if (reasons.length > 0) {
+      failures.push('allowedOrigins entry "' + entry + '" ' + reasons.join('; and '));
+    }
+  }
+
+  if (failures.length > 0) {
+    return failures.join(' | ');
+  }
+
+  return undefined;
+}
+
 /**
  * Validates that a JSON object doesn't exceed the size limit.
  *
