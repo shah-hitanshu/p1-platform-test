@@ -303,10 +303,10 @@ export function P1EditorHeader({
           aria-haspopup="true"
           aria-expanded={pageNavigatorOpen}
         >
-          <Icon iconName="folderTree" iconSize="s" aria-hidden="true" />
+          <Icon iconName="folderTree" size="s" aria-hidden="true" />
           <span className={styles.labelText}>
             {currentDocument?.path || selectedDocumentPath || 'Select a page'}
-            <Icon iconName="angleDown" iconSize="s" aria-hidden="true" />
+            <Icon iconName="angleDown" size="s" aria-hidden="true" />
           </span>
         </button>
 
@@ -450,7 +450,7 @@ export function P1EditorHeader({
                 onLogout();
               }}
             >
-              <Icon iconName="bracketRight" iconSize="s" aria-hidden="true" />
+              <Icon iconName="bracketRight" size="s" aria-hidden="true" />
               Log out
             </button>
           </div>,

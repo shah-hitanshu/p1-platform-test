@@ -94,7 +94,7 @@ export function VersionBannerOverride({
               backgroundColor: 'var(--pds-color-bg-default, white)',
             }}
           >
-            <Icon iconName="userAstronaut" iconSize={'3xl' as never} aria-hidden="true" />
+            <Icon iconName="userAstronaut" size="3xl" aria-hidden="true" />
             <p style={{ margin: 0, fontFamily: 'Poppins, sans-serif', fontSize: '1rem' }}>
               Choose a page from the menu above
             </p>

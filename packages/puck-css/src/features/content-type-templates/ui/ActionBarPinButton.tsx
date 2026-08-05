@@ -87,7 +87,7 @@ export function ActionBarPinButton(): React.ReactElement | null {
     >
       <Icon
         iconName={isPinned ? 'lock' : 'lockOpen'}
-        iconSize="s"
+        size="s"
         aria-hidden="true"
       />
     </ActionBar.Action>

@@ -60,7 +60,7 @@ export function AgentChip({ agent, onStop, currentWorkstream, id }: AgentChipPro
       >
         <Avatar uniqueId={agent.id} size="s" />
         <span className={styles.robotOverlay} aria-hidden="true">
-          <Icon iconName="robot" iconSize="s" />
+          <Icon iconName="robot" size="s" />
         </span>
       </div>
 

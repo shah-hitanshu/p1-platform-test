@@ -46,7 +46,7 @@ export function HistoricalVersionBanner({
   return (
     <div className={classes}>
       <div className={`${baseClass}__icon`} aria-hidden="true">
-        <Icon iconName="rotateLeft" iconSize="s" />
+        <Icon iconName="rotateLeft" size="s" />
       </div>
 
       <div className={`${baseClass}__content`}>

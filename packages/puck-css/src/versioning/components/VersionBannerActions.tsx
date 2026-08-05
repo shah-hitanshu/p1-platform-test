@@ -65,7 +65,7 @@ export function VersionBannerActions({
                 disabled={!hasPrevious || isReverting || isReturning}
                 onClick={onPrevious}
               >
-                <Icon iconName="angleLeft" iconSize="s" aria-hidden="true" />
+                <Icon iconName="angleLeft" size="s" aria-hidden="true" />
               </button>
             )}
             {onNext && (
@@ -76,7 +76,7 @@ export function VersionBannerActions({
                 disabled={!hasNext || isReverting || isReturning}
                 onClick={onNext}
               >
-                <Icon iconName="angleRight" iconSize="s" aria-hidden="true" />
+                <Icon iconName="angleRight" size="s" aria-hidden="true" />
               </button>
             )}
           </div>
@@ -108,7 +108,7 @@ export function VersionBannerActions({
               </>
             ) : (
               <>
-                <Icon iconName="rotateLeft" iconSize="s" aria-hidden="true" />
+                <Icon iconName="rotateLeft" size="s" aria-hidden="true" />
                 Revert to this version
               </>
             )}

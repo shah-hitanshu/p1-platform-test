@@ -142,7 +142,7 @@ function LiveThumbnailDrawer({
               onClick={toggleAll}
               aria-label={allOpen ? 'Collapse all categories' : 'Expand all categories'}
             >
-              <Icon iconName={allOpen ? 'angleUp' : 'angleDown'} iconSize="s" />
+              <Icon iconName={allOpen ? 'angleUp' : 'angleDown'} size="s" />
               {allOpen ? 'Collapse all' : 'Expand all'}
             </button>
           </div>

@@ -7,5 +7,5 @@ export interface NavIconProps {
 }
 
 export function NavIcon({ iconName }: NavIconProps): React.ReactElement {
-  return <Icon iconName={iconName as never} iconSize="m" />;
+  return <Icon iconName={iconName as never} size="m" />;
 }

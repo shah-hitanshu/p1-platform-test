@@ -175,13 +175,13 @@ export function WorkstreamSwitcher({
         aria-expanded={open}
         disabled={isPending}
       >
-        <Icon iconName="codeBranch" iconSize="s" aria-hidden="true" />
+        <Icon iconName="codeBranch" size="s" aria-hidden="true" />
         <span className={styles.labelText}>
           {isPending ? 'Switching...' : triggerLabel}
           {isPending ? (
-            <Icon iconName="spinner" iconSize="s" aria-hidden="true" />
+            <Icon iconName="spinner" size="s" aria-hidden="true" />
           ) : (
-            <Icon iconName="angleDown" iconSize="s" aria-hidden="true" />
+            <Icon iconName="angleDown" size="s" aria-hidden="true" />
           )}
         </span>
       </button>

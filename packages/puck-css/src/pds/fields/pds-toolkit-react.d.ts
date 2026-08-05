@@ -74,7 +74,13 @@ declare module '@pantheon-systems/pds-toolkit-react' {
   export const Select: FC<SelectProps>;
   export const RadioGroup: FC<RadioGroupProps>;
   export const SegmentedButton: FC<SegmentedButtonProps>;
-  export const Icon: FC<{ iconName: string; iconSize?: string } & SVGProps<SVGSVGElement>>;
+  // `size` (not `iconSize`) is the real prop name — the component destructures
+  // `size` and spreads the rest onto the <svg>, so a misspelling silently lands
+  // in the DOM and React warns about an unknown attribute. Typed as the union
+  // rather than `string` so a bad value fails at compile time.
+  export const Icon: FC<
+    { iconName: string; size?: 's' | 'm' | 'l' | 'xl' | '2xl' | '3xl' } & SVGProps<SVGSVGElement>
+  >;
   export interface MenuItemType {
     label: string;
     description?: string;
