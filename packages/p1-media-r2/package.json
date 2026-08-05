@@ -47,7 +47,7 @@
     "react": ">=18"
   },
   "devDependencies": {
-    "@pantheon-systems/puck-css": "^0.7.0",
+    "@pantheon-systems/puck-css": "workspace:*",
     "@puckeditor/core": "^0.22.0",
     "@types/react": "^19.0.0",
     "react": "^19.0.0",

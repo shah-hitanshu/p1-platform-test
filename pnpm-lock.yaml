@@ -352,8 +352,8 @@ importers:
   packages/p1-media-r2:
     devDependencies:
       '@pantheon-systems/puck-css':
-        specifier: ^0.7.0
-        version: 0.7.0(@pantheon-systems/pds-toolkit-react@2.0.0-alpha.51(@types/react@19.2.17)(prop-types@15.8.1)(react-dom@19.2.7(react@19.2.7))(react-is@18.3.1)(react@19.2.7)(redux@5.0.1)(supports-color@10.2.2))(@puckeditor/core@0.21.1(@floating-ui/dom@1.8.0)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(immer@11.1.15)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(use-sync-external-store@1.6.0(react@19.2.7)))(@tanstack/react-query@5.101.3(@types/react@19.2.17)(react@19.2.7))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+        specifier: workspace:*
+        version: link:../puck-css
       '@puckeditor/core':
         specifier: 0.21.1
         version: 0.21.1(@floating-ui/dom@1.8.0)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(immer@11.1.15)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(use-sync-external-store@1.6.0(react@19.2.7))
@@ -1687,10 +1687,6 @@ packages:
   '@pantheon-systems/cpub-sdk-core@5.3.0':
     resolution: {integrity: sha512-xvLR8MRhlB9O+5px26iRLgi9IT6lhGDo2oSnqv28sg34HlxpJdmD9gEDtzdpxohv4gD88V4h++7NFm5eeQIMfQ==}
 
-  '@pantheon-systems/css-client@0.7.0':
-    resolution: {integrity: sha512-+Jg9wI53gOnBHZEh9uZqFaGmvxfqbRmgpzmvu5i7CNlo5QGlRToiDdOH4JsNFFighnn3LuOc07PrfJcxN2ZMwg==}
-    engines: {node: '>=18.0.0'}
-
   '@pantheon-systems/pds-design-tokens@2.0.0-alpha.57':
     resolution: {integrity: sha512-HcNLv7QpV9MgJr+7jTfV+1eFU0+2CETnwIghDOxOgnq4dSw0CKqYIoNtyeGT95w47eUd7APBVAsR1yKR1e6jAA==}
 
@@ -1712,16 +1708,6 @@ packages:
     peerDependencies:
       react: ^18.0.0 || ^19.0.0
       react-dom: ^18.0.0 || ^19.0.0
-
-  '@pantheon-systems/puck-css@0.7.0':
-    resolution: {integrity: sha512-n5nYF6KvbqqSf1lGPBhsKsAZXm5g1NoLsuw+FX71hRN452klbTRVZLSLVD8Ce9Dkoxap/Ays57DBH/M32fYmMA==}
-    engines: {node: '>=18.0.0'}
-    peerDependencies:
-      '@pantheon-systems/pds-toolkit-react': '>=2.0.0-alpha.0'
-      '@puckeditor/core': 0.21.1
-      '@tanstack/react-query': '>=5.0.0'
-      react: '>=18.0.0'
-      react-dom: '>=18.0.0'
 
   '@pinojs/redact@0.4.0':
     resolution: {integrity: sha512-k2ENnmBugE/rzQfEcdWHcCY+/FM3VLzH9cYEsbdsoqrvzAKRhUZeRNhAZvB8OitQJ1TBed3yqWtdjzS6wJKBwg==}
@@ -7408,11 +7394,6 @@ snapshots:
       - subscriptions-transport-ws
       - supports-color
 
-  '@pantheon-systems/css-client@0.7.0':
-    dependencies:
-      partysocket: 1.1.10
-      yjs: 13.6.31
-
   '@pantheon-systems/pds-design-tokens@2.0.0-alpha.57': {}
 
   '@pantheon-systems/pds-design-tokens@2.0.0-alpha.60': {}
@@ -7488,19 +7469,6 @@ snapshots:
       - react-is
       - redux
       - supports-color
-
-  '@pantheon-systems/puck-css@0.7.0(@pantheon-systems/pds-toolkit-react@2.0.0-alpha.51(@types/react@19.2.17)(prop-types@15.8.1)(react-dom@19.2.7(react@19.2.7))(react-is@18.3.1)(react@19.2.7)(redux@5.0.1)(supports-color@10.2.2))(@puckeditor/core@0.21.1(@floating-ui/dom@1.8.0)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(immer@11.1.15)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(use-sync-external-store@1.6.0(react@19.2.7)))(@tanstack/react-query@5.101.3(@types/react@19.2.17)(react@19.2.7))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
-    dependencies:
-      '@pantheon-systems/css-client': 0.7.0
-      '@pantheon-systems/pds-toolkit-react': 2.0.0-alpha.51(@types/react@19.2.17)(prop-types@15.8.1)(react-dom@19.2.7(react@19.2.7))(react-is@18.3.1)(react@19.2.7)(redux@5.0.1)(supports-color@10.2.2)
-      '@puckeditor/core': 0.21.1(@floating-ui/dom@1.8.0)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(immer@11.1.15)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(use-sync-external-store@1.6.0(react@19.2.7))
-      '@tanstack/react-query': 5.101.3(@types/react@19.2.17)(react@19.2.7)
-      fast-json-patch: 3.1.1
-      jsep: 1.4.0
-      lodash.isequal: 4.5.0
-      react: 19.2.7
-      react-dom: 19.2.7(react@19.2.7)
-      yjs: 13.6.31
 
   '@pinojs/redact@0.4.0': {}
 
