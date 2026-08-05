@@ -1588,10 +1588,11 @@ export function createToolHandlers(
 
         await Promise.all(
           docs.documents.map(async (doc) => {
-            // Path-derived name is a fallback only — the descriptor's own
-            // `name` field below is the source of truth for what callers
-            // should use as the type.
-            const pathName = componentNameFromPath(doc.path);
+            // Never fall back to the path-derived name: paths are lowercased
+            // server-side, so it would advertise a casing Puck cannot resolve
+            // as if it were a usable component type. The descriptor's own
+            // `name` is the only source of truth; without it the entry is
+            // reported as unusable rather than guessed at.
             try {
               // Use doc.id (UUID) — NOT doc.path. The backend versions/latest route
               // performs a UUID-based lookup; passing a path would return 404.
@@ -1601,7 +1602,14 @@ export function createToolHandlers(
                 doc.id,
               );
               const descriptor = version.snapshot;
-              const name = typeof descriptor.name === 'string' && descriptor.name !== '' ? descriptor.name : pathName;
+              if (typeof descriptor.name !== 'string' || descriptor.name === '') {
+                componentLines.push(
+                  `- ${componentNameFromPath(doc.path)} [UNUSABLE — descriptor has no name; ` +
+                    'reopen the editor or rerun the registry sync to repair it]',
+                );
+                return;
+              }
+              const name = descriptor.name;
               const provenance = typeof descriptor.provenance === 'string' ? descriptor.provenance : 'site';
               const fields = Array.isArray(descriptor.fields) ? descriptor.fields : [];
               const ai = descriptor.ai as { instructions?: string } | undefined;
@@ -1617,7 +1625,9 @@ export function createToolHandlers(
 
               componentLines.push(`- ${name} (${label}) [${provenance}] — ${fieldNote}${aiNote}`);
             } catch {
-              componentLines.push(`- ${pathName} [error fetching descriptor]`);
+              componentLines.push(
+                `- ${componentNameFromPath(doc.path)} [error fetching descriptor]`,
+              );
             }
           }),
         );

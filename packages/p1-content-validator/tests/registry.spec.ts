@@ -22,17 +22,24 @@ describe('registryComponentKey', () => {
 });
 
 describe('snapshotToComponentSchema', () => {
-  it('prefers the snapshot\'s own preserved-case name over a path-derived name', () => {
-    const schema = snapshotToComponentSchema('leadcapture', {
+  it('takes the name from the snapshot body, which preserves the real casing', () => {
+    const schema = snapshotToComponentSchema({
       name: 'LeadCapture',
       defaultProps: { headline: '' },
     });
-    expect(schema.name).toBe('LeadCapture');
+    expect(schema?.name).toBe('LeadCapture');
   });
 
-  it('falls back to the supplied name when the snapshot has no name field', () => {
-    const schema = snapshotToComponentSchema('leadcapture', { defaultProps: {} });
-    expect(schema.name).toBe('leadcapture');
+  // Previously this fell back to the caller-supplied (path-derived) name. Paths
+  // are lowercased server-side, so that fallback minted "leadcapture" and
+  // advertised it as a usable component type — a casing Puck cannot resolve
+  // (PCC-3561). A descriptor with no name is corrupt; callers must skip it.
+  it('returns null when the snapshot has no name field', () => {
+    expect(snapshotToComponentSchema({ defaultProps: {} })).toBeNull();
+  });
+
+  it('returns null for an empty name', () => {
+    expect(snapshotToComponentSchema({ name: '', defaultProps: {} })).toBeNull();
   });
 });
 

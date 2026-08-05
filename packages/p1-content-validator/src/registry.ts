@@ -39,17 +39,26 @@ export function componentNameFromPath(path: string): string {
 // (circuit-breaker-wrapped path) to ensure consistent extraction logic.
 // ---------------------------------------------------------------------------
 
+/**
+ * Returns null when the descriptor carries no usable `name`.
+ *
+ * There used to be a fallback to the path-derived name here. A document path
+ * cannot carry a component's casing reliably, so that fallback invented one and
+ * advertised it as a valid component type — teaching every consumer (and every
+ * agent calling list_components) a casing Puck may not resolve. A descriptor
+ * with no `name` is corrupt; callers must skip and log it rather than guess.
+ *
+ * This holds however paths are stored: the descriptor body is the source of
+ * truth for casing, so the path is never the place to recover it from.
+ */
 export function snapshotToComponentSchema(
-  name: string,
   snapshot: Record<string, unknown>,
-): ComponentSchema {
-  // Prefer the descriptor's own preserved-case name over the caller-supplied
-  // (often path-derived, lowercased) name — the snapshot body is the source
-  // of truth for the component's real casing (e.g. "LeadCapture").
-  const resolvedName =
-    typeof snapshot.name === 'string' && snapshot.name !== '' ? snapshot.name : name;
+): ComponentSchema | null {
+  if (typeof snapshot.name !== 'string' || snapshot.name === '') {
+    return null;
+  }
   return {
-    name: resolvedName,
+    name: snapshot.name,
     defaultProps: (snapshot.defaultProps as Record<string, unknown> | undefined) ?? {},
     allowedAdditionalProps: Array.isArray(snapshot.allowedAdditionalProps)
       ? (snapshot.allowedAdditionalProps as string[])
@@ -134,16 +143,21 @@ export async function fetchRegistry(
 
   await Promise.all(
     documents.map(async (doc) => {
-      // Path-derived name is a fallback only — snapshotToComponentSchema
-      // prefers the descriptor's own preserved-case name.
-      const pathName = componentNameFromPath(doc.path);
       const versionUrl =
         `${base}/api/sites/${siteId}/branches/${branchId}/documents/${doc.id}/versions/latest`;
       try {
         const vRes = await fetch(versionUrl, { method: 'GET', headers, signal: opts.signal });
         if (!vRes.ok) return;
         const { snapshot } = (await vRes.json()) as { snapshot: Record<string, unknown> };
-        const schema = snapshotToComponentSchema(pathName, snapshot);
+        const schema = snapshotToComponentSchema(snapshot);
+        if (schema === null) {
+          console.warn(
+            `[p1-content-validator] Registry descriptor at "${doc.path}" has no "name" — ` +
+              'skipping. Its component cannot be validated until the descriptor is rewritten ' +
+              '(reopen the editor or rerun the registry sync).',
+          );
+          return;
+        }
         schemas[registryComponentKey(schema.name)] = schema;
       } catch {
         // Skip components that fail to fetch — don't block the rest

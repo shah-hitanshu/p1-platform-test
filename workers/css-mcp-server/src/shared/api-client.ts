@@ -13,7 +13,6 @@ import type { ComponentSchema, TemplateSnapshot } from '@pantheon-systems/p1-con
 import {
   snapshotToComponentSchema,
   registryComponentKey,
-  componentNameFromPath,
 } from '@pantheon-systems/p1-content-validator';
 
 // =============================================================================
@@ -1247,15 +1246,18 @@ export class McpApiClient {
 
     await Promise.all(
       docs.documents.map(async (doc) => {
-        // Path-derived name is a fallback only — snapshotToComponentSchema
-        // prefers the descriptor's own preserved-case name, and the registry
-        // key is normalized so lookups stay case-insensitive regardless of
-        // which casing is used to reference it.
-        const pathName = componentNameFromPath(doc.path);
+        // The registry key is normalized so lookups stay case-insensitive
+        // regardless of which casing is used to reference the component; the
+        // schema's own `name` keeps the true casing that writes are held to.
         try {
           const version = await this.getDocumentLatestVersion(siteId, branchId, doc.id);
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
-          const schema = snapshotToComponentSchema(pathName, version.snapshot);
+          const schema = snapshotToComponentSchema(version.snapshot);
+          if (schema === null) {
+            console.warn(
+              `[fetchRegistrySchemas] Registry descriptor at "${doc.path}" has no "name" — skipping.`,
+            );
+            return;
+          }
           schemas[registryComponentKey(schema.name)] = schema;
         } catch {
           // Skip components that fail to fetch — don't block other schemas

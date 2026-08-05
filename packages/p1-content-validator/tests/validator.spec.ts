@@ -694,10 +694,62 @@ describe('validateOps', () => {
       expect(errors).toHaveLength(0);
     });
 
-    it('matches a lowercase component type against an original-case-keyed registry entry', () => {
+    // This assertion is inverted from what it was (PCC-3561). It used to expect
+    // a lowercase type to pass, which is how the bug shipped: the lookup found
+    // LeadCapture's schema, every prop validated against it, and "leadcapture"
+    // was written to the document — where Puck's exact-key lookup could not
+    // resolve it. Matching case-insensitively is still required (paths are
+    // lowercased server-side); writing the caller's casing through is not.
+    it('rejects a lowercase component type even though the lookup resolves it', () => {
       const reg = { LeadCapture: leadCaptureSchema };
       const ops = [op('add', 'content.0', component('leadcapture', { headline: 'Sign up' }))];
       const { errors } = validateOps({ operations: ops, registry: reg });
+      expect(errors).toHaveLength(1);
+      expect(errors[0].code).toBe('component_type_case_mismatch');
+      expect(errors[0].message).toContain('LeadCapture');
+    });
+
+    it('names the expected casing so the fix is mechanical', () => {
+      const reg = { leadcapture: leadCaptureSchema };
+      const ops = [op('add', 'content.0', component('LEADCAPTURE', { headline: 'Sign up' }))];
+      const { errors } = validateOps({ operations: ops, registry: reg });
+      expect(errors[0].code).toBe('component_type_case_mismatch');
+      expect(errors[0].message).toContain('use "LeadCapture"');
+    });
+
+    it('does not report prop errors alongside a case mismatch', () => {
+      const reg = { leadcapture: leadCaptureSchema };
+      const ops = [op('add', 'content.0', component('leadcapture', { nope: true }))];
+      const { errors } = validateOps({ operations: ops, registry: reg });
+      expect(errors.map((e) => e.code)).toEqual(['component_type_case_mismatch']);
+    });
+
+    it('accepts the exact registered casing', () => {
+      const reg = { leadcapture: leadCaptureSchema };
+      const ops = [op('add', 'content.0', component('LeadCapture', { headline: 'Sign up' }))];
+      const { errors } = validateOps({ operations: ops, registry: reg });
+      expect(errors).toHaveLength(0);
+    });
+
+    it('holds nested slot content to the same rule', () => {
+      const reg = { leadcapture: leadCaptureSchema, features: featuresSchema };
+      const ops = [
+        op('add', 'content.0', component('Features', {
+          items: [component('leadcapture', { headline: 'Nested' })],
+        })),
+      ];
+      const { errors } = validateOps({ operations: ops, registry: reg });
+      expect(errors.map((e) => e.code)).toEqual(['component_type_case_mismatch']);
+      expect(errors[0].path).toBe('content.0.props.items.0');
+    });
+
+    it('skips the casing check when a caller-supplied schema omits .name', () => {
+      const nameless = { defaultProps: { headline: '' } } as unknown as ComponentSchema;
+      const ops = [op('add', 'content.0', component('leadcapture', { headline: 'x' }))];
+      const { errors } = validateOps({
+        operations: ops,
+        registry: { leadcapture: nameless },
+      });
       expect(errors).toHaveLength(0);
     });
 

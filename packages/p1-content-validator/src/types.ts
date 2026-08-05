@@ -32,6 +32,7 @@ export interface ValidationError {
   path: string;
   code:
     | 'unknown_component_type'
+    | 'component_type_case_mismatch'
     | 'invalid_prop_key'
     | 'invalid_prop_value'
     | 'missing_required_prop'

@@ -48,6 +48,8 @@ import {
   validateFocusRegionsBody,
 } from './realtime-validators';
 import { getDocumentByPath } from '../services/document-service';
+import { loadCanonicalComponentNames } from '../services/component-type-registry';
+import { findComponentTypeViolations } from '../services/component-type-validation';
 import { getBranch, getBranchByName } from '../services/branch-service';
 import { hasPermission } from '../auth/authorization';
 import { getAgentById } from '../services/agent-service';
@@ -78,6 +80,57 @@ function requireSessionOwnerPrincipal(
     );
   }
   return null;
+}
+
+/**
+ * Rejects edits that would put an unknown or mis-cased component type into a
+ * document. Returns a 422 naming every violation, or null to proceed.
+ *
+ * A registry read failure fails open: the registry is a convenience index, and
+ * a transient database problem must not make every document unwritable. The
+ * MCP-side check still applies in that window.
+ */
+async function rejectBadComponentTypes(
+  operations: unknown[],
+  branchId: string,
+  origin: string | null,
+  patterns: CorsPattern[],
+): Promise<Response | null> {
+  let canonical;
+  try {
+    canonical = await loadCanonicalComponentNames(branchId);
+  } catch (error) {
+    console.warn(
+      '[realtime-api] Component type validation skipped — registry read failed:',
+      error,
+    );
+    return null;
+  }
+
+  if (canonical.size === 0) {
+    // A site whose editor has never opened (and whose CI sync has never run)
+    // has no registry to check against. Failing closed here would block every
+    // agent write to a brand-new site, so this stays open — but it is the one
+    // remaining path by which an unknown type can still land.
+    console.warn(
+      `[realtime-api] Component type validation skipped for branch ${branchId}: `
+      + 'no components registered.',
+    );
+    return null;
+  }
+
+  const violations = findComponentTypeViolations(operations, canonical);
+  if (violations.length === 0) {
+    return null;
+  }
+
+  return errorResponse(
+    422,
+    'Rejected: '
+    + violations.map((v) => `[${v.code}] ${v.message}`).join(' '),
+    origin,
+    patterns,
+  );
 }
 
 /**
@@ -240,6 +293,18 @@ export async function handleRealtimeRoutes(
       && bodyResult.actorId !== context.principal.providerSubjectId
     ) {
       return errorResponse(403, 'Actor ID in request body does not match authenticated identity', origin, patterns);
+    }
+
+    // Component-type identity is enforced here, not only in the MCP servers:
+    // their check is per-process, skippable, and has two implementations, so it
+    // cannot be the guarantee. Puck resolves `type` by exact key lookup, so a
+    // mis-cased type writes a document that validates cleanly and then renders
+    // nowhere — reject it before it reaches the DO.
+    const typeError = await rejectBadComponentTypes(
+      bodyResult.operations, branch.id, origin, patterns,
+    );
+    if (typeError !== null) {
+      return typeError;
     }
 
     targetEndpoint = '/apply';

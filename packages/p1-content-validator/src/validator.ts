@@ -146,6 +146,39 @@ function validateComponent(
     return;
   }
 
+  // The descriptor's own `name` is the source of truth for a component type's
+  // casing. The lookup above is case-insensitive on purpose, and must stay that
+  // way: it is how a mis-cased type gets *found* so the error below can name the
+  // casing the writer should have used. Making it exact would degrade this into
+  // a bare unknown_component_type and lose the actionable hint.
+  //
+  // Matching loosely is not licence to write loosely. Puck resolves `type` by
+  // exact key lookup into config.components with no normalisation and no guard
+  // (verified in @puckeditor/core@0.21.1 — chunk-EBISZQTK.mjs:4124 reads
+  // `config.components[item.type]` then dereferences `.fields` unguarded, so a
+  // miss throws), which means a document holding "quoteblock" against a config
+  // keyed "QuoteBlock" breaks the editor and the published page even though
+  // every prop on it validated fine.
+  //
+  // Reject rather than silently canonicalise: a writer that meant a different
+  // component should hear about it, and naming the expected casing makes the fix
+  // mechanical.
+  //
+  // `schema.name` is required for in-repo callers but validateOps is a public
+  // boundary — a hand-built registry may omit it, and there is no canonical
+  // casing to hold the writer to in that case.
+  if (typeof schema.name === 'string' && schema.name !== '' && comp.type !== schema.name) {
+    errors.push({
+      opIndex,
+      path,
+      code: 'component_type_case_mismatch',
+      message:
+        `Component type "${comp.type}" at "${path}" does not match the registered ` +
+        `casing "${schema.name}". Component types are case-sensitive — use "${schema.name}".`,
+    });
+    return;
+  }
+
   const allowedKeys = allowedPropsForSchema(schema);
 
   for (const [key, value] of Object.entries(comp.props)) {
@@ -243,6 +276,13 @@ function validatePropPathOp(
 
   const schema = registry[registryComponentKey(val.type)];
   if (!schema) return; // unknown type — caught elsewhere when the component is replaced
+
+  // Deliberately no case-mismatch check here: `val.type` is read from the
+  // stored snapshot, not from this op. A mis-cased type in the document is
+  // damage some earlier write already did, and erroring on it would make the
+  // document unrepairable — the prop edits that fix it would themselves be
+  // rejected. Casing is enforced where a type actually enters the document
+  // (validateComponent).
 
   // Case A: path ends exactly at .props — content is the full props object
   // e.g. replace content.0.props { id, label, visible }
