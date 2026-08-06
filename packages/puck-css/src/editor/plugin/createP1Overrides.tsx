@@ -225,8 +225,14 @@ interface FieldLabelOverrideProps {
  *
  * The context is cleared for descendants so a nested group inside a collapsible
  * one keeps its ordinary label.
+ *
+ * Ordinary field labels drop Puck's field-type icon. Its select variant is a
+ * chevron, the same glyph the disclosure above uses, so it reads as a group that
+ * expands and then does nothing. The label already says what the field is, and
+ * the narrow inspector would rather have the space. The read-only lock is a
+ * separate slot and survives.
  */
-function P1FieldLabel(props: FieldLabelOverrideProps): React.ReactElement {
+export function P1FieldLabel(props: FieldLabelOverrideProps): React.ReactElement {
   const collapsible = React.useContext(CollapsibleFieldContext);
 
   if (collapsible && props.el === 'div') {
@@ -243,7 +249,7 @@ function P1FieldLabel(props: FieldLabelOverrideProps): React.ReactElement {
     );
   }
 
-  return <FieldLabel {...props} />;
+  return <FieldLabel {...props} icon={undefined} />;
 }
 
 export function createP1Overrides(options: P1OverridesOptions): PuckOverrides {
