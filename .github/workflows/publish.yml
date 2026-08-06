@@ -1,0 +1,84 @@
+name: Publish to npm
+
+# Manual only. Publishes whatever is on main but not yet on npm — run it after the
+# "Version Packages" PR (opened by version-packages.yml) has been merged.
+#
+# Filename must stay publish.yml — it is part of each package's npm
+# trusted-publisher (OIDC) identity. Renaming breaks tokenless publishing until
+# every package's npmjs.com settings are updated to match.
+#
+# Release flow: docs/releasing.md
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  # Never cancel a run mid-flight: a cancelled publish can leave part of the
+  # fixed-version group on npm and the rest not.
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    # Add required reviewers to this environment in repo settings — without them
+    # a dispatch publishes immediately, with no second pair of eyes.
+    environment: npm-release
+    permissions:
+      contents: write # push per-package tags, create per-package releases
+      id-token: write # npm OIDC trusted publishing (no token)
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
+
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+          registry-url: 'https://registry.npmjs.org'
+          scope: '@pantheon-systems'
+
+      # changesets/action takes the version-PR path whenever changesets are
+      # pending, even if only a publish script is given — so publishing with any
+      # left over would silently open a PR instead of releasing.
+      - name: Fail if changesets are still pending
+        run: |
+          pending=$(find .changeset -name '*.md' ! -name 'README.md' | wc -l | tr -d ' ')
+          if [ "$pending" -ne 0 ]; then
+            find .changeset -name '*.md' ! -name 'README.md'
+            echo "::error::$pending changeset(s) still pending — merge the \"Version Packages\" PR before publishing."
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build publishable packages
+        run: pnpm exec turbo run build --filter='./packages/*'
+
+      # Publishes each package whose version isn't on npm yet, pushes one tag per
+      # package, and creates one GitHub Release per tag (createGithubReleases
+      # defaults to true) — three packages published means three releases.
+      - name: Publish
+        id: changesets
+        uses: changesets/action@a45c4d594aa4e2c509dc14a9f2b3b67ba3780d0d # v1.9.0
+        with:
+          publish: pnpm ci:publish
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Summarize
+        env:
+          PUBLISHED: ${{ steps.changesets.outputs.published }}
+          PACKAGES: ${{ steps.changesets.outputs.publishedPackages }}
+        run: |
+          if [ "$PUBLISHED" != "true" ]; then
+            echo "Nothing to publish — every version on main is already on npm." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          echo "### Published" >> "$GITHUB_STEP_SUMMARY"
+          echo "$PACKAGES" | jq -r '.[] | "- `\(.name)@\(.version)`"' >> "$GITHUB_STEP_SUMMARY"

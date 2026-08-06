@@ -1,0 +1,51 @@
+name: Version Packages
+
+# Opens or updates the "Version Packages" PR from whatever changesets are pending
+# in .changeset/. Applies version bumps and CHANGELOG entries; publishes nothing.
+#
+# Deliberately cannot publish: no publish script is passed to the action, and no
+# id-token is granted, so the npm publish credential never exists on a push to
+# main. Publishing lives in publish.yml and is manual.
+#
+# Release flow: docs/releasing.md
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # push the "Version Packages" branch
+      pull-requests: write # open the "Version Packages" PR
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
+
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Create or update the Version Packages PR
+        uses: changesets/action@a45c4d594aa4e2c509dc14a9f2b3b67ba3780d0d # v1.9.0
+        with:
+          version: pnpm ci:version
+          # main requires signed commits (org "TL4 - Low" ruleset). The default
+          # "git-cli" mode pushes an unsigned bot commit, which the rule blocks;
+          # pushing via the GitHub API gets it GPG-signed by GitHub instead.
+          commitMode: github-api
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

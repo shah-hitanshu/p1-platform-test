@@ -11,12 +11,12 @@ on:
           - staging
           - production
       run_migrations:
-        description: "Run CSS DB migrations before deploy"
+        description: "Run database migrations before deploy"
         required: false
         type: boolean
         default: false
       dry_run:
-        description: "Dry run (no actual deploy)"
+        description: "Dry run"
         required: false
         type: boolean
         default: false

@@ -60,7 +60,8 @@ All run from the repo root.
 
 | Script | What it runs |
 |---|---|
-| `pnpm exec changeset` | create a changeset for a package release |
+| `pnpm changeset` | create a changeset for a package release |
+| `pnpm changeset status --verbose` | what the next release would publish, and which changesets cause it |
 | `POSTGRES_CONNECTION_STRING=... pnpm --filter collaborative-state-worker db:migrate` | local DB migrations (the stack commands run this automatically) |
 | `make tf-plan ENV=staging` | Terraform plan (needs local GCP creds) |
 | `pnpm --filter <worker-package> exec wrangler <cmd> --env staging` | raw wrangler against a worker |
@@ -73,7 +74,7 @@ All run from the repo root.
 | Build / test / lint / typecheck / e2e | [x] | see Scripts above |
 | CI on pull requests | [x] | `.github/workflows/ci.yml` — build/test/lint/e2e/Postgres; known-red parity tasks run non-blocking |
 | Deploy workers to staging/production | [x] | Actions → **Deploy Workers** (`workflow_dispatch`: environment, optional migrations, dry-run). Production requires environment approval |
-| Publish packages to npm | [ ] | staged draft in `docs/migration/workflows-staged/` — activates after the npm trusted-publisher swap (they still point at the old repos) |
+| Publish packages to npm | [~] | `version-packages.yml` opens the "Version Packages" PR on push to main; Actions → **Publish to npm** publishes by hand. Blocked on the npm trusted-publisher swap — the entries still point at the old repos, so publishing fails OIDC until they're added. See [docs/releasing.md](docs/releasing.md) |
 
 ## Layout
 
@@ -98,4 +99,4 @@ The starter app is driven entirely by the root profiles (`.env.fullstack.local`,
 
 ## Releases & deploys
 
-Packages version via Changesets (`.changeset/`); the four Puck SDK packages are a fixed version group. Workers deploy via the **Deploy Workers** workflow (wrangler under the hood) — worker names are load-bearing (DNS and load-balancer routing in pantheon-content-cloud reference them) and must not change.
+Packages version via Changesets (`.changeset/`); the four Puck SDK packages are a fixed version group. Add a changeset in the PR that changes a package, and merging the generated "Version Packages" PR publishes it, tags it, and cuts its GitHub Release — full process and dry-run recipes in [docs/releasing.md](docs/releasing.md). Workers deploy via the **Deploy Workers** workflow (wrangler under the hood) — worker names are load-bearing (DNS and load-balancer routing in pantheon-content-cloud reference them) and must not change.
