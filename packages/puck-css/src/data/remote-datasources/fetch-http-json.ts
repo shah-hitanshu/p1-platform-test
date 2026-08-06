@@ -4,8 +4,8 @@
  * so it can be safely re-exported through the client barrel.
  */
 
-import type { HttpJsonRemoteDatasourceDefinition } from "./user-remote-datasource-types";
 import { isUnsafeKey } from "../paths";
+import type { HttpJsonRemoteDatasourceDefinition } from "./user-remote-datasource-types";
 
 const HTTP_TIMEOUT_MS = 8000;
 

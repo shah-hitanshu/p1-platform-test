@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { validateAuth } from '../auth';
-import { Env } from '../types';
+import type { Env } from '../types';
 
 const TEST_SITE_ID = 'site-123';
 

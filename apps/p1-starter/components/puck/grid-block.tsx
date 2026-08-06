@@ -1,5 +1,5 @@
-import { blockPaddingClass } from "./block-padding";
 import { Connectable, type ConnectedItem } from "@pantheon-systems/puck-css/connectable";
+import { blockPaddingClass } from "./block-padding";
 
 function CardGrid({
   title,

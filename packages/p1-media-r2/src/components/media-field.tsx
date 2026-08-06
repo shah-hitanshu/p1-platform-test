@@ -2,8 +2,8 @@
 
 import { useState, type ReactElement } from "react";
 import type { CustomField } from "@puckeditor/core";
-import { MediaLibrary } from "./media-library";
 import { getBaseUrl, getCropMode, buildValueWithCrop, type CropMode } from "../crop";
+import { MediaLibrary } from "./media-library";
 
 export function MediaFieldRender(props: {
   field: CustomField<string>;

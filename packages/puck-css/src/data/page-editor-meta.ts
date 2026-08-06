@@ -7,6 +7,9 @@ const SAFE_ROUTE_KEY_REGEX = /^\/[a-zA-Z0-9/:._-]*$/;
 /** Regex that matches safe identifier keys (e.g. `id`, `slug`). */
 const SAFE_IDENTIFIER_KEY_REGEX = /^[a-zA-Z][a-zA-Z0-9_-]*$/;
 
+// Must stay a type alias: interfaces have no implicit index signature, so an
+// interface here would not be assignable to the Record<string, unknown> these
+// rows are stored as.
 export type PageEditorMetaRow = {
   previewParams?: Record<string, string>;
   datasources?: unknown[];
@@ -96,7 +99,7 @@ export function setPageEditorPreviewParams(
 
   const prev = (editorMetaStore.get(p) ?? {}) as PageEditorMetaRow;
   if (Object.keys(cleaned).length === 0) {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+
     const { previewParams, ...rest } = prev;
     if (Object.keys(rest).length === 0) {
       editorMetaStore.delete(p);

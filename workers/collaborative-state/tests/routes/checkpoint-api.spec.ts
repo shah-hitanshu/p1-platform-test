@@ -5,6 +5,9 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { readJson } from '../helpers/http';
+import { makePrincipal } from '../helpers/principal';
+import { makeBranch } from '../helpers/branch';
 
 // Mock the services
 vi.mock('../../src/services', () => ({
@@ -69,7 +72,7 @@ describe('Phase 7.1b: Checkpoint API Routes', () => {
       );
       const services = await import('../../src/services');
 
-      vi.mocked(services.getBranch).mockResolvedValueOnce({
+      vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
         id: 'branch-1',
         siteId: 'site-1',
         name: 'main',
@@ -78,7 +81,7 @@ describe('Phase 7.1b: Checkpoint API Routes', () => {
         createdAt: '2026-01-24T10:00:00.000Z',
         createdById: 'user-1',
         createdByType: 'user',
-      });
+      }));
 
       vi.mocked(services.createCheckpoint).mockResolvedValueOnce({
         checkpoint: {
@@ -107,11 +110,11 @@ describe('Phase 7.1b: Checkpoint API Routes', () => {
       const response = await handleCheckpointRoutes(request, {
         siteId: 'site-1',
         branchId: 'branch-1',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(201);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.checkpoint.id).toBe('checkpoint-1');
       expect(body.checkpoint.name).toBe('Feature complete');
     });
@@ -122,7 +125,7 @@ describe('Phase 7.1b: Checkpoint API Routes', () => {
       );
       const services = await import('../../src/services');
 
-      vi.mocked(services.getBranch).mockResolvedValueOnce({
+      vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
         id: 'branch-1',
         siteId: 'site-1',
         name: 'main',
@@ -131,7 +134,7 @@ describe('Phase 7.1b: Checkpoint API Routes', () => {
         createdAt: '2026-01-24T10:00:00.000Z',
         createdById: 'user-1',
         createdByType: 'user',
-      });
+      }));
 
       vi.mocked(services.createCheckpoint).mockResolvedValueOnce({
         checkpoint: {
@@ -158,11 +161,11 @@ describe('Phase 7.1b: Checkpoint API Routes', () => {
       const response = await handleCheckpointRoutes(request, {
         siteId: 'site-1',
         branchId: 'branch-1',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(201);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.checkpoint.id).toBe('checkpoint-1');
       expect(body.checkpoint.name).toBeNull();
     });
@@ -189,7 +192,7 @@ describe('Phase 7.1b: Checkpoint API Routes', () => {
       const response = await handleCheckpointRoutes(request, {
         siteId: 'site-1',
         branchId: 'nonexistent',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(404);
@@ -236,11 +239,11 @@ describe('Phase 7.1b: Checkpoint API Routes', () => {
       const response = await handleCheckpointRoutes(request, {
         siteId: 'site-1',
         branchId: 'branch-1',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.checkpoints).toHaveLength(2);
       expect(body.checkpoints[0].name).toBe('Initial checkpoint');
     });
@@ -271,7 +274,7 @@ describe('Phase 7.1b: Checkpoint API Routes', () => {
       const response = await handleCheckpointRoutes(request, {
         siteId: 'site-1',
         branchId: 'branch-1',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(200);
@@ -311,11 +314,11 @@ describe('Phase 7.1b: Checkpoint API Routes', () => {
       const response = await handleCheckpointRoutes(request, {
         siteId: 'site-1',
         checkpointId: 'checkpoint-1',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.id).toBe('checkpoint-1');
       expect(body.name).toBe('Feature complete');
     });
@@ -336,7 +339,7 @@ describe('Phase 7.1b: Checkpoint API Routes', () => {
       const response = await handleCheckpointRoutes(request, {
         siteId: 'site-1',
         checkpointId: 'nonexistent',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(404);
@@ -378,11 +381,11 @@ describe('Phase 7.1b: Checkpoint API Routes', () => {
         siteId: 'site-1',
         checkpointId: 'checkpoint-1',
         documentsPath: true,
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.documents).toHaveLength(2);
       expect(body.documents[0].documentPath).toBe('pages/home');
     });
@@ -428,11 +431,11 @@ describe('Phase 7.1b: Checkpoint API Routes', () => {
         branchId: 'branch-1',
         checkpointId: 'checkpoint-1',
         revert: true,
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.checkpoint.type).toBe('revert');
     });
 
@@ -462,7 +465,7 @@ describe('Phase 7.1b: Checkpoint API Routes', () => {
         branchId: 'branch-1',
         checkpointId: 'nonexistent',
         revert: true,
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(404);
@@ -490,7 +493,7 @@ describe('Phase 7.1b: Checkpoint API Routes', () => {
       const response = await handleCheckpointRoutes(request, {
         siteId: 'site-1',
         checkpointId: 'checkpoint-1',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(204);
@@ -512,7 +515,7 @@ describe('Phase 7.1b: Checkpoint API Routes', () => {
       const response = await handleCheckpointRoutes(request, {
         siteId: 'site-1',
         checkpointId: 'nonexistent',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(404);
@@ -537,7 +540,7 @@ describe('Phase 7.1b: Checkpoint API Routes', () => {
       const response = await handleCheckpointRoutes(request, {
         siteId: 'site-1',
         branchId: 'branch-1',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(405);
@@ -596,7 +599,7 @@ describe('Phase 7.1b: Checkpoint API Routes', () => {
         '../../src/auth/authorization'
       );
 
-      vi.mocked(services.getBranch).mockResolvedValueOnce({
+      vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
         id: 'branch-1',
         siteId: 'site-1',
         name: 'main',
@@ -605,7 +608,7 @@ describe('Phase 7.1b: Checkpoint API Routes', () => {
         createdAt: '2026-01-24T10:00:00.000Z',
         createdById: 'user-1',
         createdByType: 'user',
-      });
+      }));
 
       vi.mocked(services.createCheckpoint).mockResolvedValueOnce({
         checkpoint: {
@@ -687,7 +690,7 @@ describe('Phase 7.1b: Checkpoint API Routes', () => {
       );
       const services = await import('../../src/services');
 
-      vi.mocked(services.getBranch).mockResolvedValueOnce({
+      vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
         id: 'branch-1',
         siteId: 'site-OTHER',
         name: 'main',
@@ -696,7 +699,7 @@ describe('Phase 7.1b: Checkpoint API Routes', () => {
         createdAt: '2026-01-24T10:00:00.000Z',
         createdById: 'user-1',
         createdByType: 'user',
-      });
+      }));
 
       const request = new Request(
         'https://api.example.com/api/sites/site-1/branches/branch-1/checkpoints',
@@ -710,7 +713,7 @@ describe('Phase 7.1b: Checkpoint API Routes', () => {
       const response = await handleCheckpointRoutes(request, {
         siteId: 'site-1',
         branchId: 'branch-1',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(404);
@@ -723,7 +726,7 @@ describe('Phase 7.1b: Checkpoint API Routes', () => {
       );
       const services = await import('../../src/services');
 
-      vi.mocked(services.getBranch).mockResolvedValueOnce({
+      vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
         id: 'branch-1',
         siteId: 'site-OTHER',
         name: 'main',
@@ -732,7 +735,7 @@ describe('Phase 7.1b: Checkpoint API Routes', () => {
         createdAt: '2026-01-24T10:00:00.000Z',
         createdById: 'user-1',
         createdByType: 'user',
-      });
+      }));
 
       const request = new Request(
         'https://api.example.com/api/sites/site-1/branches/branch-1/checkpoints',
@@ -742,7 +745,7 @@ describe('Phase 7.1b: Checkpoint API Routes', () => {
       const response = await handleCheckpointRoutes(request, {
         siteId: 'site-1',
         branchId: 'branch-1',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(404);

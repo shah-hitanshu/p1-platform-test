@@ -5,6 +5,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { makePrincipal } from '../helpers/principal';
+import { makeBranch } from '../helpers/branch';
 
 // The real buildDocumentSkeletonFromTemplate runs against the mocked template
 // snapshot; every database-backed service stays a stub.
@@ -73,7 +75,7 @@ const TEMPLATE_ID = 'tpl-1';
 const TEMPLATE_VERSION_NUMBER = 7;
 const HERO_SLOT_ID = 'HeroBlock-aaaa';
 
-const featureBranch = {
+const featureBranch = makeBranch({
   id: 'branch-1',
   siteId: 'site-1',
   name: 'feature',
@@ -83,9 +85,9 @@ const featureBranch = {
   createdByType: 'user',
   createdAt: '2026-01-24T10:00:00.000Z',
   updatedAt: '2026-01-24T10:00:00.000Z',
-};
+});
 
-const mainBranch = {
+const mainBranch = makeBranch({
   id: 'main-branch',
   siteId: 'site-1',
   name: 'main',
@@ -95,7 +97,7 @@ const mainBranch = {
   createdByType: 'user',
   createdAt: '2026-01-24T10:00:00.000Z',
   updatedAt: '2026-01-24T10:00:00.000Z',
-};
+});
 
 // Content-shaped template snapshot whose component carries a stable slot id and
 // whose root props hold template-authoring metadata that must not survive.
@@ -176,7 +178,7 @@ describe('POST create-from-template on branch', () => {
 
     const response = await handleDocumentRoutes(
       postCreateRequest({ path: 'pages/new-page', templateId: TEMPLATE_ID }),
-      { siteId: 'site-1', branchId: 'branch-1', principal: { id: 'user-1', type: 'user' } },
+      { siteId: 'site-1', branchId: 'branch-1', principal: makePrincipal({ id: 'user-1', type: 'user' }) },
     );
 
     expect(response.status).toBe(201);
@@ -200,7 +202,7 @@ describe('POST create-from-template on branch', () => {
 
     await handleDocumentRoutes(
       postCreateRequest({ path: 'pages/new-page', templateId: TEMPLATE_ID }),
-      { siteId: 'site-1', branchId: 'branch-1', principal: { id: 'user-1', type: 'user' } },
+      { siteId: 'site-1', branchId: 'branch-1', principal: makePrincipal({ id: 'user-1', type: 'user' }) },
     );
 
     const callArg = vi.mocked(services.createDocumentOnBranch).mock.calls[0]?.[0];
@@ -224,7 +226,7 @@ describe('POST create-from-template on branch', () => {
         templateId: TEMPLATE_ID,
         snapshot: { content: [{ type: 'Injected', props: { id: 'Injected-zzzz' } }], zones: {}, root: { props: {} } },
       }),
-      { siteId: 'site-1', branchId: 'branch-1', principal: { id: 'user-1', type: 'user' } },
+      { siteId: 'site-1', branchId: 'branch-1', principal: makePrincipal({ id: 'user-1', type: 'user' }) },
     );
 
     expect(response.status).toBe(400);
@@ -245,7 +247,7 @@ describe('POST create-from-template on branch', () => {
 
     const response = await handleDocumentRoutes(
       postCreateRequest({ path: 'pages/new-page', templateId: TEMPLATE_ID }),
-      { siteId: 'site-1', branchId: 'branch-1', principal: { id: 'user-1', type: 'user' } },
+      { siteId: 'site-1', branchId: 'branch-1', principal: makePrincipal({ id: 'user-1', type: 'user' }) },
     );
 
     expect(response.status).toBe(201);
@@ -270,7 +272,7 @@ describe('POST create-from-template on branch', () => {
 
     await handleDocumentRoutes(
       postCreateRequest({ path: 'pages/new-page', templateId: TEMPLATE_ID, title: 'My Homepage' }),
-      { siteId: 'site-1', branchId: 'branch-1', principal: { id: 'user-1', type: 'user' } },
+      { siteId: 'site-1', branchId: 'branch-1', principal: makePrincipal({ id: 'user-1', type: 'user' }) },
     );
 
     const callArg = vi.mocked(services.createDocumentOnBranch).mock.calls[0]?.[0];
@@ -293,7 +295,7 @@ describe('POST create-from-template on branch', () => {
 
     const response = await handleDocumentRoutes(
       postCreateRequest({ path: 'pages/new-page', snapshot: clientSnapshot }),
-      { siteId: 'site-1', branchId: 'branch-1', principal: { id: 'user-1', type: 'user' } },
+      { siteId: 'site-1', branchId: 'branch-1', principal: makePrincipal({ id: 'user-1', type: 'user' }) },
     );
 
     expect(response.status).toBe(201);
@@ -319,7 +321,7 @@ describe('POST create-from-template on branch', () => {
 
     const response = await handleDocumentRoutes(
       postCreateRequest({ path: 'pages/new-page', templateId: TEMPLATE_ID }),
-      { siteId: 'site-1', branchId: 'branch-1', principal: { id: 'user-1', type: 'user' } },
+      { siteId: 'site-1', branchId: 'branch-1', principal: makePrincipal({ id: 'user-1', type: 'user' }) },
     );
 
     expect(response.status).toBe(201);

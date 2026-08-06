@@ -88,3 +88,10 @@ logs/
 *.cache
 .worktrees/
 .npmrc.local
+
+# Local agent worktrees
+.claude/worktrees/
+
+# ESLint JSON reports, written per package and converted into sarif/
+eslint-report.json
+/sarif/

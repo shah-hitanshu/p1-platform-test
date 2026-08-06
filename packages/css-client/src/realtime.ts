@@ -224,23 +224,23 @@ export class RealtimeClient {
   private lastSentSnapshot: string | null = null;
 
   // Delivery acknowledgment state
-  private pendingDeliveryAcks: Map<string, {
+  private pendingDeliveryAcks = new Map<string, {
     resolve: () => void;
     reject: (error: Error) => void;
     timer: ReturnType<typeof setTimeout>;
-  }> = new Map();
+  }>();
   private static readonly DELIVERY_ACK_TIMEOUT_MS = 5000;
 
   // Publish request state
-  private pendingPublishRequests: Map<string, {
+  private pendingPublishRequests = new Map<string, {
     resolve: (result: PublishResult) => void;
     reject: (error: Error) => void;
     timer: ReturnType<typeof setTimeout>;
-  }> = new Map();
+  }>();
   private static readonly PUBLISH_TIMEOUT_MS = 30000;
 
   // Action metadata state — best-effort metadata sent alongside CRDT updates
-  private pendingActionMetadata: Array<{ type: string; [key: string]: unknown }> | null = null;
+  private pendingActionMetadata: { type: string; [key: string]: unknown }[] | null = null;
 
   constructor(config: RealtimeClientConfig) {
     this.config = config;
@@ -604,7 +604,7 @@ export class RealtimeClient {
    *
    * @param meta - Action type and metadata from Puck's onAction callback
    */
-  setActionMetadata(actions: Array<{ type: string; [key: string]: unknown }> | null): void {
+  setActionMetadata(actions: { type: string; [key: string]: unknown }[] | null): void {
     this.pendingActionMetadata = actions;
   }
 

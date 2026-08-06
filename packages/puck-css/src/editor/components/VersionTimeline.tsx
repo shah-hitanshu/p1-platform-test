@@ -5,7 +5,7 @@ import { versionKinds, VERSION_KIND_META } from '../../versioning/utils/versionK
 import type { CurrentUser } from '../../pds/components/P1EditorHeader.js';
 
 export interface VersionTimelineProps {
-  dayGroups: Array<{ label: string; versions: DocumentVersion[] }>;
+  dayGroups: { label: string; versions: DocumentVersion[] }[];
   /** Full version list — used to look up revert-source version numbers. */
   allVersions: DocumentVersion[];
   selectedVersionId?: string;

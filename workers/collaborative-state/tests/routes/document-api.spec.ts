@@ -6,6 +6,9 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { readJson } from '../helpers/http';
+import { makePrincipal } from '../helpers/principal';
+import { makeBranch } from '../helpers/branch';
 
 // Mock the services
 vi.mock('../../src/services', () => ({
@@ -113,7 +116,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
       );
       const services = await import('../../src/services');
 
-      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce(makeBranch({
         id: 'main-branch-id',
         siteId: 'site-1',
         name: 'main',
@@ -122,7 +125,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         createdAt: '2026-01-24T10:00:00.000Z',
         createdById: 'user-1',
         createdByType: 'user',
-      });
+      }));
       vi.mocked(services.createDocument).mockResolvedValueOnce({
         id: 'doc-uuid',
         siteId: 'site-1',
@@ -143,11 +146,11 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
 
       const response = await handleDocumentRoutes(request, {
         siteId: 'site-1',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(201);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.id).toBe('doc-uuid');
       expect(body.path).toBe('pages/about-us');
     });
@@ -158,7 +161,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
       );
       const services = await import('../../src/services');
 
-      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce(makeBranch({
         id: 'main-branch-id',
         siteId: 'site-1',
         name: 'main',
@@ -167,7 +170,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         createdAt: '2026-01-24T10:00:00.000Z',
         createdById: 'user-1',
         createdByType: 'user',
-      });
+      }));
 
       const request = new Request(
         'https://api.example.com/api/sites/site-1/documents',
@@ -180,11 +183,11 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
 
       const response = await handleDocumentRoutes(request, {
         siteId: 'site-1',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(400);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.error).toContain('path');
     });
 
@@ -194,7 +197,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
       );
       const services = await import('../../src/services');
 
-      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce(makeBranch({
         id: 'main-branch-id',
         siteId: 'site-1',
         name: 'main',
@@ -203,7 +206,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         createdAt: '2026-01-24T10:00:00.000Z',
         createdById: 'user-1',
         createdByType: 'user',
-      });
+      }));
       vi.mocked(services.createDocument).mockRejectedValueOnce(
         new services.SiteNotFoundError('nonexistent'),
       );
@@ -221,7 +224,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
 
       const response = await handleDocumentRoutes(request, {
         siteId: 'nonexistent',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(404);
@@ -233,7 +236,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
       );
       const services = await import('../../src/services');
 
-      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce(makeBranch({
         id: 'main-branch-id',
         siteId: 'site-1',
         name: 'main',
@@ -242,7 +245,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         createdAt: '2026-01-24T10:00:00.000Z',
         createdById: 'user-1',
         createdByType: 'user',
-      });
+      }));
       vi.mocked(services.createDocument).mockRejectedValueOnce(
         new services.DuplicateDocumentPathError('pages/about-us'),
       );
@@ -260,7 +263,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
 
       const response = await handleDocumentRoutes(request, {
         siteId: 'site-1',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(409);
@@ -278,7 +281,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
       );
       const services = await import('../../src/services');
 
-      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce(makeBranch({
         id: 'main-branch-id',
         siteId: 'site-1',
         name: 'main',
@@ -287,7 +290,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         createdAt: '2026-01-24T10:00:00.000Z',
         createdById: 'user-1',
         createdByType: 'user',
-      });
+      }));
       vi.mocked(services.listDocuments).mockResolvedValueOnce([
         {
           id: 'doc-1',
@@ -310,11 +313,11 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
 
       const response = await handleDocumentRoutes(request, {
         siteId: 'site-1',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.documents).toHaveLength(2);
     });
 
@@ -324,7 +327,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
       );
       const services = await import('../../src/services');
 
-      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce(makeBranch({
         id: 'main-branch-id',
         siteId: 'site-1',
         name: 'main',
@@ -333,7 +336,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         createdAt: '2026-01-24T10:00:00.000Z',
         createdById: 'user-1',
         createdByType: 'user',
-      });
+      }));
       vi.mocked(services.listDocuments).mockResolvedValueOnce([]);
 
       const request = new Request(
@@ -343,7 +346,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
 
       const response = await handleDocumentRoutes(request, {
         siteId: 'site-1',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(200);
@@ -359,7 +362,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
       );
       const services = await import('../../src/services');
 
-      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce(makeBranch({
         id: 'main-branch-id',
         siteId: 'site-1',
         name: 'main',
@@ -368,7 +371,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         createdAt: '2026-01-24T10:00:00.000Z',
         createdById: 'user-1',
         createdByType: 'user',
-      });
+      }));
       vi.mocked(services.listDocuments).mockResolvedValueOnce([]);
 
       const request = new Request(
@@ -378,7 +381,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
 
       const response = await handleDocumentRoutes(request, {
         siteId: 'site-1',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(200);
@@ -394,7 +397,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
       );
       const services = await import('../../src/services');
 
-      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce(makeBranch({
         id: 'main-branch-id',
         siteId: 'site-1',
         name: 'main',
@@ -403,7 +406,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         createdAt: '2026-01-24T10:00:00.000Z',
         createdById: 'user-1',
         createdByType: 'user',
-      });
+      }));
       vi.mocked(services.listDocuments).mockResolvedValueOnce([]);
 
       const request = new Request(
@@ -413,7 +416,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
 
       const response = await handleDocumentRoutes(request, {
         siteId: 'site-1',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(200);
@@ -435,7 +438,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
       );
       const services = await import('../../src/services');
 
-      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce(makeBranch({
         id: 'main-branch-id',
         siteId: 'site-1',
         name: 'main',
@@ -444,7 +447,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         createdAt: '2026-01-24T10:00:00.000Z',
         createdById: 'user-1',
         createdByType: 'user',
-      });
+      }));
       vi.mocked(services.getDocument).mockResolvedValueOnce({
         id: 'doc-1',
         siteId: 'site-1',
@@ -460,11 +463,11 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
       const response = await handleDocumentRoutes(request, {
         siteId: 'site-1',
         documentId: 'doc-1',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.id).toBe('doc-1');
       expect(body.path).toBe('pages/about');
     });
@@ -475,7 +478,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
       );
       const services = await import('../../src/services');
 
-      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce(makeBranch({
         id: 'main-branch-id',
         siteId: 'site-1',
         name: 'main',
@@ -484,7 +487,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         createdAt: '2026-01-24T10:00:00.000Z',
         createdById: 'user-1',
         createdByType: 'user',
-      });
+      }));
       vi.mocked(services.getDocument).mockResolvedValueOnce(null);
 
       const request = new Request(
@@ -495,7 +498,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
       const response = await handleDocumentRoutes(request, {
         siteId: 'site-1',
         documentId: 'nonexistent',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(404);
@@ -513,7 +516,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
       );
       const services = await import('../../src/services');
 
-      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce(makeBranch({
         id: 'main-branch-id',
         siteId: 'site-1',
         name: 'main',
@@ -522,7 +525,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         createdAt: '2026-01-24T10:00:00.000Z',
         createdById: 'user-1',
         createdByType: 'user',
-      });
+      }));
       vi.mocked(services.getDocumentByPath).mockResolvedValueOnce({
         id: 'doc-1',
         siteId: 'site-1',
@@ -538,11 +541,11 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
       const response = await handleDocumentRoutes(request, {
         siteId: 'site-1',
         documentPath: 'pages/about-us',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.path).toBe('pages/about-us');
     });
 
@@ -552,7 +555,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
       );
       const services = await import('../../src/services');
 
-      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce(makeBranch({
         id: 'main-branch-id',
         siteId: 'site-1',
         name: 'main',
@@ -561,7 +564,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         createdAt: '2026-01-24T10:00:00.000Z',
         createdById: 'user-1',
         createdByType: 'user',
-      });
+      }));
       vi.mocked(services.getDocumentByPath).mockResolvedValueOnce(null);
 
       const request = new Request(
@@ -572,7 +575,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
       const response = await handleDocumentRoutes(request, {
         siteId: 'site-1',
         documentPath: 'nonexistent',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(404);
@@ -590,7 +593,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
       );
       const services = await import('../../src/services');
 
-      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce(makeBranch({
         id: 'main-branch-id',
         siteId: 'site-1',
         name: 'main',
@@ -599,7 +602,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         createdAt: '2026-01-24T10:00:00.000Z',
         createdById: 'user-1',
         createdByType: 'user',
-      });
+      }));
       vi.mocked(services.updateDocumentPath).mockResolvedValueOnce({
         id: 'doc-1',
         siteId: 'site-1',
@@ -621,11 +624,11 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
       const response = await handleDocumentRoutes(request, {
         siteId: 'site-1',
         documentId: 'doc-1',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.path).toBe('pages/about');
     });
 
@@ -635,7 +638,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
       );
       const services = await import('../../src/services');
 
-      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce(makeBranch({
         id: 'main-branch-id',
         siteId: 'site-1',
         name: 'main',
@@ -644,7 +647,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         createdAt: '2026-01-24T10:00:00.000Z',
         createdById: 'user-1',
         createdByType: 'user',
-      });
+      }));
       vi.mocked(services.updateDocumentPath).mockResolvedValueOnce(null);
 
       const request = new Request(
@@ -661,7 +664,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
       const response = await handleDocumentRoutes(request, {
         siteId: 'site-1',
         documentId: 'nonexistent',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(404);
@@ -673,7 +676,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
       );
       const services = await import('../../src/services');
 
-      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce(makeBranch({
         id: 'main-branch-id',
         siteId: 'site-1',
         name: 'main',
@@ -682,7 +685,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         createdAt: '2026-01-24T10:00:00.000Z',
         createdById: 'user-1',
         createdByType: 'user',
-      });
+      }));
       vi.mocked(services.updateDocumentPath).mockRejectedValueOnce(
         new services.DuplicateDocumentPathError('pages/existing'),
       );
@@ -701,7 +704,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
       const response = await handleDocumentRoutes(request, {
         siteId: 'site-1',
         documentId: 'doc-1',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(409);
@@ -719,7 +722,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
       );
       const services = await import('../../src/services');
 
-      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce(makeBranch({
         id: 'main-branch-id',
         siteId: 'site-1',
         name: 'main',
@@ -728,7 +731,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         createdAt: '2026-01-24T10:00:00.000Z',
         createdById: 'user-1',
         createdByType: 'user',
-      });
+      }));
       vi.mocked(services.archiveDocument).mockResolvedValueOnce(true);
 
       const request = new Request(
@@ -739,7 +742,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
       const response = await handleDocumentRoutes(request, {
         siteId: 'site-1',
         documentId: 'doc-1',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(204);
@@ -752,7 +755,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
       );
       const services = await import('../../src/services');
 
-      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce(makeBranch({
         id: 'main-branch-id',
         siteId: 'site-1',
         name: 'main',
@@ -761,7 +764,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         createdAt: '2026-01-24T10:00:00.000Z',
         createdById: 'user-1',
         createdByType: 'user',
-      });
+      }));
       vi.mocked(services.archiveDocument).mockResolvedValueOnce(false);
 
       const request = new Request(
@@ -772,7 +775,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
       const response = await handleDocumentRoutes(request, {
         siteId: 'site-1',
         documentId: 'nonexistent',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(404);
@@ -790,7 +793,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
       );
       const services = await import('../../src/services');
 
-      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce(makeBranch({
         id: 'main-branch-id',
         siteId: 'site-1',
         name: 'main',
@@ -799,7 +802,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         createdAt: '2026-01-24T10:00:00.000Z',
         createdById: 'user-1',
         createdByType: 'user',
-      });
+      }));
       vi.mocked(services.restoreDocument).mockResolvedValueOnce({
         id: 'doc-1',
         siteId: 'site-1',
@@ -816,11 +819,11 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         siteId: 'site-1',
         documentId: 'doc-1',
         action: 'restore',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.id).toBe('doc-1');
     });
 
@@ -830,7 +833,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
       );
       const services = await import('../../src/services');
 
-      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce(makeBranch({
         id: 'main-branch-id',
         siteId: 'site-1',
         name: 'main',
@@ -839,7 +842,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         createdAt: '2026-01-24T10:00:00.000Z',
         createdById: 'user-1',
         createdByType: 'user',
-      });
+      }));
       vi.mocked(services.restoreDocument).mockRejectedValueOnce(
         new services.DocumentNotFoundError('nonexistent'),
       );
@@ -853,7 +856,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         siteId: 'site-1',
         documentId: 'nonexistent',
         action: 'restore',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(404);
@@ -865,7 +868,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
       );
       const services = await import('../../src/services');
 
-      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce(makeBranch({
         id: 'main-branch-id',
         siteId: 'site-1',
         name: 'main',
@@ -874,7 +877,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         createdAt: '2026-01-24T10:00:00.000Z',
         createdById: 'user-1',
         createdByType: 'user',
-      });
+      }));
       vi.mocked(services.restoreDocument).mockRejectedValueOnce(
         new services.DocumentPathConflictError('pages/about-us'),
       );
@@ -888,7 +891,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         siteId: 'site-1',
         documentId: 'doc-1',
         action: 'restore',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(409);
@@ -906,7 +909,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
       );
       const services = await import('../../src/services');
 
-      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce(makeBranch({
         id: 'main-branch-id',
         siteId: 'site-1',
         name: 'main',
@@ -915,7 +918,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         createdAt: '2026-01-24T10:00:00.000Z',
         createdById: 'user-1',
         createdByType: 'user',
-      });
+      }));
 
       const request = new Request(
         'https://api.example.com/api/sites/site-1/documents',
@@ -924,7 +927,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
 
       const response = await handleDocumentRoutes(request, {
         siteId: 'site-1',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(405);
@@ -936,7 +939,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
       );
       const services = await import('../../src/services');
 
-      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce(makeBranch({
         id: 'main-branch-id',
         siteId: 'site-1',
         name: 'main',
@@ -945,7 +948,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         createdAt: '2026-01-24T10:00:00.000Z',
         createdById: 'user-1',
         createdByType: 'user',
-      });
+      }));
       vi.mocked(services.listDocuments).mockRejectedValueOnce(
         new Error('Database connection failed'),
       );
@@ -957,7 +960,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
 
       const response = await handleDocumentRoutes(request, {
         siteId: 'site-1',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(500);
@@ -980,7 +983,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         );
         const services = await import('../../src/services');
 
-        vi.mocked(services.getBranch).mockResolvedValueOnce({
+        vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
           id: 'branch-1',
           siteId: 'site-1',
           name: 'main',
@@ -990,7 +993,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
           createdByType: 'user',
           createdAt: '2026-01-24T10:00:00.000Z',
           updatedAt: '2026-01-24T10:00:00.000Z',
-        });
+        }));
         vi.mocked(services.listDocumentsOnBranch).mockResolvedValueOnce([
           {
             id: 'doc-1',
@@ -1008,11 +1011,11 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         const response = await handleDocumentRoutes(request, {
           siteId: 'site-1',
           branchId: 'branch-1',
-          principal: { id: 'user-1', type: 'user' },
+          principal: makePrincipal({ id: 'user-1', type: 'user' }),
         });
 
         expect(response.status).toBe(200);
-        const body = await response.json();
+        const body = await readJson(response);
         expect(body.documents).toHaveLength(1);
       });
 
@@ -1032,7 +1035,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         const response = await handleDocumentRoutes(request, {
           siteId: 'site-1',
           branchId: 'nonexistent',
-          principal: { id: 'user-1', type: 'user' },
+          principal: makePrincipal({ id: 'user-1', type: 'user' }),
         });
 
         expect(response.status).toBe(404);
@@ -1044,7 +1047,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         );
         const services = await import('../../src/services');
 
-        vi.mocked(services.getBranch).mockResolvedValueOnce({
+        vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
           id: 'branch-1',
           siteId: 'site-1',
           name: 'main',
@@ -1054,7 +1057,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
           createdByType: 'user',
           createdAt: '2026-01-24T10:00:00.000Z',
           updatedAt: '2026-01-24T10:00:00.000Z',
-        });
+        }));
         vi.mocked(services.listDocumentsOnBranch).mockResolvedValueOnce([]);
 
         const request = new Request(
@@ -1065,7 +1068,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         const response = await handleDocumentRoutes(request, {
           siteId: 'site-1',
           branchId: 'branch-1',
-          principal: { id: 'user-1', type: 'user' },
+          principal: makePrincipal({ id: 'user-1', type: 'user' }),
         });
 
         expect(response.status).toBe(200);
@@ -1087,7 +1090,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         );
         const services = await import('../../src/services');
 
-        vi.mocked(services.getBranch).mockResolvedValueOnce({
+        vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
           id: 'branch-1',
           siteId: 'site-1',
           name: 'feature',
@@ -1097,7 +1100,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
           createdByType: 'user',
           createdAt: '2026-01-24T10:00:00.000Z',
           updatedAt: '2026-01-24T10:00:00.000Z',
-        });
+        }));
         vi.mocked(services.createDocumentOnBranch).mockResolvedValueOnce({
           document: {
             id: 'doc-new',
@@ -1130,11 +1133,11 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         const response = await handleDocumentRoutes(request, {
           siteId: 'site-1',
           branchId: 'branch-1',
-          principal: { id: 'user-1', type: 'user' },
+          principal: makePrincipal({ id: 'user-1', type: 'user' }),
         });
 
         expect(response.status).toBe(201);
-        const body = await response.json();
+        const body = await readJson(response);
         expect(body.document.id).toBe('doc-new');
         expect(body.version).toBeDefined();
       });
@@ -1145,7 +1148,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         );
         const services = await import('../../src/services');
 
-        vi.mocked(services.getBranch).mockResolvedValueOnce({
+        vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
           id: 'branch-1',
           siteId: 'site-1',
           name: 'feature',
@@ -1155,7 +1158,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
           createdByType: 'user',
           createdAt: '2026-01-24T10:00:00.000Z',
           updatedAt: '2026-01-24T10:00:00.000Z',
-        });
+        }));
 
         const request = new Request(
           'https://api.example.com/api/sites/site-1/branches/branch-1/documents',
@@ -1169,7 +1172,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         const response = await handleDocumentRoutes(request, {
           siteId: 'site-1',
           branchId: 'branch-1',
-          principal: { id: 'user-1', type: 'user' },
+          principal: makePrincipal({ id: 'user-1', type: 'user' }),
         });
 
         expect(response.status).toBe(400);
@@ -1195,7 +1198,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         const response = await handleDocumentRoutes(request, {
           siteId: 'site-1',
           branchId: 'nonexistent',
-          principal: { id: 'user-1', type: 'user' },
+          principal: makePrincipal({ id: 'user-1', type: 'user' }),
         });
 
         expect(response.status).toBe(404);
@@ -1207,7 +1210,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         );
         const services = await import('../../src/services');
 
-        vi.mocked(services.getBranch).mockResolvedValueOnce({
+        vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
           id: 'branch-1',
           siteId: 'site-1',
           name: 'feature',
@@ -1217,7 +1220,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
           createdByType: 'user',
           createdAt: '2026-01-24T10:00:00.000Z',
           updatedAt: '2026-01-24T10:00:00.000Z',
-        });
+        }));
         vi.mocked(services.createDocumentOnBranch).mockResolvedValueOnce({
           document: {
             id: 'doc-new',
@@ -1250,7 +1253,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         const response = await handleDocumentRoutes(request, {
           siteId: 'site-1',
           branchId: 'branch-1',
-          principal: { id: 'user-1', type: 'user' },
+          principal: makePrincipal({ id: 'user-1', type: 'user' }),
         });
 
         expect(response.status).toBe(201);
@@ -1267,7 +1270,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         );
         const services = await import('../../src/services');
 
-        vi.mocked(services.getBranch).mockResolvedValueOnce({
+        vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
           id: 'branch-1',
           siteId: 'site-1',
           name: 'feature',
@@ -1277,7 +1280,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
           createdByType: 'user',
           createdAt: '2026-01-24T10:00:00.000Z',
           updatedAt: '2026-01-24T10:00:00.000Z',
-        });
+        }));
         vi.mocked(services.createDocumentOnBranch).mockResolvedValueOnce({
           document: {
             id: 'doc-new',
@@ -1310,7 +1313,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         const response = await handleDocumentRoutes(request, {
           siteId: 'site-1',
           branchId: 'branch-1',
-          principal: { id: 'user-1', type: 'user' },
+          principal: makePrincipal({ id: 'user-1', type: 'user' }),
         });
 
         expect(response.status).toBe(201);
@@ -1327,7 +1330,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         );
         const services = await import('../../src/services');
 
-        vi.mocked(services.getBranch).mockResolvedValueOnce({
+        vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
           id: 'branch-1',
           siteId: 'site-1',
           name: 'feature',
@@ -1337,7 +1340,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
           createdByType: 'user',
           createdAt: '2026-01-24T10:00:00.000Z',
           updatedAt: '2026-01-24T10:00:00.000Z',
-        });
+        }));
         vi.mocked(services.createDocumentOnBranch).mockResolvedValueOnce({
           document: {
             id: 'doc-new',
@@ -1374,7 +1377,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         const response = await handleDocumentRoutes(request, {
           siteId: 'site-1',
           branchId: 'branch-1',
-          principal: { id: 'user-1', type: 'user' },
+          principal: makePrincipal({ id: 'user-1', type: 'user' }),
         });
 
         expect(response.status).toBe(201);
@@ -1397,7 +1400,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         );
         const services = await import('../../src/services');
 
-        vi.mocked(services.getBranch).mockResolvedValueOnce({
+        vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
           id: 'branch-1',
           siteId: 'site-1',
           name: 'main',
@@ -1407,7 +1410,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
           createdByType: 'user',
           createdAt: '2026-01-24T10:00:00.000Z',
           updatedAt: '2026-01-24T10:00:00.000Z',
-        });
+        }));
         vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(true);
         vi.mocked(services.getDocument).mockResolvedValueOnce({
           id: 'doc-1',
@@ -1425,11 +1428,11 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
           siteId: 'site-1',
           branchId: 'branch-1',
           documentId: 'doc-1',
-          principal: { id: 'user-1', type: 'user' },
+          principal: makePrincipal({ id: 'user-1', type: 'user' }),
         });
 
         expect(response.status).toBe(200);
-        const body = await response.json();
+        const body = await readJson(response);
         expect(body.id).toBe('doc-1');
       });
 
@@ -1439,7 +1442,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         );
         const services = await import('../../src/services');
 
-        vi.mocked(services.getBranch).mockResolvedValueOnce({
+        vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
           id: 'branch-1',
           siteId: 'site-1',
           name: 'main',
@@ -1449,7 +1452,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
           createdByType: 'user',
           createdAt: '2026-01-24T10:00:00.000Z',
           updatedAt: '2026-01-24T10:00:00.000Z',
-        });
+        }));
         vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(false);
 
         const request = new Request(
@@ -1461,7 +1464,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
           siteId: 'site-1',
           branchId: 'branch-1',
           documentId: 'doc-nothere',
-          principal: { id: 'user-1', type: 'user' },
+          principal: makePrincipal({ id: 'user-1', type: 'user' }),
         });
 
         expect(response.status).toBe(404);
@@ -1479,7 +1482,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         );
         const services = await import('../../src/services');
 
-        vi.mocked(services.getBranch).mockResolvedValueOnce({
+        vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
           id: 'branch-1',
           siteId: 'site-1',
           name: 'feature',
@@ -1489,7 +1492,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
           createdByType: 'user',
           createdAt: '2026-01-24T10:00:00.000Z',
           updatedAt: '2026-01-24T10:00:00.000Z',
-        });
+        }));
         vi.mocked(services.deleteDocumentOnBranch).mockResolvedValueOnce(true);
 
         const request = new Request(
@@ -1501,7 +1504,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
           siteId: 'site-1',
           branchId: 'branch-1',
           documentId: 'doc-1',
-          principal: { id: 'user-1', type: 'user' },
+          principal: makePrincipal({ id: 'user-1', type: 'user' }),
         });
 
         expect(response.status).toBe(204);
@@ -1519,7 +1522,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         );
         const services = await import('../../src/services');
 
-        vi.mocked(services.getBranch).mockResolvedValueOnce({
+        vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
           id: 'branch-1',
           siteId: 'site-1',
           name: 'feature',
@@ -1529,7 +1532,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
           createdByType: 'user',
           createdAt: '2026-01-24T10:00:00.000Z',
           updatedAt: '2026-01-24T10:00:00.000Z',
-        });
+        }));
         vi.mocked(services.deleteDocumentOnBranch).mockRejectedValueOnce(
           new services.DocumentNotFoundError('nonexistent'),
         );
@@ -1543,7 +1546,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
           siteId: 'site-1',
           branchId: 'branch-1',
           documentId: 'nonexistent',
-          principal: { id: 'user-1', type: 'user' },
+          principal: makePrincipal({ id: 'user-1', type: 'user' }),
         });
 
         expect(response.status).toBe(404);
@@ -1566,7 +1569,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
           siteId: 'site-1',
           branchId: 'nonexistent',
           documentId: 'doc-1',
-          principal: { id: 'user-1', type: 'user' },
+          principal: makePrincipal({ id: 'user-1', type: 'user' }),
         });
 
         expect(response.status).toBe(404);
@@ -1578,12 +1581,12 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         const { handleDocumentRoutes } = await import('../../src/routes/document-api');
         const services = await import('../../src/services');
 
-        vi.mocked(services.getBranch).mockResolvedValueOnce({
+        vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
           id: 'branch-1', siteId: 'site-1', name: 'feature',
           status: 'active', isMain: false,
           createdById: 'user-1', createdByType: 'user',
           createdAt: '2026-01-24T10:00:00.000Z', updatedAt: '2026-01-24T10:00:00.000Z',
-        });
+        }));
         vi.mocked(services.deleteDocumentOnBranch).mockResolvedValueOnce(true);
 
         const request = new Request(
@@ -1593,7 +1596,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
 
         const response = await handleDocumentRoutes(request, {
           siteId: 'site-1', branchId: 'branch-1', documentId: 'doc-1',
-          principal: { id: 'user-1', type: 'user' },
+          principal: makePrincipal({ id: 'user-1', type: 'user' }),
         });
 
         expect(response.status).toBe(204);
@@ -1605,12 +1608,12 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         const { handleDocumentRoutes } = await import('../../src/routes/document-api');
         const services = await import('../../src/services');
 
-        vi.mocked(services.getBranch).mockResolvedValueOnce({
+        vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
           id: 'branch-1', siteId: 'site-1', name: 'feature',
           status: 'active', isMain: false,
           createdById: 'user-1', createdByType: 'user',
           createdAt: '2026-01-24T10:00:00.000Z', updatedAt: '2026-01-24T10:00:00.000Z',
-        });
+        }));
         vi.mocked(services.deleteDocumentWithRedirect).mockResolvedValueOnce({
           redirect: {
             id: 'redirect-doc-1',
@@ -1639,11 +1642,11 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
 
         const response = await handleDocumentRoutes(request, {
           siteId: 'site-1', branchId: 'branch-1', documentId: 'doc-1',
-          principal: { id: 'user-1', type: 'user' },
+          principal: makePrincipal({ id: 'user-1', type: 'user' }),
         });
 
         expect(response.status).toBe(200);
-        const body = await response.json();
+        const body = await readJson(response);
         expect(body.id).toBe('redirect-doc-1');
         expect(body.fromPath).toBe('/old-page');
         expect(body.destination).toBe('/new-page');
@@ -1667,12 +1670,12 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         const { handleDocumentRoutes } = await import('../../src/routes/document-api');
         const services = await import('../../src/services');
 
-        vi.mocked(services.getBranch).mockResolvedValueOnce({
+        vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
           id: 'branch-1', siteId: 'site-1', name: 'feature',
           status: 'active', isMain: false,
           createdById: 'user-1', createdByType: 'user',
           createdAt: '2026-01-24T10:00:00.000Z', updatedAt: '2026-01-24T10:00:00.000Z',
-        });
+        }));
 
         const request = new Request(
           'https://api.example.com/api/sites/site-1/branches/branch-1/documents/doc-1',
@@ -1685,7 +1688,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
 
         const response = await handleDocumentRoutes(request, {
           siteId: 'site-1', branchId: 'branch-1', documentId: 'doc-1',
-          principal: { id: 'user-1', type: 'user' },
+          principal: makePrincipal({ id: 'user-1', type: 'user' }),
         });
 
         expect(response.status).toBe(400);
@@ -1695,12 +1698,12 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         const { handleDocumentRoutes } = await import('../../src/routes/document-api');
         const services = await import('../../src/services');
 
-        vi.mocked(services.getBranch).mockResolvedValueOnce({
+        vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
           id: 'branch-1', siteId: 'site-1', name: 'feature',
           status: 'active', isMain: false,
           createdById: 'user-1', createdByType: 'user',
           createdAt: '2026-01-24T10:00:00.000Z', updatedAt: '2026-01-24T10:00:00.000Z',
-        });
+        }));
 
         const request = new Request(
           'https://api.example.com/api/sites/site-1/branches/branch-1/documents/doc-1',
@@ -1713,7 +1716,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
 
         const response = await handleDocumentRoutes(request, {
           siteId: 'site-1', branchId: 'branch-1', documentId: 'doc-1',
-          principal: { id: 'user-1', type: 'user' },
+          principal: makePrincipal({ id: 'user-1', type: 'user' }),
         });
 
         expect(response.status).toBe(400);
@@ -1723,12 +1726,12 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         const { handleDocumentRoutes } = await import('../../src/routes/document-api');
         const services = await import('../../src/services');
 
-        vi.mocked(services.getBranch).mockResolvedValueOnce({
+        vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
           id: 'branch-1', siteId: 'site-1', name: 'feature',
           status: 'active', isMain: false,
           createdById: 'user-1', createdByType: 'user',
           createdAt: '2026-01-24T10:00:00.000Z', updatedAt: '2026-01-24T10:00:00.000Z',
-        });
+        }));
 
         const request = new Request(
           'https://api.example.com/api/sites/site-1/branches/branch-1/documents/doc-1',
@@ -1741,7 +1744,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
 
         const response = await handleDocumentRoutes(request, {
           siteId: 'site-1', branchId: 'branch-1', documentId: 'doc-1',
-          principal: { id: 'user-1', type: 'user' },
+          principal: makePrincipal({ id: 'user-1', type: 'user' }),
         });
 
         expect(response.status).toBe(400);
@@ -1751,12 +1754,12 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         const { handleDocumentRoutes } = await import('../../src/routes/document-api');
         const services = await import('../../src/services');
 
-        vi.mocked(services.getBranch).mockResolvedValueOnce({
+        vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
           id: 'branch-1', siteId: 'site-1', name: 'feature',
           status: 'active', isMain: false,
           createdById: 'user-1', createdByType: 'user',
           createdAt: '2026-01-24T10:00:00.000Z', updatedAt: '2026-01-24T10:00:00.000Z',
-        });
+        }));
 
         const request = new Request(
           'https://api.example.com/api/sites/site-1/branches/branch-1/documents/doc-1',
@@ -1769,7 +1772,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
 
         const response = await handleDocumentRoutes(request, {
           siteId: 'site-1', branchId: 'branch-1', documentId: 'doc-1',
-          principal: { id: 'user-1', type: 'user' },
+          principal: makePrincipal({ id: 'user-1', type: 'user' }),
         });
 
         expect(response.status).toBe(400);
@@ -1779,12 +1782,12 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         const { handleDocumentRoutes } = await import('../../src/routes/document-api');
         const services = await import('../../src/services');
 
-        vi.mocked(services.getBranch).mockResolvedValueOnce({
+        vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
           id: 'branch-1', siteId: 'site-1', name: 'feature',
           status: 'active', isMain: false,
           createdById: 'user-1', createdByType: 'user',
           createdAt: '2026-01-24T10:00:00.000Z', updatedAt: '2026-01-24T10:00:00.000Z',
-        });
+        }));
 
         const request = new Request(
           'https://api.example.com/api/sites/site-1/branches/branch-1/documents/doc-1',
@@ -1797,7 +1800,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
 
         const response = await handleDocumentRoutes(request, {
           siteId: 'site-1', branchId: 'branch-1', documentId: 'doc-1',
-          principal: { id: 'user-1', type: 'user' },
+          principal: makePrincipal({ id: 'user-1', type: 'user' }),
         });
 
         expect(response.status).toBe(400);
@@ -1807,12 +1810,12 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         const { handleDocumentRoutes } = await import('../../src/routes/document-api');
         const services = await import('../../src/services');
 
-        vi.mocked(services.getBranch).mockResolvedValueOnce({
+        vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
           id: 'branch-1', siteId: 'site-1', name: 'feature',
           status: 'active', isMain: false,
           createdById: 'user-1', createdByType: 'user',
           createdAt: '2026-01-24T10:00:00.000Z', updatedAt: '2026-01-24T10:00:00.000Z',
-        });
+        }));
 
         const request = new Request(
           'https://api.example.com/api/sites/site-1/branches/branch-1/documents/doc-1',
@@ -1825,7 +1828,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
 
         const response = await handleDocumentRoutes(request, {
           siteId: 'site-1', branchId: 'branch-1', documentId: 'doc-1',
-          principal: { id: 'user-1', type: 'user' },
+          principal: makePrincipal({ id: 'user-1', type: 'user' }),
         });
 
         expect(response.status).toBe(400);
@@ -1835,12 +1838,12 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         const { handleDocumentRoutes } = await import('../../src/routes/document-api');
         const services = await import('../../src/services');
 
-        vi.mocked(services.getBranch).mockResolvedValueOnce({
+        vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
           id: 'branch-1', siteId: 'site-1', name: 'feature',
           status: 'active', isMain: false,
           createdById: 'user-1', createdByType: 'user',
           createdAt: '2026-01-24T10:00:00.000Z', updatedAt: '2026-01-24T10:00:00.000Z',
-        });
+        }));
         vi.mocked(services.deleteDocumentWithRedirect).mockResolvedValueOnce({
           redirect: {
             id: 'redirect-doc-1', fromPath: '/old', destination: '/new',
@@ -1860,7 +1863,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
 
         const response = await handleDocumentRoutes(request, {
           siteId: 'site-1', branchId: 'branch-1', documentId: 'doc-1',
-          principal: { id: 'user-1', type: 'user' },
+          principal: makePrincipal({ id: 'user-1', type: 'user' }),
         });
 
         expect(response.status).toBe(200);
@@ -1878,12 +1881,12 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         const { handleDocumentRoutes } = await import('../../src/routes/document-api');
         const services = await import('../../src/services');
 
-        vi.mocked(services.getBranch).mockResolvedValueOnce({
+        vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
           id: 'branch-1', siteId: 'site-1', name: 'feature',
           status: 'active', isMain: false,
           createdById: 'user-1', createdByType: 'user',
           createdAt: '2026-01-24T10:00:00.000Z', updatedAt: '2026-01-24T10:00:00.000Z',
-        });
+        }));
         vi.mocked(services.deleteDocumentWithRedirect).mockRejectedValueOnce(
           new services.DocumentNotFoundError('doc-1'),
         );
@@ -1899,7 +1902,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
 
         const response = await handleDocumentRoutes(request, {
           siteId: 'site-1', branchId: 'branch-1', documentId: 'doc-1',
-          principal: { id: 'user-1', type: 'user' },
+          principal: makePrincipal({ id: 'user-1', type: 'user' }),
         });
 
         expect(response.status).toBe(404);
@@ -1909,12 +1912,12 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         const { handleDocumentRoutes } = await import('../../src/routes/document-api');
         const services = await import('../../src/services');
 
-        vi.mocked(services.getBranch).mockResolvedValueOnce({
+        vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
           id: 'branch-1', siteId: 'site-1', name: 'feature',
           status: 'active', isMain: false,
           createdById: 'user-1', createdByType: 'user',
           createdAt: '2026-01-24T10:00:00.000Z', updatedAt: '2026-01-24T10:00:00.000Z',
-        });
+        }));
         vi.mocked(services.deleteDocumentWithRedirect).mockRejectedValueOnce(
           new services.PageConflictError('old-page'),
         );
@@ -1930,7 +1933,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
 
         const response = await handleDocumentRoutes(request, {
           siteId: 'site-1', branchId: 'branch-1', documentId: 'doc-1',
-          principal: { id: 'user-1', type: 'user' },
+          principal: makePrincipal({ id: 'user-1', type: 'user' }),
         });
 
         expect(response.status).toBe(409);
@@ -1940,12 +1943,12 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         const { handleDocumentRoutes } = await import('../../src/routes/document-api');
         const services = await import('../../src/services');
 
-        vi.mocked(services.getBranch).mockResolvedValueOnce({
+        vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
           id: 'branch-1', siteId: 'site-1', name: 'feature',
           status: 'active', isMain: false,
           createdById: 'user-1', createdByType: 'user',
           createdAt: '2026-01-24T10:00:00.000Z', updatedAt: '2026-01-24T10:00:00.000Z',
-        });
+        }));
         vi.mocked(services.deleteDocumentWithRedirect).mockResolvedValueOnce({
           redirect: {
             id: 'redirect-doc-1', fromPath: '/old-page', destination: '/new',
@@ -1965,7 +1968,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
 
         const response = await handleDocumentRoutes(request, {
           siteId: 'site-1', branchId: 'branch-1', documentId: 'doc-1',
-          principal: { id: 'user-1', type: 'user' },
+          principal: makePrincipal({ id: 'user-1', type: 'user' }),
         });
 
         expect(response.status).toBe(200);
@@ -1991,7 +1994,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         );
         const services = await import('../../src/services');
 
-        vi.mocked(services.getBranch).mockResolvedValueOnce({
+        vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
           id: 'branch-1',
           siteId: 'site-1',
           name: 'main',
@@ -2001,7 +2004,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
           createdByType: 'user',
           createdAt: '2026-01-24T10:00:00.000Z',
           updatedAt: '2026-01-24T10:00:00.000Z',
-        });
+        }));
         vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(true);
         vi.mocked(services.listDocumentVersions).mockResolvedValueOnce([
           {
@@ -2038,11 +2041,11 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
           branchId: 'branch-1',
           documentId: 'doc-1',
           versionsPath: true,
-          principal: { id: 'user-1', type: 'user' },
+          principal: makePrincipal({ id: 'user-1', type: 'user' }),
         });
 
         expect(response.status).toBe(200);
-        const body = await response.json();
+        const body = await readJson(response);
         expect(body.versions).toHaveLength(2);
         expect(body.versions[0].versionNumber).toBe(2);
         expect(body.versions[1].versionNumber).toBe(1);
@@ -2066,7 +2069,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
           branchId: 'nonexistent',
           documentId: 'doc-1',
           versionsPath: true,
-          principal: { id: 'user-1', type: 'user' },
+          principal: makePrincipal({ id: 'user-1', type: 'user' }),
         });
 
         expect(response.status).toBe(404);
@@ -2078,7 +2081,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         );
         const services = await import('../../src/services');
 
-        vi.mocked(services.getBranch).mockResolvedValueOnce({
+        vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
           id: 'branch-1',
           siteId: 'site-1',
           name: 'main',
@@ -2088,7 +2091,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
           createdByType: 'user',
           createdAt: '2026-01-24T10:00:00.000Z',
           updatedAt: '2026-01-24T10:00:00.000Z',
-        });
+        }));
         vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(false);
 
         const request = new Request(
@@ -2101,7 +2104,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
           branchId: 'branch-1',
           documentId: 'doc-nothere',
           versionsPath: true,
-          principal: { id: 'user-1', type: 'user' },
+          principal: makePrincipal({ id: 'user-1', type: 'user' }),
         });
 
         expect(response.status).toBe(404);
@@ -2116,7 +2119,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         );
         const services = await import('../../src/services');
 
-        vi.mocked(services.getBranch).mockResolvedValueOnce({
+        vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
           id: 'branch-1',
           siteId: 'site-1',
           name: 'main',
@@ -2126,7 +2129,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
           createdByType: 'user',
           createdAt: '2026-01-24T10:00:00.000Z',
           updatedAt: '2026-01-24T10:00:00.000Z',
-        });
+        }));
         vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(true);
         vi.mocked(services.getLatestDocumentVersion).mockResolvedValueOnce({
           id: 'version-3',
@@ -2151,11 +2154,11 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
           documentId: 'doc-1',
           versionsPath: true,
           versionAction: 'latest',
-          principal: { id: 'user-1', type: 'user' },
+          principal: makePrincipal({ id: 'user-1', type: 'user' }),
         });
 
         expect(response.status).toBe(200);
-        const body = await response.json();
+        const body = await readJson(response);
         expect(body.id).toBe('version-3');
         expect(body.versionNumber).toBe(3);
         expect(body.snapshot.content).toBeDefined();
@@ -2167,7 +2170,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         );
         const services = await import('../../src/services');
 
-        vi.mocked(services.getBranch).mockResolvedValueOnce({
+        vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
           id: 'branch-1',
           siteId: 'site-1',
           name: 'main',
@@ -2177,7 +2180,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
           createdByType: 'user',
           createdAt: '2026-01-24T10:00:00.000Z',
           updatedAt: '2026-01-24T10:00:00.000Z',
-        });
+        }));
         vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(true);
         vi.mocked(services.getLatestDocumentVersion).mockResolvedValueOnce(null);
 
@@ -2192,7 +2195,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
           documentId: 'doc-1',
           versionsPath: true,
           versionAction: 'latest',
-          principal: { id: 'user-1', type: 'user' },
+          principal: makePrincipal({ id: 'user-1', type: 'user' }),
         });
 
         expect(response.status).toBe(404);
@@ -2207,7 +2210,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         );
         const services = await import('../../src/services');
 
-        vi.mocked(services.getBranch).mockResolvedValueOnce({
+        vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
           id: 'branch-1',
           siteId: 'site-1',
           name: 'main',
@@ -2217,7 +2220,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
           createdByType: 'user',
           createdAt: '2026-01-24T10:00:00.000Z',
           updatedAt: '2026-01-24T10:00:00.000Z',
-        });
+        }));
         vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(true);
         vi.mocked(services.getDocumentVersion).mockResolvedValueOnce({
           id: 'version-123e4567-e89b-12d3-a456-426614174000',
@@ -2243,11 +2246,11 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
           versionsPath: true,
           versionAction: 'by-id',
           versionId: 'version-123e4567-e89b-12d3-a456-426614174000',
-          principal: { id: 'user-1', type: 'user' },
+          principal: makePrincipal({ id: 'user-1', type: 'user' }),
         });
 
         expect(response.status).toBe(200);
-        const body = await response.json();
+        const body = await readJson(response);
         expect(body.id).toBe('version-123e4567-e89b-12d3-a456-426614174000');
         expect(body.versionNumber).toBe(2);
         expect(body.snapshot.content).toBeDefined();
@@ -2259,7 +2262,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         );
         const services = await import('../../src/services');
 
-        vi.mocked(services.getBranch).mockResolvedValueOnce({
+        vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
           id: 'branch-1',
           siteId: 'site-1',
           name: 'main',
@@ -2269,7 +2272,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
           createdByType: 'user',
           createdAt: '2026-01-24T10:00:00.000Z',
           updatedAt: '2026-01-24T10:00:00.000Z',
-        });
+        }));
         vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(true);
         vi.mocked(services.getDocumentVersion).mockResolvedValueOnce(null);
 
@@ -2285,7 +2288,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
           versionsPath: true,
           versionAction: 'by-id',
           versionId: 'nonexistent-version-id-00000000',
-          principal: { id: 'user-1', type: 'user' },
+          principal: makePrincipal({ id: 'user-1', type: 'user' }),
         });
 
         expect(response.status).toBe(404);
@@ -2297,7 +2300,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         );
         const services = await import('../../src/services');
 
-        vi.mocked(services.getBranch).mockResolvedValueOnce({
+        vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
           id: 'branch-1',
           siteId: 'site-1',
           name: 'main',
@@ -2307,7 +2310,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
           createdByType: 'user',
           createdAt: '2026-01-24T10:00:00.000Z',
           updatedAt: '2026-01-24T10:00:00.000Z',
-        });
+        }));
         vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(true);
         // Version exists but belongs to a different document
         vi.mocked(services.getDocumentVersion).mockResolvedValueOnce({
@@ -2334,7 +2337,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
           versionsPath: true,
           versionAction: 'by-id',
           versionId: 'version-123e4567-e89b-12d3-a456-426614174000',
-          principal: { id: 'user-1', type: 'user' },
+          principal: makePrincipal({ id: 'user-1', type: 'user' }),
         });
 
         expect(response.status).toBe(404);
@@ -2346,7 +2349,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         );
         const services = await import('../../src/services');
 
-        vi.mocked(services.getBranch).mockResolvedValueOnce({
+        vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
           id: 'branch-1',
           siteId: 'site-1',
           name: 'main',
@@ -2356,7 +2359,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
           createdByType: 'user',
           createdAt: '2026-01-24T10:00:00.000Z',
           updatedAt: '2026-01-24T10:00:00.000Z',
-        });
+        }));
         vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(true);
         // Version exists but belongs to a different branch
         vi.mocked(services.getDocumentVersion).mockResolvedValueOnce({
@@ -2383,7 +2386,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
           versionsPath: true,
           versionAction: 'by-id',
           versionId: 'version-123e4567-e89b-12d3-a456-426614174000',
-          principal: { id: 'user-1', type: 'user' },
+          principal: makePrincipal({ id: 'user-1', type: 'user' }),
         });
 
         expect(response.status).toBe(404);
@@ -2395,7 +2398,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         );
         const services = await import('../../src/services');
 
-        vi.mocked(services.getBranch).mockResolvedValueOnce({
+        vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
           id: 'branch-1',
           siteId: 'site-1',
           name: 'main',
@@ -2405,7 +2408,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
           createdByType: 'user',
           createdAt: '2026-01-24T10:00:00.000Z',
           updatedAt: '2026-01-24T10:00:00.000Z',
-        });
+        }));
         vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(false);
 
         const request = new Request(
@@ -2420,7 +2423,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
           versionsPath: true,
           versionAction: 'by-id',
           versionId: 'version-123e4567-e89b-12d3-a456-426614174000',
-          principal: { id: 'user-1', type: 'user' },
+          principal: makePrincipal({ id: 'user-1', type: 'user' }),
         });
 
         expect(response.status).toBe(404);
@@ -2432,7 +2435,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         );
         const services = await import('../../src/services');
 
-        vi.mocked(services.getBranch).mockResolvedValueOnce({
+        vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
           id: 'branch-1',
           siteId: 'site-1',
           name: 'main',
@@ -2442,7 +2445,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
           createdByType: 'user',
           createdAt: '2026-01-24T10:00:00.000Z',
           updatedAt: '2026-01-24T10:00:00.000Z',
-        });
+        }));
         vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(true);
 
         const request = new Request(
@@ -2457,7 +2460,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
           versionsPath: true,
           versionAction: 'by-id',
           versionId: 'version-123e4567-e89b-12d3-a456-426614174000',
-          principal: { id: 'user-1', type: 'user' },
+          principal: makePrincipal({ id: 'user-1', type: 'user' }),
         });
 
         expect(response.status).toBe(405);
@@ -2469,7 +2472,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         );
         const services = await import('../../src/services');
 
-        vi.mocked(services.getBranch).mockResolvedValueOnce({
+        vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
           id: 'branch-1',
           siteId: 'site-1',
           name: 'main',
@@ -2479,7 +2482,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
           createdByType: 'user',
           createdAt: '2026-01-24T10:00:00.000Z',
           updatedAt: '2026-01-24T10:00:00.000Z',
-        });
+        }));
         vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(true);
         vi.mocked(services.getDocumentVersion).mockResolvedValueOnce({
           id: 'version-diff-only',
@@ -2507,11 +2510,11 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
           versionsPath: true,
           versionAction: 'by-id',
           versionId: 'version-diff-only',
-          principal: { id: 'user-1', type: 'user' },
+          principal: makePrincipal({ id: 'user-1', type: 'user' }),
         });
 
         expect(response.status).toBe(200);
-        const body = await response.json();
+        const body = await readJson(response);
         expect(body.snapshot).toEqual(reconstructedSnapshot);
         expect(services.reconstructVersionSnapshot).toHaveBeenCalledWith('doc-1', 'branch-1', 5);
       });
@@ -2522,7 +2525,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         );
         const services = await import('../../src/services');
 
-        vi.mocked(services.getBranch).mockResolvedValueOnce({
+        vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
           id: 'branch-1',
           siteId: 'site-1',
           name: 'main',
@@ -2532,7 +2535,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
           createdByType: 'user',
           createdAt: '2026-01-24T10:00:00.000Z',
           updatedAt: '2026-01-24T10:00:00.000Z',
-        });
+        }));
         vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(true);
         vi.mocked(services.getDocumentVersion).mockResolvedValueOnce({
           id: 'version-with-snapshot',
@@ -2558,11 +2561,11 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
           versionsPath: true,
           versionAction: 'by-id',
           versionId: 'version-with-snapshot',
-          principal: { id: 'user-1', type: 'user' },
+          principal: makePrincipal({ id: 'user-1', type: 'user' }),
         });
 
         expect(response.status).toBe(200);
-        const body = await response.json();
+        const body = await readJson(response);
         expect(body.snapshot).toEqual({ content: [{ type: 'Heading', props: { title: 'Has snapshot' } }], root: {} });
         expect(services.reconstructVersionSnapshot).not.toHaveBeenCalled();
       });
@@ -2576,7 +2579,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         );
         const services = await import('../../src/services');
 
-        vi.mocked(services.getBranch).mockResolvedValueOnce({
+        vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
           id: 'branch-1',
           siteId: 'site-1',
           name: 'main',
@@ -2586,7 +2589,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
           createdByType: 'user',
           createdAt: '2026-01-24T10:00:00.000Z',
           updatedAt: '2026-01-24T10:00:00.000Z',
-        });
+        }));
         vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(true);
         vi.mocked(services.createDocumentVersion).mockResolvedValueOnce({
           id: 'version-new',
@@ -2616,11 +2619,11 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
           branchId: 'branch-1',
           documentId: 'doc-1',
           versionsPath: true,
-          principal: { id: 'user-1', type: 'user' },
+          principal: makePrincipal({ id: 'user-1', type: 'user' }),
         });
 
         expect(response.status).toBe(201);
-        const body = await response.json();
+        const body = await readJson(response);
         expect(body.id).toBe('version-new');
         expect(body.versionNumber).toBe(4);
         expect(body.source).toBe('edit');
@@ -2640,7 +2643,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         );
         const services = await import('../../src/services');
 
-        vi.mocked(services.getBranch).mockResolvedValueOnce({
+        vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
           id: 'branch-1',
           siteId: 'site-1',
           name: 'main',
@@ -2650,7 +2653,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
           createdByType: 'user',
           createdAt: '2026-01-24T10:00:00.000Z',
           updatedAt: '2026-01-24T10:00:00.000Z',
-        });
+        }));
         vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(true);
 
         const request = new Request(
@@ -2667,11 +2670,11 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
           branchId: 'branch-1',
           documentId: 'doc-1',
           versionsPath: true,
-          principal: { id: 'user-1', type: 'user' },
+          principal: makePrincipal({ id: 'user-1', type: 'user' }),
         });
 
         expect(response.status).toBe(400);
-        const body = await response.json();
+        const body = await readJson(response);
         expect(body.error).toContain('snapshot');
       });
 
@@ -2681,7 +2684,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         );
         const services = await import('../../src/services');
 
-        vi.mocked(services.getBranch).mockResolvedValueOnce({
+        vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
           id: 'branch-1',
           siteId: 'site-1',
           name: 'main',
@@ -2691,7 +2694,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
           createdByType: 'user',
           createdAt: '2026-01-24T10:00:00.000Z',
           updatedAt: '2026-01-24T10:00:00.000Z',
-        });
+        }));
         vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(true);
 
         const request = new Request(
@@ -2708,11 +2711,11 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
           branchId: 'branch-1',
           documentId: 'doc-1',
           versionsPath: true,
-          principal: { id: 'user-1', type: 'user' },
+          principal: makePrincipal({ id: 'user-1', type: 'user' }),
         });
 
         expect(response.status).toBe(400);
-        const body = await response.json();
+        const body = await readJson(response);
         expect(body.error).toContain('object');
       });
 
@@ -2722,7 +2725,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         );
         const services = await import('../../src/services');
 
-        vi.mocked(services.getBranch).mockResolvedValueOnce({
+        vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
           id: 'branch-1',
           siteId: 'site-1',
           name: 'main',
@@ -2732,7 +2735,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
           createdByType: 'user',
           createdAt: '2026-01-24T10:00:00.000Z',
           updatedAt: '2026-01-24T10:00:00.000Z',
-        });
+        }));
         vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(false);
 
         const request = new Request(
@@ -2749,7 +2752,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
           branchId: 'branch-1',
           documentId: 'doc-nothere',
           versionsPath: true,
-          principal: { id: 'user-1', type: 'user' },
+          principal: makePrincipal({ id: 'user-1', type: 'user' }),
         });
 
         expect(response.status).toBe(404);
@@ -2770,7 +2773,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
           zones: {},
         };
 
-        vi.mocked(services.getBranch).mockResolvedValueOnce({
+        vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
           id: 'branch-1',
           siteId: 'site-1',
           name: 'main',
@@ -2780,7 +2783,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
           createdByType: 'user',
           createdAt: '2026-01-24T10:00:00.000Z',
           updatedAt: '2026-01-24T10:00:00.000Z',
-        });
+        }));
         vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(true);
         vi.mocked(services.createDocumentVersion).mockResolvedValueOnce({
           id: 'version-puck',
@@ -2808,11 +2811,11 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
           branchId: 'branch-1',
           documentId: 'doc-1',
           versionsPath: true,
-          principal: { id: 'user-1', type: 'user' },
+          principal: makePrincipal({ id: 'user-1', type: 'user' }),
         });
 
         expect(response.status).toBe(201);
-        const body = await response.json();
+        const body = await readJson(response);
         expect(body.snapshot).toEqual(puckSnapshot);
       });
     });
@@ -2827,11 +2830,11 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
       const { handleDocumentRoutes } = await import('../../src/routes/document-api');
       const services = await import('../../src/services');
 
-      vi.mocked(services.getBranch).mockResolvedValueOnce({
+      vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
         id: 'branch-1', siteId: 'site-1', name: 'main', status: 'active',
         isMain: true, createdById: 'user-1', createdByType: 'user',
         createdAt: '2026-01-24T10:00:00.000Z', updatedAt: '2026-01-24T10:00:00.000Z',
-      });
+      }));
       vi.mocked(services.documentExistsOnBranch).mockResolvedValue(true);
       vi.mocked(services.restoreDocumentVersion).mockResolvedValue({
         id: 'new-version-uuid',
@@ -2858,11 +2861,11 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         versionId: 'old-version-uuid',
         versionsPath: true,
         versionAction: 'restore',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(201);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.source).toBe('revert');
       expect(body.sourceVersionId).toBe('old-version-uuid');
       expect(body.versionNumber).toBe(5);
@@ -2872,11 +2875,11 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
       const { handleDocumentRoutes } = await import('../../src/routes/document-api');
       const services = await import('../../src/services');
 
-      vi.mocked(services.getBranch).mockResolvedValueOnce({
+      vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
         id: 'branch-1', siteId: 'site-1', name: 'main', status: 'active',
         isMain: true, createdById: 'user-1', createdByType: 'user',
         createdAt: '2026-01-24T10:00:00.000Z', updatedAt: '2026-01-24T10:00:00.000Z',
-      });
+      }));
       vi.mocked(services.documentExistsOnBranch).mockResolvedValue(true);
       vi.mocked(services.restoreDocumentVersion).mockRejectedValue(
         new services.RestoreVersionNotFoundError('old-version-uuid'),
@@ -2894,7 +2897,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         versionId: 'old-version-uuid',
         versionsPath: true,
         versionAction: 'restore',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(404);
@@ -2904,11 +2907,11 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
       const { handleDocumentRoutes } = await import('../../src/routes/document-api');
       const services = await import('../../src/services');
 
-      vi.mocked(services.getBranch).mockResolvedValueOnce({
+      vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
         id: 'branch-1', siteId: 'site-1', name: 'main', status: 'active',
         isMain: true, createdById: 'user-1', createdByType: 'user',
         createdAt: '2026-01-24T10:00:00.000Z', updatedAt: '2026-01-24T10:00:00.000Z',
-      });
+      }));
       vi.mocked(services.documentExistsOnBranch).mockResolvedValue(true);
 
       const request = new Request(
@@ -2923,7 +2926,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         versionId: 'old-version-uuid',
         versionsPath: true,
         versionAction: 'restore',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(405);
@@ -2934,11 +2937,11 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
       const services = await import('../../src/services');
       const auth = await import('../../src/auth/authorization');
 
-      vi.mocked(services.getBranch).mockResolvedValueOnce({
+      vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
         id: 'branch-1', siteId: 'site-1', name: 'main', status: 'active',
         isMain: true, createdById: 'user-1', createdByType: 'user',
         createdAt: '2026-01-24T10:00:00.000Z', updatedAt: '2026-01-24T10:00:00.000Z',
-      });
+      }));
       vi.mocked(services.documentExistsOnBranch).mockResolvedValue(true);
       vi.mocked(auth.assertPermission).mockRejectedValue(
         new auth.AuthorizationError('Forbidden', 'canEditDocuments', 'viewer'),
@@ -2956,7 +2959,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         versionId: 'old-version-uuid',
         versionsPath: true,
         versionAction: 'restore',
-        principal: { id: 'viewer-1', type: 'user' },
+        principal: makePrincipal({ id: 'viewer-1', type: 'user' }),
       });
 
       expect(response.status).toBe(403);
@@ -2985,7 +2988,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         '../../src/auth/authorization'
       );
 
-      vi.mocked(services.getBranch).mockResolvedValueOnce({
+      vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
         id: 'branch-1',
         siteId: 'site-1',
         name: 'feature',
@@ -2994,7 +2997,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         createdAt: '2026-01-24T10:00:00.000Z',
         createdById: 'user-1',
         createdByType: 'user',
-      });
+      }));
 
       vi.mocked(services.listDocumentsOnBranch).mockResolvedValueOnce([]);
 
@@ -3026,7 +3029,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         '../../src/auth/authorization'
       );
 
-      vi.mocked(services.getBranch).mockResolvedValueOnce({
+      vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
         id: 'branch-1',
         siteId: 'site-1',
         name: 'feature',
@@ -3035,7 +3038,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         createdAt: '2026-01-24T10:00:00.000Z',
         createdById: 'user-1',
         createdByType: 'user',
-      });
+      }));
 
       vi.mocked(services.createDocumentOnBranch).mockResolvedValueOnce({
         document: {
@@ -3089,7 +3092,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         '../../src/auth/authorization'
       );
 
-      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce(makeBranch({
         id: 'main-branch-id',
         siteId: 'site-1',
         name: 'main',
@@ -3098,7 +3101,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         createdAt: '2026-01-24T10:00:00.000Z',
         createdById: 'user-1',
         createdByType: 'user',
-      });
+      }));
 
       vi.mocked(services.listDocuments).mockResolvedValueOnce([]);
 
@@ -3129,7 +3132,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         '../../src/auth/authorization'
       );
 
-      vi.mocked(services.getBranch).mockResolvedValueOnce({
+      vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
         id: 'branch-1',
         siteId: 'site-1',
         name: 'feature',
@@ -3138,7 +3141,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         createdAt: '2026-01-24T10:00:00.000Z',
         createdById: 'user-1',
         createdByType: 'user',
-      });
+      }));
 
       vi.mocked(assertPermission).mockImplementationOnce(() => {
         throw new AuthorizationError(
@@ -3172,7 +3175,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
       const { handleDocumentRoutes } = await import('../../src/routes/document-api');
       const services = await import('../../src/services');
 
-      vi.mocked(services.getBranch).mockResolvedValueOnce({
+      vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
         id: 'branch-1',
         siteId: 'site-OTHER',
         name: 'main',
@@ -3181,7 +3184,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         createdAt: '2026-01-24T10:00:00.000Z',
         createdById: 'user-1',
         createdByType: 'user',
-      });
+      }));
 
       const request = new Request(
         'https://api.example.com/api/sites/site-1/branches/branch-1/documents',
@@ -3191,7 +3194,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
       const response = await handleDocumentRoutes(request, {
         siteId: 'site-1',
         branchId: 'branch-1',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(404);
@@ -3202,7 +3205,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
       const { handleDocumentRoutes } = await import('../../src/routes/document-api');
       const services = await import('../../src/services');
 
-      vi.mocked(services.getBranch).mockResolvedValueOnce({
+      vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
         id: 'branch-1',
         siteId: 'site-OTHER',
         name: 'main',
@@ -3211,7 +3214,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         createdAt: '2026-01-24T10:00:00.000Z',
         createdById: 'user-1',
         createdByType: 'user',
-      });
+      }));
 
       const request = new Request(
         'https://api.example.com/api/sites/site-1/branches/branch-1/documents',
@@ -3225,7 +3228,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
       const response = await handleDocumentRoutes(request, {
         siteId: 'site-1',
         branchId: 'branch-1',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(404);

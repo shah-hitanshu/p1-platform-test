@@ -6,6 +6,9 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { readJson } from '../helpers/http';
+import { makePrincipal } from '../helpers/principal';
+import { makeBranch } from '../helpers/branch';
 
 // Mock the services
 vi.mock('../../src/services', () => ({
@@ -108,11 +111,11 @@ describe('Phase 7.1.1b: Metadata API Routes', () => {
         branchId: 'branch-1',
         structureId: 'struct-1',
         action: 'state',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.branchId).toBe('branch-1');
       expect(body.structureId).toBe('struct-1');
       expect(body.schemaEnforcement).toBe('warn');
@@ -134,7 +137,7 @@ describe('Phase 7.1.1b: Metadata API Routes', () => {
         branchId: 'branch-1',
         structureId: 'nonexistent',
         action: 'state',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(404);
@@ -198,11 +201,11 @@ describe('Phase 7.1.1b: Metadata API Routes', () => {
         branchId: 'branch-1',
         structureId: 'struct-1',
         action: 'schema',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.metadataSchema).toBeDefined();
       expect(body.schemaEnforcement).toBe('strict');
       expect(body.validationResult).toBeDefined();
@@ -240,11 +243,11 @@ describe('Phase 7.1.1b: Metadata API Routes', () => {
         branchId: 'branch-1',
         structureId: 'struct-1',
         action: 'validate',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.structureId).toBe('struct-1');
       expect(body.results).toHaveLength(1);
     });
@@ -282,11 +285,11 @@ describe('Phase 7.1.1b: Metadata API Routes', () => {
         branchId: 'branch-1',
         structureId: 'struct-1',
         documentId: 'doc-1',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.documentId).toBe('doc-1');
       expect(body.metadata.title).toBe('About Us');
       expect(body.conformsToSchema).toBe(true);
@@ -308,7 +311,7 @@ describe('Phase 7.1.1b: Metadata API Routes', () => {
         branchId: 'branch-1',
         structureId: 'struct-1',
         documentId: 'nonexistent',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(404);
@@ -356,11 +359,11 @@ describe('Phase 7.1.1b: Metadata API Routes', () => {
         branchId: 'branch-1',
         structureId: 'struct-1',
         documentId: 'doc-1',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.metadata.title).toBe('About Our Company');
       expect(body.conformsToSchema).toBe(true);
     });
@@ -392,7 +395,7 @@ describe('Phase 7.1.1b: Metadata API Routes', () => {
         branchId: 'branch-1',
         structureId: 'struct-1',
         documentId: 'doc-1',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(400);
@@ -420,7 +423,7 @@ describe('Phase 7.1.1b: Metadata API Routes', () => {
         branchId: 'branch-1',
         structureId: 'struct-1',
         documentId: 'doc-1',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(204);
@@ -467,11 +470,11 @@ describe('Phase 7.1.1b: Metadata API Routes', () => {
         branchId: 'branch-1',
         structureId: 'struct-1',
         action: 'list',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.documents).toHaveLength(2);
     });
 
@@ -491,7 +494,7 @@ describe('Phase 7.1.1b: Metadata API Routes', () => {
         branchId: 'branch-1',
         structureId: 'struct-1',
         action: 'list',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(200);
@@ -519,7 +522,7 @@ describe('Phase 7.1.1b: Metadata API Routes', () => {
         branchId: 'branch-1',
         structureId: 'struct-1',
         action: 'state',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(405);
@@ -543,7 +546,7 @@ describe('Phase 7.1.1b: Metadata API Routes', () => {
         branchId: 'branch-1',
         structureId: 'struct-1',
         action: 'state',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(500);
@@ -752,7 +755,7 @@ describe('Phase 7.1.1b: Metadata API Routes', () => {
       );
       const services = await import('../../src/services');
 
-      vi.mocked(services.getBranch).mockResolvedValueOnce({
+      vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
         id: 'branch-from-other-site',
         siteId: 'site-OTHER',
         name: 'main',
@@ -761,7 +764,7 @@ describe('Phase 7.1.1b: Metadata API Routes', () => {
         createdAt: '2026-01-24T10:00:00.000Z',
         createdById: 'user-1',
         createdByType: 'user',
-      });
+      }));
 
       const request = new Request(
         'https://api.example.com/api/sites/site-1/branches/branch-from-other-site/structures/struct-1/metadata/state',
@@ -773,7 +776,7 @@ describe('Phase 7.1.1b: Metadata API Routes', () => {
         branchId: 'branch-from-other-site',
         structureId: 'struct-1',
         action: 'state',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(404);
@@ -786,7 +789,7 @@ describe('Phase 7.1.1b: Metadata API Routes', () => {
       );
       const services = await import('../../src/services');
 
-      vi.mocked(services.getBranch).mockResolvedValueOnce({
+      vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
         id: 'branch-from-other-site',
         siteId: 'site-OTHER',
         name: 'main',
@@ -795,7 +798,7 @@ describe('Phase 7.1.1b: Metadata API Routes', () => {
         createdAt: '2026-01-24T10:00:00.000Z',
         createdById: 'user-1',
         createdByType: 'user',
-      });
+      }));
 
       const request = new Request(
         'https://api.example.com/api/sites/site-1/branches/branch-from-other-site/structures/struct-1/metadata/doc-1',
@@ -811,7 +814,7 @@ describe('Phase 7.1.1b: Metadata API Routes', () => {
         branchId: 'branch-from-other-site',
         structureId: 'struct-1',
         documentId: 'doc-1',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(404);

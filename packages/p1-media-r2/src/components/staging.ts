@@ -12,7 +12,7 @@ import type { RowStatus, UploadProgress } from "./upload-flow";
  */
 export function buildPatchBody(
   fields: MetadataFieldDef[],
-  row: Array<string | undefined>,
+  row: (string | undefined)[],
 ): Record<string, string | null> {
   const body: Record<string, string | null> = {};
   fields.forEach((f, c) => {

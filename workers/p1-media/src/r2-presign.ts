@@ -1,5 +1,5 @@
 import { AwsClient } from 'aws4fetch';
-import { Env } from './types';
+import type { Env } from './types';
 
 // Short-lived — the client is expected to PUT immediately after minting.
 const PRESIGN_EXPIRY_SECONDS = 300;

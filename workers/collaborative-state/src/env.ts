@@ -82,3 +82,18 @@ export interface Env {
   CONFIG_KV: KVNamespace;
   SESSION_KV: KVNamespace;
 }
+
+/**
+ * Reads a secret the caller cannot proceed without.
+ *
+ * These are optional on Env because not every deployment configures every one.
+ * Asserting with `!` lets an unset secret flow into a signing or HTTP call and
+ * fail somewhere unrelated; this fails at the point of use instead.
+ */
+export function requireEnv<K extends keyof Env>(env: Env, key: K): NonNullable<Env[K]> {
+  const value = env[key];
+  if (value === undefined || value === '') {
+    throw new Error(`Missing required environment variable: ${key}`);
+  }
+  return value;
+}

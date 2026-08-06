@@ -43,6 +43,11 @@ import * as branchService from '../../src/services/branch-service';
 import { hasPermission } from '../../src/auth/authorization';
 import type { RealtimeRouteContext } from '../../src/routes/realtime-api';
 import type { AuthenticatedPrincipal, Branch } from '../../src/types';
+import {
+  makeDurableObjectNamespace,
+  type MockDurableObjectNamespace,
+  type MockDurableObjectStub,
+} from '../helpers/durable-object';
 
 /**
  * PCC-3458: build a branch whose id/siteId mirror the requested ref, so the
@@ -65,17 +70,8 @@ function branchForRef(siteId: string, ref: string): Branch {
 }
 
 // Mock types for Cloudflare Durable Objects
-interface MockDurableObjectStub {
-  fetch: ReturnType<typeof vi.fn>;
-}
-
 interface MockDurableObjectId {
   toString: () => string;
-}
-
-interface MockDurableObjectNamespace {
-  idFromName: ReturnType<typeof vi.fn<[string], MockDurableObjectId>>;
-  get: ReturnType<typeof vi.fn<[MockDurableObjectId], MockDurableObjectStub>>;
 }
 
 // Mock environment
@@ -134,10 +130,7 @@ describe('Real-Time API: Focus Regions Endpoint', () => {
 
     mockEnv = {
       ENVIRONMENT: 'test',
-      DOCUMENT_STATE: {
-        idFromName: vi.fn().mockReturnValue(mockId),
-        get: vi.fn().mockReturnValue(mockStub),
-      },
+      DOCUMENT_STATE: makeDurableObjectNamespace(mockStub, mockId),
       POSTGRES_CONNECTION_STRING: 'postgresql://localhost:5432/test',
     };
   });

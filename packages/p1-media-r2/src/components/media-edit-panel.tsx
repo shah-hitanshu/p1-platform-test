@@ -1,10 +1,10 @@
 "use client";
 
 import type { RefObject } from "react";
+import type { MetadataFieldDef } from "../types";
 import { MetadataGrid } from "./metadata-grid";
 import { panelErrorStyle, panelHeadingStyle, panelButtonRowStyle, primaryBtnStyle, secondaryBtnStyle } from "./media-panel-styles";
 import type { MediaItem } from "./media-item";
-import type { MetadataFieldDef } from "../types";
 
 /** Metadata-editing panel for an existing library item, with a Replace-image action. */
 export function MediaEditPanel(props: {

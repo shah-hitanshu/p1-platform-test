@@ -6,6 +6,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { readJson } from '../helpers/http';
 
 vi.mock('cloudflare:workers', () => ({
   DurableObject: class DurableObject {
@@ -76,7 +77,7 @@ describe('Endpoints on a session whose content failed to load', () => {
       const response = await session.fetch(new Request(`http://localhost${path}`, { method: 'POST' }));
 
       expect(response.status).toBe(503);
-      const body = await response.json();
+      const body = await readJson(response);
       expect((body as { error: string }).error).toMatch(/could not be loaded/);
     },
   );

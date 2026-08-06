@@ -561,10 +561,10 @@ describe('Phase 4: Action Classification Service', () => {
 
         const patch = [null, undefined, { op: 'add', path: '/root/0', value: {} }];
 
-        /* eslint-disable @typescript-eslint/no-unsafe-argument */
+
         /* eslint-disable @typescript-eslint/no-unnecessary-type-assertion */
         const result = classifyChange(patch as any, undefined);
-        /* eslint-enable @typescript-eslint/no-unsafe-argument */
+
         /* eslint-enable @typescript-eslint/no-unnecessary-type-assertion */
 
         expect(result.actionType).toBe('structural');
@@ -576,10 +576,10 @@ describe('Phase 4: Action Classification Service', () => {
 
         const patch = ['string', 123, true, { op: 'add', path: '/root/0', value: {} }];
 
-        /* eslint-disable @typescript-eslint/no-unsafe-argument */
+
         /* eslint-disable @typescript-eslint/no-unnecessary-type-assertion */
         const result = classifyChange(patch as any, undefined);
-        /* eslint-enable @typescript-eslint/no-unsafe-argument */
+
         /* eslint-enable @typescript-eslint/no-unnecessary-type-assertion */
 
         expect(result.actionType).toBe('structural');

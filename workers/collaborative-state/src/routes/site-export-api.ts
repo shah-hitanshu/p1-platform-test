@@ -234,9 +234,8 @@ export async function handleSiteExportRoute(
 
     // Sign bundle.json with INTERNAL_SECRET so the import handler can detect tampering.
     // The signature covers bundle.json, which in turn covers all other files via SHA-256.
-    const bundleSignature = env.INTERNAL_SECRET !== undefined && env.INTERNAL_SECRET !== ''
-      ? await signBundleJson(bundleJsonBytes, env.INTERNAL_SECRET)
-      : undefined;
+    // Guarded above: the handler already 503s when INTERNAL_SECRET is unset.
+    const bundleSignature = await signBundleJson(bundleJsonBytes, env.INTERNAL_SECRET);
 
     const zipBuffer = zipSync(files, { level: 6 });
     const safeTimestamp = exportedAt.replace(/:/g, '-');

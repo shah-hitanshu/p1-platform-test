@@ -12,7 +12,6 @@ import {
   canOverrideUrl,
   mergePermissions,
 } from '../../../features/content-type-templates/permissions/role-permissions.js';
-import type { ContentRole } from '../../../features/content-type-templates/types.js';
 
 describe('getPermissionsForRole', () => {
   it('grants full permissions to admin', () => {

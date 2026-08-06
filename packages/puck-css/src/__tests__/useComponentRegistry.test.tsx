@@ -317,7 +317,7 @@ describe('useComponentRegistry', () => {
     );
 
     // Capture all snapshot arguments passed to versions.create
-    const versionCreateCalls: Array<{ documentId: string; snapshot: unknown }> = [];
+    const versionCreateCalls: { documentId: string; snapshot: unknown }[] = [];
     mockClient.versions.create.mockImplementation(
       (_siteId: string, params: { documentId: string; branchId: string; snapshot: unknown }) => {
         versionCreateCalls.push({ documentId: params.documentId, snapshot: params.snapshot });
@@ -365,12 +365,12 @@ describe('useComponentRegistry', () => {
     expect(snapshot.name).toBe('FeatureCard');
 
     // fields contains exactly one entry of type 'select' with correct options
-    const fields = snapshot.fields as Array<Record<string, unknown>>;
+    const fields = snapshot.fields as Record<string, unknown>[];
     expect(fields).toHaveLength(1);
     expect(fields[0].type).toBe('select');
     expect(fields[0].name).toBe('variant');
     expect(fields[0].label).toBe('Variant');
-    const options = fields[0].options as Array<{ label: string; value: string }>;
+    const options = fields[0].options as { label: string; value: string }[];
     expect(options).toHaveLength(2);
     expect(options[0]).toEqual({ label: 'Primary', value: 'primary' });
     expect(options[1]).toEqual({ label: 'Secondary', value: 'secondary' });
@@ -653,7 +653,7 @@ describe('useComponentRegistry', () => {
       Promise.resolve({ id: `doc-${++docCounter}`, path }),
     );
 
-    const capturedSnapshots: Array<{ documentId: string; snapshot: unknown }> = [];
+    const capturedSnapshots: { documentId: string; snapshot: unknown }[] = [];
     mockClient.versions.create.mockImplementation(
       (_siteId: string, params: { documentId: string; branchId: string; snapshot: unknown }) => {
         capturedSnapshots.push({ documentId: params.documentId, snapshot: params.snapshot });

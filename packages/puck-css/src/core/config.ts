@@ -1,6 +1,6 @@
+import { P1ContentClient } from '@pantheon-systems/css-client';
 import type { AuthMode } from '../auth/P1AuthProvider.js';
 import type { ContentRole } from '../features/content-type-templates/types.js';
-import { P1ContentClient } from '@pantheon-systems/css-client';
 
 export interface P1Config {
   baseUrl: string;

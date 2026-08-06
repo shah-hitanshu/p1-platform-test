@@ -70,7 +70,8 @@ export interface ApproveUserInfo {
   userName?: string;
 }
 
-interface BrokerTransactionEnv {}
+/** This Durable Object takes no bindings. */
+type BrokerTransactionEnv = Record<string, never>;
 
 // =============================================================================
 // BrokerTransaction Durable Object
@@ -99,9 +100,12 @@ export class BrokerTransaction extends DurableObject<BrokerTransactionEnv> {
     }
 
     try {
-      const stored = await this.state.storage.get<LoginTransaction>(TRANSACTION_STORAGE_KEY);
-      if (stored !== undefined && stored !== null && typeof stored === 'object') {
-        this.transaction = stored;
+      // Read as `unknown`: the generic on `storage.get` asserts a shape over
+      // whatever bytes are in storage rather than checking one, and this catch
+      // deliberately degrades — so a bad value would surface far from here.
+      const stored: unknown = await this.state.storage.get(TRANSACTION_STORAGE_KEY);
+      if (typeof stored === 'object' && stored !== null) {
+        this.transaction = stored as LoginTransaction;
       }
     } catch (error) {
       console.warn('[BrokerTransaction] Failed to restore from storage:', error);
@@ -118,7 +122,11 @@ export class BrokerTransaction extends DurableObject<BrokerTransactionEnv> {
    * Validates string field lengths to prevent DoS attacks.
    * Throws Error if any field exceeds its maximum length.
    */
-  private validateFields(fields: Record<string, string | undefined>): void {
+  // Values are `string | null | undefined` because the callers' own types are
+  // optimistic: user fields originate in Auth0 ID token claims, which
+  // `decodeAuth0IdTokenClaims` casts wholesale and only checks for `sub` and
+  // `email`. A null `name` claim reaches here typed as `string | undefined`.
+  private validateFields(fields: Record<string, string | null | undefined>): void {
     const limits: Record<string, number> = {
       txId: MAX_TX_ID_LENGTH,
       siteId: MAX_SITE_ID_LENGTH,
@@ -136,7 +144,7 @@ export class BrokerTransaction extends DurableObject<BrokerTransactionEnv> {
       }
       const limit = limits[name] ?? MAX_REASON_LENGTH; // default limit
       if (value.length > limit) {
-        throw new Error(`${name} exceeds maximum length of ${limit}`);
+        throw new Error(`${name} exceeds maximum length of ${String(limit)}`);
       }
     }
   }
@@ -261,6 +269,7 @@ export class BrokerTransaction extends DurableObject<BrokerTransactionEnv> {
    * Returns null if no transaction has been created.
    */
   async get(): Promise<LoginTransaction | null> {
+    await this.initializeIfNeeded();
     return this.transaction;
   }
 

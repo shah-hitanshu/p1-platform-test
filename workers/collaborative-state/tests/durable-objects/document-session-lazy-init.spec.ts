@@ -16,6 +16,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
+import { readJson } from '../helpers/http';
 
 // Mock cloudflare:workers DurableObject base class
 vi.mock('cloudflare:workers', () => ({
@@ -231,7 +232,7 @@ describe('Phase 4.2: Lazy CRDT Initialization', () => {
 
       expect(response.status).toBe(200);
 
-      const data = await response.json();
+      const data = await readJson(response);
       expect(data).toHaveProperty('isIdle');
 
       // Verify ydoc was NOT accessed
@@ -253,7 +254,7 @@ describe('Phase 4.2: Lazy CRDT Initialization', () => {
 
       expect(response.status).toBe(200);
 
-      const data = await response.json();
+      const data = await readJson(response);
       expect(data).toHaveProperty('sessions');
 
       // Verify ydoc was NOT accessed

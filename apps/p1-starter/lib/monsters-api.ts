@@ -76,7 +76,7 @@ async function fetchMonster(
 
 async function fetchMonsterList(
   fetchImpl: typeof fetch,
-): Promise<Array<{ index: string; name: string; url?: string }>> {
+): Promise<{ index: string; name: string; url?: string }[]> {
   try {
     const res = await fetchImpl(GRAPHQL_POKEMON_ENDPOINT, {
       method: "POST",
@@ -98,7 +98,7 @@ async function fetchMonsterList(
     if (!data || typeof data !== "object" || Array.isArray(data)) return [];
     const results = (data as { getAllPokemon?: unknown }).getAllPokemon;
     if (!Array.isArray(results)) return [];
-    const out: Array<{ index: string; name: string; url?: string }> = [];
+    const out: { index: string; name: string; url?: string }[] = [];
     for (const row of results) {
       if (!row || typeof row !== "object" || Array.isArray(row)) continue;
       const r = row as Record<string, unknown>;

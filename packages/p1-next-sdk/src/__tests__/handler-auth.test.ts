@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 
 vi.mock("next/server", () => ({
   NextResponse: {
@@ -26,8 +26,8 @@ vi.mock("../handler-actions", () => ({
   deleteRemoteDatasources: vi.fn(() => ({ __body: { ok: true }, status: 200 })),
 }));
 
-import { createP1Handler } from "../handler";
 import type { Config } from "@puckeditor/core";
+import { createP1Handler } from "../handler";
 
 const handler = createP1Handler({ config: {} as Config });
 

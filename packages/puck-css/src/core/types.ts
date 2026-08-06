@@ -15,8 +15,8 @@ import type {
 import type { ConflictNotification } from '../merge/components/conflict-notifications/index.js';
 import type { UseAgentEditReturn } from '../agent/useAgentEdit.js';
 import type { UseAgentTriggerReturn } from '../agent/useAgentTrigger.js';
-import type { P1FeatureConfig } from './featureConfig.js';
 import type { Template, TemplateSummary } from '../features/content-type-templates/types.js';
+import type { P1FeatureConfig } from './featureConfig.js';
 
 /**
  * Save status for auto-save functionality.
@@ -395,10 +395,10 @@ export interface P1PuckContextValue {
    * Get pending actions buffered since last save.
    * Used for forwarding action metadata to backend for version history.
    */
-  getPendingActions: () => Array<{
+  getPendingActions: () => {
     type: string;
     [key: string]: unknown;
-  }>;
+  }[];
 
   // =========================================================================
   // Stable Getters (avoid stale closures, referentially stable)

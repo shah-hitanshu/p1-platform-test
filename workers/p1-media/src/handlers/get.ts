@@ -1,4 +1,4 @@
-import { Env } from '../types';
+import type { Env } from '../types';
 import { getAsset } from '../store';
 
 /** GET /media/:assetId — single asset scoped to its owning site (R0 via store). */

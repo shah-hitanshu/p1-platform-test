@@ -9,10 +9,10 @@
  * right layer of confidence here.
  */
 
-import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
+import { describe, it, expect } from 'vitest';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const p1Path = join(__dirname, 'PuckEditorTheme.css');

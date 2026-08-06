@@ -4,7 +4,6 @@
  * API endpoints for managing registered agents in an organization.
  */
 
-import type { BaseEndpoint } from './base.js';
 import type {
   RegisteredAgent,
   CreateAgentParams,
@@ -12,6 +11,7 @@ import type {
   ListAgentsOptions,
   AgentStatus,
 } from '../types.js';
+import type { BaseEndpoint } from './base.js';
 
 /**
  * Agent registry endpoint for managing organization agents.

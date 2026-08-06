@@ -30,7 +30,6 @@ import {
   ConflictAlreadyResolvedError,
 } from '../../src/services/migration-service';
 import {
-  listDocumentsOnBranch,
 } from '../../src/services/branch-document-service';
 
 const CONNECTION_STRING = 'postgresql://cssuser:csspass@localhost:5432/cssdb';
@@ -129,7 +128,7 @@ describe('Template Migration CUJ — Integration Tests', () => {
 
     // Create test site (auto-creates main branch)
     const site = await createSite({
-      pantheonSiteId: `${SITE_PREFIX}-${Date.now()}`,
+      pantheonSiteId: `${SITE_PREFIX}-${String(Date.now())}`,
       name: 'Migration Test Site',
       creatorId: TEST_USER_ID,
     });
@@ -189,7 +188,7 @@ describe('Template Migration CUJ — Integration Tests', () => {
       templateDocId = result.document.id;
       expect(result.version.versionNumber).toBe(1);
 
-      const content = result.version.snapshot?.content as unknown[];
+      const content = result.version.snapshot.content as unknown[];
       expect(content).toHaveLength(2);
     });
 
@@ -209,7 +208,7 @@ describe('Template Migration CUJ — Integration Tests', () => {
       expect(result.document.templateId).toBe(templateDocId);
       expect(result.document.templateVersion).toBe(1);
 
-      const content = result.version.snapshot?.content as unknown[];
+      const content = result.version.snapshot.content as unknown[];
       expect(content).toHaveLength(2);
     });
 

@@ -31,7 +31,7 @@ export function MetadataGrid(props: {
   autoFocus?: boolean;
 }): ReactElement {
   const { fields, rows, values, onChange, disabled, autoFocus } = props;
-  const inputRefs = useRef<Array<Array<HTMLInputElement | null>>>([]);
+  const inputRefs = useRef<(HTMLInputElement | null)[][]>([]);
   inputRefs.current = rows.map((_, r) => inputRefs.current[r] ?? []);
 
   useEffect(() => {

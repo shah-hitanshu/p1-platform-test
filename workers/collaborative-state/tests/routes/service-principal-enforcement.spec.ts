@@ -60,7 +60,7 @@ describe('Service Principal Scope Enforcement', () => {
 
     it('should deny access when principal has no siteId', () => {
       const principal = createServicePrincipal('site-123');
-      delete (principal as Record<string, unknown>).siteId;
+      delete principal.siteId;
       const result = isServicePrincipalAllowed(principal, 'site-123', 'GET');
       expect(result.allowed).toBe(false);
     });

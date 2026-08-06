@@ -5,6 +5,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { readJson } from '../helpers/http';
 
 vi.mock('../../src/db', () => ({
   query: vi.fn(),
@@ -94,7 +95,7 @@ describe('backfill-datasources-api', () => {
       const response = await handleBackfillDatasources(request, adminPrincipal);
       expect(response.status).toBe(200);
 
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.sitesProcessed).toBe(1);
       expect(body.sitesSkipped).toBe(1);
       expect(body.templatesProcessed).toBe(2);
@@ -146,7 +147,7 @@ describe('backfill-datasources-api', () => {
       const response = await handleBackfillDatasources(request, adminPrincipal);
       expect(response.status).toBe(200);
 
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.errors).toHaveLength(0);
     });
 
@@ -183,7 +184,7 @@ describe('backfill-datasources-api', () => {
       const response = await handleBackfillDatasources(request, adminPrincipal);
       expect(response.status).toBe(200);
 
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.templatesProcessed).toBe(2);
       expect(body.errors).toHaveLength(1);
       expect(body.errors[0].template).toBe('blog');

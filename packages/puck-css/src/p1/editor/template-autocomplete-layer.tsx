@@ -1,12 +1,6 @@
 "use client";
 
 import {
-  remoteDatasourceTemplateSuggestions,
-  getActiveRemoteDatasourceInterpolation,
-  type TemplateSuggestion,
-} from "../../data/template-autocomplete";
-import type { RemoteDatasourceDefinition } from "../../data/remote-datasources/remote-datasource-registry";
-import {
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -16,6 +10,12 @@ import {
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
+import {
+  remoteDatasourceTemplateSuggestions,
+  getActiveRemoteDatasourceInterpolation,
+  type TemplateSuggestion,
+} from "../../data/template-autocomplete";
+import type { RemoteDatasourceDefinition } from "../../data/remote-datasources/remote-datasource-registry";
 
 type Props = {
   children: ReactNode;

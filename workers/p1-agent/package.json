@@ -4,12 +4,14 @@
   "private": true,
   "main": "src/index.ts",
   "scripts": {
+    "deploy:staging": "wrangler deploy --env staging",
     "dev": "wrangler dev",
     "dev:stack": "wrangler dev --port 8790 --inspector-port 9231",
-    "deploy:staging": "wrangler deploy --env staging",
+    "lint": "eslint src scripts test-stubs",
+    "lint:fix": "eslint src scripts test-stubs --fix",
+    "smoke:cache": "tsx scripts/smoke-anthropic-cache.ts",
     "test": "vitest run",
-    "type-check": "tsc --noEmit",
-    "smoke:cache": "tsx scripts/smoke-anthropic-cache.ts"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.112.3",
@@ -19,6 +21,8 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250109.0",
+    "@pantheon-systems/eslint-config": "workspace:*",
+    "eslint": "^9.27.0",
     "tsx": "^4.19.2",
     "typescript": "^5.7.3",
     "vite": "8.0.16",

@@ -10,11 +10,11 @@
  * no revision left to read them from.
  */
 
-import { describe, it, expect, afterEach } from "vitest";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { describe, it, expect, afterEach } from "vitest";
 
 // @ts-expect-error - hand-written ESM JS codemod, no type declarations
 import { migrate } from "../../bin/lib/cli.js";

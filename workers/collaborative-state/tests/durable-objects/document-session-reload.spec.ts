@@ -9,6 +9,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
+import { readJson } from '../helpers/http';
 // Mock cloudflare:workers DurableObject base class
 vi.mock('cloudflare:workers', () => ({
   DurableObject: class DurableObject {
@@ -134,7 +135,7 @@ describe('DocumentSession /reload endpoint', () => {
     const response = await session.fetch(request);
 
     expect(response.status).toBe(200);
-    const body = await response.json();
+    const body = await readJson(response);
     expect(body).toHaveProperty('success', true);
   });
 
@@ -256,7 +257,7 @@ describe('DocumentSession /reload endpoint', () => {
     await session.fetch(reloadRequest);
 
     // WebSocket should have received the diff as a binary Yjs update
-    // eslint-disable-next-line @typescript-eslint/unbound-method
+
     expect(mockWs.send).toHaveBeenCalled();
     const sentData = (mockWs.send as Mock).mock.calls[0][0];
     // Should be a Uint8Array (Yjs update)
@@ -291,7 +292,7 @@ describe('DocumentSession /reload endpoint', () => {
       method: 'POST',
     });
     const response = await session.fetch(reloadRequest);
-    const body = await response.json();
+    const body = await readJson(response);
 
     expect(body.success).toBe(true);
     expect(body.snapshot).toEqual(newSnapshot);

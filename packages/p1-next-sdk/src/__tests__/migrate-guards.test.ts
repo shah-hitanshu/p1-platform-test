@@ -7,11 +7,11 @@
  * verifying the tree is recoverable, and recognizing a half-finished run.
  */
 
-import { describe, it, expect, afterEach } from "vitest";
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { describe, it, expect, afterEach } from "vitest";
 
 // @ts-expect-error - hand-written ESM JS codemod, no type declarations
 import { migrate, parseArgs } from "../../bin/lib/cli.js";
@@ -69,6 +69,7 @@ function makeRepo(): string {
   git(root, "init");
   git(root, "config", "user.email", "test@example.com");
   git(root, "config", "user.name", "Test");
+  git(root, "config", "commit.gpgsign", "false");
   writeFileSync(join(root, "README.md"), "seed\n");
   git(root, "add", "-A");
   git(root, "commit", "-m", "seed");

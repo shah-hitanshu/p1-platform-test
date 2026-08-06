@@ -8,6 +8,9 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { readJson } from '../helpers/http';
+import { makePrincipal } from '../helpers/principal';
+import { makeBranch } from '../helpers/branch';
 
 // Mock the services
 vi.mock('../../src/services', () => ({
@@ -87,7 +90,7 @@ vi.mock('../../src/auth/authorization', () => ({
 // Shared test fixtures
 // ---------------------------------------------------------------------------
 
-const mainBranch = {
+const mainBranch = makeBranch({
   id: 'branch-main',
   siteId: 'site-1',
   name: 'main',
@@ -97,13 +100,13 @@ const mainBranch = {
   createdByType: 'user' as const,
   createdAt: '2026-01-01T00:00:00.000Z',
   updatedAt: '2026-01-01T00:00:00.000Z',
-};
+});
 
-const mockPrincipal = {
+const mockPrincipal = makePrincipal({
   id: 'user-1',
-  type: 'user' as const,
+  type: 'user',
   siteId: 'site-1',
-};
+});
 
 const mockCheckpoint = {
   id: 'checkpoint-publish-001',
@@ -166,7 +169,7 @@ describe('POST /api/sites/:siteId/branches/:branchId/documents/:documentId/publi
     );
 
     expect(response.status).toBe(200);
-    const body = await response.json();
+    const body = await readJson(response);
     expect(body).toHaveProperty('checkpoint');
     expect(body).toHaveProperty('publishedVersionId', mockPublishedVersionId);
   });

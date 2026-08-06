@@ -1,4 +1,4 @@
-import { Env, AssetRow, AssetVersionRow, MediaAsset } from './types';
+import type { Env, AssetRow, AssetVersionRow, MediaAsset } from './types';
 import { METADATA_SCHEMA_VERSION } from './schema';
 
 // R2 key limit is 1024 bytes; the composed prefix is ~95 chars.
@@ -17,7 +17,7 @@ export class NotFoundError extends Error {}
  */
 export function sanitizeFilename(name: string): string {
   return name
-    .replace(/[^a-zA-Z0-9.\-]/g, '-')
+    .replace(/[^a-zA-Z0-9.-]/g, '-')
     .replace(/\.{2,}/g, '-')
     // (?<!\.) anchors where the trailing branch may start matching — without it,
     // \.+$ is ambiguous about its start position within a run of dots, which is

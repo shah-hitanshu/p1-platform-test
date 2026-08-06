@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import type OpenAI from 'openai';
+import type { Connection, ConnectionContext } from 'agents';
 import { trimHistory, sanitizeHistory, appendTurn, trimForHistory, buildRestoredHistory, turnMayCommit, turnHasOutput } from './history.js';
 import { buildContextNote } from './prompt.js';
 import { injectPuckIds } from './tools.js';
 import { ChatAgent } from './agent.js';
-import type { Connection, ConnectionContext } from 'agents';
 
 type Msg = OpenAI.Chat.Completions.ChatCompletionMessageParam;
 
@@ -474,7 +474,7 @@ describe('injectPuckIds', () => {
       { type: 'StatsBlock', props: { columns: 4 } },
       { type: 'TextIntroBlock', props: { body: 'hi' } },
     ];
-    const result = injectPuckIds(input) as Array<{ type: string; props: Record<string, unknown> }>;
+    const result = injectPuckIds(input) as { type: string; props: Record<string, unknown> }[];
     expect(result[0].props.id).toBe('keep-me');
     expect(result[1].props.id).toBeTruthy();
     expect(result[2].props.id).toBeTruthy();

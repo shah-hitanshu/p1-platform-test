@@ -6,6 +6,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { LocalDatasourceSnapshot } from '../../src/types/datasource';
+import { readJson } from '../helpers/http';
 
 vi.mock('../../src/services/datasource-service', () => ({
   getDatasource: vi.fn(),
@@ -68,7 +69,7 @@ describe('datasource-api', () => {
       });
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.datasources).toHaveLength(1);
       expect(body.datasources[0].name).toBe('blog');
     });
@@ -100,7 +101,7 @@ describe('datasource-api', () => {
       });
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.name).toBe('blog');
     });
 

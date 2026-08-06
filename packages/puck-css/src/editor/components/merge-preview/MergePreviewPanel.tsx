@@ -1,8 +1,8 @@
 import React, { useState, useCallback, useMemo } from 'react';
 import { IconButton } from '@pantheon-systems/pds-toolkit-react';
+import type { PuckData } from '@pantheon-systems/css-client';
 import type { DocumentDiffSummary } from '../../../versioning/utils/branchDiff.js';
 import { createBranchDocumentComparison, isPuckData, EMPTY_PUCK_DATA } from '../../../versioning/utils/branchDiff.js';
-import type { PuckData } from '@pantheon-systems/css-client';
 import { ViewModeSelector } from './ViewModeSelector.js';
 import type { ViewMode } from './ViewModeSelector.js';
 import { MergePreviewRenderer } from './MergePreviewRenderer.js';

@@ -81,7 +81,11 @@ export default tseslint.config(
       '@typescript-eslint/no-shadow': 'warn',
       '@typescript-eslint/no-require-imports': 'warn',
       'no-async-promise-executor': 'warn',
-      '@typescript-eslint/consistent-type-definitions': 'warn',
+      // Off deliberately. The rule's `interface` default is unsafe: interfaces have
+      // no implicit index signature, so autofixing `type X = {...}` to an interface
+      // silently breaks assignability to Record<string, unknown>. Both spellings are
+      // fine; this is not worth a footgun.
+      '@typescript-eslint/consistent-type-definitions': 'off',
       'no-useless-escape': 'warn',
       'no-useless-catch': 'warn',
       '@typescript-eslint/no-inferrable-types': 'warn',
@@ -90,7 +94,10 @@ export default tseslint.config(
       '@typescript-eslint/ban-ts-comment': 'warn',
       '@typescript-eslint/no-unused-expressions': 'warn',
       '@typescript-eslint/no-non-null-asserted-optional-chain': 'warn',
-      '@typescript-eslint/no-empty-function': 'warn',
+      // A no-op default for an optional callback is idiomatic here
+      // (`onLogout ?? (() => {})`), and the rule cannot tell it from an
+      // accidentally empty body. Still catches empty function declarations.
+      '@typescript-eslint/no-empty-function': ['warn', { allow: ['arrowFunctions', 'methods'] }],
       '@typescript-eslint/no-empty-object-type': 'warn',
       '@typescript-eslint/no-wrapper-object-types': 'warn',
       'no-constant-binary-expression': 'warn',
@@ -99,14 +106,20 @@ export default tseslint.config(
       '@typescript-eslint/no-redeclare': 'warn',
       'no-case-declarations': 'warn',
       'no-empty': 'warn',
-      '@typescript-eslint/no-dynamic-delete': 'warn',
+      // Off: `delete record[computedKey]` is the normal way to drop a cache
+      // entry or a patch path segment. The rule's alternative is switching the
+      // structure to a Map, which is a design change, not a lint fix.
+      '@typescript-eslint/no-dynamic-delete': 'off',
       'no-constant-condition': 'warn',
       'no-empty-pattern': 'warn',
       'no-var': 'warn',
       '@typescript-eslint/no-namespace': 'warn',
       '@typescript-eslint/no-extraneous-class': 'warn',
       '@typescript-eslint/unified-signatures': 'warn',
-      '@typescript-eslint/no-invalid-void-type': 'warn',
+      // Off: `request<void>(...)` for an endpoint that returns no body is the
+      // normal spelling in css-client, and that is a generic type argument —
+      // which the rule's own message calls valid.
+      '@typescript-eslint/no-invalid-void-type': 'off',
       '@typescript-eslint/no-this-alias': 'warn',
     },
   },
@@ -127,6 +140,9 @@ export default tseslint.config(
       'coverage/**',
       '**/*.d.ts',
       '**/generated/**',
+      // Vendored snapshots and test data. Linting these rewrites them, which
+      // silently breaks any test asserting byte-identical output against them.
+      '**/fixtures/**',
       '**/.puppeteerrc.cjs',
     ],
   },

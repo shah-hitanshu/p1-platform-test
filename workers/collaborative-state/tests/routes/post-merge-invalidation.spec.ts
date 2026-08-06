@@ -9,6 +9,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { makePrincipal } from '../helpers/principal';
 
 // Mock the services module
 vi.mock('../../src/services', () => ({
@@ -91,7 +92,7 @@ describe('post-merge KV invalidation', () => {
     const response = await handleMergeRoutes(request, {
       siteId: 'site-1',
       operation: 'execute',
-      principal: { id: 'user-1', type: 'user', email: 'test@test.com' },
+      principal: makePrincipal({ id: 'user-1', type: 'user', email: 'test@test.com' }),
       configKV: mockKV,
     });
 
@@ -126,7 +127,7 @@ describe('post-merge KV invalidation', () => {
     const response = await handleMergeRoutes(request, {
       siteId: 'site-1',
       operation: 'execute',
-      principal: { id: 'user-1', type: 'user', email: 'test@test.com' },
+      principal: makePrincipal({ id: 'user-1', type: 'user', email: 'test@test.com' }),
       configKV: mockKV,
     });
 
@@ -166,7 +167,7 @@ describe('post-merge KV invalidation', () => {
     const response = await handleMergeRoutes(request, {
       siteId: 'site-1',
       operation: 'execute',
-      principal: { id: 'user-1', type: 'user', email: 'test@test.com' },
+      principal: makePrincipal({ id: 'user-1', type: 'user', email: 'test@test.com' }),
       configKV: mockKV,
     });
 
@@ -207,7 +208,7 @@ describe('post-merge KV invalidation', () => {
       siteId: 'site-1',
       executeRequest: true,
       mergeRequestId: 'mr-1',
-      principal: { id: 'user-1', type: 'user', email: 'test@test.com' },
+      principal: makePrincipal({ id: 'user-1', type: 'user', email: 'test@test.com' }),
       configKV: mockKV,
     });
 
@@ -248,7 +249,7 @@ describe('post-merge KV invalidation', () => {
     const response = await handleMergeRoutes(request, {
       siteId: 'site-1',
       operation: 'execute',
-      principal: { id: 'user-1', type: 'user', email: 'test@test.com' },
+      principal: makePrincipal({ id: 'user-1', type: 'user', email: 'test@test.com' }),
       configKV: mockKV,
     });
 
@@ -285,7 +286,7 @@ describe('post-merge KV invalidation', () => {
     const response = await handleMergeRoutes(request, {
       siteId: 'site-1',
       operation: 'execute',
-      principal: { id: 'user-1', type: 'user', email: 'test@test.com' },
+      principal: makePrincipal({ id: 'user-1', type: 'user', email: 'test@test.com' }),
     });
 
     expect(response.status).toBe(200);

@@ -10,6 +10,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { AuthenticatedPrincipal } from '../../src/types';
 import type { SiteScreenshot } from '../../src/types';
+import { readJson } from '../helpers/http';
+import { makeBranch } from '../helpers/branch';
 
 vi.mock('../../src/services/site-screenshot-service', () => ({
   getSiteScreenshot: vi.fn(),
@@ -37,7 +39,7 @@ const mockPrincipal: AuthenticatedPrincipal = {
   tokenExpiry: new Date(Date.now() + 86400000).toISOString(),
 };
 
-const mockMainBranch = {
+const mockMainBranch = makeBranch({
   id: 'branch-main',
   siteId: 'site-123',
   name: 'main',
@@ -45,7 +47,7 @@ const mockMainBranch = {
   status: 'active' as const,
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
-};
+});
 
 const mockScreenshot: SiteScreenshot = {
   siteId: 'site-123',
@@ -102,7 +104,7 @@ describe('GET /api/sites/{siteId}/screenshot', () => {
     );
 
     expect(response.status).toBe(200);
-    const body: { url: string; expiresAt: string; capturedAt: string } = await response.json();
+    const body: { url: string; expiresAt: string; capturedAt: string } = await readJson(response);
     expect(body.url).toContain('X-Amz-Signature');
     expect(body.expiresAt).toBe('2026-05-08T11:00:00.000Z');
     expect(body.capturedAt).toBe('2026-05-08T10:00:00.000Z');
@@ -163,7 +165,7 @@ describe('GET /api/sites/{siteId}/screenshot', () => {
     );
 
     expect(response.status).toBe(404);
-    const body: { status?: string } = await response.json();
+    const body: { status?: string } = await readJson(response);
     expect(body.status).toBe('missing');
   });
 
@@ -190,7 +192,7 @@ describe('GET /api/sites/{siteId}/screenshot', () => {
     );
 
     expect(response.status).toBe(404);
-    const body: { status?: string; error?: string } = await response.json();
+    const body: { status?: string; error?: string } = await readJson(response);
     expect(body.status).toBe('failed');
     expect(body.error).toContain('502');
   });

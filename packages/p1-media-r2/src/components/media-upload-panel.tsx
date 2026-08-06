@@ -1,8 +1,8 @@
 "use client";
 
+import type { MetadataFieldDef } from "../types";
 import { MetadataGrid } from "./metadata-grid";
 import { panelErrorStyle, panelHeadingStyle, panelButtonRowStyle, primaryBtnStyle, secondaryBtnStyle } from "./media-panel-styles";
-import type { MetadataFieldDef } from "../types";
 import type { RowStatus } from "./upload-flow";
 
 const STEP_LABEL: Record<RowStatus["step"], string | null> = {
@@ -24,7 +24,7 @@ function statusBadge(status: RowStatus | undefined): { text: string; isError?: b
 /** Staged-file metadata grid shown after files are chosen/dropped, before POSTing. */
 export function MediaUploadPanel(props: {
   schema: MetadataFieldDef[];
-  pending: Array<{ file: File; previewUrl: string }>;
+  pending: { file: File; previewUrl: string }[];
   pendingValues: string[][];
   onValuesChange: (values: string[][]) => void;
   pendingStatus: RowStatus[];

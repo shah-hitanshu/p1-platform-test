@@ -17,6 +17,7 @@ import {
 } from '../../src/services/branch-document-service';
 import { createDocumentVersion } from '../../src/services/document-version-service';
 import type { AuthenticatedPrincipal } from '../../src/types';
+import { readJson } from '../helpers/http';
 
 const CONNECTION_STRING = 'postgresql://cssuser:csspass@localhost:5432/cssdb';
 const TEST_USER_ID = '88888888-8888-8888-8888-888888888888';
@@ -171,7 +172,7 @@ describe('Template API — Copy-on-Write inheritance', () => {
       const response = await getTemplate(templateId, featureBranchId);
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.id).toBe(templateId);
       expect(body.name).toBe('inherited-get');
       expect(body.root.props._template.label).toBe('Inherited Get');
@@ -191,7 +192,7 @@ describe('Template API — Copy-on-Write inheritance', () => {
       const response = await getTemplate(templateId, featureBranchId);
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.root.props._template.label).toBe('Branch Label');
     });
 
@@ -204,7 +205,7 @@ describe('Template API — Copy-on-Write inheritance', () => {
       const templateId = await authorTemplateOnMain('main-get', 'Main Get');
       const response = await getTemplate(templateId, mainBranchId);
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.root.props._template.label).toBe('Main Get');
     });
   });
@@ -217,7 +218,7 @@ describe('Template API — Copy-on-Write inheritance', () => {
       const response = await listTemplates(featureBranchId);
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       const names = (body.templates as { id: string; name: string }[]).map((t) => t.name);
       expect(names).toContain('inherited-list');
       const entry = (body.templates as { id: string; label?: string }[]).find((t) => t.id === templateId);
@@ -236,7 +237,7 @@ describe('Template API — Copy-on-Write inheritance', () => {
       });
 
       const response = await listTemplates(featureBranchId);
-      const body = await response.json();
+      const body = await readJson(response);
       const entry = (body.templates as { id: string; label?: string }[]).find((t) => t.id === templateId);
       expect(entry?.label).toBe('Branch Label');
     });
@@ -300,7 +301,7 @@ describe('Template API — Copy-on-Write inheritance', () => {
       const response = await patchTemplate(templateId, featureBranchId, { label: 'Edited On Branch' });
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.root.props._template.label).toBe('Edited On Branch');
 
       // A local version now exists on the feature branch.

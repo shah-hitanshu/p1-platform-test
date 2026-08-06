@@ -10,14 +10,14 @@ const { renderSpy, dispatchSpy } = vi.hoisted(() => ({
 // Local mock provides Puck's Drawer/Drawer.Item primitives, Render, and usePuck.
 vi.mock('@puckeditor/core', async () => {
   const ReactMod = await import('react');
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   const Item = ({ name, children }: any) =>
     ReactMod.createElement(
       'div',
       { 'data-testid': 'drawer-item', 'data-name': name },
       typeof children === 'function' ? children({ children: null, name }) : children,
     );
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   const Drawer = Object.assign(
     ({ children }: any) => ReactMod.createElement('div', { 'data-testid': 'drawer' }, children),
     { Item },
@@ -43,7 +43,7 @@ vi.mock('@pantheon-systems/pds-toolkit-react', async () => {
   const ReactMod = await import('react');
   return {
     Icon: () => null,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     IconButton: ({ onClick, ariaLabel }: any) =>
       ReactMod.createElement('button', { onClick, 'aria-label': ariaLabel }),
   };

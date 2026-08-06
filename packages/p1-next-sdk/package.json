@@ -35,8 +35,10 @@
   "scripts": {
     "build": "pnpm run clean && tsc",
     "clean": "rm -rf dist *.tsbuildinfo",
+    "lint": "eslint src",
+    "lint:fix": "eslint src --fix",
     "test": "vitest run",
-    "lint": "eslint src"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@pantheon-systems/css-client": "workspace:*",

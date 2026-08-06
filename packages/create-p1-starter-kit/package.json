@@ -9,8 +9,10 @@
   "scripts": {
     "build": "node scripts/build-template.js",
     "clean": "rm -rf template node_modules/.vite",
-    "test": "vitest run",
-    "prepublishOnly": "npm run build"
+    "lint": "eslint index.js lib scripts",
+    "lint:fix": "eslint index.js lib scripts --fix",
+    "prepublishOnly": "npm run build",
+    "test": "vitest run"
   },
   "files": [
     "index.js",
@@ -40,8 +42,10 @@
   },
   "devDependencies": {
     "@pantheon-systems/css-client": "workspace:*",
+    "@pantheon-systems/eslint-config": "workspace:*",
     "@pantheon-systems/puck-css": "workspace:*",
     "@vitejs/plugin-react": "^6.0.5",
+    "eslint": "^9.27.0",
     "isomorphic-dompurify": "^3.18.0",
     "react": "^19.2.5",
     "vitest": "^4.1.5"

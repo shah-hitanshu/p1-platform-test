@@ -10,12 +10,16 @@
  */
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import type { Plugin } from '@puckeditor/core';
+import type { PuckData, DocumentVersion } from '@pantheon-systems/css-client';
+import type { UiState } from '@puckeditor/core';
 import { useP1Puck } from '../core/P1PuckContext.js';
+import { useVersions } from '../versioning/useVersions.js';
+import { useP1Auth } from '../auth/index.js';
+import type { P1PuckContextValue } from '../core/types.js';
 import { useP1Plugin } from './useP1Plugin.js';
 import { useP1Overrides } from './useP1Overrides.js';
-import { useVersions } from '../versioning/useVersions.js';
 import { useComponentRegistry } from './useComponentRegistry.js';
-import { useP1Auth } from '../auth/index.js';
 import { buildThumbnailOverride } from './utils/buildThumbnailOverride.js';
 import { restoreDocumentVersion } from './utils/restoreDocumentVersion.js';
 import {
@@ -29,10 +33,6 @@ import type { LiveThumbnailDrawerOptions } from './thumbnails/buildLiveThumbnail
 import type { UseP1PluginOptions } from './useP1Plugin.js';
 import type { UseP1OverridesOptions } from './useP1Overrides.js';
 import type { PuckOverrides } from './plugin/index.js';
-import type { Plugin } from '@puckeditor/core';
-import type { P1PuckContextValue } from '../core/types.js';
-import type { PuckData, DocumentVersion } from '@pantheon-systems/css-client';
-import type { UiState } from '@puckeditor/core';
 
 /**
  * Options for useP1Editor.

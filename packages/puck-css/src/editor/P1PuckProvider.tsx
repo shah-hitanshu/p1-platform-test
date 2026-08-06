@@ -13,28 +13,28 @@ import type {
   DocumentVersion,
   ActorPresence,
 } from '@pantheon-systems/css-client';
+import isEqual from 'lodash.isequal';
 import type { P1PuckConfig, P1PuckContextValue, SaveStatus, PresenceState } from '../core/types.js';
 import { P1PuckContext } from '../core/P1PuckContext.js';
 import { NotificationProvider, useNotifications } from '../core/NotificationContext.js';
 import { PresenceContext } from '../core/PresenceContext.js';
 import type { PresenceContextValue } from '../core/PresenceContext.js';
-import isEqual from 'lodash.isequal';
 import { debounce } from '../core/utils/debounce.js';
 import { withRetry } from '../core/utils/retry.js';
-import { useRealtime } from './useRealtime.js';
-import { useDocuments } from './useDocuments.js';
-import { snapshotToPuckData } from './utils/snapshotToPuckData.js';
 import type { UseAgentEditReturn } from '../agent/useAgentEdit.js';
 import type { UseAgentTriggerReturn } from '../agent/useAgentTrigger.js';
 import type { ConflictNotification } from '../merge/components/conflict-notifications/index.js';
 import type { P1FeaturePlugin, P1FeaturePluginDeps } from '../core/plugin-types.js';
 import type { P1FeatureConfig } from '../core/featureConfig.js';
 import { resolveFeatureConfig } from '../core/featureConfig.js';
-import { resolveActivePlugins, composeProviders } from './composePlugins.js';
-import { DEFAULT_CSS_FEATURE_PLUGINS } from './defaultPlugins.js';
 import type { Template, TemplateSummary } from '../features/content-type-templates/types.js';
 import { createPuckPermissions } from '../features/content-type-templates/permissions/createPuckPermissions.js';
 import { useTemplateList } from '../features/content-type-templates/hooks/useTemplateList.js';
+import { DEFAULT_CSS_FEATURE_PLUGINS } from './defaultPlugins.js';
+import { resolveActivePlugins, composeProviders } from './composePlugins.js';
+import { snapshotToPuckData } from './utils/snapshotToPuckData.js';
+import { useDocuments } from './useDocuments.js';
+import { useRealtime } from './useRealtime.js';
 
 export interface P1PuckProviderProps extends P1PuckConfig {
   children: React.ReactNode;
@@ -218,7 +218,7 @@ function P1PuckProviderInner({
   // Buffered actions captured by handleAction (Puck's onAction callback)
   // Array accumulates all structural actions during an edit session.
   // Forwarded to backend on save for version history, then cleared.
-  const pendingActionsRef = useRef<Array<{ type: string; [key: string]: unknown }>>([]);
+  const pendingActionsRef = useRef<{ type: string; [key: string]: unknown }[]>([]);
 
   // Tracks the document path that the current data in state belongs to.
   // Set alongside every setCurrentData call to record the data's origin.

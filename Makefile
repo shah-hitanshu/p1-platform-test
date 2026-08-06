@@ -136,7 +136,7 @@ worker-login: ## Login to Cloudflare (for integration testing)
 metrics-receiver: ## Start local metrics receiver with macOS notifications
 	@printf "$(GREEN)Starting local metrics receiver...$(NC)\n"
 	@printf "$(BLUE)This will send macOS notifications for issues$(NC)\n"
-	@node scripts/css/local-metrics-receiver.js
+	@node scripts/css/local-metrics-receiver.mjs
 
 ##@ Terraform - Infrastructure Management
 

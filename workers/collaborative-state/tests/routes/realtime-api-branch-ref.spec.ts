@@ -48,6 +48,12 @@ import * as branchService from '../../src/services/branch-service';
 import { hasPermission } from '../../src/auth/authorization';
 import type { RealtimeRouteContext } from '../../src/routes/realtime-api';
 import type { AuthenticatedPrincipal } from '../../src/types';
+import {
+  makeDurableObjectNamespace,
+  type MockDurableObjectNamespace,
+  type MockDurableObjectStub,
+} from '../helpers/durable-object';
+import { makeBranch } from '../helpers/branch';
 
 // Production-shaped identifiers (PCC-3462: fixtures mirror real data shapes).
 const SITE_ID = 'b4ce1f14-c196-4ac1-a287-68f90e321f18';
@@ -65,22 +71,15 @@ const principal: AuthenticatedPrincipal = {
 };
 const context: RealtimeRouteContext = { principal };
 
-interface MockStub {
-  fetch: ReturnType<typeof vi.fn>;
-}
-
 function makeEnv(): {
   env: {
     ENVIRONMENT: string;
-    DOCUMENT_STATE: {
-      idFromName: ReturnType<typeof vi.fn>;
-      get: ReturnType<typeof vi.fn>;
-    };
+    DOCUMENT_STATE: MockDurableObjectNamespace;
     POSTGRES_CONNECTION_STRING: string;
   };
-  stub: MockStub;
+  stub: MockDurableObjectStub;
   } {
-  const stub: MockStub = {
+  const stub: MockDurableObjectStub = {
     fetch: vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ success: true }), {
         status: 200,
@@ -90,23 +89,20 @@ function makeEnv(): {
   };
   const env = {
     ENVIRONMENT: 'test',
-    DOCUMENT_STATE: {
-      idFromName: vi.fn().mockReturnValue({ toString: () => 'mock-do-id' }),
-      get: vi.fn().mockReturnValue(stub),
-    },
+    DOCUMENT_STATE: makeDurableObjectNamespace(stub, { toString: () => 'mock-do-id' }),
     POSTGRES_CONNECTION_STRING: 'postgresql://test:test@localhost/test',
   };
   return { env, stub };
 }
 
-const mainBranch = {
+const mainBranch = makeBranch({
   id: MAIN_BRANCH_ID,
   siteId: SITE_ID,
   name: 'main',
   isMain: true,
   createdAt: new Date().toISOString(),
   archivedAt: null,
-};
+});
 
 beforeEach(() => {
   vi.resetAllMocks();
@@ -180,10 +176,10 @@ describe('PCC-3458: branch-ref resolution in realtime DO session keys', () => {
   });
 
   it("rejects a branch belonging to a different site (cross-site guard, mirrors content-api's resolveBranch)", async () => {
-    vi.mocked(branchService.getBranch).mockResolvedValue({
+    vi.mocked(branchService.getBranch).mockResolvedValue(makeBranch({
       ...mainBranch,
       siteId: OTHER_SITE_ID,
-    });
+    }));
 
     const response = await callRoute(MAIN_BRANCH_ID);
 

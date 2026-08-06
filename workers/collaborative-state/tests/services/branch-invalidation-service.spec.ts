@@ -41,7 +41,7 @@ describe('branch-invalidation-service', () => {
       const branchId = 'branch-abc-123';
       await writeBranchInvalidation(mockKV, branchId);
 
-      // eslint-disable-next-line @typescript-eslint/unbound-method
+
       expect(mockKV.put).toHaveBeenCalledTimes(1);
       const [key, value] = (mockKV.put as ReturnType<typeof vi.fn>).mock.calls[0];
       expect(key).toBe('branch-version:branch-abc-123');
@@ -73,7 +73,7 @@ describe('branch-invalidation-service', () => {
 
       await writeBranchInvalidation(mockKV, 'branch-1');
 
-      // eslint-disable-next-line @typescript-eslint/unbound-method
+
       expect(mockKV.get).not.toHaveBeenCalled();
     });
   });

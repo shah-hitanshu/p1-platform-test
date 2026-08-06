@@ -6,12 +6,12 @@
  */
 
 import { useState, useCallback } from 'react';
-import { usePresenceContext } from '../core/PresenceContext.js';
 import type {
   AgentEditPermission,
   AgentEditSession,
   AgentTrigger,
 } from '@pantheon-systems/css-client';
+import { usePresenceContext } from '../core/PresenceContext.js';
 
 /**
  * Parameters for starting or checking an edit.

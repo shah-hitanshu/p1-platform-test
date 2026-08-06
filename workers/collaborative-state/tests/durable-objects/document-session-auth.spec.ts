@@ -11,6 +11,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
+import { readJson } from '../helpers/http';
 
 // Mock cloudflare:workers DurableObject base class for Hibernatable WebSocket API
 vi.mock('cloudflare:workers', () => ({
@@ -121,7 +122,7 @@ describe('Auth Phase 4: Document Session Auth Enforcement', () => {
       const response = await session.fetch(request);
       expect(response.status).toBe(200);
 
-      const body = await response.json();
+      const body = await readJson(response);
       // Snapshot should reflect verified identity context, not client-supplied
       expect(body).toBeDefined();
     });
@@ -223,7 +224,7 @@ describe('Auth Phase 4: Document Session Auth Enforcement', () => {
       const response = await session.fetch(request);
 
       expect(response.status).toBe(403);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.error).toContain('does not match');
     });
 

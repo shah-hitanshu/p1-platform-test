@@ -9,6 +9,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { DocumentVersionSource } from '../../src/types';
+import { makeBranch } from '../helpers/branch';
 
 // Mock database module
 vi.mock('../../src/db', () => ({
@@ -531,7 +532,7 @@ describe('Phase 1.1: CRDT Sync Service', () => {
       vi.mocked(documentVersionService.getLatestDocumentVersion).mockResolvedValue(null);
 
       // Branch has a sourceBranchId (it was created from main)
-      vi.mocked(branchService.getBranch).mockResolvedValue({
+      vi.mocked(branchService.getBranch).mockResolvedValue(makeBranch({
         id: 'branch-uuid-456',
         siteId: mockDoc.site_id,
         name: 'feature-branch',
@@ -542,7 +543,7 @@ describe('Phase 1.1: CRDT Sync Service', () => {
         createdByType: 'user',
         createdAt: '2026-01-25T10:00:00.000Z',
         updatedAt: '2026-01-25T10:00:00.000Z',
-      });
+      }));
 
       // Published version exists on the source branch
       const sourceSnapshot = { root: { title: 'CoW Baseline' } };
@@ -587,7 +588,7 @@ describe('Phase 1.1: CRDT Sync Service', () => {
       vi.mocked(documentVersionService.getLatestDocumentVersion).mockResolvedValue(null);
 
       // Branch is main — no sourceBranchId
-      vi.mocked(branchService.getBranch).mockResolvedValue({
+      vi.mocked(branchService.getBranch).mockResolvedValue(makeBranch({
         id: 'main-branch-id',
         siteId: mockDoc.site_id,
         name: 'main',
@@ -598,7 +599,7 @@ describe('Phase 1.1: CRDT Sync Service', () => {
         createdByType: 'user',
         createdAt: '2026-01-25T10:00:00.000Z',
         updatedAt: '2026-01-25T10:00:00.000Z',
-      });
+      }));
 
       const result = await loadLatestCrdtState('site-uuid-456', 'doc-uuid-123', 'main-branch-id');
 
@@ -624,7 +625,7 @@ describe('Phase 1.1: CRDT Sync Service', () => {
       vi.mocked(documentVersionService.getLatestDocumentVersion).mockResolvedValue(null);
 
       // Non-main branch but sourceBranchId is absent
-      vi.mocked(branchService.getBranch).mockResolvedValue({
+      vi.mocked(branchService.getBranch).mockResolvedValue(makeBranch({
         id: 'orphan-branch-id',
         siteId: mockDoc.site_id,
         name: 'orphan-branch',
@@ -635,7 +636,7 @@ describe('Phase 1.1: CRDT Sync Service', () => {
         createdByType: 'user',
         createdAt: '2026-01-25T10:00:00.000Z',
         updatedAt: '2026-01-25T10:00:00.000Z',
-      });
+      }));
 
       const result = await loadLatestCrdtState('site-uuid-456', 'doc-uuid-123', 'orphan-branch-id');
 
@@ -659,7 +660,7 @@ describe('Phase 1.1: CRDT Sync Service', () => {
 
       vi.mocked(documentVersionService.getLatestDocumentVersion).mockResolvedValue(null);
 
-      vi.mocked(branchService.getBranch).mockResolvedValue({
+      vi.mocked(branchService.getBranch).mockResolvedValue(makeBranch({
         id: 'branch-uuid-456',
         siteId: mockDoc.site_id,
         name: 'feature-branch',
@@ -670,7 +671,7 @@ describe('Phase 1.1: CRDT Sync Service', () => {
         createdByType: 'user',
         createdAt: '2026-01-25T10:00:00.000Z',
         updatedAt: '2026-01-25T10:00:00.000Z',
-      });
+      }));
 
       // No published version on source branch either
       vi.mocked(documentVersionService.getLatestPublishedDocumentVersion).mockResolvedValue(null);
@@ -742,7 +743,7 @@ describe('Phase 1.1: CRDT Sync Service', () => {
 
       vi.mocked(documentVersionService.getLatestDocumentVersion).mockResolvedValue(null);
 
-      vi.mocked(branchService.getBranch).mockResolvedValue({
+      vi.mocked(branchService.getBranch).mockResolvedValue(makeBranch({
         id: 'branch-uuid-456',
         siteId: mockDoc.site_id,
         name: 'feature-branch',
@@ -753,7 +754,7 @@ describe('Phase 1.1: CRDT Sync Service', () => {
         createdByType: 'user',
         createdAt: '2026-01-25T10:00:00.000Z',
         updatedAt: '2026-01-25T10:00:00.000Z',
-      });
+      }));
 
       // Published version has null snapshot (nulled during diff compaction)
       vi.mocked(documentVersionService.getLatestPublishedDocumentVersion).mockResolvedValue({

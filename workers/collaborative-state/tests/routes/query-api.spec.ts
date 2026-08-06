@@ -6,6 +6,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { QuerySnapshot } from '../../src/types/query';
+import { readJson } from '../helpers/http';
 
 vi.mock('../../src/services/query-service', () => ({
   getQuery: vi.fn(),
@@ -85,7 +86,7 @@ describe('query-api', () => {
       });
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.queries).toHaveLength(1);
     });
 
@@ -107,7 +108,7 @@ describe('query-api', () => {
       });
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.name).toBe('recent-posts');
     });
 
@@ -148,7 +149,7 @@ describe('query-api', () => {
       });
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.items).toHaveLength(1);
     });
 
@@ -280,7 +281,7 @@ describe('query-api', () => {
       });
 
       expect(response.status).toBe(404);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.error).toBe('Branch not found');
     });
 
@@ -318,7 +319,7 @@ describe('query-api', () => {
       });
 
       expect(response.status).toBe(400);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.error).toContain('limit cannot exceed');
     });
 

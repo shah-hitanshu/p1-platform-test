@@ -244,7 +244,7 @@ export async function executeQuery(
         : [],
     ]);
 
-    for (const v of [...(localVersions ?? []), ...(inheritedVersions ?? [])]) {
+    for (const v of [...localVersions, ...inheritedVersions]) {
       if (v.snapshot) {
         versionMap.set(v.documentId, v.snapshot);
       }

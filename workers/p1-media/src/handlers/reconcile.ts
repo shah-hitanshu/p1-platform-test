@@ -1,4 +1,4 @@
-import { Env } from '../types';
+import type { Env } from '../types';
 
 // Must stay far larger than a normal presign -> PUT -> finalize round trip (seconds),
 // since it's the only thing standing between reconcile and racing an in-flight

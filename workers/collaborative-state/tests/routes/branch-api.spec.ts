@@ -6,6 +6,9 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { AuthenticatedPrincipal } from '../../src/types';
+import { readJson } from '../helpers/http';
+import { makePrincipal } from '../helpers/principal';
+import { makeBranch } from '../helpers/branch';
 
 // Mock the services
 vi.mock('../../src/services', () => ({
@@ -81,7 +84,7 @@ describe('Phase 7.1a: Branch API Routes', () => {
       );
       const services = await import('../../src/services');
 
-      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce(makeBranch({
         id: 'main-branch-id',
         siteId: 'site-1',
         name: 'main',
@@ -90,7 +93,7 @@ describe('Phase 7.1a: Branch API Routes', () => {
         createdAt: '2026-01-24T10:00:00.000Z',
         createdById: 'user-1',
         createdByType: 'user',
-      });
+      }));
 
       vi.mocked(services.createCheckpoint).mockResolvedValueOnce({
         checkpoint: {
@@ -105,7 +108,7 @@ describe('Phase 7.1a: Branch API Routes', () => {
         documentCount: 0,
       });
 
-      vi.mocked(services.createBranch).mockResolvedValueOnce({
+      vi.mocked(services.createBranch).mockResolvedValueOnce(makeBranch({
         id: 'new-branch-id',
         siteId: 'site-1',
         name: 'feature-branch',
@@ -113,11 +116,11 @@ describe('Phase 7.1a: Branch API Routes', () => {
         isMain: false,
         status: 'active',
         sourceBranchId: 'main-branch-id',
-        createdFromCheckpointId: 'checkpoint-1',
+        sourceCheckpointId: 'checkpoint-1',
         createdAt: '2026-01-24T11:00:00.000Z',
         createdById: 'user-1',
         createdByType: 'user',
-      });
+      }));
 
       const request = new Request(
         'https://api.example.com/api/sites/site-1/branches',
@@ -134,11 +137,11 @@ describe('Phase 7.1a: Branch API Routes', () => {
 
       const response = await handleBranchRoutes(request, {
         siteId: 'site-1',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(201);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.id).toBe('new-branch-id');
       expect(body.name).toBe('feature-branch');
     });
@@ -161,11 +164,11 @@ describe('Phase 7.1a: Branch API Routes', () => {
 
       const response = await handleBranchRoutes(request, {
         siteId: 'site-1',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(400);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.error).toContain('name');
     });
 
@@ -176,7 +179,7 @@ describe('Phase 7.1a: Branch API Routes', () => {
       const services = await import('../../src/services');
 
       // When parentBranchId is provided, getBranch is called (not getMainBranch)
-      vi.mocked(services.getBranch).mockResolvedValueOnce({
+      vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
         id: 'main-branch-id',
         siteId: 'site-1',
         name: 'main',
@@ -185,7 +188,7 @@ describe('Phase 7.1a: Branch API Routes', () => {
         createdAt: '2026-01-24T10:00:00.000Z',
         createdById: 'user-1',
         createdByType: 'user',
-      });
+      }));
 
       vi.mocked(services.createCheckpoint).mockResolvedValueOnce({
         checkpoint: {
@@ -200,18 +203,18 @@ describe('Phase 7.1a: Branch API Routes', () => {
         documentCount: 0,
       });
 
-      vi.mocked(services.createBranch).mockResolvedValueOnce({
+      vi.mocked(services.createBranch).mockResolvedValueOnce(makeBranch({
         id: 'new-branch-id',
         siteId: 'site-1',
         name: 'feature-branch',
         isMain: false,
         status: 'active',
-        parentBranchId: 'main-branch-id',
-        createdFromCheckpointId: 'checkpoint-1',
+        sourceBranchId: 'main-branch-id',
+        sourceCheckpointId: 'checkpoint-1',
         createdAt: '2026-01-24T11:00:00.000Z',
         createdById: 'user-1',
         createdByType: 'user',
-      });
+      }));
 
       // Send parentBranchId (UUID) instead of sourceBranch (name)
       const request = new Request(
@@ -228,11 +231,11 @@ describe('Phase 7.1a: Branch API Routes', () => {
 
       const response = await handleBranchRoutes(request, {
         siteId: 'site-1',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(201);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.id).toBe('new-branch-id');
       expect(services.createBranch).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -248,17 +251,17 @@ describe('Phase 7.1a: Branch API Routes', () => {
       const services = await import('../../src/services');
 
       // Parent branch is a feature branch, not main
-      vi.mocked(services.getBranch).mockResolvedValueOnce({
+      vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
         id: 'feature-branch-id',
         siteId: 'site-1',
         name: 'feature-1',
         isMain: false,
         status: 'active',
-        parentBranchId: 'main-branch-id',
+        sourceBranchId: 'main-branch-id',
         createdAt: '2026-01-24T10:00:00.000Z',
         createdById: 'user-1',
         createdByType: 'user',
-      });
+      }));
 
       vi.mocked(services.createCheckpoint).mockResolvedValueOnce({
         checkpoint: {
@@ -273,18 +276,18 @@ describe('Phase 7.1a: Branch API Routes', () => {
         documentCount: 0,
       });
 
-      vi.mocked(services.createBranch).mockResolvedValueOnce({
+      vi.mocked(services.createBranch).mockResolvedValueOnce(makeBranch({
         id: 'sub-feature-id',
         siteId: 'site-1',
         name: 'sub-feature',
         isMain: false,
         status: 'active',
-        parentBranchId: 'feature-branch-id',
-        createdFromCheckpointId: 'checkpoint-2',
+        sourceBranchId: 'feature-branch-id',
+        sourceCheckpointId: 'checkpoint-2',
         createdAt: '2026-01-24T11:00:00.000Z',
         createdById: 'user-1',
         createdByType: 'user',
-      });
+      }));
 
       const request = new Request(
         'https://api.example.com/api/sites/site-1/branches',
@@ -300,13 +303,13 @@ describe('Phase 7.1a: Branch API Routes', () => {
 
       const response = await handleBranchRoutes(request, {
         siteId: 'site-1',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(201);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.id).toBe('sub-feature-id');
-      expect(body.parentBranchId).toBe('feature-branch-id');
+      expect(body.sourceBranchId).toBe('feature-branch-id');
       // Verify createBranch was called with the correct source branch ID
       expect(services.createBranch).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -339,11 +342,11 @@ describe('Phase 7.1a: Branch API Routes', () => {
 
       const response = await handleBranchRoutes(request, {
         siteId: 'site-1',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(404);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.error).toContain('Parent branch not found');
     });
 
@@ -353,7 +356,7 @@ describe('Phase 7.1a: Branch API Routes', () => {
       );
       const services = await import('../../src/services');
 
-      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce(makeBranch({
         id: 'main-branch-id',
         siteId: 'site-1',
         name: 'main',
@@ -362,7 +365,7 @@ describe('Phase 7.1a: Branch API Routes', () => {
         createdAt: '2026-01-24T10:00:00.000Z',
         createdById: 'user-1',
         createdByType: 'user',
-      });
+      }));
 
       vi.mocked(services.createCheckpoint).mockResolvedValueOnce({
         checkpoint: {
@@ -395,7 +398,7 @@ describe('Phase 7.1a: Branch API Routes', () => {
 
       const response = await handleBranchRoutes(request, {
         siteId: 'site-1',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(409);
@@ -414,7 +417,7 @@ describe('Phase 7.1a: Branch API Routes', () => {
       const services = await import('../../src/services');
 
       vi.mocked(services.listBranches).mockResolvedValueOnce([
-        {
+        makeBranch({
           id: 'branch-1',
           siteId: 'site-1',
           name: 'main',
@@ -423,8 +426,8 @@ describe('Phase 7.1a: Branch API Routes', () => {
           createdAt: '2026-01-24T10:00:00.000Z',
           createdById: 'user-1',
           createdByType: 'user',
-        },
-        {
+        }),
+        makeBranch({
           id: 'branch-2',
           siteId: 'site-1',
           name: 'feature',
@@ -433,7 +436,7 @@ describe('Phase 7.1a: Branch API Routes', () => {
           createdAt: '2026-01-24T11:00:00.000Z',
           createdById: 'user-1',
           createdByType: 'user',
-        },
+        }),
       ]);
 
       const request = new Request(
@@ -443,11 +446,11 @@ describe('Phase 7.1a: Branch API Routes', () => {
 
       const response = await handleBranchRoutes(request, {
         siteId: 'site-1',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.branches).toHaveLength(2);
       expect(body.branches[0].name).toBe('main');
     });
@@ -459,7 +462,7 @@ describe('Phase 7.1a: Branch API Routes', () => {
       const services = await import('../../src/services');
 
       vi.mocked(services.listBranches).mockResolvedValueOnce([
-        {
+        makeBranch({
           id: 'branch-1',
           siteId: 'site-1',
           name: 'main',
@@ -468,7 +471,7 @@ describe('Phase 7.1a: Branch API Routes', () => {
           createdAt: '2026-01-24T10:00:00.000Z',
           createdById: 'user-1',
           createdByType: 'user',
-        },
+        }),
       ]);
 
       const request = new Request(
@@ -478,7 +481,7 @@ describe('Phase 7.1a: Branch API Routes', () => {
 
       const response = await handleBranchRoutes(request, {
         siteId: 'site-1',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(200);
@@ -500,7 +503,7 @@ describe('Phase 7.1a: Branch API Routes', () => {
       );
       const services = await import('../../src/services');
 
-      vi.mocked(services.getBranch).mockResolvedValueOnce({
+      vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
         id: 'branch-1',
         siteId: 'site-1',
         name: 'feature-branch',
@@ -511,7 +514,7 @@ describe('Phase 7.1a: Branch API Routes', () => {
         createdAt: '2026-01-24T10:00:00.000Z',
         createdById: 'user-1',
         createdByType: 'user',
-      });
+      }));
 
       const request = new Request(
         'https://api.example.com/api/sites/site-1/branches/branch-1',
@@ -521,11 +524,11 @@ describe('Phase 7.1a: Branch API Routes', () => {
       const response = await handleBranchRoutes(request, {
         siteId: 'site-1',
         branchId: 'branch-1',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.id).toBe('branch-1');
       expect(body.name).toBe('feature-branch');
     });
@@ -546,7 +549,7 @@ describe('Phase 7.1a: Branch API Routes', () => {
       const response = await handleBranchRoutes(request, {
         siteId: 'site-1',
         branchId: 'nonexistent',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(404);
@@ -564,7 +567,7 @@ describe('Phase 7.1a: Branch API Routes', () => {
       );
       const services = await import('../../src/services');
 
-      vi.mocked(services.updateBranch).mockResolvedValueOnce({
+      vi.mocked(services.updateBranch).mockResolvedValueOnce(makeBranch({
         id: 'branch-1',
         siteId: 'site-1',
         name: 'updated-name',
@@ -574,7 +577,7 @@ describe('Phase 7.1a: Branch API Routes', () => {
         createdAt: '2026-01-24T10:00:00.000Z',
         createdById: 'user-1',
         createdByType: 'user',
-      });
+      }));
 
       const request = new Request(
         'https://api.example.com/api/sites/site-1/branches/branch-1',
@@ -591,11 +594,11 @@ describe('Phase 7.1a: Branch API Routes', () => {
       const response = await handleBranchRoutes(request, {
         siteId: 'site-1',
         branchId: 'branch-1',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.name).toBe('updated-name');
     });
 
@@ -605,7 +608,7 @@ describe('Phase 7.1a: Branch API Routes', () => {
       );
       const services = await import('../../src/services');
 
-      vi.mocked(services.updateBranchStatus).mockResolvedValueOnce({
+      vi.mocked(services.updateBranchStatus).mockResolvedValueOnce(makeBranch({
         id: 'branch-1',
         siteId: 'site-1',
         name: 'feature-branch',
@@ -614,7 +617,7 @@ describe('Phase 7.1a: Branch API Routes', () => {
         createdAt: '2026-01-24T10:00:00.000Z',
         createdById: 'user-1',
         createdByType: 'user',
-      });
+      }));
 
       const request = new Request(
         'https://api.example.com/api/sites/site-1/branches/branch-1',
@@ -630,11 +633,11 @@ describe('Phase 7.1a: Branch API Routes', () => {
       const response = await handleBranchRoutes(request, {
         siteId: 'site-1',
         branchId: 'branch-1',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.status).toBe('review');
     });
   });
@@ -660,7 +663,7 @@ describe('Phase 7.1a: Branch API Routes', () => {
       const response = await handleBranchRoutes(request, {
         siteId: 'site-1',
         branchId: 'branch-1',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(204);
@@ -682,7 +685,7 @@ describe('Phase 7.1a: Branch API Routes', () => {
       const response = await handleBranchRoutes(request, {
         siteId: 'site-1',
         branchId: 'nonexistent',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(404);
@@ -711,7 +714,7 @@ describe('Phase 7.1a: Branch API Routes', () => {
 
       const response = await handleBranchRoutes(request, {
         siteId: 'nonexistent',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(404);
@@ -729,7 +732,7 @@ describe('Phase 7.1a: Branch API Routes', () => {
 
       const response = await handleBranchRoutes(request, {
         siteId: 'site-1',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(405);
@@ -758,7 +761,7 @@ describe('Phase 7.1a: Branch API Routes', () => {
         '../../src/auth/authorization'
       );
 
-      vi.mocked(services.getBranch).mockResolvedValueOnce({
+      vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
         id: 'branch-1',
         siteId: 'site-1',
         name: 'feature-branch',
@@ -769,7 +772,7 @@ describe('Phase 7.1a: Branch API Routes', () => {
         createdAt: '2026-01-24T10:00:00.000Z',
         createdById: 'user-1',
         createdByType: 'user',
-      });
+      }));
 
       const request = new Request(
         'https://api.example.com/api/sites/site-1/branches/branch-1',
@@ -799,7 +802,7 @@ describe('Phase 7.1a: Branch API Routes', () => {
         '../../src/auth/authorization'
       );
 
-      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce(makeBranch({
         id: 'main-branch-id',
         siteId: 'site-1',
         name: 'main',
@@ -808,7 +811,7 @@ describe('Phase 7.1a: Branch API Routes', () => {
         createdAt: '2026-01-24T10:00:00.000Z',
         createdById: 'user-1',
         createdByType: 'user',
-      });
+      }));
 
       vi.mocked(services.createCheckpoint).mockResolvedValueOnce({
         checkpoint: {
@@ -823,18 +826,18 @@ describe('Phase 7.1a: Branch API Routes', () => {
         documentCount: 0,
       });
 
-      vi.mocked(services.createBranch).mockResolvedValueOnce({
+      vi.mocked(services.createBranch).mockResolvedValueOnce(makeBranch({
         id: 'new-branch-id',
         siteId: 'site-1',
         name: 'feature-branch',
         isMain: false,
         status: 'active',
         sourceBranchId: 'main-branch-id',
-        createdFromCheckpointId: 'cp-1',
+        sourceCheckpointId: 'cp-1',
         createdAt: '2026-01-24T11:00:00.000Z',
         createdById: 'user-1',
         createdByType: 'user',
-      });
+      }));
 
       const request = new Request(
         'https://api.example.com/api/sites/site-1/branches',
@@ -870,7 +873,7 @@ describe('Phase 7.1a: Branch API Routes', () => {
         '../../src/auth/authorization'
       );
 
-      vi.mocked(services.getBranch).mockResolvedValueOnce({
+      vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
         id: 'branch-1',
         siteId: 'site-1',
         name: 'feature-branch',
@@ -879,7 +882,7 @@ describe('Phase 7.1a: Branch API Routes', () => {
         createdAt: '2026-01-24T10:00:00.000Z',
         createdById: 'user-1',
         createdByType: 'user',
-      });
+      }));
 
       vi.mocked(assertPermission).mockRejectedValueOnce(
         new AuthorizationError(
@@ -917,7 +920,7 @@ describe('Phase 7.1a: Branch API Routes', () => {
 
       const response = await handleBranchRoutes(
         new Request('https://api.example.com/api/sites/site-1/branches/branch-1', { method: 'DELETE' }),
-        { siteId: 'site-1', branchId: 'branch-1', principal: { id: 'user-1', type: 'user' } },
+        { siteId: 'site-1', branchId: 'branch-1', principal: makePrincipal({ id: 'user-1', type: 'user' }) },
       );
 
       expect(response.status).toBe(204);
@@ -934,7 +937,7 @@ describe('Phase 7.1a: Branch API Routes', () => {
 
       const response = await handleBranchRoutes(
         new Request('https://api.example.com/api/sites/site-1/branches/main-id', { method: 'DELETE' }),
-        { siteId: 'site-1', branchId: 'main-id', principal: { id: 'user-1', type: 'user' } },
+        { siteId: 'site-1', branchId: 'main-id', principal: makePrincipal({ id: 'user-1', type: 'user' }) },
       );
 
       expect(response.status).toBe(400);
@@ -948,7 +951,7 @@ describe('Phase 7.1a: Branch API Routes', () => {
 
       const response = await handleBranchRoutes(
         new Request('https://api.example.com/api/sites/site-1/branches/branch-1', { method: 'DELETE' }),
-        { siteId: 'site-1', branchId: 'branch-1', principal: { id: 'user-1', type: 'user' } },
+        { siteId: 'site-1', branchId: 'branch-1', principal: makePrincipal({ id: 'user-1', type: 'user' }) },
       );
 
       expect(response.status).toBe(409);
@@ -960,7 +963,7 @@ describe('Phase 7.1a: Branch API Routes', () => {
       const { handleBranchRoutes } = await import('../../src/routes/branch-api');
       const services = await import('../../src/services');
 
-      const restoredBranch = {
+      const restoredBranch = makeBranch({
         id: 'branch-1',
         siteId: 'site-1',
         name: 'feature',
@@ -970,16 +973,16 @@ describe('Phase 7.1a: Branch API Routes', () => {
         createdById: 'user-1',
         createdByType: 'user' as const,
         archivedAt: null,
-      };
+      });
       vi.mocked(services.restoreBranch).mockResolvedValueOnce(restoredBranch);
 
       const response = await handleBranchRoutes(
         new Request('https://api.example.com/api/sites/site-1/branches/branch-1/restore', { method: 'POST' }),
-        { siteId: 'site-1', branchId: 'branch-1', action: 'restore', principal: { id: 'user-1', type: 'user' } },
+        { siteId: 'site-1', branchId: 'branch-1', action: 'restore', principal: makePrincipal({ id: 'user-1', type: 'user' }) },
       );
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.id).toBe('branch-1');
     });
 
@@ -991,7 +994,7 @@ describe('Phase 7.1a: Branch API Routes', () => {
 
       const response = await handleBranchRoutes(
         new Request('https://api.example.com/api/sites/site-1/branches/nonexistent/restore', { method: 'POST' }),
-        { siteId: 'site-1', branchId: 'nonexistent', action: 'restore', principal: { id: 'user-1', type: 'user' } },
+        { siteId: 'site-1', branchId: 'nonexistent', action: 'restore', principal: makePrincipal({ id: 'user-1', type: 'user' }) },
       );
 
       expect(response.status).toBe(404);
@@ -1007,7 +1010,7 @@ describe('Phase 7.1a: Branch API Routes', () => {
 
       await handleBranchRoutes(
         new Request('https://api.example.com/api/sites/site-1/branches?archived=true'),
-        { siteId: 'site-1', principal: { id: 'user-1', type: 'user' } },
+        { siteId: 'site-1', principal: makePrincipal({ id: 'user-1', type: 'user' }) },
       );
 
       expect(services.listBranches).toHaveBeenCalledWith(
@@ -1046,7 +1049,7 @@ describe('Phase 7.1a: Branch API Routes', () => {
       const services = await import('../../src/services');
 
       vi.mocked(services.listBranches).mockResolvedValueOnce([
-        {
+        makeBranch({
           id: 'branch-1',
           siteId: 'site-1',
           name: 'main',
@@ -1055,7 +1058,7 @@ describe('Phase 7.1a: Branch API Routes', () => {
           createdAt: '2026-01-24T10:00:00.000Z',
           createdById: 'user-1',
           createdByType: 'user',
-        },
+        }),
       ]);
 
       const response = await handleBranchRoutes(
@@ -1141,7 +1144,7 @@ describe('Phase 7.1a: Branch API Routes', () => {
       const { handleBranchRoutes } = await import('../../src/routes/branch-api');
       const services = await import('../../src/services');
 
-      vi.mocked(services.getBranch).mockResolvedValueOnce({
+      vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
         id: 'branch-1',
         siteId: 'site-1',
         name: 'feature',
@@ -1150,7 +1153,7 @@ describe('Phase 7.1a: Branch API Routes', () => {
         createdAt: '2026-01-24T10:00:00.000Z',
         createdById: 'user-1',
         createdByType: 'user',
-      });
+      }));
 
       const response = await handleBranchRoutes(
         new Request('https://api.example.com/api/sites/site-1/branches/branch-1', { method: 'GET' }),
@@ -1164,7 +1167,7 @@ describe('Phase 7.1a: Branch API Routes', () => {
       const { handleBranchRoutes } = await import('../../src/routes/branch-api');
       const services = await import('../../src/services');
 
-      vi.mocked(services.getBranch).mockResolvedValueOnce({
+      vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
         id: 'branch-1',
         siteId: 'site-1',
         name: 'feature',
@@ -1173,7 +1176,7 @@ describe('Phase 7.1a: Branch API Routes', () => {
         createdAt: '2026-01-24T10:00:00.000Z',
         createdById: 'user-1',
         createdByType: 'user',
-      });
+      }));
 
       const response = await handleBranchRoutes(
         new Request('https://api.example.com/api/sites/site-1/branches/branch-1', { method: 'GET' }),

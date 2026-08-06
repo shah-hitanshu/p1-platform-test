@@ -33,10 +33,7 @@ export interface PuckItem {
 /**
  * App state passed to resolvePermissions by Puck.
  */
-export interface PuckAppState {
-  // Placeholder for Puck's app state structure
-  [key: string]: unknown;
-}
+export type PuckAppState = Record<string, unknown>;
 
 /**
  * Permission resolver function type for Puck.

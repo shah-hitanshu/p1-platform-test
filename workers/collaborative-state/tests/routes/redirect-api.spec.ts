@@ -6,6 +6,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { readJson } from '../helpers/http';
+import { makePrincipal } from '../helpers/principal';
 
 // Mock the services
 vi.mock('../../src/services', () => ({
@@ -43,13 +45,12 @@ vi.mock('../../src/auth/authorization', () => ({
   },
 }));
 
-const testPrincipal = {
+const testPrincipal = makePrincipal({
   id: 'user-1',
-  type: 'user' as const,
+  type: 'user',
   dbUserId: 'db-user-1',
   email: 'test@example.com',
-  verified: true,
-};
+});
 
 describe('Redirect API Routes', () => {
   beforeEach(() => {
@@ -76,8 +77,6 @@ describe('Redirect API Routes', () => {
           siteId: 'site-1',
           path: '_registry/redirects/redirect-uuid',
           createdAt: '2026-01-24T10:00:00.000Z',
-          createdById: 'db-user-1',
-          createdByType: 'user',
         },
         version: {
           id: 'version-uuid',
@@ -117,7 +116,7 @@ describe('Redirect API Routes', () => {
       });
 
       expect(response.status).toBe(201);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.id).toBe('redirect-uuid');
       expect(body.fromPath).toBe('/old-page');
       expect(body.destination).toBe('/new-page');
@@ -149,7 +148,7 @@ describe('Redirect API Routes', () => {
       });
 
       expect(response.status).toBe(400);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.error).toBe('Validation failed');
       expect(body.invalidParams).toEqual(
         expect.arrayContaining([
@@ -182,7 +181,7 @@ describe('Redirect API Routes', () => {
       });
 
       expect(response.status).toBe(400);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.error).toBe('Validation failed');
       expect(body.invalidParams).toEqual(
         expect.arrayContaining([
@@ -216,7 +215,7 @@ describe('Redirect API Routes', () => {
       });
 
       expect(response.status).toBe(400);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.error).toBe('Validation failed');
       expect(body.invalidParams).toEqual(
         expect.arrayContaining([
@@ -250,7 +249,7 @@ describe('Redirect API Routes', () => {
       });
 
       expect(response.status).toBe(400);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.error).toBe('Validation failed');
       expect(body.invalidParams).toEqual(
         expect.arrayContaining([
@@ -282,7 +281,7 @@ describe('Redirect API Routes', () => {
       });
 
       expect(response.status).toBe(400);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.error).toBe('Validation failed');
       expect(body.invalidParams.map((p: { name: string }) => p.name)).toEqual(
         expect.arrayContaining(['fromPath', 'destination', 'redirectType']),
@@ -310,7 +309,7 @@ describe('Redirect API Routes', () => {
       });
 
       expect(response.status).toBe(400);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.error).toContain('Invalid request body shape');
     });
 
@@ -361,8 +360,6 @@ describe('Redirect API Routes', () => {
         siteId: 'site-1',
         path: 'old-page',
         createdAt: '2026-01-24T10:00:00.000Z',
-        createdById: 'db-user-1',
-        createdByType: 'user',
       });
 
       const request = new Request(
@@ -386,7 +383,7 @@ describe('Redirect API Routes', () => {
       });
 
       expect(response.status).toBe(409);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.error).toContain('page');
     });
 
@@ -404,8 +401,6 @@ describe('Redirect API Routes', () => {
           siteId: 'site-1',
           path: '_registry/redirects/redirect-uuid',
           createdAt: '2026-01-24T10:00:00.000Z',
-          createdById: 'db-user-1',
-          createdByType: 'user',
         },
         version: {
           id: 'version-uuid',
@@ -473,16 +468,12 @@ describe('Redirect API Routes', () => {
           siteId: 'site-1',
           path: '_registry/redirects/redirect-1',
           createdAt: '2026-01-24T10:00:00.000Z',
-          createdById: 'db-user-1',
-          createdByType: 'user',
         },
         {
           id: 'redirect-2',
           siteId: 'site-1',
           path: '_registry/redirects/redirect-2',
           createdAt: '2026-01-24T11:00:00.000Z',
-          createdById: 'db-user-1',
-          createdByType: 'user',
         },
       ]);
 
@@ -530,7 +521,7 @@ describe('Redirect API Routes', () => {
       });
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.redirects).toHaveLength(2);
       expect(services.listDocumentsOnBranch).toHaveBeenCalledWith(
         'branch-1',
@@ -558,7 +549,7 @@ describe('Redirect API Routes', () => {
       });
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.redirects).toHaveLength(0);
     });
   });
@@ -579,8 +570,6 @@ describe('Redirect API Routes', () => {
         siteId: 'site-1',
         path: '_registry/redirects/redirect-1',
         createdAt: '2026-01-24T10:00:00.000Z',
-        createdById: 'db-user-1',
-        createdByType: 'user',
       });
 
       vi.mocked(services.getLatestDocumentVersion).mockResolvedValueOnce({
@@ -612,7 +601,7 @@ describe('Redirect API Routes', () => {
       });
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.id).toBe('redirect-1');
       expect(body.fromPath).toBe('/old-page');
       expect(body.destination).toBe('/new-page');
@@ -652,8 +641,6 @@ describe('Redirect API Routes', () => {
         siteId: 'site-1',
         path: 'some/regular/page',
         createdAt: '2026-01-24T10:00:00.000Z',
-        createdById: 'db-user-1',
-        createdByType: 'user',
       });
 
       const request = new Request(
@@ -690,8 +677,6 @@ describe('Redirect API Routes', () => {
         siteId: 'site-1',
         path: '_registry/redirects/redirect-1',
         createdAt: '2026-01-24T10:00:00.000Z',
-        createdById: 'db-user-1',
-        createdByType: 'user',
       });
 
       vi.mocked(services.getLatestDocumentVersion).mockResolvedValueOnce({
@@ -745,7 +730,7 @@ describe('Redirect API Routes', () => {
       });
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.destination).toBe('/updated-page');
     });
 
@@ -791,8 +776,6 @@ describe('Redirect API Routes', () => {
         siteId: 'site-1',
         path: '_registry/redirects/redirect-1',
         createdAt: '2026-01-24T10:00:00.000Z',
-        createdById: 'db-user-1',
-        createdByType: 'user',
       });
 
       vi.mocked(services.getLatestDocumentVersion).mockResolvedValueOnce({
@@ -880,8 +863,6 @@ describe('Redirect API Routes', () => {
         siteId: 'site-1',
         path: '_registry/redirects/redirect-1',
         createdAt: '2026-01-24T10:00:00.000Z',
-        createdById: 'db-user-1',
-        createdByType: 'user',
       });
 
       vi.mocked(services.deleteDocumentOnBranch).mockResolvedValueOnce(undefined);
@@ -977,8 +958,6 @@ describe('Redirect API Routes', () => {
           siteId: 'site-1',
           path: '_registry/redirects/redirect-uuid',
           createdAt: '2026-01-24T10:00:00.000Z',
-          createdById: 'db-user-1',
-          createdByType: 'user',
         },
         version: {
           id: 'version-uuid',

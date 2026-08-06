@@ -42,6 +42,12 @@ import * as branchService from '../../src/services/branch-service';
 import { hasPermission } from '../../src/auth/authorization';
 import type { RealtimeRouteContext } from '../../src/routes/realtime-api';
 import type { AuthenticatedPrincipal, Branch } from '../../src/types';
+import { readJson } from '../helpers/http';
+import {
+  makeDurableObjectNamespace,
+  type MockDurableObjectNamespace,
+  type MockDurableObjectStub,
+} from '../helpers/durable-object';
 
 /**
  * PCC-3458: build a branch whose id/siteId mirror the requested ref, so the
@@ -102,17 +108,8 @@ function createMockActiveAgent(agentId: string): {
 }
 
 // Mock types for Cloudflare Durable Objects
-interface MockDurableObjectStub {
-  fetch: ReturnType<typeof vi.fn>;
-}
-
 interface MockDurableObjectId {
   toString: () => string;
-}
-
-interface MockDurableObjectNamespace {
-  idFromName: ReturnType<typeof vi.fn<[string], MockDurableObjectId>>;
-  get: ReturnType<typeof vi.fn<[MockDurableObjectId], MockDurableObjectStub>>;
 }
 
 // Mock environment
@@ -178,10 +175,7 @@ describe('Agent Politeness Phase 2.4: Agent Edit Workflow API Routes', () => {
 
     mockEnv = {
       ENVIRONMENT: 'test',
-      DOCUMENT_STATE: {
-        idFromName: vi.fn().mockReturnValue(mockId),
-        get: vi.fn().mockReturnValue(mockStub),
-      },
+      DOCUMENT_STATE: makeDurableObjectNamespace(mockStub, mockId),
       POSTGRES_CONNECTION_STRING: 'postgresql://test:test@localhost/test',
     };
   });
@@ -360,7 +354,7 @@ describe('Agent Politeness Phase 2.4: Agent Edit Workflow API Routes', () => {
         const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
         const response = assertNotNull(result);
-        const body = await response.json();
+        const body = await readJson(response);
         expect(body.allowed).toBe(true);
       });
 
@@ -400,7 +394,7 @@ describe('Agent Politeness Phase 2.4: Agent Edit Workflow API Routes', () => {
         const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
         const response = assertNotNull(result);
-        const body = await response.json();
+        const body = await readJson(response);
         expect(body.allowed).toBe(false);
         expect(body.reason).toBe('human_active');
         expect(body.retryAfterMs).toBe(5000);
@@ -442,7 +436,7 @@ describe('Agent Politeness Phase 2.4: Agent Edit Workflow API Routes', () => {
         const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
         const response = assertNotNull(result);
-        const body = await response.json();
+        const body = await readJson(response);
         expect(body.allowed).toBe(false);
         expect(body.reason).toBe('region_conflict');
         expect(body.conflictingRegions).toContain('/content/0');
@@ -472,7 +466,7 @@ describe('Agent Politeness Phase 2.4: Agent Edit Workflow API Routes', () => {
 
         const response = assertNotNull(result);
         expect(response.status).toBe(400);
-        const body = await response.json();
+        const body = await readJson(response);
         expect(body.error).toContain('trigger');
       });
 
@@ -498,7 +492,7 @@ describe('Agent Politeness Phase 2.4: Agent Edit Workflow API Routes', () => {
 
         const response = assertNotNull(result);
         expect(response.status).toBe(400);
-        const body = await response.json();
+        const body = await readJson(response);
         expect(body.error).toContain('intent');
       });
 
@@ -524,7 +518,7 @@ describe('Agent Politeness Phase 2.4: Agent Edit Workflow API Routes', () => {
 
         const response = assertNotNull(result);
         expect(response.status).toBe(400);
-        const body = await response.json();
+        const body = await readJson(response);
         expect(body.error).toContain('targetRegions');
       });
 
@@ -551,7 +545,7 @@ describe('Agent Politeness Phase 2.4: Agent Edit Workflow API Routes', () => {
 
         const response = assertNotNull(result);
         expect(response.status).toBe(400);
-        const body = await response.json();
+        const body = await readJson(response);
         expect(body.error).toContain('trigger');
       });
     });
@@ -691,7 +685,7 @@ describe('Agent Politeness Phase 2.4: Agent Edit Workflow API Routes', () => {
         const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
         const response = assertNotNull(result);
-        const body = await response.json();
+        const body = await readJson(response);
         expect(body.success).toBe(true);
         expect(body.editSessionId).toBe('edit-session-123');
         expect(body.checkpointId).toBe('checkpoint-456');
@@ -733,7 +727,7 @@ describe('Agent Politeness Phase 2.4: Agent Edit Workflow API Routes', () => {
         const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
         const response = assertNotNull(result);
-        const body = await response.json();
+        const body = await readJson(response);
         expect(body.success).toBe(true);
         expect(body.editSessionId).toBe('edit-session-789');
         expect(body.checkpointId).toBeUndefined();
@@ -776,7 +770,7 @@ describe('Agent Politeness Phase 2.4: Agent Edit Workflow API Routes', () => {
 
         const response = assertNotNull(result);
         expect(response.status).toBe(403);
-        const body = await response.json();
+        const body = await readJson(response);
         expect(body.success).toBe(false);
         expect(body.reason).toBe('human_active');
       });
@@ -927,7 +921,7 @@ describe('Agent Politeness Phase 2.4: Agent Edit Workflow API Routes', () => {
         const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
         const response = assertNotNull(result);
-        const body = await response.json();
+        const body = await readJson(response);
         expect(body.success).toBe(true);
         expect(body.regionsCleared).toContain('/content/0');
       });
@@ -965,7 +959,7 @@ describe('Agent Politeness Phase 2.4: Agent Edit Workflow API Routes', () => {
 
         const response = assertNotNull(result);
         expect(response.status).toBe(404);
-        const body = await response.json();
+        const body = await readJson(response);
         expect(body.success).toBe(false);
       });
     });
@@ -989,7 +983,7 @@ describe('Agent Politeness Phase 2.4: Agent Edit Workflow API Routes', () => {
 
         const response = assertNotNull(result);
         expect(response.status).toBe(400);
-        const body = await response.json();
+        const body = await readJson(response);
         expect(body.error).toContain('editSessionId');
       });
     });
@@ -1120,7 +1114,7 @@ describe('Agent Politeness Phase 2.4: Agent Edit Workflow API Routes', () => {
         const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
         const response = assertNotNull(result);
-        const body = await response.json();
+        const body = await readJson(response);
         expect(body.success).toBe(true);
         expect(body.rolledBackToCheckpoint).toBe('checkpoint-456');
         expect(body.regionsCleared).toContain('/content/0');
@@ -1160,7 +1154,7 @@ describe('Agent Politeness Phase 2.4: Agent Edit Workflow API Routes', () => {
         const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
         const response = assertNotNull(result);
-        const body = await response.json();
+        const body = await readJson(response);
         expect(body.success).toBe(true);
         expect(body.rolledBackToCheckpoint).toBeUndefined();
       });
@@ -1223,7 +1217,7 @@ describe('Agent Politeness Phase 2.4: Agent Edit Workflow API Routes', () => {
 
         const response = assertNotNull(result);
         expect(response.status).toBe(400);
-        const body = await response.json();
+        const body = await readJson(response);
         expect(body.error).toContain('editSessionId');
       });
 

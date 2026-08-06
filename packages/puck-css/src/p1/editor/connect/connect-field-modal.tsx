@@ -12,9 +12,9 @@ import {
 import type { RouteKind, RouteRow } from "../../../data/page-store";
 import { stripTrailingSlash } from "../../../data/paths";
 
-import { buildConnectPreviewConfig, ConnectPreviewHitStyles } from "./connect-preview-config";
 import { backdrop, ghostButton, modalPanel, mono, muted, secondaryButton } from "../../../data/styles";
 import { useLoadPageData } from "../hooks/api-hooks";
+import { buildConnectPreviewConfig, ConnectPreviewHitStyles } from "./connect-preview-config";
 
 function normalizeRoutePath(p: string): string {
   return stripTrailingSlash(p);

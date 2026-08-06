@@ -751,7 +751,7 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
 
       expect(bulkInsertCall).toBeDefined();
       // Parameters should include branch_id, created_by_id, created_by_type, checkpoint_id
-      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+
       const params = bulkInsertCall![1];
       expect(params).toContain('target-branch'); // branch_id
       expect(params).toContain('user-uuid-001'); // created_by_id

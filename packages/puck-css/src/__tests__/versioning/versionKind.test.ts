@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { versionKinds, isMilestone } from '../../versioning/utils/versionKind.js';
 import type { DocumentVersion } from '@pantheon-systems/css-client';
+import { versionKinds, isMilestone } from '../../versioning/utils/versionKind.js';
 
 const base: DocumentVersion = {
   id: 'v-1',

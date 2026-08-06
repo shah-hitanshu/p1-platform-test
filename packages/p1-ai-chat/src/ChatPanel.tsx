@@ -37,9 +37,9 @@ function EmptyTranscript({ historyLoaded }: { historyLoaded: boolean }): React.R
           <div style={{ marginBottom: 8, display: 'flex', justifyContent: 'center' }}>
             <Icon iconName="sparkles" size="xl" />
           </div>
-          Describe the page you want, and I'll build it.
+          {"Describe the page you want, and I'll build it."}
           <div style={{ marginTop: 8, fontSize: 12 }}>
-            Try "add a pricing section with three tiers" or "write an FAQ about shipping".
+            {'Try "add a pricing section with three tiers" or "write an FAQ about shipping".'}
           </div>
         </>
       ) : (

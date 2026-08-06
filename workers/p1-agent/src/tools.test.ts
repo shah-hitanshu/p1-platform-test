@@ -204,14 +204,14 @@ describe('executeTool fetch_page', () => {
   it('extracts content via HTMLRewriter and returns a string', async () => {
     // Minimal HTMLRewriter stub that simulates text extraction
     class FakeHTMLRewriter {
-      private handlers: Array<{ selector: string; handler: { text?: (c: { text: string; lastInTextNode: boolean }) => void; element?: (el: { getAttribute: (k: string) => string | null; tagName: string }) => void } }> = [];
+      private handlers: { selector: string; handler: { text?: (c: { text: string; lastInTextNode: boolean }) => void; element?: (el: { getAttribute: (k: string) => string | null; tagName: string }) => void } }[] = [];
 
       on(selector: string, handler: { text?: (c: { text: string; lastInTextNode: boolean }) => void; element?: (el: { getAttribute: (k: string) => string | null; tagName: string }) => void }) {
         this.handlers.push({ selector, handler });
         return this;
       }
 
-      transform(response: Response) {
+      transform(_response: Response) {
         return {
           text: async () => {
             // Drive title handler
@@ -705,7 +705,7 @@ describe('executeTool apply_document_edits op translation', () => {
         { type: 'add', path: 'content.2', content: { type: 'Hero', props: { id: '550e8400-e29b-41d4-a716-446655440000', text: 'hi' } } },
       ],
     }, cssApi, 'user-1');
-    const call = (cssApi.applyEdits as ReturnType<typeof vi.fn>).mock.calls[0][0] as { operations: Array<Record<string, unknown>> };
+    const call = (cssApi.applyEdits as ReturnType<typeof vi.fn>).mock.calls[0][0] as { operations: Record<string, unknown>[] };
     expect(call.operations).toHaveLength(1);
     expect(call.operations[0].type).toBe('insert');
     expect(call.operations[0].path).toBe('content');
@@ -731,7 +731,7 @@ describe('executeTool apply_document_edits op translation', () => {
       ...baseInput,
       operations: [{ type: 'remove', path: 'content.1' }],
     }, cssApi, 'user-1');
-    const call = (cssApi.applyEdits as ReturnType<typeof vi.fn>).mock.calls[0][0] as { operations: Array<Record<string, unknown>> };
+    const call = (cssApi.applyEdits as ReturnType<typeof vi.fn>).mock.calls[0][0] as { operations: Record<string, unknown>[] };
     expect(call.operations[0].type).toBe('delete');
     expect(call.operations[0].path).toBe('content.1');
   });
@@ -742,7 +742,7 @@ describe('executeTool apply_document_edits op translation', () => {
       ...baseInput,
       operations: [{ type: 'replace', path: 'content.0.props.text', content: 'New' }],
     }, cssApi, 'user-1');
-    const call = (cssApi.applyEdits as ReturnType<typeof vi.fn>).mock.calls[0][0] as { operations: Array<Record<string, unknown>> };
+    const call = (cssApi.applyEdits as ReturnType<typeof vi.fn>).mock.calls[0][0] as { operations: Record<string, unknown>[] };
     expect(call.operations[0].type).toBe('replace');
     expect(call.operations[0].path).toBe('content.0.props.text');
     expect(call.operations[0].content).toBe('New');
@@ -754,7 +754,7 @@ describe('executeTool apply_document_edits op translation', () => {
       ...baseInput,
       operations: [{ type: 'move', path: 'content', fromIndex: 0, toIndex: 3 }],
     }, cssApi, 'user-1');
-    const call = (cssApi.applyEdits as ReturnType<typeof vi.fn>).mock.calls[0][0] as { operations: Array<Record<string, unknown>> };
+    const call = (cssApi.applyEdits as ReturnType<typeof vi.fn>).mock.calls[0][0] as { operations: Record<string, unknown>[] };
     expect(call.operations[0]).toEqual({ type: 'move', path: 'content', fromIndex: 0, toIndex: 3 });
   });
 
@@ -779,7 +779,7 @@ describe('executeTool apply_document_edits op translation', () => {
         { type: 'remove', path: 'content.3' },
       ],
     }, cssApi, 'user-1');
-    const call = (cssApi.applyEdits as ReturnType<typeof vi.fn>).mock.calls[0][0] as { operations: Array<Record<string, unknown>> };
+    const call = (cssApi.applyEdits as ReturnType<typeof vi.fn>).mock.calls[0][0] as { operations: Record<string, unknown>[] };
     expect(call.operations).toHaveLength(4);
     expect(call.operations[0].type).toBe('insert');
     expect(call.operations[1].type).toBe('replace');
@@ -796,7 +796,7 @@ describe('executeTool apply_document_edits op translation', () => {
       ],
     }, cssApi, 'user-1');
     const call = (cssApi.applyEdits as ReturnType<typeof vi.fn>).mock.calls[0][0] as {
-      operations: Array<{ type: string; value: { props: { id: string } } }>;
+      operations: { type: string; value: { props: { id: string } } }[];
     };
     expect(call.operations[0].value.props.id).toMatch(/^[0-9A-Z]{26}$/);
   });
@@ -967,7 +967,7 @@ describe('executeTool list_components', () => {
       { site_id: 'site-1', branch_id: 'branch-1' },
       cssApi,
       'user-1',
-    ) as Array<Record<string, unknown>>;
+    ) as Record<string, unknown>[];
 
     expect(result).toHaveLength(1);
     expect(result[0]).toEqual({
@@ -996,7 +996,7 @@ describe('executeTool list_components', () => {
       { site_id: 'site-1', branch_id: 'branch-1' },
       cssApi,
       'user-1',
-    ) as Array<Record<string, unknown>>;
+    ) as Record<string, unknown>[];
 
     expect(result[0]).toEqual({
       name: 'Hero',
@@ -1019,7 +1019,7 @@ describe('executeTool list_components', () => {
       { site_id: 'site-1', branch_id: 'branch-1' },
       cssApi,
       'user-1',
-    ) as Array<Record<string, unknown>>;
+    ) as Record<string, unknown>[];
 
     expect(result[0]).not.toHaveProperty('instructions');
   });
@@ -1150,7 +1150,7 @@ describe('executeTool create_page prop validation', () => {
     }, cssApi, 'user-1');
     expect(cssApi.applyEdits).toHaveBeenCalled();
     const applyCall = (cssApi.applyEdits as ReturnType<typeof vi.fn>).mock.calls[0][0] as {
-      operations: Array<{ type: string; path: string; content: Array<{ props: { id: string } }> }>;
+      operations: { type: string; path: string; content: { props: { id: string } }[] }[];
     };
     const op = applyCall.operations[0];
     expect(op.type).toBe('replace');

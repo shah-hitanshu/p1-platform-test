@@ -11,6 +11,8 @@ import type {
   SitePresence,
   AgentGlobalPresence,
 } from '../../src/types';
+import { readJson } from '../helpers/http';
+import { makeBranch } from '../helpers/branch';
 
 // Mock the presence rollup service
 vi.mock('../../src/services/presence-rollup-service', () => ({
@@ -207,7 +209,7 @@ describe('Phase 8: Presence API Routes', () => {
       );
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.branchId).toBe('bbbbbbbb-2222-4222-8222-222222222222');
       expect(body.branchName).toBe('main');
       expect(body.siteId).toBe('aaaaaaaa-1111-4111-8111-111111111111');
@@ -244,7 +246,7 @@ describe('Phase 8: Presence API Routes', () => {
       );
 
       expect(response.status).toBe(404);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.error).toContain('not found');
     });
 
@@ -306,7 +308,7 @@ describe('Phase 8: Presence API Routes', () => {
       );
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.siteId).toBe('aaaaaaaa-1111-4111-8111-111111111111');
       expect(body.siteName).toBe('Test Site');
       expect(body.summary.totalActors).toBe(3);
@@ -341,7 +343,7 @@ describe('Phase 8: Presence API Routes', () => {
       );
 
       expect(response.status).toBe(404);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.error).toContain('not found');
     });
   });
@@ -375,7 +377,7 @@ describe('Phase 8: Presence API Routes', () => {
       );
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.agentId).toBe('agent-1');
       expect(body.agentName).toBe('Test Agent');
       expect(body.organizationId).toBe('org-1');
@@ -407,7 +409,7 @@ describe('Phase 8: Presence API Routes', () => {
       );
 
       expect(response.status).toBe(404);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.error).toContain('not found');
     });
 
@@ -434,7 +436,7 @@ describe('Phase 8: Presence API Routes', () => {
       );
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.locations).toHaveLength(0);
     });
   });
@@ -483,7 +485,7 @@ describe('Phase 8: Presence API Routes', () => {
       );
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.presences).toHaveLength(1);
       expect(body.presences[0].actorId).toBe('user-1');
     });
@@ -515,7 +517,7 @@ describe('Phase 8: Presence API Routes', () => {
       );
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.presences).toHaveLength(0);
     });
 
@@ -578,7 +580,7 @@ describe('Phase 8: Presence API Routes', () => {
       );
 
       expect(response.status).toBe(403);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.error).toContain('Access denied');
     });
   });
@@ -615,7 +617,7 @@ describe('Phase 8: Presence API Routes', () => {
       );
 
       expect(response.status).toBe(500);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.error).toBe('Internal server error');
     });
 
@@ -651,7 +653,7 @@ describe('Phase 8: Presence API Routes', () => {
       const authModule = await import('../../src/auth/authorization');
 
       // Mock getMainBranch to return a branch
-      vi.mocked(branchService.getMainBranch).mockResolvedValueOnce({
+      vi.mocked(branchService.getMainBranch).mockResolvedValueOnce(makeBranch({
         id: 'main-branch-id',
         siteId: 'aaaaaaaa-1111-4111-8111-111111111111',
         name: 'main',
@@ -659,7 +661,7 @@ describe('Phase 8: Presence API Routes', () => {
         status: 'active',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-      });
+      }));
 
       // Mock hasPermission to deny access
       vi.mocked(authModule.hasPermission).mockResolvedValueOnce(false);
@@ -680,7 +682,7 @@ describe('Phase 8: Presence API Routes', () => {
       );
 
       expect(response.status).toBe(403);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.error).toContain('Access denied');
     });
 
@@ -708,7 +710,7 @@ describe('Phase 8: Presence API Routes', () => {
       );
 
       expect(response.status).toBe(403);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.error).toContain('Access denied');
     });
 
@@ -732,7 +734,7 @@ describe('Phase 8: Presence API Routes', () => {
       );
 
       expect(response.status).toBe(403);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.error).toContain('Access denied');
     });
 

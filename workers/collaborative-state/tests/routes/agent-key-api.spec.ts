@@ -7,6 +7,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { readJson } from '../helpers/http';
 
 // Mock services
 vi.mock('../../src/services/agent-api-key-service', () => ({
@@ -84,7 +85,7 @@ describe('Agent API Key Routes', () => {
 
       expect(response.status).toBe(201);
       const body: { key: string; metadata: { id: string; name: string; agentId: string } } =
-        await response.json();
+        await readJson(response);
       expect(body.key).toBe('aak_abc123def456ghi789');
       expect(body.metadata.id).toBe('key-uuid-001');
       expect(body.metadata.name).toBe('CI Pipeline Key');
@@ -112,7 +113,7 @@ describe('Agent API Key Routes', () => {
       });
 
       expect(response.status).toBe(400);
-      const body: { error: string } = await response.json();
+      const body: { error: string } = await readJson(response);
       expect(body.error).toBe('name is required');
     });
 
@@ -131,7 +132,7 @@ describe('Agent API Key Routes', () => {
       });
 
       expect(response.status).toBe(403);
-      const body: { error: string } = await response.json();
+      const body: { error: string } = await readJson(response);
       expect(body.error).toBe('Only users can manage agent API keys');
     });
 
@@ -150,7 +151,7 @@ describe('Agent API Key Routes', () => {
       });
 
       expect(response.status).toBe(403);
-      const body: { error: string } = await response.json();
+      const body: { error: string } = await readJson(response);
       expect(body.error).toBe('Only users can manage agent API keys');
     });
   });
@@ -197,7 +198,7 @@ describe('Agent API Key Routes', () => {
       });
 
       expect(response.status).toBe(200);
-      const body: { keys: { id: string }[] } = await response.json();
+      const body: { keys: { id: string }[] } = await readJson(response);
       expect(body.keys).toHaveLength(2);
       expect(body.keys[0].id).toBe('key-uuid-001');
       expect(body.keys[1].id).toBe('key-uuid-002');
@@ -219,7 +220,7 @@ describe('Agent API Key Routes', () => {
       });
 
       expect(response.status).toBe(200);
-      const body: { keys: unknown[] } = await response.json();
+      const body: { keys: unknown[] } = await readJson(response);
       expect(body.keys).toEqual([]);
     });
   });
@@ -268,7 +269,7 @@ describe('Agent API Key Routes', () => {
       });
 
       expect(response.status).toBe(404);
-      const body: { error: string } = await response.json();
+      const body: { error: string } = await readJson(response);
       expect(body.error).toBe('Key not found');
     });
   });
@@ -290,7 +291,7 @@ describe('Agent API Key Routes', () => {
       });
 
       expect(response.status).toBe(400);
-      const body: { error: string } = await response.json();
+      const body: { error: string } = await readJson(response);
       expect(body.error).toBe('Agent ID is required');
     });
 
@@ -307,7 +308,7 @@ describe('Agent API Key Routes', () => {
       });
 
       expect(response.status).toBe(405);
-      const body: { error: string } = await response.json();
+      const body: { error: string } = await readJson(response);
       expect(body.error).toBe('Method not allowed');
     });
   });

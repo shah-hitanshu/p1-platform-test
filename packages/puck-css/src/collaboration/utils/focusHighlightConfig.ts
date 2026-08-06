@@ -12,8 +12,8 @@
  */
 
 import React from 'react';
-import type { FocusHighlight } from './focusRegionMap.js';
 import { FocusHighlightContext } from '../../core/FocusHighlightContext.js';
+import type { FocusHighlight } from './focusRegionMap.js';
 
 /**
  * Puck Config structure (flexible to accept Puck's Config type)

@@ -1,4 +1,4 @@
-import { Env } from '../types';
+import type { Env } from '../types';
 
 const VALID_FIT = new Set(['scale-down', 'contain', 'pad', 'squeeze', 'cover', 'crop', 'aspect-crop']);
 const VALID_GRAVITY_NAMED = new Set(['face', 'left', 'right', 'top', 'bottom', 'center', 'auto', 'entropy']);

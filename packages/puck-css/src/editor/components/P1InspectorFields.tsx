@@ -15,10 +15,10 @@ import { createUsePuck, usePuck } from '@puckeditor/core';
 import { IconButton } from '@pantheon-systems/pds-toolkit-react';
 import { useP1PuckOptional } from '../../core/P1PuckContext.js';
 import { templateFromRegistryPath } from '../utils/templatePath.js';
-import { P1TemplateFields } from './P1TemplateFields.js';
-import { InspectorTabHeader } from './InspectorTabHeader.js';
 import { ReadOnlyFieldsGuard } from '../../versioning/components/ReadOnlyFieldsGuard.js';
 import { VersionReadOnlyBanner } from '../../versioning/components/VersionReadOnlyBanner.js';
+import { P1TemplateFields } from './P1TemplateFields.js';
+import { InspectorTabHeader } from './InspectorTabHeader.js';
 
 // Selectors are at module level so the hook identity is stable across renders.
 const useInspectorPuck = createUsePuck();

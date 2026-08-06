@@ -1,6 +1,5 @@
+import type { DatabaseSync } from 'node:sqlite';
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { DatabaseSync } from 'node:sqlite';
-import { createTestHarness, countRows, seedAsset } from './d1-test-harness';
 import {
   finalizeAssetCreation,
   finalizeVersionAdd,
@@ -11,6 +10,7 @@ import {
   buildKey,
   NotFoundError,
 } from '../store';
+import { createTestHarness, countRows, seedAsset } from './d1-test-harness';
 
 // ===========================================================================
 // Store composite operations — the R2+D1 writes that store.test.ts deliberately

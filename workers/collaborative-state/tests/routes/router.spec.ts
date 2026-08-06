@@ -7,6 +7,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { AuthenticatedPrincipal } from '../../src/types';
+import { readJson } from '../helpers/http';
 
 // Mock cloudflare:workers DurableObject base class for Hibernatable WebSocket API
 vi.mock('cloudflare:workers', () => ({
@@ -243,7 +244,7 @@ describe('Phase 0: Router and Middleware', () => {
       const response = await module.default.fetch(request, mockEnv, mockContext);
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.status).toBe('healthy');
     });
   });
@@ -361,7 +362,7 @@ describe('Phase 0: Router and Middleware', () => {
       const response = await module.default.fetch(request, mockEnv, mockContext);
 
       expect(response.status).toBe(401);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.error).toContain('Authentication');
     });
 
@@ -759,7 +760,7 @@ describe('Phase 0: Router and Middleware', () => {
       const response = await module.default.fetch(request, mockEnv, mockContext);
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.token).toBeDefined();
       expect(body.user).toBeDefined();
     });
@@ -803,7 +804,7 @@ describe('Phase 0: Router and Middleware', () => {
       const response = await module.default.fetch(request, mockEnv, mockContext);
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.users).toBeDefined();
       expect(Array.isArray(body.users)).toBe(true);
     });

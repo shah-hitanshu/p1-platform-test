@@ -1274,7 +1274,7 @@ describe('Phase 5.3: Merge Execution Service', () => {
   // =========================================================================
 
   describe('post-merge template migration', () => {
-    // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+
     async function setupSuccessfulMergeWithTemplateChange(
       templateDocId = 'tmpl-doc-1',
       staleCount = 3,

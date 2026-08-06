@@ -1,9 +1,6 @@
 "use client";
 
 import { useState, type ReactElement } from "react";
-import { MediaLibrary, type MediaItem } from "./media-library";
-import { CropDialog } from "./crop-dialog";
-import { useMediaSchema, orderAltFirst } from "./use-media-schema";
 import { getBaseUrl, getCropMode, getTrimRect, type CropMode, type TrimRect } from "../crop";
 import {
   isMediaValue,
@@ -12,7 +9,10 @@ import {
   setMetaOnValue,
   buildValueFromAsset,
 } from "../media-value";
-import type { MediaFieldValue, MetadataFieldDef } from "../types";
+import type { MediaFieldValue } from "../types";
+import { MediaLibrary, type MediaItem } from "./media-library";
+import { CropDialog } from "./crop-dialog";
+import { useMediaSchema, orderAltFirst } from "./use-media-schema";
 
 /**
  * Object-aware editor UI for the `p1-media` field: image preview + crop

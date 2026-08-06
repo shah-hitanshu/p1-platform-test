@@ -208,7 +208,7 @@ describe('Structural Action Capture — PROPOSAL-010 Section 5', () => {
 describe('DocumentVersion type completeness (Gap 4)', () => {
   it('DocumentVersion type should include actionType and actionMetadata fields', async () => {
     // Import the type and verify it can be used with these fields
-    const { default: types } = await import('@pantheon-systems/css-client') as { default: { DocumentVersion: unknown } };
+    await import('@pantheon-systems/css-client');
 
     // Create a value that conforms to DocumentVersion with action fields
     const version = {

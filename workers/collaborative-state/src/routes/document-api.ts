@@ -486,7 +486,7 @@ async function handleDeleteDocumentOnBranch(
 
   if (contentType?.includes('application/json') === true) {
     try {
-      body = await request.json() as DeleteDocumentBody;
+      body = await request.json();
     } catch {
       return errorResponse('Invalid JSON body', 400);
     }
@@ -501,7 +501,7 @@ async function handleDeleteDocumentOnBranch(
       documentId,
       branchId,
       deletedById: principal.dbUserId ?? principal.id,
-      deletedByType: principal.type as 'user' | 'agent',
+      deletedByType: principal.type,
     });
     return new Response(null, { status: 204 });
   }
@@ -543,7 +543,7 @@ async function handleDeleteDocumentOnBranch(
     redirect: {
       fromPath: originPath,
       destination: r.destination,
-      redirectType: redirectType as 'permanent' | 'temporary',
+      redirectType: redirectType,
       parenting,
     },
   });

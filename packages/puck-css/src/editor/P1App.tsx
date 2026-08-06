@@ -1,13 +1,13 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import { P1Client } from '@pantheon-systems/css-client';
 import { P1AuthProvider, useP1Auth, P1LoginPage } from '../auth/index.js';
-import { P1PuckProvider } from './P1PuckProvider.js';
 import { useP1Puck } from '../core/P1PuckContext.js';
 import { useOptionalPresenceContext } from '../core/PresenceContext.js';
 import { createFocusRegionMap } from '../collaboration/utils/focusRegionMap.js';
 import type { FocusHighlight } from '../collaboration/utils/focusRegionMap.js';
 import type { P1Config } from '../core/config.js';
 import { pdsCoreCSS } from '../pds/theme/pds-core-content.js';
+import { P1PuckProvider } from './P1PuckProvider.js';
 
 export interface P1AppProps {
   config: P1Config;

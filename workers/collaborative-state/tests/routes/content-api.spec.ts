@@ -12,6 +12,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { AuthenticatedPrincipal, Branch, Document, DocumentVersion, Site } from '../../src/types';
 import type { SeoMetadata } from '../../src/types/page-metadata';
+import { readJson } from '../helpers/http';
 
 // Mock services
 vi.mock('../../src/services', async () => ({
@@ -226,7 +227,7 @@ describe('Content Delivery API Routes', () => {
       expect(services.getLatestPublishedDocumentVersion).toHaveBeenCalledWith('doc-uuid-abc', 'branch-main-uuid');
       expect(services.getLatestDocumentVersion).not.toHaveBeenCalled();
 
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body).toEqual({
         documentId: 'doc-uuid-abc',
         metadata: mockMetadata,
@@ -264,7 +265,7 @@ describe('Content Delivery API Routes', () => {
       });
 
       expect(response.status).toBe(404);
-      const body = await response.json();
+      const body = await readJson(response);
       // Error message must not reveal that the document exists but is unpublished
       expect(body.error).toBe('Document not found');
       // Must not call getLatestDocumentVersion (which would return drafts)
@@ -296,7 +297,7 @@ describe('Content Delivery API Routes', () => {
       expect(response.status).toBe(200);
       expect(services.getMainBranch).toHaveBeenCalledWith('site-uuid-123');
       expect(services.getBranch).not.toHaveBeenCalled();
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.isMainBranch).toBe(true);
     });
 
@@ -325,7 +326,7 @@ describe('Content Delivery API Routes', () => {
 
       expect(response.status).toBe(200);
       expect(services.getDocumentByPath).toHaveBeenCalledWith('site-uuid-123', '/');
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.path).toBe('/');
       expect(body.data).toEqual(mockPublishedVersion.snapshot);
     });
@@ -363,7 +364,7 @@ describe('Content Delivery API Routes', () => {
       expect(services.getLatestDocumentVersion).toHaveBeenCalledWith('doc-uuid-abc', 'branch-feature-uuid');
       expect(services.getLatestPublishedDocumentVersion).not.toHaveBeenCalled();
 
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.branchId).toBe('branch-feature-uuid');
       expect(body.branchName).toBe('feature-redesign');
       expect(body.isMainBranch).toBe(false);
@@ -455,7 +456,7 @@ describe('Content Delivery API Routes', () => {
       });
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.inherited).toBe(false);
     });
 
@@ -486,7 +487,7 @@ describe('Content Delivery API Routes', () => {
       });
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.inherited).toBe(true);
       expect(body.data).toEqual(mockPublishedVersion.snapshot);
     });
@@ -590,7 +591,7 @@ describe('Content Delivery API Routes', () => {
       });
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.data).toEqual(mockReconstructedSnapshot);
       expect(services.reconstructVersionSnapshot).toHaveBeenCalledWith(
         'doc-uuid-abc',
@@ -622,7 +623,7 @@ describe('Content Delivery API Routes', () => {
       });
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.data).toEqual(mockPublishedVersion.snapshot);
       expect(services.reconstructVersionSnapshot).not.toHaveBeenCalled();
     });
@@ -654,7 +655,7 @@ describe('Content Delivery API Routes', () => {
       });
 
       expect(response.status).toBe(500);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.error).toBe('Internal server error');
       expect(errorLog).toHaveBeenCalledWith(
         '[content-api] Version reconstruction failed',
@@ -692,7 +693,7 @@ describe('Content Delivery API Routes', () => {
       });
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.data).toBeNull();
     });
 
@@ -730,7 +731,7 @@ describe('Content Delivery API Routes', () => {
       });
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.data).toEqual(mockReconstructedSnapshot);
       expect(services.reconstructVersionSnapshot).toHaveBeenCalledWith(
         'doc-uuid-abc',
@@ -946,7 +947,7 @@ describe('Content Delivery API Routes', () => {
       expect(response.status).toBe(200);
       expect(services.getBranchByName).toHaveBeenCalledWith('site-uuid-123', 'feature-redesign');
       expect(services.getBranch).not.toHaveBeenCalled();
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.branchName).toBe('feature-redesign');
       expect(body.isMainBranch).toBe(false);
     });
@@ -976,7 +977,7 @@ describe('Content Delivery API Routes', () => {
       expect(response.status).toBe(200);
       expect(services.getBranchByName).toHaveBeenCalledWith('site-uuid-123', 'main');
       expect(services.getBranch).not.toHaveBeenCalled();
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.isMainBranch).toBe(true);
     });
 
@@ -1213,7 +1214,7 @@ describe('Content Delivery API Routes', () => {
       });
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       // draft-page should be filtered out
       expect(body.pages).toHaveLength(2);
       expect(body.pages[0]).toEqual({
@@ -1294,7 +1295,7 @@ describe('Content Delivery API Routes', () => {
       });
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.pages).toHaveLength(2);
 
       const homePage = body.pages.find((p: { path: string }) => p.path === '/');
@@ -1349,7 +1350,7 @@ describe('Content Delivery API Routes', () => {
       });
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.pages).toHaveLength(2);
       expect(body.isMainBranch).toBe(false);
       expect(services.getLatestDocumentVersion).toHaveBeenCalledTimes(2);
@@ -1426,7 +1427,7 @@ describe('Content Delivery API Routes', () => {
       });
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.pages).toHaveLength(1);
       expect(body.pages[0].path).toBe('home');
     });

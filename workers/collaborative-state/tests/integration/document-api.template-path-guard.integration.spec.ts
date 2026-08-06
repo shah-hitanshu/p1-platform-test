@@ -8,6 +8,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import postgres from 'postgres';
 import { setDatabaseInstance } from '../../src/db';
+import { readJson } from '../helpers/http';
 
 const TEST_DATABASE_URL =
   process.env.POSTGRES_CONNECTION_STRING ??
@@ -155,7 +156,7 @@ describe('Document API - Template Path Guard', () => {
     });
 
     expect(response.status).toBe(201);
-    const body = await response.json();
+    const body = await readJson(response);
     expect(body.document.path).toBe('_registry/templates/admin-doc-template');
 
     // Verify in database
@@ -199,7 +200,7 @@ describe('Document API - Template Path Guard', () => {
     });
 
     expect(response.status).toBe(403);
-    const body = await response.json();
+    const body = await readJson(response);
     expect(body.error).toContain('template API');
     expect(body.error).toContain('admin');
 
@@ -244,7 +245,7 @@ describe('Document API - Template Path Guard', () => {
     });
 
     expect(response.status).toBe(403);
-    const body = await response.json();
+    const body = await readJson(response);
     expect(body.error).toContain('template API');
 
     // Verify NOT in database
@@ -288,7 +289,7 @@ describe('Document API - Template Path Guard', () => {
     });
 
     expect(response.status).toBe(201);
-    const body = await response.json();
+    const body = await readJson(response);
     expect(body.document.path).toBe('pages/homepage');
 
     // Verify in database
@@ -351,7 +352,7 @@ describe('Document API - Template Path Guard', () => {
     });
 
     expect(response.status).toBe(201);
-    const body = await response.json();
+    const body = await readJson(response);
     expect(body.document.path).toBe('pages/templated-page');
 
     // Verify the template edge was recorded in document_relations

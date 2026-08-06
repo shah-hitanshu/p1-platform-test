@@ -36,7 +36,6 @@ import {
   documentExists,
   SiteNotFoundError,
   DuplicateDocumentPathError,
-  InvalidDocumentPathError,
 } from '../../src/services/document-service';
 
 // Test configuration

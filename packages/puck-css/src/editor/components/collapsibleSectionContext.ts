@@ -11,10 +11,10 @@
 
 import { createContext } from 'react';
 
-export interface CollapsibleFieldContext {
+export interface CollapsibleFieldContextValue {
   defaultCollapsed?: boolean;
   /** Fields in the group, so the header can show a count that cannot drift. */
   count?: number;
 }
 
-export const CollapsibleFieldContext = createContext<CollapsibleFieldContext | null>(null);
+export const CollapsibleFieldContext = createContext<CollapsibleFieldContextValue | null>(null);

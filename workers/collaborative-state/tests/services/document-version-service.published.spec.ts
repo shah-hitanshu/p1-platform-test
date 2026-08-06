@@ -33,7 +33,7 @@ describe('Document Version isPublished flag', () => {
       const result = await getLatestDocumentVersion('doc-1', 'branch-1');
 
       expect(result).not.toBeNull();
-      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+
       expect(result!.isPublished).toBe(true);
     });
 
@@ -60,7 +60,7 @@ describe('Document Version isPublished flag', () => {
       const result = await getLatestDocumentVersion('doc-1', 'branch-1');
 
       expect(result).not.toBeNull();
-      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+
       expect(result!.isPublished).toBe(false);
     });
   });
@@ -147,7 +147,7 @@ describe('Document Version isPublished flag', () => {
       const result = await getDocumentVersion('ver-1');
 
       expect(result).not.toBeNull();
-      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+
       expect(result!.isPublished).toBe(true);
     });
   });

@@ -9,6 +9,9 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { readJson } from '../helpers/http';
+import { makePrincipal } from '../helpers/principal';
+import { makeBranch } from '../helpers/branch';
 
 vi.mock('../../src/services', () => ({
   getMainBranch: vi.fn(),
@@ -16,13 +19,10 @@ vi.mock('../../src/services', () => ({
   getLatestDocumentVersion: vi.fn(),
 }));
 
-const testPrincipal = {
+const testPrincipal = makePrincipal({
   id: 'site-token-1',
-  type: 'service' as const,
-  dbUserId: undefined,
-  email: undefined,
-  verified: true,
-};
+  type: 'service',
+});
 
 describe('Content Redirect Lookup API', () => {
   beforeEach(() => {
@@ -41,7 +41,7 @@ describe('Content Redirect Lookup API', () => {
       );
       const services = await import('../../src/services');
 
-      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce(makeBranch({
         id: 'main-branch-uuid',
         siteId: 'site-1',
         name: 'main',
@@ -50,15 +50,13 @@ describe('Content Redirect Lookup API', () => {
         createdAt: '2026-01-01T00:00:00.000Z',
         createdById: 'system',
         createdByType: 'system',
-      });
+      }));
 
       vi.mocked(services.getDocumentByPath).mockResolvedValueOnce({
         id: 'redirect-doc-uuid',
         siteId: 'site-1',
         path: '_registry/redirects/old-page',
         createdAt: '2026-01-24T10:00:00.000Z',
-        createdById: 'db-user-1',
-        createdByType: 'user',
       });
 
       vi.mocked(services.getLatestDocumentVersion).mockResolvedValueOnce({
@@ -89,7 +87,7 @@ describe('Content Redirect Lookup API', () => {
       });
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.fromPath).toBe('/old-page');
       expect(body.destination).toBe('/new-page');
       expect(body.redirectType).toBe('permanent');
@@ -102,7 +100,7 @@ describe('Content Redirect Lookup API', () => {
       );
       const services = await import('../../src/services');
 
-      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce(makeBranch({
         id: 'main-branch-uuid',
         siteId: 'site-1',
         name: 'main',
@@ -111,15 +109,13 @@ describe('Content Redirect Lookup API', () => {
         createdAt: '2026-01-01T00:00:00.000Z',
         createdById: 'system',
         createdByType: 'system',
-      });
+      }));
 
       vi.mocked(services.getDocumentByPath).mockResolvedValueOnce({
         id: 'redirect-doc-uuid',
         siteId: 'site-1',
         path: '_registry/redirects/temp-page',
         createdAt: '2026-01-24T10:00:00.000Z',
-        createdById: 'db-user-1',
-        createdByType: 'user',
       });
 
       vi.mocked(services.getLatestDocumentVersion).mockResolvedValueOnce({
@@ -150,7 +146,7 @@ describe('Content Redirect Lookup API', () => {
       });
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.redirectType).toBe('temporary');
       expect(body.statusCode).toBe(302);
     });
@@ -161,7 +157,7 @@ describe('Content Redirect Lookup API', () => {
       );
       const services = await import('../../src/services');
 
-      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce(makeBranch({
         id: 'main-branch-uuid',
         siteId: 'site-1',
         name: 'main',
@@ -170,7 +166,7 @@ describe('Content Redirect Lookup API', () => {
         createdAt: '2026-01-01T00:00:00.000Z',
         createdById: 'system',
         createdByType: 'system',
-      });
+      }));
 
       // No document found at the redirect path
       vi.mocked(services.getDocumentByPath).mockResolvedValueOnce(null);
@@ -217,7 +213,7 @@ describe('Content Redirect Lookup API', () => {
       );
       const services = await import('../../src/services');
 
-      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce(makeBranch({
         id: 'main-branch-uuid',
         siteId: 'site-1',
         name: 'main',
@@ -226,15 +222,13 @@ describe('Content Redirect Lookup API', () => {
         createdAt: '2026-01-01T00:00:00.000Z',
         createdById: 'system',
         createdByType: 'system',
-      });
+      }));
 
       vi.mocked(services.getDocumentByPath).mockResolvedValueOnce({
         id: 'redirect-doc-uuid',
         siteId: 'site-1',
         path: '_registry/redirects/old-page',
         createdAt: '2026-01-24T10:00:00.000Z',
-        createdById: 'db-user-1',
-        createdByType: 'user',
       });
 
       // No version on main branch (redirect is on a feature branch only)
@@ -266,7 +260,7 @@ describe('Content Redirect Lookup API', () => {
       );
       const services = await import('../../src/services');
 
-      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce(makeBranch({
         id: 'main-branch-uuid',
         siteId: 'site-1',
         name: 'main',
@@ -275,7 +269,7 @@ describe('Content Redirect Lookup API', () => {
         createdAt: '2026-01-01T00:00:00.000Z',
         createdById: 'system',
         createdByType: 'system',
-      });
+      }));
 
       // No direct redirect at news/article
       vi.mocked(services.getDocumentByPath)
@@ -286,8 +280,6 @@ describe('Content Redirect Lookup API', () => {
           siteId: 'site-1',
           path: '_registry/redirects/news',
           createdAt: '2026-01-24T10:00:00.000Z',
-          createdById: 'db-user-1',
-          createdByType: 'user',
         });
 
       vi.mocked(services.getLatestDocumentVersion).mockResolvedValueOnce({
@@ -318,7 +310,7 @@ describe('Content Redirect Lookup API', () => {
       });
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.destination).toBe('/articles/article');
       expect(body.redirectType).toBe('permanent');
       expect(body.statusCode).toBe(301);
@@ -330,7 +322,7 @@ describe('Content Redirect Lookup API', () => {
       );
       const services = await import('../../src/services');
 
-      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce(makeBranch({
         id: 'main-branch-uuid',
         siteId: 'site-1',
         name: 'main',
@@ -339,7 +331,7 @@ describe('Content Redirect Lookup API', () => {
         createdAt: '2026-01-01T00:00:00.000Z',
         createdById: 'system',
         createdByType: 'system',
-      });
+      }));
 
       // No direct redirect at news/article
       vi.mocked(services.getDocumentByPath)
@@ -350,8 +342,6 @@ describe('Content Redirect Lookup API', () => {
           siteId: 'site-1',
           path: '_registry/redirects/news',
           createdAt: '2026-01-24T10:00:00.000Z',
-          createdById: 'db-user-1',
-          createdByType: 'user',
         });
 
       vi.mocked(services.getLatestDocumentVersion).mockResolvedValueOnce({
@@ -390,7 +380,7 @@ describe('Content Redirect Lookup API', () => {
       );
       const services = await import('../../src/services');
 
-      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce(makeBranch({
         id: 'main-branch-uuid',
         siteId: 'site-1',
         name: 'main',
@@ -399,7 +389,7 @@ describe('Content Redirect Lookup API', () => {
         createdAt: '2026-01-01T00:00:00.000Z',
         createdById: 'system',
         createdByType: 'system',
-      });
+      }));
 
       // No direct redirect at docs/api/v2/endpoints
       vi.mocked(services.getDocumentByPath)
@@ -414,8 +404,6 @@ describe('Content Redirect Lookup API', () => {
           siteId: 'site-1',
           path: '_registry/redirects/docs',
           createdAt: '2026-01-24T10:00:00.000Z',
-          createdById: 'db-user-1',
-          createdByType: 'user',
         });
 
       vi.mocked(services.getLatestDocumentVersion).mockResolvedValueOnce({
@@ -446,7 +434,7 @@ describe('Content Redirect Lookup API', () => {
       });
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.destination).toBe('/documentation/api/v2/endpoints');
     });
   });

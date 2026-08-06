@@ -7,6 +7,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
+import { readJson } from '../helpers/http';
 
 // Mock cloudflare:workers DurableObject base class
 vi.mock('cloudflare:workers', () => ({
@@ -145,7 +146,7 @@ describe('DocumentSession pull-based KV invalidation', () => {
     const fetchCountBeforeSecond = mockFetch.mock.calls.length;
     await session.fetch(new Request('http://localhost/snapshot'));
 
-    // eslint-disable-next-line @typescript-eslint/unbound-method
+
     expect(mockKV.get).toHaveBeenCalledWith('branch-version:cccccccc-0000-4000-8000-000000000001');
     // No additional initializeFromPostgres calls beyond the initial one
     expect(mockFetch.mock.calls.length).toBe(fetchCountBeforeSecond);
@@ -185,7 +186,7 @@ describe('DocumentSession pull-based KV invalidation', () => {
     // Next request should detect staleness and reload
     const response = await session.fetch(new Request('http://localhost/snapshot'));
     expect(response.status).toBe(200);
-    const body = await response.json();
+    const body = await readJson(response);
     expect(body.snapshot.title).toBe('Merged Content');
   });
 
@@ -320,7 +321,7 @@ describe('DocumentSession pull-based KV invalidation', () => {
     await session.fetch(new Request('http://localhost/reload', { method: 'POST' }));
 
     // KV.get should NOT have been called during the /reload request
-    // eslint-disable-next-line @typescript-eslint/unbound-method
+
     expect(mockKV.get).not.toHaveBeenCalled();
   });
 });

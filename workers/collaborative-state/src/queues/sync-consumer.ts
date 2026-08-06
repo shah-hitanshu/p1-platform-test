@@ -112,7 +112,7 @@ function deduplicateMessages(
         merged.actionType = 'structural';
       }
       latest.set(key, merged);
-    } else if (existing !== undefined) {
+    } else {
       // Earlier message wins on snapshot, but merge its puckActions into the kept message
       if (msg.body.puckActions && msg.body.puckActions.length > 0) {
         existing.puckActions = [

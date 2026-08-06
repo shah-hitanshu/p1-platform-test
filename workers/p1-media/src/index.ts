@@ -1,4 +1,4 @@
-import { Env } from './types';
+import type { Env } from './types';
 import { validateAuth } from './auth';
 import { METADATA_SCHEMA } from './schema';
 import { handleImage } from './handlers/image';

@@ -17,6 +17,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { makeBranch } from '../helpers/branch';
 
 vi.mock('../../src/db', () => ({
   query: vi.fn(),
@@ -78,7 +79,7 @@ const baseMergeRequest = {
   updatedAt: '2026-04-25T10:00:00.000Z',
 };
 
-const baseMainBranch = {
+const baseMainBranch = makeBranch({
   id: 'main-branch',
   siteId: 'site-1',
   name: 'main',
@@ -89,7 +90,7 @@ const baseMainBranch = {
   createdByType: 'user' as const,
   createdAt: '2026-01-01T00:00:00.000Z',
   updatedAt: '2026-01-01T00:00:00.000Z',
-};
+});
 
 describe('copySourceChangesToTarget — no-op skip', () => {
   beforeEach(() => {

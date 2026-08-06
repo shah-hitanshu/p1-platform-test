@@ -7,10 +7,10 @@
  */
 
 import { useRef, useMemo } from 'react';
+import type { Checkpoint, ActorPresence } from '@pantheon-systems/css-client';
 import { useP1Puck } from '../core/P1PuckContext.js';
 import { createP1Overrides } from './plugin/createP1Overrides.js';
 import type { P1OverridesOptions, PuckOverrides } from './plugin/createP1Overrides.js';
-import type { Checkpoint, ActorPresence } from '@pantheon-systems/css-client';
 
 /**
  * Options consumers can pass to customize override behavior.

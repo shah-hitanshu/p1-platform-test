@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { extractBearerToken } from "../auth-utils";
 
 import {
   normalizePath,
@@ -17,6 +16,7 @@ import type {
   RemoteDatasourceFetcher,
   RemoteDatasourceDefinition,
 } from "@pantheon-systems/puck-css/server";
+import { extractBearerToken } from "../auth-utils";
 
 export interface EditorContextOptions {
   builtinFetchers?: RemoteDatasourceFetcher[];

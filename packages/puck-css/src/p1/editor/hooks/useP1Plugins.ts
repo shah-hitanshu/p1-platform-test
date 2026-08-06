@@ -3,9 +3,9 @@ import { useMemo } from "react";
 import { createPreviewResolvePlugin } from "../editor-preview-resolve";
 import { createRemoteDatasourceExplorerPlugin } from "../remote-datasources/remote-datasource-explorer-plugin";
 import { createFieldConnectPlugin } from "../connect/field-connect-plugin";
+import { useP1PuckOptional } from "../../../core/P1PuckContext";
 import { useEditorContext } from "./useEditorContext";
 import { useRemoteDatasourceContext } from "./api-hooks";
-import { useP1PuckOptional } from "../../../core/P1PuckContext";
 
 export function useP1Plugins(path: string, config: Config): Plugin[] {
   const p1Puck = useP1PuckOptional();

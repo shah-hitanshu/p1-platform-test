@@ -10,6 +10,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { getSiteAllowedOrigins } from '../../src/services/site-service';
 import type { Site } from '../../src/types/domain';
+import { readJson } from '../helpers/http';
+import { makePrincipal } from '../helpers/principal';
+import { makeBranch } from '../helpers/branch';
 
 // Mock CRDT sync service
 vi.mock('../../src/services/crdt-sync-service', () => ({
@@ -141,7 +144,7 @@ describe('Phase 1.2: Internal API Routes', () => {
       });
 
       expect(response.status).toBe(401);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.error).toContain('X-Internal-Secret');
     });
 
@@ -162,7 +165,7 @@ describe('Phase 1.2: Internal API Routes', () => {
       });
 
       expect(response.status).toBe(403);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.error).toContain('Invalid');
     });
 
@@ -274,7 +277,7 @@ describe('Phase 1.2: Internal API Routes', () => {
       });
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.version).toBeDefined();
       expect(body.version.id).toBe('version-uuid');
       expect(body.version.versionNumber).toBe(5);
@@ -302,7 +305,7 @@ describe('Phase 1.2: Internal API Routes', () => {
       });
 
       expect(response.status).toBe(404);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.error).toContain('Document');
     });
 
@@ -328,7 +331,7 @@ describe('Phase 1.2: Internal API Routes', () => {
       });
 
       expect(response.status).toBe(500);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.error).toContain('Sync');
     });
   });
@@ -355,7 +358,7 @@ describe('Phase 1.2: Internal API Routes', () => {
       });
 
       expect(response.status).toBe(400);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.error).toContain('siteId');
     });
 
@@ -376,7 +379,7 @@ describe('Phase 1.2: Internal API Routes', () => {
       });
 
       expect(response.status).toBe(400);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.error).toContain('documentId');
     });
 
@@ -397,7 +400,7 @@ describe('Phase 1.2: Internal API Routes', () => {
       });
 
       expect(response.status).toBe(400);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.error).toContain('branchId');
     });
 
@@ -418,7 +421,7 @@ describe('Phase 1.2: Internal API Routes', () => {
       });
 
       expect(response.status).toBe(400);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.error).toContain('actorId');
     });
 
@@ -442,7 +445,7 @@ describe('Phase 1.2: Internal API Routes', () => {
       });
 
       expect(response.status).toBe(400);
-      const responseBody = await response.json();
+      const responseBody = await readJson(response);
       expect(responseBody.error).toContain('actorType');
     });
 
@@ -463,7 +466,7 @@ describe('Phase 1.2: Internal API Routes', () => {
       });
 
       expect(response.status).toBe(400);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.error).toContain('JSON');
     });
   });
@@ -576,7 +579,7 @@ describe('Phase 1.2: Internal API Routes', () => {
       });
 
       expect(response.status).toBe(200);
-      const responseBody = await response.json();
+      const responseBody = await readJson(response);
       expect(responseBody.checkpointId).toBe('checkpoint-uuid-789');
 
       expect(checkpointService.createCheckpoint).toHaveBeenCalledWith({
@@ -609,7 +612,7 @@ describe('Phase 1.2: Internal API Routes', () => {
       });
 
       expect(response.status).toBe(400);
-      const responseBody = await response.json();
+      const responseBody = await readJson(response);
       expect(responseBody.error).toContain('branchId');
     });
 
@@ -631,7 +634,7 @@ describe('Phase 1.2: Internal API Routes', () => {
       });
 
       expect(response.status).toBe(400);
-      const responseBody = await response.json();
+      const responseBody = await readJson(response);
       expect(responseBody.error).toContain('agentId');
     });
 
@@ -653,7 +656,7 @@ describe('Phase 1.2: Internal API Routes', () => {
       });
 
       expect(response.status).toBe(400);
-      const responseBody = await response.json();
+      const responseBody = await readJson(response);
       expect(responseBody.error).toContain('intent');
     });
 
@@ -680,7 +683,7 @@ describe('Phase 1.2: Internal API Routes', () => {
       });
 
       expect(response.status).toBe(404);
-      const responseBody = await response.json();
+      const responseBody = await readJson(response);
       expect(responseBody.error).toContain('Branch');
     });
   });
@@ -744,7 +747,7 @@ describe('Phase 1.2: Internal API Routes', () => {
       });
 
       expect(response.status).toBe(200);
-      const responseBody = await response.json();
+      const responseBody = await readJson(response);
       expect(responseBody.checkpointId).toBe('checkpoint-uuid-post');
 
       expect(checkpointService.createCheckpoint).toHaveBeenCalledWith({
@@ -776,7 +779,7 @@ describe('Phase 1.2: Internal API Routes', () => {
       });
 
       expect(response.status).toBe(400);
-      const responseBody = await response.json();
+      const responseBody = await readJson(response);
       expect(responseBody.error).toContain('preEditCheckpointId');
     });
   });
@@ -833,7 +836,7 @@ describe('Phase 1.2: Internal API Routes', () => {
       });
 
       expect(response.status).toBe(200);
-      const responseBody = await response.json();
+      const responseBody = await readJson(response);
       expect(responseBody.rolledBack).toBe(true);
       expect(responseBody.documentsReverted).toBe(2);
 
@@ -879,7 +882,7 @@ describe('Phase 1.2: Internal API Routes', () => {
       });
 
       expect(response.status).toBe(200);
-      const responseBody = await response.json();
+      const responseBody = await readJson(response);
       expect(responseBody.documentsSkipped).toBe(3);
     });
 
@@ -901,7 +904,7 @@ describe('Phase 1.2: Internal API Routes', () => {
       });
 
       expect(response.status).toBe(400);
-      const responseBody = await response.json();
+      const responseBody = await readJson(response);
       expect(responseBody.error).toContain('checkpointId');
     });
 
@@ -928,7 +931,7 @@ describe('Phase 1.2: Internal API Routes', () => {
       });
 
       expect(response.status).toBe(404);
-      const responseBody = await response.json();
+      const responseBody = await readJson(response);
       expect(responseBody.error).toContain('Checkpoint');
     });
   });
@@ -963,7 +966,7 @@ describe('GET /internal/site-auth-config/:siteId', () => {
     const req = makeRequest('site-123', INTERNAL_SECRET);
     const res = await handleInternalRoutes(req, { internalSecret: INTERNAL_SECRET });
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body = await readJson(res);
     expect(body.siteId).toBe('site-123');
     expect(body.allowedOrigins).toEqual(['https://mysite.com', '*-mysite.pantheonsite.io']);
   });
@@ -974,7 +977,7 @@ describe('GET /internal/site-auth-config/:siteId', () => {
     const req = makeRequest('site-empty', INTERNAL_SECRET);
     const res = await handleInternalRoutes(req, { internalSecret: INTERNAL_SECRET });
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body = await readJson(res);
     expect(body.allowedOrigins).toEqual([]);
   });
 
@@ -1035,7 +1038,7 @@ describe('T5: allowedOrigins round-trip — set via site API, propagates to inte
       updatedAt: '2026-04-07T00:00:00.000Z',
     };
 
-    const mainBranch = {
+    const mainBranch = makeBranch({
       id: 'main-branch-t5',
       siteId: 'site-t5',
       name: 'main',
@@ -1044,7 +1047,7 @@ describe('T5: allowedOrigins round-trip — set via site API, propagates to inte
       createdAt: '2026-04-07T00:00:00.000Z',
       createdById: 'user-1',
       createdByType: 'user',
-    };
+    });
 
     // Step 1: PATCH /api/sites/site-t5 with allowedOrigins
     vi.mocked(services.getMainBranch).mockResolvedValueOnce(mainBranch);
@@ -1057,7 +1060,7 @@ describe('T5: allowedOrigins round-trip — set via site API, propagates to inte
     });
     const patchRes = await handleSiteRoutes(patchReq, {
       siteId: 'site-t5',
-      principal: { id: 'user-1', type: 'user' },
+      principal: makePrincipal({ id: 'user-1', type: 'user' }),
     });
     expect(patchRes.status).toBe(200);
 
@@ -1070,7 +1073,7 @@ describe('T5: allowedOrigins round-trip — set via site API, propagates to inte
     });
     const getRes = await handleSiteRoutes(getReq, {
       siteId: 'site-t5',
-      principal: { id: 'user-1', type: 'user' },
+      principal: makePrincipal({ id: 'user-1', type: 'user' }),
     });
     expect(getRes.status).toBe(200);
     const rawSiteBody: unknown = await getRes.json();

@@ -8,7 +8,6 @@
  * @see collaborative-state-system-architecture-v2.2.md Section "Documents"
  */
 
-import type { Document } from '../types';
 import { query } from '../db';
 import type { DocumentRow, ListDocumentsOptions } from './document-types';
 import {
@@ -97,7 +96,7 @@ export type {
  */
 export async function createDocument(
   params: { siteId: string; path: string },
-): Promise<Document> {
+): Promise<DocumentWithArchive> {
   const normalizedPath = normalizePath(params.path);
   validatePath(normalizedPath);
 
@@ -132,7 +131,7 @@ export async function createDocument(
  * @param documentId - The document ID
  * @returns The document or null if not found
  */
-export async function getDocument(documentId: string): Promise<Document | null> {
+export async function getDocument(documentId: string): Promise<DocumentWithArchive | null> {
   const result = await query<DocumentRow>(
     `SELECT ${DOCUMENT_WITH_TEMPLATE_COLUMNS}
      FROM app.documents d
@@ -159,7 +158,7 @@ export async function getDocument(documentId: string): Promise<Document | null> 
 export async function getDocumentByPath(
   siteId: string,
   path: string,
-): Promise<Document | null> {
+): Promise<DocumentWithArchive | null> {
   const normalizedPath = normalizePath(path);
 
   // Only return non-archived documents
@@ -193,7 +192,7 @@ export async function getDocumentByPath(
 export async function updateDocumentPath(
   documentId: string,
   newPath: string,
-): Promise<Document | null> {
+): Promise<DocumentWithArchive | null> {
   const normalizedPath = normalizePath(newPath);
   validatePath(normalizedPath);
 

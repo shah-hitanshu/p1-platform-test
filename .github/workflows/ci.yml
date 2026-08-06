@@ -1,13 +1,15 @@
 # CI — read-only verification. No publishing, no deploys, no GCP/WIF, no write
-# permissions. Triggers on PRs and manual dispatch only (inert until a PR opens).
+# permissions.
 #
-# Gating mirrors the source repos' effective gates at the import baseline
-# (docs/migration/STATUS.md): tasks that were red upstream run as non-blocking
-# "known-issues" so parity failures never pressure code changes here.
+# Every package is linted and type-checked, with no exclusions. Test-only type
+# errors in collaborative-state are held to a committed ceiling by
+# `check:typecheck-tests` rather than ignored.
 name: ci
 
 on:
   pull_request:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -34,17 +36,30 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Build everything
         run: pnpm exec turbo run build
-      - name: Typecheck (except known-red collaborative-state-worker)
-        run: pnpm exec turbo run typecheck --filter='!collaborative-state-worker'
-      - name: Lint (except known-red collaborative-state-worker, css-mcp-server)
-        run: pnpm exec turbo run lint --filter='!collaborative-state-worker' --filter='!css-mcp-server'
-      - name: Test (except known-red puck-css and @p1/agent; worker suite capped)
-        run: pnpm exec turbo run test --filter='!@pantheon-systems/puck-css' --filter='!@p1/agent' --concurrency=4
+      - name: Every package has a lint and typecheck task
+        run: pnpm check:task-coverage
+      - name: Typecheck
+        run: pnpm exec turbo run typecheck
+      - name: Lint
+        run: pnpm exec turbo run lint lint:root
+      # @p1/agent asserts the pre-PCC-3239 slot-ID semantics against an
+      # unreleased workspace validator; the fix is cross-team, not ours.
+      - name: Test
+        run: pnpm exec turbo run test --filter='!@p1/agent' --concurrency=4
+      - name: Test type errors stay at or below the committed ceiling
+        run: pnpm check:typecheck-tests
 
-  known-issues:
-    name: known-red parity tasks (non-blocking)
+  # Warnings are not a hard gate, so they need somewhere to be visible other
+  # than a log nobody reads. Code scanning annotates them on the lines a PR
+  # actually touches and keeps a durable record of the rest.
+  lint-sarif:
+    name: lint warnings → code scanning
     runs-on: ubuntu-latest
-    continue-on-error: true
+    permissions:
+      contents: read
+      security-events: write
+      # upload-sarif reads the workflow run itself, which an internal repo gates.
+      actions: read
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -53,12 +68,17 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Known-red tasks (fail identically in source repos — see STATUS.md)
-        run: |
-          pnpm exec turbo run build --filter=collaborative-state-worker --filter=@pantheon-systems/puck-css
-          pnpm exec turbo run typecheck lint --filter=collaborative-state-worker --continue || true
-          pnpm exec turbo run lint --filter=css-mcp-server --continue || true
-          pnpm exec turbo run test --filter=@pantheon-systems/puck-css --filter=@p1/agent --continue || true
+      - name: Build everything
+        run: pnpm exec turbo run build
+      # Findings, not pass/fail — the hard gate is the `verify` job. Type-aware
+      # rules need the workspace built first or they report against `any`.
+      - name: Lint to SARIF
+        run: pnpm lint:sarif
+      # A single run: code scanning rejects multiple runs sharing a category.
+      - uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: sarif/eslint.sarif
+          category: eslint
 
   integration-db:
     name: postgres integration (CSS worker)

@@ -9,6 +9,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { makePrincipal } from '../helpers/principal';
+import { makeBranch } from '../helpers/branch';
 
 // Mock services — follow existing pattern from document-api.spec.ts
 vi.mock('../../src/services', () => ({
@@ -93,7 +95,7 @@ describe('Document API — puckActions passthrough', () => {
     const { handleDocumentRoutes } = await import('../../src/routes/document-api');
     const services = await import('../../src/services');
 
-    vi.mocked(services.getBranch).mockResolvedValueOnce({
+    vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
       id: 'branch-1',
       siteId: 'site-1',
       name: 'main',
@@ -103,7 +105,7 @@ describe('Document API — puckActions passthrough', () => {
       createdByType: 'user',
       createdAt: '2026-01-24T10:00:00.000Z',
       updatedAt: '2026-01-24T10:00:00.000Z',
-    });
+    }));
     vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(true);
     vi.mocked(services.createDocumentVersion).mockResolvedValueOnce({
       id: 'version-new',
@@ -139,7 +141,7 @@ describe('Document API — puckActions passthrough', () => {
       branchId: 'branch-1',
       documentId: 'doc-1',
       versionsPath: true,
-      principal: { id: 'user-1', type: 'user' },
+      principal: makePrincipal({ id: 'user-1', type: 'user' }),
     });
 
     expect(response.status).toBe(201);
@@ -156,7 +158,7 @@ describe('Document API — puckActions passthrough', () => {
     const { handleDocumentRoutes } = await import('../../src/routes/document-api');
     const services = await import('../../src/services');
 
-    vi.mocked(services.getBranch).mockResolvedValueOnce({
+    vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
       id: 'branch-1',
       siteId: 'site-1',
       name: 'main',
@@ -166,7 +168,7 @@ describe('Document API — puckActions passthrough', () => {
       createdByType: 'user',
       createdAt: '2026-01-24T10:00:00.000Z',
       updatedAt: '2026-01-24T10:00:00.000Z',
-    });
+    }));
     vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(true);
     vi.mocked(services.createDocumentVersion).mockResolvedValueOnce({
       id: 'version-new',
@@ -196,7 +198,7 @@ describe('Document API — puckActions passthrough', () => {
       branchId: 'branch-1',
       documentId: 'doc-1',
       versionsPath: true,
-      principal: { id: 'user-1', type: 'user' },
+      principal: makePrincipal({ id: 'user-1', type: 'user' }),
     });
 
     expect(response.status).toBe(201);

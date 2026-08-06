@@ -45,7 +45,7 @@ function mockApplyEditsFlow(currentSnapshot: Record<string, unknown>): void {
 
 function forwardedOperations(): ForwardedOp[] {
   const call = mockFetch.mock.calls.find(
-    ([url]) => typeof url === 'string' && (url as string).endsWith('/edits'),
+    ([url]) => typeof url === 'string' && (url).endsWith('/edits'),
   );
   if (call === undefined) {
     throw new Error('applyEdits request was not forwarded to the backend');
@@ -56,7 +56,7 @@ function forwardedOperations(): ForwardedOp[] {
 
 function editsForwarded(): boolean {
   return mockFetch.mock.calls.some(
-    ([url]) => typeof url === 'string' && (url as string).endsWith('/edits'),
+    ([url]) => typeof url === 'string' && (url).endsWith('/edits'),
   );
 }
 

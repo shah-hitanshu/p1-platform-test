@@ -11,9 +11,7 @@ interface ContentItem {
   props: { id: string; [key: string]: unknown };
 }
 
-interface PinMapRecord {
-  [componentId: string]: boolean;
-}
+type PinMapRecord = Record<string, boolean>;
 
 /**
  * Resolve the template being edited in template mode (document path

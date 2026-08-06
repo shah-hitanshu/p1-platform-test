@@ -6,6 +6,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { AuthenticatedPrincipal } from '../../src/types';
+import { readJson } from '../helpers/http';
 
 // Mock the db module
 vi.mock('../../src/db', () => ({
@@ -80,7 +81,7 @@ describe('Users API Routes', () => {
       });
 
       expect(response.status).toBe(403);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.error).toContain('admin');
     });
 
@@ -139,7 +140,7 @@ describe('Users API Routes', () => {
       });
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.users).toHaveLength(2);
       expect(body.users[0].email).toBe('test@example.com');
       expect(body.users[0].systemRole).toBe('member');
@@ -165,7 +166,7 @@ describe('Users API Routes', () => {
       });
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.users).toHaveLength(0);
     });
   });
@@ -204,7 +205,7 @@ describe('Users API Routes', () => {
       });
 
       expect(response.status).toBe(201);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.email).toBe('test@example.com');
       expect(body.name).toBe('Test User');
       expect(body.systemRole).toBe('member');
@@ -232,7 +233,7 @@ describe('Users API Routes', () => {
       });
 
       expect(response.status).toBe(400);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.error).toContain('email');
     });
 
@@ -257,7 +258,7 @@ describe('Users API Routes', () => {
       });
 
       expect(response.status).toBe(400);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.error).toContain('Invalid systemRole');
     });
 
@@ -288,7 +289,7 @@ describe('Users API Routes', () => {
       });
 
       expect(response.status).toBe(409);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.error).toContain('already exists');
     });
   });
@@ -320,7 +321,7 @@ describe('Users API Routes', () => {
       });
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.systemRole).toBe('admin');
     });
 
@@ -350,7 +351,7 @@ describe('Users API Routes', () => {
       });
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.isActive).toBe(false);
     });
 
@@ -376,7 +377,7 @@ describe('Users API Routes', () => {
       });
 
       expect(response.status).toBe(400);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.error).toContain('No fields');
     });
 

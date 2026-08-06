@@ -341,7 +341,6 @@ vi.mock('../core/P1PuckContext', () => ({
 }));
 
 import { createP1Plugin } from '../editor/plugin/P1Plugin.js';
-import { P1EditorHeader } from '../pds/components/P1EditorHeader.js';
 import { PageNavigator } from '../pds/components/PageNavigator.js';
 
 describe('P1Plugin PDS button classes', () => {

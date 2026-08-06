@@ -7,6 +7,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { AuthenticatedPrincipal } from '../../src/types';
+import { readJson } from '../helpers/http';
 
 // Mock cloudflare:workers DurableObject base class for Hibernatable WebSocket API
 vi.mock('cloudflare:workers', () => ({
@@ -188,7 +189,7 @@ describe('GET /api/auth/me', () => {
     const response = await module.default.fetch(request, mockEnv, mockContext);
 
     expect(response.status).toBe(401);
-    const body: { error: string } = await response.json();
+    const body: { error: string } = await readJson(response);
     expect(body.error).toBe('Authentication required');
   });
 
@@ -206,7 +207,7 @@ describe('GET /api/auth/me', () => {
     const response = await module.default.fetch(request, mockEnv, mockContext);
 
     expect(response.status).toBe(401);
-    const body: { error: string } = await response.json();
+    const body: { error: string } = await readJson(response);
     expect(body.error).toBe('Authentication required');
   });
 
@@ -224,7 +225,7 @@ describe('GET /api/auth/me', () => {
     const response = await module.default.fetch(request, mockEnv, mockContext);
 
     expect(response.status).toBe(200);
-    const body: Record<string, unknown> = await response.json();
+    const body: Record<string, unknown> = await readJson(response);
     expect(body.id).toBe(mockTokenPrincipal.id);
     expect(body.type).toBe(mockTokenPrincipal.type);
     expect(body.email).toBe(mockTokenPrincipal.email);
@@ -249,7 +250,7 @@ describe('GET /api/auth/me', () => {
     const response = await module.default.fetch(request, mockEnv, mockContext);
 
     expect(response.status).toBe(200);
-    const body: Record<string, unknown> = await response.json();
+    const body: Record<string, unknown> = await readJson(response);
     const keys = Object.keys(body);
     expect(keys).toEqual(
       expect.arrayContaining(['id', 'type', 'email', 'name', 'avatarUrl', 'authProvider', 'tokenExpiry', 'providerSubjectId']),

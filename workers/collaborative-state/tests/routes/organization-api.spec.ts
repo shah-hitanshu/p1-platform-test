@@ -6,6 +6,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { readJson } from '../helpers/http';
 
 // Mock the services
 vi.mock('../../src/services', () => ({
@@ -78,7 +79,7 @@ describe('Agent Politeness Phase 1.5: Organization API Routes', () => {
       });
 
       expect(response.status).toBe(201);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.id).toBe('org-uuid-123');
       expect(body.name).toBe('Test Organization');
     });
@@ -105,7 +106,7 @@ describe('Agent Politeness Phase 1.5: Organization API Routes', () => {
       });
 
       expect(response.status).toBe(201);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.settings.agentIdleTimeoutMs).toBe(10000);
     });
 
@@ -123,7 +124,7 @@ describe('Agent Politeness Phase 1.5: Organization API Routes', () => {
       });
 
       expect(response.status).toBe(400);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.error).toContain('name');
     });
 
@@ -172,7 +173,7 @@ describe('Agent Politeness Phase 1.5: Organization API Routes', () => {
       });
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.organizations).toHaveLength(2);
     });
 
@@ -218,7 +219,7 @@ describe('Agent Politeness Phase 1.5: Organization API Routes', () => {
       });
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.id).toBe('org-uuid-123');
     });
 
@@ -266,7 +267,7 @@ describe('Agent Politeness Phase 1.5: Organization API Routes', () => {
       });
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.name).toBe('Updated Name');
     });
 
@@ -290,7 +291,7 @@ describe('Agent Politeness Phase 1.5: Organization API Routes', () => {
       });
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.settings.agentIdleTimeoutMs).toBe(15000);
     });
 
@@ -374,7 +375,7 @@ describe('Agent Politeness Phase 1.5: Organization API Routes', () => {
       });
 
       expect(response.status).toBe(409);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.error).toContain('linked sites');
     });
   });
@@ -411,7 +412,7 @@ describe('Agent Politeness Phase 1.5: Organization API Routes', () => {
       });
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.sites).toHaveLength(1);
       expect(body.sites[0].name).toBe('Site One');
     });

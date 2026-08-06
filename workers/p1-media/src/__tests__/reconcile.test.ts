@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { createTestHarness, seedAsset } from './d1-test-harness';
 import { buildKey, finalizeVersionAdd, softDeleteAsset } from '../store';
 import { handleReconcile } from '../handlers/reconcile';
+import { createTestHarness, seedAsset } from './d1-test-harness';
 
 const HOUR_MS = 60 * 60 * 1000;
 const OLD = new Date(Date.now() - 25 * HOUR_MS); // past the 24h cutoff

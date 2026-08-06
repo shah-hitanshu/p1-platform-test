@@ -1,4 +1,4 @@
-import { Env } from '../types';
+import type { Env } from '../types';
 import { validateMetadata } from '../schema';
 import { sanitizeFilename, buildKey, finalizeAssetCreation, finalizeVersionAdd, NotFoundError } from '../store';
 import { DEFAULT_MAX_UPLOAD_BYTES, jsonError } from '../upload-shared';
@@ -45,7 +45,7 @@ async function parseFinalizeRequest(request: Request): Promise<Response | Parsed
   let metadata: Record<string, string> | undefined;
   if (body.metadata && typeof body.metadata === 'object') {
     const check = validateMetadata(body.metadata);
-    if (!check.ok) return jsonError(check.error!, 400);
+    if (!check.ok) return jsonError(check.error, 400);
     metadata = body.metadata as Record<string, string>;
   }
 

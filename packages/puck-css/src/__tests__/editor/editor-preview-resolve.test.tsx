@@ -1,6 +1,5 @@
 import React from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
 
 import { wrapConfigForEditorPreview } from '../../p1/editor/editor-preview-resolve';
 

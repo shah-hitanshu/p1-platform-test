@@ -101,9 +101,9 @@ function formatChangeSummary(counts: {
 function SideBySideView({
   sourceData,
   targetData,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   beforeConfig,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   afterConfig,
   sourceBranchName,
   targetBranchName,
@@ -155,9 +155,9 @@ function SideBySideView({
 function OverlayView({
   sourceData,
   targetData,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   beforeConfig,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   afterConfig,
   sourceBranchName,
   targetBranchName,
@@ -204,9 +204,9 @@ function OverlayView({
 function SliderView({
   sourceData,
   targetData,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   beforeConfig,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   afterConfig,
   sourceBranchName,
   targetBranchName,

@@ -14,6 +14,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
+import { readJson } from '../helpers/http';
 
 // Mock cloudflare:workers DurableObject base class for Hibernatable WebSocket API
 vi.mock('cloudflare:workers', () => ({
@@ -182,7 +183,7 @@ describe('Phase 4.1: Presence Integration', () => {
       const response = await session.fetch(request);
 
       expect(response.status).toBe(200);
-      const body = (await response.json());
+      const body = (await readJson(response));
       expect(body.connectedActors).toBeDefined();
     });
   });
@@ -206,7 +207,7 @@ describe('Phase 4.1: Presence Integration', () => {
       }
 
       expect(response.status).toBe(200);
-      const body = (await response.json());
+      const body = (await readJson(response));
       expect(body.presences).toBeDefined();
       expect(Array.isArray(body.presences)).toBe(true);
     });
@@ -300,7 +301,7 @@ describe('Phase 4.2: Activity Detection Integration', () => {
       const response = await session.fetch(request);
 
       expect(response.status).toBe(200);
-      const body = (await response.json());
+      const body = (await readJson(response));
       expect(body.isIdle).toBe(true);
     });
 
@@ -317,7 +318,7 @@ describe('Phase 4.2: Activity Detection Integration', () => {
       const response = await session.fetch(request);
 
       expect(response.status).toBe(200);
-      const body = (await response.json());
+      const body = (await readJson(response));
       expect(body.idleTimeoutMs).toBeGreaterThan(0);
     });
   });
@@ -356,7 +357,7 @@ describe('Phase 4.3: Agent Edit Permission Integration', () => {
       const response = await session.fetch(request);
 
       expect(response.status).toBe(200);
-      const body = (await response.json());
+      const body = (await readJson(response));
       expect(body.allowed).toBe(true);
     });
 
@@ -398,7 +399,7 @@ describe('Phase 4.3: Agent Edit Permission Integration', () => {
       const response = await session.fetch(request);
 
       expect(response.status).toBe(200);
-      const body = (await response.json());
+      const body = (await readJson(response));
       // May be denied due to recent activity or region conflict
       expect(typeof body.allowed).toBe('boolean');
     });
@@ -425,7 +426,7 @@ describe('Phase 4.3: Agent Edit Permission Integration', () => {
       const response = await session.fetch(request);
 
       expect(response.status).toBe(200);
-      const body = (await response.json());
+      const body = (await readJson(response));
       expect(body.allowed).toBe(true);
     });
 
@@ -451,7 +452,7 @@ describe('Phase 4.3: Agent Edit Permission Integration', () => {
       const response = await session.fetch(request);
 
       expect(response.status).toBe(200);
-      const body = (await response.json());
+      const body = (await readJson(response));
       expect(body).toHaveProperty('conflictingRegions');
     });
 
@@ -513,7 +514,7 @@ describe('Phase 4.4: Agent Edit Workflow', () => {
       const response = await session.fetch(request);
 
       expect(response.status).toBe(200);
-      const body = (await response.json());
+      const body = (await readJson(response));
       expect(body.editSessionId).toBeDefined();
       // For autonomous work, a checkpoint should be created
       expect(body.checkpointId).toBeDefined();
@@ -542,7 +543,7 @@ describe('Phase 4.4: Agent Edit Workflow', () => {
       const response = await session.fetch(request);
 
       expect(response.status).toBe(200);
-      const body = (await response.json());
+      const body = (await readJson(response));
       expect(body.editSessionId).toBeDefined();
       // For human-requested work, no automatic checkpoint
       expect(body.checkpointId).toBeUndefined();
@@ -733,7 +734,7 @@ describe('Phase 4.4: Agent Edit Workflow', () => {
       const response = await session.fetch(request);
 
       // May be denied (403) or return allowed: false
-      const body = (await response.json());
+      const body = (await readJson(response));
       if (response.status === 200) {
         expect(body.allowed).toBeDefined();
       } else {
@@ -780,7 +781,7 @@ describe('Phase 4.4: Agent Edit Workflow', () => {
       const response = await session.fetch(request);
 
       expect(response.status).toBe(200);
-      const body = (await response.json());
+      const body = (await readJson(response));
       expect(body.success).toBe(true);
     });
 
@@ -999,7 +1000,7 @@ describe('Phase 4.4: Agent Edit Workflow', () => {
       const response = await session.fetch(request);
 
       expect(response.status).toBe(200);
-      const body = (await response.json());
+      const body = (await readJson(response));
       expect(body.success).toBe(true);
       // Note: rolledBack is false because internal API is not configured in test env
       // In production with internal API configured, this would call the rollback endpoint
@@ -1154,7 +1155,7 @@ describe('Phase 4.4: Agent Edit Workflow', () => {
       const response = await session.fetch(request);
 
       expect(response.status).toBe(200);
-      const body = (await response.json());
+      const body = (await readJson(response));
       expect(body.success).toBe(true);
       // rolledBack is false in test env because internal API is not configured
       // In production with internal API, this would be true for autonomous sessions
@@ -1181,7 +1182,7 @@ describe('Phase 4.4: Agent Edit Workflow', () => {
       const response = await session.fetch(request);
 
       expect(response.status).toBe(200);
-      const body = (await response.json());
+      const body = (await readJson(response));
       expect(body.success).toBe(true);
       expect(body.rolledBack).toBe(false);
       expect(body.message).toBe('No active session for agent');
@@ -1301,7 +1302,7 @@ describe('Phase 4.4: Agent Edit Workflow', () => {
       const response = await session.fetch(request);
 
       expect(response.status).toBe(400);
-      const body = (await response.json());
+      const body = (await readJson(response));
       expect(body.error).toContain('agentId');
     });
   });
@@ -1335,7 +1336,7 @@ describe('Phase 4.4: Agent Edit Workflow', () => {
       const response = await session.fetch(request);
 
       expect(response.status).toBe(200);
-      const body = (await response.json());
+      const body = (await readJson(response));
       expect(body.sessions.length).toBe(1);
       expect(body.sessions[0].ownerId).toBe('agent-123');
     });
@@ -1413,7 +1414,7 @@ describe('Phase 4.5: Idle Timeout Configuration', () => {
       const response = await session.fetch(request);
 
       expect(response.status).toBe(200);
-      const body = (await response.json());
+      const body = (await readJson(response));
       expect(body.idleTimeoutMs).toBe(60000);
     });
 
@@ -1461,7 +1462,7 @@ describe('Phase 4.5: Idle Timeout Configuration', () => {
         new Request('http://localhost/activity-state'),
       );
 
-      const body = (await response.json());
+      const body = (await readJson(response));
       expect(body.idleTimeoutMs).toBe(45000);
     });
   });
@@ -1505,7 +1506,7 @@ describe('Phase 4.6: Agent /apply Session Enforcement', () => {
       const response = await session.fetch(request);
 
       expect(response.status).toBe(400);
-      const body = (await response.json());
+      const body = (await readJson(response));
       expect(body.error).toContain('editSessionId');
     });
 
@@ -1537,7 +1538,7 @@ describe('Phase 4.6: Agent /apply Session Enforcement', () => {
       const response = await session.fetch(request);
 
       expect(response.status).toBe(403);
-      const body = (await response.json());
+      const body = (await readJson(response));
       expect(body.error).toContain('session');
     });
 
@@ -1631,7 +1632,7 @@ describe('Phase 4.6: Agent /apply Session Enforcement', () => {
       const response = await session.fetch(request);
 
       expect(response.status).toBe(403);
-      const body = (await response.json());
+      const body = (await readJson(response));
       expect(body.error).toContain('session');
     });
 

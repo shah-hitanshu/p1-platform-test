@@ -22,9 +22,11 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
-    "type-check": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
+    "lint": "eslint src test",
+    "lint:fix": "eslint src test --fix",
+    "prepublishOnly": "pnpm run build",
     "test": "vitest run",
-    "prepublishOnly": "pnpm run build"
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json"
   },
   "dependencies": {
     "react-markdown": "^10.1.0",
@@ -38,12 +40,14 @@
     "react": "^18.0.0 || ^19.0.0"
   },
   "devDependencies": {
+    "@pantheon-systems/eslint-config": "workspace:*",
     "@pantheon-systems/pds-toolkit-react": "2.0.0-alpha.43",
     "@pantheon-systems/puck-css": "workspace:*",
     "@puckeditor/core": "^0.21.1",
     "@testing-library/dom": "^10.4.0",
     "@testing-library/react": "^16.1.0",
     "@types/react": "^19.2.14",
+    "eslint": "^9.27.0",
     "happy-dom": "^20.10.6",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

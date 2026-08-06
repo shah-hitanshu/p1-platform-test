@@ -183,7 +183,7 @@ describe('DocumentSession WebSocket publish handler', () => {
   });
 
   // Helper: create a DO, initialize it, and set up a WebSocket
-  // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+
   async function createSessionWithWebSocket(
     sessionId = 'site-1:doc-1:branch-1',
     envOverrides: Partial<PublishEnv> = {},

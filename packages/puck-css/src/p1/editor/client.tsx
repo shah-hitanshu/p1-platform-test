@@ -4,17 +4,17 @@ import type { Config, Data } from "@puckeditor/core";
 import { Puck } from "@puckeditor/core";
 import type { ReactNode } from "react";
 import { useCallback, useMemo } from "react";
+import { Toaster, ToastType, useToast } from "@pantheon-systems/pds-toolkit-react";
 import type { RemoteDatasourceDefinition } from "../../data/remote-datasources/remote-datasource-registry";
 import type { RemoteDatasourceContext } from "../../data/remote-datasources/loader";
 import type { RouteRow } from "../../data/page-store";
+import { P1QueryProvider } from "../../data/query-provider";
 import { createRemoteDatasourceExplorerPlugin } from "./remote-datasources/remote-datasource-explorer-plugin";
 import { createFieldConnectPlugin } from "./connect/field-connect-plugin";
 import {
   createPreviewResolvePlugin,
   wrapConfigForEditorPreview,
 } from "./editor-preview-resolve";
-import { Toaster, ToastType, useToast } from "@pantheon-systems/pds-toolkit-react";
-import { P1QueryProvider } from "../../data/query-provider";
 import { usePublish } from "./hooks/api-hooks";
 import { ButtonBlockIcon } from "./icons/button-block-icon";
 import { DefaultBlockIcon } from "./icons/default-block-icon";

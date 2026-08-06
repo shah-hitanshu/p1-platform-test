@@ -13,6 +13,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import postgres from 'postgres';
 import { setDatabaseInstance } from '../../src/db';
 import type { AuthenticatedPrincipal } from '../../src/types';
+import { readJson } from '../helpers/http';
 
 const TEST_DATABASE_URL =
   process.env.POSTGRES_CONNECTION_STRING ??
@@ -140,7 +141,7 @@ describe('Document API - write:registry Scope Path Guard', () => {
     });
 
     expect(response.status).toBe(201);
-    const body = await response.json();
+    const body = await readJson(response);
     expect(body.document.path).toBe('_registry/components/hero');
 
     const versions = await sql<{ created_by_type: string; created_by_id: string }[]>`
@@ -173,7 +174,7 @@ describe('Document API - write:registry Scope Path Guard', () => {
     });
 
     expect(response.status).toBe(201);
-    const body = await response.json();
+    const body = await readJson(response);
     expect(body.document.path).toBe('_registry/index');
   });
 
@@ -251,7 +252,7 @@ describe('Document API - write:registry Scope Path Guard', () => {
     });
 
     expect(response.status).toBe(403);
-    const body = await response.json();
+    const body = await readJson(response);
     expect(body.error).toContain('write:registry');
 
     const docs = await sql<{ path: string }[]>`
@@ -282,7 +283,7 @@ describe('Document API - write:registry Scope Path Guard', () => {
     });
 
     expect(response.status).toBe(403);
-    const body = await response.json();
+    const body = await readJson(response);
     // Must be denied by the write:registry path guard specifically, not by
     // getEffectiveRole's generic service-principal refusal — those two
     // failure modes are indistinguishable by status code alone.
@@ -331,7 +332,7 @@ describe('Document API - write:registry Scope Path Guard', () => {
     });
 
     expect(response.status).toBe(403);
-    const body = await response.json();
+    const body = await readJson(response);
     expect(body.error).toContain('write:registry');
 
     const versions = await sql<{ id: string }[]>`
@@ -376,7 +377,7 @@ describe('Document API - write:registry Scope Path Guard', () => {
     });
 
     expect(response.status).toBe(403);
-    const body = await response.json();
+    const body = await readJson(response);
     expect(body.error).toContain('write:registry');
   });
 
@@ -403,7 +404,7 @@ describe('Document API - write:registry Scope Path Guard', () => {
     });
 
     expect(response.status).toBe(403);
-    const body = await response.json();
+    const body = await readJson(response);
     expect(body.error).toContain('write:registry');
 
     const docs = await sql<{ archived_at: string | null }[]>`
@@ -430,7 +431,7 @@ describe('Document API - write:registry Scope Path Guard', () => {
     });
 
     expect(response.status).toBe(403);
-    const body = await response.json();
+    const body = await readJson(response);
     expect(body.error).toContain('write:registry');
 
     const docs = await sql<{ path: string }[]>`
@@ -473,7 +474,7 @@ describe('Document API - write:registry Scope Path Guard', () => {
     });
 
     expect(response.status).toBe(200);
-    const body = await response.json();
+    const body = await readJson(response);
     expect(body.path).toBe('_registry/components/read-check');
   });
 });

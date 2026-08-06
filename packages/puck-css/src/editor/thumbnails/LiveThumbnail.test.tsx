@@ -51,7 +51,7 @@ describe('LiveThumbnail', () => {
     render(<LiveThumbnail config={config} name="HeroBlock" />);
 
     expect(renderSpy).toHaveBeenCalledTimes(1);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const { config: passedConfig, data } = renderSpy.mock.calls[0][0] as any;
     expect(passedConfig.components).toBe(config.components);
     expect(data.content).toHaveLength(1);
@@ -66,13 +66,13 @@ describe('LiveThumbnail', () => {
       ...config,
       root: {
         render: ({ children }: { children?: unknown }) =>
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
           ({ type: 'h1-wrapper', children } as any),
       },
     };
     render(<LiveThumbnail config={configWithRoot} name="HeroBlock" />);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const { config: passedConfig } = renderSpy.mock.calls[0][0] as any;
     // The site's real root.render must never reach Puck's <Render> here —
     // a page-level wrapper (e.g. a title <h1>) would otherwise leak the
@@ -84,7 +84,7 @@ describe('LiveThumbnail', () => {
   it('handles a component with no defaultProps', () => {
     render(<LiveThumbnail config={config} name="BareBlock" />);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const { data } = renderSpy.mock.calls[0][0] as any;
     expect(data.content[0].type).toBe('BareBlock');
     expect(data.content[0].props).toEqual({ id: expect.any(String) });

@@ -43,7 +43,7 @@ const baseContext: ChatContext = {
   token: 'tok',
 };
 
-function chatFrames(ws: MockWebSocket): Array<{ type: string; message: string; context: ChatContext }> {
+function chatFrames(ws: MockWebSocket): { type: string; message: string; context: ChatContext }[] {
   return ws.sent.map((s) => JSON.parse(s)).filter((f) => f.type === 'chat');
 }
 

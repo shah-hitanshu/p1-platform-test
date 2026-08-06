@@ -10,6 +10,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
+import { readJson } from '../helpers/http';
 
 // Mock cloudflare:workers DurableObject base class for Hibernatable WebSocket API
 vi.mock('cloudflare:workers', () => ({
@@ -133,7 +134,7 @@ describe('DocumentSession /update-focus-regions endpoint', () => {
 
       const response = await session.fetch(request);
       expect(response.status).toBe(403);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.error).toContain('user');
     });
 
@@ -201,7 +202,7 @@ describe('DocumentSession /update-focus-regions endpoint', () => {
 
       const response = await session.fetch(request);
       expect(response.status).toBe(400);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.error).toContain('actorId');
     });
 
@@ -227,7 +228,7 @@ describe('DocumentSession /update-focus-regions endpoint', () => {
 
       const response = await session.fetch(request);
       expect(response.status).toBe(400);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.error).toContain('focusRegions');
     });
 
@@ -260,7 +261,7 @@ describe('DocumentSession /update-focus-regions endpoint', () => {
 
       const response = await session.fetch(request);
       expect(response.status).toBe(400);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.error).toContain('50');
     });
   });
@@ -290,7 +291,7 @@ describe('DocumentSession /update-focus-regions endpoint', () => {
       const response = await session.fetch(request);
       expect(response.status).toBe(200);
 
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.success).toBe(true);
       expect(body.focusRegions).toContain('/content/0');
       expect(body.focusRegions).toContain('/content/1');
@@ -334,7 +335,7 @@ describe('DocumentSession /update-focus-regions endpoint', () => {
       const response = await session.fetch(clearRequest);
       expect(response.status).toBe(200);
 
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.success).toBe(true);
       expect(body.focusRegions).toEqual([]);
     });
@@ -377,7 +378,7 @@ describe('DocumentSession /update-focus-regions endpoint', () => {
       const response = await session.fetch(request);
       expect(response.status).toBe(200);
 
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.focusRegions).toHaveLength(2);
       expect(body.focusRegions).not.toContain('/content/0');
       expect(body.focusRegions).toContain('/content/1');
@@ -424,7 +425,7 @@ describe('DocumentSession /update-focus-regions endpoint', () => {
       const response = await session.fetch(agentRequest);
       expect(response.status).toBe(200);
 
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.allowed).toBe(false);
       expect(body.reason).toBe('region_conflict');
       expect(body.conflictingRegions).toContain('/content/0');
@@ -468,7 +469,7 @@ describe('DocumentSession /update-focus-regions endpoint', () => {
       const response = await session.fetch(agentRequest);
       expect(response.status).toBe(200);
 
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.allowed).toBe(true);
     });
   });
@@ -501,7 +502,7 @@ describe('DocumentSession /update-focus-regions endpoint', () => {
       const response = await session.fetch(presenceRequest);
       expect(response.status).toBe(200);
 
-      const body = await response.json();
+      const body = await readJson(response);
       const userPresence = body.presences.find(
         (p: { actorId: string }) => p.actorId === 'user-123',
       );

@@ -16,6 +16,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
 import type { EditOperation, ConnectionMeta } from '../../src/types';
+import { readJson } from '../helpers/http';
 
 // Mock cloudflare:workers DurableObject base class for Hibernatable WebSocket API
 vi.mock('cloudflare:workers', () => ({
@@ -148,7 +149,7 @@ describe('Phase 4.1: DocumentSession Durable Object', () => {
       const response = await session.fetch(request);
 
       expect(response.status).toBe(200);
-      const data = await response.json();
+      const data = await readJson(response);
       expect(data).toHaveProperty('snapshot');
       expect(data).toHaveProperty('stateVector');
       expect(data).toHaveProperty('connectedActors');
@@ -169,7 +170,7 @@ describe('Phase 4.1: DocumentSession Durable Object', () => {
       const response = await session.fetch(request);
 
       expect(response.status).toBe(200);
-      const data = await response.json();
+      const data = await readJson(response);
       expect(data.success).toBe(true);
     });
 
@@ -212,7 +213,7 @@ describe('Phase 4.1: DocumentSession Durable Object', () => {
       const response = await session.fetch(request);
 
       expect(response.status).toBe(200);
-      const data = await response.json();
+      const data = await readJson(response);
       expect(data.snapshot).toEqual({});
       expect(data.connectedActors).toEqual([]);
     });
@@ -224,7 +225,7 @@ describe('Phase 4.1: DocumentSession Durable Object', () => {
       const request = new Request('http://localhost/snapshot');
       const response = await session.fetch(request);
 
-      const data = await response.json();
+      const data = await readJson(response);
       expect(Array.isArray(data.stateVector)).toBe(true);
     });
 
@@ -237,7 +238,7 @@ describe('Phase 4.1: DocumentSession Durable Object', () => {
       const request = new Request('http://localhost/snapshot');
       const response = await session.fetch(request);
 
-      const data = await response.json();
+      const data = await readJson(response);
       expect(Array.isArray(data.connectedActors)).toBe(true);
     });
 
@@ -277,7 +278,7 @@ describe('Phase 4.1: DocumentSession Durable Object', () => {
       const response = await session.fetch(request);
 
       expect(response.status).toBe(200);
-      const data = await response.json();
+      const data = await readJson(response);
       expect(data.success).toBe(true);
       expect(data.snapshot.title).toBe('My Document');
     });
@@ -299,7 +300,7 @@ describe('Phase 4.1: DocumentSession Durable Object', () => {
       const response = await session.fetch(request);
 
       expect(response.status).toBe(200);
-      const data = await response.json();
+      const data = await readJson(response);
       expect(data.success).toBe(true);
       const metadata = data.snapshot.metadata as Record<string, unknown> | undefined;
       expect(metadata?.author).toBe('Alice');
@@ -331,7 +332,7 @@ describe('Phase 4.1: DocumentSession Durable Object', () => {
       const response = await session.fetch(request);
 
       expect(response.status).toBe(200);
-      const data = await response.json();
+      const data = await readJson(response);
       expect(data.success).toBe(true);
       expect(data.snapshot.toDelete).toBeUndefined();
     });
@@ -367,7 +368,7 @@ describe('Phase 4.1: DocumentSession Durable Object', () => {
       const response = await session.fetch(request);
 
       expect(response.status).toBe(200);
-      const data = await response.json();
+      const data = await readJson(response);
       expect(data.success).toBe(true);
       expect(Array.isArray(data.snapshot.components)).toBe(true);
       const components = data.snapshot.components as Record<string, unknown>[];
@@ -409,7 +410,7 @@ describe('Phase 4.1: DocumentSession Durable Object', () => {
       const response = await session.fetch(request);
 
       expect(response.status).toBe(200);
-      const data = await response.json();
+      const data = await readJson(response);
       expect(data.success).toBe(true);
       // After move: ['b', 'c', 'a']
       expect(data.snapshot.items).toEqual(['b', 'c', 'a']);
@@ -445,7 +446,7 @@ describe('Phase 4.1: DocumentSession Durable Object', () => {
       const response = await session.fetch(request);
 
       expect(response.status).toBe(200);
-      const data = await response.json();
+      const data = await readJson(response);
       expect(data.success).toBe(true);
       expect(data.snapshot.content).toBe('new content');
     });
@@ -468,7 +469,7 @@ describe('Phase 4.1: DocumentSession Durable Object', () => {
       const response = await session.fetch(request);
 
       expect(response.status).toBe(200);
-      const data = await response.json();
+      const data = await readJson(response);
       expect(data.success).toBe(true);
       expect(data.operationsApplied).toBe(3);
       expect(data.snapshot.title).toBe('Document');
@@ -542,7 +543,7 @@ describe('Phase 4.1: DocumentSession Durable Object', () => {
       const response = await session.fetch(request);
 
       expect(response.status).toBe(200);
-      const data = await response.json();
+      const data = await readJson(response);
       expect(data.success).toBe(true);
 
       // Critical: content should still be an array, not corrupted to an object
@@ -570,7 +571,7 @@ describe('Phase 4.1: DocumentSession Durable Object', () => {
       const response = await session.fetch(request);
 
       expect(response.status).toBe(400);
-      const data = await response.json();
+      const data = await readJson(response);
       expect(data.success).toBe(false);
       expect(data.error).toContain('Invalid operation type');
     });
@@ -590,7 +591,7 @@ describe('Phase 4.1: DocumentSession Durable Object', () => {
       const response = await session.fetch(request);
 
       expect(response.status).toBe(400);
-      const data = await response.json();
+      const data = await readJson(response);
       expect(data.success).toBe(false);
       expect(data.error).toContain('actorId');
     });
@@ -724,7 +725,7 @@ describe('Phase 4.1: DocumentSession Durable Object', () => {
       const request = new Request('http://localhost/snapshot');
       const response = await session.fetch(request);
 
-      const data = await response.json();
+      const data = await readJson(response);
       expect(data.snapshot).toEqual({});
     });
 
@@ -764,7 +765,7 @@ describe('Phase 4.1: DocumentSession Durable Object', () => {
         body: JSON.stringify({ operations: ops2, actorId: 'user-2' }),
       }));
 
-      const data = await response.json();
+      const data = await readJson(response);
       expect(data.snapshot.value).toBe(2);
     });
 
@@ -787,7 +788,7 @@ describe('Phase 4.1: DocumentSession Durable Object', () => {
       const response = await session.fetch(request);
 
       expect(response.status).toBe(200);
-      const data = await response.json();
+      const data = await readJson(response);
       const level1 = data.snapshot.level1 as Record<string, Record<string, Record<string, unknown>>> | undefined;
       expect(level1?.level2?.level3?.value).toBe('deep');
     });
@@ -826,7 +827,7 @@ describe('Phase 4.1: DocumentSession Durable Object', () => {
       }));
 
       expect(response.status).toBe(200);
-      const data = await response.json();
+      const data = await readJson(response);
       const page = data.snapshot.page as Record<string, unknown> | undefined;
       const sections = page?.sections as Record<string, unknown>[] | undefined;
       expect(Array.isArray(sections)).toBe(true);
@@ -843,7 +844,7 @@ describe('Phase 4.1: DocumentSession Durable Object', () => {
       const request = new Request('http://localhost/snapshot');
       const response = await session.fetch(request);
 
-      const data = await response.json();
+      const data = await readJson(response);
       expect(data.connectedActors).toEqual([]);
     });
 
@@ -869,7 +870,7 @@ describe('Phase 4.1: DocumentSession Durable Object', () => {
       const response = await session.fetch(request);
 
       expect(response.status).toBe(400);
-      const data = await response.json();
+      const data = await readJson(response);
       expect(data.success).toBe(false);
     });
 
@@ -885,7 +886,7 @@ describe('Phase 4.1: DocumentSession Durable Object', () => {
       const response = await session.fetch(request);
 
       expect(response.status).toBe(400);
-      const data = await response.json();
+      const data = await readJson(response);
       expect(data.success).toBe(false);
       expect(data.error).toContain('operations');
     });
@@ -902,7 +903,7 @@ describe('Phase 4.1: DocumentSession Durable Object', () => {
       const response = await session.fetch(request);
 
       expect(response.status).toBe(200);
-      const data = await response.json();
+      const data = await readJson(response);
       expect(data.success).toBe(true);
       expect(data.operationsApplied).toBe(0);
     });
@@ -938,7 +939,7 @@ describe('Phase 4.1: DocumentSession Durable Object', () => {
       const request = new Request('http://localhost/snapshot');
       const response = await session.fetch(request);
 
-      const data = await response.json();
+      const data = await readJson(response);
       // State vector is a Yjs concept - if it exists, Yjs is being used
       expect(data.stateVector).toBeDefined();
     });
@@ -1014,7 +1015,7 @@ describe('Phase 1.3: DocumentSession Sync Triggers', () => {
       const response = await session.fetch(request);
 
       expect(response.status).toBe(200);
-      const data = await response.json();
+      const data = await readJson(response);
       expect(data).toHaveProperty('synced');
     });
 
@@ -1088,7 +1089,7 @@ describe('Phase 1.4: DocumentSession PostgreSQL Initialization', () => {
       const session = new DocumentSession(mockState, mockEnv);
 
       const response = await session.fetch(new Request('http://localhost/snapshot'));
-      const data = await response.json();
+      const data = await readJson(response);
 
       expect(data.snapshot).toEqual({});
     });

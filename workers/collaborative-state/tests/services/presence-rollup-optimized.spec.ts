@@ -14,6 +14,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { ActorPresence, Branch, Site } from '../../src/types';
+import { makeBranch } from '../helpers/branch';
 
 // Mock database module
 vi.mock('../../src/db', () => ({
@@ -66,18 +67,14 @@ describe('Phase 3.3: Presence Rollup Optimization (PresenceManager DO)', () => {
   }
 
   function createMockBranch(overrides: Partial<Branch> = {}): Branch {
-    return {
+    return makeBranch({
       id: 'branch-uuid-123',
       siteId: 'site-uuid-123',
-      name: 'main',
-      status: 'active',
-      isMain: true,
       createdById: 'user-123',
-      createdByType: 'user',
       createdAt: '2026-01-26T10:00:00.000Z',
       updatedAt: '2026-01-26T10:00:00.000Z',
       ...overrides,
-    };
+    });
   }
 
   function createMockSite(overrides: Partial<Site> = {}): Site {

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useMediaConfig, type MediaConfig } from "../context";
+import type { MetadataFieldDef } from "../types";
 import { useMediaSchema, orderAltFirst } from "./use-media-schema";
 import { buildPatchBody, keepIncompleteRows } from "./staging";
 import { parseMediaList, type MediaItem } from "./media-item";
@@ -17,7 +18,6 @@ import { MediaUploadDropzone } from "./media-upload-dropzone";
 import { MediaUploadPanel } from "./media-upload-panel";
 import { MediaEditPanel } from "./media-edit-panel";
 import { MediaGrid } from "./media-grid";
-import type { MetadataFieldDef } from "../types";
 
 export type { MediaItem } from "./media-item";
 
@@ -57,7 +57,7 @@ export function MediaLibrary({ isOpen, onClose, onSelect, onSelectItem }: MediaL
   // — which unmounts/remounts the grid — doesn't lose the focused tile.
   const [focusIdx, setFocusIdx] = useState(0);
   // Files staged for upload — shown in the metadata grid before POSTing.
-  const [pending, setPending] = useState<Array<{ file: File; previewUrl: string }>>([]);
+  const [pending, setPending] = useState<{ file: File; previewUrl: string }[]>([]);
   const [pendingValues, setPendingValues] = useState<string[][]>([]);
   // Per-row upload progress/status, position-matched with `pending`. `progress`
   // survives a failed attempt so a retry resumes from the step that failed
@@ -305,12 +305,13 @@ export function MediaLibrary({ isOpen, onClose, onSelect, onSelectItem }: MediaL
   // per-tile confirmation overlay instead of window.confirm — a native
   // dialog blocks the whole page (including any browser automation driving it).
   const deleteItem = (item: MediaItem) => {
-    if (!item.assetId) return; // soft delete is by assetId (frozen contract)
+    const { assetId } = item; // soft delete is by assetId (frozen contract)
+    if (!assetId) return;
     (async () => {
       try {
         const params = siteParams(config);
         const response = await fetch(
-          config.workerUrl + "/media/" + encodeURIComponent(item.assetId!) + "?" + params.toString(),
+          config.workerUrl + "/media/" + encodeURIComponent(assetId) + "?" + params.toString(),
           {
             method: "DELETE",
             headers: await getAuthHeaders(),

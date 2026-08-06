@@ -16,7 +16,7 @@ const CDN_URL = `${CDN}/site/assets/a/v-photo.jpg`;
 interface Collected {
   texts: string[];
   hasDangerousHtml: boolean;
-  imgs: Array<Record<string, unknown>>;
+  imgs: Record<string, unknown>[];
   figcaptions: number;
 }
 

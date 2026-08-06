@@ -17,6 +17,7 @@ vi.mock('cloudflare:workers', () => ({
 }));
 
 import { BrokerTransaction } from '../../../src/durable-objects/broker-transaction.js';
+import { readJson } from '../../helpers/http';
 
 function createMockDurableObjectState(id: string): DurableObjectState {
   const storage = new Map<string, unknown>();
@@ -59,7 +60,7 @@ describe('BrokerTransaction Durable Object', () => {
       });
 
       const response = await doInstance.fetch(request);
-      const tx = await response.json();
+      const tx = await readJson(response);
 
       expect(tx.id).toBe('tx-123');
       expect(tx.siteId).toBe('site-123');
@@ -78,7 +79,7 @@ describe('BrokerTransaction Durable Object', () => {
       });
 
       const response = await doInstance.fetch(request);
-      const tx = await response.json();
+      const tx: { expiresAt: number; createdAt: number } = await readJson(response);
 
       expect(tx.expiresAt).toBe(tx.createdAt + 300);
     });
@@ -114,7 +115,7 @@ describe('BrokerTransaction Durable Object', () => {
       });
 
       const response = await doInstance.fetch(request);
-      const tx = await response.json();
+      const tx = await readJson(response);
 
       expect(tx.redirectUrl).toBe('https://myapp.example.com/p1/editor');
     });
@@ -130,7 +131,7 @@ describe('BrokerTransaction Durable Object', () => {
       });
 
       const response = await doInstance.fetch(request);
-      const tx = await response.json();
+      const tx = await readJson(response);
 
       expect(tx.redirectUrl).toBeUndefined();
     });
@@ -143,7 +144,7 @@ describe('BrokerTransaction Durable Object', () => {
 
       const request = new Request('http://do/get');
       const response = await doInstance.fetch(request);
-      const tx = await response.json();
+      const tx = await readJson(response);
 
       expect(tx).toBeNull();
     });
@@ -160,7 +161,7 @@ describe('BrokerTransaction Durable Object', () => {
 
       const getRequest = new Request('http://do/get');
       const response = await doInstance.fetch(getRequest);
-      const tx = await response.json();
+      const tx = await readJson(response);
 
       expect(tx).not.toBeNull();
       expect(tx.id).toBe('tx-retrieve');
@@ -191,7 +192,7 @@ describe('BrokerTransaction Durable Object', () => {
       });
 
       const response = await doInstance.fetch(approveRequest);
-      const approved = await response.json();
+      const approved = await readJson(response);
 
       expect(approved).not.toBeNull();
       expect(approved.status).toBe('approved');
@@ -214,7 +215,7 @@ describe('BrokerTransaction Durable Object', () => {
       });
 
       const response = await doInstance.fetch(approveRequest);
-      const result = await response.json();
+      const result = await readJson(response);
 
       expect(result).toBeNull();
     });
@@ -248,7 +249,7 @@ describe('BrokerTransaction Durable Object', () => {
       });
 
       const response = await doInstance.fetch(secondApprove);
-      const result = await response.json();
+      const result = await readJson(response);
 
       expect(result).toBeNull();
     });
@@ -275,7 +276,7 @@ describe('BrokerTransaction Durable Object', () => {
       });
 
       const response = await doInstance.fetch(approveRequest);
-      const result = await response.json();
+      const result = await readJson(response);
 
       expect(result).toBeNull();
     });
@@ -304,7 +305,7 @@ describe('BrokerTransaction Durable Object', () => {
 
       const redeemRequest = new Request('http://do/redeem', { method: 'POST' });
       const response = await doInstance.fetch(redeemRequest);
-      const redeemed = await response.json();
+      const redeemed = await readJson(response);
 
       expect(redeemed).not.toBeNull();
       expect(redeemed.status).toBe('redeemed');
@@ -318,7 +319,7 @@ describe('BrokerTransaction Durable Object', () => {
 
       const redeemRequest = new Request('http://do/redeem', { method: 'POST' });
       const response = await doInstance.fetch(redeemRequest);
-      const result = await response.json();
+      const result = await readJson(response);
 
       expect(result).toBeNull();
     });
@@ -335,7 +336,7 @@ describe('BrokerTransaction Durable Object', () => {
 
       const redeemRequest = new Request('http://do/redeem', { method: 'POST' });
       const response = await doInstance.fetch(redeemRequest);
-      const result = await response.json();
+      const result = await readJson(response);
 
       expect(result).toBeNull();
     });
@@ -414,7 +415,7 @@ describe('BrokerTransaction Durable Object', () => {
 
       const getRequest = new Request('http://do/get');
       const response = await doInstance.fetch(getRequest);
-      const tx = await response.json();
+      const tx = await readJson(response);
 
       expect(tx).toBeNull();
     });
@@ -437,7 +438,7 @@ describe('BrokerTransaction Durable Object', () => {
 
       const response = await doInstance.fetch(request);
       expect(response.status).toBe(500);
-      const error = await response.json();
+      const error = await readJson(response);
       expect(error.error).toBe('txId exceeds maximum length of 64');
     });
 
@@ -457,7 +458,7 @@ describe('BrokerTransaction Durable Object', () => {
 
       const response = await doInstance.fetch(request);
       expect(response.status).toBe(500);
-      const error = await response.json();
+      const error = await readJson(response);
       expect(error.error).toBe('siteId exceeds maximum length of 128');
     });
 
@@ -482,7 +483,7 @@ describe('BrokerTransaction Durable Object', () => {
 
       const response = await doInstance.fetch(approveRequest);
       expect(response.status).toBe(500);
-      const error = await response.json();
+      const error = await readJson(response);
       expect(error.error).toBe('userEmail exceeds maximum length of 320');
     });
 
@@ -505,7 +506,7 @@ describe('BrokerTransaction Durable Object', () => {
 
       const response = await doInstance.fetch(request);
       expect(response.status).toBe(500);
-      const error = await response.json();
+      const error = await readJson(response);
       expect(error.error).toBe('redirectUrl exceeds maximum length of 2048');
     });
 
@@ -528,7 +529,7 @@ describe('BrokerTransaction Durable Object', () => {
 
       const response = await doInstance.fetch(request);
       expect(response.status).toBe(200);
-      const tx = await response.json();
+      const tx = await readJson(response);
       expect(tx.id).toBe('a'.repeat(64));
     });
   });

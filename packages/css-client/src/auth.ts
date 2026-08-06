@@ -70,7 +70,7 @@ export class InMemoryTokenStorage implements TokenStorage {
  * Browser localStorage token storage implementation.
  */
 export class LocalStorageTokenStorage implements TokenStorage {
-  constructor(private readonly key: string = 'p1_auth_token') {}
+  constructor(private readonly key = 'p1_auth_token') {}
 
   async getToken(): Promise<string | null> {
     if (typeof localStorage === 'undefined') {

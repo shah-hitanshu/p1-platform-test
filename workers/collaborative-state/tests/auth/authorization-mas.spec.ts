@@ -94,7 +94,7 @@ describe('Dual-Source Authorization (MAS Integration)', () => {
 
       const result = await getEffectiveRole(principal, 'site-1', 'branch-1', masClient);
 
-      // eslint-disable-next-line @typescript-eslint/unbound-method
+
       expect(masClient.getUserSiteRole).toHaveBeenCalledWith('user-123', 'site-1');
       expect(result.roleName).toBe('ADMIN');
     });
@@ -123,7 +123,7 @@ describe('Dual-Source Authorization (MAS Integration)', () => {
       // max(EDITOR from developer, ADMIN from admin) = ADMIN
       expect(result.roleName).toBe('ADMIN');
       // MAS data is fresh, so no API call
-      // eslint-disable-next-line @typescript-eslint/unbound-method
+
       expect(masClient.getUserSiteRole).not.toHaveBeenCalled();
     });
 
@@ -153,7 +153,7 @@ describe('Dual-Source Authorization (MAS Integration)', () => {
       const result = await getEffectiveRole(principal, 'site-1', 'branch-1', masClient);
 
       // Should have called MAS API to refresh
-      // eslint-disable-next-line @typescript-eslint/unbound-method
+
       expect(masClient.getUserSiteRole).toHaveBeenCalledWith('user-123', 'site-1');
       expect(result.roleName).toBe('ADMIN');
     });
@@ -228,7 +228,7 @@ describe('Dual-Source Authorization (MAS Integration)', () => {
       const result = await getEffectiveRole(principal, 'site-1', 'branch-1', masClient);
 
       // Should NOT call MAS
-      // eslint-disable-next-line @typescript-eslint/unbound-method
+
       expect(masClient.getUserSiteRole).not.toHaveBeenCalled();
       // Should fall back to JWT
       expect(result.roleName).toBe('EDITOR');
@@ -251,7 +251,7 @@ describe('Dual-Source Authorization (MAS Integration)', () => {
 
       const result = await getEffectiveRole(principal, 'site-1', 'branch-1', masClient);
 
-      // eslint-disable-next-line @typescript-eslint/unbound-method
+
       expect(masClient.getUserSiteRole).not.toHaveBeenCalled();
       expect(result.roleName).toBe('EDITOR');
     });

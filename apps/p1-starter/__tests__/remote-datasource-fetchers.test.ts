@@ -13,8 +13,8 @@ vi.mock("@pantheon-systems/puck-css/server", async (importOriginal) => {
   return actual;
 });
 
-import { REMOTE_DATASOURCE_FETCHERS } from "../lib/remote-datasource-fetchers";
 import type { RemoteDatasourceFetcherParams } from "@pantheon-systems/puck-css/server";
+import { REMOTE_DATASOURCE_FETCHERS } from "../lib/remote-datasource-fetchers";
 
 const { PCCConvenienceFunctions } = await import(
   "@pantheon-systems/cpub-react-sdk/server"

@@ -22,8 +22,8 @@ import { createDiffMap, createHighlightedConfig } from '../../../versioning/util
 import { namespacePuckData } from '../../utils/namespacePuckData.js';
 import { groupFieldsByComponent } from '../../utils/puckFieldClassifier.js';
 import { ScaledContent } from '../../../editor/components/merge-preview/ScaledContent.js';
-import { ComponentClickOverlay } from './ComponentClickOverlay.js';
 import { ComponentConflictGroup } from '../conflict-resolution/ComponentConflictGroup.js';
+import { ComponentClickOverlay } from './ComponentClickOverlay.js';
 
 /**
  * Props for the CherryPickVisualPanel component.
@@ -241,12 +241,12 @@ export function CherryPickVisualPanel({
     () => new Map([...diffMap].map(([k, v]) => [`t_${k}`, v])),
     [diffMap],
   );
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   const sourceHighlightedConfig = useMemo(
     () => createHighlightedConfig(config as Record<string, unknown>, sourceDiffMap, 'after'),
     [config, sourceDiffMap],
   );
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   const targetHighlightedConfig = useMemo(
     () => createHighlightedConfig(config as Record<string, unknown>, targetDiffMap, 'before'),
     [config, targetDiffMap],

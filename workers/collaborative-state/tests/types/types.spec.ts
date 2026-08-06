@@ -240,6 +240,7 @@ describe('Phase 1.3: Core TypeScript Types', () => {
           createdByType: 'user',
           createdAt: '2024-01-01T00:00:00Z',
           updatedAt: '2024-01-01T00:00:00Z',
+          archivedAt: null,
         };
         assertType<Branch>(branch);
         expect(branch.name).toBe('feature-branch');
@@ -259,6 +260,7 @@ describe('Phase 1.3: Core TypeScript Types', () => {
           createdByType: 'agent',
           createdAt: '2024-01-01T00:00:00Z',
           updatedAt: '2024-01-01T00:00:00Z',
+          archivedAt: null,
         };
         assertType<Branch>(branch);
         expect(branch.description).toBe('A feature branch');
@@ -1095,6 +1097,7 @@ describe('Phase 1.3: Core TypeScript Types', () => {
         createdByType: 'user',
         createdAt: '2024-01-01T12:00:00.000Z',
         updatedAt: '2024-01-01T12:00:00.000Z',
+        archivedAt: null,
       };
       // Verify ISO 8601 format
       expect(branch.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);

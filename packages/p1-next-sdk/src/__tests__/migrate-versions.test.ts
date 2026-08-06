@@ -9,10 +9,10 @@
  * copy), so the guard reads the installed tree instead.
  */
 
-import { describe, it, expect, afterEach } from "vitest";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { describe, it, expect, afterEach } from "vitest";
 
 // @ts-expect-error - hand-written ESM JS codemod, no type declarations
 import { assertSuiteVersions } from "../../bin/lib/detect.js";

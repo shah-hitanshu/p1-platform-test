@@ -6,7 +6,7 @@ import "react-image-crop/dist/ReactCrop.css";
 import type { TrimRect } from "../crop";
 
 /** Fixed presets plus freeform — the "fixed and flexible aspect ratios" surface. */
-const ASPECT_PRESETS: Array<{ label: string; value: number | undefined }> = [
+const ASPECT_PRESETS: { label: string; value: number | undefined }[] = [
   { label: "Free", value: undefined },
   { label: "1:1", value: 1 },
   { label: "4:3", value: 4 / 3 },
@@ -199,7 +199,6 @@ export function CropDialog(props: {
             aspect={aspect}
             keepSelection
           >
-            {/* eslint-disable-next-line jsx-a11y/alt-text */}
             <img
               src={imageUrl}
               onLoad={handleImageLoad}

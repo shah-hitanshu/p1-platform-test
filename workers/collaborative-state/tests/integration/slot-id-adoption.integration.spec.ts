@@ -95,7 +95,7 @@ describe('Slot-id adoption runner — Integration Tests', () => {
     `;
 
     const site = await createSite({
-      pantheonSiteId: `${SITE_PREFIX}-${Date.now()}`,
+      pantheonSiteId: `${SITE_PREFIX}-${String(Date.now())}`,
       name: 'Slot Adoption Test Site',
       creatorId: TEST_USER_ID,
     });

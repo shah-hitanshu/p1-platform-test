@@ -7,6 +7,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { readJson } from '../helpers/http';
 
 // Mock services
 vi.mock('../../src/services/agent-site-role-service', () => ({
@@ -85,7 +86,7 @@ describe('Agent Site Role Routes', () => {
         siteId: string;
         role: string;
         grantedBy: string;
-      } = await response.json();
+      } = await readJson(response);
       expect(body.id).toBe('role-uuid-001');
       expect(body.agentId).toBe('agent-uuid-456');
       expect(body.siteId).toBe('site-uuid-100');
@@ -115,7 +116,7 @@ describe('Agent Site Role Routes', () => {
       });
 
       expect(response.status).toBe(400);
-      const body: { error: string } = await response.json();
+      const body: { error: string } = await readJson(response);
       expect(body.error).toBe('siteId is required');
     });
 
@@ -134,7 +135,7 @@ describe('Agent Site Role Routes', () => {
       });
 
       expect(response.status).toBe(400);
-      const body: { error: string } = await response.json();
+      const body: { error: string } = await readJson(response);
       expect(body.error).toBe('role is required');
     });
 
@@ -153,7 +154,7 @@ describe('Agent Site Role Routes', () => {
       });
 
       expect(response.status).toBe(400);
-      const body: { error: string } = await response.json();
+      const body: { error: string } = await readJson(response);
       expect(body.error).toBe('role must be one of: viewer, editor, admin');
     });
 
@@ -172,7 +173,7 @@ describe('Agent Site Role Routes', () => {
       });
 
       expect(response.status).toBe(403);
-      const body: { error: string } = await response.json();
+      const body: { error: string } = await readJson(response);
       expect(body.error).toBe('Only users can manage agent roles');
     });
 
@@ -191,7 +192,7 @@ describe('Agent Site Role Routes', () => {
       });
 
       expect(response.status).toBe(403);
-      const body: { error: string } = await response.json();
+      const body: { error: string } = await readJson(response);
       expect(body.error).toBe('Only users can manage agent roles');
     });
   });
@@ -236,7 +237,7 @@ describe('Agent Site Role Routes', () => {
       });
 
       expect(response.status).toBe(200);
-      const body: { roles: { id: string; role: string }[] } = await response.json();
+      const body: { roles: { id: string; role: string }[] } = await readJson(response);
       expect(body.roles).toHaveLength(2);
       expect(body.roles[0].id).toBe('role-uuid-001');
       expect(body.roles[0].role).toBe('editor');
@@ -260,7 +261,7 @@ describe('Agent Site Role Routes', () => {
       });
 
       expect(response.status).toBe(200);
-      const body: { roles: unknown[] } = await response.json();
+      const body: { roles: unknown[] } = await readJson(response);
       expect(body.roles).toEqual([]);
     });
   });
@@ -309,7 +310,7 @@ describe('Agent Site Role Routes', () => {
       });
 
       expect(response.status).toBe(404);
-      const body: { error: string } = await response.json();
+      const body: { error: string } = await readJson(response);
       expect(body.error).toBe('Role not found');
     });
   });
@@ -331,7 +332,7 @@ describe('Agent Site Role Routes', () => {
       });
 
       expect(response.status).toBe(400);
-      const body: { error: string } = await response.json();
+      const body: { error: string } = await readJson(response);
       expect(body.error).toBe('Agent ID is required');
     });
 
@@ -348,7 +349,7 @@ describe('Agent Site Role Routes', () => {
       });
 
       expect(response.status).toBe(405);
-      const body: { error: string } = await response.json();
+      const body: { error: string } = await readJson(response);
       expect(body.error).toBe('Method not allowed');
     });
   });

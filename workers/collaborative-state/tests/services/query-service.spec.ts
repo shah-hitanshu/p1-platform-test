@@ -46,8 +46,13 @@ const makeQuerySnapshot = (overrides: Partial<QuerySnapshot> = {}): QuerySnapsho
 });
 
 describe('query-service', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.resetAllMocks();
+    // resetAllMocks drops implementations, so this returns undefined unless a
+    // test sets it — but its real signature is Promise<DocumentVersion[]>, and
+    // executeQuery spreads the result.
+    const versionService = await import('../../src/services/document-version-service');
+    vi.mocked(versionService.getLatestVersionsForDocuments).mockResolvedValue([]);
   });
 
   describe('getQuery', () => {

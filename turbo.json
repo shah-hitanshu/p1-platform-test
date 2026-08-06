@@ -26,13 +26,20 @@
       "passThroughEnv": ["NEXT_PUBLIC_*", "CSS_API_KEY", "PCC_SITE_ID", "PCC_TOKEN"]
     },
     "lint": {
-      "dependsOn": ["^build"]
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "//#lint:root": {
+      "inputs": ["scripts/**", "e2e/**", "eslint.config.js", "playwright.config.ts", "vitest.workspace.ts"],
+      "outputs": []
     },
     "test": {
       "dependsOn": ["^build"]
     },
     "typecheck": {
-      "dependsOn": ["^build"]
+      "dependsOn": ["^build"],
+      "outputs": []
     }
-  }
+  },
+  "globalDependencies": ["tsconfig.base.json", ".prettierrc"]
 }

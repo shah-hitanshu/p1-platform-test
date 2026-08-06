@@ -42,6 +42,12 @@ import * as branchService from '../../src/services/branch-service';
 import * as authorization from '../../src/auth/authorization';
 import * as agentStatusMiddleware from '../../src/middleware/agent-status-middleware';
 import type { AuthenticatedPrincipal, Branch } from '../../src/types';
+import { readJson } from '../helpers/http';
+import {
+  makeDurableObjectNamespace,
+  type MockDurableObjectNamespace,
+  type MockDurableObjectStub,
+} from '../helpers/durable-object';
 
 /**
  * PCC-3458: build a branch whose id/siteId mirror the requested ref, so the
@@ -74,17 +80,8 @@ function assertNotNull<T>(value: T | null, message = 'Expected non-null value'):
 }
 
 // Mock types for Cloudflare Durable Objects
-interface MockDurableObjectStub {
-  fetch: ReturnType<typeof vi.fn>;
-}
-
 interface MockDurableObjectId {
   toString: () => string;
-}
-
-interface MockDurableObjectNamespace {
-  idFromName: ReturnType<typeof vi.fn<[string], MockDurableObjectId>>;
-  get: ReturnType<typeof vi.fn<[MockDurableObjectId], MockDurableObjectStub>>;
 }
 
 interface MockEnv {
@@ -155,10 +152,7 @@ describe('Auth Phase 4: WebSocket Authentication & Authorization', () => {
 
     mockEnv = {
       ENVIRONMENT: 'test',
-      DOCUMENT_STATE: {
-        idFromName: vi.fn().mockReturnValue(mockId),
-        get: vi.fn().mockReturnValue(mockStub),
-      },
+      DOCUMENT_STATE: makeDurableObjectNamespace(mockStub, mockId),
       POSTGRES_CONNECTION_STRING: 'postgresql://test:test@localhost/test',
     };
   });
@@ -199,7 +193,7 @@ describe('Auth Phase 4: WebSocket Authentication & Authorization', () => {
 
       const response = assertNotNull(result);
       expect(response.status).toBe(403);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.error).toContain('does not match');
     });
 
@@ -261,7 +255,7 @@ describe('Auth Phase 4: WebSocket Authentication & Authorization', () => {
 
       const response = assertNotNull(result);
       expect(response.status).toBe(403);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.error).toContain('does not match');
     });
 
@@ -302,7 +296,7 @@ describe('Auth Phase 4: WebSocket Authentication & Authorization', () => {
 
       const response = assertNotNull(result);
       expect(response.status).toBe(403);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.error).toContain('does not match');
     });
 
@@ -350,7 +344,7 @@ describe('Auth Phase 4: WebSocket Authentication & Authorization', () => {
 
       const response = assertNotNull(result);
       expect(response.status).toBe(403);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.error).toContain('permission');
     });
 

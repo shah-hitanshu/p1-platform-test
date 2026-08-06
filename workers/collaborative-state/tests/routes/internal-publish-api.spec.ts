@@ -7,6 +7,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { readJson } from '../helpers/http';
 
 // Mock checkpoint service
 vi.mock('../../src/services/checkpoint-service', () => ({
@@ -147,7 +148,7 @@ describe('Internal Publish API', () => {
       const response = await handleInternalRoutes(request, { internalSecret: INTERNAL_SECRET });
 
       expect(response.status).toBe(400);
-      const json = await response.json();
+      const json = await readJson(response);
       expect(json.error).toContain('siteId');
     });
 
@@ -158,7 +159,7 @@ describe('Internal Publish API', () => {
       const response = await handleInternalRoutes(request, { internalSecret: INTERNAL_SECRET });
 
       expect(response.status).toBe(400);
-      const json = await response.json();
+      const json = await readJson(response);
       expect(json.error).toContain('branchId');
     });
 
@@ -169,7 +170,7 @@ describe('Internal Publish API', () => {
       const response = await handleInternalRoutes(request, { internalSecret: INTERNAL_SECRET });
 
       expect(response.status).toBe(400);
-      const json = await response.json();
+      const json = await readJson(response);
       expect(json.error).toContain('documentId');
     });
 
@@ -180,7 +181,7 @@ describe('Internal Publish API', () => {
       const response = await handleInternalRoutes(request, { internalSecret: INTERNAL_SECRET });
 
       expect(response.status).toBe(400);
-      const json = await response.json();
+      const json = await readJson(response);
       expect(json.error).toContain('createdById');
     });
 
@@ -191,7 +192,7 @@ describe('Internal Publish API', () => {
       const response = await handleInternalRoutes(request, { internalSecret: INTERNAL_SECRET });
 
       expect(response.status).toBe(400);
-      const json = await response.json();
+      const json = await readJson(response);
       expect(json.error).toContain('createdByType');
     });
 
@@ -220,7 +221,7 @@ describe('Internal Publish API', () => {
       const response = await handleInternalRoutes(request, { internalSecret: INTERNAL_SECRET });
 
       expect(response.status).toBe(200);
-      const json = await response.json();
+      const json = await readJson(response);
       expect(json.checkpoint.id).toBe('cp-1');
       expect(json.publishedVersionId).toBe('version-xyz');
       expect(json.sourceBranchName).toBe('my-feature-branch');
@@ -262,7 +263,7 @@ describe('Internal Publish API', () => {
       const response = await handleInternalRoutes(request, { internalSecret: INTERNAL_SECRET });
 
       expect(response.status).toBe(500);
-      const json = await response.json();
+      const json = await readJson(response);
       expect(json.error).toContain('Publish failed');
     });
 

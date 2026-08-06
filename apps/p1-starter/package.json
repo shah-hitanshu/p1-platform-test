@@ -4,14 +4,16 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "build": "next build",
+    "clean": "rm -rf .next out *.tsbuildinfo node_modules/.vite",
     "dev": "next dev",
     "dev:stack": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "clean": "rm -rf .next out *.tsbuildinfo node_modules/.vite",
-    "test": "vitest run",
     "lint": "eslint .",
-    "sync:registry": "tsx scripts/sync-puck-registry.ts"
+    "lint:fix": "eslint . --fix",
+    "start": "next start",
+    "sync:registry": "tsx scripts/sync-puck-registry.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@pantheon-systems/cpub-react-sdk": "^5.2.1",

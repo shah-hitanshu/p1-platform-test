@@ -6,7 +6,7 @@ export function showWelcome() {
   console.log(pc.bold(pc.cyan('└─────────────────────────────────────────┘\n')));
 }
 
-export function showSuccess(projectName, projectPath, packageManager) {
+export function showSuccess(projectName, _projectPath, packageManager) {
   console.log(pc.green('\n✔ Project created successfully!\n'));
   console.log(`${pc.bold('Next steps:')}\n`);
   console.log(`  ${pc.cyan('cd')} ${projectName}`);

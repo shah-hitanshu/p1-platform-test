@@ -162,11 +162,11 @@ vi.mock('../../src/auth/identity-provider', async () => {
       canVerifyToken(): boolean {
         return false;
       }
-      // eslint-disable-next-line @typescript-eslint/require-await
+
       async validateToken(): Promise<AuthenticatedPrincipal | null> {
         return null;
       }
-      // eslint-disable-next-line @typescript-eslint/require-await
+
       async validateAgentKey(): Promise<AuthenticatedPrincipal | null> {
         return null;
       }

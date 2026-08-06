@@ -15,8 +15,8 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
 import React from 'react';
-import { PublishControl } from './PublishControl.js';
 import { __toastCalls } from '@pantheon-systems/pds-toolkit-react';
+import { PublishControl } from './PublishControl.js';
 
 beforeEach(() => {
   __toastCalls.length = 0;

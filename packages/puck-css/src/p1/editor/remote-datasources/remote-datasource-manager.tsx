@@ -4,13 +4,6 @@ import { useState } from "react";
 
 import type { RemoteDatasourceScope } from "../../../data/remote-datasources/user-remote-datasource-types";
 import {
-  parseFieldLines,
-  parseRecordLines,
-  toLines,
-  type ScopedUiRemoteDatasource,
-  type UiRemoteDatasource,
-} from "./remote-datasource-form-helpers";
-import {
   card,
   errorText,
   mono,
@@ -23,6 +16,13 @@ import {
   useRemoveRemoteDatasource,
   useSaveRemoteDatasource,
 } from "../hooks/api-hooks";
+import {
+  parseFieldLines,
+  parseRecordLines,
+  toLines,
+  type ScopedUiRemoteDatasource,
+  type UiRemoteDatasource,
+} from "./remote-datasource-form-helpers";
 
 export function RemoteDatasourceManager({ editorPath }: { editorPath: string }) {
   const { data: datasourcesData } = useRemoteDatasources(editorPath);

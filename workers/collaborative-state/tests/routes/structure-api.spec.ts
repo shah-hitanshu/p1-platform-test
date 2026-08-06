@@ -6,6 +6,9 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { readJson } from '../helpers/http';
+import { makePrincipal } from '../helpers/principal';
+import { makeBranch } from '../helpers/branch';
 
 // Mock the services
 vi.mock('../../src/services', () => ({
@@ -106,11 +109,11 @@ describe('Phase 7.1.1b: Structure API Routes', () => {
       const response = await handleStructureRoutes(request, {
         siteId: 'site-1',
         branchId: 'branch-1',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(201);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.id).toBe('structure-uuid');
       expect(body.name).toBe('Main Navigation');
       expect(body.slug).toBe('main-nav');
@@ -135,11 +138,11 @@ describe('Phase 7.1.1b: Structure API Routes', () => {
       const response = await handleStructureRoutes(request, {
         siteId: 'site-1',
         branchId: 'branch-1',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(400);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.error).toContain('name');
     });
 
@@ -168,7 +171,7 @@ describe('Phase 7.1.1b: Structure API Routes', () => {
       const response = await handleStructureRoutes(request, {
         siteId: 'site-1',
         branchId: 'branch-1',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(409);
@@ -199,11 +202,11 @@ describe('Phase 7.1.1b: Structure API Routes', () => {
       const response = await handleStructureRoutes(request, {
         siteId: 'site-1',
         branchId: 'branch-1',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(400);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.error).toContain('invalid characters');
     });
   });
@@ -246,11 +249,11 @@ describe('Phase 7.1.1b: Structure API Routes', () => {
       const response = await handleStructureRoutes(request, {
         siteId: 'site-1',
         branchId: 'branch-1',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.structures).toHaveLength(2);
     });
 
@@ -270,7 +273,7 @@ describe('Phase 7.1.1b: Structure API Routes', () => {
       const response = await handleStructureRoutes(request, {
         siteId: 'site-1',
         branchId: 'branch-1',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(200);
@@ -313,11 +316,11 @@ describe('Phase 7.1.1b: Structure API Routes', () => {
         siteId: 'site-1',
         branchId: 'branch-1',
         structureId: 'struct-1',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.id).toBe('struct-1');
       expect(body.name).toBe('Main Navigation');
     });
@@ -339,7 +342,7 @@ describe('Phase 7.1.1b: Structure API Routes', () => {
         siteId: 'site-1',
         branchId: 'branch-1',
         structureId: 'nonexistent',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(404);
@@ -384,11 +387,11 @@ describe('Phase 7.1.1b: Structure API Routes', () => {
         siteId: 'site-1',
         branchId: 'branch-1',
         structureId: 'struct-1',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.name).toBe('stuff-i-write');
       expect(body.slug).toBe('stuff-i-write');
     });
@@ -418,7 +421,7 @@ describe('Phase 7.1.1b: Structure API Routes', () => {
         siteId: 'site-1',
         branchId: 'branch-1',
         structureId: 'nonexistent',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(404);
@@ -449,7 +452,7 @@ describe('Phase 7.1.1b: Structure API Routes', () => {
         siteId: 'site-1',
         branchId: 'branch-1',
         structureId: 'struct-1',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(409);
@@ -480,11 +483,11 @@ describe('Phase 7.1.1b: Structure API Routes', () => {
         siteId: 'site-1',
         branchId: 'branch-1',
         structureId: 'struct-1',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(400);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.error).toContain('invalid characters');
     });
   });
@@ -511,7 +514,7 @@ describe('Phase 7.1.1b: Structure API Routes', () => {
         siteId: 'site-1',
         branchId: 'branch-1',
         structureId: 'struct-1',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(204);
@@ -536,7 +539,7 @@ describe('Phase 7.1.1b: Structure API Routes', () => {
         siteId: 'site-1',
         branchId: 'branch-1',
         structureId: 'nonexistent',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(404);
@@ -574,11 +577,11 @@ describe('Phase 7.1.1b: Structure API Routes', () => {
         siteId: 'site-1',
         checkpointId: 'checkpoint-1',
         structureId: 'struct-1',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.name).toBe('blogs');
       expect(body.structureTree).toHaveLength(1);
     });
@@ -600,7 +603,7 @@ describe('Phase 7.1.1b: Structure API Routes', () => {
         siteId: 'site-1',
         checkpointId: 'checkpoint-1',
         structureId: 'nonexistent',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(404);
@@ -630,7 +633,7 @@ describe('Phase 7.1.1b: Structure API Routes', () => {
       const response = await handleStructureRoutes(request, {
         siteId: 'site-1',
         branchId: 'nonexistent',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(404);
@@ -649,7 +652,7 @@ describe('Phase 7.1.1b: Structure API Routes', () => {
       const response = await handleStructureRoutes(request, {
         siteId: 'site-1',
         branchId: 'branch-1',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(405);
@@ -673,7 +676,7 @@ describe('Phase 7.1.1b: Structure API Routes', () => {
       const response = await handleStructureRoutes(request, {
         siteId: 'site-1',
         branchId: 'branch-1',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(500);
@@ -808,7 +811,7 @@ describe('Phase 7.1.1b: Structure API Routes', () => {
       );
       const services = await import('../../src/services');
 
-      vi.mocked(services.getBranch).mockResolvedValueOnce({
+      vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
         id: 'branch-from-other-site',
         siteId: 'site-OTHER',
         name: 'main',
@@ -817,7 +820,7 @@ describe('Phase 7.1.1b: Structure API Routes', () => {
         createdAt: '2026-01-24T10:00:00.000Z',
         createdById: 'user-1',
         createdByType: 'user',
-      });
+      }));
 
       const request = new Request(
         'https://api.example.com/api/sites/site-1/branches/branch-from-other-site/structures',
@@ -831,7 +834,7 @@ describe('Phase 7.1.1b: Structure API Routes', () => {
       const response = await handleStructureRoutes(request, {
         siteId: 'site-1',
         branchId: 'branch-from-other-site',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(404);
@@ -844,7 +847,7 @@ describe('Phase 7.1.1b: Structure API Routes', () => {
       );
       const services = await import('../../src/services');
 
-      vi.mocked(services.getBranch).mockResolvedValueOnce({
+      vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
         id: 'branch-from-other-site',
         siteId: 'site-OTHER',
         name: 'main',
@@ -853,7 +856,7 @@ describe('Phase 7.1.1b: Structure API Routes', () => {
         createdAt: '2026-01-24T10:00:00.000Z',
         createdById: 'user-1',
         createdByType: 'user',
-      });
+      }));
 
       const request = new Request(
         'https://api.example.com/api/sites/site-1/branches/branch-from-other-site/structures',
@@ -863,7 +866,7 @@ describe('Phase 7.1.1b: Structure API Routes', () => {
       const response = await handleStructureRoutes(request, {
         siteId: 'site-1',
         branchId: 'branch-from-other-site',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(404);

@@ -106,7 +106,7 @@ export async function runCLI() {
     if (error.code !== 'EEXIST') {
       try {
         fs.rmSync(targetDir, { recursive: true, force: true });
-      } catch (cleanupError) {
+      } catch {
         // Ignore cleanup errors
       }
     }

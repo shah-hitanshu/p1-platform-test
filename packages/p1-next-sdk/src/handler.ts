@@ -12,11 +12,11 @@
 
 import type { Config } from "@puckeditor/core";
 import { NextResponse } from "next/server";
-import { extractBearerToken } from "./auth-utils";
 
 import type { RemoteDatasourceFetcher, RemoteDatasourceDefinition } from "@pantheon-systems/puck-css/server";
 import { ensureInitialized, type P1DataConfig } from "@pantheon-systems/puck-css/server";
 import { runWithAuthToken } from "@pantheon-systems/puck-css/server";
+import { extractBearerToken } from "./auth-utils";
 
 import {
   getPageData,

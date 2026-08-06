@@ -42,7 +42,7 @@ export class NetworkError extends Error {
 export class AuthenticationError extends Error {
   override name = 'AuthenticationError';
 
-  constructor(message: string = 'Authentication failed') {
+  constructor(message = 'Authentication failed') {
     super(message);
     Object.setPrototypeOf(this, AuthenticationError.prototype);
   }
@@ -93,7 +93,7 @@ export class ValidationError extends P1ApiError {
 export class SessionExpiredError extends Error {
   override name = 'SessionExpiredError';
 
-  constructor(message: string = 'Session expired — please sign in again') {
+  constructor(message = 'Session expired — please sign in again') {
     super(message);
     Object.setPrototypeOf(this, SessionExpiredError.prototype);
   }

@@ -18,10 +18,10 @@ import { BranchDiffHeader } from './BranchDiffHeader.js';
  * Puck Data structure (flexible to accept various sources)
  */
 interface PuckData {
-  content: Array<{
+  content: {
     type: string;
     props: Record<string, unknown> & { id: string };
-  }>;
+  }[];
   root: { props?: Record<string, unknown> };
 }
 

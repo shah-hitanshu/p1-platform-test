@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  // This has to live in tests/ and be named tsconfig.json: editors map a file to
+  // a project by walking ancestors for that exact name, so a ../tsconfig.test.json
+  // is never found and every test file lands in an inferred project without
+  // @cloudflare/workers-types.
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    // Test fixtures index into arrays and records they just built. Requiring a
+    // guard on every one buys nothing — the assertion that follows is the check.
+    "noUncheckedIndexedAccess": false
+  },
+  "include": ["**/*.ts", "../src/**/*.ts"]
+}

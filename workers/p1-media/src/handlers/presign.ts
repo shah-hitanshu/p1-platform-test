@@ -1,4 +1,4 @@
-import { Env } from '../types';
+import type { Env } from '../types';
 import { validateMetadata } from '../schema';
 import { sanitizeFilename, buildKey, assertOwnedAsset, NotFoundError } from '../store';
 import { createPresignedPutUrl } from '../r2-presign';
@@ -58,7 +58,7 @@ export async function parsePresignRequest(
   let metadata: Record<string, string> | undefined;
   if (body.metadata && typeof body.metadata === 'object') {
     const check = validateMetadata(body.metadata);
-    if (!check.ok) return jsonError(check.error!, 400);
+    if (!check.ok) return jsonError(check.error, 400);
     metadata = body.metadata as Record<string, string>;
   }
 

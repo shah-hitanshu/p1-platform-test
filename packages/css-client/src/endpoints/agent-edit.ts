@@ -4,7 +4,6 @@
  * API endpoints for the agent edit workflow (politeness protocol).
  */
 
-import type { BaseEndpoint } from './base.js';
 import type {
   AgentEditContext,
   AgentEditPermission,
@@ -13,6 +12,7 @@ import type {
   AgentEditAbortResult,
   AgentStopResult,
 } from '../types.js';
+import type { BaseEndpoint } from './base.js';
 
 /**
  * Agent edit endpoint for managing agent edit sessions.

@@ -11,6 +11,7 @@ import { issueBrokerJwt } from '../auth/broker/jwt-issuer.js';
 import { exchangeAuth0Code, getAuth0AuthorizationUrl } from '../auth/oauth/auth0-handler.js';
 import { signState, verifyAndParseState } from '../auth/oauth/state-signing.js';
 import type { LoginTransaction } from '../durable-objects/broker-transaction.js';
+import { requireEnv } from '../env.js';
 import type { Env } from '../index.js';
 import { authenticate } from '../middleware/authentication.js';
 import { getCachedSiteAllowedOrigins } from '../services/site-service.js';
@@ -67,7 +68,7 @@ export async function handleBrokerRoutes(
   }
 
   const brokerTx = env.BROKER_TX;
-  const internalSecret = env.INTERNAL_SECRET!;
+  const internalSecret = requireEnv(env, 'INTERNAL_SECRET');
 
   // POST /broker/login — create a login transaction (requires sat_ token)
   if (path === '/broker/login' && request.method === 'POST') {
@@ -201,8 +202,8 @@ export async function handleBrokerRoutes(
     const signedState = await signState({ txId, nonce }, internalSecret);
 
     const authUrl = getAuth0AuthorizationUrl({
-      issuerBaseUrl: env.AUTH0_ISSUER_BASE_URL!,
-      clientId: env.AUTH0_CLIENT_ID!,
+      issuerBaseUrl: requireEnv(env, 'AUTH0_ISSUER_BASE_URL'),
+      clientId: requireEnv(env, 'AUTH0_CLIENT_ID'),
       redirectUri,
       state: signedState,
       scope: 'openid email profile',
@@ -247,9 +248,9 @@ export async function handleBrokerRoutes(
     const redirectUri = `${getPublicOrigin(request, env)}/auth/callback`;
     const { user } = await exchangeAuth0Code({
       code,
-      issuerBaseUrl: env.AUTH0_ISSUER_BASE_URL!,
-      clientId: env.AUTH0_CLIENT_ID!,
-      clientSecret: env.AUTH0_CLIENT_SECRET!,
+      issuerBaseUrl: requireEnv(env, 'AUTH0_ISSUER_BASE_URL'),
+      clientId: requireEnv(env, 'AUTH0_CLIENT_ID'),
+      clientSecret: requireEnv(env, 'AUTH0_CLIENT_SECRET'),
       redirectUri,
     });
 
@@ -356,8 +357,8 @@ export async function handleBrokerRoutes(
 
     try {
       const token = await issueBrokerJwt({
-        serviceAccountKeyJson: env.MAS_GCP_SERVICE_ACCOUNT_KEY!,
-        keyResource: env.GCP_KMS_KEY_RESOURCE!,
+        serviceAccountKeyJson: requireEnv(env, 'MAS_GCP_SERVICE_ACCOUNT_KEY'),
+        keyResource: requireEnv(env, 'GCP_KMS_KEY_RESOURCE'),
         issuer,
         subject: tx.userId ?? '',
         audience: (env.BROKER_JWT_AUDIENCE) ?? 'css-api',

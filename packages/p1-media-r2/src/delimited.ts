@@ -69,9 +69,9 @@ const FILENAME_HEADERS = new Set(["filename", "file", "name"]);
 export function detectHeader(
   row: string[],
   fields: MetadataFieldDef[],
-): Array<number | "filename"> | null {
+): (number | "filename")[] | null {
   let matched = 0;
-  const mapping: Array<number | "filename"> = row.map(() => -1);
+  const mapping: (number | "filename")[] = row.map(() => -1);
   for (let c = 0; c < row.length; c++) {
     const cell = norm(row[c]);
     if (cell === "") continue;

@@ -9,6 +9,9 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
 import postgres from 'postgres';
 import { setDatabaseInstance } from '../../src/db';
+import { readJson } from '../helpers/http';
+import { makePrincipal } from '../helpers/principal';
+import type { AuthenticatedPrincipal } from '../../src/types';
 
 const TEST_DATABASE_URL =
   process.env.POSTGRES_CONNECTION_STRING ??
@@ -169,7 +172,7 @@ describe('Template API - Access Control', () => {
     });
 
     expect(response.status).toBe(200);
-    const body = await response.json();
+    const body = await readJson(response);
     expect(body).toHaveProperty('templates');
     expect(Array.isArray(body.templates)).toBe(true);
   });
@@ -196,7 +199,7 @@ describe('Template API - Access Control', () => {
     });
 
     expect(response.status).toBe(200);
-    const body = await response.json();
+    const body = await readJson(response);
     expect(body).toHaveProperty('templates');
   });
 
@@ -222,7 +225,7 @@ describe('Template API - Access Control', () => {
     });
 
     expect(response.status).toBe(200);
-    const body = await response.json();
+    const body = await readJson(response);
     expect(body).toHaveProperty('templates');
   });
 
@@ -255,7 +258,7 @@ describe('Template API - Access Control', () => {
     });
 
     expect(response.status).toBe(201);
-    const body = await response.json();
+    const body = await readJson(response);
     expect(body.name).toBe('admin-created-template');
     expect(body.root.props._template.label).toBe('Admin Created Template');
     expect(body.id).toBeDefined();
@@ -298,7 +301,7 @@ describe('Template API - Access Control', () => {
     });
 
     expect(response.status).toBe(403);
-    const body = await response.json();
+    const body = await readJson(response);
     expect(body.error).toContain('ADMIN');
   });
 
@@ -644,7 +647,7 @@ describe('Template API - CRUD Operations', () => {
     });
 
     expect(response.status).toBe(200);
-    const body = await response.json();
+    const body = await readJson(response);
     expect(body.templates).toBeDefined();
     expect(Array.isArray(body.templates)).toBe(true);
     expect(body.templates.length).toBeGreaterThan(0);
@@ -684,7 +687,7 @@ describe('Template API - CRUD Operations', () => {
     });
 
     expect(response.status).toBe(200);
-    const body = await response.json();
+    const body = await readJson(response);
     expect(body.id).toBe(templateDocId);
     expect(body.name).toBe('test-template');
     expect(body.version).toBe(1);
@@ -732,7 +735,7 @@ describe('Template API - CRUD Operations', () => {
     });
 
     expect(response.status).toBe(201);
-    const body = await response.json();
+    const body = await readJson(response);
     expect(body.id).toBeDefined();
     expect(body.name).toBe('new-valid-template');
     expect(body.content).toEqual([]);
@@ -804,7 +807,7 @@ describe('Template API - CRUD Operations', () => {
     });
 
     expect(response.status).toBe(200);
-    const body = await response.json();
+    const body = await readJson(response);
     expect(body.name).toBe('test-template');
     expect(body.root.props._template.label).toBe('Updated Test Template');
     expect(body.root.props._template.description).toBe('Updated description');
@@ -892,14 +895,14 @@ describe('Template API - CRUD Operations', () => {
     const { handleTemplateRequest } = await import('../../src/routes/template-api');
     const { handleDocumentRoutes } = await import('../../src/routes/document-api');
 
-    const adminPrincipal = {
+    const adminPrincipal = makePrincipal({
       id: adminUserId,
-      type: 'user' as const,
+      type: 'user',
       dbUserId: adminUserId,
       email: 'admin@example.com',
       pantheonSiteRoles: { [testSiteId]: 'admin' },
       tokenExpiry: '2026-12-31T23:59:59.000Z',
-    };
+    });
 
     const deprecateRequest = new Request(
       `https://api.example.com/api/sites/${testSiteId}/branches/${mainBranchId}/templates/${templateDocId}`,
@@ -1197,14 +1200,14 @@ describe('Template API - Migration Operations', () => {
     const { handleTemplateRequest } = await import('../../src/routes/template-api');
     const { createDocumentOnBranch, createDocumentVersion } = await import('../../src/services');
 
-    const adminPrincipal = {
+    const adminPrincipal = makePrincipal({
       id: adminUserId,
-      type: 'user' as const,
+      type: 'user',
       dbUserId: adminUserId,
       email: 'admin@example.com',
       pantheonSiteRoles: { [testSiteId]: 'admin' },
       tokenExpiry: '2026-12-31T23:59:59.000Z',
-    };
+    });
 
     // Create template (v1: empty content seed)
     const createRes = await handleTemplateRequest(
@@ -1300,7 +1303,7 @@ describe('Template API - Migration Operations', () => {
     });
 
     expect(response.status).toBe(200);
-    const body = await response.json();
+    const body = await readJson(response);
     expect(body.job).toBeDefined();
     expect(body.job.totalDocuments).toBe(1);
     expect(body.processedDocuments).toBe(1);
@@ -1351,7 +1354,7 @@ describe('Template API - Migration Operations', () => {
     });
 
     expect(response.status).toBe(200);
-    const body = await response.json();
+    const body = await readJson(response);
     expect(body.rolledBackDocuments).toBeGreaterThanOrEqual(0);
 
     // Verify the page's synced template version was reverted
@@ -1386,7 +1389,7 @@ describe('Template API - Migration Operations', () => {
     });
 
     expect(response.status).toBe(200);
-    const body = await response.json();
+    const body = await readJson(response);
     expect(body.templateId).toBe(migrationTemplateId);
     expect(body.currentVersion).toBeGreaterThanOrEqual(3);
     expect(typeof body.staleDocumentCount).toBe('number');
@@ -1421,7 +1424,7 @@ describe('Template API - Migration Operations', () => {
     });
 
     expect(response.status).toBe(200);
-    const body = await response.json();
+    const body = await readJson(response);
     expect(body.templateId).toBe(migrationTemplateId);
     expect(body.fromVersion).toBe(2);
     expect(body.toVersion).toBe(3);
@@ -1455,7 +1458,7 @@ describe('Template API - Migration Operations', () => {
     });
 
     expect(response.status).toBe(404);
-    const body = await response.json();
+    const body = await readJson(response);
     expect(body.error).toContain('not found');
   });
 });
@@ -1500,7 +1503,7 @@ describe('Template API - Authorization Edge Cases', () => {
 
       // Should succeed because branch grant elevates to ADMIN
       expect(response.status).toBe(201);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.name).toBe('editor-branch-grant-template');
     } finally {
       // Clean up grant
@@ -1538,7 +1541,7 @@ describe('Template API - Authorization Edge Cases', () => {
     });
 
     expect(response.status).toBe(201);
-    const body = await response.json();
+    const body = await readJson(response);
     expect(body.name).toBe('service-principal-template');
   });
 });
@@ -1546,24 +1549,15 @@ describe('Template API - Authorization Edge Cases', () => {
 describe('Template API - Legacy manifest snapshots', () => {
   const createdDocIds: string[] = [];
 
-  interface TestPrincipal {
-    id: string;
-    type: 'user';
-    dbUserId: string;
-    email: string;
-    pantheonSiteRoles: Record<string, string>;
-    tokenExpiry: string;
-  }
-
-  function adminPrincipal(): TestPrincipal {
-    return {
+  function adminPrincipal(): AuthenticatedPrincipal {
+    return makePrincipal({
       id: adminUserId,
       type: 'user',
       dbUserId: adminUserId,
       email: 'admin@example.com',
       pantheonSiteRoles: { [testSiteId]: 'admin' },
       tokenExpiry: '2026-12-31T23:59:59.000Z',
-    };
+    });
   }
 
   async function seedTemplateDocument(
@@ -1629,7 +1623,7 @@ describe('Template API - Legacy manifest snapshots', () => {
     });
 
     expect(response.status).toBe(200);
-    const body = await response.json();
+    const body = await readJson(response);
     expect(body.content).toHaveLength(1);
     expect(body.content[0].type).toBe('HeroBlock');
     expect(body.content[0].props.title).toBe('Hero');
@@ -1678,7 +1672,7 @@ describe('Template API - Legacy manifest snapshots', () => {
     });
 
     expect(response.status).toBe(200);
-    const body = await response.json();
+    const body = await readJson(response);
     const entry = body.templates.find(
       (t: { name: string }) => t.name === 'legacy-manifest-list',
     );
@@ -1717,7 +1711,7 @@ describe('Template API - Legacy manifest snapshots', () => {
     });
 
     expect(response.status).toBe(400);
-    const body = await response.json();
+    const body = await readJson(response);
     expect(body.error).toContain('deprecated');
   });
 
@@ -1752,7 +1746,7 @@ describe('Template API - Legacy manifest snapshots', () => {
     });
 
     expect(response.status).toBe(200);
-    const body = await response.json();
+    const body = await readJson(response);
     expect(body.root.props._template).toEqual({
       label: 'Extra Key Template',
       deprecated: false,
@@ -1765,24 +1759,15 @@ describe('Template API - Legacy manifest snapshots', () => {
 describe('Template API - Legacy client compatibility window', () => {
   const createdDocIds: string[] = [];
 
-  interface TestPrincipal {
-    id: string;
-    type: 'user';
-    dbUserId: string;
-    email: string;
-    pantheonSiteRoles: Record<string, string>;
-    tokenExpiry: string;
-  }
-
-  function adminPrincipal(): TestPrincipal {
-    return {
+  function adminPrincipal(): AuthenticatedPrincipal {
+    return makePrincipal({
       id: adminUserId,
       type: 'user',
       dbUserId: adminUserId,
       email: 'admin@example.com',
       pantheonSiteRoles: { [testSiteId]: 'admin' },
       tokenExpiry: '2026-12-31T23:59:59.000Z',
-    };
+    });
   }
 
   async function seedTemplateDocument(
@@ -1845,7 +1830,7 @@ describe('Template API - Legacy client compatibility window', () => {
     });
 
     expect(response.status).toBe(201);
-    const body = await response.json();
+    const body = await readJson(response);
     const docId = body.id as string;
     createdDocIds.push(docId);
 
@@ -1921,7 +1906,7 @@ describe('Template API - Legacy client compatibility window', () => {
     });
 
     expect(response.status).toBe(200);
-    const body = await response.json();
+    const body = await readJson(response);
 
     // Canonical content shape derived in memory
     expect(body.content).toHaveLength(1);
@@ -1981,7 +1966,7 @@ describe('Template API - Legacy client compatibility window', () => {
     });
 
     expect(response.status).toBe(200);
-    const body = await response.json();
+    const body = await readJson(response);
 
     expect(body.content).toEqual([
       { type: 'Hero', props: { id: 'hero-1', title: 'Hello' } },
@@ -2021,7 +2006,7 @@ describe('Template API - Legacy client compatibility window', () => {
     });
 
     expect(response.status).toBe(200);
-    const body = await response.json();
+    const body = await readJson(response);
     expect(body).toHaveProperty('templates');
     expect(Array.isArray(body.templates)).toBe(true);
 
@@ -2075,7 +2060,7 @@ describe('Template API - Legacy client compatibility window', () => {
     });
 
     expect(response.status).toBe(200);
-    const body = await response.json();
+    const body = await readJson(response);
 
     // Metadata applied and combined shape returned
     expect(body.root.props._template.label).toBe('Pinned Hero');
@@ -2136,7 +2121,7 @@ describe('Template API - Legacy client compatibility window', () => {
     });
 
     expect(response.status).toBe(200);
-    const body = await response.json();
+    const body = await readJson(response);
     expect(body.root.props._pinMap).toEqual({ 'hero-1': true });
 
     const versions = await sql<{ snapshot: { root: { props: { _pinMap: Record<string, boolean> } } } }[]>`

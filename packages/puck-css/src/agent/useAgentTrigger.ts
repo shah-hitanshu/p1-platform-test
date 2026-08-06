@@ -6,8 +6,8 @@
  */
 
 import { useState, useCallback, useRef } from 'react';
-import { usePresenceContext } from '../core/PresenceContext.js';
 import type { RegisteredAgent } from '@pantheon-systems/css-client';
+import { usePresenceContext } from '../core/PresenceContext.js';
 
 /**
  * Describes an agent action to be triggered.

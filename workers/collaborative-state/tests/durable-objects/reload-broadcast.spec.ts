@@ -94,9 +94,9 @@ describe('reloadFromPostgres disconnects clients after reload', () => {
 
     await reloadFromPostgres(deps, true);
 
-    // eslint-disable-next-line @typescript-eslint/unbound-method
+
     expect(mockWs1.close).toHaveBeenCalledWith(4001, 'Document state reloaded — please reconnect');
-    // eslint-disable-next-line @typescript-eslint/unbound-method
+
     expect(mockWs2.close).toHaveBeenCalledWith(4001, 'Document state reloaded — please reconnect');
   });
 
@@ -145,9 +145,9 @@ describe('reloadFromPostgres disconnects clients after reload', () => {
     // broadcastUpdate should NOT be called — we disconnect instead
     expect(deps.broadcastUpdate).not.toHaveBeenCalled();
     // Socket should be closed, not sent to
-    // eslint-disable-next-line @typescript-eslint/unbound-method
+
     expect(mockWs1.send).not.toHaveBeenCalled();
-    // eslint-disable-next-line @typescript-eslint/unbound-method
+
     expect(mockWs1.close).toHaveBeenCalled();
   });
 });

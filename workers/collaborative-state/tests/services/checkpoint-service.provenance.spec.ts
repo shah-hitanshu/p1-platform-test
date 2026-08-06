@@ -9,6 +9,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { makeBranch } from '../helpers/branch';
+import type { Branch } from '../../src/types';
 
 // Mock database module
 vi.mock('../../src/db', () => ({
@@ -78,30 +80,15 @@ describe('publishDocument provenance tracking', () => {
     };
   }
 
-  interface MainBranchResult {
-    id: string;
-    siteId: string;
-    name: string;
-    status: string;
-    isMain: boolean;
-    createdById: string;
-    createdByType: string;
-    createdAt: string;
-    updatedAt: string;
-  }
-
-  function createMainBranch(): MainBranchResult {
-    return {
+  function createMainBranch(): Branch {
+    return makeBranch({
       id: 'main-branch-uuid',
       siteId: 'site-uuid',
-      name: 'main',
-      status: 'active',
-      isMain: true,
       createdById: 'system',
       createdByType: 'system',
       createdAt: '2026-01-01T00:00:00.000Z',
       updatedAt: '2026-01-01T00:00:00.000Z',
-    };
+    });
   }
 
   it('should set source_branch_id on the version copied to main', async () => {
@@ -117,11 +104,11 @@ describe('publishDocument provenance tracking', () => {
     vi.mocked(branchService.getMainBranch).mockResolvedValueOnce(
       createMainBranch(),
     );
-    vi.mocked(branchService.getBranch).mockResolvedValueOnce({
+    vi.mocked(branchService.getBranch).mockResolvedValueOnce(makeBranch({
       id: 'source-branch-uuid', siteId: 'site-uuid', name: 'feature/test',
       status: 'active', isMain: false, createdById: 'user-1', createdByType: 'user',
       createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
-    });
+    }));
 
     vi.mocked(db.query)
       .mockResolvedValueOnce({ rows: [] }) // BEGIN
@@ -175,11 +162,11 @@ describe('publishDocument provenance tracking', () => {
     vi.mocked(branchService.getMainBranch).mockResolvedValueOnce(
       createMainBranch(),
     );
-    vi.mocked(branchService.getBranch).mockResolvedValueOnce({
+    vi.mocked(branchService.getBranch).mockResolvedValueOnce(makeBranch({
       id: 'source-branch-uuid', siteId: 'site-uuid', name: 'feature/test',
       status: 'active', isMain: false, createdById: 'user-1', createdByType: 'user',
       createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
-    });
+    }));
 
     vi.mocked(db.query)
       .mockResolvedValueOnce({ rows: [] }) // BEGIN
@@ -233,11 +220,11 @@ describe('publishDocument provenance tracking', () => {
     vi.mocked(branchService.getMainBranch).mockResolvedValueOnce(
       createMainBranch(),
     );
-    vi.mocked(branchService.getBranch).mockResolvedValueOnce({
+    vi.mocked(branchService.getBranch).mockResolvedValueOnce(makeBranch({
       id: 'source-branch-uuid', siteId: 'site-uuid', name: 'feature/test',
       status: 'active', isMain: false, createdById: 'user-1', createdByType: 'user',
       createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
-    });
+    }));
 
     vi.mocked(db.query)
       .mockResolvedValueOnce({ rows: [] }) // BEGIN
@@ -380,11 +367,11 @@ describe('publishDocument provenance tracking', () => {
     vi.mocked(branchService.getMainBranch).mockResolvedValueOnce(
       createMainBranch(),
     );
-    vi.mocked(branchService.getBranch).mockResolvedValueOnce({
+    vi.mocked(branchService.getBranch).mockResolvedValueOnce(makeBranch({
       id: 'source-branch-uuid', siteId: 'site-uuid', name: 'feature/my-branch',
       status: 'active', isMain: false, createdById: 'user-1', createdByType: 'user',
       createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
-    });
+    }));
 
     vi.mocked(db.query)
       .mockResolvedValueOnce({ rows: [] }) // BEGIN

@@ -481,7 +481,7 @@ describe('DocumentSession WebSocket Presence Protocol', () => {
 
 describe('handleWebSocket: pushPresenceUpdate on connect', () => {
   // Minimal WebSocketConnectionDeps factory for handleWebSocket tests
-  // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+
   function createWsConnDeps(overrides: {
     pushPresenceUpdate?: ReturnType<typeof vi.fn>;
     presenceManagerActor?: ActorPresence | undefined;

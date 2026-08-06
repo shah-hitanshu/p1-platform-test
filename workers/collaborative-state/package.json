@@ -22,6 +22,7 @@
     "test:coverage": "vitest run --coverage",
     "test:typecheck": "vitest --typecheck.only",
     "typecheck": "tsc --noEmit",
+    "typecheck:tests": "tsc --noEmit -p tests/tsconfig.json",
     "lint": "eslint src tests",
     "lint:fix": "eslint src tests --fix",
     "db:migrate": "tsx src/db/migrate.ts",
@@ -56,6 +57,7 @@
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260515.1",
     "@eslint/js": "^9.39.3",
+    "@pantheon-systems/eslint-config": "workspace:*",
     "@types/node": "^22.19.13",
     "@types/object-hash": "^3.0.6",
     "@vitest/coverage-v8": "^4.1.6",

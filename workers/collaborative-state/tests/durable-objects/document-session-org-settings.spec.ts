@@ -14,6 +14,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
+import { readJson } from '../helpers/http';
 
 // Mock cloudflare:workers DurableObject base class for Hibernatable WebSocket API
 vi.mock('cloudflare:workers', () => ({
@@ -145,7 +146,7 @@ describe('Phase 5: Organization Settings Integration', () => {
       const response = await session.fetch(request);
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
 
       // Should use org's timeout (10000ms) instead of default (5000ms)
       expect(body.idleTimeoutMs).toBe(10000);
@@ -170,7 +171,7 @@ describe('Phase 5: Organization Settings Integration', () => {
       const response = await session.fetch(request);
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
 
       // Should use default timeout (5000ms)
       expect(body.idleTimeoutMs).toBe(5000);
@@ -201,7 +202,7 @@ describe('Phase 5: Organization Settings Integration', () => {
       const response = await session.fetch(request);
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
 
       // Should use default timeout
       expect(body.idleTimeoutMs).toBe(5000);
@@ -280,7 +281,7 @@ describe('Phase 5: Organization Settings Integration', () => {
       const response = await session.fetch(request);
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.idleTimeoutMs).toBe(5000);
     });
   });
@@ -338,7 +339,7 @@ describe('Phase 5: Organization Settings Integration', () => {
 
       const response = await session.fetch(request);
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
 
       // Should be denied due to human activity (within 10 second timeout)
       expect(body.allowed).toBe(false);
@@ -419,7 +420,7 @@ describe('Phase 5: Organization Settings Integration', () => {
       const response = await session.fetch(request);
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
 
       expect(body.organizationId).toBe('org-1');
       expect(body.organizationName).toBe('Test Org');
@@ -444,7 +445,7 @@ describe('Phase 5: Organization Settings Integration', () => {
       const response = await session.fetch(request);
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
 
       expect(body.organizationId).toBeNull();
       expect(body.organizationName).toBeNull();

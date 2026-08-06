@@ -14,12 +14,12 @@ import { InlineMessage } from '@pantheon-systems/pds-toolkit-react';
 import { Render } from '@puckeditor/core';
 import type { DocumentResolution, DocumentResolutionStrategy } from '../../useMergeResolution.js';
 import type { ComponentDiffWithPosition } from '../../../core/types.js';
-import { ResolutionStrategyPicker } from './ResolutionStrategyPicker.js';
-import { CherryPickVisualPanel } from './CherryPickVisualPanel.js';
 import { MergePreviewRenderer } from '../../../editor/components/merge-preview/MergePreviewRenderer.js';
 import { ScaledContent } from '../../../editor/components/merge-preview/ScaledContent.js';
 import { ViewModeSelector } from '../../../editor/components/merge-preview/ViewModeSelector.js';
 import type { ViewMode } from '../../../editor/components/merge-preview/ViewModeSelector.js';
+import { CherryPickVisualPanel } from './CherryPickVisualPanel.js';
+import { ResolutionStrategyPicker } from './ResolutionStrategyPicker.js';
 
 export interface DocumentResolutionDetailProps {
   document: DocumentResolution | null;

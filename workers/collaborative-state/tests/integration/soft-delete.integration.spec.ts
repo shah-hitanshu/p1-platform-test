@@ -127,7 +127,6 @@ describe('PCC-3211: Soft Delete Integration Tests', () => {
       await createDocument({
         siteId: site.id,
         path: 'test-doc',
-        createdById: SYSTEM_ID,
       });
 
       const result = await archiveSite(site.id);

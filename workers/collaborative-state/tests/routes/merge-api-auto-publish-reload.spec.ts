@@ -8,6 +8,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { makePrincipal } from '../helpers/principal';
 
 vi.mock('../../src/services', () => ({
   executeMerge: vi.fn(),
@@ -115,7 +116,7 @@ describe('merge-api auto-publish DO /reload', () => {
       siteId: 'site-1',
       executeRequest: true,
       mergeRequestId: 'mr-1',
-      principal: { id: 'user-1', type: 'user', email: 'test@test.com' },
+      principal: makePrincipal({ id: 'user-1', type: 'user', email: 'test@test.com' }),
       documentStateBinding: binding,
     });
 
@@ -169,7 +170,7 @@ describe('merge-api auto-publish DO /reload', () => {
       siteId: 'site-1',
       executeRequest: true,
       mergeRequestId: 'mr-1',
-      principal: { id: 'user-1', type: 'user', email: 'test@test.com' },
+      principal: makePrincipal({ id: 'user-1', type: 'user', email: 'test@test.com' }),
       documentStateBinding: binding,
     });
 
@@ -222,7 +223,7 @@ describe('merge-api auto-publish DO /reload', () => {
       siteId: 'site-1',
       executeRequest: true,
       mergeRequestId: 'mr-1',
-      principal: { id: 'user-1', type: 'user', email: 'test@test.com' },
+      principal: makePrincipal({ id: 'user-1', type: 'user', email: 'test@test.com' }),
       documentStateBinding: binding,
     });
 
@@ -264,7 +265,7 @@ describe('merge-api auto-publish DO /reload', () => {
       siteId: 'site-1',
       executeRequest: true,
       mergeRequestId: 'mr-1',
-      principal: { id: 'user-1', type: 'user', email: 'test@test.com' },
+      principal: makePrincipal({ id: 'user-1', type: 'user', email: 'test@test.com' }),
       // No documentStateBinding — handler must not throw.
     });
 

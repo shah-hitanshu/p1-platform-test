@@ -18,6 +18,7 @@
 
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import * as Y from 'yjs';
+import { readJson } from '../helpers/http';
 
 // Mock cloudflare:workers DurableObject base class for Hibernatable WebSocket API
 vi.mock('cloudflare:workers', () => ({
@@ -200,7 +201,7 @@ describe('Phase 2.1: SQLite Storage Backend Migration', () => {
       const response = await session.fetch(request);
 
       expect(response.status).toBe(200);
-      const data = await response.json();
+      const data = await readJson(response);
       expect(data).toHaveProperty('snapshot');
       expect(data).toHaveProperty('stateVector');
       expect(data).toHaveProperty('connectedActors');
@@ -301,7 +302,7 @@ describe('Phase 2.1: SQLite Storage Backend Migration', () => {
       const response = await session.fetch(new Request('http://localhost/snapshot'));
       expect(response.status).toBe(200);
 
-      const data = await response.json();
+      const data = await readJson(response);
       expect(data.snapshot).toBeDefined();
 
       // The snapshot should contain our data — verify key fields are present
@@ -337,7 +338,7 @@ describe('Phase 2.1: SQLite Storage Backend Migration', () => {
       const response = await session.fetch(new Request('http://localhost/snapshot'));
       expect(response.status).toBe(200);
 
-      const data = await response.json();
+      const data = await readJson(response);
       expect(data.snapshot).toBeDefined();
       expect(data.snapshot).toHaveProperty('title', 'Large Test Document');
 
@@ -369,7 +370,7 @@ describe('Phase 2.1: SQLite Storage Backend Migration', () => {
       const response = await session.fetch(new Request('http://localhost/snapshot'));
       expect(response.status).toBe(200);
 
-      const data = await response.json();
+      const data = await readJson(response);
       expect(data.snapshot.title).toBe(originalTitle);
       expect(data.snapshot.componentCount).toBe(originalComponentCount);
 

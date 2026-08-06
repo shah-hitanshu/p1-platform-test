@@ -42,6 +42,7 @@ import {
 import { getEffectiveRole } from '../../src/auth/authorization';
 import { getBranch } from '../../src/services';
 import type { AuthenticatedPrincipal } from '../../src/types';
+import { readJson } from '../helpers/http';
 
 const SITE_ID = 'site-1';
 const BRANCH_ID = '11111111-2222-3333-4444-555555555555';
@@ -89,7 +90,7 @@ describe('handleMigrationRoutes: conflict resolution', () => {
     });
 
     expect(response.status).toBe(409);
-    const body = await response.json();
+    const body = await readJson(response);
     expect(body.error).toMatch(/legacy/i);
     expect(body.error).toMatch(/re-run/i);
   });

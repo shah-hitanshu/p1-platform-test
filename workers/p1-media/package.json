@@ -2,17 +2,21 @@
   "name": "p1-media-worker",
   "private": true,
   "scripts": {
+    "deploy": "wrangler deploy",
     "dev": "wrangler dev",
     "dev:stack": "wrangler dev --local --inspector-port 9230",
-    "deploy": "wrangler deploy",
+    "lint": "eslint src",
+    "lint:fix": "eslint src --fix",
     "test": "vitest run",
-    "lint": "tsc --noEmit"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "aws4fetch": "^1.0.20"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20241230.0",
+    "@pantheon-systems/eslint-config": "workspace:*",
+    "eslint": "^9.27.0",
     "typescript": "^5.7.0",
     "vitest": "^3.2.7",
     "wrangler": "^4.110.0"

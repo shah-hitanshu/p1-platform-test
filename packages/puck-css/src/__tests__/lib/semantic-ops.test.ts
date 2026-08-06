@@ -39,7 +39,7 @@ describe('applySemanticOps', () => {
     const result = applySemanticOps(base, [
       { op: 'setProp', blockId: 'b1', propPath: 'text', value: 'new' },
     ]);
-    const block = (result.content as Array<{ props: Record<string, unknown> }>)[0];
+    const block = (result.content as { props: Record<string, unknown> }[])[0];
     expect(block.props.text).toBe('new');
   });
 
@@ -50,7 +50,7 @@ describe('applySemanticOps', () => {
     const result = applySemanticOps(base, [
       { op: 'removeProp', blockId: 'b1', propPath: 'extra' },
     ]);
-    const block = (result.content as Array<{ props: Record<string, unknown> }>)[0];
+    const block = (result.content as { props: Record<string, unknown> }[])[0];
     expect(block.props.extra).toBeUndefined();
   });
 
@@ -83,7 +83,7 @@ describe('applySemanticOps', () => {
     const result = applySemanticOps(base, [
       { op: 'moveBlock', blockId: 'c1', slot: 'content', afterId: null },
     ]);
-    const ids = (result.content as Array<{ props: { id: string } }>).map((b) => b.props.id);
+    const ids = (result.content as { props: { id: string } }[]).map((b) => b.props.id);
     expect(ids[0]).toBe('c1');
   });
 
@@ -154,7 +154,7 @@ describe('computeSemanticOps', () => {
     const ops = computeSemanticOps(canonical, edited);
     const result = applySemanticOps(canonical, ops);
     expect((result.root as { props: Record<string, unknown> }).props.title).toBe('Updated Home');
-    const resultIds = (result.content as Array<{ props: { id: string } }>).map((b) => b.props.id);
+    const resultIds = (result.content as { props: { id: string } }[]).map((b) => b.props.id);
     expect(resultIds).toContain('btn1');
   });
 });

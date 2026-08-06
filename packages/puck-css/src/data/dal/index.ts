@@ -8,8 +8,8 @@
 
 export type { PageStore, PageSetOptions, EditorMetaStore, RemoteDatasourceDefStore, StoreCapabilities } from "./types";
 
-import type { PageStore, EditorMetaStore, RemoteDatasourceDefStore, StoreCapabilities } from "./types";
 import type { TemplateStore } from "../../features/content-type-templates/stores/template-store.js";
+import type { PageStore, EditorMetaStore, RemoteDatasourceDefStore, StoreCapabilities } from "./types";
 
 // --- Lazy-initialized store instances ---
 

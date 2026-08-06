@@ -18,7 +18,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { RealtimeRouteContext } from '../../src/routes/realtime-api';
 import type { AuthenticatedPrincipal, Branch } from '../../src/types';
-import type { RealtimeEnv } from '../../src/routes/realtime-utils';
 
 // Phase 7.4: Mock the agent service for status validation
 vi.mock('../../src/services/agent-service', () => ({
@@ -46,6 +45,12 @@ vi.mock('../../src/auth/authorization', () => ({
 import * as documentService from '../../src/services/document-service';
 import * as branchService from '../../src/services/branch-service';
 import { hasPermission } from '../../src/auth/authorization';
+import { readJson } from '../helpers/http';
+import {
+  makeDurableObjectNamespace,
+  type MockDurableObjectNamespace,
+  type MockDurableObjectStub,
+} from '../helpers/durable-object';
 
 /**
  * PCC-3458: build a branch whose id/siteId mirror the requested ref, so the
@@ -105,17 +110,8 @@ function createMockActiveAgent(agentId: string): {
 }
 
 // Mock types for Cloudflare Durable Objects
-interface MockDurableObjectStub {
-  fetch: ReturnType<typeof vi.fn>;
-}
-
 interface MockDurableObjectId {
   toString: () => string;
-}
-
-interface MockDurableObjectNamespace {
-  idFromName: ReturnType<typeof vi.fn<[string], MockDurableObjectId>>;
-  get: ReturnType<typeof vi.fn<[MockDurableObjectId], MockDurableObjectStub>>;
 }
 
 interface MockEnv {
@@ -188,10 +184,7 @@ describe('Realtime API agent context integration', () => {
 
     mockEnv = {
       ENVIRONMENT: 'test',
-      DOCUMENT_STATE: {
-        idFromName: vi.fn().mockReturnValue(mockId),
-        get: vi.fn().mockReturnValue(mockStub),
-      },
+      DOCUMENT_STATE: makeDurableObjectNamespace(mockStub, mockId),
       POSTGRES_CONNECTION_STRING: 'postgresql://test:test@localhost/test',
       CORS_ORIGINS: 'http://localhost:3000,http://localhost:8787',
     };
@@ -481,7 +474,7 @@ describe('Realtime API agent context integration', () => {
       const response = assertNotNull(result);
 
       expect(response.status).toBe(400);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.error).toContain('trigger');
     });
 
@@ -508,7 +501,7 @@ describe('Realtime API agent context integration', () => {
       const response = assertNotNull(result);
 
       expect(response.status).toBe(400);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.error).toContain('intent');
     });
 
@@ -536,7 +529,7 @@ describe('Realtime API agent context integration', () => {
       const response = assertNotNull(result);
 
       expect(response.status).toBe(400);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.error).toContain('targetRegions');
     });
   });
@@ -758,7 +751,7 @@ describe('Realtime API agent context integration', () => {
         },
       );
 
-      await handleRealtimeRoutes(request, mockEnv as unknown as RealtimeEnv, actingContext);
+      await handleRealtimeRoutes(request, mockEnv, actingContext);
 
       const fetchedRequest = mockStub.fetch.mock.calls[0]?.[0] as Request;
       expect(fetchedRequest.headers.get('X-Verified-Requested-By-Id')).toBe('auth0|ada');
@@ -777,7 +770,7 @@ describe('Realtime API agent context integration', () => {
         },
       );
 
-      await handleRealtimeRoutes(request, mockEnv as unknown as RealtimeEnv, userContext);
+      await handleRealtimeRoutes(request, mockEnv, userContext);
 
       const fetchedRequest = mockStub.fetch.mock.calls[0]?.[0] as Request;
       expect(fetchedRequest.headers.get('X-Verified-Requested-By-Id')).toBeNull();
@@ -800,7 +793,7 @@ describe('Realtime API agent context integration', () => {
         },
       );
 
-      await handleRealtimeRoutes(request, mockEnv as unknown as RealtimeEnv, userContext);
+      await handleRealtimeRoutes(request, mockEnv, userContext);
 
       const fetchedRequest = mockStub.fetch.mock.calls[0]?.[0] as Request;
       expect(fetchedRequest.headers.get('X-Verified-Requested-By-Id')).toBeNull();

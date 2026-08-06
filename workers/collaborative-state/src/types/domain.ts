@@ -155,7 +155,8 @@ export interface Branch {
   sourceBranchId?: string;
   sourceCheckpointId?: string;
   createdById: string;
-  createdByType: 'user' | 'agent';
+  /** Main branches are seeded by the system, not by a user or an agent. */
+  createdByType: 'user' | 'agent' | 'system';
   createdAt: string;
   updatedAt: string;
   /** ISO timestamp when the branch was soft-deleted; null if active. */
@@ -193,7 +194,7 @@ export interface DocumentVersion {
   actionMetadata?: Record<string, unknown>; // Additional Puck action context
   source: DocumentVersionSource;
   createdById: string;
-  createdByType: 'user' | 'agent' | 'system';
+  createdByType: 'user' | 'agent' | 'service' | 'system';
   createdAt: string;
   isPublished?: boolean;
   isTombstone?: boolean;

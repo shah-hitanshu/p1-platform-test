@@ -5,8 +5,8 @@
  */
 
 import type { P1Client } from '@pantheon-systems/css-client';
-import type { TemplateStore } from './template-store.js';
 import type { Template, TemplateSummary, TemplateBinding, CreateTemplateParams, UpdateTemplateParams } from '../types.js';
+import type { TemplateStore } from './template-store.js';
 
 /**
  * Create a template store backed by the P1 API.

@@ -51,19 +51,21 @@ vi.mock('../../src/auth/authorization', () => ({
 
 import * as branchService from '../../src/services/branch-service';
 import { hasPermission } from '../../src/auth/authorization';
+import { readJson } from '../helpers/http';
+import { makeBranch } from '../helpers/branch';
 
 // Production-shaped identifiers (PCC-3462).
 const SITE_ID = 'b4ce1f14-c196-4ac1-a287-68f90e321f18';
 const MAIN_BRANCH_ID = '23411882-fe64-481f-b972-a670d9a5ff67';
 
-const mainBranch = {
+const mainBranch = makeBranch({
   id: MAIN_BRANCH_ID,
   siteId: SITE_ID,
   name: 'main',
   isMain: true,
   createdAt: new Date().toISOString(),
   archivedAt: null,
-};
+});
 
 function mockPresence(): BranchPresence {
   return {
@@ -126,7 +128,7 @@ describe('PCC-3458: branch-ref resolution on presence routes', () => {
       SITE_ID,
       MAIN_BRANCH_ID,
     );
-    const body = (await response.json());
+    const body = (await readJson(response));
     expect(body.summary.totalActors).toBe(1);
   });
 

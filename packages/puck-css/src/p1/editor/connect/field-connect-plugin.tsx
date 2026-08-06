@@ -6,8 +6,8 @@ import { useState, type ReactNode } from "react";
 import { isCrossPageRefTemplateString } from "../../../data/cross-reference";
 import type { RemoteDatasourceDefinition } from "../../../data/remote-datasources/remote-datasource-registry";
 import type { RouteRow } from "../../../data/page-store";
-import { ConnectFieldModal } from "./connect-field-modal";
 import { TemplateAutocompleteLayer } from "../template-autocomplete-layer";
+import { ConnectFieldModal } from "./connect-field-modal";
 
 type ScalarFieldProps = {
   children: ReactNode;

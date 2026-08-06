@@ -97,7 +97,7 @@ export interface UseRealtimeReturn {
   connected: boolean;
 
   /** Apply a local change (will be synced to other clients) */
-  applyLocalChange: (data: PuckData, puckActions?: Array<{ type: string; [key: string]: unknown }>) => void;
+  applyLocalChange: (data: PuckData, puckActions?: { type: string; [key: string]: unknown }[]) => void;
 
   /** Get the current snapshot from the Yjs document. Returns null if not connected. */
   getSnapshot: () => PuckData | null;
@@ -365,7 +365,7 @@ export function useRealtime(params: UseRealtimeParams): UseRealtimeReturn {
   }, [baseUrl, apiKey, siteId, branchId, documentPath, actorId, actorType, sessionId, enabled]);
 
   // Apply local change function
-  const applyLocalChange = useCallback((data: PuckData, puckActions?: Array<{ type: string; [key: string]: unknown }>) => {
+  const applyLocalChange = useCallback((data: PuckData, puckActions?: { type: string; [key: string]: unknown }[]) => {
     if (bindingRef.current) {
       if (puckActions && puckActions.length > 0 && clientRef.current) {
         clientRef.current.setActionMetadata(puckActions);

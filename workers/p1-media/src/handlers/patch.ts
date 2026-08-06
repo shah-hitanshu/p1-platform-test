@@ -1,4 +1,4 @@
-import { Env } from '../types';
+import type { Env } from '../types';
 import { validateMetadata } from '../schema';
 import { updateAssetMetadata } from '../store';
 
@@ -34,7 +34,7 @@ export async function handlePatch(
     if (v !== null) nonNull[k] = v;
   }
   const check = validateMetadata(nonNull);
-  if (!check.ok) return jsonError(check.error!, 400);
+  if (!check.ok) return jsonError(check.error, 400);
 
   const asset = await updateAssetMetadata(env, siteId, assetId, patch as Record<string, string | null>);
   if (!asset) return jsonError('Not found', 404);

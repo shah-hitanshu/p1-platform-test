@@ -30,8 +30,41 @@ concurrency:
   group: deploy-workers-${{ inputs.environment }}
   cancel-in-progress: false
 
+env:
+  # The workers this workflow deploys, plus their dependencies (`...pkg`).
+  DEPLOYED: >-
+    --filter=...collaborative-state-worker
+    --filter=...css-mcp-server
+    --filter=...@p1/agent
+    --filter=...p1-media-worker
+
 jobs:
+  # Deploys are dispatched manually and can target any ref, so nothing
+  # guarantees CI has run on what is about to ship.
+  verify:
+    name: lint / typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
+
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # Scoped to the four deployed workers and their dependencies. Verifying the
+      # whole workspace would let an unrelated package's type error block a
+      # hotfix on the one path that exists for hotfixes.
+      - run: pnpm exec turbo run typecheck ${{ env.DEPLOYED }}
+
+      - run: pnpm exec turbo run lint ${{ env.DEPLOYED }}
+
   backend:
+    needs: verify
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment }}
     steps:
@@ -109,6 +142,7 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
 
   mcp-server:
+    needs: verify
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment }}
     steps:
@@ -168,6 +202,7 @@ jobs:
   # NOTE: the agent has no production env in wrangler.jsonc; selecting
   # production for this job fails fast.
   p1-agent:
+    needs: verify
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment }}
     steps:
@@ -211,6 +246,7 @@ jobs:
 
   # Absorbed from p1-media-r2's deploy-worker.yml (sandbox lane removed).
   p1-media:
+    needs: verify
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment }}
     steps:

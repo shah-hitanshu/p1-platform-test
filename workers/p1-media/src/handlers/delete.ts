@@ -1,4 +1,4 @@
-import { Env } from '../types';
+import type { Env } from '../types';
 import { softDeleteAsset } from '../store';
 
 /** DELETE /media/:assetId — soft delete (bytes keep serving; hidden from the library). */

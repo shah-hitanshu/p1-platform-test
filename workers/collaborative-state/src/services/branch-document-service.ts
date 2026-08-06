@@ -571,8 +571,8 @@ export async function createDocumentOnBranch(
           [document.id, params.branchId],
         );
 
-        if (latestVersionResult.rows.length > 0) {
-          const latestVersion = latestVersionResult.rows[0]!;
+        const latestVersion = latestVersionResult.rows[0];
+        if (latestVersion !== undefined) {
           if (isTombstoneRow(latestVersion)) {
             // This is a recreation after tombstone - delete all versions on this branch
             // to start fresh with version 1
@@ -606,12 +606,12 @@ export async function createDocumentOnBranch(
 
     // A recreation can inherit a stale edge from a prior incarnation, so upsert
     // to the requested template or clear the edge when the recreation names none.
-    const hasTemplate =
-      params.templateId !== undefined &&
-      params.templateId !== null &&
-      params.templateId !== '';
+    const templateId =
+      params.templateId !== undefined && params.templateId !== null && params.templateId !== ''
+        ? params.templateId
+        : null;
     if (documentCreated || isRecreation) {
-      if (hasTemplate) {
+      if (templateId !== null) {
         try {
           await query(
             `INSERT INTO app.document_relations
@@ -620,15 +620,15 @@ export async function createDocumentOnBranch(
              ON CONFLICT (source_document_id, relation_type)
              DO UPDATE SET target_document_id = EXCLUDED.target_document_id,
                            synced_version = EXCLUDED.synced_version`,
-            [document.id, params.templateId, params.templateVersion ?? null],
+            [document.id, templateId, params.templateVersion ?? null],
           );
         } catch (relError) {
           if (isForeignKeyViolation(relError)) {
-            throw new DocumentNotFoundError(params.templateId!);
+            throw new DocumentNotFoundError(templateId);
           }
           throw relError;
         }
-        document.templateId = params.templateId!;
+        document.templateId = templateId;
         if (params.templateVersion !== undefined && params.templateVersion !== null) {
           document.templateVersion = params.templateVersion;
         }

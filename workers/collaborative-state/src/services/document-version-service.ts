@@ -29,7 +29,7 @@ export interface CreateDocumentVersionParams {
   patch?: unknown[]; // RFC 6902 JSON Patch operations
   source: DocumentVersionSource;
   createdById: string;
-  createdByType: 'user' | 'agent' | 'system';
+  createdByType: 'user' | 'agent' | 'service' | 'system';
   actionType?: string; // Puck action type (e.g., "insert", "reorder", "set")
   actionMetadata?: Record<string, unknown>; // Additional Puck action context
   puckActions?: PuckAction[]; // Puck actions forwarded from the frontend
@@ -80,7 +80,7 @@ interface DocumentVersionRow {
   snapshot: Record<string, unknown> | null;
   source: DocumentVersionSource;
   created_by_id: string;
-  created_by_type: 'user' | 'agent' | 'system';
+  created_by_type: 'user' | 'agent' | 'service' | 'system';
   created_at: string;
   is_published?: boolean;
   is_tombstone?: boolean;
@@ -307,7 +307,7 @@ export async function createDocumentVersion(
       if (params.puckActions && params.puckActions.length > 0) {
         const { actionType: computedType, actionMetadata: computedMeta } =
           classifyChange(undefined, params.puckActions);
-        if (computedType) {
+        if (computedType !== null) {
           await query(
             `UPDATE app.document_versions SET action_type = $1, action_metadata = $2
              WHERE id = $3 AND (action_type IS NULL OR action_type != 'structural')`,

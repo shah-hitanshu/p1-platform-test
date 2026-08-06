@@ -1,5 +1,10 @@
-import type { AuthenticatedPrincipal, RedirectSnapshot } from '../types';
-import { isRedirectBody, isValidRedirectType, toDocumentActorType } from '../types';
+import type { AuthenticatedPrincipal, RedirectSnapshot, RedirectType } from '../types';
+import {
+  isRedirectBody,
+  isValidRedirectType,
+  readRedirectSnapshot,
+  toDocumentActorType,
+} from '../types';
 import {
   createDocumentOnBranch,
   listDocumentsOnBranch,
@@ -46,11 +51,12 @@ async function handleListRedirects(branchId: string): Promise<Response> {
   const redirects = await Promise.all(
     documents.map(async (doc) => {
       const version = await getLatestDocumentVersion(doc.id, branchId);
-      if (!version?.snapshot) return null;
-      const snapshot = version.snapshot as RedirectSnapshot;
+      if (!version) return null;
+      const snapshot = readRedirectSnapshot(version.snapshot);
+      if (snapshot === null) return null;
       return {
         id: doc.id,
-        fromPath: snapshot.fromPath ?? snapshot.origin,
+        fromPath: snapshot.fromPath,
         destination: snapshot.destination,
         redirectType: snapshot.redirectType,
         parenting: snapshot.parenting,
@@ -87,10 +93,13 @@ async function handleGetRedirect(
     return errorResponse('Redirect version not found', 404);
   }
 
-  const snapshot = version.snapshot as RedirectSnapshot;
+  const snapshot = readRedirectSnapshot(version.snapshot);
+  if (snapshot === null) {
+    return errorResponse('Redirect version not found', 404);
+  }
   return jsonResponse({
     id: document.id,
-    fromPath: snapshot.fromPath ?? snapshot.origin,
+    fromPath: snapshot.fromPath,
     destination: snapshot.destination,
     redirectType: snapshot.redirectType,
     parenting: snapshot.parenting,
@@ -138,12 +147,22 @@ async function handleCreateRedirect(
     return validationErrorResponse(errors);
   }
 
-  const normalizedFromPath = stripTrailingSlashes(body.fromPath!) || '/';
+  // Both are guaranteed present by the checks above; re-reading them through a
+  // guard narrows the types without an assertion.
+  const { fromPath, destination } = body;
+  if (fromPath === undefined || destination === undefined) {
+    return errorResponse('Invalid request body shape', 400);
+  }
+
+  const normalizedFromPath = stripTrailingSlashes(fromPath) || '/';
   if (normalizedFromPath === '/') {
     return validationErrorResponse([{ name: 'fromPath', message: 'fromPath must not be the root path' }]);
   }
 
-  const redirectType = body.redirectType ?? 'permanent';
+  // Validated above, so anything not a known type here is absent, not invalid.
+  const redirectType: RedirectType = isValidRedirectType(body.redirectType)
+    ? body.redirectType
+    : 'permanent';
   const parenting = body.parenting ?? false;
   const originPath = normalizedFromPath.slice(1);
 
@@ -154,7 +173,7 @@ async function handleCreateRedirect(
 
   const snapshot: RedirectSnapshot = {
     fromPath: normalizedFromPath,
-    destination: body.destination!,
+    destination,
     redirectType,
     parenting,
   };
@@ -209,7 +228,10 @@ async function handleUpdateRedirect(
     return errorResponse('Redirect version not found', 404);
   }
 
-  const currentSnapshot = currentVersion.snapshot as RedirectSnapshot;
+  const currentSnapshot = readRedirectSnapshot(currentVersion.snapshot);
+  if (currentSnapshot === null) {
+    return errorResponse('Redirect version not found', 404);
+  }
   const body: unknown = await request.json();
 
   if (!isRedirectBody(body)) {
@@ -230,7 +252,7 @@ async function handleUpdateRedirect(
     }
   }
 
-  if (body.destination !== undefined && body.destination.trim() === '') {
+  if (body.destination?.trim() === '') {
     errors.push({ name: 'destination', message: 'destination must not be empty' });
   }
 
@@ -257,9 +279,11 @@ async function handleUpdateRedirect(
     }
   }
 
-  const resolvedRedirectType = body.redirectType ?? currentSnapshot.redirectType;
+  const resolvedRedirectType: RedirectType = isValidRedirectType(body.redirectType)
+    ? body.redirectType
+    : currentSnapshot.redirectType;
   const updatedSnapshot: RedirectSnapshot = {
-    fromPath: normalizedFromPath ?? currentSnapshot.fromPath ?? currentSnapshot.origin,
+    fromPath: normalizedFromPath ?? currentSnapshot.fromPath,
     destination: body.destination ?? currentSnapshot.destination,
     redirectType: resolvedRedirectType,
     parenting: body.parenting ?? currentSnapshot.parenting,

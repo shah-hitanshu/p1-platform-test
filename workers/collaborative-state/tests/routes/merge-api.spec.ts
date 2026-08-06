@@ -5,6 +5,9 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { readJson } from '../helpers/http';
+import { makePrincipal } from '../helpers/principal';
+import { makeBranch } from '../helpers/branch';
 
 // Mock the services
 vi.mock('../../src/services', () => ({
@@ -141,11 +144,11 @@ describe('Phase 7.1c: Merge API Routes', () => {
       const response = await handleMergeRoutes(request, {
         siteId: 'site-1',
         operation: 'check',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.canMerge).toBe(true);
       expect(body.conflicts).toHaveLength(0);
     });
@@ -191,11 +194,11 @@ describe('Phase 7.1c: Merge API Routes', () => {
       const response = await handleMergeRoutes(request, {
         siteId: 'site-1',
         operation: 'check',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.canMerge).toBe(false);
       expect(body.conflicts).toHaveLength(1);
     });
@@ -217,7 +220,7 @@ describe('Phase 7.1c: Merge API Routes', () => {
       const response = await handleMergeRoutes(request, {
         siteId: 'site-1',
         operation: 'check',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(400);
@@ -256,11 +259,11 @@ describe('Phase 7.1c: Merge API Routes', () => {
       const response = await handleMergeRoutes(request, {
         siteId: 'site-1',
         operation: 'execute',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.success).toBe(true);
       expect(body.mergeCheckpointId).toBe('merge-checkpoint-1');
     });
@@ -298,11 +301,11 @@ describe('Phase 7.1c: Merge API Routes', () => {
       const response = await handleMergeRoutes(request, {
         siteId: 'site-1',
         operation: 'execute',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.success).toBe(true);
     });
 
@@ -330,7 +333,7 @@ describe('Phase 7.1c: Merge API Routes', () => {
       const response = await handleMergeRoutes(request, {
         siteId: 'site-1',
         operation: 'execute',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(409);
@@ -375,11 +378,11 @@ describe('Phase 7.1c: Merge API Routes', () => {
       const response = await handleMergeRoutes(request, {
         siteId: 'site-1',
         operation: 'preview',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.canMerge).toBe(true);
       expect(body.documentsToUpdate).toHaveLength(1);
     });
@@ -424,11 +427,11 @@ describe('Phase 7.1c: Merge API Routes', () => {
       const response = await handleMergeRoutes(request, {
         siteId: 'site-1',
         mergeRequests: true,
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(201);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.id).toBe('mr-1');
     });
 
@@ -469,11 +472,11 @@ describe('Phase 7.1c: Merge API Routes', () => {
       await handleMergeRoutes(request, {
         siteId: 'site-1',
         mergeRequests: true,
-        principal: {
+        principal: makePrincipal({
           id: 'google-oauth2|107221644627712432289',
           dbUserId: 'db-uuid-for-user',
           type: 'user',
-        },
+        }),
       });
 
       expect(vi.mocked(services.createMergeRequest)).toHaveBeenCalledWith(
@@ -501,7 +504,7 @@ describe('Phase 7.1c: Merge API Routes', () => {
       const response = await handleMergeRoutes(request, {
         siteId: 'site-1',
         mergeRequests: true,
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(400);
@@ -527,7 +530,7 @@ describe('Phase 7.1c: Merge API Routes', () => {
       const response = await handleMergeRoutes(request, {
         siteId: 'site-1',
         mergeRequests: true,
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(400);
@@ -539,10 +542,10 @@ describe('Phase 7.1c: Merge API Routes', () => {
       const { handleMergeRoutes } = await import('../../src/routes/merge-api');
       const services = await import('../../src/services');
 
-      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce(makeBranch({
         id: 'main-id', siteId: 'site-1', name: 'main', isMain: true,
         status: 'active', createdAt: '2026-01-01', createdById: 'u', createdByType: 'user',
-      });
+      }));
       vi.mocked(services.updateMergeRequestStatus).mockRejectedValueOnce(
         new services.InvalidMergeRequestStatusTransitionError('open', 'merged'),
       );
@@ -560,7 +563,7 @@ describe('Phase 7.1c: Merge API Routes', () => {
         siteId: 'site-1',
         mergeRequests: true,
         mergeRequestId: 'mr-1',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(400);
@@ -570,10 +573,10 @@ describe('Phase 7.1c: Merge API Routes', () => {
       const { handleMergeRoutes } = await import('../../src/routes/merge-api');
       const services = await import('../../src/services');
 
-      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce(makeBranch({
         id: 'main-id', siteId: 'site-1', name: 'main', isMain: true,
         status: 'active', createdAt: '2026-01-01', createdById: 'u', createdByType: 'user',
-      });
+      }));
       vi.mocked(services.deleteMergeRequest).mockRejectedValueOnce(
         new services.CannotDeleteMergedRequestError('mr-1'),
       );
@@ -587,7 +590,7 @@ describe('Phase 7.1c: Merge API Routes', () => {
         siteId: 'site-1',
         mergeRequests: true,
         mergeRequestId: 'mr-1',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(409);
@@ -613,7 +616,7 @@ describe('Phase 7.1c: Merge API Routes', () => {
       const response = await handleMergeRoutes(request, {
         siteId: 'site-1',
         operation: 'check',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(422);
@@ -625,7 +628,7 @@ describe('Phase 7.1c: Merge API Routes', () => {
       const { handleMergeRoutes } = await import('../../src/routes/merge-api');
       const services = await import('../../src/services');
 
-      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce(makeBranch({
         id: 'main-branch-id',
         siteId: 'site-1',
         name: 'main',
@@ -634,7 +637,7 @@ describe('Phase 7.1c: Merge API Routes', () => {
         createdAt: '2026-01-24T10:00:00.000Z',
         createdById: 'user-1',
         createdByType: 'user',
-      });
+      }));
 
       vi.mocked(services.listMergeRequests).mockResolvedValueOnce([
         {
@@ -658,11 +661,11 @@ describe('Phase 7.1c: Merge API Routes', () => {
       const response = await handleMergeRoutes(request, {
         siteId: 'site-1',
         mergeRequests: true,
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.mergeRequests).toHaveLength(1);
     });
   });
@@ -672,7 +675,7 @@ describe('Phase 7.1c: Merge API Routes', () => {
       const { handleMergeRoutes } = await import('../../src/routes/merge-api');
       const services = await import('../../src/services');
 
-      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce(makeBranch({
         id: 'main-branch-id',
         siteId: 'site-1',
         name: 'main',
@@ -681,7 +684,7 @@ describe('Phase 7.1c: Merge API Routes', () => {
         createdAt: '2026-01-24T10:00:00.000Z',
         createdById: 'user-1',
         createdByType: 'user',
-      });
+      }));
 
       vi.mocked(services.getMergeRequest).mockResolvedValueOnce({
         id: 'mr-1',
@@ -704,11 +707,11 @@ describe('Phase 7.1c: Merge API Routes', () => {
         siteId: 'site-1',
         mergeRequests: true,
         mergeRequestId: 'mr-1',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.id).toBe('mr-1');
     });
 
@@ -716,7 +719,7 @@ describe('Phase 7.1c: Merge API Routes', () => {
       const { handleMergeRoutes } = await import('../../src/routes/merge-api');
       const services = await import('../../src/services');
 
-      vi.mocked(services.getMainBranch).mockResolvedValueOnce({
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce(makeBranch({
         id: 'main-branch-id',
         siteId: 'site-1',
         name: 'main',
@@ -725,7 +728,7 @@ describe('Phase 7.1c: Merge API Routes', () => {
         createdAt: '2026-01-24T10:00:00.000Z',
         createdById: 'user-1',
         createdByType: 'user',
-      });
+      }));
 
       vi.mocked(services.getMergeRequest).mockResolvedValueOnce(null);
 
@@ -738,7 +741,7 @@ describe('Phase 7.1c: Merge API Routes', () => {
         siteId: 'site-1',
         mergeRequests: true,
         mergeRequestId: 'nonexistent',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(404);
@@ -773,7 +776,7 @@ describe('Phase 7.1c: Merge API Routes', () => {
       const response = await handleMergeRoutes(request, {
         siteId: 'site-1',
         operation: 'check',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(404);
@@ -790,7 +793,7 @@ describe('Phase 7.1c: Merge API Routes', () => {
       const response = await handleMergeRoutes(request, {
         siteId: 'site-1',
         operation: 'check',
-        principal: { id: 'user-1', type: 'user' },
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
       });
 
       expect(response.status).toBe(405);

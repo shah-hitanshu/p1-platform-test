@@ -7,7 +7,7 @@ export type UiRemoteDatasource = {
   urlTemplate: string;
   headers?: Record<string, string>;
   query?: Record<string, string>;
-  fields: Array<{ path: string; description: string }>;
+  fields: { path: string; description: string }[];
 };
 
 export type ScopedUiRemoteDatasource = UiRemoteDatasource & { scope: RemoteDatasourceScope };
@@ -32,8 +32,8 @@ export function parseRecordLines(value: string): Record<string, string> {
   return out;
 }
 
-export function parseFieldLines(value: string): Array<{ path: string; description: string }> {
-  const out: Array<{ path: string; description: string }> = [];
+export function parseFieldLines(value: string): { path: string; description: string }[] {
+  const out: { path: string; description: string }[] = [];
   for (const line of value.split("\n")) {
     const raw = line.trim();
     if (!raw) continue;

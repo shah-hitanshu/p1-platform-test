@@ -14,6 +14,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
+import { readJson } from '../helpers/http';
 
 // Mock cloudflare:workers DurableObject base class for Hibernatable WebSocket API
 vi.mock('cloudflare:workers', () => ({
@@ -617,7 +618,7 @@ describe('Phase 6: Conflict Notification & Kill Switch', () => {
       );
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.agents).toBeDefined();
       expect(body.agents.length).toBe(1);
       expect(body.agents[0].agentId).toBe('agent-123');
@@ -638,7 +639,7 @@ describe('Phase 6: Conflict Notification & Kill Switch', () => {
       );
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.agents).toEqual([]);
     });
   });

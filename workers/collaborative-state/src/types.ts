@@ -100,6 +100,7 @@ export {
   VALID_REDIRECT_TYPES,
   isValidRedirectType,
   isRedirectBody,
+  readRedirectSnapshot,
 } from './types/redirects';
 
 import type { ActorType } from './types/enums';

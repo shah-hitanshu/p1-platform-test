@@ -54,6 +54,8 @@ import { runWithConnection, query } from '../../src/db';
 import { getBranch } from '../../src/services';
 import { assertPermission, getEffectiveRole } from '../../src/auth/authorization';
 import { triggerMigration, processMigration } from '../../src/services/migration-service';
+import { readJson } from '../helpers/http';
+import { makeBranch } from '../helpers/branch';
 
 describe('handleMigrateTemplate — 202/waitUntil path', () => {
   const siteId = 'site-uuid-001';
@@ -101,17 +103,14 @@ describe('handleMigrateTemplate — 202/waitUntil path', () => {
     });
 
     // getBranch resolves to a valid branch matching the siteId
-    vi.mocked(getBranch).mockResolvedValue({
+    vi.mocked(getBranch).mockResolvedValue(makeBranch({
       id: branchId,
       siteId,
       name: 'main',
       isMain: true,
-      baseBranchId: null,
       createdById: 'user-001',
-      createdByType: 'user',
       createdAt: '2026-06-20T00:00:00Z',
-      isDefault: true,
-    });
+    }));
 
     // triggerMigration returns a pending job
     vi.mocked(triggerMigration).mockResolvedValue({
@@ -154,7 +153,7 @@ describe('handleMigrateTemplate — 202/waitUntil path', () => {
     const response = await handleTemplateRequest(request, context);
 
     expect(response.status).toBe(202);
-    const body = await response.json();
+    const body = await readJson(response);
     expect(body.status).toBe('processing');
     expect(body.job.id).toBe('job-001');
     expect(waitUntilFn).toHaveBeenCalledOnce();
@@ -249,7 +248,7 @@ describe('handleMigrateTemplate — 202/waitUntil path', () => {
     const response = await handleTemplateRequest(request, context);
 
     expect(response.status).toBe(200);
-    const body = await response.json();
+    const body = await readJson(response);
     expect(body.processedDocuments).toBe(3);
     expect(vi.mocked(processMigration).mock.calls[0]?.[0]).toBe('job-001');
   });

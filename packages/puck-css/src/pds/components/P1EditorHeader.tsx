@@ -11,9 +11,9 @@ import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon, Avatar, PantheonLogo } from '@pantheon-systems/pds-toolkit-react';
 import { getAvatarStyleOverride } from '../../collaboration/utils/avatarColor.js';
+import type { Template, TemplateSummary } from '../../features/content-type-templates/types.js';
 import { PageNavigator } from './PageNavigator.js';
 import type { PageNavigatorDocument } from './PageNavigator.js';
-import type { Template, TemplateSummary } from '../../features/content-type-templates/types.js';
 import { CreatePageModal } from './CreatePageModal.js';
 import styles from './P1EditorHeader.module.css';
 

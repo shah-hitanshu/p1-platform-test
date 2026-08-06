@@ -287,7 +287,7 @@ describe('Phase 3.3: Checkpoint Service', () => {
 
       expect(latestVersionsCall).toBeDefined();
       // The SQL should filter out tombstoned documents via snapshot check
-      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+
       expect(latestVersionsCall![0]).toContain('is_tombstone');
     });
 

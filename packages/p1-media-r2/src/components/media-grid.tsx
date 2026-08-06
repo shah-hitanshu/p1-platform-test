@@ -39,7 +39,7 @@ export function MediaGrid(props: {
   const [visibleCount, setVisibleCount] = useState(TILE_BATCH);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
-  const tileRefs = useRef<Array<HTMLDivElement | null>>([]);
+  const tileRefs = useRef<(HTMLDivElement | null)[]>([]);
 
   // A fresh fetch (new search or initial load) always starts back at the top.
   useEffect(() => {

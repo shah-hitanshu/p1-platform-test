@@ -7,7 +7,7 @@ import {
   cdnUrl,
   rowToAsset,
 } from '../store';
-import { AssetRow, AssetVersionRow } from '../types';
+import type { AssetRow, AssetVersionRow } from '../types';
 
 // These are the pure, DB-free helpers. The composite R2+D1 operations
 // (finalizeAssetCreation / finalizeVersionAdd / updateAssetMetadata / softDeleteAsset)

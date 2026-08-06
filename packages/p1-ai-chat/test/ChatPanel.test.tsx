@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, act, within } from '@testing-library/react';
-import { MockWebSocket, baseContext } from './testSupport.js';
 import type { DraftRequest, DraftRequestChannel } from '../src/types.js';
+import { MockWebSocket, baseContext } from './testSupport.js';
 
 const dispatch = vi.fn();
 
@@ -259,7 +259,7 @@ describe('ChatPanel', () => {
   });
 
   it('pins the transcript to the newest message once the panel gains a size', async () => {
-    const observers: Array<() => void> = [];
+    const observers: (() => void)[] = [];
     vi.stubGlobal('ResizeObserver', class {
       constructor(callback: () => void) { observers.push(callback); }
       observe() {}

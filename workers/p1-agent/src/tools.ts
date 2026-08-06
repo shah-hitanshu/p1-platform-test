@@ -1,6 +1,6 @@
-import type { McpApiClient } from './css-api.js';
 import { validateOps, validateDocumentStructure } from '@pantheon-systems/p1-content-validator';
 import type { ComponentSchema } from '@pantheon-systems/p1-content-validator';
+import type { McpApiClient } from './css-api.js';
 
 // Inline ULID generator — no external dependency required in Workers
 const ULID_ENCODING = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
@@ -62,7 +62,7 @@ export function injectPuckIds(content: unknown): unknown {
 
 function buildRegistry(components: unknown[]): Record<string, ComponentSchema> {
   const registry: Record<string, ComponentSchema> = {};
-  for (const comp of components as Array<Record<string, unknown>>) {
+  for (const comp of components as Record<string, unknown>[]) {
     if (typeof comp.name === 'string') {
       registry[comp.name] = {
         name: comp.name,
@@ -137,7 +137,7 @@ export async function executeTool(
 
     case 'list_components': {
       const result = await cssApi.listComponents(toolInput.site_id as string, toolInput.branch_id as string);
-      return (result.components as Array<Record<string, unknown>>).map(c => ({
+      return (result.components as Record<string, unknown>[]).map(c => ({
         name: c.name,
         defaultProps: c.defaultProps,
         ...(c.ai && (c.ai as Record<string, unknown>).instructions
@@ -358,12 +358,12 @@ export async function executeTool(
         throw new Error('Cannot create pages at the _registry/ path prefix — this is reserved for system use.');
       }
 
-      const components = toolInput.components as Array<{
+      const components = toolInput.components as {
         type: string;
         props: Record<string, unknown>;
         zone?: string;
         parentId?: string;
-      }>;
+      }[];
 
       // Build components with fresh ULIDs then validate against the registry.
       // ULIDs are injected before validation so id format checks pass.
@@ -480,7 +480,7 @@ export async function executeTool(
       if (!res.ok) {
         throw new Error(`Media worker returned ${res.status}: ${await res.text()}`);
       }
-      return res.json() as Promise<Array<{ key: string; url: string; filename: string; size: number; lastModified: string }>>;
+      return res.json() as Promise<{ key: string; url: string; filename: string; size: number; lastModified: string }[]>;
     }
 
     case 'fetch_page': {

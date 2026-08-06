@@ -7,12 +7,13 @@
  */
 
 import { useRef, useMemo } from 'react';
+import type { DocumentVersion, ActorPresence, RegisteredAgent } from '@pantheon-systems/css-client';
 import { useP1Puck } from '../core/P1PuckContext.js';
+import type { SiteMenuItem, CurrentUser } from '../pds/components/P1EditorHeader.js';
+import type { TemplateSummary } from '../features/content-type-templates/types.js';
 import { createP1Plugin } from './plugin/P1Plugin.js';
 import type { P1PluginOptions, PuckPlugin } from './plugin/P1Plugin.js';
 import type { DocumentSyncStore } from './plugin/document-sync-plugin.js';
-import type { DocumentVersion, ActorPresence, RegisteredAgent } from '@pantheon-systems/css-client';
-import type { SiteMenuItem, CurrentUser } from '../pds/components/P1EditorHeader.js';
 
 /**
  * Options that consumers can pass to customize the plugin behavior.
@@ -43,7 +44,7 @@ export interface UseP1PluginOptions {
   /** Override selected document path (e.g., from URL params). Defaults to context currentDocument path. */
   selectedDocumentPath?: string | null;
   /** Callback to create a new document */
-  onDocumentCreate?: (path: string, template?: import('../features/content-type-templates/types.js').TemplateSummary | null, title?: string) => Promise<void>;
+  onDocumentCreate?: (path: string, template?: TemplateSummary | null, title?: string) => Promise<void>;
   /** Hand a "Generate with AI" brief (+ the new page's path/title) to the chatbot. */
   onGenerateWithAI?: (brief: string, page: { path: string; title: string }) => void;
   /** Callback to delete a document */

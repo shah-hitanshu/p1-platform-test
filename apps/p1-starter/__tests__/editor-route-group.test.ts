@@ -4,10 +4,10 @@
  * future /p1/settings). This structure replaces the old NON_EDITOR_ROUTES
  * opt-out list: siblings stay editor-free by construction, not by enumeration.
  */
-import { describe, expect, it } from "vitest";
 import { existsSync, readFileSync } from "fs";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
+import { describe, expect, it } from "vitest";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const appDir = resolve(__dirname, "..");

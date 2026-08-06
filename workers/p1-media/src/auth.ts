@@ -1,4 +1,4 @@
-import { Env } from './types';
+import type { Env } from './types';
 
 const MAX_CACHE_SIZE = 1000;
 // Cache key: `${token}\0${siteId}` — null-byte separator prevents collisions.

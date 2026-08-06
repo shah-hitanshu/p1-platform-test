@@ -115,7 +115,12 @@ export async function runUpload(
   }
 
   const nextProgress: UploadProgress = { presigned, uploaded };
-  const presignedResult = presigned!;
+  if (presigned === undefined) {
+    // `uploaded` is only ever true alongside a stored presign result, so this
+    // means the resume state was persisted in an inconsistent shape.
+    throw new UploadFlowError("Resume state is missing its presign result", nextProgress);
+  }
+  const presignedResult = presigned;
 
   onStep("finalizing");
   const finalizePath = assetId

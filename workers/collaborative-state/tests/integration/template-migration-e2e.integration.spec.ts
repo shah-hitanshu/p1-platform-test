@@ -15,6 +15,8 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import postgres from 'postgres';
 import { setDatabaseInstance } from '../../src/db';
+import { readJson } from '../helpers/http';
+import { makePrincipal } from '../helpers/principal';
 
 const TEST_DATABASE_URL =
   process.env.POSTGRES_CONNECTION_STRING ??
@@ -155,13 +157,11 @@ describe('Template Migration E2E', () => {
   let templateId: string;
   let pageDocId: string;
 
-  const adminPrincipal = {
+  const adminPrincipal = makePrincipal({
     id: 'migration-e2e-admin',
-    type: 'user' as const,
+    type: 'user',
     get dbUserId(): string { return adminUserId; },
-    systemRole: null,
-    scope: 'full' as const,
-  };
+  });
 
   it('Step 1: Create a template (snapshot seeded with empty content)', async () => {
     const { handleTemplateRequest } = await import('../../src/routes/template-api');
@@ -186,7 +186,7 @@ describe('Template Migration E2E', () => {
     });
 
     expect(response.status).toBe(201);
-    const body: { id: string; content: unknown[] } = await response.json();
+    const body: { id: string; content: unknown[] } = await readJson(response);
     templateId = body.id;
     expect(templateId).toBeDefined();
     expect(body.content).toEqual([]);
@@ -292,7 +292,7 @@ describe('Template Migration E2E', () => {
     });
 
     expect(response.status).toBe(200);
-    const status = await response.json();
+    const status = await readJson(response);
 
     expect(status.templateId).toBe(templateId);
     expect(status.currentVersion).toBe(3);
@@ -322,7 +322,7 @@ describe('Template Migration E2E', () => {
     });
 
     expect(response.status).toBe(200);
-    const preview = await response.json();
+    const preview = await readJson(response);
 
     expect(preview.templateId).toBe(templateId);
     expect(preview.fromVersion).toBe(2);
@@ -360,7 +360,7 @@ describe('Template Migration E2E', () => {
     });
 
     expect(response.status).toBe(200);
-    const result = await response.json();
+    const result = await readJson(response);
     expect(result.job.totalDocuments).toBe(1);
     expect(result.processedDocuments).toBe(1);
     expect(result.conflictedDocuments).toBe(0);
@@ -407,7 +407,7 @@ describe('Template Migration E2E', () => {
     });
 
     expect(response.status).toBe(200);
-    const status = await response.json();
+    const status = await readJson(response);
     expect(status.staleDocumentCount).toBe(0);
     expect(status.migrationAvailable).toBe(false);
   });

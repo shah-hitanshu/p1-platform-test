@@ -6,6 +6,8 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { AuthenticatedPrincipal } from '../../src/types';
+import { readJson } from '../helpers/http';
+import { makeBranch } from '../helpers/branch';
 
 // Mock the db module
 vi.mock('../../src/db', () => ({
@@ -54,7 +56,7 @@ describe('Collaborator API Routes', () => {
       const db = await import('../../src/db');
       const services = await import('../../src/services');
 
-      vi.mocked(services.getMainBranch).mockResolvedValue({
+      vi.mocked(services.getMainBranch).mockResolvedValue(makeBranch({
         id: 'branch-main',
         siteId: 'site-1',
         name: 'main',
@@ -64,7 +66,7 @@ describe('Collaborator API Routes', () => {
         createdByType: 'user',
         createdAt: '2026-01-01T00:00:00Z',
         updatedAt: '2026-01-01T00:00:00Z',
-      });
+      }));
 
       vi.mocked(db.query).mockResolvedValueOnce({
         rows: [{
@@ -96,7 +98,7 @@ describe('Collaborator API Routes', () => {
       });
 
       expect(response.status).toBe(201);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.userId).toBe('user-2');
       expect(body.role).toBe('developer');
       expect(body.source).toBe('local');
@@ -106,7 +108,7 @@ describe('Collaborator API Routes', () => {
       const { handleCollaboratorRoutes } = await import('../../src/routes/collaborator-api');
       const services = await import('../../src/services');
 
-      vi.mocked(services.getMainBranch).mockResolvedValue({
+      vi.mocked(services.getMainBranch).mockResolvedValue(makeBranch({
         id: 'branch-main',
         siteId: 'site-1',
         name: 'main',
@@ -116,7 +118,7 @@ describe('Collaborator API Routes', () => {
         createdByType: 'user',
         createdAt: '2026-01-01T00:00:00Z',
         updatedAt: '2026-01-01T00:00:00Z',
-      });
+      }));
 
       const request = new Request(
         'https://api.example.com/api/sites/site-1/collaborators',
@@ -133,7 +135,7 @@ describe('Collaborator API Routes', () => {
       });
 
       expect(response.status).toBe(400);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.error).toContain('userId');
     });
 
@@ -141,7 +143,7 @@ describe('Collaborator API Routes', () => {
       const { handleCollaboratorRoutes } = await import('../../src/routes/collaborator-api');
       const services = await import('../../src/services');
 
-      vi.mocked(services.getMainBranch).mockResolvedValue({
+      vi.mocked(services.getMainBranch).mockResolvedValue(makeBranch({
         id: 'branch-main',
         siteId: 'site-1',
         name: 'main',
@@ -151,7 +153,7 @@ describe('Collaborator API Routes', () => {
         createdByType: 'user',
         createdAt: '2026-01-01T00:00:00Z',
         updatedAt: '2026-01-01T00:00:00Z',
-      });
+      }));
 
       const request = new Request(
         'https://api.example.com/api/sites/site-1/collaborators',
@@ -168,7 +170,7 @@ describe('Collaborator API Routes', () => {
       });
 
       expect(response.status).toBe(400);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.error).toContain('Invalid role');
     });
   });
@@ -179,7 +181,7 @@ describe('Collaborator API Routes', () => {
       const db = await import('../../src/db');
       const services = await import('../../src/services');
 
-      vi.mocked(services.getMainBranch).mockResolvedValue({
+      vi.mocked(services.getMainBranch).mockResolvedValue(makeBranch({
         id: 'branch-main',
         siteId: 'site-1',
         name: 'main',
@@ -189,7 +191,7 @@ describe('Collaborator API Routes', () => {
         createdByType: 'user',
         createdAt: '2026-01-01T00:00:00Z',
         updatedAt: '2026-01-01T00:00:00Z',
-      });
+      }));
 
       vi.mocked(db.query).mockResolvedValueOnce({
         rows: [
@@ -225,7 +227,7 @@ describe('Collaborator API Routes', () => {
       });
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.collaborators).toHaveLength(2);
       expect(body.collaborators[0].source).toBe('local');
       expect(body.collaborators[1].source).toBe('mas');
@@ -238,7 +240,7 @@ describe('Collaborator API Routes', () => {
       const db = await import('../../src/db');
       const services = await import('../../src/services');
 
-      vi.mocked(services.getMainBranch).mockResolvedValue({
+      vi.mocked(services.getMainBranch).mockResolvedValue(makeBranch({
         id: 'branch-main',
         siteId: 'site-1',
         name: 'main',
@@ -248,7 +250,7 @@ describe('Collaborator API Routes', () => {
         createdByType: 'user',
         createdAt: '2026-01-01T00:00:00Z',
         updatedAt: '2026-01-01T00:00:00Z',
-      });
+      }));
 
       // Owner count: 2 owners exist, safe to remove
       vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ count: '2' }] });
@@ -274,7 +276,7 @@ describe('Collaborator API Routes', () => {
       const db = await import('../../src/db');
       const services = await import('../../src/services');
 
-      vi.mocked(services.getMainBranch).mockResolvedValue({
+      vi.mocked(services.getMainBranch).mockResolvedValue(makeBranch({
         id: 'branch-main',
         siteId: 'site-1',
         name: 'main',
@@ -284,7 +286,7 @@ describe('Collaborator API Routes', () => {
         createdByType: 'user',
         createdAt: '2026-01-01T00:00:00Z',
         updatedAt: '2026-01-01T00:00:00Z',
-      });
+      }));
 
       // Owner count: 2 owners, safe to proceed
       vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ count: '2' }] });
@@ -310,7 +312,7 @@ describe('Collaborator API Routes', () => {
       const db = await import('../../src/db');
       const services = await import('../../src/services');
 
-      vi.mocked(services.getMainBranch).mockResolvedValue({
+      vi.mocked(services.getMainBranch).mockResolvedValue(makeBranch({
         id: 'branch-main',
         siteId: 'site-1',
         name: 'main',
@@ -320,7 +322,7 @@ describe('Collaborator API Routes', () => {
         createdByType: 'user',
         createdAt: '2026-01-01T00:00:00Z',
         updatedAt: '2026-01-01T00:00:00Z',
-      });
+      }));
 
       // Count query returns 1 owner
       vi.mocked(db.query).mockResolvedValueOnce({
@@ -343,7 +345,7 @@ describe('Collaborator API Routes', () => {
       });
 
       expect(response.status).toBe(409);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.error).toContain('last owner');
     });
 
@@ -352,7 +354,7 @@ describe('Collaborator API Routes', () => {
       const db = await import('../../src/db');
       const services = await import('../../src/services');
 
-      vi.mocked(services.getMainBranch).mockResolvedValue({
+      vi.mocked(services.getMainBranch).mockResolvedValue(makeBranch({
         id: 'branch-main',
         siteId: 'site-1',
         name: 'main',
@@ -362,7 +364,7 @@ describe('Collaborator API Routes', () => {
         createdByType: 'user',
         createdAt: '2026-01-01T00:00:00Z',
         updatedAt: '2026-01-01T00:00:00Z',
-      });
+      }));
 
       // Count query returns 2 owners
       vi.mocked(db.query).mockResolvedValueOnce({
@@ -392,7 +394,7 @@ describe('Collaborator API Routes', () => {
       const services = await import('../../src/services');
       const auth = await import('../../src/auth/authorization');
 
-      vi.mocked(services.getMainBranch).mockResolvedValue({
+      vi.mocked(services.getMainBranch).mockResolvedValue(makeBranch({
         id: 'branch-main',
         siteId: 'site-1',
         name: 'main',
@@ -402,7 +404,7 @@ describe('Collaborator API Routes', () => {
         createdByType: 'user',
         createdAt: '2026-01-01T00:00:00Z',
         updatedAt: '2026-01-01T00:00:00Z',
-      });
+      }));
 
       vi.mocked(auth.assertPermission).mockRejectedValueOnce(
         new auth.AuthorizationError(

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { Env } from '../types';
+import type { Env } from '../types';
 
 // Router tests mock the auth check AND every handler so we test ONLY index.ts's
 // job: method/path dispatch, the auth gate, CORS, and error mapping. The handlers'

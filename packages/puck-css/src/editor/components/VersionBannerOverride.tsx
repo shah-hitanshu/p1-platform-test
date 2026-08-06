@@ -54,7 +54,7 @@ export function VersionBannerOverride({
       {isViewingOld && (
         <HistoricalVersionBanner
           version={viewingVersion}
-          onReturnToLatest={() => { versions[0] && onVersionSelect?.(versions[0]); }}
+          onReturnToLatest={() => { if (versions[0]) onVersionSelect?.(versions[0]); }}
           onRestoreVersion={onRestoreVersion}
           canRevert={canRevert}
           isReturning={isReturning}

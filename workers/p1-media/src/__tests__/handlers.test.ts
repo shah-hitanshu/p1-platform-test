@@ -5,7 +5,7 @@ import { handleFinalizeUpload, handleFinalizeVersion } from '../handlers/finaliz
 import { handleGetAsset } from '../handlers/get';
 import { handlePatch } from '../handlers/patch';
 import { handleDelete } from '../handlers/delete';
-import { Env, MediaAsset } from '../types';
+import type { Env, MediaAsset } from '../types';
 
 // The store's composite R2+D1 operations are mocked here on purpose: these are
 // HANDLER tests. They verify request parsing, validation, status codes and that

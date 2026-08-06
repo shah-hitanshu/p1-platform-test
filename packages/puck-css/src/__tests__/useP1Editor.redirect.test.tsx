@@ -21,14 +21,14 @@ const mockLoadDocument = vi.fn<(...args: unknown[]) => Promise<void>>();
 const mockCssContext = {
   branchId: 'branch-a',
   loadDocument: mockLoadDocument,
-  documents: [] as Array<{
+  documents: [] as {
     id: string;
     path: string;
     siteId: string;
     archived: boolean;
     createdAt: string;
     updatedAt: string;
-  }>,
+  }[],
   documentsLoading: false,
   currentDocument: null as null | { id: string; path: string; siteId: string },
   currentData: null,

@@ -15,6 +15,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
+import { readJson } from '../helpers/http';
 
 // Mock cloudflare:workers DurableObject base class
 vi.mock('cloudflare:workers', () => ({
@@ -135,7 +136,7 @@ describe('DocumentSession /flush endpoint', () => {
       const response = await session.fetch(request);
 
       expect(response.status).toBe(200);
-      const data = await response.json();
+      const data = await readJson(response);
       expect(data).toHaveProperty('flushed');
     });
 
@@ -159,7 +160,7 @@ describe('DocumentSession /flush endpoint', () => {
       const response = await session.fetch(request);
 
       expect(response.status).toBe(200);
-      const data = await response.json();
+      const data = await readJson(response);
       expect(data.flushed).toBe(true);
     });
   });

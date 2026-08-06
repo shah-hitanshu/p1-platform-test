@@ -7,6 +7,9 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { readJson } from '../helpers/http';
+import { makePrincipal } from '../helpers/principal';
+import { makeBranch } from '../helpers/branch';
 
 // Mock the services
 vi.mock('../../src/services', () => ({
@@ -85,7 +88,7 @@ vi.mock('../../src/auth/authorization', () => ({
 // Shared test fixtures
 // ---------------------------------------------------------------------------
 
-const mainBranch = {
+const mainBranch = makeBranch({
   id: 'branch-main',
   siteId: 'site-1',
   name: 'main',
@@ -95,9 +98,9 @@ const mainBranch = {
   createdByType: 'user' as const,
   createdAt: '2026-01-01T00:00:00.000Z',
   updatedAt: '2026-01-01T00:00:00.000Z',
-};
+});
 
-const featureBranch = {
+const featureBranch = makeBranch({
   id: 'branch-feature',
   siteId: 'site-1',
   name: 'feature-one',
@@ -107,7 +110,7 @@ const featureBranch = {
   createdByType: 'user' as const,
   createdAt: '2026-02-01T00:00:00.000Z',
   updatedAt: '2026-02-01T00:00:00.000Z',
-};
+});
 
 const mockDocument = {
   id: 'doc-1',
@@ -128,11 +131,11 @@ const mockMainVersion = {
   createdAt: '2026-01-01T00:00:00.000Z',
 };
 
-const mockPrincipal = {
+const mockPrincipal = makePrincipal({
   id: 'user-1',
-  type: 'user' as const,
+  type: 'user',
   siteId: 'site-1',
-};
+});
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -182,7 +185,7 @@ describe('Copy-on-Write (COW) Document API Fallback', () => {
       });
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body).toHaveProperty('id', 'doc-1');
     });
 
@@ -256,7 +259,7 @@ describe('Copy-on-Write (COW) Document API Fallback', () => {
       });
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body).toHaveProperty('inherited', true);
       expect(body).toHaveProperty('id', mockMainVersion.id);
     });
@@ -301,7 +304,7 @@ describe('Copy-on-Write (COW) Document API Fallback', () => {
       });
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body).toHaveProperty('id', 'version-feature-1');
       // Should NOT have inherited: true
       expect(body).not.toHaveProperty('inherited', true);
@@ -363,7 +366,7 @@ describe('Copy-on-Write (COW) Document API Fallback', () => {
       });
 
       expect(response.status).toBe(201);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body).toHaveProperty('id', 'version-feature-new');
       expect(body).toHaveProperty('branchId', 'branch-feature');
     });
@@ -418,7 +421,7 @@ describe('Copy-on-Write (COW) Document API Fallback', () => {
       });
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.documents).toHaveLength(2);
       expect(body.documents[0]).toHaveProperty('inherited', false);
       expect(body.documents[1]).toHaveProperty('inherited', true);

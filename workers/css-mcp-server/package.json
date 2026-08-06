@@ -25,6 +25,7 @@
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260515.1",
     "@eslint/js": "^9.39.4",
+    "@pantheon-systems/eslint-config": "workspace:*",
     "eslint": "^9.39.4",
     "globals": "^15.15.0",
     "typescript": "^5.9.3",

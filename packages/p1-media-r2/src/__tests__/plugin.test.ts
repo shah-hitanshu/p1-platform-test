@@ -17,7 +17,7 @@ function resolvedConfig(
   plugin: ReturnType<typeof createMediaPlugin>,
   fieldName: string,
 ): MediaConfig {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   const element = (plugin.overrides.fieldTypes.text as (p: any) => unknown)({
     name: fieldName,
     field: { label: fieldName },

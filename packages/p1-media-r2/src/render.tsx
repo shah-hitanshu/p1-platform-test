@@ -137,9 +137,9 @@ export function MediaImage({
 function collectFigureFields(
   image: MediaFieldValue | null | undefined,
   schema?: MetadataFieldDef[],
-): Array<{ name: string; label?: string; value: string }> {
+): { name: string; label?: string; value: string }[] {
   if (!isMediaValue(image)) return [];
-  const out: Array<{ name: string; label?: string; value: string }> = [];
+  const out: { name: string; label?: string; value: string }[] = [];
   if (schema && schema.length > 0) {
     for (const entry of schema) {
       if (entry.name === "alt") continue;

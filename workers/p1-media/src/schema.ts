@@ -32,10 +32,8 @@ export const MAX_METADATA_FIELDS = 32;
 
 const ALLOWED_FIELDS = new Set(METADATA_SCHEMA.map((f) => f.name));
 
-export interface MetadataValidation {
-  ok: boolean;
-  error?: string;
-}
+/** A failure always carries a reason; a success never does. */
+export type MetadataValidation = { ok: true } | { ok: false; error: string };
 
 /**
  * Validates a metadata patch against the schema (R13) and caps (R6).

@@ -1,6 +1,7 @@
 import eslint from '@eslint/js';
 import tseslint from 'typescript-eslint';
 import globals from 'globals';
+import testsConfig from '@pantheon-systems/eslint-config/tests';
 
 export default tseslint.config(
   eslint.configs.recommended,
@@ -20,6 +21,7 @@ export default tseslint.config(
     files: ['**/*.js'],
     ...tseslint.configs.disableTypeChecked,
   },
+  ...testsConfig,
   {
     ignores: ['dist/', 'node_modules/', 'coverage/'],
   },

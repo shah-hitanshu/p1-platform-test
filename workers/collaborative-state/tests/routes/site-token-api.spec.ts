@@ -7,6 +7,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { readJson } from '../helpers/http';
+import { makeBranch } from '../helpers/branch';
 
 // Mock services
 vi.mock('../../src/services/site-api-token-service', () => ({
@@ -61,7 +63,7 @@ describe('Site API Token Routes', () => {
       const services = await import('../../src/services');
       const auth = await import('../../src/auth/authorization');
 
-      vi.mocked(services.getMainBranch).mockResolvedValue({
+      vi.mocked(services.getMainBranch).mockResolvedValue(makeBranch({
         id: 'main-branch-id',
         siteId: 'site-uuid-456',
         name: 'main',
@@ -71,7 +73,7 @@ describe('Site API Token Routes', () => {
         updatedAt: '2026-01-01T00:00:00.000Z',
         createdById: 'user-1',
         createdByType: 'user',
-      });
+      }));
       vi.mocked(auth.assertPermission).mockResolvedValue(undefined);
       vi.mocked(tokenService.generateToken).mockResolvedValue({
         token: 'sat_abc123def456ghi789',
@@ -100,7 +102,7 @@ describe('Site API Token Routes', () => {
       });
 
       expect(response.status).toBe(201);
-      const body: { token: string; metadata: { id: string; name: string } } = await response.json();
+      const body: { token: string; metadata: { id: string; name: string } } = await readJson(response);
       expect(body.token).toBe('sat_abc123def456ghi789');
       expect(body.metadata.id).toBe('token-uuid-123');
       expect(body.metadata.name).toBe('Production frontend');
@@ -111,7 +113,7 @@ describe('Site API Token Routes', () => {
       const services = await import('../../src/services');
       const auth = await import('../../src/auth/authorization');
 
-      vi.mocked(services.getMainBranch).mockResolvedValue({
+      vi.mocked(services.getMainBranch).mockResolvedValue(makeBranch({
         id: 'main-branch-id',
         siteId: 'site-uuid-456',
         name: 'main',
@@ -121,7 +123,7 @@ describe('Site API Token Routes', () => {
         updatedAt: '2026-01-01T00:00:00.000Z',
         createdById: 'user-1',
         createdByType: 'user',
-      });
+      }));
 
       const { AuthorizationError } = auth;
       vi.mocked(auth.assertPermission).mockRejectedValue(
@@ -147,7 +149,7 @@ describe('Site API Token Routes', () => {
       const services = await import('../../src/services');
       const auth = await import('../../src/auth/authorization');
 
-      vi.mocked(services.getMainBranch).mockResolvedValue({
+      vi.mocked(services.getMainBranch).mockResolvedValue(makeBranch({
         id: 'main-branch-id',
         siteId: 'site-uuid-456',
         name: 'main',
@@ -157,7 +159,7 @@ describe('Site API Token Routes', () => {
         updatedAt: '2026-01-01T00:00:00.000Z',
         createdById: 'user-1',
         createdByType: 'user',
-      });
+      }));
       vi.mocked(auth.assertPermission).mockResolvedValue(undefined);
 
       const request = new Request('https://api.example.com/api/sites/site-uuid-456/tokens', {
@@ -178,7 +180,7 @@ describe('Site API Token Routes', () => {
       const { handleSiteTokenRoutes } = await import('../../src/routes/site-token-api');
       const services = await import('../../src/services');
 
-      vi.mocked(services.getMainBranch).mockResolvedValue({
+      vi.mocked(services.getMainBranch).mockResolvedValue(makeBranch({
         id: 'main-branch-id',
         siteId: 'site-uuid-456',
         name: 'main',
@@ -188,7 +190,7 @@ describe('Site API Token Routes', () => {
         updatedAt: '2026-01-01T00:00:00.000Z',
         createdById: 'user-1',
         createdByType: 'user',
-      });
+      }));
 
       const request = new Request('https://api.example.com/api/sites/site-uuid-456/tokens', {
         method: 'POST',
@@ -223,7 +225,7 @@ describe('Site API Token Routes', () => {
       const services = await import('../../src/services');
       const auth = await import('../../src/auth/authorization');
 
-      vi.mocked(services.getMainBranch).mockResolvedValue({
+      vi.mocked(services.getMainBranch).mockResolvedValue(makeBranch({
         id: 'main-branch-id',
         siteId: 'site-uuid-456',
         name: 'main',
@@ -233,7 +235,7 @@ describe('Site API Token Routes', () => {
         updatedAt: '2026-01-01T00:00:00.000Z',
         createdById: 'user-1',
         createdByType: 'user',
-      });
+      }));
       vi.mocked(auth.assertPermission).mockResolvedValue(undefined);
       vi.mocked(tokenService.listTokens).mockResolvedValue([
         {
@@ -270,7 +272,7 @@ describe('Site API Token Routes', () => {
       });
 
       expect(response.status).toBe(200);
-      const body: { tokens: { id: string }[] } = await response.json();
+      const body: { tokens: { id: string }[] } = await readJson(response);
       expect(body.tokens).toHaveLength(2);
       expect(body.tokens[0].id).toBe('token-1');
     });
@@ -281,7 +283,7 @@ describe('Site API Token Routes', () => {
       const services = await import('../../src/services');
       const auth = await import('../../src/auth/authorization');
 
-      vi.mocked(services.getMainBranch).mockResolvedValue({
+      vi.mocked(services.getMainBranch).mockResolvedValue(makeBranch({
         id: 'main-branch-id',
         siteId: 'site-uuid-456',
         name: 'main',
@@ -291,7 +293,7 @@ describe('Site API Token Routes', () => {
         updatedAt: '2026-01-01T00:00:00.000Z',
         createdById: 'user-1',
         createdByType: 'user',
-      });
+      }));
       vi.mocked(auth.assertPermission).mockResolvedValue(undefined);
       vi.mocked(tokenService.listTokens).mockResolvedValue([]);
 
@@ -305,7 +307,7 @@ describe('Site API Token Routes', () => {
       });
 
       expect(response.status).toBe(200);
-      const body: { tokens: unknown[] } = await response.json();
+      const body: { tokens: unknown[] } = await readJson(response);
       expect(body.tokens).toEqual([]);
     });
   });
@@ -321,7 +323,7 @@ describe('Site API Token Routes', () => {
       const services = await import('../../src/services');
       const auth = await import('../../src/auth/authorization');
 
-      vi.mocked(services.getMainBranch).mockResolvedValue({
+      vi.mocked(services.getMainBranch).mockResolvedValue(makeBranch({
         id: 'main-branch-id',
         siteId: 'site-uuid-456',
         name: 'main',
@@ -331,7 +333,7 @@ describe('Site API Token Routes', () => {
         updatedAt: '2026-01-01T00:00:00.000Z',
         createdById: 'user-1',
         createdByType: 'user',
-      });
+      }));
       vi.mocked(auth.assertPermission).mockResolvedValue(undefined);
       vi.mocked(tokenService.revokeToken).mockResolvedValue(true);
 
@@ -354,7 +356,7 @@ describe('Site API Token Routes', () => {
       const services = await import('../../src/services');
       const auth = await import('../../src/auth/authorization');
 
-      vi.mocked(services.getMainBranch).mockResolvedValue({
+      vi.mocked(services.getMainBranch).mockResolvedValue(makeBranch({
         id: 'main-branch-id',
         siteId: 'site-uuid-456',
         name: 'main',
@@ -364,7 +366,7 @@ describe('Site API Token Routes', () => {
         updatedAt: '2026-01-01T00:00:00.000Z',
         createdById: 'user-1',
         createdByType: 'user',
-      });
+      }));
       vi.mocked(auth.assertPermission).mockResolvedValue(undefined);
       vi.mocked(tokenService.revokeToken).mockResolvedValue(false);
 
@@ -386,7 +388,7 @@ describe('Site API Token Routes', () => {
       const services = await import('../../src/services');
       const auth = await import('../../src/auth/authorization');
 
-      vi.mocked(services.getMainBranch).mockResolvedValue({
+      vi.mocked(services.getMainBranch).mockResolvedValue(makeBranch({
         id: 'main-branch-id',
         siteId: 'site-uuid-456',
         name: 'main',
@@ -396,7 +398,7 @@ describe('Site API Token Routes', () => {
         updatedAt: '2026-01-01T00:00:00.000Z',
         createdById: 'user-1',
         createdByType: 'user',
-      });
+      }));
 
       const { AuthorizationError } = auth;
       vi.mocked(auth.assertPermission).mockRejectedValue(
@@ -459,7 +461,7 @@ describe('Site API Token Routes', () => {
       const services = await import('../../src/services');
       const auth = await import('../../src/auth/authorization');
 
-      vi.mocked(services.getMainBranch).mockResolvedValue({
+      vi.mocked(services.getMainBranch).mockResolvedValue(makeBranch({
         id: 'main-branch-id',
         siteId: 'site-uuid-456',
         name: 'main',
@@ -469,7 +471,7 @@ describe('Site API Token Routes', () => {
         updatedAt: '2026-01-01T00:00:00.000Z',
         createdById: 'user-1',
         createdByType: 'user',
-      });
+      }));
       vi.mocked(auth.assertPermission).mockResolvedValue(undefined);
 
       const request = new Request('https://api.example.com/api/sites/site-uuid-456/tokens', {

@@ -47,6 +47,12 @@ import * as branchService from '../../src/services/branch-service';
 import { hasPermission } from '../../src/auth/authorization';
 import type { RealtimeRouteContext } from '../../src/routes/realtime-api';
 import type { AuthenticatedPrincipal, Branch } from '../../src/types';
+import { readJson } from '../helpers/http';
+import {
+  makeDurableObjectNamespace,
+  type MockDurableObjectNamespace,
+  type MockDurableObjectStub,
+} from '../helpers/durable-object';
 
 /**
  * PCC-3458: build a branch whose id/siteId mirror the requested ref, so the
@@ -80,17 +86,8 @@ function assertNotNull<T>(value: T | null, message = 'Expected non-null value'):
 }
 
 // Mock types for Cloudflare Durable Objects
-interface MockDurableObjectStub {
-  fetch: ReturnType<typeof vi.fn>;
-}
-
 interface MockDurableObjectId {
   toString: () => string;
-}
-
-interface MockDurableObjectNamespace {
-  idFromName: ReturnType<typeof vi.fn<[string], MockDurableObjectId>>;
-  get: ReturnType<typeof vi.fn<[MockDurableObjectId], MockDurableObjectStub>>;
 }
 
 // Mock environment
@@ -158,10 +155,7 @@ describe('Phase 4.2: Real-Time API Routes', () => {
 
     mockEnv = {
       ENVIRONMENT: 'test',
-      DOCUMENT_STATE: {
-        idFromName: vi.fn().mockReturnValue(mockId),
-        get: vi.fn().mockReturnValue(mockStub),
-      },
+      DOCUMENT_STATE: makeDurableObjectNamespace(mockStub, mockId),
       POSTGRES_CONNECTION_STRING: 'postgresql://test:test@localhost/test',
     };
   });
@@ -632,7 +626,7 @@ describe('Phase 4.2: Real-Time API Routes', () => {
       const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
       const response = assertNotNull(result);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.state).toEqual({ title: 'Hello World' });
     });
 
@@ -666,7 +660,7 @@ describe('Phase 4.2: Real-Time API Routes', () => {
       const result = await handleRealtimeRoutes(request, mockEnv, defaultContext);
 
       const response = assertNotNull(result);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.success).toBe(true);
       expect(body.operationsApplied).toBe(2);
     });
@@ -880,7 +874,7 @@ describe('Phase 4.2: Real-Time API Routes', () => {
       const response = assertNotNull(result);
       expect(response.status).toBe(503);
 
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.error).toBeDefined();
     });
 
@@ -1030,7 +1024,7 @@ describe('Phase 4.2: Real-Time API Routes', () => {
       const response = assertNotNull(result);
       expect(response.status).toBe(400);
 
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.error).toContain('operations');
     });
 
@@ -1073,7 +1067,7 @@ describe('Phase 4.2: Real-Time API Routes', () => {
       const response = assertNotNull(result);
       expect(response.status).toBe(400);
 
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.error).toBeDefined();
     });
   });

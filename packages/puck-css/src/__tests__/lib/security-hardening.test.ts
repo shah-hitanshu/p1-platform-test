@@ -4,6 +4,7 @@ vi.mock("../../data/get-page", () => ({
   getPage: vi.fn(async () => null),
 }));
 
+import type { Data } from "@puckeditor/core";
 import {
   resolveStringTemplates,
 } from "../../data/resolve-data-templates";
@@ -11,7 +12,6 @@ import { getRawPropValue } from "../../data/cross-reference";
 import { fetchHttpJsonRemoteDatasource } from "../../data/remote-datasources/fetch-http-json";
 import type { HttpJsonRemoteDatasourceDefinition } from "../../data/remote-datasources/user-remote-datasource-types";
 import { TEMPLATE_FUNCTIONS } from "../../data/template-functions";
-import type { Data } from "@puckeditor/core";
 
 describe("prototype pollution guards — getByPath (resolve-data-templates)", () => {
   it("blocks __proto__ traversal", async () => {

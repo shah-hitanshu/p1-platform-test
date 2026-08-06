@@ -9,7 +9,7 @@
  * - Monitors system resources
  *
  * Usage:
- *   node scripts/local-metrics-receiver.js
+ *   node scripts/css/local-metrics-receiver.mjs
  *
  * Then configure .dev.vars:
  *   METRICS_ENABLED=true
@@ -17,9 +17,9 @@
  *   METRICS_API_KEY=local-dev
  */
 
-const http = require('http');
-const { execFile } = require('child_process');
-const os = require('os');
+import http from 'node:http';
+import { execFile } from 'node:child_process';
+import os from 'node:os';
 
 // =============================================================================
 // Configuration

@@ -27,8 +27,8 @@ export type SerializedField =
   | { type: 'text'; name: string; label?: string; ai?: FieldAiMeta }
   | { type: 'textarea'; name: string; label?: string; ai?: FieldAiMeta }
   | { type: 'number'; name: string; label?: string; min?: number; max?: number; ai?: FieldAiMeta }
-  | { type: 'select'; name: string; label?: string; options: Array<{ label: string; value: string | number | boolean }>; ai?: FieldAiMeta }
-  | { type: 'radio'; name: string; label?: string; options: Array<{ label: string; value: string | number | boolean }>; ai?: FieldAiMeta }
+  | { type: 'select'; name: string; label?: string; options: { label: string; value: string | number | boolean }[]; ai?: FieldAiMeta }
+  | { type: 'radio'; name: string; label?: string; options: { label: string; value: string | number | boolean }[]; ai?: FieldAiMeta }
   | { type: 'array'; name: string; label?: string; arrayFields: SerializedField[]; ai?: FieldAiMeta }
   | { type: 'object'; name: string; label?: string; objectFields: SerializedField[]; ai?: FieldAiMeta }
   | { type: 'custom'; name: string; label?: string; ai?: FieldAiMeta };
@@ -105,7 +105,7 @@ export function serializeField(field: Record<string, unknown>, name: string): Se
     }
     case 'select':
     case 'radio': {
-      const options = (field.options as Array<{ label: string; value: string | number | boolean }>) ?? [];
+      const options = (field.options as { label: string; value: string | number | boolean }[]) ?? [];
       return {
         type: field.type as 'select' | 'radio',
         name,
@@ -187,7 +187,7 @@ function sortKeys(value: unknown): unknown {
 export function hashDescriptor(
   descriptor: Omit<ComponentDescriptor, 'descriptorHash'> & { descriptorHash?: string },
 ): string {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+
   const { descriptorHash: _ignored, registeredAt: _ts, provenance: _prov, upstreamHash: _up, ...hashable } = descriptor;
   const json = JSON.stringify(sortKeys(hashable));
   let hash = 5381;

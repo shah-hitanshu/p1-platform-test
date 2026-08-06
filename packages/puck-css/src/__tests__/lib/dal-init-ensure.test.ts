@@ -49,9 +49,9 @@ vi.mock('../../data/dal/index', () => ({
   initializeStores: (...args: unknown[]) => mockInitializeStores(...args),
 }));
 
+import type { Data } from '@puckeditor/core';
 import { ensureInitialized, _resetInit } from '../../data/dal/init';
 import { PRODUCTION_BASE_URL } from '../../core/config';
-import type { Data } from '@puckeditor/core';
 
 // Track pages created during initialization for testing
 const mockPages = new Map<string, Data>();

@@ -4,13 +4,13 @@
  * API endpoints for querying presence data at site, branch, and agent levels.
  */
 
-import type { BaseEndpoint } from './base.js';
 import type {
   SitePresence,
   BranchPresence,
   AgentGlobalPresence,
   UpdateFocusRegionsResponse,
 } from '../types.js';
+import type { BaseEndpoint } from './base.js';
 
 /**
  * Presence endpoint for querying actor presence data.

@@ -112,7 +112,7 @@ function hasConstraint(
   type?: string,
 ): boolean {
   return constraints.some(
-    (c) => c.constraint_name === name && (!type || c.constraint_type === type),
+    (c) => c.constraint_name === name && (type === undefined || c.constraint_type === type),
   );
 }
 

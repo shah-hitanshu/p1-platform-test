@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { AuthenticatedPrincipal } from '../../src/types';
+import { readJson } from '../helpers/http';
+import { makeBranch } from '../helpers/branch';
 
 vi.mock('../../src/services/site-settings-service', () => ({
   getSiteSettings: vi.fn(),
@@ -38,7 +40,7 @@ const mockServicePrincipal: AuthenticatedPrincipal = {
   pantheonSiteRoles: { 'site-123': 'admin' },
   tokenExpiry: new Date(Date.now() + 86400000).toISOString(),
   scopes: ['read:published'],
-  tokenSiteId: 'site-123',
+  siteId: 'site-123',
 };
 
 describe('Site Settings API Routes', () => {
@@ -52,7 +54,7 @@ describe('Site Settings API Routes', () => {
       const services = await import('../../src/services');
       const settingsService = await import('../../src/services/site-settings-service');
 
-      vi.mocked(services.getMainBranch).mockResolvedValue({
+      vi.mocked(services.getMainBranch).mockResolvedValue(makeBranch({
         id: 'branch-main',
         siteId: 'site-123',
         name: 'main',
@@ -60,7 +62,7 @@ describe('Site Settings API Routes', () => {
         status: 'active',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-      });
+      }));
 
       vi.mocked(settingsService.getSiteSettings).mockResolvedValue({
         cacheTtlMain: 120,
@@ -77,7 +79,7 @@ describe('Site Settings API Routes', () => {
       });
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.settings).toEqual({
         cacheTtlMain: 120,
         cacheTtlBranch: 5,
@@ -139,7 +141,7 @@ describe('Site Settings API Routes', () => {
       const services = await import('../../src/services');
       const settingsService = await import('../../src/services/site-settings-service');
 
-      vi.mocked(services.getMainBranch).mockResolvedValue({
+      vi.mocked(services.getMainBranch).mockResolvedValue(makeBranch({
         id: 'branch-main',
         siteId: 'site-123',
         name: 'main',
@@ -147,7 +149,7 @@ describe('Site Settings API Routes', () => {
         status: 'active',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-      });
+      }));
 
       vi.mocked(settingsService.updateSiteSettings).mockResolvedValue({
         cacheTtlMain: 120,
@@ -166,7 +168,7 @@ describe('Site Settings API Routes', () => {
       });
 
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await readJson(response);
       expect(body.settings).toEqual({
         cacheTtlMain: 120,
         cacheTtlBranch: 10,
@@ -182,7 +184,7 @@ describe('Site Settings API Routes', () => {
       const services = await import('../../src/services');
       const { AuthorizationError } = await import('../../src/auth/authorization');
 
-      vi.mocked(services.getMainBranch).mockResolvedValue({
+      vi.mocked(services.getMainBranch).mockResolvedValue(makeBranch({
         id: 'branch-main',
         siteId: 'site-123',
         name: 'main',
@@ -190,7 +192,7 @@ describe('Site Settings API Routes', () => {
         status: 'active',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-      });
+      }));
 
       const { assertPermission } = await import('../../src/auth/authorization');
       vi.mocked(assertPermission).mockRejectedValue(
@@ -216,7 +218,7 @@ describe('Site Settings API Routes', () => {
       const services = await import('../../src/services');
       const settingsService = await import('../../src/services/site-settings-service');
 
-      vi.mocked(services.getMainBranch).mockResolvedValue({
+      vi.mocked(services.getMainBranch).mockResolvedValue(makeBranch({
         id: 'branch-main',
         siteId: 'site-123',
         name: 'main',
@@ -224,7 +226,7 @@ describe('Site Settings API Routes', () => {
         status: 'active',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-      });
+      }));
 
       const { InvalidSettingsError } = await import('../../src/services/site-settings-service');
       vi.mocked(settingsService.updateSiteSettings).mockRejectedValue(
@@ -250,7 +252,7 @@ describe('Site Settings API Routes', () => {
       const services = await import('../../src/services');
       const settingsService = await import('../../src/services/site-settings-service');
 
-      vi.mocked(services.getMainBranch).mockResolvedValue({
+      vi.mocked(services.getMainBranch).mockResolvedValue(makeBranch({
         id: 'branch-main',
         siteId: 'site-123',
         name: 'main',
@@ -258,7 +260,7 @@ describe('Site Settings API Routes', () => {
         status: 'active',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-      });
+      }));
 
       vi.mocked(settingsService.updateSiteSettings).mockResolvedValue(null);
 
@@ -299,7 +301,7 @@ describe('Site Settings API Routes', () => {
       const { handleSiteSettingsRoutes } = await import('../../src/routes/site-settings-api');
       const services = await import('../../src/services');
 
-      vi.mocked(services.getMainBranch).mockResolvedValue({
+      vi.mocked(services.getMainBranch).mockResolvedValue(makeBranch({
         id: 'branch-main',
         siteId: 'site-123',
         name: 'main',
@@ -307,7 +309,7 @@ describe('Site Settings API Routes', () => {
         status: 'active',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-      });
+      }));
 
       const request = new Request('https://api.example.com/api/sites/site-123/settings', {
         method: 'POST',
@@ -327,7 +329,7 @@ describe('Site Settings API Routes', () => {
       const { handleSiteSettingsRoutes } = await import('../../src/routes/site-settings-api');
       const services = await import('../../src/services');
 
-      vi.mocked(services.getMainBranch).mockResolvedValue({
+      vi.mocked(services.getMainBranch).mockResolvedValue(makeBranch({
         id: 'branch-main',
         siteId: 'site-123',
         name: 'main',
@@ -335,7 +337,7 @@ describe('Site Settings API Routes', () => {
         status: 'active',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-      });
+      }));
 
       const request = new Request('https://api.example.com/api/sites/site-123/settings', {
         method: 'DELETE',

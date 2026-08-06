@@ -6,11 +6,7 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import { dayLabel } from '../../versioning/utils/formatVersionDate.js';
-import { isMilestone } from '../../versioning/utils/versionKind.js';
 import { Toaster, IconButton, SegmentedButton } from '@pantheon-systems/pds-toolkit-react';
-import { VersionBannerOverride } from '../components/VersionBannerOverride.js';
-import { VersionTimeline } from '../components/VersionTimeline.js';
 import { createPortal } from 'react-dom';
 import { createUsePuck } from '@puckeditor/core';
 import type {
@@ -22,9 +18,11 @@ import type {
   ActorPresence,
   ActorState,
 } from '@pantheon-systems/css-client';
+import { VersionTimeline } from '../components/VersionTimeline.js';
+import { VersionBannerOverride } from '../components/VersionBannerOverride.js';
+import { isMilestone } from '../../versioning/utils/versionKind.js';
+import { dayLabel } from '../../versioning/utils/formatVersionDate.js';
 import { PuckDataSynchronizer } from '../components/PuckDataSynchronizer.js';
-import { resolveContextSyncKey } from './context-sync-key.js';
-import type { DocumentSyncStore } from './document-sync-plugin.js';
 import { AgentActivityBanner } from '../../collaboration/components/AgentActivityBanner.js';
 import { PuckSelectionTracker } from '../components/PuckSelectionTracker.js';
 import { PuckDataCapture } from '../components/PuckDataCapture.js';
@@ -41,6 +39,9 @@ import { deriveDocState } from '../../pds/utils/deriveDocState.js';
 import { deriveLiveDocState } from '../../pds/utils/deriveLiveDocState.js';
 import type { Template } from '../../features/content-type-templates/types.js';
 import { useEditorContext } from '../../p1/editor/index.js';
+import type { TemplateSummary } from '../../features/content-type-templates/types.js';
+import type { DocumentSyncStore } from './document-sync-plugin.js';
+import { resolveContextSyncKey } from './context-sync-key.js';
 
 // Module-level usePuck hook for reading history state inside the plugin render tree
 const usePluginPuckHistory = createUsePuck();
@@ -147,7 +148,7 @@ const ALLOWED_ACTOR_STATES = new Set<ActorState>(ACTOR_STATES);
 
 function groupVersionsByDay(
   versions: DocumentVersion[],
-): Array<{ label: string; versions: DocumentVersion[] }> {
+): { label: string; versions: DocumentVersion[] }[] {
   const map = new Map<string, DocumentVersion[]>();
   const order: string[] = [];
   for (const v of versions) {
@@ -474,7 +475,7 @@ export interface P1PluginOptions {
   /** Callback when a document is selected */
   onDocumentSelect?: (path: string) => void;
   /** Callback to create a new document */
-  onDocumentCreate?: (path: string, template?: import('../../features/content-type-templates/types.js').TemplateSummary | null, title?: string) => Promise<void>;
+  onDocumentCreate?: (path: string, template?: TemplateSummary | null, title?: string) => Promise<void>;
   /** Hand a "Generate with AI" brief (+ the new page's path/title) to the chatbot. */
   onGenerateWithAI?: (brief: string, page: { path: string; title: string }) => void;
   /** Callback to delete a document */
@@ -594,7 +595,7 @@ export interface P1PluginOptions {
   /** Called when the user creates a new workstream. Receives the branch name. */
   onCreateBranch?: (name: string) => Promise<void>;
   /** Available templates for document creation */
-  templates?: import('../../features/content-type-templates/types.js').TemplateSummary[];
+  templates?: TemplateSummary[];
   /** Whether templates are loading */
   templatesLoading?: boolean;
   /** Create a new template (Create Page modal's "New template" flow). */

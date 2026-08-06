@@ -1,4 +1,5 @@
 import type { AuthenticatedPrincipal, RedirectSnapshot } from '../types';
+import { readRedirectSnapshot } from '../types';
 import {
   getMainBranch,
   getDocumentByPath,
@@ -20,8 +21,8 @@ async function resolveRedirect(
   const redirectDoc = await getDocumentByPath(siteId, `_registry/redirects/${lookupPath}`);
   if (redirectDoc !== null) {
     const version = await getLatestDocumentVersion(redirectDoc.id, mainBranchId);
-    if (version?.snapshot !== undefined) {
-      const snapshot = version.snapshot as RedirectSnapshot;
+    const snapshot = readRedirectSnapshot(version?.snapshot);
+    if (snapshot !== null) {
       return { snapshot, computedDestination: snapshot.destination };
     }
     return null;
@@ -41,9 +42,8 @@ async function resolveRedirect(
       const parentDoc = await getDocumentByPath(siteId, `_registry/redirects/${parentPath}`);
       if (parentDoc === null) return null;
       const parentVersion = await getLatestDocumentVersion(parentDoc.id, mainBranchId);
-      if (parentVersion?.snapshot === undefined) return null;
-      const parentSnapshot = parentVersion.snapshot as RedirectSnapshot;
-      if (!parentSnapshot.parenting) return null;
+      const parentSnapshot = readRedirectSnapshot(parentVersion?.snapshot);
+      if (parentSnapshot?.parenting !== true) return null;
       const dest = parentSnapshot.destination.replace(/\/+$/, '');
       return { snapshot: parentSnapshot, computedDestination: `${dest}/${childSuffix}` };
     }),

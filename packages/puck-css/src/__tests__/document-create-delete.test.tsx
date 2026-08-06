@@ -10,9 +10,9 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import React from 'react';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { __toastCalls } from '@pantheon-systems/pds-toolkit-react';
 import { PageNavigator } from '../pds/components/PageNavigator.js';
 import { PublishControl } from '../pds/components/PublishControl.js';
-import { __toastCalls } from '@pantheon-systems/pds-toolkit-react';
 
 // =============================================================================
 // Fixtures

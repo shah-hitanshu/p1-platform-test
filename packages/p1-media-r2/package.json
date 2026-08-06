@@ -38,8 +38,10 @@
   ],
   "scripts": {
     "build": "tsup",
+    "lint": "eslint src",
+    "lint:fix": "eslint src --fix",
     "test": "vitest run",
-    "lint": "tsc --noEmit"
+    "typecheck": "tsc --noEmit"
   },
   "peerDependencies": {
     "@pantheon-systems/puck-css": ">=0.4.0",
@@ -47,9 +49,11 @@
     "react": ">=18"
   },
   "devDependencies": {
+    "@pantheon-systems/eslint-config": "workspace:*",
     "@pantheon-systems/puck-css": "workspace:*",
     "@puckeditor/core": "^0.22.0",
     "@types/react": "^19.0.0",
+    "eslint": "^9.27.0",
     "react": "^19.0.0",
     "react-image-crop": "^11.1.2",
     "tsup": "^8.0.0",

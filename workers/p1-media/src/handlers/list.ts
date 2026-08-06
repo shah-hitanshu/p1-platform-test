@@ -1,4 +1,4 @@
-import { Env } from '../types';
+import type { Env } from '../types';
 import { listAssets } from '../store';
 
 /** GET /media — site-scoped asset list with optional filename/alt search. */

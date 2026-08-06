@@ -12,6 +12,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
+import { readJson } from '../helpers/http';
 // Mock cloudflare:workers DurableObject base class
 vi.mock('cloudflare:workers', () => ({
   DurableObject: class DurableObject {
@@ -193,7 +194,7 @@ describe('Phase 5.3: Direct Hyperdrive from DOs', () => {
 
       const req = new Request('http://localhost/snapshot');
       const response = await session.fetch(req);
-      const result = await response.json();
+      const result = await readJson(response);
 
       expect(result.snapshot.title).toBe('Snapshot Only');
     });
@@ -220,7 +221,7 @@ describe('Phase 5.3: Direct Hyperdrive from DOs', () => {
 
       const req = new Request('http://localhost/snapshot');
       const response = await session.fetch(req);
-      const result = await response.json();
+      const result = await readJson(response);
 
       expect(result.snapshot.title).toBe('From HTTP');
 
@@ -259,7 +260,7 @@ describe('Phase 5.3: Direct Hyperdrive from DOs', () => {
 
       const req = new Request('http://localhost/snapshot');
       const response = await session.fetch(req);
-      const result = await response.json();
+      const result = await readJson(response);
 
       // Should have fallen back to HTTP after Hyperdrive failure
       expect(result.snapshot.title).toBe('HTTP Fallback');
