@@ -10,10 +10,11 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon, Avatar, PantheonLogo } from '@pantheon-systems/pds-toolkit-react';
-import { getAvatarStyleOverride } from '../../collaboration/utils/avatarColor.js';
+import type { ActorPresence } from '@pantheon-systems/css-client';
 import type { Template, TemplateSummary } from '../../features/content-type-templates/types.js';
 import { PageNavigator } from './PageNavigator.js';
 import type { PageNavigatorDocument } from './PageNavigator.js';
+import { PresenceStack } from './PresenceStack.js';
 import { CreatePageModal } from './CreatePageModal.js';
 import styles from './P1EditorHeader.module.css';
 
@@ -39,6 +40,7 @@ export interface P1EditorHeaderProps {
   currentDocument: PageNavigatorDocument | null;
   selectedDocumentPath?: string | null;
   currentUser?: CurrentUser;
+  collaborators?: ActorPresence[];
   siteName: string;
   siteId?: string;
   dashboardUrl?: string;
@@ -68,6 +70,7 @@ export function P1EditorHeader({
   currentDocument,
   selectedDocumentPath,
   currentUser,
+  collaborators = [],
   siteName,
   siteId,
   dashboardUrl,
@@ -282,15 +285,15 @@ export function P1EditorHeader({
         )}
       </a>
       <div className={styles.divider} aria-hidden="true" />
-      {/* Site label */}
-      <div
-        data-testid="site-label"
-        className={styles.siteLabel}
-      >
-        <span className={styles.labelText}>
-          Site: {siteName}
+      {/* Site label — visual only, dropdown not yet supported */}
+      <div data-testid="site-label" className={styles.siteLabel}>
+        <Icon iconName="globe" size="s" aria-hidden="true" />
+        <span className="visually-hidden">Site: {siteName}</span>
+        <span className={styles.siteName} aria-hidden="true">
+          {siteName}
         </span>
       </div>
+      <span className={styles.breadcrumbSeparator} aria-hidden="true">›</span>
 
       {/* Page selector button group */}
       <div className={styles.pageSelectorGroup}>
@@ -392,6 +395,18 @@ export function P1EditorHeader({
 
       {/* Spacer */}
       <div className={styles.spacer} />
+      {collaborators.length > 0 && (
+        <>
+          <div className={styles.collaborators} data-testid="header-collaborators">
+            <PresenceStack actors={collaborators} maxVisible={3} showActiveDot />
+          </div>
+          <div
+            className={styles.divider}
+            data-testid="header-collaborators-divider"
+            aria-hidden="true"
+          />
+        </>
+      )}
 
       {/* User avatar + account menu */}
       <button
@@ -403,7 +418,6 @@ export function P1EditorHeader({
         aria-haspopup="menu"
         aria-expanded={userMenuOpen}
         aria-label="Account menu"
-        style={currentUser ? getAvatarStyleOverride(currentUser.id) : undefined}
       >
         {currentUser?.avatar ? (
           <div className="pds-avatar pds-avatar--md pds-avatar--image">

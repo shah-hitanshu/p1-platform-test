@@ -35,6 +35,7 @@ import type { SiteMenuItem, CurrentUser } from '../../pds/components/P1EditorHea
 import { P1EditorSubheader } from '../../pds/components/P1EditorSubheader.js';
 
 import type { SubheaderActor } from '../../pds/components/P1EditorSubheader.js';
+import { selectHeaderCollaborators } from './selectHeaderCollaborators.js';
 import { deriveDocState } from '../../pds/utils/deriveDocState.js';
 import { deriveLiveDocState } from '../../pds/utils/deriveLiveDocState.js';
 import type { Template } from '../../features/content-type-templates/types.js';
@@ -636,7 +637,7 @@ function P1SubheaderBridgeInner({
   showMergeReviewRef: { current: () => void };
   collapsePluginRailRef: { current: () => void };
 }): React.ReactElement | null {
-  const { currentDocument, currentBranch, presence, publishDocument, hasActiveHumans, humanPresenceCount, siteId } = p1Context;
+  const { currentDocument, currentBranch, presence, publishDocument, siteId } = p1Context;
 
   // Read Puck history state — must be called unconditionally (Rules of Hooks)
   const history = usePluginPuckHistory((s) => (s as unknown as PuckStateWithHistory).history);
@@ -716,10 +717,8 @@ function P1SubheaderBridgeInner({
   // undefined → hidden. We never show a guessed state.
   const badgeDocState = deriveLiveDocState(options.publishedStatus, isOnMain);
 
-  // Map presence to subheader actor lists.
-  // humanPresenceCount and hasActiveHumans are read here so this component
-  // subscribes to them as reactive context values. humanPresenceCount changes on
-  // every join/leave (catches mid-session departures when hasActiveHumans stays true).
+  // Map agent presence to subheader chips. Human collaborators are rendered as
+  // avatars by P1EditorHeader instead (PCC-3511), so they're selected there.
   const agentActors: SubheaderActor[] = (presence?.agents ?? []).map((a) => ({
     id: a.actorId,
     name: a.name,
@@ -728,9 +727,6 @@ function P1SubheaderBridgeInner({
     requestedById: (a as any).requestedById,
     requestedByName: (a as any).requestedByName,
   }));
-  const humanActors: SubheaderActor[] = humanPresenceCount > 0 && hasActiveHumans
-    ? (presence?.humans ?? []).map((a) => ({ id: a.actorId, name: a.name, avatar: a.avatar }))
-    : [];
 
   // History
   const hasPast = history?.hasPast ?? false;
@@ -790,7 +786,6 @@ function P1SubheaderBridgeInner({
           hasDrift={false}
           context={isOnMain ? 'main' : 'branch'}
           agents={agentActors}
-          humanActors={humanActors}
           onStopAgent={handleStopAgent}
           onPublish={handlePublish}
           onReviewAndPublish={options.onReviewAndPublish}
@@ -972,6 +967,12 @@ export function createP1Plugin(options: P1PluginOptions): PuckPlugin {
         }
       : baseCurrentUser;
 
+    const collaborators = selectHeaderCollaborators(
+      css.presence,
+      css.hasActiveHumans,
+      css.humanPresenceCount,
+    );
+
     // Data sources (built-in + user) for the create-page collection builder.
     // Reuses the cached editor-context query, so no extra fetch.
     const { data: editorCtx } = useEditorContext(
@@ -1021,6 +1022,7 @@ export function createP1Plugin(options: P1PluginOptions): PuckPlugin {
           logoUrl={stableOptions.logoUrl}
           onBeforeLogoNavigate={css.saveNow}
           currentUser={currentUser}
+          collaborators={collaborators}
           onSelectDocument={(fc.enableDocumentBrowser ?? true)
             ? (doc) => stableOptions.onDocumentSelect?.(doc.path) : () => {}}
           onCreateDocument={(fc.enableDocumentBrowser ?? true) ? stableOptions.onDocumentCreate : undefined}
@@ -1040,7 +1042,7 @@ export function createP1Plugin(options: P1PluginOptions): PuckPlugin {
             <div
               style={{
                 position: 'fixed',
-                top: 'var(--p1-header-height, 56px)',
+                top: 'var(--p1-header-h, 60px)',
                 left: 0,
                 right: 0,
                 bottom: 0,

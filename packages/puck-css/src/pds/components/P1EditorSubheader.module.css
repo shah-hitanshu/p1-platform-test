@@ -1,7 +1,13 @@
+/* ── Size tokens ──────────────────────────────────────────────────────── */
+
+:root {
+  --p1-subheader-h: 48px; /* single knob — paired with --p1-header-h */
+}
+
 /* ── Outer shell ─────────────────────────────────────────────────────── */
 
 .subheader {
-  height: 48px;
+  height: var(--p1-subheader-h);
   background: var(--pds-color-bg-default, oklch(1 0 0));
   border-top: 1px solid oklch(0.96 0 0); /* borderSubtle */
   border-bottom: 1px solid oklch(0.96 0 0); /* borderSubtle */

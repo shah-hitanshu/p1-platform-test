@@ -6,10 +6,18 @@
  * fallbacks drawn from the prototype's `c` and `t` objects.
  */
 
+/* ── Size tokens ──────────────────────────────────────────────────────── */
+
+:root {
+  --p1-header-h: 60px; /* single knob — change this to resize the whole bar */
+  --p1-size-lg: calc(var(--p1-header-h) * 0.65);  /* 39px — controls + user avatar */
+  --p1-size-sm: calc(var(--p1-header-h) * 0.467); /* 28px — divider + collab avatar + logo */
+}
+
 /* ── Outer shell ──────────────────────────────────────────────────────── */
 
 .header {
-  height: 52px;
+  height: var(--p1-header-h);
   background: var(--pds-color-bg-default, oklch(1 0 0));
   border-bottom: 1px solid oklch(0.96 0 0); /* c.borderSubtle — no direct token */
   display: flex;
@@ -33,7 +41,7 @@
 /* ── Logo ─────────────────────────────────────────────────────────────── */
 /* Uses PDSv1 PantheonLogo displayType="sub-brand" subBrand="P1".
    The PDS component defaults to 3.052rem icon height; we scale it down
-   to fit the compact 52px editor header. */
+   proportionally to --p1-header-h. */
 
 .logoLink {
   flex-shrink: 0;
@@ -69,16 +77,16 @@
   cursor: default;
 }
 
-/* Scale the Pantheon bolt icon to compact header size */
+/* Scale the Pantheon bolt icon proportionally with header height */
 .logo svg,
 img.logo {
-  height: 1.563rem;
+  height: var(--p1-size-sm);
   width: auto;
 }
 
-/* Scale sub-brand wordmark to match compact proportions */
+/* Scale sub-brand wordmark proportionally with header height */
 .logo :global(.pds-pantheon-logo__sub-brand-wordmark) {
-  font-size: 1.2rem;
+  font-size: calc(var(--p1-header-h) * 0.367);
   padding-inline-end: 0;
 }
 
@@ -93,13 +101,36 @@ img.logo {
 .siteLabel {
   display: inline-flex;
   align-items: center;
+  gap: var(--pds-spacing-2xs, 0.5rem);
+  height: var(--p1-size-lg);
+  padding: var(--pds-spacing-2xs, 0.5rem) 0.64rem;
+  background: transparent;
+  border: 1px solid var(--pds-color-border-input, oklch(0.8853 0 0));
+  border-radius: var(--pds-border-radius-button, 3.5rem);
   font-family: var(--pds-typography-ff-default, 'Inter', sans-serif);
   font-size: var(--pds-typography-size-s, 0.875rem);
   font-weight: var(--pds-typography-fw-medium, 500);
   color: var(--pds-color-fg-default, oklch(0.2046 0 0));
   white-space: nowrap;
-  line-height: 1;
+  flex-shrink: 1;
+  min-width: 0;
+}
+
+.siteName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+/* ── Breadcrumb separator between site label and page selector ── */
+
+.breadcrumbSeparator {
+  color: var(--pds-color-fg-subtle, oklch(0.65 0 0));
+  font-size: var(--pds-typography-size-s, 0.875rem);
   flex-shrink: 0;
+  user-select: none;
+  line-height: 1;
 }
 
 /* ── Vertical divider between site selector and workstream switcher ── */
@@ -107,8 +138,8 @@ img.logo {
 
 .divider {
   width: 1px;
-  height: 20px;
-  background: oklch(0.8853 0 0);
+  height: var(--p1-size-sm);
+  background: var(--pds-color-border-input, oklch(0.8853 0 0));
   flex-shrink: 0;
 }
 
@@ -127,6 +158,7 @@ img.logo {
   display: inline-flex;
   align-items: center;
   flex-shrink: 0;
+  gap: var(--pds-spacing-2xs, 0.5rem);
 }
 
 /* ── Page selector button ────────────────────────────────────────────── */
@@ -136,8 +168,8 @@ img.logo {
   display: inline-flex;
   align-items: center;
   gap: var(--pds-spacing-2xs, 0.5rem);
-  height: 2rem;
-  padding: 0.5rem 0.64rem;
+  height: var(--p1-size-lg);
+  padding: var(--pds-spacing-2xs, 0.5rem) 0.64rem;
   background: transparent;
   border: 1px solid var(--pds-color-border-input, oklch(0.8853 0 0));
   border-radius: var(--pds-border-radius-button, 3.5rem);
@@ -151,9 +183,7 @@ img.logo {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  transition:
-    background 0.2s cubic-bezier(0.2, 0, 0, 1),
-    border-color 0.2s cubic-bezier(0.2, 0, 0, 1);
+  transition: var(--pds-animation-transition-button);
 }
 
 .pageSelector:hover,
@@ -162,47 +192,40 @@ img.logo {
   border-color: oklch(0.75 0 0); /* borderStrong */
 }
 
-/* When external link button follows page selector, create button group */
-.pageSelector:has(+ .externalLinkButton) {
-  border-top-right-radius: 0;
-  border-bottom-right-radius: 0;
-}
-
 /* ── External link button ──────────────────────────────────────────────── */
 
 .externalLinkButton {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 2rem;
-  height: 2rem;
-  padding: 0.5rem;
+  width: var(--p1-size-lg);
+  height: var(--p1-size-lg);
+  padding: var(--pds-spacing-2xs, 0.5rem);
   background: transparent;
-  border: 1px solid var(--pds-color-border-input, oklch(0.8853 0 0));
+  border: none;
   border-radius: var(--pds-border-radius-button, 3.5rem);
-  border-top-left-radius: 0;
-  border-bottom-left-radius: 0;
   color: var(--pds-color-fg-default, oklch(0.2046 0 0));
   cursor: pointer;
   text-decoration: none;
-  transition:
-    background 0.2s cubic-bezier(0.2, 0, 0, 1),
-    border-color 0.2s cubic-bezier(0.2, 0, 0, 1);
+  transition: var(--pds-animation-transition-button);
   flex-shrink: 0;
-  margin-left: -1px;
 }
 
 .externalLinkButton:hover {
   background: oklch(0.96 0 0); /* bgSubtle */
-  border-color: oklch(0.75 0 0); /* borderStrong */
-  position: relative;
-  z-index: 1; /* Bring to front on hover so border is visible */
 }
 
 /* ── Spacer ──────────────────────────────────────────────────────────── */
 
 .spacer {
   flex: 1;
+}
+
+/* ── Live collaborators ─────────────────────────────────────────────── */
+.collaborators {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
 }
 
 /* ── User avatar ────────────────────────────────────────────────────── */
@@ -214,6 +237,29 @@ img.logo {
   border: none;
   padding: 0;
   border-radius: 50%;
+}
+
+.userAvatar :global(.pds-avatar) {
+  height: var(--p1-size-lg);
+  width: var(--p1-size-lg);
+}
+
+.userAvatar :global(.pds-avatar__content),
+.userAvatar :global(.pds-avatar__gradient),
+.userAvatar :global(.pds-avatar__image) {
+  width: 100%;
+  height: 100%;
+}
+
+.collaborators :global(.pds-avatar) {
+  height: var(--p1-size-sm);
+  width: var(--p1-size-sm);
+}
+
+.collaborators :global(.pds-avatar__content),
+.collaborators :global(.pds-avatar__image) {
+  width: 100%;
+  height: 100%;
 }
 
 /* ── Dropdown menus (site selector + user account) ─────────────────── */
@@ -240,7 +286,7 @@ img.logo {
   font-weight: var(--pds-typography-fw-medium, 500);
   color: var(--pds-color-fg-default, oklch(0.2046 0 0));
   border-bottom: 1px solid var(--pds-color-border-default, oklch(0.9401 0 0));
-  margin-bottom: 0.25rem;
+  margin-bottom: var(--pds-spacing-4xs, 0.25rem);
 }
 
 .dropdownMenuItem {
@@ -264,7 +310,7 @@ img.logo {
 }
 
 /* ── Responsive label text ──────────────────────────────────────────── */
-/* Wraps text + trailing chevron in site/page selectors; hidden on mobile */
+/* Wraps text + trailing chevron in the page selector; hidden on mobile */
 
 .labelText {
   display: contents;
@@ -288,6 +334,10 @@ img.logo {
   }
 
   .labelText {
+    display: none;
+  }
+  .siteLabel,
+  .breadcrumbSeparator {
     display: none;
   }
 

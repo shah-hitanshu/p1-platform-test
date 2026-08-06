@@ -126,6 +126,7 @@ export default function App() {
             documents={DOCUMENTS}
             currentDocument={currentDoc}
             currentUser={{ id: 'user-42' }}
+            collaborators={PRESENCE_ACTORS}
             siteName="acme-marketing"
             siteMenuItems={SITE_MENU_ITEMS}
             onSwitchBranch={(id) => {
@@ -146,7 +147,6 @@ export default function App() {
             docState="modified"
             context="branch"
             agents={AGENTS}
-            humanActors={HUMAN_ACTORS.slice(0, 3)}
             onStopAgent={(id) => console.log('Stop agent:', id)}
             onPublish={log('Publish to live clicked')}
             hasPast={true}
@@ -164,7 +164,6 @@ export default function App() {
             docState="unpublished"
             context="main"
             agents={[]}
-            humanActors={HUMAN_ACTORS.slice(0, 2)}
             onStopAgent={noop}
             onPublish={log('Publish clicked')}
             onCreateWorkstream={log('Create workstream clicked')}
@@ -183,7 +182,6 @@ export default function App() {
             docState="live"
             context="branch"
             agents={[]}
-            humanActors={[]}
             onStopAgent={noop}
             hasPast={false}
             hasFuture={false}
@@ -294,6 +292,12 @@ export default function App() {
           </SubSection>
           <SubSection label="Empty">
             <PresenceStack actors={[]} />
+          </SubSection>
+          <SubSection label="With live dots (header variant)">
+            <PresenceStack actors={PRESENCE_ACTORS.slice(0, 3)} showActiveDot />
+          </SubSection>
+          <SubSection label="With live dots + overflow">
+            <PresenceStack actors={PRESENCE_ACTORS} maxVisible={3} showActiveDot />
           </SubSection>
         </Section>
 

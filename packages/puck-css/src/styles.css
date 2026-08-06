@@ -204,7 +204,8 @@
    overflow:hidden on _Sidebar--right_ clips it to the correct sidebar height. */
 .p1-inspector-reopen-strip {
   width: 100%;
-  min-height: calc(100vh - 100px); /* 52px P1EditorHeader + 48px P1EditorSubheader */
+  /* Follows the header/subheader knobs (P1EditorHeader/P1EditorSubheader modules) */
+  min-height: calc(100vh - (var(--p1-header-h, 60px) + var(--p1-subheader-h, 48px)));
   background: var(--pds-color-bg-default, #fff);
   border-left: 1px solid var(--pds-color-border-default, oklch(0.9401 0 0));
   display: flex;

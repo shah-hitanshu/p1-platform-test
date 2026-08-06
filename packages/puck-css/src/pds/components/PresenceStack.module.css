@@ -9,24 +9,69 @@
 .stack {
   display: inline-flex;
   align-items: center;
-  flex-direction: row;
+  flex-direction: row-reverse;
+}
+
+.stack :global(.pds-avatar) {
+  --avatar-size: var(--p1-size-sm, 1.5rem);
 }
 
 /* Wrapper around each PDS Avatar — handles overlap margin and stacking */
 .avatarWrapper {
   margin-left: -0.512rem;
+  position: relative;
+  display: inline-flex;
 }
 
-.avatarWrapper:first-child {
+.avatarWrapper:last-child,
+.overflowWrapper:last-child {
   margin-left: 0;
 }
 
-/* Wrapper that carries the overlap margin for the overflow tooltip */
+.avatarWrapper :global(.pds-avatar) {
+  box-shadow: 0 0 0 var(--pds-border-width-thicker, 2px) var(--pds-color-surface-default, oklch(1 0 0));
+}
+
+.activeDot,
+.idleDot {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 0.469rem;
+  height: 0.469rem;
+  box-sizing: border-box;
+  border-radius: 50%;
+  box-shadow: 0 0 0 var(--pds-border-width-thicker, 2px) var(--pds-color-surface-default, oklch(1 0 0));
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Live (active or editing) — filled green */
+.activeDot {
+  background: var(--pds-color-status-success-fill, oklch(0.5408 0.1249 133.99));
+}
+
+.idleDot {
+  background: var(--pds-color-surface-default, oklch(1 0 0));
+  border: var(--pds-border-width-thicker, 2px) solid
+    var(--pds-color-foreground-default-secondary, oklch(0.4778 0.002 247.87));
+}
+
+.initials {
+  color: oklch(1 0 0);
+  font-family: var(--pds-typography-ff-default, 'Inter', sans-serif);
+  font-size: var(--pds-typography-size-2xs, 0.625rem);
+  font-weight: var(--pds-typography-fw-semibold, 600);
+  line-height: 1;
+  letter-spacing: 0.01em;
+  user-select: none;
+  flex-shrink: 0;
+}
+
 .overflowWrapper {
   margin-left: -0.512rem;
   display: inline-flex;
 }
-
 
 /* Overflow badge — "+N" for hidden actors */
 .overflow {
@@ -34,9 +79,9 @@
   width: 1.563rem;
   height: 1.563rem;
   border-radius: 50%;
-  border: 1px solid var(--pds-color-bg-default, oklch(1 0 0));
-  background: oklch(0.96 0 0);
-  color: var(--pds-color-fg-default-secondary, oklch(0.5103 0 0));
+  box-shadow: 0 0 0 var(--pds-border-width-thicker, 2px) var(--pds-color-surface-default, oklch(1 0 0));
+  background: var(--pds-color-surface-default-secondary, oklch(0.9702 0 0));
+  color: var(--pds-color-foreground-default-secondary, oklch(0.4778 0.0020 247.87));
   font-family: var(--pds-typography-ff-default, 'Inter', sans-serif);
   font-size: var(--pds-typography-size-2xs, 0.625rem);
   font-weight: var(--pds-typography-fw-semibold, 600);

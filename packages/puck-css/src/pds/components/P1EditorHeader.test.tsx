@@ -9,7 +9,9 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import React from 'react';
 import { render, screen, cleanup, fireEvent, waitFor, act } from '@testing-library/react';
+import type { ActorPresence } from '@pantheon-systems/css-client';
 import { P1EditorHeader, BEFORE_NAVIGATE_TIMEOUT_MS } from './P1EditorHeader.js';
+import styles from './P1EditorHeader.module.css';
 
 // =============================================================================
 // Mocks
@@ -133,6 +135,33 @@ describe('P1EditorHeader', () => {
 
     const logo = screen.getByTestId('p1-logo');
     expect(logo.tagName).not.toBe('IMG');
+  });
+
+  it('marks the site name and the page selector label as collapsible', () => {
+    render(<P1EditorHeader {...defaultProps} />);
+
+    expect(styles.siteName).toBeTruthy();
+    expect(styles.labelText).toBeTruthy();
+    expect(
+      screen.getByTestId('site-label').querySelector(`.${styles.siteName}`)?.textContent,
+    ).toBe('My Awesome Site');
+    expect(
+      screen.getByTestId('page-selector').querySelector(`.${styles.labelText}`),
+    ).not.toBeNull();
+  });
+
+  it('names the site label for assistive tech at every width', () => {
+    render(<P1EditorHeader {...defaultProps} />);
+
+    const pill = screen.getByTestId('site-label');
+    const srText = pill.querySelector('.visually-hidden');
+
+    expect(srText?.textContent).toBe('Site: My Awesome Site');
+    // The accessible name must not sit inside the truncating span, or AT would
+    // announce whatever the ellipsis left behind.
+    expect(srText?.closest(`.${styles.siteName}`)).toBeNull();
+    // The visible copy is hidden from AT so the name isn't announced twice.
+    expect(pill.querySelector(`.${styles.siteName}`)?.getAttribute('aria-hidden')).toBe('true');
   });
 
   it('falls back to PantheonLogo when the custom logo image fails to load', async () => {
@@ -769,5 +798,141 @@ describe('P1EditorHeader — "View page" (open-external) button', () => {
     );
 
     expect(screen.queryByTestId('open-external')).toBeNull();
+  });
+});
+
+// =============================================================================
+// Live collaborators indicator (PCC-3511)
+//
+// The header owns the human-presence stack; agent chips stay in the subheader.
+// PresenceStack is deliberately NOT mocked here so these assert the real
+// rendered avatar/overflow/dot DOM.
+// =============================================================================
+
+describe('P1EditorHeader — live collaborators', () => {
+  function makeCollaborator(id: string, name: string): ActorPresence {
+    return {
+      id,
+      actorId: id,
+      actorType: 'user',
+      role: 'human',
+      name,
+      state: 'active',
+      lastActivityAt: new Date().toISOString(),
+      joinedAt: new Date().toISOString(),
+    };
+  }
+
+  const collabProps = {
+    documents: [docHome, docAbout],
+    currentDocument: docHome,
+    currentUser,
+    siteName: 'My Awesome Site',
+    onSelectDocument: vi.fn(),
+    onLogout: vi.fn(),
+  };
+
+  const three = [
+    makeCollaborator('u-1', 'Nadia Brooks'),
+    makeCollaborator('u-2', 'Marco Reyes'),
+    makeCollaborator('u-3', 'Jamie Okafor'),
+  ];
+
+  it('renders one avatar per collaborator', () => {
+    render(<P1EditorHeader {...collabProps} collaborators={three} />);
+
+    expect(screen.getAllByTestId('presence-avatar')).toHaveLength(3);
+  });
+
+  it('renders no collaborators container when the list is empty', () => {
+    render(<P1EditorHeader {...collabProps} collaborators={[]} />);
+
+    expect(screen.queryByTestId('header-collaborators')).toBeNull();
+    expect(screen.queryByTestId('presence-avatar')).toBeNull();
+  });
+
+  it('renders no collaborators container when the prop is omitted', () => {
+    render(<P1EditorHeader {...collabProps} />);
+
+    expect(screen.queryByTestId('header-collaborators')).toBeNull();
+    expect(screen.queryByTestId('presence-avatar')).toBeNull();
+  });
+
+  it('caps visible avatars at three and shows the remainder as +N', () => {
+    const five = [
+      ...three,
+      makeCollaborator('u-4', 'Priya Anand'),
+      makeCollaborator('u-5', 'Dana Cole'),
+    ];
+    render(<P1EditorHeader {...collabProps} collaborators={five} />);
+
+    expect(screen.getAllByTestId('presence-avatar')).toHaveLength(3);
+    expect(screen.getByTestId('presence-overflow').textContent).toContain('+2');
+  });
+
+  it('shows a live activity dot on each visible collaborator', () => {
+    render(<P1EditorHeader {...collabProps} collaborators={three} />);
+
+    expect(screen.getAllByTestId('presence-active-dot')).toHaveLength(3);
+  });
+
+  it('exposes each collaborator name as a tooltip', () => {
+    render(<P1EditorHeader {...collabProps} collaborators={three} />);
+
+    ['Nadia Brooks', 'Marco Reyes', 'Jamie Okafor'].forEach((name) => {
+      expect(screen.getByTitle(name)).toBeTruthy();
+    });
+  });
+
+  it('places the collaborators stack before the account menu in the header', () => {
+    render(<P1EditorHeader {...collabProps} collaborators={three} />);
+
+    const stack = screen.getByTestId('header-collaborators');
+    const accountMenu = screen.getByTestId('user-menu-trigger');
+
+    expect(screen.getByTestId('p1-editor-header').contains(stack)).toBe(true);
+    expect(
+      stack.compareDocumentPosition(accountMenu) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  // The prototype separates the collaborator cluster from the signed-in user's
+  // own controls with a short vertical rule.
+  it('renders a divider between the collaborators and the account menu', () => {
+    render(<P1EditorHeader {...collabProps} collaborators={three} />);
+
+    const stack = screen.getByTestId('header-collaborators');
+    const divider = screen.getByTestId('header-collaborators-divider');
+    const accountMenu = screen.getByTestId('user-menu-trigger');
+
+    // Order must be: collaborators -> divider -> account menu.
+    expect(
+      stack.compareDocumentPosition(divider) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      divider.compareDocumentPosition(accountMenu) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it('renders no divider when there are no collaborators', () => {
+    render(<P1EditorHeader {...collabProps} collaborators={[]} />);
+
+    expect(screen.queryByTestId('header-collaborators-divider')).toBeNull();
+  });
+
+  it('hides the divider from assistive tech', () => {
+    render(<P1EditorHeader {...collabProps} collaborators={three} />);
+
+    expect(
+      screen.getByTestId('header-collaborators-divider').getAttribute('aria-hidden'),
+    ).toBe('true');
+  });
+
+  it('keeps the collaborators stack separate from the current user avatar', () => {
+    render(<P1EditorHeader {...collabProps} collaborators={three} />);
+
+    // The signed-in user's own avatar must not be inside the collaborator stack.
+    const stack = screen.getByTestId('header-collaborators');
+    expect(stack.contains(screen.getByTestId('user-menu-trigger'))).toBe(false);
   });
 });

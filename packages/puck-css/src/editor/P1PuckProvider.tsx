@@ -30,6 +30,7 @@ import { resolveFeatureConfig } from '../core/featureConfig.js';
 import type { Template, TemplateSummary } from '../features/content-type-templates/types.js';
 import { createPuckPermissions } from '../features/content-type-templates/permissions/createPuckPermissions.js';
 import { useTemplateList } from '../features/content-type-templates/hooks/useTemplateList.js';
+import { presenceIdentityKey } from '../collaboration/utils/presenceIdentity.js';
 import { DEFAULT_CSS_FEATURE_PLUGINS } from './defaultPlugins.js';
 import { resolveActivePlugins, composeProviders } from './composePlugins.js';
 import { snapshotToPuckData } from './utils/snapshotToPuckData.js';
@@ -1466,6 +1467,10 @@ function P1PuckProviderInner({
   const presenceStateRef = useRef(presenceState);
   presenceStateRef.current = presenceState;
 
+
+  const humanPresenceKey = presenceIdentityKey(presenceState?.humans);
+  const agentPresenceKey = presenceIdentityKey(presenceState?.agents);
+
   // =========================================================================
   // Phase 9: Agent Edit Capabilities (when this client IS an agent)
   // =========================================================================
@@ -2214,7 +2219,11 @@ function P1PuckProviderInner({
       handleRealtimeDataCapture,
       // Phase 9 dependencies (full presenceState excluded — accessed via getter/ref,
       // but humanPresenceCount/hasActiveHumans/hasActiveAgents are direct values so every
-      // join/leave triggers re-renders regardless of how many actors are present)
+      // join/leave triggers re-renders regardless of how many actors are present).
+      // The roster keys cover the changes a count cannot see: a same-frame join/leave of 
+      // two humans would keep the count the same but change the roster.
+      humanPresenceKey,
+      agentPresenceKey,
       presenceState?.humans.length,
       presenceState?.hasActiveHumans,
       presenceState?.hasActiveAgents,

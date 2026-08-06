@@ -58,7 +58,6 @@ interface ActorPresence {
 // Fixtures
 // =============================================================================
 
-const humanActor: ActorPresence = { id: 'user-1', name: 'Alice', isAgent: false };
 const agentActor: ActorPresence = { id: 'agent-1', name: 'Agent Smith', isAgent: true };
 
 const mainBranch = {
@@ -91,7 +90,6 @@ describe('P1EditorSubheader', () => {
     docState: 'modified' as DocState,
     context: 'branch' as const,
     agents: [],
-    humanActors: [],
     onStopAgent: vi.fn(),
     onPublish: vi.fn(),
     hasPast: false,
@@ -125,17 +123,16 @@ describe('P1EditorSubheader', () => {
     expect(screen.getByTestId('device-selector')).toBeDefined();
   });
 
-  it('renders PresenceStack when humanActors is non-empty', () => {
-    render(
-      <P1EditorSubheader {...defaultProps} humanActors={[humanActor]} />
-    );
+  it('does not render a human presence stack — collaborators live in the header', () => {
+    render(<P1EditorSubheader {...defaultProps} />);
 
-    expect(screen.getByTestId('presence-stack')).toBeDefined();
+    expect(screen.queryByTestId('presence-stack')).toBeNull();
   });
 
-  it('does NOT render PresenceStack when humanActors is empty', () => {
-    render(<P1EditorSubheader {...defaultProps} humanActors={[]} />);
+  it('still renders agent chips alongside no presence stack', () => {
+    render(<P1EditorSubheader {...defaultProps} agents={[agentActor]} />);
 
+    expect(screen.getByTestId('agent-chip')).toBeDefined();
     expect(screen.queryByTestId('presence-stack')).toBeNull();
   });
 

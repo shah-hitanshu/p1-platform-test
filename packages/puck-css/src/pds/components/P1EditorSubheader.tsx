@@ -14,7 +14,6 @@ import { IconButton } from '@pantheon-systems/pds-toolkit-react';
 import type { Branch } from '@pantheon-systems/css-client';
 import type { DocState } from '../types.js';
 import { AgentChip } from './AgentChip.js';
-import { PresenceStack } from './PresenceStack.js';
 import { PublishControl } from './PublishControl.js';
 import { WorkstreamSwitcher } from './WorkstreamSwitcher.js';
 import styles from './P1EditorSubheader.module.css';
@@ -42,7 +41,6 @@ export interface P1EditorSubheaderProps {
   hasDrift?: boolean;
   context: 'branch' | 'main';
   agents: SubheaderActor[];
-  humanActors: SubheaderActor[];
   onStopAgent: (id: string) => void;
   onPublish?: () => Promise<void> | void;
   onReviewAndPublish?: () => void;
@@ -74,7 +72,6 @@ export function P1EditorSubheader({
   hasDrift,
   context,
   agents,
-  humanActors,
   onStopAgent,
   onPublish,
   onReviewAndPublish,
@@ -181,22 +178,6 @@ export function P1EditorSubheader({
           />
         ))}
 
-        {humanActors.length > 0 && (
-          <PresenceStack
-            actors={humanActors.map((a) => ({
-              id: a.id,
-              actorId: a.id,
-              actorType: 'user' as const,
-              role: 'human' as const,
-              name: a.name,
-              avatar: a.avatar,
-              state: 'active' as const,
-              lastActivityAt: new Date().toISOString(),
-              joinedAt: new Date().toISOString(),
-            }))}
-            maxVisible={3}
-          />
-        )}
       </div>
 
       {/* Doc state badge — shown only when a badge state is provided

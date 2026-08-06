@@ -8,7 +8,6 @@
 
 import React from 'react';
 import { Avatar, Icon } from '@pantheon-systems/pds-toolkit-react';
-import { getAvatarStyleOverride } from '../../collaboration/utils/avatarColor.js';
 import styles from './AgentChip.module.css';
 
 // =============================================================================
@@ -56,7 +55,6 @@ export function AgentChip({ agent, onStop, currentWorkstream, id }: AgentChipPro
       <div
         className={styles.avatarWrapper}
         data-testid="agent-chip-avatar"
-        style={getAvatarStyleOverride(agent.id)}
       >
         <Avatar uniqueId={agent.id} size="s" />
         <span className={styles.robotOverlay} aria-hidden="true">

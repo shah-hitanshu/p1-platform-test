@@ -115,11 +115,18 @@ vi.mock('../src/pds/components/P1EditorHeader.js', () => ({
     documents,
     currentDocument,
     branches,
+    collaborators,
   }: Record<string, unknown>) => {
     const isMain = (currentBranch as { isMain: boolean } | null)?.isMain ?? true;
+    const collabs = (collaborators ?? []) as { name?: string; avatar?: string }[];
     return (
       <div data-testid="p1-editor-header">
         <span data-testid="site-name">{siteName as string}</span>
+        <span data-testid="collaborator-count">{collabs.length}</span>
+        <span data-testid="collaborator-avatar">{collabs[0]?.avatar ?? ''}</span>
+        <span data-testid="collaborator-names">
+          {collabs.map((c) => c.name ?? '').join(',')}
+        </span>
         {!isMain && (
           <button
             data-testid="compare-with-live"
@@ -177,7 +184,6 @@ vi.mock('../src/pds/components/P1EditorSubheader.js', () => ({
     docState,
     context,
     agents,
-    humanActors,
     hasDrift,
     onPublish,
     pluginRailVisible,
@@ -203,10 +209,6 @@ vi.mock('../src/pds/components/P1EditorSubheader.js', () => ({
       <span data-testid="doc-state">{docState as string}</span>
       <span data-testid="branch-context">{context as string}</span>
       <span data-testid="agent-count">{(agents as unknown[])?.length ?? 0}</span>
-      <span data-testid="human-count">{(humanActors as unknown[])?.length ?? 0}</span>
-      <span data-testid="human-actor-avatar">
-        {((humanActors as Array<{ avatar?: string }>)[0]?.avatar ?? '')}
-      </span>
       <span data-testid="has-drift">{String(hasDrift)}</span>
       <button
         data-testid="publish-btn"
@@ -354,6 +356,62 @@ describe('createP1Plugin overrides.header — P1EditorHeader', () => {
     const plugin = createP1Plugin(baseOptions);
     const { container } = renderHeader(plugin);
     expect(container.querySelector('#p1-subheader-slot')).toBeTruthy();
+  });
+
+  describe('live collaborators', () => {
+    const alice: ActorPresence = {
+      id: 'p-2',
+      actorId: 'user-1',
+      actorType: 'user',
+      role: 'human',
+      name: 'Alice Smith',
+      state: 'active',
+      lastActivityAt: '',
+      joinedAt: '',
+    };
+
+    function setHumanPresence(humans: ActorPresence[], hasActiveHumans = true): void {
+      mockP1Context.hasActiveHumans = hasActiveHumans;
+      mockP1Context.humanPresenceCount = humans.length;
+      mockP1Context.presence = {
+        actors: humans,
+        agents: [],
+        humans,
+        hasActiveHumans,
+        hasActiveAgents: false,
+        refresh: vi.fn(),
+      } as unknown as typeof mockP1Context.presence;
+    }
+
+    it('passes present humans to the header as collaborators, avatar included', () => {
+      // Avatar-bearing actor first — the mock header only surfaces collabs[0].avatar.
+      setHumanPresence([
+        { ...alice, actorId: 'user-2', name: 'Bob Jones', avatar: 'https://lh3.googleusercontent.com/a/bob.jpg' },
+        alice,
+      ]);
+      renderHeader(createP1Plugin(baseOptions));
+
+      // Every present human is passed; the header decides how many to show.
+      expect(screen.getByTestId('collaborator-count').textContent).toBe('2');
+      expect(screen.getByTestId('collaborator-names').textContent).toContain('Alice Smith');
+      expect(screen.getByTestId('collaborator-avatar').textContent).toBe(
+        'https://lh3.googleusercontent.com/a/bob.jpg',
+      );
+    });
+
+    it('still sends humans who are present but idle', () => {
+      setHumanPresence([{ ...alice, state: 'idle' }], false);
+      renderHeader(createP1Plugin(baseOptions));
+
+      expect(screen.getByTestId('collaborator-count').textContent).toBe('1');
+    });
+
+    it('sends no collaborators when nobody is present', () => {
+      setHumanPresence([], false);
+      renderHeader(createP1Plugin(baseOptions));
+
+      expect(screen.getByTestId('collaborator-count').textContent).toBe('0');
+    });
   });
 
   it('does not render Compare with Live button on main branch', () => {
@@ -598,7 +656,7 @@ describe('createP1Plugin render() — P1EditorSubheader portal', () => {
     });
   });
 
-  it('maps human presence actors to humanActors prop', async () => {
+  it('does not send human presence to the subheader — those render in the header', async () => {
     const humanPresence: ActorPresence = {
       id: 'p-2',
       actorId: 'user-1',
@@ -622,39 +680,10 @@ describe('createP1Plugin render() — P1EditorSubheader portal', () => {
     const plugin = createP1Plugin(baseOptions);
     renderPlugin(plugin);
     await waitFor(() => {
-      expect(screen.getByTestId('human-count').textContent).toBe('1');
+      expect(screen.getByTestId('p1-editor-subheader')).toBeTruthy();
     });
-  });
-
-  it('plumbs ActorPresence.avatar through humanActors to P1EditorSubheader', async () => {
-    const humanPresenceWithAvatar: ActorPresence = {
-      id: 'p-3',
-      actorId: 'user-2',
-      actorType: 'user',
-      role: 'human',
-      name: 'Bob Jones',
-      state: 'active',
-      lastActivityAt: '',
-      joinedAt: '',
-      avatar: 'https://lh3.googleusercontent.com/a/bob.jpg',
-    };
-    mockP1Context.hasActiveHumans = true;
-    mockP1Context.humanPresenceCount = 1;
-    mockP1Context.presence = {
-      actors: [humanPresenceWithAvatar],
-      agents: [],
-      humans: [humanPresenceWithAvatar],
-      hasActiveHumans: true,
-      hasActiveAgents: false,
-      refresh: vi.fn(),
-    } as unknown as typeof mockP1Context.presence;
-    const plugin = createP1Plugin(baseOptions);
-    renderPlugin(plugin);
-    await waitFor(() => {
-      expect(screen.getByTestId('human-actor-avatar').textContent).toBe(
-        'https://lh3.googleusercontent.com/a/bob.jpg',
-      );
-    });
+    // Agents still map through; humans are absent from this bar entirely.
+    expect(screen.getByTestId('agent-count').textContent).toBe('0');
   });
 
   it('wires onPublish to css.publishDocument from context', async () => {
