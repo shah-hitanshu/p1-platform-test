@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       environment:
-        description: "Target environment"
+        description: 'Target environment'
         required: true
         type: choice
         options:
@@ -321,3 +321,47 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ steps.secrets.outputs.cf_token }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+
+  # One GitHub Release per worker that reached production, so every
+  # independently deployable piece has its own visible history — the same shape
+  # the npm packages get from their per-package tags. The deploy jobs stay
+  # contents:read; only this job can write tags and releases.
+  #
+  # Staging deploys are not released: a release records what is in production.
+  release:
+    needs: [backend, mcp-server, p1-agent, p1-media]
+    if: ${{ always() && inputs.environment == 'production' && !inputs.dry_run }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create tags and releases
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          # Need existing tags and history to diff against the previous release.
+          fetch-depth: 0
+
+      # Each worker is released only if its own deploy succeeded, so one failed
+      # worker doesn't suppress the records for the ones that did ship.
+      - name: Release collaborative-state-worker
+        if: needs.backend.result == 'success'
+        run: .github/scripts/worker-release.sh collaborative-state-worker workers/collaborative-state
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Release css-mcp-server
+        if: needs.mcp-server.result == 'success'
+        run: .github/scripts/worker-release.sh css-mcp-server workers/css-mcp-server
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Release p1-chatbot-agent
+        if: needs.p1-agent.result == 'success'
+        run: .github/scripts/worker-release.sh p1-chatbot-agent workers/p1-agent
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Release p1-media-worker
+        if: needs.p1-media.result == 'success'
+        run: .github/scripts/worker-release.sh p1-media-worker workers/p1-media
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
