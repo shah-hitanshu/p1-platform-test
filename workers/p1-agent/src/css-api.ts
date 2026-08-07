@@ -61,6 +61,25 @@ export type TemplateDetail = TemplateSnapshot & {
   version?: number;
 };
 
+/**
+ * A page template as the picker sees it. The component tree is deliberately absent: which
+ * template fits a brief is decided from what the template is *for*, and sending layouts would
+ * cost tokens without improving the answer.
+ */
+export interface TemplateSummaryInfo {
+  id: string;
+  name: string;
+  label?: string;
+  description?: string;
+  /** Route shape, e.g. `/blog/:slug`, used to build the new page's path. */
+  defaultUrlPattern?: string;
+  deprecated?: boolean;
+}
+
+export interface ListTemplatesResponse {
+  templates: TemplateSummaryInfo[];
+}
+
 export interface DocumentVersionLatest {
   id: string;
   documentId: string;
@@ -324,10 +343,38 @@ export class McpApiClient {
   }
 
   async createDocument(siteId: string, branchId: string, path: string, snapshot: unknown): Promise<CreateDocumentResult> {
+    return this.postDocument(siteId, branchId, { path, snapshot });
+  }
+
+  /**
+   * Create a page bound to a page template. The backend builds version 1 from the template, so
+   * the page inherits its component instance ids — which is what makes the page conform to the
+   * template. Sending a snapshot alongside `templateId` is rejected with a 400, hence the
+   * separate method rather than an optional argument on {@link createDocument}.
+   */
+  async createDocumentFromTemplate(
+    siteId: string,
+    branchId: string,
+    path: string,
+    templateId: string,
+    title?: string,
+  ): Promise<CreateDocumentResult> {
+    return this.postDocument(siteId, branchId, {
+      path,
+      templateId,
+      ...(title ? { title } : {}),
+    });
+  }
+
+  private async postDocument(
+    siteId: string,
+    branchId: string,
+    body: Record<string, unknown>,
+  ): Promise<CreateDocumentResult> {
     const response = await this.doFetch(`${this.baseUrl}/api/sites/${siteId}/branches/${branchId}/documents`, {
       method: 'POST',
       headers: this.getHeaders(),
-      body: JSON.stringify({ path, snapshot }),
+      body: JSON.stringify(body),
     });
     const result = await this.handleResponse<{ document: { id: string; path: string }; version: { id: string } }>(response);
     return { documentId: result.document.id, documentPath: result.document.path, versionId: result.version.id };
@@ -357,6 +404,15 @@ export class McpApiClient {
       headers: this.getHeaders(),
     });
     return this.handleResponse<DocumentInfoWithTemplate | null>(response);
+  }
+
+  /** List the branch's page templates. Read-only, so a viewer's token is enough. */
+  async listTemplates(siteId: string, branchId: string): Promise<ListTemplatesResponse> {
+    const response = await this.doFetch(`${this.baseUrl}/api/sites/${siteId}/branches/${branchId}/templates`, {
+      method: 'GET',
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse<ListTemplatesResponse>(response);
   }
 
   /**

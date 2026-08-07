@@ -103,6 +103,16 @@ const LABELS: Record<string, LabelSpec> = {
     done: 'Checked available components',
     failed: "Couldn't check available components",
   },
+  list_page_templates: {
+    running: 'Looking for a page template',
+    done: 'Checked the page templates',
+    failed: "Couldn't check the page templates",
+    // "none" is the useful case: it is why the reply that follows offers a blank page.
+    detail: (_input, result) =>
+      Array.isArray(result)
+        ? (result.length === 0 ? 'none available' : pluralizeString(result.length, 'template'))
+        : undefined,
+  },
   check_edit_permission: {
     running: 'Checking edit permission',
     done: 'Confirmed edit permission',

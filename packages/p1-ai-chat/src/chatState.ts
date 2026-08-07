@@ -1,6 +1,8 @@
 import type {
   ChatMessage,
+  MessageOrigin,
   MessagePart,
+  PendingPage,
   ToolCallStatus,
   RestoredMessage,
   SendMessageOptions,
@@ -34,6 +36,12 @@ export interface ChatSessionState {
   reconnecting: boolean;
   /** The turn to resend if the user asks to retry, or null when the last turn didn't fail. */
   retry: RetryTarget | null;
+  /**
+   * A page the user has asked for that the agent has not created yet, or null. Rendered state
+   * rather than a private field because it decides whether the composer works: answering the
+   * agent's question about which template to use must not need a page open.
+   */
+  pendingPage: PendingPage | null;
 }
 
 export const EMPTY_STATE: ChatSessionState = {
@@ -44,7 +52,17 @@ export const EMPTY_STATE: ChatSessionState = {
   historyLoaded: false,
   reconnecting: false,
   retry: null,
+  pendingPage: null,
 };
+
+/** Remember, or forget, the page the conversation is waiting to have created. */
+export function setPendingPage(
+  state: ChatSessionState,
+  pendingPage: PendingPage | null,
+): ChatSessionState {
+  if (state.pendingPage === pendingPage) return state;
+  return { ...state, pendingPage };
+}
 
 export function makeId(): string {
   return Math.random().toString(36).slice(2, 9);
@@ -140,7 +158,12 @@ function resolveToolPart(
 }
 
 /** Append the user's message plus the empty assistant message its reply streams into. */
-export function beginTurn(state: ChatSessionState, text: string, assistantId: string): ChatSessionState {
+export function beginTurn(
+  state: ChatSessionState,
+  text: string,
+  assistantId: string,
+  origin?: MessageOrigin,
+): ChatSessionState {
   return {
     ...state,
     isLoading: true,
@@ -148,7 +171,7 @@ export function beginTurn(state: ChatSessionState, text: string, assistantId: st
     retry: null,
     messages: [
       ...state.messages,
-      { id: makeId(), role: 'user', content: text },
+      { id: makeId(), role: 'user', content: text, ...(origin ? { origin } : {}) },
       { id: assistantId, role: 'assistant', content: '', isStreaming: true },
     ],
   };

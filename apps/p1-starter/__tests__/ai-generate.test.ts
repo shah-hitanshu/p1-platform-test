@@ -26,7 +26,7 @@ describe("createGenerateWithAIHandler", () => {
     expect(createGenerateWithAIHandler(channel, false)).toBeUndefined();
   });
 
-  it("publishes the brief + page path onto the channel when enabled", () => {
+  it("asks for the page to be created, with the title and path the dialog collected", () => {
     const { channel, published } = fakeChannel();
 
     const handler = createGenerateWithAIHandler(channel, true);
@@ -34,28 +34,41 @@ describe("createGenerateWithAIHandler", () => {
     // handler is undefined when the chatbot is disabled, and the lint rule forbids
     // asserting that away. This keeps the "must be defined when enabled" claim asserted.
     if (!handler) throw new Error("handler must be defined when the chatbot is enabled");
-    handler("a launch page", { path: "launch" });
+    handler("a launch page", { path: "launch", title: "Launch" });
 
-    // `newPage` tells the agent the page was just created empty, so it drafts instead of
-    // opening with a clarifying question (PCC-3440, confirmed with Chris). It travels in
-    // the request rather than appended to the brief, so the transcript keeps showing only
-    // what the user wrote.
+    // `create-page`, not `fill-page`: nothing exists yet, because the template the page starts
+    // from is settled in the chat first and can only be applied as the page is created.
     expect(published).toEqual([
-      { brief: "a launch page", documentPath: "launch", newPage: true },
+      { kind: "create-page", brief: "a launch page", page: { path: "launch", title: "Launch" } },
     ]);
   });
 
-  it("maps page.path to the request documentPath so the agent targets the new page", () => {
+  it("keeps the nested path the dialog built from a template's route", () => {
     const { channel, published } = fakeChannel();
     const handler = createGenerateWithAIHandler(channel, true);
     if (!handler) throw new Error("handler must be defined when the chatbot is enabled");
 
-    handler("draft", { path: "resources/guide" });
+    handler("draft", { path: "resources/guide", title: "Guide" });
 
     expect(published[0]).toEqual({
+      kind: "create-page",
       brief: "draft",
-      documentPath: "resources/guide",
-      newPage: true,
+      page: { path: "resources/guide", title: "Guide" },
+    });
+  });
+
+  // The dialog's title field can be left empty; the agent draws one from the brief instead.
+  it("sends an empty title rather than omitting it", () => {
+    const { channel, published } = fakeChannel();
+    const handler = createGenerateWithAIHandler(channel, true);
+    if (!handler) throw new Error("handler must be defined when the chatbot is enabled");
+
+    handler("draft", { path: "launch" });
+
+    expect(published[0]).toEqual({
+      kind: "create-page",
+      brief: "draft",
+      page: { path: "launch", title: "" },
     });
   });
 });

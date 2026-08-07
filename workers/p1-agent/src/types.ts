@@ -36,11 +36,39 @@ export interface ChatContext {
   documentId?: string;
   token: string; // CSS auth token
   /**
+   * A page the user asked for that does not exist yet. Sent on every turn until it has been
+   * created, because the confirmation the agent waits for arrives on a later one.
+   */
+  pendingPage?: PendingPage;
+  /**
    * The turn was seeded from the Create Page modal against a page that was just created
    * empty for it. Changes the brief's contract: the user asked for a page and expects one,
    * so the agent drafts immediately instead of asking which page to use or what to include.
+   *
+   * @deprecated Superseded by {@link pendingPage}: the modal no longer creates the page up
+   * front. Still honoured because the client package and this Worker deploy independently, so
+   * an older client can still send it. Remove once both have shipped past that.
    */
   newPage?: boolean;
+}
+
+/** Where a page the agent is about to create should go, as the Create Page dialog collected it. */
+export interface PendingPage {
+  title: string;
+  /** Path without a leading slash, matching every other document path the agent sees. */
+  path: string;
+}
+
+/**
+ * Read a pending page off a context that crossed the network. Both fields decide where content
+ * the user asked for gets written, so neither is taken on trust.
+ */
+export function pendingPageOf(context: ChatContext): PendingPage | null {
+  const pending: unknown = context.pendingPage;
+  if (typeof pending !== 'object' || pending === null) return null;
+  const { title, path } = pending as { title?: unknown; path?: unknown };
+  if (typeof path !== 'string' || path.trim() === '') return null;
+  return { title: typeof title === 'string' ? title : '', path: path.trim() };
 }
 
 export type IncomingMessage =

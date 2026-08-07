@@ -124,6 +124,41 @@ describe('ChatMessage', () => {
     expect(screen.getByText('Stopped')).toBeTruthy();
   });
 
+  const seeded = (page: { title: string; path: string }): ChatMessageType => ({
+    id: 'u1',
+    role: 'user',
+    content: 'a blog post about caching',
+    origin: { source: 'create-page', page },
+  });
+
+  // Without this a seeded brief is indistinguishable from something the user typed, having
+  // appeared without them touching the composer.
+  it('says a seeded turn asked for a new page, and where it will land', () => {
+    render(<ChatMessage message={seeded({ title: 'Caching', path: 'blog/caching' })} />);
+
+    // The title and path were collected in the dialog and appear nowhere else in the transcript.
+    expect(screen.getByText('New page').parentElement?.textContent).toBe('New page · Caching');
+    // Stored without a leading slash; shown as the path it is.
+    expect(screen.getByText('/blog/caching')).toBeTruthy();
+  });
+
+  // Both rows are clipped to a single line, so a long title or a deep path is only partly
+  // legible. Nothing may be reachable *only* by reading them.
+  it('keeps the untruncated title and path on the caption', () => {
+    const title = 'Q3 2026 enterprise pricing and packaging update';
+    const path = 'resources/pricing/q3-2026-enterprise-pricing-and-packaging-update';
+    render(<ChatMessage message={seeded({ title, path })} />);
+
+    const caption = screen.getByText('New page').closest('[title]');
+    expect(caption?.getAttribute('title')).toBe(`New page · ${title} · /${path}`);
+  });
+
+  it('leaves a typed turn unannotated', () => {
+    render(<ChatMessage message={{ id: 'u1', role: 'user', content: 'change the heading' }} />);
+
+    expect(screen.queryByText('New page')).toBeNull();
+  });
+
   // A tint behind every reply reads as chrome at this width, and its padding costs the prose
   // ~24px of a ~300px column.
   it('bubbles the user turn only', () => {

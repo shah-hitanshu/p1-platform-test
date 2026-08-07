@@ -1295,8 +1295,8 @@ describe('CreatePageModal', () => {
       expect(submit().disabled).toBe(false);
     });
 
-    it('creates the blank page, navigates, hands the brief to onGenerateWithAI, then closes', async () => {
-      const { onGenerateWithAI, onCreateDocument, onNavigate, onClose } = openAI();
+    it('hands the brief and the page to onGenerateWithAI, then closes', () => {
+      const { onGenerateWithAI, onClose } = openAI();
 
       fireEvent.change(screen.getByTestId('create-page-ai-brief'), {
         target: { value: 'a launch page' },
@@ -1306,47 +1306,36 @@ describe('CreatePageModal', () => {
       });
       fireEvent.click(screen.getByTestId('create-page-submit'));
 
-      await waitFor(() => expect(onGenerateWithAI).toHaveBeenCalled());
-
-      // The existing create path owns page + route/slug creation.
-      expect(onCreateDocument).toHaveBeenCalledWith('launch', 'Launch');
-      expect(onNavigate).toHaveBeenCalledWith('launch');
       expect(onGenerateWithAI).toHaveBeenCalledWith('a launch page', {
         path: 'launch',
         title: 'Launch',
       });
       expect(onClose).toHaveBeenCalled();
-
-      // Page must exist before the agent is asked to draft into it.
-      expect(onCreateDocument.mock.invocationCallOrder[0]).toBeLessThan(
-        onGenerateWithAI.mock.invocationCallOrder[0],
-      );
     });
 
-    it('does not call onGenerateWithAI when page creation fails', async () => {
-      const onGenerateWithAI = vi.fn();
-      const onCreateDocument = vi.fn().mockRejectedValue(new Error('boom'));
-      render(
-        <CreatePageModal
-          {...defaultProps}
-          onCreateDocument={onCreateDocument}
-          onGenerateWithAI={onGenerateWithAI}
-          onNavigate={vi.fn()}
-        />,
-      );
-      fireEvent.click(screen.getByTestId('create-page-option-generate-ai'));
+    // A page's template can only be set as it is created, so creating one here would decide the
+    // question the chat is about to ask.
+    it('creates no page and navigates nowhere', () => {
+      const { onCreateDocument, onNavigate } = openAI();
+
       fireEvent.change(screen.getByTestId('create-page-ai-brief'), {
-        target: { value: 'a page' },
+        target: { value: 'a launch page' },
       });
       fireEvent.change(screen.getByTestId('create-page-title-input'), {
         target: { value: 'Launch' },
       });
       fireEvent.click(screen.getByTestId('create-page-submit'));
 
-      await waitFor(() =>
-        expect(screen.getByTestId('create-page-error').textContent).toContain('boom'),
+      expect(onCreateDocument).not.toHaveBeenCalled();
+      expect(onNavigate).not.toHaveBeenCalled();
+    });
+
+    it('tells the user a template will be suggested and confirmed in the chat', () => {
+      openAI();
+
+      expect(screen.getByTestId('create-page-ai-note').textContent).toContain(
+        'confirms it with you in the chat',
       );
-      expect(onGenerateWithAI).not.toHaveBeenCalled();
     });
 
     it('falls back to the placeholder note when onGenerateWithAI is not provided', () => {
@@ -1359,24 +1348,20 @@ describe('CreatePageModal', () => {
       expect(screen.queryByTestId('create-page-ai-brief')).toBeNull();
     });
 
-    // Otherwise the flow creates a page and then silently never drafts into it.
-    it('stays a placeholder when onNavigate is missing, even with the handler wired', () => {
-      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    // The chat creates the page itself now, so the modal no longer needs to navigate to reach it.
+    it('is usable without onNavigate', () => {
+      const onGenerateWithAI = vi.fn();
       render(
         <CreatePageModal
           {...defaultProps}
-          onGenerateWithAI={vi.fn()}
+          onGenerateWithAI={onGenerateWithAI}
           onNavigate={undefined}
         />,
       );
       fireEvent.click(screen.getByTestId('create-page-option-generate-ai'));
 
-      expect(screen.getByTestId('create-page-generate-ai-note').textContent).toContain(
-        'still in the works',
-      );
-      expect(screen.queryByTestId('create-page-ai-brief')).toBeNull();
-      expect(warn).toHaveBeenCalledWith(expect.stringContaining('onNavigate'));
-      warn.mockRestore();
+      expect(screen.getByTestId('create-page-ai-brief')).toBeTruthy();
+      expect(screen.queryByTestId('create-page-generate-ai-note')).toBeNull();
     });
   });
 });

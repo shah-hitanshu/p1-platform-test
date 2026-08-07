@@ -1,7 +1,7 @@
 import React from 'react';
 import { Badge, Icon, UtilityButton } from '@pantheon-systems/pds-toolkit-react';
 import { visuallyHidden } from './a11y.js';
-import type { ChatMessage as ChatMessageType } from './types.js';
+import type { ChatMessage as ChatMessageType, MessageOrigin } from './types.js';
 import { messageParts, turnBlocks, isAwaitingModel, type TurnBlock } from './messageParts.js';
 import { ToolGroup, ThinkingLine } from './ToolGroup.js';
 import { MarkdownText } from './MarkdownText.js';
@@ -42,6 +42,8 @@ function UnmemoizedChatMessage({ message, onRetry }: Props): React.ReactElement 
           undifferentiated stream of alternating text. */}
       <span style={visuallyHidden}>{isUser ? 'You said' : 'AI said'}</span>
 
+      {message.origin && <OriginCaption origin={message.origin} />}
+
       {/* Prose and step runs in the order they happened, so a call renders where it was made
           instead of moving once it finishes. */}
       {blocks.map((block, i) => (
@@ -77,6 +79,50 @@ function TurnBlockView({
   if (block.type === 'tools') return <ToolGroup tools={block.tools} />;
   return <TextBubble text={isStreamingTail ? repairMarkdown(block.text) : block.text} isUser={isUser} />;
 }
+
+/**
+ * What a seeded turn asked for. Names the request rather than the dialog it came from, so it
+ * still reads once the page exists — and the title and path appear nowhere else in the
+ * transcript until then.
+ */
+function OriginCaption({ origin }: { origin: MessageOrigin }): React.ReactElement {
+  const path = `/${origin.page.path}`;
+  return (
+    <div
+      // Both rows clip, so the full pair lives here.
+      title={`${ORIGIN_LABEL} · ${origin.page.title} · ${path}`}
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'flex-end',
+        fontSize: 11,
+        lineHeight: 1.4,
+        color: 'var(--pds-color-foreground-default-secondary)',
+        maxWidth: '100%',
+        minWidth: 0,
+      }}
+    >
+      <div style={oneLine}>
+        <span style={{ fontWeight: 600 }}>{ORIGIN_LABEL}</span> · {origin.page.title}
+      </div>
+      {/* Clipped at the end, not the start: this says where the page lands, so the leading
+          segments matter more than the slug. */}
+      <div style={oneLine}>{path}</div>
+    </div>
+  );
+}
+
+/** One caption row. Fixed to a single line: wrapping broke paths mid-segment. */
+const oneLine = {
+  maxWidth: '100%',
+  minWidth: 0,
+  whiteSpace: 'nowrap',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+} as const;
+
+/** What a seeded turn is asking for. One label because `MessageOrigin` has one source. */
+const ORIGIN_LABEL = 'New page';
 
 /** The user stopped this turn. Nothing failed, so it gets none of the error treatment below. */
 function StoppedNote(): React.ReactElement {

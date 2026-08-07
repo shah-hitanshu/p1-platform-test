@@ -1,10 +1,10 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import type OpenAI from 'openai';
 import type { Connection, ConnectionContext } from 'agents';
 import { trimHistory, sanitizeHistory, appendTurn, trimForHistory, buildRestoredHistory, turnMayCommit, turnHasOutput } from './history.js';
 import { buildContextNote } from './prompt.js';
 import { injectPuckIds } from './tools.js';
-import { ChatAgent } from './agent.js';
+import { ChatAgent, resolveFollowsTemplate } from './agent.js';
 
 type Msg = OpenAI.Chat.Completions.ChatCompletionMessageParam;
 
@@ -563,6 +563,137 @@ describe('buildContextNote', () => {
     expect(note).toContain('Site ID: s1');
     expect(note).toContain('Branch ID: b1');
     expect(note).toContain('Document: /pricing');
+  });
+
+  describe('a page that does not exist yet', () => {
+    const pending = { title: 'Hello world', path: 'blog/hello-world' };
+
+    it('names the page to create, with its title', () => {
+      const note = buildContextNote({ ...base, documentId: 'd1', pendingPage: pending });
+
+      expect(note).toContain('[Current editor context — page still to create]');
+      expect(note).toContain('Page to create: blog/hello-world');
+      expect(note).toContain('Title: Hello world');
+      expect(note).toContain('does not exist yet');
+    });
+
+    // The user is looking at some other page while they ask for this one, and naming it here
+    // reliably got that page edited instead of a new one created.
+    it('leaves the page the user is looking at out of the note', () => {
+      const note = buildContextNote({ ...base, documentId: 'd1', pendingPage: pending });
+
+      expect(note).not.toContain('Document: /pricing');
+      expect(note).not.toContain('This document already exists');
+    });
+
+    // The whole point of the ticket: the template is a decision the user makes. Everything else
+    // is the agent's to decide, or a thin brief turns into an interview.
+    it('allows exactly one question, about the template', () => {
+      const note = buildContextNote({ ...base, pendingPage: pending });
+
+      expect(note).toContain('The template is the only thing to ask about');
+      expect(note).toContain('Do not ask which page to use');
+    });
+
+    it('still asks for the SEO description', () => {
+      const note = buildContextNote({ ...base, pendingPage: pending });
+
+      expect(note).toContain('root.props.description');
+      expect(note).toContain('Pass the title above as root_props.title');
+    });
+
+    it('asks the agent for a title when the dialog collected none', () => {
+      const note = buildContextNote({ ...base, pendingPage: { title: '', path: 'about' } });
+
+      expect(note).not.toContain('Title:');
+      expect(note).toContain('title drawn from the brief');
+    });
+
+    // The context is assembled in the browser, and both fields decide where content gets
+    // written. A path-less pending page would otherwise create a page at "".
+    it('ignores a malformed pending page rather than acting on it', () => {
+      const note = buildContextNote({
+        ...base,
+        documentId: 'd1',
+        pendingPage: { title: 'X' } as unknown as { title: string; path: string },
+      });
+
+      expect(note).not.toContain('Page to create');
+      expect(note).toContain('This document already exists');
+    });
+  });
+
+  describe('a page bound to a template', () => {
+    it('states what may and may not be done to the template’s components', () => {
+      const note = buildContextNote({ ...base, documentId: 'd1' }, { followsTemplate: true });
+
+      expect(note).toContain('This page follows a page template.');
+      expect(note).toContain('do not delete, reorder, or re-create them');
+      expect(note).toContain('Conformance is checked by component id');
+    });
+
+    it('says nothing about templates for a page that has none', () => {
+      const note = buildContextNote({ ...base, documentId: 'd1' }, { followsTemplate: false });
+
+      expect(note).not.toContain('page template');
+    });
+
+    // Only a client old enough to still send `newPage` reaches that branch, and it creates
+    // blank pages — so this combination is unreachable, and saying both would contradict.
+    it('does not call the same page empty and pre-filled', () => {
+      const note = buildContextNote(
+        { ...base, documentId: 'd1', newPage: true },
+        { followsTemplate: true },
+      );
+
+      expect(note).toContain('is empty');
+      expect(note).not.toContain('This page follows a page template.');
+    });
+  });
+});
+
+describe('resolveFollowsTemplate', () => {
+  const context = { siteId: 's1', documentPath: 'blog/hello' };
+
+  it('reports the backend’s answer, not the browser’s', async () => {
+    const api = { lookupDocumentByPath: vi.fn().mockResolvedValue({ templateId: 'tpl-1' }) };
+
+    expect(await resolveFollowsTemplate(api, context, new Map())).toBe(true);
+  });
+
+  it('reports false for a document with no template', async () => {
+    const api = { lookupDocumentByPath: vi.fn().mockResolvedValue({ id: 'd1' }) };
+
+    expect(await resolveFollowsTemplate(api, context, new Map())).toBe(false);
+  });
+
+  // `templateId` is only accepted when a document is created, so neither answer goes stale.
+  it('asks once per path', async () => {
+    const api = { lookupDocumentByPath: vi.fn().mockResolvedValue({ templateId: 'tpl-1' }) };
+    const cache = new Map<string, boolean>();
+
+    await resolveFollowsTemplate(api, context, cache);
+    await resolveFollowsTemplate(api, context, cache);
+    await resolveFollowsTemplate(api, { ...context, documentPath: 'about' }, cache);
+
+    expect(api.lookupDocumentByPath).toHaveBeenCalledTimes(2);
+  });
+
+  // Losing the note beats failing the turn — but a failure must not mute the note for the rest
+  // of the conversation.
+  it('degrades to false on a lookup failure, and does not cache it', async () => {
+    const api = { lookupDocumentByPath: vi.fn().mockRejectedValue(new Error('offline')) };
+    const cache = new Map<string, boolean>();
+
+    expect(await resolveFollowsTemplate(api, context, cache)).toBe(false);
+    expect(cache.size).toBe(0);
+  });
+
+  it('does not call the backend without a document to look up', async () => {
+    const api = { lookupDocumentByPath: vi.fn() };
+
+    expect(await resolveFollowsTemplate(api, { siteId: 's1', documentPath: '' }, new Map())).toBe(false);
+    expect(api.lookupDocumentByPath).not.toHaveBeenCalled();
   });
 });
 

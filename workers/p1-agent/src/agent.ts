@@ -1,6 +1,6 @@
 import { Agent } from 'agents';
 import type { Connection, ConnectionContext, WSMessage } from 'agents';
-import type { Env, IncomingMessage, OutgoingMessage, TurnFrame, ValidatedUser } from './types.js';
+import type { ChatContext, Env, IncomingMessage, OutgoingMessage, TurnFrame, ValidatedUser } from './types.js';
 import { McpApiClient } from './css-api.js';
 import { CSS_TOOLS, WEB_TOOLS, executeTool } from './tools.js';
 import { validateCSSToken } from './auth.js';
@@ -35,8 +35,51 @@ interface AgentState {
   clearSeq?: number;
 }
 
+/** The one call {@link resolveFollowsTemplate} needs, so a test can stand in for the client. */
+interface DocumentLookup {
+  lookupDocumentByPath(
+    siteId: string,
+    documentPath: string,
+  ): Promise<{ templateId?: string } | null>;
+}
+
+/**
+ * Whether the turn's target page is bound to a page template, which changes what editing it
+ * safely means. Read from the backend rather than the context, because the context is assembled
+ * in the browser and this decides an instruction the agent is told to obey.
+ */
+export async function resolveFollowsTemplate(
+  api: DocumentLookup,
+  context: Pick<ChatContext, 'siteId' | 'documentPath'>,
+  cache: Map<string, boolean>,
+): Promise<boolean> {
+  const { siteId, documentPath } = context;
+  if (!siteId || !documentPath) return false;
+
+  const known = cache.get(documentPath);
+  if (known !== undefined) return known;
+
+  try {
+    const doc = await api.lookupDocumentByPath(siteId, documentPath);
+    const follows = !!doc?.templateId;
+    cache.set(documentPath, follows);
+    return follows;
+  } catch (err) {
+    // Losing the note beats failing the turn, the same trade the post-apply structure check
+    // makes. Left uncached so one failure doesn't mute it for the rest of the conversation.
+    console.warn('[template] lookup failed, omitting the template note:', err);
+    return false;
+  }
+}
+
 export class ChatAgent extends Agent<Env, AgentState> {
   initialState: AgentState = { conversationHistory: [] };
+
+  /**
+   * Cache for {@link resolveFollowsTemplate}, keyed by path. Lives as long as the object: a
+   * document's `templateId` is only accepted when it is created, so neither answer goes stale.
+   */
+  private followsTemplateByPath = new Map<string, boolean>();
 
   /**
    * The SDK's state protocol sends all of `state` to a connection before any message is
@@ -233,7 +276,13 @@ export class ChatAgent extends Agent<Env, AgentState> {
 
       // Inject page context into the user message sent to the model, but persist the raw
       // message so stored turns don't carry stale context blocks.
-      const contextNote = buildContextNote(context);
+      const contextNote = buildContextNote(context, {
+        // Skipped while a page is pending: there is no document to look up yet, and the note's
+        // pending-page branch carries its own instructions.
+        followsTemplate: context.pendingPage
+          ? false
+          : await resolveFollowsTemplate(cssApi, context, this.followsTemplateByPath),
+      });
       const userContent = contextNote ? `${contextNote}\n\n${message}` : message;
 
       // Nothing has been done yet, so a Stop during setup just ends here.

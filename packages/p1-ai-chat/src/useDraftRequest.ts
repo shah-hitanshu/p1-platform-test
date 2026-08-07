@@ -20,17 +20,38 @@ function normalizePath(p: string | undefined): string {
  */
 const UNMATCHED_WARN_MS = 10_000;
 
-function warnUnmatched(request: DraftRequest, currentPath: string | undefined): void {
+function warnUnmatched(targetPath: string, currentPath: string | undefined): void {
   // A mismatch here is silent by nature: the gate simply never opens, so the brief never
   // sends and the UI is indistinguishable from a slow agent. Naming both paths is the
   // difference between a five-minute fix and a bug report saying "AI does nothing".
   if (!isDevBuild()) return;
   console.warn(
-    `[p1-ai-chat] A request for "${request.documentPath}" has gone unconsumed for ` +
+    `[p1-ai-chat] A request for "${targetPath}" has gone unconsumed for ` +
       `${UNMATCHED_WARN_MS / 1000}s. The sidebar's current document is ` +
       `"${currentPath ?? '(none)'}". These must match after normalization for the ` +
       `brief to send.`,
   );
+}
+
+/**
+ * Whether this panel may act on `request` now.
+ *
+ * A page to create has no target to wait for — that is the point of it — so the open socket the
+ * caller already gated on is the whole gate. Tested for `'create-page'` rather than against
+ * `'fill-page'` so a request from a publisher predating the union, carrying no `kind`, still
+ * waits for its page instead of being read as "create something".
+ */
+function isDeliverable(request: DraftRequest, currentPath: string | undefined): boolean {
+  if (request.kind === 'create-page') return true;
+  const target = normalizePath(request.documentPath);
+  // An empty target would match a panel with no document loaded, since `undefined` normalizes to
+  // empty too. The modal always supplies a slug, so empty means malformed.
+  return target !== '' && target === normalizePath(currentPath);
+}
+
+/** The page a request concerns, whichever kind it is. */
+function requestedPath(request: DraftRequest): string {
+  return request.kind === 'create-page' ? request.page.path : request.documentPath;
 }
 
 /** Gate conditions under which a request may be sent. */
@@ -61,17 +82,14 @@ export function useDraftRequest(
 
     const tryConsume = (request: DraftRequest | null): void => {
       if (!request || request === consumedRef.current) return;
-      const target = normalizePath(request.documentPath);
-      // A target that normalizes to empty would match a sidebar with no document loaded
-      // yet, since `undefined` normalizes to empty too, and the brief would fire against
-      // no document at all. The modal always supplies a slug, so empty means malformed.
-      if (!target || target !== normalizePath(documentPath)) {
-        // Not ours (yet). Arm the diagnostic rather than returning silently.
+      if (!isDeliverable(request, documentPath)) {
+        // Not ours (yet). Arm the diagnostic rather than returning silently: another panel may
+        // consume it, or the channel may expire it, so the timer re-checks before warning.
         if (!warnTimer) {
           warnTimer = setTimeout(() => {
-            // Re-check on fire: another panel may have consumed this request, or the channel
-            // may have expired it, and warning about it then would be a false alarm.
-            if (channel.getLatest() === request) warnUnmatched(request, documentPath);
+            if (channel.getLatest() === request) {
+              warnUnmatched(requestedPath(request), documentPath);
+            }
           }, UNMATCHED_WARN_MS);
         }
         return;

@@ -70,7 +70,6 @@ export function ChatPanel({ options }: Props): React.ReactElement {
   // Site-scoped, not per page, so the transcript follows the user around. The turn's own
   // document rides along in `getContext`.
   const { userId, siteId, currentDocument } = css;
-  const canSend = currentDocument !== null;
   const agentId = useMemo(() => {
     if (options.getAgentId) return options.getAgentId();
     return `${userId}-${siteId}`;
@@ -89,12 +88,18 @@ export function ChatPanel({ options }: Props): React.ReactElement {
 
   const {
     messages, input, setInput, submit, sendMessage, isLoading, ready,
-    reconnecting, historyLoaded, canRetry, clearMessages, stop, retry,
+    reconnecting, historyLoaded, canRetry, clearMessages, stop, retry, awaitingNewPage,
   } = useAgentChat({
     agentUrl: options.agentUrl,
     agentId,
     getContext,
+    onPageCreated: options.onPageCreated,
   });
+
+  // A turn needs somewhere to write. Usually that is the open document, but a conversation
+  // waiting on a page it asked for is about to create one — and the answer it is waiting for
+  // ("yes, use that template") has to be typeable with nothing open.
+  const canSend = currentDocument !== null || awaitingNewPage;
 
   // Clear takes effect immediately. It also stops any turn in flight, so it can't leave
   // the agent editing the page for a conversation that no longer exists.
@@ -117,10 +122,17 @@ export function ChatPanel({ options }: Props): React.ReactElement {
         // No need to open the panel here — the publisher does, and this only mounts once open.
         // A seeded draft should stream into view, not behind the user's scroll position.
         stickToBottomRef.current = true;
-        void sendMessage(request.brief, {
-          documentPath: request.documentPath,
-          newPage: request.newPage,
-        });
+        void sendMessage(
+          request.brief,
+          request.kind === 'create-page'
+            ? {
+                // The same page twice because the two outlive each other: `pendingPage` is
+                // dropped once the page exists, `origin` stays on the turn that asked for it.
+                pendingPage: request.page,
+                origin: { source: 'create-page', page: request.page },
+              }
+            : { documentPath: request.documentPath, newPage: request.newPage },
+        );
       },
       [sendMessage],
     ),

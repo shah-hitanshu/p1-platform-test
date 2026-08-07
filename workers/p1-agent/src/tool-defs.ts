@@ -165,17 +165,42 @@ const RAW_CSS_TOOLS: RawTool[] = [
     },
   },
   {
+    name: 'list_page_templates',
+    description: 'List the page templates a new page can be built from. Call before creating a page, so the page starts from the template that fits rather than from nothing. Returns each template\'s id, label, purpose and route shape — never its layout.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        site_id: { type: 'string' },
+        branch_id: { type: 'string' },
+      },
+      required: ['site_id', 'branch_id'],
+    },
+  },
+  {
     name: 'create_page',
-    description: 'Create a brand-new page document with P1 components. ONLY call after the user has explicitly confirmed they want a new page — never call for editing requests. No edit session needed. IMPORTANT: component types must be names returned by list_components — never invent or guess component names.',
+    description: [
+      'Create a brand-new page document. ONLY call after the user has explicitly confirmed they want a new page — never call for editing requests. No edit session needed.',
+      '',
+      'Two ways to create:',
+      '  From a template — pass template_id and omit components. The page is scaffolded with the template\'s components, which you then fill in by editing their props.',
+      '  Empty — pass components (may be an empty list) and omit template_id. Component types must be names returned by list_components; never invent or guess component names.',
+      '',
+      'template_id and components are mutually exclusive: a template supplies the components.',
+      'With template_id, only root_props.title is applied — set any other root prop afterwards with apply_document_edits.',
+    ].join('\n'),
     input_schema: {
       type: 'object' as const,
       properties: {
         site_id: { type: 'string' },
         branch_id: { type: 'string' },
         document_path: { type: 'string', description: 'Path for the new page, e.g. /about' },
+        template_id: {
+          type: 'string',
+          description: 'Page template to build from, copied verbatim from list_page_templates.',
+        },
         components: {
           type: 'array',
-          description: 'Ordered list of P1 components for the page',
+          description: 'Ordered list of P1 components for the page. Omit when template_id is given.',
           items: {
             type: 'object',
             properties: {
@@ -189,7 +214,7 @@ const RAW_CSS_TOOLS: RawTool[] = [
         },
         root_props: { type: 'object', description: 'Root-level page props (e.g. title)' },
       },
-      required: ['site_id', 'branch_id', 'document_path', 'components'],
+      required: ['site_id', 'branch_id', 'document_path'],
     },
   },
 ];

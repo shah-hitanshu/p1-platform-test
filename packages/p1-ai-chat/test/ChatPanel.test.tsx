@@ -131,7 +131,7 @@ describe('ChatPanel', () => {
     act(() => { transcript.focus(); });
 
     await act(async () => {
-      bus.publish({ brief: 'build a pricing page', documentPath: '/current' });
+      bus.publish({ kind: 'fill-page', brief: 'build a pricing page', documentPath: '/current' });
     });
     // Revealing the panel is the publisher's job now; this only checks the seed sent.
     expect(ws.frames().filter(f => f.type === 'chat')).toHaveLength(1);
@@ -140,6 +140,64 @@ describe('ChatPanel', () => {
     await act(async () => { ws.emit({ type: 'done' }); });
 
     expect(document.activeElement).toBe(transcript);
+  });
+
+  // The page does not exist, so it cannot be the turn's target: it travels as the page to
+  // create, leaving the turn pointed at whatever the editor happens to have open.
+  it('sends a page-to-create request as a page to create, not as a target document', async () => {
+    const agentId = `panel-scope-${++scopeCounter}`;
+    const bus = makeDraftChannel();
+    render(
+      <ChatPanel options={{ agentUrl: 'http://agent.test', getAgentId: () => agentId, draftRequests: bus }} />,
+    );
+    await act(async () => { MockWebSocket.instances[0].open(); });
+    const ws = MockWebSocket.instances[0];
+    await act(async () => { ws.emit({ type: 'history', history: [] }); });
+
+    await act(async () => {
+      bus.publish({
+        kind: 'create-page',
+        brief: 'a blog post about caching',
+        page: { title: 'Caching', path: 'blog/caching' },
+      });
+    });
+
+    const chat = ws.sent
+      .map(s => JSON.parse(s) as { type: string; message?: string; context?: Record<string, unknown> })
+      .find(f => f.type === 'chat');
+    expect(chat?.message).toBe('a blog post about caching');
+    expect(chat?.context?.pendingPage).toEqual({ title: 'Caching', path: 'blog/caching' });
+    expect(chat?.context?.documentPath).toBe('/current');
+  });
+
+  // The turn arrives without the user having touched the composer, so the transcript has to
+  // account for it — and the dialog collected a title and path shown nowhere else.
+  it('attributes a seeded brief to the dialog it came from', async () => {
+    const agentId = `panel-scope-${++scopeCounter}`;
+    const bus = makeDraftChannel();
+    render(
+      <ChatPanel options={{ agentUrl: 'http://agent.test', getAgentId: () => agentId, draftRequests: bus }} />,
+    );
+    await act(async () => { MockWebSocket.instances[0].open(); });
+    await act(async () => { MockWebSocket.instances[0].emit({ type: 'history', history: [] }); });
+
+    await act(async () => {
+      bus.publish({
+        kind: 'create-page',
+        brief: 'a blog post about caching',
+        page: { title: 'Caching', path: 'blog/caching' },
+      });
+    });
+
+    expect(screen.getByText('New page').parentElement?.textContent).toBe('New page · Caching');
+    expect(screen.getByText('/blog/caching')).toBeTruthy();
+  });
+
+  it('leaves a turn typed into the composer unattributed', async () => {
+    const { ws } = await renderPanel();
+    await send('a blog post about caching', ws);
+
+    expect(screen.queryByText('New page')).toBeNull();
   });
 
   describe('while a turn is streaming', () => {
@@ -293,6 +351,72 @@ describe('ChatPanel', () => {
 
     await act(async () => { fireEvent.click(sendButton); });
     expect(ws.frames().some(f => f.type === 'chat')).toBe(false);
+  });
+
+  // The agent asks which template to start from and waits for an answer. Requiring an open page
+  // to type that answer left the conversation stuck on its own question.
+  it('lets the user answer while the page they asked for still does not exist', async () => {
+    currentDocument = null;
+    const agentId = `panel-scope-${++scopeCounter}`;
+    const bus = makeDraftChannel();
+    render(
+      <ChatPanel options={{ agentUrl: 'http://agent.test', getAgentId: () => agentId, draftRequests: bus }} />,
+    );
+    await act(async () => { MockWebSocket.instances[0].open(); });
+    const ws = MockWebSocket.instances[0];
+    await act(async () => { ws.emit({ type: 'history', history: [] }); });
+
+    await act(async () => {
+      bus.publish({
+        kind: 'create-page',
+        brief: 'a blog post',
+        page: { title: 'Caching', path: 'blog/caching' },
+      });
+    });
+    await act(async () => { ws.emit({ type: 'done' }); });
+
+    fireEvent.change(composer(), { target: { value: 'Ok' } });
+    const sendButton = screen.getByRole('button', { name: 'Send' }) as HTMLButtonElement;
+    expect(sendButton.disabled).toBe(false);
+    expect(screen.queryByText('Open a page to make changes')).toBeNull();
+
+    await act(async () => { fireEvent.click(sendButton); });
+
+    const chats = ws.sent
+      .map(s => JSON.parse(s) as { type: string; message?: string })
+      .filter(f => f.type === 'chat');
+    expect(chats.map(c => c.message)).toEqual(['a blog post', 'Ok']);
+  });
+
+  it('locks the composer again once that page exists but none is open', async () => {
+    currentDocument = null;
+    const agentId = `panel-scope-${++scopeCounter}`;
+    const bus = makeDraftChannel();
+    render(
+      <ChatPanel options={{ agentUrl: 'http://agent.test', getAgentId: () => agentId, draftRequests: bus }} />,
+    );
+    await act(async () => { MockWebSocket.instances[0].open(); });
+    const ws = MockWebSocket.instances[0];
+    await act(async () => { ws.emit({ type: 'history', history: [] }); });
+
+    await act(async () => {
+      bus.publish({
+        kind: 'create-page',
+        brief: 'a blog post',
+        page: { title: 'Caching', path: 'blog/caching' },
+      });
+    });
+    await act(async () => {
+      ws.emit({
+        type: 'tool_end',
+        toolName: 'create_page',
+        toolResult: { documentId: 'd1', documentPath: 'blog/caching' },
+      });
+      ws.emit({ type: 'done' });
+    });
+
+    fireEvent.change(composer(), { target: { value: 'now add a summary' } });
+    expect((screen.getByRole('button', { name: 'Send' }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   describe('composer footer', () => {

@@ -1,6 +1,7 @@
 import { validateOps, validateDocumentStructure } from '@pantheon-systems/p1-content-validator';
 import type { ComponentSchema } from '@pantheon-systems/p1-content-validator';
-import type { McpApiClient } from './css-api.js';
+import type { McpApiClient, TemplateSummaryInfo } from './css-api.js';
+import { TEMPLATE_FILL_CONTRACT } from './prompt.js';
 
 // Inline ULID generator — no external dependency required in Workers
 const ULID_ENCODING = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
@@ -72,6 +73,92 @@ function buildRegistry(components: unknown[]): Record<string, ComponentSchema> {
     }
   }
   return registry;
+}
+
+/** A template as `list_page_templates` returns it: enough to choose between them, no layout. */
+function describeTemplate(template: TemplateSummaryInfo): Record<string, unknown> {
+  return {
+    id: template.id,
+    name: template.name,
+    ...(template.label ? { label: template.label } : {}),
+    ...(template.description ? { description: template.description } : {}),
+    ...(template.defaultUrlPattern ? { defaultUrlPattern: template.defaultUrlPattern } : {}),
+  };
+}
+
+/**
+ * The components a template scaffolded — the ones the agent fills in by editing their props.
+ *
+ * Tolerates a snapshot-less version: `/versions/latest` returns diff-only versions with a null
+ * snapshot and does not reconstruct them. Version 1 of a fresh page is never one, but the agent's
+ * type says non-null where the API does not.
+ */
+function scaffoldedComponents(
+  snapshot: Record<string, unknown> | null | undefined,
+): { type: string; id: string }[] {
+  const content = snapshot?.content;
+  if (!Array.isArray(content)) return [];
+  return content.flatMap(item => {
+    if (typeof item !== 'object' || item === null) return [];
+    const { type, props } = item as { type?: unknown; props?: { id?: unknown } };
+    if (typeof type !== 'string' || typeof props?.id !== 'string') return [];
+    return [{ type, id: props.id }];
+  });
+}
+
+/**
+ * Create a page from a template and report what landed on it.
+ *
+ * The template supplies the components, so none of `create_page`'s own component handling runs:
+ * no registry validation (the template's components are already valid) and no edit session (the
+ * backend wrote them into version 1).
+ */
+async function createPageFromTemplate(
+  cssApi: McpApiClient,
+  { siteId, branchId, documentPath, templateId, title }: {
+    siteId: string;
+    branchId: string;
+    documentPath: string;
+    templateId: string;
+    title?: string;
+  },
+): Promise<unknown> {
+  // Resolved against the live list first, so an id the model invented fails naming the tool that
+  // has the real ones instead of as a 404 from the create call.
+  const { templates } = await cssApi.listTemplates(siteId, branchId);
+  const template = templates.find(t => t.id === templateId);
+  if (!template) {
+    throw new Error(
+      `No page template with id "${templateId}". Call list_page_templates and copy an id from it.`,
+    );
+  }
+  if (template.deprecated === true) {
+    throw new Error(
+      `The "${template.label ?? template.name}" template is deprecated, so it cannot start a new page.`,
+    );
+  }
+
+  const createResult = await cssApi.createDocumentFromTemplate(
+    siteId, branchId, documentPath, templateId, title,
+  );
+
+  let components: { type: string; id: string }[] = [];
+  try {
+    const version = await cssApi.getDocumentLatestVersion(siteId, branchId, createResult.documentId);
+    components = scaffoldedComponents(version.snapshot);
+  } catch (err) {
+    // The page was created either way, and the agent can still read it with get_document.
+    console.warn('create_page: could not read back the scaffolded components —', err);
+  }
+
+  return {
+    ...createResult,
+    template: { id: template.id, label: template.label ?? template.name },
+    components,
+    // This turn's context note was built before the page existed, so the contract it carries for
+    // template-bound pages is repeated here.
+    note: TEMPLATE_FILL_CONTRACT.join(' '),
+  };
 }
 
 // Provider-neutral tool specs live in tool-defs.ts (no runtime deps, so Node tooling
@@ -351,6 +438,16 @@ export async function executeTool(
         toolInput.document_path as string,
       );
 
+    case 'list_page_templates': {
+      const { templates } = await cssApi.listTemplates(
+        toolInput.site_id as string,
+        toolInput.branch_id as string,
+      );
+      // Deprecated templates are excluded here rather than left for the model to avoid: the
+      // create route rejects them anyway, and offering one leads to a refused page.
+      return templates.filter(t => t.deprecated !== true).map(describeTemplate);
+    }
+
     case 'create_page': {
       const documentPath = toolInput.document_path as string;
 
@@ -358,12 +455,30 @@ export async function executeTool(
         throw new Error('Cannot create pages at the _registry/ path prefix — this is reserved for system use.');
       }
 
-      const components = toolInput.components as {
+      const components = (toolInput.components ?? []) as {
         type: string;
         props: Record<string, unknown>;
         zone?: string;
         parentId?: string;
       }[];
+
+      const templateId = toolInput.template_id;
+      if (typeof templateId === 'string' && templateId !== '') {
+        if (components.length > 0) {
+          throw new Error(
+            'A page built from a template takes its components from the template. Call create_page ' +
+            'with template_id and no components, then fill the scaffolded components in.',
+          );
+        }
+        const rootProps = (toolInput.root_props ?? {}) as Record<string, unknown>;
+        return createPageFromTemplate(cssApi, {
+          siteId: toolInput.site_id as string,
+          branchId: toolInput.branch_id as string,
+          documentPath,
+          templateId,
+          title: typeof rootProps.title === 'string' ? rootProps.title : undefined,
+        });
+      }
 
       // Build components with fresh ULIDs then validate against the registry.
       // ULIDs are injected before validation so id format checks pass.

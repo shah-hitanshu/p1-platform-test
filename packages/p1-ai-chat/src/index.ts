@@ -6,13 +6,15 @@ import type { AIChatPluginOptions } from './types.js';
 export type {
   AIChatPluginOptions,
   ChatMessage,
-  // Part of ChatMessage's public shape, so consumers reading `parts` can name the type,
-  // and narrow it to the prose variant.
   MessagePart,
   TextPart,
+  MessageOrigin,
   ChatContext,
   ToolCallStatus,
   DraftRequest,
+  FillPageRequest,
+  CreatePageRequest,
+  PendingPage,
   DraftRequestChannel,
 } from './types.js';
 export { createDraftRequestChannel } from './draftRequestChannel.js';

@@ -4,7 +4,11 @@ import { useDraftRequest } from '../src/useDraftRequest.js';
 import { createDraftRequestChannel } from '../src/draftRequestChannel.js';
 import type { DraftRequest } from '../src/types.js';
 
-const request = (brief: string, documentPath = '/target'): DraftRequest => ({ brief, documentPath });
+const request = (brief: string, documentPath = '/target'): DraftRequest => ({
+  kind: 'fill-page',
+  brief,
+  documentPath,
+});
 
 // Default gate: connected, scoped to the request's target page.
 const ready = (documentPath = '/target'): { documentPath: string; ready: boolean } => ({
@@ -210,6 +214,54 @@ describe('useDraftRequest', () => {
   it('is a no-op when no channel is provided', () => {
     const onRequest = vi.fn();
     expect(() => renderHook(() => useDraftRequest(undefined, ready(), onRequest))).not.toThrow();
+    expect(onRequest).not.toHaveBeenCalled();
+  });
+
+  // The page it asks for does not exist yet, so there is no document for the gate to match.
+  // Waiting for one would mean the request never fires at all.
+  it('delivers a page-to-create request without waiting for a matching document', () => {
+    const channel = createDraftRequestChannel();
+    const onRequest = vi.fn();
+    renderHook(() => useDraftRequest(channel, { documentPath: '/somewhere-else', ready: true }, onRequest));
+
+    const create: DraftRequest = {
+      kind: 'create-page',
+      brief: 'a blog post about caching',
+      page: { title: 'Caching', path: 'blog/caching' },
+    };
+    channel.publish(create);
+
+    expect(onRequest).toHaveBeenCalledWith(create);
+  });
+
+  it('still waits for the socket before asking for a page to be created', () => {
+    const channel = createDraftRequestChannel();
+    const onRequest = vi.fn();
+    channel.publish({
+      kind: 'create-page',
+      brief: 'a pricing page',
+      page: { title: 'Pricing', path: 'pricing' },
+    });
+
+    const { rerender } = renderHook(
+      ({ r }) => useDraftRequest(channel, { documentPath: '/index', ready: r }, onRequest),
+      { initialProps: { r: false } },
+    );
+    expect(onRequest).not.toHaveBeenCalled();
+
+    rerender({ r: true });
+    expect(onRequest).toHaveBeenCalledTimes(1);
+  });
+
+  // A publisher bundled before the union sends no `kind`. Reading that as "create a page" would
+  // turn an edit into a new page, so the absent value has to mean the old behaviour.
+  it('treats a request with no kind as one aimed at an existing page', () => {
+    const channel = createDraftRequestChannel();
+    const onRequest = vi.fn();
+    renderHook(() => useDraftRequest(channel, { documentPath: '/elsewhere', ready: true }, onRequest));
+
+    channel.publish({ brief: 'legacy', documentPath: '/target' } as unknown as DraftRequest);
+
     expect(onRequest).not.toHaveBeenCalled();
   });
 

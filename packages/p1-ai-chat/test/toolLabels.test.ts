@@ -41,6 +41,20 @@ describe('toolCallLabel', () => {
     }))).toBe('Applying changes · 3 edits');
   });
 
+  it('counts the page templates found', () => {
+    expect(toolCallLabel(call({
+      name: 'list_page_templates',
+      result: [{ id: 'a' }, { id: 'b' }],
+    }))).toBe('Checked the page templates · 2 templates');
+  });
+
+  // Not a failure — the site simply has none — but it is why the reply that follows offers a
+  // blank page, so an empty result must say so rather than read like a successful lookup.
+  it('says so when a site has no page templates', () => {
+    expect(toolCallLabel(call({ name: 'list_page_templates', result: [] })))
+      .toBe('Checked the page templates · none available');
+  });
+
   it('falls back to operationsApplied from the result when input has no operations', () => {
     expect(toolCallLabel(call({
       name: 'apply_document_edits',

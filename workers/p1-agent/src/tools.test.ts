@@ -588,9 +588,11 @@ describe('executeTool apply_document_edits structure validation', () => {
       lookupDocumentByPath: vi.fn().mockResolvedValue({
         id: 'doc-1', path: 'index', createdAt: '', templateId: 'tpl-1',
       }),
-      // post-apply document snapshot (conforming by default: Hero present)
+      // Post-apply document snapshot, conforming by default. It carries the template's own
+      // component id, which is what a page created from a template gets — conformance is
+      // checked by id, so a fresh id here reads as the pinned component having been removed.
       getDocument: vi.fn().mockResolvedValue({
-        snapshot: { content: [{ type: 'Hero', props: { id: 'h1' } }] },
+        snapshot: { content: [{ type: 'Hero', props: { id: 'tpl-hero' } }] },
       }),
       getTemplate: vi.fn().mockResolvedValue(templateWithPinnedHero),
       ...overrides,
@@ -635,12 +637,12 @@ describe('executeTool apply_document_edits structure validation', () => {
         ],
         root: { props: { _pinMap: { 'tpl-hero': true, 'tpl-footer': true } } },
       }),
-      // Document has them reversed: Footer before Hero.
+      // Both present, under the template's ids, but reversed: Footer before Hero.
       getDocument: vi.fn().mockResolvedValue({
         snapshot: {
           content: [
-            { type: 'Footer', props: { id: 'f1' } },
-            { type: 'Hero', props: { id: 'h1' } },
+            { type: 'Footer', props: { id: 'tpl-footer' } },
+            { type: 'Hero', props: { id: 'tpl-hero' } },
           ],
         },
       }),
@@ -1262,6 +1264,189 @@ describe('executeTool create_page prop validation', () => {
 });
 
 // ---------------------------------------------------------------------------
+// executeTool — page templates
+// ---------------------------------------------------------------------------
+
+describe('executeTool page templates', () => {
+  const siteId = 'site-1';
+  const branchId = 'branch-1';
+
+  const blogTemplate = {
+    id: 'tpl-blog',
+    name: 'blog-post',
+    label: 'Blog post',
+    description: 'An article with an author and a date.',
+    defaultUrlPattern: '/blog/:slug',
+    version: 3,
+  };
+
+  function makeCssApi(overrides: Partial<Record<keyof McpApiClient, unknown>> = {}): McpApiClient {
+    return {
+      listTemplates: vi.fn().mockResolvedValue({ templates: [blogTemplate] }),
+      createDocumentFromTemplate: vi.fn().mockResolvedValue({
+        documentId: 'doc-1', documentPath: 'blog/hello', versionId: 'v-1',
+      }),
+      getDocumentLatestVersion: vi.fn().mockResolvedValue({
+        id: 'v-1',
+        documentId: 'doc-1',
+        versionNumber: 1,
+        snapshot: {
+          content: [{ type: 'Hero', props: { id: 'Hero-aaaa', heading: 'Welcome' } }],
+          root: { props: { title: 'Hello' } },
+        },
+      }),
+      createDocument: vi.fn(),
+      listComponents: vi.fn().mockResolvedValue({ components: [] }),
+      ...overrides,
+    } as unknown as McpApiClient;
+  }
+
+  it('lists templates with what the choice is made from, and no layout', async () => {
+    const cssApi = makeCssApi();
+    const result = await executeTool(
+      'list_page_templates', { site_id: siteId, branch_id: branchId }, cssApi, 'user-1',
+    );
+
+    expect(result).toEqual([{
+      id: 'tpl-blog',
+      name: 'blog-post',
+      label: 'Blog post',
+      description: 'An article with an author and a date.',
+      defaultUrlPattern: '/blog/:slug',
+    }]);
+  });
+
+  // A deprecated template still describes itself perfectly well, so the model has no way to
+  // know the create call will refuse it.
+  it('leaves deprecated templates out of the list', async () => {
+    const cssApi = makeCssApi({
+      listTemplates: vi.fn().mockResolvedValue({
+        templates: [blogTemplate, { id: 'tpl-old', name: 'old', deprecated: true }],
+      }),
+    });
+    const result = (await executeTool(
+      'list_page_templates', { site_id: siteId, branch_id: branchId }, cssApi, 'user-1',
+    )) as { id: string }[];
+
+    expect(result.map(t => t.id)).toEqual(['tpl-blog']);
+  });
+
+  // The backend builds version 1 from the template and rejects a request that also carries a
+  // snapshot, so the blank-page create path must not run.
+  it('creates from the template without sending a snapshot or an edit session', async () => {
+    const cssApi = makeCssApi();
+    await executeTool('create_page', {
+      site_id: siteId,
+      branch_id: branchId,
+      document_path: 'blog/hello',
+      template_id: 'tpl-blog',
+      root_props: { title: 'Hello' },
+    }, cssApi, 'user-1');
+
+    expect(cssApi.createDocumentFromTemplate).toHaveBeenCalledWith(
+      siteId, branchId, 'blog/hello', 'tpl-blog', 'Hello',
+    );
+    expect(cssApi.createDocument).not.toHaveBeenCalled();
+    expect(cssApi.canAgentEdit).toBeUndefined();
+  });
+
+  // Conformance is checked by component id, so the agent needs the ids that landed.
+  it('reports the scaffolded components and what may be done with them', async () => {
+    const cssApi = makeCssApi();
+    const result = (await executeTool('create_page', {
+      site_id: siteId,
+      branch_id: branchId,
+      document_path: 'blog/hello',
+      template_id: 'tpl-blog',
+    }, cssApi, 'user-1')) as Record<string, unknown>;
+
+    expect(result.documentPath).toBe('blog/hello');
+    expect(result.components).toEqual([{ type: 'Hero', id: 'Hero-aaaa' }]);
+    expect(result.template).toEqual({ id: 'tpl-blog', label: 'Blog post' });
+    expect(String(result.note)).toContain('editing their props');
+  });
+
+  it('creates the page even when reading the scaffold back fails', async () => {
+    const cssApi = makeCssApi({
+      getDocumentLatestVersion: vi.fn().mockRejectedValue(new Error('boom')),
+    });
+    const result = (await executeTool('create_page', {
+      site_id: siteId,
+      branch_id: branchId,
+      document_path: 'blog/hello',
+      template_id: 'tpl-blog',
+    }, cssApi, 'user-1')) as Record<string, unknown>;
+
+    expect(result.documentId).toBe('doc-1');
+    expect(result.components).toEqual([]);
+  });
+
+  // An id the model invented would otherwise fail as a 404 from the create call, which does not
+  // tell it where the real ids are.
+  it('rejects a template id that is not on the branch, before creating anything', async () => {
+    const cssApi = makeCssApi();
+    await expect(
+      executeTool('create_page', {
+        site_id: siteId,
+        branch_id: branchId,
+        document_path: 'blog/hello',
+        template_id: 'tpl-invented',
+      }, cssApi, 'user-1'),
+    ).rejects.toThrow(/list_page_templates/);
+
+    expect(cssApi.createDocumentFromTemplate).not.toHaveBeenCalled();
+  });
+
+  it('rejects a deprecated template by name', async () => {
+    const cssApi = makeCssApi({
+      listTemplates: vi.fn().mockResolvedValue({
+        templates: [{ id: 'tpl-old', name: 'old', label: 'Old layout', deprecated: true }],
+      }),
+    });
+    await expect(
+      executeTool('create_page', {
+        site_id: siteId,
+        branch_id: branchId,
+        document_path: 'about',
+        template_id: 'tpl-old',
+      }, cssApi, 'user-1'),
+    ).rejects.toThrow(/"Old layout" template is deprecated/);
+  });
+
+  it('refuses components alongside a template rather than silently dropping them', async () => {
+    const cssApi = makeCssApi();
+    await expect(
+      executeTool('create_page', {
+        site_id: siteId,
+        branch_id: branchId,
+        document_path: 'blog/hello',
+        template_id: 'tpl-blog',
+        components: [{ type: 'Stats', props: {} }],
+      }, cssApi, 'user-1'),
+    ).rejects.toThrow(/takes its components from the template/);
+
+    expect(cssApi.createDocumentFromTemplate).not.toHaveBeenCalled();
+  });
+
+  // The schema no longer requires `components`, so a blank page can arrive without them.
+  it('still creates an empty page when neither components nor a template are given', async () => {
+    const cssApi = makeCssApi({
+      createDocument: vi.fn().mockResolvedValue({
+        documentId: 'doc-2', documentPath: 'about', versionId: 'v-2',
+      }),
+    });
+    const result = await executeTool('create_page', {
+      site_id: siteId,
+      branch_id: branchId,
+      document_path: 'about',
+    }, cssApi, 'user-1');
+
+    expect(cssApi.createDocument).toHaveBeenCalledOnce();
+    expect(result).toEqual({ documentId: 'doc-2', documentPath: 'about', versionId: 'v-2' });
+  });
+});
+
+// ---------------------------------------------------------------------------
 // CSS_TOOLS still present and unchanged
 // ---------------------------------------------------------------------------
 
@@ -1273,5 +1458,6 @@ describe('CSS_TOOLS', () => {
     expect(names).toContain('apply_document_edits');
     expect(names).toContain('complete_edit_session');
     expect(names).toContain('create_page');
+    expect(names).toContain('list_page_templates');
   });
 });

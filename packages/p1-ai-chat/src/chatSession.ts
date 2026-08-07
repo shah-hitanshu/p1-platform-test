@@ -1,4 +1,4 @@
-import type { ChatContext, ServerMessage } from './types.js';
+import type { ChatContext, SendMessageOptions, ServerMessage } from './types.js';
 import {
   EMPTY_STATE,
   makeId,
@@ -14,6 +14,7 @@ import {
   markReconnecting,
   restoreHistory,
   setDraft,
+  setPendingPage,
   setRetry,
   startToolCall,
   stopTurn,
@@ -70,6 +71,8 @@ interface ChatSession {
   reconnectAttempts: number;
   /** The last turn sent, so a failure can offer to resend it. */
   lastSend: RetryTarget | null;
+  /** Set by the currently-attached view. Called when the agent creates a page. */
+  onPageCreated: ((path: string) => void) | null;
 }
 
 const sessions = new Map<string, ChatSession>();
@@ -104,6 +107,7 @@ function getOrCreate(agentId: string, agentUrl: string): ChatSession {
       reconnectTimer: null,
       reconnectAttempts: 0,
       lastSend: null,
+      onPageCreated: null,
     };
     sessions.set(agentId, session);
   }
@@ -302,8 +306,48 @@ function applyServerMessage(session: ChatSession, msg: ServerMessage): void {
       return;
     case 'tool_end':
       update(session, completeToolCall(session.state, id, msg));
+      if (msg.toolName === 'create_page') notePageCreated(session, msg.toolResult);
       return;
   }
+}
+
+/**
+ * What our `create_page` tool sends back. Fields are `unknown` rather than their intended types
+ * because this crosses the socket: the Worker's type says what it meant to send, not what turned
+ * up, so naming the shape must not be mistaken for having checked it.
+ */
+interface CreatePageResult {
+  documentPath?: unknown;
+  /** Sent in place of the path when the call failed, e.g. a page already exists there. */
+  error?: unknown;
+}
+
+/**
+ * The path a `create_page` call wrote to, or null when it created nothing.
+ *
+ * The failure is only ruled out here, not reported: a result carrying `error` renders as a failed
+ * step in the transcript with its message (see `toolCallOutcome`).
+ */
+export function createdPagePath(toolResult: unknown): string | null {
+  if (typeof toolResult !== 'object' || toolResult === null) return null;
+  const { documentPath, error } = toolResult as CreatePageResult;
+  if (error !== undefined) return null;
+  return typeof documentPath === 'string' && documentPath.trim() !== '' ? documentPath : null;
+}
+
+/**
+ * Record that the page the conversation was waiting on now exists: stop asking the agent to
+ * create it, and let the editor open it.
+ *
+ * Those two go together. Keep sending the pending page and the agent creates it a second time;
+ * skip the navigation and the next turn is built from the document still on screen, so it edits
+ * the old page instead of the new one.
+ */
+function notePageCreated(session: ChatSession, toolResult: unknown): void {
+  const path = createdPagePath(toolResult);
+  if (!path) return;
+  update(session, setPendingPage(session.state, null));
+  session.onPageCreated?.(path);
 }
 
 async function connect(session: ChatSession): Promise<WebSocket> {
@@ -387,20 +431,6 @@ async function connect(session: ChatSession): Promise<WebSocket> {
   }
 }
 
-/** Options for a programmatic {@link sessionSendMessage} call. */
-export interface SendMessageOptions {
-  /**
-   * Override the turn's `documentPath` so the agent edits this page instead of the
-   * sidebar's currently-open document. Used to draft into a just-created page.
-   */
-  documentPath?: string;
-  /**
-   * Tell the agent this page was just created empty for this brief, so it drafts without
-   * asking. Travels in the turn's context, so it never appears in the visible transcript.
-   */
-  newPage?: boolean;
-}
-
 /** A send failure whose message is safe to show the user as-is. */
 class SendFailureError extends Error {}
 
@@ -417,9 +447,14 @@ async function sessionSendMessage(
   const assistantId = makeId();
   session.currentAssistantId = assistantId;
   session.streamingGraceUntil = null;
+  // Sticky, unlike the other overrides: the user's "yes, use that template" is an ordinary
+  // typed turn, and it still has to reach the agent knowing what page to create.
+  const withPendingPage = opts?.pendingPage
+    ? setPendingPage(session.state, opts.pendingPage)
+    : session.state;
   // Set before anything can fail, so failure paths can offer this turn for retry.
   session.lastSend = { text: trimmed, ...(opts ? { opts } : {}) };
-  update(session, beginTurn(session.state, trimmed, assistantId));
+  update(session, beginTurn(withPendingPage, trimmed, assistantId, opts?.origin));
   // Before the awaits, not after the send: neither `connect` nor `getContext` has a timeout.
   touchTurn(session);
 
@@ -437,11 +472,12 @@ async function sessionSendMessage(
         throw new SendFailureError('Could not authenticate. Please try again in a moment.');
       }),
     ]);
-    // Per-turn overrides only, so an ordinary typed turn carries neither field.
+    // Per-turn overrides, plus the conversation's outstanding page if it has one.
     const context: ChatContext = {
       ...baseContext,
       ...(opts?.documentPath != null ? { documentPath: opts.documentPath } : {}),
       ...(opts?.newPage ? { newPage: true } : {}),
+      ...(session.state.pendingPage ? { pendingPage: session.state.pendingPage } : {}),
     };
     // Stop stays live while auth resolves, so this turn may already be abandoned.
     if (session.currentAssistantId !== assistantId) return;
@@ -459,7 +495,9 @@ async function sessionSendMessage(
 async function sessionClearMessages(session: ChatSession): Promise<void> {
   // Stop first, or the agent keeps editing a page for a conversation that is gone.
   sessionStop(session);
-  update(session, clearTranscript(session.state));
+  // The request for a pending page went with the transcript, so the next turn must not still be
+  // asking for one.
+  update(session, clearTranscript(setPendingPage(session.state, null)));
   const ws = session.ws;
   // The local view is cleared either way; telling the agent is best-effort.
   if (ws?.readyState !== WebSocket.OPEN) return;
@@ -489,7 +527,11 @@ async function sessionRetry(session: ChatSession): Promise<void> {
   if (!target || session.state.isLoading) return;
   // Replace the failed exchange rather than appending below it.
   update(session, dropLastExchange(setRetry(session.state, null)));
-  await sessionSendMessage(session, target.text, target.opts);
+  // `pendingPage` seeds conversation state instead of overriding one turn, so it is left out of a
+  // resend: the page may well have been created before whatever failed later in the turn, and
+  // seeding it again asks for a second one. Anything still outstanding is on the session already.
+  const { pendingPage, ...opts } = target.opts ?? {};
+  await sessionSendMessage(session, target.text, opts);
 }
 
 /** Handle to a live chat session, returned by {@link acquireChatSession}. */
@@ -516,6 +558,7 @@ export function acquireChatSession(
   agentId: string,
   agentUrl: string,
   getContext: () => ChatContext | Promise<ChatContext>,
+  onPageCreated?: (path: string) => void,
 ): ChatSessionHandle {
   // Re-resolves through the map rather than closing over the session object, because a handle
   // outlives the session when reaping deletes the entry. Capturing it would send into an
@@ -524,6 +567,7 @@ export function acquireChatSession(
     const session = getOrCreate(agentId, agentUrl);
     // Repoint at the mounted view's fresh auth/ids, including after a reap recreated this.
     session.getContext = getContext;
+    session.onPageCreated = onPageCreated ?? null;
     return session;
   };
 

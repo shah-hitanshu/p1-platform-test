@@ -219,12 +219,20 @@ function EditorContent({
   const chatbotEnabled = shouldShowChatbot(flags[CHATBOT_FLAG_KEY], agentUrl);
   // Singleton: survives the remount caused by navigating to the new page.
   const draftRequests = getDraftRequestChannel();
+  // The agent creates the page it was asked for, so the editor follows it there. Also what
+  // keeps later turns aimed at the new page: their context is built from the open document.
+  const handlePageCreated = useCallback(
+    (createdPath: string) => {
+      router.push(editorPathHref(createdPath));
+    },
+    [router],
+  );
   const aiPlugin = React.useMemo(
     () =>
       chatbotEnabled && agentUrl
-        ? createAIChatPlugin({ agentUrl, draftRequests })
+        ? createAIChatPlugin({ agentUrl, draftRequests, onPageCreated: handlePageCreated })
         : null,
-    [chatbotEnabled, agentUrl, draftRequests],
+    [chatbotEnabled, agentUrl, draftRequests, handlePageCreated],
   );
   const additionalPlugins = React.useMemo(
     () => (aiPlugin ? [...p1Plugins, mediaPlugin, aiPlugin] : [...p1Plugins, mediaPlugin]),

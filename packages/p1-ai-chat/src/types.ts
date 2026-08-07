@@ -6,6 +6,31 @@ export interface ChatContext {
   token: string;
   /** This turn targets a just-created empty page, so the agent should draft without asking. */
   newPage?: boolean;
+  /**
+   * A page the user has asked for that does not exist yet. Carried on every turn until it has
+   * been created, because the agent proposes a template first and the answer arrives later.
+   */
+  pendingPage?: PendingPage;
+}
+
+/** Where a page the agent is about to create should go, as the Create Page dialog collected it. */
+export interface PendingPage {
+  title: string;
+  /** Path without a leading slash, matching the paths the agent sees everywhere else. */
+  path: string;
+}
+
+/**
+ * Where a user turn came from, when the user did not type it into the composer. Absent on an
+ * ordinary turn, so the transcript annotates only what the user didn't write.
+ *
+ * Deliberately not persisted: it answers "why is there a message I didn't type", which is only
+ * asked of a turn that has just appeared. Replayed history has no field to carry it either.
+ */
+export interface MessageOrigin {
+  source: 'create-page';
+  /** The page the request asked for. The brief alone doesn't say where it will land. */
+  page: PendingPage;
 }
 
 /**
@@ -40,6 +65,8 @@ export interface ChatMessage {
   toolCalls?: ToolCallStatus[];
   error?: string;
   isStreaming?: boolean;
+  /** Set when the editor seeded this turn instead of the user typing it. */
+  origin?: MessageOrigin;
   /**
    * The user stopped this turn. Distinct from `error`: nothing went wrong, so it reads as
    * a note rather than a failure, and whatever streamed before the stop is kept.
@@ -65,21 +92,37 @@ export interface ToolCallStatus {
 }
 
 /**
- * A one-shot instruction handed to the already-mounted chat sidebar from elsewhere in the
- * editor (e.g. the Create Page modal's "Generate with AI"), auto-submitted as a chat turn.
+ * A one-shot instruction handed to the already-mounted chat panel from elsewhere in the editor
+ * (e.g. the Create Page modal's "Generate with AI"), auto-submitted as a chat turn.
+ *
+ * A closed union rather than an optional `documentPath`: the two arrive under opposite
+ * conditions — one waits for its target page to be open, the other has no page at all — and a
+ * nullable field would make an unopened panel look like a valid target for both.
  */
-export interface DraftRequest {
+export type DraftRequest = FillPageRequest | CreatePageRequest;
+
+/** Draft into a page that already exists, once the panel is looking at it. */
+export interface FillPageRequest {
+  kind: 'fill-page';
   /** Natural-language brief the agent should act on, shown as the user's chat message. */
   brief: string;
-  /** Target document path the turn must edit (overrides the sidebar's current document). */
+  /** Target document path the turn must edit (overrides the panel's current document). */
   documentPath: string;
-  /** Optional page title, for display/labeling. */
-  title?: string;
   /**
    * The target page was just created empty for this request. Set by the publisher, never
    * inferred, so a caller aiming at an existing page doesn't get "draft immediately" too.
    */
   newPage?: boolean;
+}
+
+/**
+ * Create a page and build it. The agent proposes the page template it should start from and
+ * creates it once the user agrees, so nothing exists when this is published.
+ */
+export interface CreatePageRequest {
+  kind: 'create-page';
+  brief: string;
+  page: PendingPage;
 }
 
 /**
@@ -106,6 +149,13 @@ export interface AIChatPluginOptions {
    * the panel auto-submits each request against its target document. Omit to disable.
    */
   draftRequests?: DraftRequestChannel;
+  /**
+   * Called with the path of a page the agent has just created, so the editor can open it.
+   *
+   * More than convenience: the turn's context is built from whatever document the editor has
+   * open, so a conversation that stays on the old page keeps aiming later turns at it.
+   */
+  onPageCreated?: (path: string) => void;
 }
 
 /** A single tool call within a replayed turn — already executed, so it carries its result. */
@@ -127,6 +177,17 @@ export interface SendMessageOptions {
    * asking. Travels in the turn's context, so it never appears in the visible transcript.
    */
   newPage?: boolean;
+  /**
+   * Seed a page to create rather than edit. Unlike the fields above this outlives the turn: the
+   * agent proposes a page template and the user answers on a later one.
+   */
+  pendingPage?: PendingPage;
+  /**
+   * Say in the transcript that this turn was seeded rather than typed. Unlike `pendingPage`,
+   * which a resend deliberately drops, this survives a retry so the attribution comes back with
+   * the turn it describes.
+   */
+  origin?: MessageOrigin;
 }
 
 /**

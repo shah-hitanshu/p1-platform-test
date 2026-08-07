@@ -1,12 +1,14 @@
 import { useRef, useCallback, useMemo, useSyncExternalStore } from 'react';
-import type { ChatMessage, ChatContext } from './types.js';
-import { acquireChatSession, type SendMessageOptions } from './chatSession.js';
+import type { ChatMessage, ChatContext, SendMessageOptions } from './types.js';
+import { acquireChatSession } from './chatSession.js';
 
 export interface UseAgentChatOptions {
   agentUrl: string;
   /** Durable Object key. Scopes persisted history; changing it switches conversations. */
   agentId: string;
   getContext: () => ChatContext | Promise<ChatContext>;
+  /** Called with the path of a page the agent created during a turn. */
+  onPageCreated?: (path: string) => void;
 }
 
 export interface UseAgentChatReturn {
@@ -28,6 +30,11 @@ export interface UseAgentChatReturn {
   historyLoaded: boolean;
   /** True when the last turn failed and can be resent. */
   canRetry: boolean;
+  /**
+   * True while the agent has been asked for a page it has not created yet. Such a turn writes to
+   * a page of its own, so it needs no document open in the editor.
+   */
+  awaitingNewPage: boolean;
   clearMessages: () => void;
   /** Stop the turn in flight, keeping whatever it already streamed. */
   stop: () => void;
@@ -40,17 +47,29 @@ export interface UseAgentChatReturn {
  * and an in-progress stream survive this component remounting. Switching `agentId` attaches
  * to a different conversation; the previous one is reaped shortly after.
  */
-export function useAgentChat({ agentUrl, agentId, getContext }: UseAgentChatOptions): UseAgentChatReturn {
+export function useAgentChat({
+  agentUrl,
+  agentId,
+  getContext,
+  onPageCreated,
+}: UseAgentChatOptions): UseAgentChatReturn {
   // Auth and ids get a new closure identity every render, but the conversation they
   // describe doesn't — read them through a ref so the session isn't re-acquired.
   const getContextRef = useRef(getContext);
   getContextRef.current = getContext;
+  const onPageCreatedRef = useRef(onPageCreated);
+  onPageCreatedRef.current = onPageCreated;
 
   // One handle per conversation scope. Memoizing it keeps subscribe/getState
   // referentially stable, which is what stops useSyncExternalStore resubscribing
   // (and tearing down the socket) on every render.
   const session = useMemo(
-    () => acquireChatSession(agentId, agentUrl, () => getContextRef.current()),
+    () => acquireChatSession(
+      agentId,
+      agentUrl,
+      () => getContextRef.current(),
+      path => onPageCreatedRef.current?.(path),
+    ),
     [agentId, agentUrl],
   );
 
@@ -82,6 +101,7 @@ export function useAgentChat({ agentUrl, agentId, getContext }: UseAgentChatOpti
     reconnecting: state.reconnecting,
     historyLoaded: state.historyLoaded,
     canRetry: state.retry !== null,
+    awaitingNewPage: state.pendingPage !== null,
     clearMessages,
     stop: session.stop,
     retry,

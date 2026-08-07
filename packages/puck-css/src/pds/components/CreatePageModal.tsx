@@ -110,8 +110,9 @@ export interface CreatePageModalProps {
    */
   initialMode?: 'page' | 'new-template';
   /**
-   * Hand a "Generate with AI" brief to the chatbot after the blank page is created and
-   * navigated to. Omit to leave the tile a placeholder. Requires `onNavigate`.
+   * Hand a "Generate with AI" brief to the chatbot, along with the page the user wants. The
+   * page is not created here: the chat settles which template it starts from first, and a
+   * document's template can only be set as it is created. Omit to leave the tile a placeholder.
    */
   onGenerateWithAI?: (brief: string, page: { path: string; title: string }) => void;
 }
@@ -409,18 +410,6 @@ export function CreatePageModal({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [open, onClose]);
 
-  // Half-wired is indistinguishable from unwired from the outside: both show the placeholder.
-  const generateAIMissingNavigate = !!onGenerateWithAI && !onNavigate;
-  useEffect(() => {
-    if (!generateAIMissingNavigate) return;
-    console.warn(
-      '[CreatePageModal] onGenerateWithAI was provided without onNavigate, so the ' +
-        '"Generate with AI" tile stays a placeholder. Pass onNavigate to enable it.',
-    );
-    // Derived boolean, not the callbacks: their identity changes each render, which would
-    // re-fire the warning on every one.
-  }, [generateAIMissingNavigate]);
-
   const handleTitleChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const next = e.target.value;
@@ -566,21 +555,13 @@ export function CreatePageModal({
         return;
       }
 
-      // The existing create path owns the page, slug and route; the agent only drafts
-      // content into it afterwards.
+      // Nothing is created here. The brief goes to the chat, which proposes the page template
+      // it should start from and creates the page once the user has agreed — the choice needs
+      // the brief, and the template can only be set while the page is being created.
       if (selected === 'generate-ai') {
-        if (!onGenerateWithAI || !onNavigate || !brief.trim()) return;
-        setSubmitting(true);
-        setError(null);
-        try {
-          await onCreateDocument(finalSlug, title.trim());
-          onNavigate?.(finalSlug);
-          onGenerateWithAI(brief.trim(), { path: finalSlug, title: title.trim() });
-          onClose();
-        } catch (err) {
-          setError(err instanceof Error ? err.message : 'Failed to create page');
-          setSubmitting(false);
-        }
+        if (!onGenerateWithAI || !brief.trim()) return;
+        onGenerateWithAI(brief.trim(), { path: finalSlug, title: title.trim() });
+        onClose();
         return;
       }
 
@@ -705,9 +686,7 @@ export function CreatePageModal({
   // "Generate with AI" — enabled only when the editor wired the callback (i.e. the
   // chatbot is available). Without it the tile stays a placeholder.
   const isGenerateAI = selected === 'generate-ai';
-  // `onNavigate` is required too: the sidebar only consumes a request matching the
-  // document it is showing, so without navigation nothing would ever draft.
-  const aiEnabled = isGenerateAI && !!onGenerateWithAI && !!onNavigate;
+  const aiEnabled = isGenerateAI && !!onGenerateWithAI;
 
   // Page title + URL (at the top) show for Blank, once a content type is picked,
   // or for Generate with AI when wired. The Plug-external-data flow asks for the
@@ -886,8 +865,9 @@ export function CreatePageModal({
                   <path d="m9 12 2 2 4-4" />
                 </svg>
                 <span>
-                  AI drafts the page from blocks in your design system, then opens it
-                  as a reviewable proposal. Nothing publishes automatically.
+                  AI suggests a page template that fits, confirms it with you in the chat,
+                  then drafts the page from blocks in your design system. Nothing publishes
+                  automatically.
                 </span>
               </div>
             </div>
