@@ -7,6 +7,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { makePrincipal } from '../helpers/principal';
 import { makeBranch } from '../helpers/branch';
+import type {
+  CreateDocumentOnBranchResult,
+  DocumentVersion,
+} from '../../src/services/document-types';
 
 // The real buildDocumentSkeletonFromTemplate runs against the mocked template
 // snapshot; every database-backed service stays a stub.
@@ -109,7 +113,7 @@ const templateSnapshot = {
   root: { props: { name: 'Marketing template', _template: { id: TEMPLATE_ID } } },
 };
 
-const templateLatestVersion = {
+const templateLatestVersion: DocumentVersion = {
   id: 'template-version-1',
   documentId: TEMPLATE_ID,
   branchId: 'branch-1',
@@ -121,7 +125,7 @@ const templateLatestVersion = {
   createdAt: '2026-01-24T10:00:00.000Z',
 };
 
-const createdResult = {
+const createdResult: CreateDocumentOnBranchResult = {
   document: {
     id: 'doc-new',
     siteId: 'site-1',
@@ -278,6 +282,42 @@ describe('POST create-from-template on branch', () => {
     const callArg = vi.mocked(services.createDocumentOnBranch).mock.calls[0]?.[0];
     const snapshot = callArg?.snapshot as BuiltSnapshot | undefined;
     expect(snapshot?.root?.props.title).toBe('My Homepage');
+  });
+
+  it('seeds the built snapshot with the template page-metadata defaults', async () => {
+    const { handleDocumentRoutes } = await import('../../src/routes/document-api');
+    const services = await import('../../src/services');
+
+    vi.mocked(services.getBranch).mockResolvedValueOnce(featureBranch);
+    vi.mocked(services.getMainBranch).mockResolvedValueOnce(mainBranch);
+    vi.mocked(services.getLatestDocumentVersionWithFallback).mockResolvedValueOnce({
+      version: {
+        ...templateLatestVersion,
+        snapshot: {
+          ...templateSnapshot,
+          root: {
+            props: {
+              ...templateSnapshot.root.props,
+              _meta: { ogType: 'article', ogTitle: 'From the blog' },
+            },
+          },
+        },
+      },
+      inherited: false,
+    });
+    vi.mocked(services.createDocumentOnBranch).mockResolvedValueOnce(createdResult);
+
+    await handleDocumentRoutes(
+      postCreateRequest({ path: 'pages/new-page', templateId: TEMPLATE_ID, title: 'My Homepage' }),
+      { siteId: 'site-1', branchId: 'branch-1', principal: makePrincipal({ id: 'user-1', type: 'user' }) },
+    );
+
+    const callArg = vi.mocked(services.createDocumentOnBranch).mock.calls[0]?.[0];
+    const snapshot = callArg?.snapshot as BuiltSnapshot | undefined;
+    expect(snapshot?.root?.props._meta).toEqual({ ogType: 'article', ogTitle: 'From the blog' });
+    // The authoring-only root props still stop at the template.
+    expect(snapshot?.root?.props._template).toBeUndefined();
+    expect(snapshot?.root?.props.name).toBeUndefined();
   });
 
   it('passes a client snapshot through unchanged when no templateId is given', async () => {

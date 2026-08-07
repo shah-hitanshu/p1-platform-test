@@ -69,8 +69,12 @@ function compact<T extends object>(value: T): T {
  * would resolve it against a localhost default, and a wrong canonical is worse
  * than none. An empty title is treated as absent.
  *
- * Social tags resolve as: authored value → site default (og:image, og:locale) →
- * derived from title/description → omit. The template tier is not wired up yet.
+ * Social tags resolve as: page value → site default (og:image, og:locale) →
+ * derived from title/description → omit. There is no separate template tier:
+ * a template's defaults are copied into the page's own `_meta` at create time,
+ * so by the time they reach here they are page values and outrank the site
+ * default. A field the template left empty is copied in as an empty string,
+ * which is falsy, so it still falls through to the site tier.
  */
 export function buildPageMetadata({
   seo,

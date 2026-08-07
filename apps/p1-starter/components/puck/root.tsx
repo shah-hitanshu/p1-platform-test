@@ -40,8 +40,9 @@ const twitterCardOptions = (defaultLabel: string) =>
 
 /**
  * Page metadata values are stored at `root.props._meta`, so they are
- * branch-scoped and versioned like any other authored content. An empty field
- * inherits at render time rather than being copied on create.
+ * branch-scoped and versioned like any other authored content. A page created
+ * from a template starts with that template's `_meta` copied in, the same way
+ * its content is; anything still empty after that inherits at render time.
  *
  * Labels are the tag names themselves, not friendly rewrites. Someone editing
  * these is working from an SEO or social checklist that names the tags, and a

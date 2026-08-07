@@ -473,4 +473,67 @@ describe('Template Migration E2E', () => {
     expect(props._meta).toEqual({ ogType: 'article', ogTitle: 'Blog default' });
     expect(Object.keys(props).some((key) => key.includes('/'))).toBe(false);
   });
+
+  it('Step 12: A page created from the template starts with its metadata defaults', async () => {
+    const { handleDocumentRoutes } = await import('../../src/routes/document-api');
+    const { getLatestDocumentVersion } = await import('../../src/services');
+
+    const request = new Request(
+      `https://api.example.com/api/sites/${testSiteId}/branches/${mainBranchId}/documents`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          path: 'blog/my-second-post',
+          templateId,
+          title: 'My Second Post',
+        }),
+      },
+    );
+
+    const response = await handleDocumentRoutes(request, {
+      siteId: testSiteId,
+      branchId: mainBranchId,
+      principal: adminPrincipal,
+    });
+
+    expect(response.status).toBe(201);
+    const created: { document: { id: string } } = await response.json();
+
+    const latest = await getLatestDocumentVersion(created.document.id, mainBranchId);
+    const props = (latest?.snapshot?.root as { props: Record<string, unknown> }).props;
+
+    expect(props.title).toBe('My Second Post');
+    expect(props._meta).toEqual({ ogType: 'article', ogTitle: 'Blog default' });
+    expect(props._template).toBeUndefined();
+    expect(props._pinMap).toBeUndefined();
+  });
+
+  it('Step 13: Editing the template afterwards leaves existing pages alone', async () => {
+    const { createDocumentVersion, getLatestDocumentVersion } = await import('../../src/services');
+
+    await createDocumentVersion({
+      documentId: templateId,
+      branchId: mainBranchId,
+      snapshot: templateLayout(
+        [
+          { type: 'HeroBlock', props: { id: 'hero-1', title: 'Hero' } },
+          { type: 'BodyBlock', props: { id: 'body-1', text: '' } },
+          { type: 'CTABlock', props: { id: 'cta-1', label: 'Click me' } },
+        ],
+        { 'hero-1': true },
+        { ogType: 'website', ogTitle: 'Changed after the fact' },
+      ),
+      source: 'edit',
+      createdById: adminUserId,
+      createdByType: 'user',
+    });
+
+    const latest = await getLatestDocumentVersion(pageDocId, mainBranchId);
+    const props = (latest?.snapshot?.root as { props: Record<string, unknown> }).props;
+
+    // Propagating a later template edit takes a migration; the page keeps the
+    // values it was migrated to in step 10.
+    expect(props._meta).toEqual({ ogType: 'article', ogTitle: 'Blog default' });
+  });
 });

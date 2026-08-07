@@ -102,6 +102,60 @@ describe('buildDocumentSkeletonFromTemplate', () => {
     expect((template.content as Comp[])[0].props.title).toBe('Default hero');
   });
 
+  it('carries the template page-metadata defaults into the document', () => {
+    const template = contentTemplate({
+      root: {
+        props: {
+          _pinMap: {},
+          _template: { defaultUrlPattern: '/blog/:slug' },
+          _meta: { ogType: 'article', ogTitle: 'From the blog' },
+        },
+      },
+    });
+
+    const skeleton = buildDocumentSkeletonFromTemplate(template, { title: 'My First Post' });
+
+    expect(skeleton.root.props._meta).toEqual({ ogType: 'article', ogTitle: 'From the blog' });
+  });
+
+  it('omits _meta when the template has none, leaving output byte-identical', () => {
+    const skeleton = buildDocumentSkeletonFromTemplate(contentTemplate(), { title: 'X' });
+
+    expect(Object.keys(skeleton.root.props)).toEqual(['title']);
+  });
+
+  it('carries a field the template left empty as empty', () => {
+    // Copying at create time makes a template value indistinguishable from an
+    // authored one, so it outranks the site default. A field the template left
+    // blank must stay blank rather than becoming an authored empty that wins:
+    // `buildPageMetadata` treats it as falsy and falls through to the site tier.
+    const template = contentTemplate({
+      root: { props: { _meta: { ogTitle: 'From the blog', ogImage: '' } } },
+    });
+
+    const skeleton = buildDocumentSkeletonFromTemplate(template);
+
+    expect(skeleton.root.props._meta).toEqual({ ogTitle: 'From the blog', ogImage: '' });
+  });
+
+  it('does not carry a non-object _meta', () => {
+    const template = contentTemplate({ root: { props: { _meta: 'not an object' } } });
+
+    const skeleton = buildDocumentSkeletonFromTemplate(template);
+
+    expect(skeleton.root.props._meta).toBeUndefined();
+  });
+
+  it('produces a _meta independent of the template input', () => {
+    const template = contentTemplate({ root: { props: { _meta: { ogTitle: 'From the blog' } } } });
+
+    const skeleton = buildDocumentSkeletonFromTemplate(template);
+    (skeleton.root.props._meta as Record<string, unknown>).ogTitle = 'mutated';
+
+    const templateMeta = (template.root as { props: { _meta: Record<string, unknown> } }).props._meta;
+    expect(templateMeta.ogTitle).toBe('From the blog');
+  });
+
   it('yields an empty skeleton for a template that has no content array', () => {
     // A template lacking a content array (the pre-cutover manifest shape) is
     // not the content shape this builder targets and yields no components.
