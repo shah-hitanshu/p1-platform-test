@@ -1,6 +1,6 @@
 import React from 'react';
 import type { Plugin } from '@puckeditor/core';
-import { ChatPanel } from './ChatPanel.js';
+import { AIFieldsOverride } from './AIFieldsOverride.js';
 import type { AIChatPluginOptions } from './types.js';
 
 export type {
@@ -22,12 +22,15 @@ export { createDraftRequestChannel } from './draftRequestChannel.js';
 // Kept as a named export for backward compatibility with existing importers.
 export type PuckPlugin = Plugin;
 
+/**
+ * No `render`/`label`/`icon`: the panel takes over the right-hand rail through the `fields`
+ * override, opened from the editor header rather than from Puck's plugin rail.
+ */
 export function createAIChatPlugin(options: AIChatPluginOptions): Plugin {
   return {
     name: 'ai-chat',
-    label: 'AI Builder',
-    icon: React.createElement('span', { style: { fontSize: 16 } }, '✨'),
-    render: () => React.createElement(ChatPanel, { options }),
-    mobilePanelHeight: 'toggle',
+    overrides: {
+      fields: ({ children }) => React.createElement(AIFieldsOverride, { options }, children),
+    },
   };
 }

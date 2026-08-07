@@ -18,6 +18,7 @@ vi.mock('@pantheon-systems/puck-css', () => ({
     currentDocument,
   }),
   useP1Auth: () => ({ getToken: async () => baseContext.token, isAuthenticated: true }),
+  aiPanelStore: { close: vi.fn(), open: vi.fn(), toggle: vi.fn(), isOpen: () => true, subscribe: () => () => {} },
 }));
 vi.mock('@puckeditor/core', () => ({ useGetPuck: () => () => ({ dispatch }) }));
 
@@ -65,7 +66,7 @@ function makeDraftChannel(): DraftRequestChannel {
 
 async function send(text: string, ws: () => MockWebSocket) {
   fireEvent.change(composer(), { target: { value: text } });
-  await act(async () => { fireEvent.click(screen.getByText('Send')); });
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Send' })); });
   await act(async () => { ws().emit({ type: 'token', content: 'Working.' }); });
 }
 
@@ -90,7 +91,7 @@ describe('ChatPanel', () => {
       MockWebSocket.instances[0].emit({ type: 'history', history: [] });
     });
     expect(screen.queryByText('Loading conversation…')).toBeNull();
-    expect(screen.getByText(/Describe the page you want/)).toBeTruthy();
+    expect(screen.getByText(/I can generate or restructure the page/)).toBeTruthy();
   });
 
   // Focusing unconditionally on every isLoading transition snatched the caret out of the
@@ -132,10 +133,9 @@ describe('ChatPanel', () => {
     await act(async () => {
       bus.publish({ brief: 'build a pricing page', documentPath: '/current' });
     });
-    // The seed really did start a turn, and opened the panel to show it.
+    // Revealing the panel is the publisher's job now; this only checks the seed sent.
     expect(ws.frames().filter(f => f.type === 'chat')).toHaveLength(1);
-    expect(dispatch).toHaveBeenCalled();
-    expect(screen.getByText('Stop')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Stop' })).toBeTruthy();
 
     await act(async () => { ws.emit({ type: 'done' }); });
 
@@ -147,11 +147,11 @@ describe('ChatPanel', () => {
       const { ws } = await renderPanel();
       await send('go', ws);
 
-      expect(screen.queryByText('Send')).toBeNull();
-      await act(async () => { fireEvent.click(screen.getByText('Stop')); });
+      expect(screen.queryByRole('button', { name: 'Send' })).toBeNull();
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Stop' })); });
 
       expect(ws().frames().some(f => f.type === 'cancel')).toBe(true);
-      expect(screen.getByText('Send')).toBeTruthy();
+      expect(screen.getByRole('button', { name: 'Send' })).toBeTruthy();
       // Scoped to the transcript: the status region announces "Stopped" too, so an
       // unscoped query matches both.
       const transcript = screen.getByRole('region', { name: 'Conversation' });
@@ -220,7 +220,7 @@ describe('ChatPanel', () => {
       expect(status()).toBe('Something went wrong');
 
       await send('again', ws);
-      await act(async () => { fireEvent.click(screen.getByText('Stop')); });
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Stop' })); });
       expect(status()).toBe('Stopped');
     });
   });
@@ -230,7 +230,7 @@ describe('ChatPanel', () => {
       const { ws } = await renderPanel();
       await send('go', ws);
       await act(async () => { ws().emit({ type: 'done' }); });
-      await act(async () => { fireEvent.click(screen.getByText('Clear')); });
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Clear conversation' })); });
       return { ws };
     }
 
@@ -240,13 +240,13 @@ describe('ChatPanel', () => {
       expect(screen.queryByText('go')).toBeNull();
       expect(ws().frames().some(f => f.type === 'clear')).toBe(true);
       // The empty-state prompt returns rather than a "loading history" placeholder.
-      expect(screen.getByText(/Describe the page you want/)).toBeTruthy();
+      expect(screen.getByText(/I can generate or restructure the page/)).toBeTruthy();
     });
 
     it('hides the action once there is nothing left to clear', async () => {
       await clearAfterOneExchange();
 
-      expect(screen.queryByText('Clear')).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Clear conversation' })).toBeNull();
     });
 
     // The button unmounts with the last message it was clearing, so without this focus
@@ -277,43 +277,41 @@ describe('ChatPanel', () => {
     expect(transcript.scrollTop).toBe(500);
   });
 
-  it('refuses to send until the document has resolved', async () => {
+  it('refuses to send while no page is open', async () => {
     currentDocument = null;
-    // No `getAgentId`, so the id comes from the document and falls back to `root`.
+    // No `getAgentId`, so the conversation id is derived — from the user and site only.
     render(<ChatPanel options={{ agentUrl: 'http://agent.test' }} />);
     await act(async () => { MockWebSocket.instances[0].open(); });
     const ws = MockWebSocket.instances[0];
     await act(async () => { ws.emit({ type: 'history', history: [] }); });
 
     fireEvent.change(composer(), { target: { value: 'build a pricing page' } });
-    const send = screen.getByText('Send') as HTMLButtonElement;
+    const sendButton = screen.getByRole('button', { name: 'Send' }) as HTMLButtonElement;
 
-    expect(send.disabled).toBe(true);
-    expect(screen.getByText('Opening the page…')).toBeTruthy();
+    expect(sendButton.disabled).toBe(true);
+    expect(screen.getByText('Open a page to make changes')).toBeTruthy();
 
-    await act(async () => { fireEvent.click(send); });
+    await act(async () => { fireEvent.click(sendButton); });
     expect(ws.frames().some(f => f.type === 'chat')).toBe(false);
   });
 
   describe('composer footer', () => {
-    // The action had a row to itself directly above the hint, costing ~40px of a narrow
-    // panel to seat one control.
-    it('seats the hint and the action on one row', async () => {
+    // Per the design, and it keeps the control off the hint's row, which wrapped at this width.
+    it('keeps the action off the hint row', async () => {
       await renderPanel();
 
       const hint = screen.getByText('Enter to send · Shift+Enter for newline');
-      // Siblings, not merely both somewhere in the composer — the old layout had the button
-      // in a wrapper of its own, which shares only the outer container with the hint.
-      expect(screen.getByText('Send').parentElement).toBe(hint.parentElement);
+      // The control moved into the input, so the hint has its row to itself.
+      expect(hint.parentElement?.querySelector('button')).toBeNull();
+      expect(screen.getByRole('button', { name: 'Send' })).toBeTruthy();
       expect(screen.getAllByText(/Enter to send/)).toHaveLength(1);
     });
 
-    it('replaces the hint with the connection state while reconnecting, keeping one row', async () => {
+    it('replaces the hint with the connection state while reconnecting', async () => {
       const { ws } = await renderPanel();
       await act(async () => { ws().close(); });
 
-      const hint = screen.getByText('Reconnecting…');
-      expect(screen.getByText('Send').parentElement).toBe(hint.parentElement);
+      expect(screen.getByText('Reconnecting…')).toBeTruthy();
       expect(screen.queryByText(/Enter to send/)).toBeNull();
     });
   });

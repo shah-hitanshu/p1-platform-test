@@ -12,6 +12,7 @@ import { createPortal } from 'react-dom';
 import { Icon, Avatar, PantheonLogo } from '@pantheon-systems/pds-toolkit-react';
 import type { ActorPresence } from '@pantheon-systems/css-client';
 import type { Template, TemplateSummary } from '../../features/content-type-templates/types.js';
+import { aiPanelStore, useAIPanelOpen } from '../../editor/aiPanelStore.js';
 import { PageNavigator } from './PageNavigator.js';
 import type { PageNavigatorDocument } from './PageNavigator.js';
 import { PresenceStack } from './PresenceStack.js';
@@ -56,6 +57,8 @@ export interface P1EditorHeaderProps {
   templatesLoading?: boolean;
   /** Data sources (built-in + user) for the modal's collection builder. */
   datasources?: { id: string; label: string; inputs?: string[] }[];
+  /** Show the Pantheon AI toggle. Pass the same flag that gates the chat plugin. */
+  showAIPanelToggle?: boolean;
   /** Create a new template from the modal's "New template" flow. */
   onCreateTemplate?: (params: {
     name: string;
@@ -84,7 +87,20 @@ export function P1EditorHeader({
   templatesLoading,
   onCreateTemplate,
   datasources,
+  showAIPanelToggle = false,
 }: P1EditorHeaderProps): React.ReactElement {
+  const aiPanelOpen = useAIPanelOpen();
+  // The panel only mounts once open, so it can't reveal itself when a brief arrives.
+  const handleGenerateWithAI = React.useMemo(
+    () =>
+      onGenerateWithAI
+        ? (brief: string, page: { path: string; title: string }): void => {
+            aiPanelStore.open();
+            onGenerateWithAI(brief, page);
+          }
+        : undefined,
+    [onGenerateWithAI],
+  );
   const [pageNavigatorOpen, setPageNavigatorOpen] = useState(false);
   // The Create Page modal, opened from the page navigator's "+ New page" /
   // "+ New template". `createModalMode` selects which screen it opens on.
@@ -383,7 +399,7 @@ export function P1EditorHeader({
         initialMode={createModalMode}
         onClose={() => setCreateModalOpen(false)}
         onCreateDocument={handleModalCreateDocument}
-        onGenerateWithAI={onGenerateWithAI}
+        onGenerateWithAI={handleGenerateWithAI}
         templates={templates}
         onCreateTemplate={onCreateTemplate}
         datasources={datasources}
@@ -405,6 +421,25 @@ export function P1EditorHeader({
             data-testid="header-collaborators-divider"
             aria-hidden="true"
           />
+        </>
+      )}
+
+      {/* Pantheon AI */}
+      {showAIPanelToggle && (
+        <>
+          <button
+            type="button"
+            data-testid="ai-panel-toggle"
+            className={
+              aiPanelOpen ? `${styles.aiToggle} ${styles.aiToggleActive}` : styles.aiToggle
+            }
+            onClick={() => aiPanelStore.toggle()}
+            aria-pressed={aiPanelOpen}
+            aria-label="Pantheon AI"
+          >
+            <Icon iconName="sparkles" size="l" />
+          </button>
+          <div className={styles.divider} aria-hidden="true" />
         </>
       )}
 

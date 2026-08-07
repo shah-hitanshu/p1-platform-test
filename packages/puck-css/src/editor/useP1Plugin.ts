@@ -47,6 +47,8 @@ export interface UseP1PluginOptions {
   onDocumentCreate?: (path: string, template?: TemplateSummary | null, title?: string) => Promise<void>;
   /** Hand a "Generate with AI" brief (+ the new page's path/title) to the chatbot. */
   onGenerateWithAI?: (brief: string, page: { path: string; title: string }) => void;
+  /** Show the header's Pantheon AI toggle. Pass the same flag that gates the chat plugin. */
+  showAIPanelToggle?: boolean;
   /** Callback to delete a document */
   onDocumentDelete?: (documentId: string, path: string) => Promise<void>;
   /** Whether to show presence indicator */
@@ -151,6 +153,7 @@ export function useP1Plugin(options: UseP1PluginOptions = {}): PuckPlugin {
     onDocumentCreate: fc.enableDocumentBrowser
       ? (options.onDocumentCreate ?? css.createDocument) : undefined,
     onGenerateWithAI: options.onGenerateWithAI,
+    showAIPanelToggle: options.showAIPanelToggle,
     templates: css.templates,
     templatesLoading: css.templatesLoading,
     onCreateTemplate: css.createTemplate,

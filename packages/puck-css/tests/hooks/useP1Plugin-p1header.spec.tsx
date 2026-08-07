@@ -166,6 +166,15 @@ describe('useP1Plugin — P1 header props forwarding', () => {
     expect((capturedOptions as unknown as Record<string, unknown>).siteName).toBe('Acme Corp');
   });
 
+  // UseP1PluginOptions restates every field by hand, so an option can stop at this boundary.
+  it('forwards showAIPanelToggle through the stable proxy', () => {
+    const wrapper = createWrapper(client);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    renderHook(() => useP1Plugin({ showAIPanelToggle: true } as any), { wrapper });
+
+    expect((capturedOptions as unknown as Record<string, unknown>).showAIPanelToggle).toBe(true);
+  });
+
   it('forwards siteMenuItems through the stable proxy', () => {
     const siteMenuItems = [{ label: 'Settings', callback: vi.fn() }];
     const wrapper = createWrapper(client);

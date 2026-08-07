@@ -336,3 +336,25 @@
   color: var(--pds-color-fg-default, #23232d);
   background: var(--pds-color-bg-default, #fff);
 }
+
+/* ── AI chat panel: fill the inspector rail ──────────────────────────────────
+ * `SidebarSection-content` is a block container and Puck's fields <form> has no
+ * height of its own, so the panel stopped at its content height with the
+ * composer floating mid-rail. Flex columns carry the rail's height down to it;
+ * `min-height: 0` keeps the scrolling inside the transcript.
+ *
+ * Scoped to the panel's marker attribute: the ordinary field list relies on
+ * natural flow in the rail's scroll container, and stretching it would clip.
+ */
+.puck-editor-theme [class*='_SidebarSection_']:has([data-p1-ai-panel]) {
+  height: 100%;
+  min-height: 0;
+}
+
+.puck-editor-theme [class*='_SidebarSection-content_']:has([data-p1-ai-panel]),
+.puck-editor-theme [class*='_PuckFields_']:has([data-p1-ai-panel]) {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}

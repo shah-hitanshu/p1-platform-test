@@ -9,6 +9,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, cleanup, waitFor, act } from '@testing-library/react';
 import React from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { aiPanelStore } from '../src/editor/aiPanelStore.js';
 
 // The header override calls useEditorContext (useQuery) to derive datasources,
 // so renders must be wrapped in a QueryClient — the editor provides one in the
@@ -44,13 +45,16 @@ const mockHistory = {
 
 const mockDispatch = vi.fn();
 
+// Puck's `ui` slice. Mutable so a test can collapse the right rail; empty everywhere else.
+let mockUi: Record<string, unknown> = {};
+
 vi.mock('@puckeditor/core', () => ({
   createUsePuck: () => {
     return <T,>(selector: (state: unknown) => T): T => {
       const state = {
         dispatch: mockDispatch,
         history: mockHistory,
-        appState: { ui: {}, data: {} },
+        appState: { ui: mockUi, data: {} },
         selectedItem: null,
       };
       return selector(state);
@@ -784,5 +788,66 @@ describe('createP1Plugin render() — plugin rail visibility persistence', () =>
     await waitFor(() => {
       expect(screen.getByTestId('plugin-rail-visible').textContent).toBe('true');
     });
+  });
+});
+
+describe('createP1Plugin render() — AI panel rail bridge', () => {
+  beforeEach(() => {
+    mockDispatch.mockClear();
+    mockUi = {};
+    aiPanelStore.close();
+    const slot = document.createElement('div');
+    slot.id = 'p1-subheader-slot';
+    document.body.appendChild(slot);
+  });
+
+  afterEach(() => {
+    aiPanelStore.close();
+    document.getElementById('p1-subheader-slot')?.remove();
+  });
+
+  const setUiCalls = (): unknown[] =>
+    mockDispatch.mock.calls
+      .map(([action]) => action as { type?: string; ui?: Record<string, unknown> })
+      .filter((action) => action?.type === 'setUi');
+
+  // Puck doesn't mount the `fields` override while the rail is collapsed, so the toggle would
+  // otherwise do nothing.
+  it('reveals the right rail when the panel opens while it is collapsed', async () => {
+    mockUi = { rightSideBarVisible: false };
+    renderPlugin(createP1Plugin(baseOptions));
+
+    await act(async () => { aiPanelStore.open(); });
+
+    expect(setUiCalls()).toEqual([
+      { type: 'setUi', ui: { rightSideBarVisible: true } },
+    ]);
+  });
+
+  it('leaves the rail alone when it is already showing', async () => {
+    mockUi = { rightSideBarVisible: true };
+    renderPlugin(createP1Plugin(baseOptions));
+
+    await act(async () => { aiPanelStore.open(); });
+
+    expect(setUiCalls()).toEqual([]);
+  });
+
+  // Puck omits the flag until the user has collapsed something, and the rail is open by default.
+  it('treats an absent flag as already showing', async () => {
+    renderPlugin(createP1Plugin(baseOptions));
+
+    await act(async () => { aiPanelStore.open(); });
+
+    expect(setUiCalls()).toEqual([]);
+  });
+
+  it('does not force the rail open while the panel is closed', async () => {
+    mockUi = { rightSideBarVisible: false };
+    renderPlugin(createP1Plugin(baseOptions));
+
+    await waitFor(() => { expect(screen.getByTestId('p1-editor-subheader')).toBeTruthy(); });
+
+    expect(setUiCalls()).toEqual([]);
   });
 });

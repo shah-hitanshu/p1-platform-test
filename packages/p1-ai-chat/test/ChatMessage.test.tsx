@@ -124,16 +124,17 @@ describe('ChatMessage', () => {
     expect(screen.getByText('Stopped')).toBeTruthy();
   });
 
-  it('renders assistant prose without a bubble, and the user turn with one', () => {
+  // A tint behind every reply reads as chrome at this width, and its padding costs the prose
+  // ~24px of a ~300px column.
+  it('bubbles the user turn only', () => {
     const { container: ai } = render(<ChatMessage message={assistant({ content: 'Hello' })} />);
-    const aiText = screen.getByText('Hello');
-    expect(aiText.closest('[style*="background-color"]')).toBeNull();
+    expect(screen.getByText('Hello')).toBeTruthy();
+    expect(ai.querySelector('[style*="background-color"]')).toBeNull();
 
     const { container: user } = render(
       <ChatMessage message={{ id: 'u1', role: 'user', content: 'Hi there' }} />,
     );
     expect(user.querySelector('[style*="background-color"]')).toBeTruthy();
-    expect(ai).toBeTruthy();
   });
 
   it('renders prose and steps in the order they happened', () => {

@@ -269,6 +269,7 @@ function EditorContent({
     pluginOptions: {
       onDocumentSelect: handleDocumentSelect,
       onGenerateWithAI: createGenerateWithAIHandler(draftRequests, chatbotEnabled),
+      showAIPanelToggle: chatbotEnabled,
       selectedDocumentPath: path,
       siteId: process.env.NEXT_PUBLIC_CSS_SITE_ID,
       dashboardUrl: process.env.NEXT_PUBLIC_P1_ADMIN_DASHBOARD_URL,

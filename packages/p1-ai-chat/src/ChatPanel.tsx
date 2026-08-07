@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useCallback, useMemo } from 'react';
-import { Button, Icon, Textarea, UtilityButton } from '@pantheon-systems/pds-toolkit-react';
+import { Icon, IconButton, Textarea } from '@pantheon-systems/pds-toolkit-react';
 import { useP1Puck, useP1Auth } from '@pantheon-systems/puck-css';
-import { useGetPuck } from '@puckeditor/core';
+import { ChatPanelHeader } from './ChatPanelHeader.js';
 import { useAgentChat } from './useAgentChat.js';
 import { useDraftRequest } from './useDraftRequest.js';
 import { toolCallLabel } from './toolLabels.js';
@@ -37,10 +37,8 @@ function EmptyTranscript({ historyLoaded }: { historyLoaded: boolean }): React.R
           <div style={{ marginBottom: 8, display: 'flex', justifyContent: 'center' }}>
             <Icon iconName="sparkles" size="xl" />
           </div>
-          {"Describe the page you want, and I'll build it."}
-          <div style={{ marginTop: 8, fontSize: 12 }}>
-            {'Try "add a pricing section with three tiers" or "write an FAQ about shipping".'}
-          </div>
+          I can generate or restructure the page, rewrite copy, suggest layouts, or create
+          imagery. Tell me what to change here.
         </>
       ) : (
         'Loading conversation…'
@@ -62,8 +60,6 @@ export function ChatPanel({ options }: Props): React.ReactElement {
 
   const css = useP1Puck();
   const { getToken, isAuthenticated } = useP1Auth();
-  // Non-subscribing accessor to Puck's store, used to open this panel on a request.
-  const getPuck = useGetPuck();
 
   // Stable refs so getAgentId/getContext don't change on every render
   const cssRef = useRef(css);
@@ -71,19 +67,14 @@ export function ChatPanel({ options }: Props): React.ReactElement {
   const getTokenRef = useRef(getToken);
   getTokenRef.current = getToken;
 
-  // Reactive scope key: recomputed when the user/site/branch/document changes so
-  // the hook reconnects and loads that conversation's history. History is
-  // persisted per-document, so switching documents shows that document's chat.
-  const { userId, siteId, branchId, currentDocument } = css;
-  // `currentDocument` is nullable and the id then falls back to `root`, which is also the home
-  // page's own conversation — so a turn sent before it resolves commits to the wrong one.
-  const documentReady = currentDocument !== null || options.getAgentId !== undefined;
+  // Site-scoped, not per page, so the transcript follows the user around. The turn's own
+  // document rides along in `getContext`.
+  const { userId, siteId, currentDocument } = css;
+  const canSend = currentDocument !== null;
   const agentId = useMemo(() => {
     if (options.getAgentId) return options.getAgentId();
-    const docSlug = (currentDocument?.path ?? '').replace(/^\//, '').replace(/\//g, '-') || 'root';
-    return `${userId}-${siteId}-${branchId}-${docSlug}`;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [options.getAgentId, userId, siteId, branchId, currentDocument?.path]);
+    return `${userId}-${siteId}`;
+  }, [options, userId, siteId]);
 
   // Fetches a fresh token rather than reading React state directly — auth
   // loads asynchronously on mount, so a state snapshot can still be null the
@@ -123,14 +114,7 @@ export function ChatPanel({ options }: Props): React.ReactElement {
     { documentPath: css.currentDocument?.path, ready: ready && isAuthenticated },
     useCallback(
       (request: DraftRequest) => {
-        try {
-          getPuck().dispatch({
-            type: 'setUi',
-            ui: { plugin: { current: 'ai-chat' }, leftSideBarVisible: true },
-          });
-        } catch {
-          // Puck store unreachable outside the editor; opening the panel is best-effort.
-        }
+        // No need to open the panel here — the publisher does, and this only mounts once open.
         // A seeded draft should stream into view, not behind the user's scroll position.
         stickToBottomRef.current = true;
         void sendMessage(request.brief, {
@@ -138,7 +122,7 @@ export function ChatPanel({ options }: Props): React.ReactElement {
           newPage: request.newPage,
         });
       },
-      [getPuck, sendMessage],
+      [sendMessage],
     ),
   );
 
@@ -199,12 +183,12 @@ export function ChatPanel({ options }: Props): React.ReactElement {
   // something, your own new message would otherwise land off-screen.
   const submitAndStick = useCallback(() => {
     // `submit()` would bail, leaving the flag latched with no turn to clear it.
-    if (!input.trim() || !documentReady) return;
+    if (!input.trim() || !canSend) return;
     stickToBottomRef.current = true;
     // Only a send typed here earns the focus back when the turn ends (see below).
     awaitingOwnReplyRef.current = true;
     void submit();
-  }, [input, submit, documentReady]);
+  }, [input, submit, canSend]);
 
   // Return focus to the composer when a turn the user started here finishes, so they can
   // keep typing. Gated on having sent from this box: the effect also runs on mount and
@@ -230,40 +214,13 @@ export function ChatPanel({ options }: Props): React.ReactElement {
     <div style={{
       display: 'flex',
       flexDirection: 'column',
-      height: '100%',
+      // minHeight lets the transcript scroll instead of stretching this past the rail.
+      flex: 1,
+      minHeight: 0,
       // Containing block for the visually-hidden status region below.
       position: 'relative',
     }}>
-      {/* Header */}
-      <div style={{
-        padding: '12px 16px',
-        borderBottom: '1px solid var(--pds-color-border-separator)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        flexShrink: 0,
-      }}>
-        {/* minWidth:0 lets this block shrink instead of forcing the row wider than the
-            panel, which wrapped the title onto two lines and the subtitle onto three. */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-          <Icon iconName="sparkles" size="m" />
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--pds-color-foreground-default)' }}>
-              AI Page Builder
-            </div>
-            <div style={{ fontSize: 11, color: 'var(--pds-color-foreground-default-secondary)', marginTop: 2 }}>
-              Describe what you want to build or change
-            </div>
-          </div>
-        </div>
-        {/* One action only: the header has room for a single labelled button at this width. */}
-        {messages.length > 0 && (
-          <div style={{ flexShrink: 0 }}>
-            <UtilityButton label="Clear" iconName="trash" isCritical onClick={handleClear} />
-          </div>
-        )}
-      </div>
-
+      <ChatPanelHeader canClear={messages.length > 0} onClear={handleClear} />
       {/* Messages */}
       <div
         ref={scrollRef}
@@ -311,64 +268,90 @@ export function ChatPanel({ options }: Props): React.ReactElement {
       {/* Input */}
       <div style={{
         padding: '12px 16px',
-        borderTop: '1px solid var(--pds-color-border-separator)',
+        borderTop: '1px solid var(--pds-color-border-default)',
         flexShrink: 0,
       }}>
-        <Textarea
-          id="ai-chat-input"
-          label="Message"
-          showLabel={false}
-          placeholder="Describe what you want to build or change…"
-          value={input}
-          onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setInput(e.target.value)}
-          textareaProps={{ onKeyDown: handleKeyDown }}
-          // Deliberately NOT disabled while streaming: a reply takes tens of seconds, and
-          // locking the box means composing the follow-up has to wait for the agent. Only
-          // sending is blocked until the turn ends.
-          rows={3}
-          isResizable
-          ref={textareaRef}
-        />
-        {/* Hint and action share a row: the button had one to itself directly above this
-            line, spending ~40px of a narrow panel to hold a single control. `wrap` is the
-            fallback for a panel too narrow to seat both. */}
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: 8,
-          marginTop: 8,
-        }}>
-          <div style={{ fontSize: 11, color: 'var(--pds-color-foreground-default-secondary)', minWidth: 0 }}>
-            {!documentReady
-              ? 'Opening the page…'
-              : reconnecting ? 'Reconnecting…' : 'Enter to send · Shift+Enter for newline'}
+        <div style={{ position: 'relative' }}>
+          <Textarea
+            id="ai-chat-input"
+            label="Message"
+            showLabel={false}
+            placeholder="Ask Pantheon AI…"
+            value={input}
+            onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setInput(e.target.value)}
+            textareaProps={{
+              onKeyDown: handleKeyDown,
+              // Keeps typed text clear of the button overlaying the corner.
+              style: { paddingRight: 44 },
+            }}
+            // Deliberately NOT disabled while streaming: a reply takes tens of seconds, and
+            // locking the box means composing the follow-up has to wait for the agent. Only
+            // sending is blocked until the turn ends.
+            rows={3}
+            isResizable
+            ref={textareaRef}
+          />
+          <div style={{ position: 'absolute', right: 8, bottom: 8 }}>
+            <ComposerAction
+              isLoading={isLoading}
+              canSubmit={Boolean(input.trim()) && canSend}
+              onSubmit={submitAndStick}
+              onStop={stop}
+            />
           </div>
-          {isLoading ? (
-            // Stop, not a spinning Send. A turn edits the live page, so being able to call
-            // it off matters more than being told it is busy — which the status line and
-            // the transcript's own in-flight step already say.
-            <Button
-              label="Stop"
-              variant="secondary"
-              size="s"
-              displayType="icon-end"
-              iconName="circleXmark"
-              onClick={stop}
-            />
-          ) : (
-            <Button
-              label="Send"
-              variant="secondary"
-              size="s"
-              displayType="icon-end"
-              iconName="paperPlane"
-              onClick={submitAndStick}
-              disabled={!input.trim() || !documentReady}
-            />
-          )}
         </div>
+        <ComposerHint canSend={canSend} reconnecting={reconnecting} />
+      </div>
+    </div>
+  );
+}
+
+/** Stop replaces Send while a turn runs: a turn edits the live page, so calling it off matters. */
+function ComposerAction({
+  isLoading,
+  canSubmit,
+  onSubmit,
+  onStop,
+}: {
+  isLoading: boolean;
+  canSubmit: boolean;
+  onSubmit: () => void;
+  onStop: () => void;
+}): React.ReactElement {
+  if (isLoading) {
+    return (
+      <IconButton ariaLabel="Stop" iconName="circleXmark" size="s" hasTooltip={false} onClick={onStop} />
+    );
+  }
+  return (
+    <IconButton
+      ariaLabel="Send"
+      iconName="paperPlane"
+      size="s"
+      hasTooltip={false}
+      onClick={onSubmit}
+      disabled={!canSubmit}
+    />
+  );
+}
+
+function ComposerHint({
+  canSend,
+  reconnecting,
+}: {
+  canSend: boolean;
+  reconnecting: boolean;
+}): React.ReactElement {
+  const text = !canSend
+    ? 'Open a page to make changes'
+    : reconnecting
+      ? 'Reconnecting…'
+      : 'Enter to send · Shift+Enter for newline';
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+      <div style={{ fontSize: 11, color: 'var(--pds-color-foreground-default-secondary)', minWidth: 0 }}>
+        {text}
       </div>
     </div>
   );

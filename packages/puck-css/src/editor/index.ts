@@ -17,6 +17,7 @@ export type { UseP1EditorOptions, UseP1EditorReturn, PuckProps } from './useP1Ed
 export { useMergePreview } from './useMergePreview.js';
 export type { UseMergePreviewReturn } from './useMergePreview.js';
 export { useComponentRegistry } from './useComponentRegistry.js';
+export { aiPanelStore, useAIPanelOpen } from './aiPanelStore.js';
 
 export { createP1Plugin } from './plugin/P1Plugin.js';
 export type { P1PluginOptions, PuckPlugin } from './plugin/P1Plugin.js';

@@ -131,9 +131,13 @@ function TextBubble({ text, isUser }: { text: string; isUser: boolean }): React.
       maxWidth: isUser ? '90%' : '100%',
       width: isUser ? undefined : '100%',
       padding: isUser ? '8px 12px' : 0,
+      // Tail on the sender's side.
       borderRadius: isUser ? '12px 12px 4px 12px' : undefined,
-      backgroundColor: isUser ? 'var(--pds-color-surface-reverse)' : undefined,
-      color: isUser ? 'var(--pds-color-foreground-reverse)' : 'var(--pds-color-foreground-default)',
+      // Not `brand-default`, which is the yellow rather than the blue the design uses.
+      backgroundColor: isUser ? 'var(--pds-color-interactive-background-current)' : undefined,
+      color: isUser
+        ? 'var(--pds-color-interactive-background-current-foreground)'
+        : 'var(--pds-color-foreground-default)',
       fontSize: 13,
       lineHeight: 1.5,
       // `anywhere` rather than `break-word`: only `anywhere` counts break opportunities

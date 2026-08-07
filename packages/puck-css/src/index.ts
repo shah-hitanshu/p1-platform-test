@@ -340,6 +340,9 @@ export type {
   PresenceState,
 } from './core/types.js';
 
+// AI chat panel
+export { aiPanelStore, useAIPanelOpen } from './editor/aiPanelStore.js';
+
 // Component Registry
 export { useComponentRegistry } from './editor/useComponentRegistry.js';
 export type {

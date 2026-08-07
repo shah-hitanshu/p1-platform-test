@@ -23,6 +23,7 @@ import { VersionBannerOverride } from '../components/VersionBannerOverride.js';
 import { isMilestone } from '../../versioning/utils/versionKind.js';
 import { dayLabel } from '../../versioning/utils/formatVersionDate.js';
 import { PuckDataSynchronizer } from '../components/PuckDataSynchronizer.js';
+import { useAIPanelOpen } from '../aiPanelStore.js';
 import { AgentActivityBanner } from '../../collaboration/components/AgentActivityBanner.js';
 import { PuckSelectionTracker } from '../components/PuckSelectionTracker.js';
 import { PuckDataCapture } from '../components/PuckDataCapture.js';
@@ -76,6 +77,26 @@ export function PermissionRefresher(): React.ReactElement | null {
       void refreshPerms();
     }
   }, [css?.resolvePermissions, refreshPerms]);
+
+  return null;
+}
+
+/**
+ * Reveals the right rail when the AI panel opens. Puck doesn't mount the `fields` override at
+ * all while the rail is collapsed, so the header toggle would otherwise do nothing. It lives in
+ * here because only a component inside Puck's tree has `dispatch`.
+ */
+export function AIPanelUiBridge(): React.ReactElement | null {
+  const open = useAIPanelOpen();
+  const dispatch = usePluginPuckHistory((s) => (s as unknown as PuckStateWithDispatch).dispatch);
+  const rightSideBarVisible = usePluginPuckHistory(
+    (s) => (s as unknown as PuckStateWithDispatch).appState?.ui?.rightSideBarVisible ?? true,
+  );
+
+  useEffect(() => {
+    if (!open || rightSideBarVisible) return;
+    dispatch({ type: 'setUi', ui: { rightSideBarVisible: true } });
+  }, [open, rightSideBarVisible, dispatch]);
 
   return null;
 }
@@ -479,6 +500,8 @@ export interface P1PluginOptions {
   onDocumentCreate?: (path: string, template?: TemplateSummary | null, title?: string) => Promise<void>;
   /** Hand a "Generate with AI" brief (+ the new page's path/title) to the chatbot. */
   onGenerateWithAI?: (brief: string, page: { path: string; title: string }) => void;
+  /** Show the header's Pantheon AI toggle. Pass the same flag that gates the chat plugin. */
+  showAIPanelToggle?: boolean;
   /** Callback to delete a document */
   onDocumentDelete?: (documentId: string, path: string) => Promise<void>;
   /** Whether documents are loading */
@@ -1027,6 +1050,7 @@ export function createP1Plugin(options: P1PluginOptions): PuckPlugin {
             ? (doc) => stableOptions.onDocumentSelect?.(doc.path) : () => {}}
           onCreateDocument={(fc.enableDocumentBrowser ?? true) ? stableOptions.onDocumentCreate : undefined}
           onGenerateWithAI={stableOptions.onGenerateWithAI}
+          showAIPanelToggle={stableOptions.showAIPanelToggle}
           templates={stableOptions.templates}
           templatesLoading={stableOptions.templatesLoading}
           onCreateTemplate={stableOptions.onCreateTemplate}
@@ -1092,6 +1116,8 @@ export function createP1Plugin(options: P1PluginOptions): PuckPlugin {
         {useContextSync && <RealtimeDataCaptureBridge />}
         {/* Force-refresh Puck permission cache on role/template changes */}
         <PermissionRefresher />
+        {/* Reveal the right rail when the AI panel opens */}
+        <AIPanelUiBridge />
         {/* Track selection changes for focus region reporting */}
         {options.onSelectionChange && (
           <PuckSelectionTracker onSelectionChange={options.onSelectionChange} />
