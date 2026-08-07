@@ -9,7 +9,11 @@
 
 import type { McpApiClientConfig, ActingUser } from './types.js';
 import { getBackendBreaker } from '../circuit-breaker.js';
-import type { ComponentSchema, TemplateSnapshot } from '@pantheon-systems/p1-content-validator';
+import type {
+  Authority,
+  ComponentSchema,
+  TemplateSnapshot,
+} from '@pantheon-systems/p1-content-validator';
 import {
   snapshotToComponentSchema,
   registryComponentKey,
@@ -88,6 +92,13 @@ export interface CreateDocumentParams {
   snapshot: unknown;
   templateId?: string;
   templateVersion?: number;
+}
+
+/** Response shape of the authority-overrides read on a translation. */
+export interface TranslationAuthority {
+  authorityOverrides: Record<string, Record<string, Authority>>;
+  slotDefaults: Record<string, Authority>;
+  defaultAuthority: Authority;
 }
 
 export interface DocumentSnapshot {
@@ -1061,6 +1072,84 @@ export class McpApiClient {
     });
     const result = await this.handleResponse<{ templates: TemplateSummary[] }>(response);
     return result.templates;
+  }
+
+  /**
+   * Clone a canonical document into a new locale variant. The backend derives
+   * the creator from the request principal, so only the locale (and optional
+   * path) travel in the body.
+   */
+  async createTranslation(
+    siteId: string,
+    branchId: string,
+    canonicalDocumentId: string,
+    body: { locale: string; path?: string },
+  ): Promise<Record<string, unknown>> {
+    const base = `${this.baseUrl}/api/sites/${siteId}/branches/${branchId}/documents/${canonicalDocumentId}`;
+    const url = `${base}/translations`;
+    const payload: Record<string, string> = { locale: body.locale };
+    if (body.path !== undefined && body.path !== '') {
+      payload.path = body.path;
+    }
+    const response = await this.doFetch(url, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify(payload),
+    });
+    return this.handleResponse<Record<string, unknown>>(response);
+  }
+
+  /**
+   * A translation's authority map: the per-prop overrides on its localization
+   * edge, the per-slot defaults its canonical's template declares, and the
+   * authority a slot named by neither falls back to.
+   */
+  async getTranslationAuthority(
+    siteId: string,
+    branchId: string,
+    documentId: string,
+  ): Promise<TranslationAuthority> {
+    const base = `${this.baseUrl}/api/sites/${siteId}/branches/${branchId}/documents/${documentId}`;
+    const response = await this.doFetch(`${base}/authority-overrides`, {
+      method: 'GET',
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse<TranslationAuthority>(response);
+  }
+
+  /** List a canonical document and the locale variants derived from it. */
+  async listLocaleVariants(
+    siteId: string,
+    branchId: string,
+    canonicalDocumentId: string,
+  ): Promise<Record<string, unknown>> {
+    const base = `${this.baseUrl}/api/sites/${siteId}/branches/${branchId}/documents/${canonicalDocumentId}`;
+    const url = `${base}/translations`;
+    const response = await this.doFetch(url, {
+      method: 'GET',
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse<Record<string, unknown>>(response);
+  }
+
+  /**
+   * Get a document's classified drift against its upstream edge target.
+   * relationType selects which edge to diff: 'localization' (translation vs
+   * canonical) or 'template' (document vs template).
+   */
+  async getUpstreamDiff(
+    siteId: string,
+    branchId: string,
+    documentId: string,
+    relationType: 'template' | 'localization',
+  ): Promise<Record<string, unknown>> {
+    const base = `${this.baseUrl}/api/sites/${siteId}/branches/${branchId}/documents/${documentId}`;
+    const url = `${base}/upstream-diff?relationType=${encodeURIComponent(relationType)}`;
+    const response = await this.doFetch(url, {
+      method: 'GET',
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse<Record<string, unknown>>(response);
   }
 
   async canAgentEdit(request: CanAgentEditRequest): Promise<CanAgentEditResponse> {

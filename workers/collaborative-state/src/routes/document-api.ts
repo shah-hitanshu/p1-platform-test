@@ -10,7 +10,7 @@ import {
   createDocument,
   getDocument,
   getDocumentByPath,
-  updateDocumentPath,
+  updateDocumentFields,
   archiveDocument,
   restoreDocument,
   listDocuments,
@@ -39,7 +39,24 @@ import {
   InvalidDocumentVersionParamsError,
   RestoreVersionNotFoundError,
   publishDocument,
+  createTranslation,
+  listLocaleVariants,
+  InvalidLocaleError,
+  CanonicalVersionNotFoundError,
+  TranslationAlreadyExistsError,
+  buildChangeSummary,
+  getLocalizationEdgeBySource,
+  getAuthorityOverrides,
+  authorityOverridesToJson,
+  setAuthorityOverride,
+  clearAuthorityOverride,
+  resolveSlotAuthorityDefaults,
 } from '../services';
+import type { ChangeRelationType } from '../services';
+import { validateBody, validationErrorResponse } from './validation/request-validation';
+import { handleAuthorityOverridesValidation } from './validation/document-api.validation';
+import { isChangeRelationType } from '../services/change-summary-service';
+import { AuthorityOverrideLimitError } from '../services/relations-service';
 import {
   normalizePath,
   isRegistryWritePath,
@@ -52,6 +69,17 @@ import { assertPermission, AuthorizationError, getEffectiveRole } from '../auth/
 import { templateMetadata } from './template-api';
 import { validatePagination } from './validation';
 
+/** The operation a document route path names beyond the document itself. */
+export type DocumentRouteAction =
+  | 'restore'
+  | 'publish'
+  | 'translations'
+  | 'upstream-diff'
+  | 'authority-overrides';
+
+/** The operation a document route path names against a version. */
+export type DocumentVersionAction = 'latest' | 'by-id' | 'restore';
+
 /**
  * Request context for document routes
  */
@@ -60,9 +88,9 @@ export interface DocumentRouteContext {
   branchId?: string;
   documentId?: string;
   documentPath?: string;
-  action?: 'restore' | 'publish';
+  action?: DocumentRouteAction;
   versionsPath?: boolean;
-  versionAction?: 'latest' | 'by-id' | 'restore';
+  versionAction?: DocumentVersionAction;
   versionId?: string;
   principal: AuthenticatedPrincipal;
 }
@@ -106,9 +134,19 @@ interface CreateDocumentBody {
 }
 
 /**
- * Request body for updating a document
+ * Request body for updating a document. Each field is optional and a field left out
+ * keeps its stored value; a null `locale` clears the document's language tag.
  */
 interface UpdateDocumentBody {
+  path?: string;
+  locale?: string | null;
+}
+
+/**
+ * Request body for creating a translation of a document
+ */
+interface CreateTranslationBody {
+  locale?: string;
   path?: string;
 }
 
@@ -228,7 +266,7 @@ async function handleGetDocumentByPath(context: DocumentRouteContext): Promise<R
 }
 
 /**
- * Handle PATCH /api/sites/{siteId}/documents/{documentId} - Update Document Path
+ * Handle PATCH /api/sites/{siteId}/documents/{documentId} - Update Document Path or Locale
  */
 async function handleUpdateDocument(
   request: Request,
@@ -240,11 +278,24 @@ async function handleUpdateDocument(
 
   const body = await parseJsonBody<UpdateDocumentBody>(request);
 
-  if (body.path === undefined || body.path.trim() === '') {
-    return errorResponse('path is required', 400);
+  const fields: { path?: string; locale?: string | null } = {};
+
+  if (body.path !== undefined) {
+    if (body.path.trim() === '') {
+      return errorResponse('path cannot be empty', 400);
+    }
+    fields.path = body.path;
   }
 
-  const updatedDocument = await updateDocumentPath(context.documentId, body.path);
+  if (body.locale !== undefined) {
+    fields.locale = body.locale;
+  }
+
+  if (Object.keys(fields).length === 0) {
+    return errorResponse('path or locale is required', 400);
+  }
+
+  const updatedDocument = await updateDocumentFields(context.documentId, fields);
 
   if (updatedDocument === null) {
     return errorResponse('Document not found', 404);
@@ -551,6 +602,123 @@ async function handleDeleteDocumentOnBranch(
   return jsonResponse(result.redirect, 200);
 }
 
+/**
+ * Handle POST /api/sites/{siteId}/branches/{branchId}/documents/{documentId}/translations
+ *
+ * Clones the canonical document (documentId) into a new locale variant.
+ */
+async function handleCreateTranslation(
+  request: Request,
+  branchId: string,
+  canonicalDocumentId: string,
+  principal: AuthenticatedPrincipal,
+): Promise<Response> {
+  const body = await parseJsonBody<CreateTranslationBody>(request);
+
+  if (body.locale === undefined || body.locale.trim() === '') {
+    return errorResponse('locale is required', 400);
+  }
+
+  const result = await createTranslation({
+    canonicalDocumentId,
+    branchId,
+    locale: body.locale,
+    path: body.path,
+    createdById: principal.dbUserId ?? principal.id,
+    createdByType: principal.type,
+  });
+
+  return jsonResponse(result, 201);
+}
+
+/**
+ * Handle GET /api/sites/{siteId}/branches/{branchId}/documents/{documentId}/translations
+ *
+ * Lists the canonical document (documentId) and its locale variants.
+ */
+async function handleListLocaleVariants(
+  canonicalDocumentId: string,
+  branchId: string,
+): Promise<Response> {
+  const result = await listLocaleVariants(canonicalDocumentId, branchId);
+  return jsonResponse(result);
+}
+
+/**
+ * Handle GET /api/sites/{siteId}/branches/{branchId}/documents/{documentId}/upstream-diff
+ *
+ * Reports the classified drift of a document against its upstream edge target.
+ */
+async function handleUpstreamDiff(
+  relationType: ChangeRelationType,
+  branchId: string,
+  documentId: string,
+): Promise<Response> {
+  const summary = await buildChangeSummary({
+    sourceDocumentId: documentId,
+    branchId,
+    relationType,
+  });
+
+  if (summary === null) {
+    return errorResponse(`No ${relationType} relation for this document`, 404);
+  }
+
+  return jsonResponse(summary);
+}
+
+/**
+ * Handles the authority-override routes on a translation:
+ * - GET returns the full per-prop authority map.
+ * - PUT sets one (slotId, propName) override to canonical or locale.
+ * - DELETE clears one (slotId, propName) override.
+ *
+ * The document must be a translation (the source of a localization edge);
+ * otherwise the route 404s.
+ */
+async function handleAuthorityOverrides(
+  request: Request,
+  documentId: string,
+  branchId: string,
+): Promise<Response> {
+  const edge = await getLocalizationEdgeBySource(documentId);
+  if (edge === null) {
+    return errorResponse('Document is not a translation', 404);
+  }
+
+  // Every response carries the resolved map, so a client that has just set or
+  // cleared an override re-reads authority from the same body.
+  const authorityBody = async (): Promise<Record<string, unknown>> => {
+    const authorityOverrides = await getAuthorityOverrides(documentId);
+    const defaults = await resolveSlotAuthorityDefaults(edge.targetDocumentId, branchId);
+    return { authorityOverrides: authorityOverridesToJson(authorityOverrides), ...defaults };
+  };
+
+  const method = request.method;
+
+  if (method === 'GET') {
+    return jsonResponse(await authorityBody());
+  }
+
+  const rawBody = await parseJsonBody<unknown>(request);
+
+  if (method === 'PUT') {
+    const { slotId, propName, authority } = validateBody(
+      handleAuthorityOverridesValidation.setBody,
+      rawBody,
+    );
+    await setAuthorityOverride(documentId, slotId, propName, authority);
+  } else {
+    const { slotId, propName } = validateBody(
+      handleAuthorityOverridesValidation.clearBody,
+      rawBody,
+    );
+    await clearAuthorityOverride(documentId, slotId, propName);
+  }
+
+  return jsonResponse(await authorityBody());
+}
+
 // =============================================================================
 // Document Version Operations
 // =============================================================================
@@ -851,6 +1019,71 @@ async function handleBranchScopedDocumentRoutes(
     return jsonResponse(result);
   }
 
+  // Handle translations: create a locale variant (POST) or list variants (GET)
+  if (context.action === 'translations' && context.documentId !== undefined) {
+    if (method !== 'POST' && method !== 'GET') {
+      return errorResponse('Method not allowed', 405);
+    }
+    await assertPermission(
+      context.principal,
+      context.siteId,
+      branchId,
+      method === 'POST' ? 'canEditDocuments' : 'canView',
+    );
+    // The branch belongs to context.siteId, so a canonical absent from the branch
+    // belongs to another tenant and is out of this caller's reach.
+    const exists = await documentExistsOnBranch(context.documentId, branchId);
+    if (!exists) {
+      return errorResponse('Document not found on this branch', 404);
+    }
+    if (method === 'POST') {
+      return await handleCreateTranslation(
+        request,
+        branchId,
+        context.documentId,
+        context.principal,
+      );
+    }
+    return await handleListLocaleVariants(context.documentId, branchId);
+  }
+
+  // Handle upstream-diff: classified drift of a document against its edge target
+  if (context.action === 'upstream-diff' && context.documentId !== undefined) {
+    if (method !== 'GET') {
+      return errorResponse('Method not allowed', 405);
+    }
+    await assertPermission(context.principal, context.siteId, branchId, 'canView');
+    const relationTypeParam =
+      new URL(request.url).searchParams.get('relationType') ?? 'localization';
+    if (!isChangeRelationType(relationTypeParam)) {
+      return errorResponse('relationType must be one of: template, localization', 400);
+    }
+    const exists = await documentExistsOnBranch(context.documentId, branchId);
+    if (!exists) {
+      return errorResponse('Document not found on this branch', 404);
+    }
+    return await handleUpstreamDiff(relationTypeParam, branchId, context.documentId);
+  }
+
+  // Handle authority-overrides: read the per-prop authority map (GET) or set/clear
+  // a single (slotId, propName) override (PUT/DELETE) on a translation.
+  if (context.action === 'authority-overrides' && context.documentId !== undefined) {
+    if (method !== 'GET' && method !== 'PUT' && method !== 'DELETE') {
+      return errorResponse('Method not allowed', 405);
+    }
+    await assertPermission(
+      context.principal,
+      context.siteId,
+      branchId,
+      method === 'GET' ? 'canView' : 'canEditDocuments',
+    );
+    const exists = await documentExistsOnBranch(context.documentId, branchId);
+    if (!exists) {
+      return errorResponse('Document not found on this branch', 404);
+    }
+    return await handleAuthorityOverrides(request, context.documentId, branchId);
+  }
+
   // Handle document version routes (authorization is handled inside handleDocumentVersionRoutes)
   if (context.versionsPath === true && context.documentId !== undefined) {
     return await handleDocumentVersionRoutes(request, context.documentId, branchId, context, branch.isMain);
@@ -978,6 +1211,10 @@ export async function handleDocumentRoutes(
     }
   } catch (error) {
     // Handle known errors
+    const invalidRequest = validationErrorResponse(error);
+    if (invalidRequest !== null) {
+      return invalidRequest;
+    }
     if (error instanceof AuthorizationError) {
       return errorResponse(error.message, 403);
     }
@@ -1000,6 +1237,18 @@ export async function handleDocumentRoutes(
       return errorResponse('A page already exists at this origin path', 409);
     }
     if (error instanceof InvalidDocumentVersionParamsError) {
+      return errorResponse(error.message, 400);
+    }
+    if (error instanceof InvalidLocaleError) {
+      return errorResponse(error.message, 400);
+    }
+    if (error instanceof CanonicalVersionNotFoundError) {
+      return errorResponse(error.message, 404);
+    }
+    if (error instanceof TranslationAlreadyExistsError) {
+      return errorResponse(error.message, 409);
+    }
+    if (error instanceof AuthorityOverrideLimitError) {
       return errorResponse(error.message, 400);
     }
 

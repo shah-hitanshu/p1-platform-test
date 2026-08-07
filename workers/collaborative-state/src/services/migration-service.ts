@@ -28,6 +28,7 @@ import {
   createDocumentVersion,
   reconstructVersionSnapshot,
 } from './document-version-service';
+import { resolveTemplateReadBranch } from './template-read';
 import { TEMPLATE_RELATION_INNER_JOIN, branchInheritsFromMain } from './document-queries';
 import { walkComponents } from './component-identity';
 import {
@@ -578,11 +579,19 @@ function diffComponentProps(
   return { componentId, operations: ops };
 }
 
-// Template metadata (_template) and pin state (_pinMap) are editor-private
-// root props; they are excluded from migration propagation so they never
-// overwrite props on associated pages. Every other root prop, including any
-// with a leading underscore, is a page-inheritable authored value.
-const EDITOR_PRIVATE_ROOT_PROPS = new Set(['_template', '_pinMap']);
+// These named root props are editor-private config the localization resolvers
+// and editor read, not page-inheritable authored content: `_template` metadata,
+// `_pinMap` pin state, `_localeAuthority` per-slot authority defaults, and
+// `_localeTranslatable` per-prop translatability toggles. They are excluded from
+// both migration propagation and drift, so changing one never overwrites props on
+// associated pages nor surfaces as a `__root__` change. Membership is by name, not
+// by the leading underscore.
+const EDITOR_PRIVATE_ROOT_PROPS = new Set([
+  '_template',
+  '_pinMap',
+  '_localeAuthority',
+  '_localeTranslatable',
+]);
 
 function stripEditorPrivateRootProps(
   props: Record<string, unknown> | undefined,
@@ -660,26 +669,42 @@ function extractPropPatches(
 // =============================================================================
 
 /**
- * The branch a template's versions should be read from during migration: the
- * given branch when it has edited the template locally, otherwise `mainBranchId`,
- * which a non-main branch inherits the template from. Returns the given branch
- * unchanged when no distinct main branch is supplied (copy-on-write disabled).
+ * An upstream delta paired with the two reconstructed target snapshots it was
+ * diffed from, so a caller can read a prop's pre-change value without a second
+ * reconstruction.
  */
-async function resolveTemplateReadBranch(
-  templateId: string,
+export interface UpstreamDelta extends MigrationDelta {
+  fromSnapshot: Record<string, unknown> | null;
+  toSnapshot: Record<string, unknown> | null;
+}
+
+/**
+ * Computes the drift of an edge's upstream — the edge target document — between
+ * two of its versions, keyed by slot id: a structural slot delta plus per-slot
+ * prop patches. Relation-generic, so a `template` source diffs its template and
+ * a `localization` source diffs its canonical through the same implementation.
+ */
+export async function extractUpstreamDelta(
+  targetDocumentId: string,
   branchId: string,
-  mainBranchId?: string,
-): Promise<string> {
-  if (!branchInheritsFromMain(branchId, mainBranchId)) {
-    return branchId;
+  fromVersion: number,
+  toVersion: number,
+): Promise<UpstreamDelta> {
+  const fromSnapshot = await reconstructVersionSnapshot(targetDocumentId, branchId, fromVersion);
+  const toSnapshot = await reconstructVersionSnapshot(targetDocumentId, branchId, toVersion);
+
+  // A from-version without a content array predates the content-shape
+  // conversion. Diffing a manifest against the content shape would read every
+  // component as added; the conversion is a representation change, so the
+  // delta across that boundary is empty.
+  if (!Array.isArray((fromSnapshot as { content?: unknown } | null)?.content)) {
+    return { slotDelta: buildSlotDelta(null, null), propPatches: [], fromSnapshot, toSnapshot };
   }
 
-  const local = await query(
-    `SELECT 1 FROM app.document_versions
-     WHERE document_id = $1 AND branch_id = $2 LIMIT 1`,
-    [templateId, branchId],
-  );
-  return local.rows.length > 0 ? branchId : mainBranchId;
+  const slotDelta = buildSlotDelta(fromSnapshot, toSnapshot);
+  const propPatches = extractPropPatches(fromSnapshot, toSnapshot);
+
+  return { slotDelta, propPatches, fromSnapshot, toSnapshot };
 }
 
 /**
@@ -745,20 +770,12 @@ export async function extractTemplateDelta(
   // Read the template from main when this branch inherits it rather than having
   // edited it locally.
   const readBranchId = await resolveTemplateReadBranch(templateId, branchId, mainBranchId);
-  const fromSnapshot = await reconstructVersionSnapshot(templateId, readBranchId, fromVersion);
-  const toSnapshot = await reconstructVersionSnapshot(templateId, readBranchId, toVersion);
-
-  // A from-version without a content array predates the content-shape
-  // conversion. Diffing a manifest against the content shape would read every
-  // component as added; the conversion is a representation change, so the
-  // delta across that boundary is empty.
-  if (!Array.isArray((fromSnapshot as { content?: unknown } | null)?.content)) {
-    return { slotDelta: buildSlotDelta(null, null), propPatches: [] };
-  }
-
-  const slotDelta = buildSlotDelta(fromSnapshot, toSnapshot);
-  const propPatches = extractPropPatches(fromSnapshot, toSnapshot);
-
+  const { slotDelta, propPatches } = await extractUpstreamDelta(
+    templateId,
+    readBranchId,
+    fromVersion,
+    toVersion,
+  );
   return { slotDelta, propPatches };
 }
 

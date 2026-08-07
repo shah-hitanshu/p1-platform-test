@@ -157,6 +157,39 @@ export function parseRoute(path: string): { handler: string; params: RouteParams
     };
   }
 
+  // /api/sites/{siteId}/branches/{branchId}/documents/{documentId}/translations
+  const translationsRe = /^\/api\/sites\/([^/]+)\/branches\/([^/]+)\/documents\/([^/]+)\/translations$/;
+  const translationsMatch = translationsRe.exec(normalizedPath);
+  if (translationsMatch) {
+    const [, siteId, branchId, documentId] = translationsMatch;
+    return {
+      handler: 'documents',
+      params: { siteId, branchId, documentId, action: 'translations' },
+    };
+  }
+
+  // /api/sites/{siteId}/branches/{branchId}/documents/{documentId}/upstream-diff
+  const upstreamDiffRe = /^\/api\/sites\/([^/]+)\/branches\/([^/]+)\/documents\/([^/]+)\/upstream-diff$/;
+  const upstreamDiffMatch = upstreamDiffRe.exec(normalizedPath);
+  if (upstreamDiffMatch) {
+    const [, siteId, branchId, documentId] = upstreamDiffMatch;
+    return {
+      handler: 'documents',
+      params: { siteId, branchId, documentId, action: 'upstream-diff' },
+    };
+  }
+
+  // /api/sites/{siteId}/branches/{branchId}/documents/{documentId}/authority-overrides
+  const authorityOverridesRe = /^\/api\/sites\/([^/]+)\/branches\/([^/]+)\/documents\/([^/]+)\/authority-overrides$/;
+  const authorityOverridesMatch = authorityOverridesRe.exec(normalizedPath);
+  if (authorityOverridesMatch) {
+    const [, siteId, branchId, documentId] = authorityOverridesMatch;
+    return {
+      handler: 'documents',
+      params: { siteId, branchId, documentId, action: 'authority-overrides' },
+    };
+  }
+
   // Document version routes (must come before branch-scoped document routes)
   // /api/sites/{siteId}/branches/{branchId}/documents/{documentId}/versions/latest
   const versionLatestRe = /^\/api\/sites\/([^/]+)\/branches\/([^/]+)\/documents\/([^/]+)\/versions\/latest$/;
@@ -376,6 +409,18 @@ export function parseRoute(path: string): { handler: string; params: RouteParams
         branchId: migrationJobMatch[2],
         migrationJobId: migrationJobMatch[3],
       },
+    };
+  }
+
+  // Branch drift route
+  // /api/sites/{siteId}/branches/{branchId}/drift
+  const driftRe = /^\/api\/sites\/([^/]+)\/branches\/([^/]+)\/drift$/;
+  const driftMatch = driftRe.exec(normalizedPath);
+  if (driftMatch) {
+    const [, siteId, branchId] = driftMatch;
+    return {
+      handler: 'drift',
+      params: { siteId, branchId },
     };
   }
 

@@ -15,7 +15,7 @@ vi.mock('../../src/services', () => ({
   createDocument: vi.fn(),
   getDocument: vi.fn(),
   getDocumentByPath: vi.fn(),
-  updateDocumentPath: vi.fn(),
+  updateDocumentFields: vi.fn(),
   archiveDocument: vi.fn(),
   restoreDocument: vi.fn(),
   listDocuments: vi.fn(),
@@ -80,6 +80,15 @@ vi.mock('../../src/services', () => ({
   },
   InvalidDocumentVersionParamsError: class InvalidDocumentVersionParamsError extends Error {
     override name = 'InvalidDocumentVersionParamsError';
+  },
+  InvalidLocaleError: class InvalidLocaleError extends Error {
+    override name = 'InvalidLocaleError';
+  },
+  CanonicalVersionNotFoundError: class CanonicalVersionNotFoundError extends Error {
+    override name = 'CanonicalVersionNotFoundError';
+  },
+  TranslationAlreadyExistsError: class TranslationAlreadyExistsError extends Error {
+    override name = 'TranslationAlreadyExistsError';
   },
   getMainBranch: vi.fn(),
 }));
@@ -603,7 +612,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         createdById: 'user-1',
         createdByType: 'user',
       }));
-      vi.mocked(services.updateDocumentPath).mockResolvedValueOnce({
+      vi.mocked(services.updateDocumentFields).mockResolvedValueOnce({
         id: 'doc-1',
         siteId: 'site-1',
         path: 'pages/about',
@@ -648,7 +657,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         createdById: 'user-1',
         createdByType: 'user',
       }));
-      vi.mocked(services.updateDocumentPath).mockResolvedValueOnce(null);
+      vi.mocked(services.updateDocumentFields).mockResolvedValueOnce(null);
 
       const request = new Request(
         'https://api.example.com/api/sites/site-1/documents/nonexistent',
@@ -686,7 +695,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         createdById: 'user-1',
         createdByType: 'user',
       }));
-      vi.mocked(services.updateDocumentPath).mockRejectedValueOnce(
+      vi.mocked(services.updateDocumentFields).mockRejectedValueOnce(
         new services.DuplicateDocumentPathError('pages/existing'),
       );
 

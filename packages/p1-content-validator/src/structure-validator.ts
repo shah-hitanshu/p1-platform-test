@@ -2,14 +2,11 @@ import type {
   StructuralConformanceError,
   ValidateStructureInput,
 } from './types.js';
+import { isPlainObject } from './guards.js';
 
 interface Slot {
   id: string;
   type: string;
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
 function asComponentList(value: unknown): unknown[] {

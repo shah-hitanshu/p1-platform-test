@@ -22,7 +22,12 @@ import {
   validateDocumentStructure,
   componentNameFromPath,
 } from '@pantheon-systems/p1-content-validator';
-import type { ValidationError, StructuralConformanceError } from '@pantheon-systems/p1-content-validator';
+import { validateTranslationAuthority } from '@pantheon-systems/p1-content-validator';
+import type {
+  AuthorityDiagnostic,
+  ValidationError,
+  StructuralConformanceError,
+} from '@pantheon-systems/p1-content-validator';
 
 // Narrow the loosely-typed package export to the input/output shape used here.
 const validateOps = _validateOps as (input: {
@@ -418,7 +423,7 @@ const SetPageMetadataInputSchema = z.object({
     ),
 });
 
-// Group C — Version history & page lifecycle
+// Version history & page lifecycle
 
 const ListDocumentVersionsInputSchema = z.object({
   site_id: z.string().describe('The site ID (UUID from list_sites)'),
@@ -488,6 +493,45 @@ const RenamePageInputSchema = z.object({
     .uuid('Must be the document UUID from list_documents, not a path.')
     .describe('The document ID (UUID from list_documents)'),
   path: z.string().min(1).describe('The new document path (e.g. "plans" or "products/widget").'),
+});
+
+// Localization
+
+const RelationTypeEnum = z.enum(['template', 'localization']);
+
+const CreateTranslationInputSchema = z.object({
+  site_id: z.string().describe('The site ID (UUID from list_sites)'),
+  branch_id: z.string().describe('The branch ID (UUID from list_branches)'),
+  canonical_document_id: z
+    .string()
+    .describe('The canonical document ID (UUID from list_documents) to translate'),
+  locale: z
+    .string()
+    .min(1)
+    .describe('BCP-47 locale for the new variant (e.g. "fr", "es-419", "pt-BR").'),
+  path: z
+    .string()
+    .optional()
+    .describe('Optional path for the translation. Defaults to "{canonicalPath}.{locale}".'),
+});
+
+const ListLocaleVariantsInputSchema = z.object({
+  site_id: z.string().describe('The site ID (UUID from list_sites)'),
+  branch_id: z.string().describe('The branch ID (UUID from list_branches)'),
+  canonical_document_id: z
+    .string()
+    .describe('The canonical document ID (UUID from list_documents)'),
+});
+
+const GetDriftInputSchema = z.object({
+  site_id: z.string().describe('The site ID (UUID from list_sites)'),
+  branch_id: z.string().describe('The branch ID (UUID from list_branches)'),
+  document_id: z
+    .string()
+    .describe('The source document ID (UUID). For localization this is the translation; for template it is the page.'),
+  relation_type: RelationTypeEnum.optional().describe(
+    'Which upstream edge to diff: "localization" (translation vs canonical, the default) or "template" (page vs template).',
+  ),
 });
 
 const ListDatasourcesInputSchema = z.object({
@@ -777,6 +821,24 @@ export function getToolDefinitions(): ToolDefinition[] {
       description:
         'Change a page\'s path. This is site-scoped: the new path applies across the site, not only on your working branch. Errors if another document already occupies the new path.',
       inputSchema: RenamePageInputSchema,
+    },
+    {
+      name: 'create_translation',
+      description:
+        'Create a locale variant of a canonical document. Clones the canonical\'s current content into a new document for the given locale, preserving every component slot id so the translation and its canonical stay slot-aligned, and pins a localization edge to the canonical version cloned from. Returns the created document, its first version, and the localization edge. Use get_drift on the new document later to see what the canonical has changed since.',
+      inputSchema: CreateTranslationInputSchema,
+    },
+    {
+      name: 'list_locale_variants',
+      description:
+        'List a canonical document together with every locale variant derived from it. Returns the canonical document and, for each variant, its document and the localization edge (including the canonical version it is synced to). Read-only.',
+      inputSchema: ListLocaleVariantsInputSchema,
+    },
+    {
+      name: 'get_drift',
+      description:
+        'Report how a document\'s upstream edge target has drifted since the document was last synced, with each change classified. relation_type selects the edge: "localization" (default) diffs a translation against its canonical and buckets each prop change as advisory (translation owns it), needsTranslation (canonical owns translatable text), or autoApplied (canonical owns a non-translatable prop); "template" diffs a page against its template with structural and prop changes. Returns the classified summary (slotDelta, changes, and per-bucket counts). Read-only. To reconcile the drift, apply the changes on a branch with the existing edit tools (start_edit_session, apply_document_edits, complete_edit_session) — inserts pass through the slot-id backstop so ids stay unique.',
+      inputSchema: GetDriftInputSchema,
     },
     {
       name: 'list_datasources',
@@ -1085,6 +1147,51 @@ function formatValidationError(errors: ValidationError[]): ToolResult {
   };
 }
 
+/**
+ * Diagnostics for writes to props this translation inherits from its canonical.
+ * A document that is not a translation, an unreadable authority map, and a missing
+ * snapshot all yield none: the warning is guidance, so losing it never blocks an
+ * edit.
+ */
+async function collectAuthorityWarnings(
+  apiClient: McpApiClient,
+  siteId: string,
+  branchId: string,
+  documentId: string | undefined,
+  currentSnapshot: Record<string, unknown> | undefined,
+  operations: EditOperationShape[],
+): Promise<AuthorityDiagnostic[]> {
+  if (documentId === undefined || currentSnapshot === undefined) {
+    return [];
+  }
+  try {
+    const authority = await apiClient.getTranslationAuthority(siteId, branchId, documentId);
+    const { diagnostics } = validateTranslationAuthority({
+      operations,
+      currentSnapshot,
+      templateSnapshot: undefined,
+      slotAuthority: authority.slotDefaults,
+      authorityOverrides: authority.authorityOverrides,
+    });
+    return diagnostics;
+  } catch {
+    return [];
+  }
+}
+
+/** The warning block appended to a successful apply. */
+function formatAuthorityWarnings(diagnostics: AuthorityDiagnostic[]): string {
+  const n = diagnostics.length;
+  const lines = diagnostics
+    .map((d) => `- ${d.slotId}.${d.propName} is owned by the canonical`)
+    .join('\n');
+  return (
+    `\n\nAuthority warnings (${String(n)}):\n${lines}` +
+    '\n\nThese props are inherited from the canonical. Edit them there and let sync ' +
+    'propagate the value, unless you are reconciling the canonical\'s drift into this translation.'
+  );
+}
+
 function formatStructuralError(errors: StructuralConformanceError[]): ToolResult {
   const n = errors.length;
   const summary = `Structural validation failed: ${String(n)} error${n === 1 ? '' : 's'}. The document does not conform to its template structure.`;
@@ -1140,6 +1247,9 @@ type PublishPageInput = z.infer<typeof PublishPageInputSchema>;
 type ArchivePageInput = z.infer<typeof ArchivePageInputSchema>;
 type RestorePageInput = z.infer<typeof RestorePageInputSchema>;
 type RenamePageInput = z.infer<typeof RenamePageInputSchema>;
+type CreateTranslationInput = z.infer<typeof CreateTranslationInputSchema>;
+type ListLocaleVariantsInput = z.infer<typeof ListLocaleVariantsInputSchema>;
+type GetDriftInput = z.infer<typeof GetDriftInputSchema>;
 type ListDatasourcesInput = z.infer<typeof ListDatasourcesInputSchema>;
 type ListQueriesInput = z.infer<typeof ListQueriesInputSchema>;
 type GetQueryInput = z.infer<typeof GetQueryInputSchema>;
@@ -1189,6 +1299,9 @@ export interface ToolHandlers {
   archive_page: (input: ArchivePageInput) => Promise<ToolResult>;
   restore_page: (input: RestorePageInput) => Promise<ToolResult>;
   rename_page: (input: RenamePageInput) => Promise<ToolResult>;
+  create_translation: (input: CreateTranslationInput) => Promise<ToolResult>;
+  list_locale_variants: (input: ListLocaleVariantsInput) => Promise<ToolResult>;
+  get_drift: (input: GetDriftInput) => Promise<ToolResult>;
   list_datasources: (input: ListDatasourcesInput) => Promise<ToolResult>;
   list_queries: (input: ListQueriesInput) => Promise<ToolResult>;
   get_query: (input: GetQueryInput) => Promise<ToolResult>;
@@ -1352,6 +1465,7 @@ export function createToolHandlers(
         // Used by both validateOps (component schema) and validateDocumentStructure (template conformance).
         let currentSnapshot: Record<string, unknown> | undefined;
         let documentTemplateId: string | undefined;
+        let documentId: string | undefined;
         try {
           const doc = await apiClient.getDocument(
             input.site_id,
@@ -1373,6 +1487,7 @@ export function createToolHandlers(
           );
           if (docInfo !== null) {
             documentTemplateId = docInfo.templateId;
+            documentId = docInfo.id;
           }
         } catch {
           // Proceed without template validation
@@ -1413,6 +1528,15 @@ export function createToolHandlers(
           // AFTER applying to the backend (not before, as we don't have full JSON Patch simulation).
           // This is acceptable since the edit session can be aborted if validation fails.
         }
+
+        const authorityWarnings = await collectAuthorityWarnings(
+          apiClient,
+          input.site_id,
+          input.branch_id,
+          documentId,
+          currentSnapshot,
+          preparedOperations,
+        );
 
         // Apply edits to the backend
         const result = await apiClient.applyEdits({
@@ -1461,11 +1585,15 @@ export function createToolHandlers(
           }
         }
 
-        return formatResult({
+        const applied = formatResult({
           success: result.success,
           version: result.version,
           message: 'Edits applied successfully.',
         });
+        if (authorityWarnings.length > 0) {
+          applied.content[0].text += formatAuthorityWarnings(authorityWarnings);
+        }
+        return applied;
       } catch (error) {
         return formatError(error);
       }
@@ -2292,6 +2420,24 @@ export function createToolHandlers(
       }
     },
 
+    async create_translation(input: CreateTranslationInput): Promise<ToolResult> {
+      try {
+        const body: { locale: string; path?: string } = { locale: input.locale };
+        if (input.path !== undefined) {
+          body.path = input.path;
+        }
+        const result = await apiClient.createTranslation(
+          input.site_id,
+          input.branch_id,
+          input.canonical_document_id,
+          body,
+        );
+        return formatResult({ message: 'Translation created.', ...result });
+      } catch (error) {
+        return formatError(error);
+      }
+    },
+
     async list_datasources(input: ListDatasourcesInput): Promise<ToolResult> {
       try {
         const result = await apiClient.listDatasources(input.site_id, input.branch_id);
@@ -2306,6 +2452,34 @@ export function createToolHandlers(
           })
           .join('\n');
         return formatResult(`Datasources:\n${formatted}`);
+      } catch (error) {
+        return formatError(error);
+      }
+    },
+
+    async list_locale_variants(input: ListLocaleVariantsInput): Promise<ToolResult> {
+      try {
+        const result = await apiClient.listLocaleVariants(
+          input.site_id,
+          input.branch_id,
+          input.canonical_document_id,
+        );
+        return formatResult(result);
+      } catch (error) {
+        return formatError(error);
+      }
+    },
+
+    async get_drift(input: GetDriftInput): Promise<ToolResult> {
+      try {
+        const relationType = input.relation_type ?? 'localization';
+        const result = await apiClient.getUpstreamDiff(
+          input.site_id,
+          input.branch_id,
+          input.document_id,
+          relationType,
+        );
+        return formatResult(result);
       } catch (error) {
         return formatError(error);
       }
@@ -2407,6 +2581,9 @@ export const schemas = {
   archive_page: ArchivePageInputSchema,
   restore_page: RestorePageInputSchema,
   rename_page: RenamePageInputSchema,
+  create_translation: CreateTranslationInputSchema,
+  list_locale_variants: ListLocaleVariantsInputSchema,
+  get_drift: GetDriftInputSchema,
   list_datasources: ListDatasourcesInputSchema,
   list_queries: ListQueriesInputSchema,
   get_query: GetQueryInputSchema,

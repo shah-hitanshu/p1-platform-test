@@ -1,38 +1,10 @@
 import type { EditOperation, ValidateInput, ValidationError, ComponentSchema, ComponentField } from './types.js';
 import { registryComponentKey } from './registry.js';
+import { isComponentShape, resolvePropPath, type ComponentShape } from './guards.js';
 
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
-
-interface PuckComponent {
-  type: string;
-  props: Record<string, unknown>;
-  [key: string]: unknown;
-}
-
-function isPuckComponentShape(v: unknown): v is PuckComponent {
-  return (
-    v !== null &&
-    typeof v === 'object' &&
-    !Array.isArray(v) &&
-    typeof (v as Record<string, unknown>).type === 'string' &&
-    typeof (v as Record<string, unknown>).props === 'object' &&
-    (v as Record<string, unknown>).props !== null
-  );
-}
-
-function getAtPath(obj: unknown, path: string): unknown {
-  if (path === '') return obj;
-  return path.split('.').reduce<unknown>((cur, key) => {
-    if (cur === null || cur === undefined) return undefined;
-    if (Array.isArray(cur)) {
-      const idx = parseInt(key, 10);
-      return isNaN(idx) ? undefined : cur[idx];
-    }
-    return (cur as Record<string, unknown>)[key];
-  }, obj);
-}
 
 // UUID v4:             xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
 const UUID_V4_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -96,7 +68,7 @@ function validateEnumValue(
 }
 
 function validateComponent(
-  comp: PuckComponent,
+  comp: ComponentShape,
   registry: Record<string, ComponentSchema>,
   opIndex: number,
   path: string,
@@ -205,7 +177,7 @@ function validateComponent(
   const opaqueProps = new Set<string>(schema.opaqueProps ?? []);
   for (const [key, val] of Object.entries(comp.props)) {
     if (opaqueProps.has(key) || key === 'id') continue;
-    if (Array.isArray(val) && val.some(isPuckComponentShape)) {
+    if (Array.isArray(val) && val.some(isComponentShape)) {
       validateContent(val, registry, opIndex, `${path}.props.${key}`, errors, zonesKey, warnOnZonesUsage);
     }
   }
@@ -229,7 +201,7 @@ function validateContent(
     return;
   }
 
-  if (isPuckComponentShape(value)) {
+  if (isComponentShape(value)) {
     validateComponent(value, registry, opIndex, path, errors, zonesKey, warnOnZonesUsage);
     return;
   }
@@ -263,16 +235,9 @@ function validatePropPathOp(
   registry: Record<string, ComponentSchema>,
   errors: ValidationError[],
 ): void {
-  const parts = op.path.split('.');
-  const propsIdx = parts.indexOf('props');
-
-  // Must have at least one segment before 'props'
-  if (propsIdx <= 0) return;
-
-  // Resolve the component from the snapshot using the path prefix before 'props'
-  const componentPath = parts.slice(0, propsIdx).join('.');
-  const val = getAtPath(snapshot, componentPath);
-  if (!isPuckComponentShape(val)) return;
+  const resolved = resolvePropPath(op.path, snapshot);
+  if (resolved === undefined) return;
+  const { component: val, componentPath, propsIdx, parts } = resolved;
 
   const schema = registry[registryComponentKey(val.type)];
   if (!schema) return; // unknown type — caught elsewhere when the component is replaced

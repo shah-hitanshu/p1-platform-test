@@ -24,6 +24,7 @@ import {
 } from './document-types';
 import type { DocumentWithArchive } from './document-types';
 import { TEMPLATE_RELATION_JOIN, DOCUMENT_WITH_TEMPLATE_COLUMNS } from './document-queries';
+import { validateLocale } from './locale';
 
 // =============================================================================
 // Re-exports for backward compatibility
@@ -193,21 +194,56 @@ export async function updateDocumentPath(
   documentId: string,
   newPath: string,
 ): Promise<DocumentWithArchive | null> {
-  const normalizedPath = normalizePath(newPath);
-  validatePath(normalizedPath);
+  return await updateDocumentFields(documentId, { path: newPath });
+}
+
+/**
+ * Updates a document's path, its locale, or both in one statement. A field left
+ * undefined keeps its stored value; a `locale` of null clears it, leaving the
+ * document naming no language. Null when the document does not exist.
+ *
+ * @throws DuplicateDocumentPathError if the new path already exists
+ * @throws InvalidDocumentPathError if the path format is invalid
+ * @throws InvalidLocaleError if the locale is not a well-formed language tag
+ */
+export async function updateDocumentFields(
+  documentId: string,
+  fields: { path?: string; locale?: string | null },
+): Promise<DocumentWithArchive | null> {
+  const assignments: string[] = [];
+  const values: unknown[] = [];
+  let normalizedPath: string | undefined;
+
+  if (fields.path !== undefined) {
+    normalizedPath = normalizePath(fields.path);
+    validatePath(normalizedPath);
+    values.push(normalizedPath);
+    assignments.push(`path = $${String(values.length)}`);
+  }
+
+  if (fields.locale !== undefined) {
+    values.push(fields.locale === null ? null : validateLocale(fields.locale));
+    assignments.push(`locale = $${String(values.length)}`);
+  }
+
+  if (assignments.length === 0) {
+    return await getDocument(documentId);
+  }
+
+  values.push(documentId);
 
   try {
     const result = await query<DocumentRow>(
       `WITH upd AS (
          UPDATE app.documents
-         SET path = $1
-         WHERE id = $2
+         SET ${assignments.join(', ')}
+         WHERE id = $${String(values.length)}
          RETURNING *
        )
        SELECT ${DOCUMENT_WITH_TEMPLATE_COLUMNS}
        FROM upd d
        ${TEMPLATE_RELATION_JOIN}`,
-      [normalizedPath, documentId],
+      values,
     );
 
     const row = result.rows[0];
@@ -217,7 +253,7 @@ export async function updateDocumentPath(
 
     return mapRowToDocument(row);
   } catch (error) {
-    if (isUniqueConstraintViolation(error)) {
+    if (isUniqueConstraintViolation(error) && normalizedPath !== undefined) {
       throw new DuplicateDocumentPathError(normalizedPath);
     }
     throw error;

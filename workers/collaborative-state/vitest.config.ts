@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import { defineConfig, Plugin } from 'vitest/config';
 
 const yamlRawPlugin: Plugin = {
@@ -52,10 +53,9 @@ export default defineConfig({
       // The real package uses cloudflare: protocol imports unavailable in Node.
       // Integration tests (vitest.integration.config.ts) use the real module via
       // @cloudflare/vitest-pool-workers which provides the CF runtime.
-      '@cloudflare/workers-oauth-provider': new URL(
-        'tests/stubs/workers-oauth-provider.ts',
-        import.meta.url,
-      ).pathname,
+      '@cloudflare/workers-oauth-provider': fileURLToPath(
+        new URL('tests/stubs/workers-oauth-provider.ts', import.meta.url),
+      ),
     },
   },
 });

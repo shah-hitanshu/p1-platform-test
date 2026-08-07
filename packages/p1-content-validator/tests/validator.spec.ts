@@ -405,6 +405,29 @@ describe('validateOps', () => {
       expect(errors).toHaveLength(0);
     });
 
+    it('resolves a component nested in a slot prop rather than its container', () => {
+      const nested: Record<string, unknown> = {
+        content: [
+          {
+            type: 'Features',
+            props: {
+              id: 'f1',
+              heading: 'H',
+              items: [{ type: 'Hero', props: { id: 'h2', title: 'Inner' } }],
+            },
+          },
+        ],
+        root: { props: {} },
+      };
+      const ops = [op('replace', 'content.0.props.items.0.props.invented', 'some value')];
+      const { errors } = validateOps({ operations: ops, registry, currentSnapshot: nested });
+
+      expect(errors).toHaveLength(1);
+      expect(errors[0].code).toBe('invalid_prop_key');
+      expect(errors[0].message).toContain('invented');
+      expect(errors[0].message).toContain('Hero');
+    });
+
     it('does not error when snapshot path resolves to a non-component', () => {
       const ops = [op('replace', 'root.props.nonExistent', 'value')];
       const { errors } = validateOps({ operations: ops, registry, currentSnapshot: snapshot });

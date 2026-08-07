@@ -41,6 +41,7 @@ export interface DocumentRow {
   archived_at: string | null;
   template_id?: string | null;
   template_version?: number | null;
+  locale?: string | null;
 }
 
 /**
@@ -334,6 +335,9 @@ export function mapRowToDocument(row: DocumentRow): DocumentWithArchive {
   }
   if (row.template_version !== null && row.template_version !== undefined) {
     doc.templateVersion = row.template_version;
+  }
+  if (row.locale !== null && row.locale !== undefined) {
+    doc.locale = row.locale;
   }
   if (row.archived_at !== null) {
     doc.archivedAt = row.archived_at;

@@ -227,6 +227,58 @@ describe('Phase 2.2: Branch-Level Authorization', () => {
       });
     });
 
+    describe('Branch ownership', () => {
+      it('returns NO_ACCESS when the branch belongs to another site', async () => {
+        const { getEffectiveRole } = await import('../../src/auth/authorization');
+        const db = await import('../../src/db');
+
+        const principal = createPrincipal({
+          pantheonSiteRoles: { 'site-1': 'owner' },
+        });
+
+        vi.mocked(db.query)
+          .mockResolvedValueOnce({ rows: [] }) // user_site_roles - falls back to JWT
+          .mockResolvedValueOnce({ rows: [{ site_id: 'site-2', role: null }] });
+
+        const result = await getEffectiveRole(principal, 'site-1', 'branch-of-site-2');
+
+        expect(result.roleName).toBe('NO_ACCESS');
+        expect(result.role.canView).toBe(false);
+      });
+
+      it('ignores a branch grant on a branch belonging to another site', async () => {
+        const { getEffectiveRole } = await import('../../src/auth/authorization');
+        const db = await import('../../src/db');
+
+        const principal = createPrincipal({ pantheonSiteRoles: {} });
+
+        vi.mocked(db.query)
+          .mockResolvedValueOnce({ rows: [] })
+          .mockResolvedValueOnce({ rows: [{ site_id: 'site-2', role: 'ADMIN' }] });
+
+        const result = await getEffectiveRole(principal, 'site-1', 'branch-of-site-2');
+
+        expect(result.roleName).toBe('NO_ACCESS');
+      });
+
+      it('resolves the role normally when the branch belongs to the site', async () => {
+        const { getEffectiveRole } = await import('../../src/auth/authorization');
+        const db = await import('../../src/db');
+
+        const principal = createPrincipal({
+          pantheonSiteRoles: { 'site-1': 'owner' },
+        });
+
+        vi.mocked(db.query)
+          .mockResolvedValueOnce({ rows: [] })
+          .mockResolvedValueOnce({ rows: [{ site_id: 'site-1', role: null }] });
+
+        const result = await getEffectiveRole(principal, 'site-1', 'branch-1');
+
+        expect(result.roleName).toBe('ADMIN');
+      });
+    });
+
     describe('Agent principals', () => {
       it('should calculate effective role for agent principals', async () => {
         const { getEffectiveRole } = await import('../../src/auth/authorization');
@@ -435,16 +487,59 @@ describe('Phase 2.2: Branch-Level Authorization', () => {
         };
       }
 
+      const BRANCH_UUID = '11111111-2222-3333-4444-555555555555';
+
       it('should dispatch service principals to hasServicePermission instead of getEffectiveRole', async () => {
+        const { assertPermission } = await import('../../src/auth/authorization');
+        const db = await import('../../src/db');
+
+        const principal = createServicePrincipal('site-1');
+        vi.mocked(db.query).mockResolvedValue({ rows: [{ site_id: 'site-1' }] });
+
+        await expect(
+          assertPermission(principal, 'site-1', BRANCH_UUID, 'canView'),
+        ).resolves.toBeUndefined();
+        // The only query is the branch ownership lookup; role resolution never ran.
+        expect(vi.mocked(db.query)).toHaveBeenCalledTimes(1);
+        expect(vi.mocked(db.query)).toHaveBeenCalledWith(
+          expect.stringContaining('app.branches'),
+          [BRANCH_UUID],
+        );
+      });
+
+      it('denies a service principal a branch belonging to another site', async () => {
+        const { assertPermission, AuthorizationError } = await import(
+          '../../src/auth/authorization'
+        );
+        const db = await import('../../src/db');
+
+        const principal = createServicePrincipal('site-1');
+        vi.mocked(db.query).mockResolvedValue({ rows: [{ site_id: 'site-2' }] });
+
+        await expect(
+          assertPermission(principal, 'site-1', BRANCH_UUID, 'canView'),
+        ).rejects.toThrow(AuthorizationError);
+      });
+
+      it('reports no permission for a service principal on another site\'s branch', async () => {
+        const { hasPermission } = await import('../../src/auth/authorization');
+        const db = await import('../../src/db');
+
+        const principal = createServicePrincipal('site-1');
+        vi.mocked(db.query).mockResolvedValue({ rows: [{ site_id: 'site-2' }] });
+
+        expect(await hasPermission(principal, 'site-1', BRANCH_UUID, 'canView')).toBe(false);
+      });
+
+      it('skips the ownership lookup when no branch is named', async () => {
         const { assertPermission } = await import('../../src/auth/authorization');
         const db = await import('../../src/db');
 
         const principal = createServicePrincipal('site-1');
 
         await expect(
-          assertPermission(principal, 'site-1', 'branch-1', 'canView'),
+          assertPermission(principal, 'site-1', '', 'canView'),
         ).resolves.toBeUndefined();
-        // No DB queries: dispatch went to hasServicePermission, not getEffectiveRole.
         expect(vi.mocked(db.query)).not.toHaveBeenCalled();
       });
     });

@@ -953,6 +953,280 @@ paths:
                 $ref: '#/components/schemas/Error'
 
   # ===========================================================================
+  # Branch Drift
+  # ===========================================================================
+  /api/sites/{siteId}/branches/{branchId}/drift:
+    parameters:
+      - $ref: '#/components/parameters/siteIdParam'
+      - $ref: '#/components/parameters/branchIdParam'
+    get:
+      summary: List branch upstream drift
+      description: >-
+        Returns a page of the documents on the branch that have drifted from their
+        upstream source, each with the per-classification counts for a collapsed
+        row. The upstream source is set by relationType: a translation's canonical
+        for localization, a document's template for template. In-sync documents are
+        omitted. Pages walk the branch's documents in path order. Admin only.
+      operationId: listBranchDrift
+      tags: [Documents]
+      parameters:
+        - name: relationType
+          in: query
+          description: Which upstream relation to measure drift against.
+          schema:
+            type: string
+            enum: [template, localization]
+            default: localization
+        - name: limit
+          in: query
+          description: Page size.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+        - name: offset
+          in: query
+          description: Position in the branch's documents to start the page at.
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: A page of drifted documents on the branch
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BranchDriftResponse'
+        '400':
+          description: Invalid relationType, limit, or offset
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+        '403':
+          description: Caller is not a site admin
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ===========================================================================
+  # Localization
+  # ===========================================================================
+  /api/sites/{siteId}/branches/{branchId}/documents/{documentId}/translations:
+    parameters:
+      - $ref: '#/components/parameters/siteIdParam'
+      - $ref: '#/components/parameters/branchIdParam'
+      - $ref: '#/components/parameters/documentIdParam'
+    post:
+      summary: Create a translation
+      description: >-
+        Clones the canonical document into a new locale variant, preserving every
+        component slot id so the translation stays slot-aligned with its canonical,
+        and pins a localization edge to the canonical version cloned from. The
+        creator is derived from the request principal. A canonical holds at most one
+        translation per locale.
+      operationId: createTranslation
+      tags: [Documents]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTranslationRequest'
+      responses:
+        '201':
+          description: Translation created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateTranslationResponse'
+        '400':
+          description: Missing or malformed locale
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Canonical document is not on this branch, or has no version to clone
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: The locale already exists for this canonical, or the path is occupied
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    get:
+      summary: List locale variants
+      description: >-
+        Returns the canonical document together with the locale variants derived
+        from it that this branch holds, each paired with its localization edge. A
+        variant authored on another branch, and an archived one, are not listed.
+      operationId: listLocaleVariants
+      tags: [Documents]
+      responses:
+        '200':
+          description: The canonical document and its locale variants
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LocaleVariantsResponse'
+        '404':
+          description: Document not found on this branch
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/sites/{siteId}/branches/{branchId}/documents/{documentId}/upstream-diff:
+    parameters:
+      - $ref: '#/components/parameters/siteIdParam'
+      - $ref: '#/components/parameters/branchIdParam'
+      - $ref: '#/components/parameters/documentIdParam'
+    get:
+      summary: Get classified upstream drift
+      description: >-
+        Reports how the document's upstream source has changed since the version the
+        document is synced to, with each change classified. The upstream source is
+        set by relationType: for localization the document is a translation and the
+        source is its canonical; for template the document is a page and the source
+        is its template. A localization prop change is bucketed as advisory (the
+        translation owns the prop), needsTranslation (the canonical owns translatable
+        text), or autoApplied (the canonical owns a non-translatable prop); a
+        template relation yields structural and prop changes only.
+      operationId: getUpstreamDiff
+      tags: [Documents]
+      parameters:
+        - name: relationType
+          in: query
+          description: Which upstream relation to diff against.
+          schema:
+            type: string
+            enum: [template, localization]
+            default: localization
+      responses:
+        '200':
+          description: The classified change summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChangeSummary'
+        '400':
+          description: Invalid relationType
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: >-
+            Document not found on this branch, or it has no relation of the
+            requested type
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/sites/{siteId}/branches/{branchId}/documents/{documentId}/authority-overrides:
+    parameters:
+      - $ref: '#/components/parameters/siteIdParam'
+      - $ref: '#/components/parameters/branchIdParam'
+      - $ref: '#/components/parameters/documentIdParam'
+    get:
+      summary: Get authority overrides
+      description: >-
+        Returns the translation's per-prop authority overrides. A prop absent from
+        the map follows its slot's template default. The document must be a
+        translation.
+      operationId: getAuthorityOverrides
+      tags: [Documents]
+      responses:
+        '200':
+          description: The per-prop authority map
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthorityOverridesResponse'
+        '404':
+          description: Document not found on this branch, or is not a translation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    put:
+      summary: Set an authority override
+      description: >-
+        Breaks one prop's inheritance from its slot's template default by pinning it
+        to canonical or locale. Overwrites any existing override for the same
+        (slotId, propName). Returns the full map after the write.
+      operationId: setAuthorityOverride
+      tags: [Documents]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetAuthorityOverrideRequest'
+      responses:
+        '200':
+          description: The per-prop authority map after the write
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthorityOverridesResponse'
+        '400':
+          description: Missing, over-long, or reserved slotId/propName, or invalid authority
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Document not found on this branch, or is not a translation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      summary: Clear an authority override
+      description: >-
+        Restores one prop to its slot's template default. Clearing an override that
+        is not set is a no-op. Returns the full map after the write.
+      operationId: clearAuthorityOverride
+      tags: [Documents]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClearAuthorityOverrideRequest'
+      responses:
+        '200':
+          description: The per-prop authority map after the write
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthorityOverridesResponse'
+        '400':
+          description: Missing, over-long, or reserved slotId/propName
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Document not found on this branch, or is not a translation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ===========================================================================
   # Document Versions
   # ===========================================================================
   /api/sites/{siteId}/branches/{branchId}/documents/{documentId}/versions:
@@ -3445,6 +3719,21 @@ components:
               items:
                 type: string
 
+    ValidationError:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+          description: Every parameter that failed and why, as one readable message.
+        details:
+          type: object
+          description: The same failures, keyed by parameter name.
+          additionalProperties:
+            type: array
+            items:
+              type: string
+
     PaginatedResponse:
       type: object
       properties:
@@ -3909,6 +4198,11 @@ components:
           format: uuid
         path:
           type: string
+        locale:
+          type: string
+          description: >-
+            BCP-47 language tag of this variant. Absent on a canonical (source)
+            document.
         createdAt:
           type: string
           format: date-time
@@ -3941,6 +4235,335 @@ components:
               type: array
               items:
                 $ref: '#/components/schemas/Document'
+
+    # -------------------------------------------------------------------------
+    # Branch Drift
+    # -------------------------------------------------------------------------
+    ChangeCounts:
+      type: object
+      description: Per-classification change tally for a drifted document.
+      properties:
+        structural:
+          type: integer
+        prop:
+          type: integer
+        advisory:
+          type: integer
+        needsTranslation:
+          type: integer
+        autoApplied:
+          type: integer
+      required: [structural, prop, advisory, needsTranslation, autoApplied]
+
+    BranchDriftEntry:
+      type: object
+      properties:
+        documentId:
+          type: string
+          format: uuid
+        path:
+          type: string
+        locale:
+          type: string
+          nullable: true
+          description: BCP-47 language tag; null for a non-localization document.
+        targetDocumentId:
+          type: string
+          format: uuid
+          description: >-
+            The upstream source the drift was measured against: the canonical for
+            localization, the template for template.
+        counts:
+          $ref: '#/components/schemas/ChangeCounts'
+        total:
+          type: integer
+          description: Sum of the per-classification counts.
+      required: [documentId, path, locale, targetDocumentId, counts, total]
+
+    BranchDriftResponse:
+      type: object
+      properties:
+        drift:
+          type: array
+          items:
+            $ref: '#/components/schemas/BranchDriftEntry'
+        limit:
+          type: integer
+          description: Page size applied, after clamping to the maximum.
+        offset:
+          type: integer
+          description: Position in the branch's documents this page starts at.
+        hasMore:
+          type: boolean
+          description: >-
+            Whether a further page remains. In-sync documents are omitted from
+            drift, so a page often holds fewer entries than limit and the length of
+            drift says nothing about whether more pages follow.
+      required: [drift, limit, offset, hasMore]
+
+    # -------------------------------------------------------------------------
+    # Localization
+    # -------------------------------------------------------------------------
+    Authority:
+      type: string
+      enum: [canonical, locale]
+      description: >-
+        Who owns a translation prop's value: canonical (inherited from the source
+        document) or locale (owned by the translation). A property of the relationship
+        between the two documents, not of the field.
+
+    LocalizationEdge:
+      type: object
+      description: The link from a translation to the canonical it derives from.
+      properties:
+        sourceDocumentId:
+          type: string
+          format: uuid
+          description: The translation.
+        targetDocumentId:
+          type: string
+          format: uuid
+          description: The canonical the translation derives from.
+        relationType:
+          type: string
+          enum: [localization]
+        syncedVersion:
+          type: integer
+          nullable: true
+          description: >-
+            Canonical version the translation is aligned to; null when it is not
+            pinned to a specific version.
+      required: [sourceDocumentId, targetDocumentId, relationType, syncedVersion]
+
+    CreateTranslationRequest:
+      type: object
+      required: [locale]
+      properties:
+        locale:
+          type: string
+          description: BCP-47 language tag for the new variant, e.g. "fr", "es-419", "pt-BR".
+        path:
+          type: string
+          description: Path for the translation. Defaults to "{canonicalPath}.{locale}".
+
+    CreateTranslationResponse:
+      type: object
+      properties:
+        document:
+          $ref: '#/components/schemas/Document'
+        version:
+          $ref: '#/components/schemas/DocumentVersion'
+        localization:
+          $ref: '#/components/schemas/LocalizationEdge'
+      required: [document, version, localization]
+
+    LocaleVariant:
+      type: object
+      properties:
+        document:
+          $ref: '#/components/schemas/Document'
+        localization:
+          $ref: '#/components/schemas/LocalizationEdge'
+      required: [document, localization]
+
+    LocaleVariantsResponse:
+      type: object
+      properties:
+        canonical:
+          $ref: '#/components/schemas/Document'
+        variants:
+          type: array
+          items:
+            $ref: '#/components/schemas/LocaleVariant'
+      required: [canonical, variants]
+
+    AuthorityOverrideMap:
+      type: object
+      description: >-
+        Per-prop authority overrides on a translation, keyed by slot id then prop
+        name. An entry breaks that prop's inheritance from its slot's template
+        default; an absent entry follows the default.
+      additionalProperties:
+        type: object
+        additionalProperties:
+          $ref: '#/components/schemas/Authority'
+
+    AuthorityOverridesResponse:
+      type: object
+      description: >-
+        A translation's authority, resolved far enough for a client to tell the props
+        it owns from the ones it inherits. Effective authority for a prop is its entry
+        in authorityOverrides, else its slot's entry in slotDefaults, else
+        defaultAuthority.
+      properties:
+        authorityOverrides:
+          $ref: '#/components/schemas/AuthorityOverrideMap'
+        slotDefaults:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/Authority'
+          description: >-
+            Per-slot authority declared by the template bound to this translation's
+            canonical, keyed by slot id. Empty when the canonical has no template.
+        defaultAuthority:
+          $ref: '#/components/schemas/Authority'
+      required: [authorityOverrides, slotDefaults, defaultAuthority]
+
+    SetAuthorityOverrideRequest:
+      type: object
+      required: [slotId, propName, authority]
+      properties:
+        slotId:
+          type: string
+          maxLength: 256
+          description: Slot id of the component carrying the prop.
+        propName:
+          type: string
+          maxLength: 256
+        authority:
+          $ref: '#/components/schemas/Authority'
+      description: >-
+        A translation holds at most 1000 overrides. Setting a further one is
+        rejected; overwriting or clearing an entry already in the map is not.
+
+    ClearAuthorityOverrideRequest:
+      type: object
+      required: [slotId, propName]
+      properties:
+        slotId:
+          type: string
+          maxLength: 256
+        propName:
+          type: string
+          maxLength: 256
+
+    SlotPlacement:
+      type: object
+      description: Where a slot sits in the target snapshot.
+      properties:
+        zone:
+          type: string
+          nullable: true
+          description: Owning zone key; null for the root content list.
+        precedingIds:
+          type: array
+          items:
+            type: string
+          description: Slot ids ahead of this one in its list, nearest first.
+      required: [zone, precedingIds]
+
+    SlotDelta:
+      type: object
+      description: An id-keyed structural diff of two snapshots.
+      properties:
+        added:
+          type: array
+          items:
+            type: object
+            properties:
+              component:
+                type: object
+                additionalProperties: true
+                description: The added component with a deep copy of its props.
+              placement:
+                $ref: '#/components/schemas/SlotPlacement'
+            required: [component, placement]
+        removed:
+          type: array
+          items:
+            type: string
+          description: Slot ids present in the from-snapshot and absent from the to-snapshot.
+        moved:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              placement:
+                $ref: '#/components/schemas/SlotPlacement'
+            required: [id, placement]
+        templateIds:
+          type: array
+          items:
+            type: string
+          description: Union of slot ids present in either snapshot.
+      required: [added, removed, moved, templateIds]
+
+    ChangeSummaryEntry:
+      type: object
+      description: >-
+        One classified change. templateOldValue and templateNewValue are the upstream
+        source's values whatever the relation type; documentValue is the requested
+        document's current value at that path.
+      properties:
+        classification:
+          type: string
+          enum: [structural, prop, advisory, needsTranslation, autoApplied]
+        componentId:
+          type: string
+          description: Slot id of the changed component, or __root__ for a root-prop change.
+        propPath:
+          type: string
+          description: JSON Pointer into the component props; absent on structural entries.
+        templateOldValue:
+          description: Upstream value before the change.
+        templateNewValue:
+          description: Upstream value after the change.
+        documentValue:
+          description: The document's current value at that path.
+        authority:
+          $ref: '#/components/schemas/Authority'
+        translatable:
+          type: boolean
+          description: >-
+            Whether the canonical marks the prop as holding translatable text. Set on
+            localization prop entries only.
+        structuralKind:
+          type: string
+          enum: [added, removed, moved]
+          description: Set on structural entries only.
+      required: [classification, componentId]
+
+    ChangeSummary:
+      type: object
+      description: >-
+        The classified drift of a document against its upstream source. fromVersion is
+        the upstream version the document is synced to, toVersion the upstream's
+        current version.
+      properties:
+        relationType:
+          type: string
+          enum: [template, localization]
+        sourceDocumentId:
+          type: string
+          format: uuid
+          description: The document the drift was measured for.
+        targetDocumentId:
+          type: string
+          format: uuid
+          description: The upstream source it was measured against.
+        fromVersion:
+          type: integer
+        toVersion:
+          type: integer
+        slotDelta:
+          $ref: '#/components/schemas/SlotDelta'
+        changes:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChangeSummaryEntry'
+        counts:
+          $ref: '#/components/schemas/ChangeCounts'
+      required:
+        - relationType
+        - sourceDocumentId
+        - targetDocumentId
+        - fromVersion
+        - toVersion
+        - slotDelta
+        - changes
+        - counts
 
     # -------------------------------------------------------------------------
     # Document Versions

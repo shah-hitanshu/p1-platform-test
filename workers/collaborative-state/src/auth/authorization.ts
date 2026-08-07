@@ -246,13 +246,26 @@ export async function getEffectiveRole(
 
   // Step 2: Check for branch-level elevation
   const actorId = principal.dbUserId ?? principal.id;
-  const branchGrant = await query<{ role: RoleName }>(
-    `SELECT role FROM app.branch_grants
-     WHERE branch_id = $1 AND actor_id = $2`,
+  const branchGrant = await query<{ site_id: string; role: RoleName | null }>(
+    `SELECT b.site_id, bg.role
+       FROM app.branches b
+       LEFT JOIN app.branch_grants bg
+         ON bg.branch_id = b.id AND bg.actor_id = $2
+      WHERE b.id = $1`,
     [branchId, actorId],
   );
 
-  const grantRoleName = branchGrant.rows[0]?.role;
+  // A branch id matching no row is left to the caller, which resolves the branch
+  // itself and reports it missing.
+  const branchSiteId = branchGrant.rows[0]?.site_id;
+  if (branchSiteId !== undefined && branchSiteId !== siteId) {
+    return {
+      role: ROLES.NO_ACCESS,
+      roleName: 'NO_ACCESS',
+    };
+  }
+
+  const grantRoleName = branchGrant.rows[0]?.role ?? undefined;
 
   // Step 3: Effective role is the higher of the two
   const effectiveRoleName = maxRole(baselineRoleName, grantRoleName);
@@ -318,6 +331,30 @@ async function getActingUserSiteRole(actingUserEmail: string, siteId: string): P
  * const canEdit = await hasPermission(principal, 'site-1', 'branch-1', 'canEditDocuments');
  * ```
  */
+const BRANCH_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Whether the named branch is one of the site's.
+ *
+ * A service token is bound to a site, not a branch, so the branch it names has to
+ * be checked against that binding — role resolution, which carries the same rule
+ * for users and agents, never runs for a service principal.
+ *
+ * An id that cannot name a branch — absent, or not a branch id at all — is left to
+ * the caller, which resolves the branch itself and reports it missing.
+ */
+async function branchBelongsToSite(branchId: string, siteId: string): Promise<boolean> {
+  if (!BRANCH_ID_PATTERN.test(branchId)) {
+    return true;
+  }
+  const result = await query<{ site_id: string }>(
+    'SELECT site_id FROM app.branches WHERE id = $1',
+    [branchId],
+  );
+  const branchSiteId = result.rows[0]?.site_id;
+  return branchSiteId === undefined || branchSiteId === siteId;
+}
+
 export async function hasPermission(
   principal: AuthenticatedPrincipal,
   siteId: string,
@@ -326,7 +363,7 @@ export async function hasPermission(
   masClient?: MASClient,
 ): Promise<boolean> {
   if (principal.type === 'service') {
-    return hasServicePermission(principal, siteId);
+    return hasServicePermission(principal, siteId) && (await branchBelongsToSite(branchId, siteId));
   }
 
   const { role } = await getEffectiveRole(principal, siteId, branchId, masClient);
@@ -339,10 +376,10 @@ export async function hasPermission(
  *
  * Dispatches by principal type:
  * - Service principals (sat_ tokens) are mainly authorised by the scope check
- *   in isServicePrincipalAllowed. This function only re-verifies
- *   that the request's siteId matches the token's bound site. The
- *   `branchId` and `permission` arguments are ignored for service
- *   principals because their access is governed by scopes, not roles.
+ *   in isServicePrincipalAllowed. This function re-verifies that the request's
+ *   siteId matches the token's bound site, and that the branch named belongs to
+ *   that site. The `permission` argument is ignored for service principals
+ *   because their access is governed by scopes, not roles.
  * - User/agent principals: role-based check via getEffectiveRole.
  *
  * @param principal - The authenticated principal
@@ -369,6 +406,13 @@ export async function assertPermission(
     if (!hasServicePermission(principal, siteId)) {
       throw new AuthorizationError(
         `Service token is not bound to site ${siteId}.`,
+        'canView',
+        'NO_ACCESS',
+      );
+    }
+    if (!(await branchBelongsToSite(branchId, siteId))) {
+      throw new AuthorizationError(
+        `Branch ${branchId} does not belong to site ${siteId}.`,
         'canView',
         'NO_ACCESS',
       );

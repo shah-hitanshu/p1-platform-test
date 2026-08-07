@@ -14,7 +14,7 @@ import {
   LegacyConflictDeltaError,
   ConflictAlreadyResolvedError,
 } from '../services/migration-service';
-import { getEffectiveRole, assertPermission, AuthorizationError } from '../auth/authorization';
+import { getEffectiveRole, AuthorizationError } from '../auth/authorization';
 import { getBranch, getBranchByName, getMainBranch } from '../services';
 
 const VALID_PRINCIPAL_TYPES = new Set(['user', 'agent', 'system', 'service']);
@@ -168,12 +168,11 @@ export async function handleMigrationRoutes(
 
     // All migration operations require ADMIN role
     if (context.principal.type === 'service') {
-      await assertPermission(context.principal, context.siteId, branchId, 'canEditDocuments');
-    } else {
-      const { roleName } = await getEffectiveRole(context.principal, context.siteId, branchId);
-      if (roleName !== 'ADMIN') {
-        throw new AuthorizationError('Migration operations require ADMIN role', 'canEditDocuments', roleName);
-      }
+      return errorResponse('Migration operations require ADMIN role', 403);
+    }
+    const { roleName } = await getEffectiveRole(context.principal, context.siteId, branchId);
+    if (roleName !== 'ADMIN') {
+      throw new AuthorizationError('Migration operations require ADMIN role', 'canEditDocuments', roleName);
     }
 
     // Verify job belongs to this site/branch when jobId is present

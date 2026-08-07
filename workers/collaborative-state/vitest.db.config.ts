@@ -26,13 +26,10 @@ export default defineConfig({
     // Reporter for console output
     reporters: ['verbose'],
 
-    // Run tests sequentially to avoid database conflicts
+    // Schema suites share one database, so no two test files may run at once:
+    // fileParallelism: false pins the run to a single worker.
     pool: 'forks',
-    poolOptions: {
-      forks: {
-        singleFork: true,
-      },
-    },
+    fileParallelism: false,
   },
 
   // Resolve configuration

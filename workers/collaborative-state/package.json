@@ -52,7 +52,8 @@
     "object-hash": "^3.0.0",
     "p-limit": "^7.3.0",
     "postgres": "^3.4.8",
-    "yjs": "^13.6.29"
+    "yjs": "^13.6.29",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260515.1",

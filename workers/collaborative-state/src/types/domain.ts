@@ -176,6 +176,8 @@ export interface Document {
   templateId?: string;
   /** Version of template this document was created from or last migrated to */
   templateVersion?: number;
+  /** BCP-47 language tag of this variant; absent for a canonical document */
+  locale?: string;
 }
 
 /**

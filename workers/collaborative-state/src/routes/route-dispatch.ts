@@ -14,12 +14,17 @@ import type { MASClient } from '../services/mas-client';
 import { handleSiteRoutes } from './site-api';
 import { handleSiteScreenshotRoutes } from './site-screenshot-api';
 import { handleBranchRoutes } from './branch-api';
-import { handleDocumentRoutes } from './document-api';
+import {
+  handleDocumentRoutes,
+  type DocumentRouteAction,
+  type DocumentVersionAction,
+} from './document-api';
 import { handleCheckpointRoutes } from './checkpoint-api';
 import { handleTemplateRequest } from './template-api';
 import { handleRedirectRoutes } from './redirect-api';
 import { handleContentRedirectRoutes } from './redirect-content-api';
 import { handleMigrationRoutes } from './migration-api';
+import { handleDriftRoutes } from './drift-api';
 import { handleMergeRoutes } from './merge-api';
 import { handleGrantRoutes } from './grant-api';
 import { handleCollaboratorRoutes } from './collaborator-api';
@@ -133,9 +138,9 @@ export async function dispatchRoute(
         branchId: route.params.branchId,
         documentId: route.params.documentId,
         documentPath: route.params.documentPath,
-        action: route.params.action as 'restore' | 'publish' | undefined,
+        action: route.params.action as DocumentRouteAction | undefined,
         versionsPath: route.params.versionsPath === 'true',
-        versionAction: route.params.versionAction as 'latest' | 'by-id' | undefined,
+        versionAction: route.params.versionAction as DocumentVersionAction | undefined,
         versionId: route.params.versionId,
         principal,
       });
@@ -172,6 +177,13 @@ export async function dispatchRoute(
         jobId: route.params.migrationJobId,
         conflictId: route.params.conflictId,
         action: route.params.action as 'conflicts' | 'resolve' | undefined,
+        principal,
+      });
+
+    case 'drift':
+      return await handleDriftRoutes(request, {
+        siteId: route.params.siteId ?? '',
+        branchId: route.params.branchId,
         principal,
       });
 

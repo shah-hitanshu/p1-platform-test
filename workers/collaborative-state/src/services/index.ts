@@ -43,6 +43,7 @@ export {
   getDocument,
   getDocumentByPath,
   updateDocumentPath,
+  updateDocumentFields,
   deleteDocument,
   listDocuments,
   documentExists,
@@ -76,6 +77,47 @@ export type {
   DeleteDocumentWithRedirectParams,
   DeleteDocumentWithRedirectResult,
 } from './document-service';
+
+// Document Relations Service
+export {
+  getEdgeBySource,
+  getLocalizationEdgeBySource,
+  listLocalizationEdgesByTarget,
+  listDriftCandidates,
+  createLocalizationEdge,
+  getAuthorityOverrides,
+  getAuthorityOverride,
+  authorityOverridesToJson,
+  setAuthorityOverride,
+  MAX_OVERRIDE_ENTRIES,
+  clearAuthorityOverride,
+} from './relations-service';
+
+export type {
+  DocumentRelation,
+  CreateLocalizationEdgeParams,
+  DriftCandidate,
+  DriftCandidatePage,
+  Authority,
+  AuthorityOverrides,
+  AuthorityOverridesJson,
+} from './relations-service';
+
+// Create-translation Service
+export {
+  createTranslation,
+  listLocaleVariants,
+  InvalidLocaleError,
+  CanonicalVersionNotFoundError,
+  TranslationAlreadyExistsError,
+} from './create-translation-service';
+
+export type {
+  CreateTranslationParams,
+  CreateTranslationResult,
+  LocaleVariantsResult,
+  LocalizationEdgeSummary,
+} from './create-translation-service';
 
 // Branch Service
 export {
@@ -536,6 +578,7 @@ export {
   rollbackMigration,
   processMigration,
   extractTemplateDelta,
+  extractUpstreamDelta,
   getMigrationJob,
   listMigrationConflicts,
   resolveMigrationConflict,
@@ -549,12 +592,42 @@ export type {
   MigrationJob,
   MigrationConflict,
   MigrationDelta,
+  UpstreamDelta,
   PropPatch,
   DocumentWithSnapshot,
   ConflictResult,
 } from './migration-service';
 
 export { buildPageMetadata } from './page-metadata-service';
+
+// Localization Enforcement Service
+export { resolveSlotAuthorityDefaults } from './localization-enforcement-service';
+
+export type { SlotAuthorityDefaults } from './localization-enforcement-service';
+
+// Change Summary Service
+export { buildChangeSummary, isChangeRelationType } from './change-summary-service';
+
+export type {
+  ChangeSummary,
+  ChangeSummaryEntry,
+  ChangeClassification,
+  ChangeRelationType,
+  BuildChangeSummaryParams,
+} from './change-summary-service';
+
+// Branch Drift Service
+export {
+  listBranchDrift,
+  DEFAULT_DRIFT_LIMIT,
+  MAX_DRIFT_LIMIT,
+} from './branch-drift-service';
+
+export type {
+  BranchDriftEntry,
+  BranchDriftPage,
+  ListBranchDriftOptions,
+} from './branch-drift-service';
 
 export type {
   SlotDelta,
