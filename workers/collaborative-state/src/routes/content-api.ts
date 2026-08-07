@@ -208,7 +208,7 @@ async function handleGetContent(
 
   const responseBody: PageContent = {
     documentId: document.id,
-    metadata: buildPageMetadata(site),
+    metadata: buildPageMetadata(site, settings),
     path: document.path,
     data: snapshotData,
     branchId: branch.id,

@@ -522,6 +522,8 @@ export {
 
 export type {
   SiteSettings,
+  SiteSettingsUpdate,
+  EffectiveSiteSettings,
   EnvDefaults,
 } from './site-settings-service';
 

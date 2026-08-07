@@ -104,6 +104,7 @@ export async function resolvePageMetadata({
       title,
       description,
       siteName: seo?.siteName,
+      siteDefaults: { ogImage: seo?.ogImage, ogLocale: seo?.ogLocale },
       meta,
     },
     path,

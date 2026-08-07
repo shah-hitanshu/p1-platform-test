@@ -14,6 +14,7 @@ import {
   updateSiteSettings,
   InvalidSettingsError,
 } from '../services/site-settings-service';
+import type { SiteSettingsUpdate } from '../services/site-settings-service';
 import { getMainBranch } from '../services';
 import { assertPermission, AuthorizationError } from '../auth/authorization';
 
@@ -103,9 +104,11 @@ async function handleUpdateSettings(
   const body: Record<string, unknown> = await request.json();
 
   // Only allow known settings fields
-  const filtered: Record<string, number | null | undefined> = {};
+  const filtered: SiteSettingsUpdate = {};
   if ('cacheTtlMain' in body) filtered.cacheTtlMain = body.cacheTtlMain as number | null;
   if ('cacheTtlBranch' in body) filtered.cacheTtlBranch = body.cacheTtlBranch as number | null;
+  if ('ogImage' in body) filtered.ogImage = body.ogImage as string | null;
+  if ('ogLocale' in body) filtered.ogLocale = body.ogLocale as string | null;
 
   const settings = await updateSiteSettings(siteId, filtered);
 

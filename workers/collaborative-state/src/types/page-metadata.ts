@@ -7,6 +7,10 @@
 export interface SeoMetadata {
   /** Populates the og:site_name tag. Site-wide, delivered per-page. */
   siteName?: string;
+  /** Site-wide og:image fallback for pages that leave the field empty. */
+  ogImage?: string;
+  /** Site-wide og:locale fallback for pages that leave the field empty. */
+  ogLocale?: string;
 }
 
 /**

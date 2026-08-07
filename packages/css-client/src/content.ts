@@ -22,6 +22,10 @@ export interface P1ContentClientConfig {
  */
 export interface SeoMetadata {
   siteName?: string;
+  /** Site-wide og:image fallback for pages that leave the field empty. */
+  ogImage?: string;
+  /** Site-wide og:locale fallback for pages that leave the field empty. */
+  ogLocale?: string;
 }
 
 export interface PageContent {

@@ -240,7 +240,10 @@ describe('Content Delivery API Routes', () => {
         versionCreatedAt: '2026-03-07T18:00:00.000Z',
         etag: mockEtag,
       });
-      expect(services.buildPageMetadata).toHaveBeenCalledWith(mockSite);
+      expect(services.buildPageMetadata).toHaveBeenCalledWith(mockSite, {
+        cacheTtlMain: 120,
+        cacheTtlBranch: 5,
+      });
     });
 
     it('should return 404 when document has saved versions but none are published on main', async () => {
@@ -888,7 +891,10 @@ describe('Content Delivery API Routes', () => {
 
       expect(response.status).toBe(200);
       expect(response.headers.get('ETag')).toBe('"v-version-uuid-001"');
-      expect(services.buildPageMetadata).toHaveBeenCalledWith(null);
+      expect(services.buildPageMetadata).toHaveBeenCalledWith(null, {
+        cacheTtlMain: 120,
+        cacheTtlBranch: 5,
+      });
     });
 
     it('should return 404 when branch not found', async () => {

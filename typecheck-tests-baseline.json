@@ -1,4 +1,6 @@
 {
-  "maxErrors": 768,
-  "packages": ["workers/collaborative-state"]
+  "maxErrors": 762,
+  "packages": [
+    "workers/collaborative-state"
+  ]
 }

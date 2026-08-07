@@ -15,10 +15,34 @@ import { query } from '../db';
 
 /**
  * Per-site settings stored in the JSONB `settings` column.
+ *
+ * The social defaults are site-wide fallbacks for page metadata: a page that
+ * leaves og:image or og:locale empty inherits these at render time.
  */
 export interface SiteSettings {
   cacheTtlMain?: number;
   cacheTtlBranch?: number;
+  ogImage?: string;
+  ogLocale?: string;
+}
+
+/**
+ * Settings with the values that always resolve. The TTLs have hardcoded
+ * defaults; the social defaults are absent until a site sets them.
+ */
+export type EffectiveSiteSettings = SiteSettings & {
+  cacheTtlMain: number;
+  cacheTtlBranch: number;
+};
+
+/**
+ * A settings write. `null` removes the key, falling back to the default.
+ */
+export interface SiteSettingsUpdate {
+  cacheTtlMain?: number | null;
+  cacheTtlBranch?: number | null;
+  ogImage?: string | null;
+  ogLocale?: string | null;
 }
 
 /**
@@ -59,10 +83,14 @@ export class InvalidSettingsError extends Error {
 const DEFAULT_CACHE_TTL_MAIN = 60;
 const DEFAULT_CACHE_TTL_BRANCH = 5;
 
-const DEFAULT_SETTINGS: Required<SiteSettings> = {
+const DEFAULT_SETTINGS = {
   cacheTtlMain: DEFAULT_CACHE_TTL_MAIN,
   cacheTtlBranch: DEFAULT_CACHE_TTL_BRANCH,
 };
+
+/** Long enough for a signed CDN URL. */
+const MAX_OG_IMAGE_LENGTH = 2048;
+const MAX_OG_LOCALE_LENGTH = 35;
 
 // =============================================================================
 // Helper Functions
@@ -80,9 +108,9 @@ function parseSettings(value: SiteSettings | string): SiteSettings {
 }
 
 /**
- * Merges stored settings with defaults, producing a complete SiteSettings object.
+ * Merges stored settings with defaults, producing the effective settings.
  */
-function mergeWithDefaults(settings: SiteSettings): Required<SiteSettings> {
+function mergeWithDefaults(settings: SiteSettings): EffectiveSiteSettings {
   return {
     ...DEFAULT_SETTINGS,
     ...settings,
@@ -103,6 +131,26 @@ function validateTtlField(field: string, value: unknown): void {
   }
 }
 
+/**
+ * Validates a social default. Blank is rejected rather than stored, since a
+ * stored empty string would shadow the absent-means-omit-the-tag case; `null`
+ * is how a caller clears one.
+ */
+function validateTextField(field: string, value: unknown, maxLength: number): void {
+  if (value === null || value === undefined) {
+    return;
+  }
+  if (typeof value !== 'string') {
+    throw new InvalidSettingsError(`${field} must be a string, got ${typeof value}`);
+  }
+  if (value.trim() === '') {
+    throw new InvalidSettingsError(`${field} must not be blank; pass null to clear it`);
+  }
+  if (value.length > maxLength) {
+    throw new InvalidSettingsError(`${field} must be at most ${String(maxLength)} characters`);
+  }
+}
+
 // =============================================================================
 // Service Functions
 // =============================================================================
@@ -115,7 +163,7 @@ function validateTtlField(field: string, value: unknown): void {
  */
 export async function getSiteSettings(
   siteId: string,
-): Promise<Required<SiteSettings> | null> {
+): Promise<EffectiveSiteSettings | null> {
   const result = await query<SettingsRow>(
     'SELECT settings FROM app.sites WHERE id = $1',
     [siteId],
@@ -139,17 +187,21 @@ export async function getSiteSettings(
  */
 export async function updateSiteSettings(
   siteId: string,
-  settings: Partial<Record<keyof SiteSettings, number | null | undefined>>,
-): Promise<Required<SiteSettings> | null> {
+  settings: SiteSettingsUpdate,
+): Promise<EffectiveSiteSettings | null> {
   // Validate fields first
   validateTtlField('cacheTtlMain', settings.cacheTtlMain);
   validateTtlField('cacheTtlBranch', settings.cacheTtlBranch);
+  validateTextField('ogImage', settings.ogImage, MAX_OG_IMAGE_LENGTH);
+  validateTextField('ogLocale', settings.ogLocale, MAX_OG_LOCALE_LENGTH);
 
   // Separate keys to set vs keys to remove (null values)
   const keysToRemove: string[] = [];
-  const keysToSet: Record<string, number> = {};
+  const keysToSet: Record<string, number | string> = {};
 
-  for (const [key, value] of Object.entries(settings)) {
+  const entries = Object.entries(settings) as [string, number | string | null | undefined][];
+  for (const [key, value] of entries) {
+    if (value === undefined) continue;
     if (value === null) {
       keysToRemove.push(key);
     } else {

@@ -17,9 +17,6 @@ describe('Site Settings Service', () => {
       vi.mocked(db.query).mockResolvedValue({
         rows: [{ settings: {} }],
         rowCount: 1,
-        command: 'SELECT',
-        oid: 0,
-        fields: [],
       });
 
       const result = await getSiteSettings('site-123');
@@ -36,9 +33,6 @@ describe('Site Settings Service', () => {
       vi.mocked(db.query).mockResolvedValue({
         rows: [{ settings: { cacheTtlMain: 120 } }],
         rowCount: 1,
-        command: 'SELECT',
-        oid: 0,
-        fields: [],
       });
 
       const result = await getSiteSettings('site-123');
@@ -55,9 +49,6 @@ describe('Site Settings Service', () => {
       vi.mocked(db.query).mockResolvedValue({
         rows: [{ settings: JSON.stringify({ cacheTtlBranch: 10 }) }],
         rowCount: 1,
-        command: 'SELECT',
-        oid: 0,
-        fields: [],
       });
 
       const result = await getSiteSettings('site-123');
@@ -74,9 +65,6 @@ describe('Site Settings Service', () => {
       vi.mocked(db.query).mockResolvedValue({
         rows: [],
         rowCount: 0,
-        command: 'SELECT',
-        oid: 0,
-        fields: [],
       });
 
       const result = await getSiteSettings('nonexistent');
@@ -92,9 +80,6 @@ describe('Site Settings Service', () => {
       vi.mocked(db.query).mockResolvedValue({
         rows: [{ settings: { cacheTtlMain: 120 } }],
         rowCount: 1,
-        command: 'UPDATE',
-        oid: 0,
-        fields: [],
       });
 
       await updateSiteSettings('site-123', { cacheTtlMain: 120 });
@@ -112,9 +97,6 @@ describe('Site Settings Service', () => {
       vi.mocked(db.query).mockResolvedValue({
         rows: [{ settings: { cacheTtlMain: 120, cacheTtlBranch: 10 } }],
         rowCount: 1,
-        command: 'UPDATE',
-        oid: 0,
-        fields: [],
       });
 
       const result = await updateSiteSettings('site-123', { cacheTtlMain: 120, cacheTtlBranch: 10 });
@@ -131,9 +113,6 @@ describe('Site Settings Service', () => {
       vi.mocked(db.query).mockResolvedValue({
         rows: [{ settings: {} }],
         rowCount: 1,
-        command: 'UPDATE',
-        oid: 0,
-        fields: [],
       });
 
       const result = await updateSiteSettings('site-123', { cacheTtlMain: null });
@@ -150,9 +129,6 @@ describe('Site Settings Service', () => {
       vi.mocked(db.query).mockResolvedValue({
         rows: [],
         rowCount: 0,
-        command: 'UPDATE',
-        oid: 0,
-        fields: [],
       });
 
       const result = await updateSiteSettings('nonexistent', { cacheTtlMain: 120 });
@@ -189,6 +165,60 @@ describe('Site Settings Service', () => {
       await expect(
         updateSiteSettings('site-123', { cacheTtlBranch: 2.7 }),
       ).rejects.toThrow(InvalidSettingsError);
+    });
+
+    it('should store the social defaults', async () => {
+      const db = await import('../../src/db');
+      const { updateSiteSettings } = await import('../../src/services/site-settings-service');
+
+      vi.mocked(db.query).mockResolvedValue({
+        rows: [{ settings: { ogImage: 'https://cdn.example/social.png', ogLocale: 'en_US' } }],
+        rowCount: 1,
+      });
+
+      const result = await updateSiteSettings('site-123', {
+        ogImage: 'https://cdn.example/social.png',
+        ogLocale: 'en_US',
+      });
+
+      expect(result).toEqual({
+        cacheTtlMain: 60,
+        cacheTtlBranch: 5,
+        ogImage: 'https://cdn.example/social.png',
+        ogLocale: 'en_US',
+      });
+    });
+
+    it('should reject a non-string ogImage', async () => {
+      const { updateSiteSettings, InvalidSettingsError } = await import('../../src/services/site-settings-service');
+
+      await expect(
+        updateSiteSettings('site-123', { ogImage: 42 as unknown as string }),
+      ).rejects.toThrow(InvalidSettingsError);
+    });
+
+    it('should reject a blank ogLocale rather than storing it', async () => {
+      const { updateSiteSettings, InvalidSettingsError } = await import('../../src/services/site-settings-service');
+
+      await expect(
+        updateSiteSettings('site-123', { ogLocale: '   ' }),
+      ).rejects.toThrow(InvalidSettingsError);
+    });
+
+    it('should clear a social default when null is passed', async () => {
+      const db = await import('../../src/db');
+      const { updateSiteSettings } = await import('../../src/services/site-settings-service');
+
+      vi.mocked(db.query).mockResolvedValue({
+        rows: [{ settings: {} }],
+        rowCount: 1,
+      });
+
+      await updateSiteSettings('site-123', { ogImage: null });
+
+      const [sql, params] = vi.mocked(db.query).mock.calls[0] as [string, unknown[]];
+      expect(sql).toContain('settings - $1::text[]');
+      expect(params[0]).toEqual(['ogImage']);
     });
   });
 

@@ -39,4 +39,34 @@ describe('buildPageMetadata', () => {
     const metadata = buildPageMetadata(null);
     expect(metadata).toEqual({});
   });
+
+  it('should carry the site-level social defaults', () => {
+    const metadata = buildPageMetadata(mockSite, {
+      cacheTtlMain: 60,
+      cacheTtlBranch: 5,
+      ogImage: 'https://cdn.example/social.png',
+      ogLocale: 'en_US',
+    });
+
+    expect(metadata).toEqual({
+      siteName: 'Acme Docs',
+      ogImage: 'https://cdn.example/social.png',
+      ogLocale: 'en_US',
+    });
+  });
+
+  it('should omit social defaults the site has not set', () => {
+    const metadata = buildPageMetadata(mockSite, { cacheTtlMain: 60, cacheTtlBranch: 5 });
+    expect(metadata).toEqual({ siteName: 'Acme Docs' });
+  });
+
+  it('should carry the site defaults even when the site row is missing', () => {
+    const metadata = buildPageMetadata(null, {
+      cacheTtlMain: 60,
+      cacheTtlBranch: 5,
+      ogLocale: 'fr_FR',
+    });
+
+    expect(metadata).toEqual({ ogLocale: 'fr_FR' });
+  });
 });

@@ -18,15 +18,25 @@ export interface PageMetaFields {
 }
 
 /**
+ * Site-wide fallbacks from the backend's SeoMetadata payload, for the fields a
+ * site can sensibly default. They resolve below the page's own values.
+ */
+export interface SiteMetaDefaults {
+  ogImage?: string;
+  ogLocale?: string;
+}
+
+/**
  * Head-side metadata inputs. Title, description, and canonical are derived
- * client-side (root props, request path); only siteName arrives from the
- * backend's SeoMetadata payload.
+ * client-side (root props, request path); siteName and the site defaults arrive
+ * from the backend's SeoMetadata payload.
  */
 export interface PageHeadMetadata {
   title?: string;
   description?: string;
   canonicalUrl?: string;
   siteName?: string;
+  siteDefaults?: SiteMetaDefaults;
   meta?: PageMetaFields;
 }
 
@@ -59,8 +69,8 @@ function compact<T extends object>(value: T): T {
  * would resolve it against a localhost default, and a wrong canonical is worse
  * than none. An empty title is treated as absent.
  *
- * Social tags resolve as: authored value → derived from title/description →
- * omit. The template and site-default tiers are not wired up yet.
+ * Social tags resolve as: authored value → site default (og:image, og:locale) →
+ * derived from title/description → omit. The template tier is not wired up yet.
  */
 export function buildPageMetadata({
   seo,
@@ -76,7 +86,9 @@ export function buildPageMetadata({
   const canonical =
     seo?.canonicalUrl ?? (process.env.NEXT_PUBLIC_SITE_URL ? path : undefined);
 
-  const ogImage = meta.ogImage || undefined;
+  const siteDefaults = seo?.siteDefaults ?? {};
+  const ogImage = meta.ogImage || siteDefaults.ogImage || undefined;
+  const ogLocale = meta.ogLocale || siteDefaults.ogLocale || undefined;
   const twitterTitle = meta.twitterTitle || meta.ogTitle || title;
   const twitterImage = meta.twitterImage || ogImage;
 
@@ -92,7 +104,7 @@ export function buildPageMetadata({
       url: canonical,
       siteName: seo?.siteName ?? process.env.NEXT_PUBLIC_SITE_NAME,
       images: ogImage,
-      locale: meta.ogLocale || undefined,
+      locale: ogLocale,
     }),
 
     // Without a card style X renders nothing, so it is always set when there is
