@@ -385,14 +385,9 @@ export function applyDeltaToSnapshot(
   for (const patch of propMigration.propPatches) {
     if (patch.componentId === '__root__') {
       if (!root?.props || !propMigration.fromRootProps) continue;
-      for (const op of patch.operations) {
-        const propKey = op.path.replace(/^\//, '');
-        const docValue = root.props[propKey];
-        const templateOldValue = propMigration.fromRootProps[propKey];
-        if (op.op === 'replace' && deepEqual(docValue, templateOldValue)) {
-          root.props[propKey] = (op as { value: unknown }).value;
-        }
-      }
+      // Root props merge through the same applier as components, so nested paths
+      // like `/_meta/ogTitle` and `add`/`remove` behave identically on both.
+      mergePropPatch(root.props, propMigration.fromRootProps, patch.operations);
       continue;
     }
 
@@ -506,16 +501,25 @@ function deleteNestedValue(obj: Record<string, unknown>, path: string): void {
   }
 }
 
+/**
+ * Missing parents are created, because adding `/_meta/author` to a page that has
+ * no `_meta` yet is the ordinary case for a newly defined field — every page
+ * predating the field is in that state. An existing non-object parent is left
+ * alone rather than clobbered.
+ */
 function setNestedValue(obj: Record<string, unknown>, path: string, value: unknown): void {
   const segments = path.split('/');
   let current: unknown = obj;
   for (let i = 0; i < segments.length - 1; i++) {
-    if (current === null || current === undefined) return;
+    if (current === null || current === undefined || typeof current !== 'object') return;
     const seg = segments[i];
     if (seg === undefined) return;
-    if (typeof current === 'object') {
-      current = (current as Record<string, unknown>)[seg];
+    const parent = current as Record<string, unknown>;
+    if (parent[seg] === undefined || parent[seg] === null) {
+      const nextSeg = segments[i + 1];
+      parent[seg] = nextSeg !== undefined && /^\d+$/.test(nextSeg) ? [] : {};
     }
+    current = parent[seg];
   }
   if (current !== null && current !== undefined && typeof current === 'object') {
     const lastSeg = segments[segments.length - 1];
@@ -614,13 +618,17 @@ function extractPropPatches(
   }
 
   // Root props
+  // An absent baseline root is an empty one, so a template that gains its first
+  // root prop still emits an `add`. An absent *target* root is treated as no
+  // change rather than an emptied one, so a snapshot without a root object never
+  // strips authored props off the pages.
   const fromRoot = stripEditorPrivateRootProps(
     (fromSnapshot.root as { props?: Record<string, unknown> } | undefined)?.props,
-  );
+  ) ?? {};
   const toRoot = stripEditorPrivateRootProps(
     (toSnapshot.root as { props?: Record<string, unknown> } | undefined)?.props,
   );
-  if (fromRoot && toRoot && !deepEqual(fromRoot, toRoot)) {
+  if (toRoot && !deepEqual(fromRoot, toRoot)) {
     const ops = jsonPatchCompare(fromRoot, toRoot);
     if (ops.length > 0) {
       patches.push({ componentId: '__root__', operations: ops });
@@ -923,11 +931,7 @@ export async function detectDocumentConflicts(
   branchId: string,
   templateDelta: SlotDelta,
   documentSnapshot: Record<string, unknown>,
-  propConflictOptions?: {
-    propPatches: PropPatch[];
-    fromTemplateContent: { type?: string; props?: Record<string, unknown> }[];
-    fromZones?: Record<string, { type?: string; props?: Record<string, unknown> }[]>;
-  },
+  propConflictOptions?: PropMigrationOptions,
 ): Promise<ConflictResult | null> {
   const baselineVersion = await resolveBaselineVersion(documentId, branchId);
   const baselineSnapshot = await reconstructVersionSnapshot(documentId, branchId, baselineVersion);
@@ -962,6 +966,14 @@ export async function detectDocumentConflicts(
       if (typeof id === 'string' && !docMap.has(id)) {
         docMap.set(id, ref.component.props);
       }
+    }
+
+    // walkComponents covers content and zones only, so the root has to be
+    // registered by hand or a diverged root prop is neither applied nor reported.
+    const docRootProps = (documentSnapshot.root as { props?: Record<string, unknown> } | undefined)?.props;
+    if (docRootProps && propConflictOptions.fromRootProps) {
+      fromMap.set('__root__', propConflictOptions.fromRootProps);
+      docMap.set('__root__', docRootProps);
     }
 
     for (const patch of propConflictOptions.propPatches) {
@@ -1174,7 +1186,8 @@ async function buildPropMigrationOptions(
   const fromContent = Array.isArray(fromTemplateSnapshot?.content)
     ? fromTemplateSnapshot.content as { type?: string; props?: Record<string, unknown> }[]
     : [];
-  const fromRootProps = (fromTemplateSnapshot?.root as { props?: Record<string, unknown> } | undefined)?.props;
+  const fromRootProps =
+    (fromTemplateSnapshot?.root as { props?: Record<string, unknown> } | undefined)?.props ?? {};
   type ZoneComponents = { type?: string; props?: Record<string, unknown> }[];
   const fromZones = fromTemplateSnapshot?.zones as Record<string, ZoneComponents> | undefined;
 
@@ -1232,12 +1245,7 @@ export async function processMigration(
 
     for (const doc of docs) {
       const conflict = await detectDocumentConflicts(
-        doc.id, job.branchId, templateDelta, doc.snapshot,
-        propMigration ? {
-          propPatches: propMigration.propPatches,
-          fromTemplateContent: propMigration.fromTemplateContent,
-          fromZones: propMigration.fromZones,
-        } : undefined,
+        doc.id, job.branchId, templateDelta, doc.snapshot, propMigration,
       );
 
       if (conflict?.hasConflict === true) {
@@ -1483,12 +1491,7 @@ export async function previewMigration(
       affectedDocuments++;
 
       const conflict = await detectDocumentConflicts(
-        doc.id, branchId, templateDelta, doc.snapshot,
-        propMigration ? {
-          propPatches: propMigration.propPatches,
-          fromTemplateContent: propMigration.fromTemplateContent,
-          fromZones: propMigration.fromZones,
-        } : undefined,
+        doc.id, branchId, templateDelta, doc.snapshot, propMigration,
       );
 
       const hasStructuralConflict = conflict?.hasConflict ?? false;
@@ -1718,9 +1721,13 @@ async function applyPropConflictResolution(
   const updated = structuredClone(snapshot);
   const refs = walkComponents(updated);
   for (const pc of propConflicts) {
-    const ref = refs.find((r) => r.component.props.id === pc.componentId);
-    if (ref) {
-      applyPropOp(ref.component.props, { op: 'replace', path: pc.propPath, value: pc.templateNewValue });
+    // walkComponents covers content and zones only, so the root is targeted
+    // directly rather than searched for among the components.
+    const target = pc.componentId === '__root__'
+      ? (updated.root as { props?: Record<string, unknown> } | undefined)?.props
+      : refs.find((r) => r.component.props.id === pc.componentId)?.component.props;
+    if (target) {
+      applyPropOp(target, { op: 'replace', path: pc.propPath, value: pc.templateNewValue });
     }
   }
 
@@ -1780,7 +1787,8 @@ export async function resolveMigrationConflict(
         const fromContent = Array.isArray(fromSnapshot?.content)
           ? fromSnapshot.content as { type?: string; props?: Record<string, unknown> }[]
           : [];
-        const fromRootProps = (fromSnapshot?.root as { props?: Record<string, unknown> } | undefined)?.props;
+        const fromRootProps =
+          (fromSnapshot?.root as { props?: Record<string, unknown> } | undefined)?.props ?? {};
         type ZoneComponents = { type?: string; props?: Record<string, unknown> }[];
         const fromZones = fromSnapshot?.zones as Record<string, ZoneComponents> | undefined;
 

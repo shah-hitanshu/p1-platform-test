@@ -35,6 +35,7 @@ let adminUserId: string;
 function templateLayout(
   content: { type: string; props: Record<string, unknown> }[],
   pinMap: Record<string, boolean>,
+  meta?: Record<string, unknown>,
 ): Record<string, unknown> {
   return {
     content,
@@ -46,6 +47,7 @@ function templateLayout(
           deprecated: false,
         },
         _pinMap: pinMap,
+        ...(meta ? { _meta: meta } : {}),
       },
     },
     zones: {},
@@ -230,6 +232,7 @@ describe('Template Migration E2E', () => {
           { type: 'HeroBlock', props: { id: 'hero-1', title: 'My First Post' } },
           { type: 'BodyBlock', props: { id: 'body-1', text: 'Hello world' } },
         ],
+        root: { props: { title: 'My First Post' } },
       },
       templateId,
       templateVersion: 2,
@@ -410,5 +413,64 @@ describe('Template Migration E2E', () => {
     const status = await readJson(response);
     expect(status.staleDocumentCount).toBe(0);
     expect(status.migrationAvailable).toBe(false);
+  });
+
+  it('Step 9: Give the template page-metadata defaults', async () => {
+    const { createDocumentVersion } = await import('../../src/services');
+
+    const version = await createDocumentVersion({
+      documentId: templateId,
+      branchId: mainBranchId,
+      snapshot: templateLayout(
+        [
+          { type: 'HeroBlock', props: { id: 'hero-1', title: 'Hero' } },
+          { type: 'BodyBlock', props: { id: 'body-1', text: '' } },
+          { type: 'CTABlock', props: { id: 'cta-1', label: 'Click me' } },
+        ],
+        { 'hero-1': true },
+        { ogType: 'article', ogTitle: 'Blog default' },
+      ),
+      source: 'edit',
+      createdById: adminUserId,
+      createdByType: 'user',
+    });
+
+    expect(version.versionNumber).toBe(4);
+  });
+
+  it('Step 10: Migrate the metadata defaults onto the page', async () => {
+    const { handleTemplateRequest } = await import('../../src/routes/template-api');
+
+    const request = new Request(
+      `https://api.example.com/api/sites/${testSiteId}/branches/${mainBranchId}/templates/${templateId}/migrate`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fromVersion: 3, toVersion: 4 }),
+      },
+    );
+
+    const response = await handleTemplateRequest(request, {
+      siteId: testSiteId,
+      branchId: mainBranchId,
+      templateId,
+      action: 'migrate',
+      principal: adminPrincipal,
+    });
+
+    expect(response.status).toBe(200);
+    const result: { processedDocuments: number; conflictedDocuments: number } =
+      await response.json();
+    expect(result.processedDocuments).toBe(1);
+    expect(result.conflictedDocuments).toBe(0);
+  });
+
+  it('Step 11: The page carries the nested metadata, not a flattened key', async () => {
+    const { getLatestDocumentVersion } = await import('../../src/services');
+    const latest = await getLatestDocumentVersion(pageDocId, mainBranchId);
+
+    const props = (latest?.snapshot?.root as { props: Record<string, unknown> }).props;
+    expect(props._meta).toEqual({ ogType: 'article', ogTitle: 'Blog default' });
+    expect(Object.keys(props).some((key) => key.includes('/'))).toBe(false);
   });
 });
