@@ -90,3 +90,53 @@ test.describe('P1 Editor - page switching', () => {
     ).toBeVisible({ timeout: 30_000 });
   });
 });
+
+// Regression coverage for PCC-3583: deleting a page goes through
+// client.documents.delete() (css-client's BaseEndpoint), which sends
+// Content-Type: application/json on every request including this bodyless
+// DELETE — the exact shape that a backend body-presence bug rejected in
+// production. This guards the delete flow itself (button -> confirm ->
+// request -> page removed); the request/response contract that caused the
+// regression is covered by the unit tests in
+// workers/collaborative-state/tests/routes/document-api.spec.ts, not here —
+// the mock CSS server this suite runs against doesn't replicate the real
+// backend's Content-Type validation.
+test.describe('P1 Editor - delete page', () => {
+  test('deleting a page removes it from the navigator', async ({ page, request }) => {
+    const slug = 'e2e-delete-me';
+    const created = await request.post(
+      'http://localhost:4444/api/sites/test-site/branches/branch-main/documents',
+      { data: { path: slug } }
+    );
+    expect(created.ok()).toBe(true);
+
+    await openEditor(page);
+    await switchToPage(page, slug);
+
+    const splitButton = page.getByTestId('publish-split-button');
+    await splitButton.getByRole('button', { name: 'More actions' }).click();
+    await page.getByRole('menuitem', { name: 'Delete page' }).click();
+
+    const deleteResponse = page.waitForResponse(
+      (res) => res.url().includes(`/documents/`) && res.request().method() === 'DELETE'
+    );
+    // The confirmation toast's button node gets replaced on every app re-render,
+    // so by the time Playwright's remote click protocol re-resolves and dispatches,
+    // the element it grabbed is already detached. Click it natively in one
+    // synchronous browser-side step instead of round-tripping through Playwright's
+    // multi-step actionability checks.
+    await expect(page.getByRole('button', { name: 'Delete', exact: true })).toBeVisible();
+    await page.evaluate(() => {
+      const button = Array.from(document.querySelectorAll('button')).find(
+        (b) => b.textContent?.trim() === 'Delete'
+      );
+      button?.click();
+    });
+    expect((await deleteResponse).ok()).toBe(true);
+
+    await page.getByTestId('page-selector').click();
+    await expect(
+      page.getByTestId('page-navigator-item').filter({ hasText: slug })
+    ).toHaveCount(0);
+  });
+});

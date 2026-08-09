@@ -1613,6 +1613,122 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         expect(services.deleteDocumentWithRedirect).not.toHaveBeenCalled();
       });
 
+      // Regression tests for PCC-3583: an empty body must be treated as absent
+      // regardless of Content-Type, because real clients commonly attach a
+      // default Content-Type (application/json or text/plain) to requests
+      // that carry no actual payload.
+
+      it('PCC-3583: should return 204 when Content-Type is application/json but body is empty', async () => {
+        const { handleDocumentRoutes } = await import('../../src/routes/document-api');
+        const services = await import('../../src/services');
+
+        vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
+          id: 'branch-1', siteId: 'site-1', name: 'feature',
+          status: 'active', isMain: false,
+          createdById: 'user-1', createdByType: 'user',
+          createdAt: '2026-01-24T10:00:00.000Z', updatedAt: '2026-01-24T10:00:00.000Z',
+        }));
+        vi.mocked(services.deleteDocumentOnBranch).mockResolvedValueOnce(true);
+
+        // Mirrors css-client's BaseEndpoint, which sets Content-Type:
+        // application/json on every request regardless of whether a body is sent.
+        const request = new Request(
+          'https://api.example.com/api/sites/site-1/branches/branch-1/documents/doc-1',
+          { method: 'DELETE', headers: { 'Content-Type': 'application/json' } },
+        );
+
+        const response = await handleDocumentRoutes(request, {
+          siteId: 'site-1', branchId: 'branch-1', documentId: 'doc-1',
+          principal: makePrincipal({ id: 'user-1', type: 'user' }),
+        });
+
+        expect(response.status).toBe(204);
+        expect(services.deleteDocumentOnBranch).toHaveBeenCalled();
+      });
+
+      it('PCC-3583: should return 204 when Content-Type is text/plain and body is an empty string', async () => {
+        const { handleDocumentRoutes } = await import('../../src/routes/document-api');
+        const services = await import('../../src/services');
+
+        vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
+          id: 'branch-1', siteId: 'site-1', name: 'feature',
+          status: 'active', isMain: false,
+          createdById: 'user-1', createdByType: 'user',
+          createdAt: '2026-01-24T10:00:00.000Z', updatedAt: '2026-01-24T10:00:00.000Z',
+        }));
+        vi.mocked(services.deleteDocumentOnBranch).mockResolvedValueOnce(true);
+
+        // Mirrors a client that passes body: '' without an explicit header —
+        // browsers default the Content-Type to text/plain;charset=UTF-8 in that case.
+        const request = new Request(
+          'https://api.example.com/api/sites/site-1/branches/branch-1/documents/doc-1',
+          { method: 'DELETE', headers: { 'Content-Type': 'text/plain;charset=UTF-8' }, body: '' },
+        );
+
+        const response = await handleDocumentRoutes(request, {
+          siteId: 'site-1', branchId: 'branch-1', documentId: 'doc-1',
+          principal: makePrincipal({ id: 'user-1', type: 'user' }),
+        });
+
+        expect(response.status).toBe(204);
+        expect(services.deleteDocumentOnBranch).toHaveBeenCalled();
+      });
+
+      it('PCC-3583: should return 415 when a non-empty body is sent with a non-JSON Content-Type', async () => {
+        const { handleDocumentRoutes } = await import('../../src/routes/document-api');
+        const services = await import('../../src/services');
+
+        vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
+          id: 'branch-1', siteId: 'site-1', name: 'feature',
+          status: 'active', isMain: false,
+          createdById: 'user-1', createdByType: 'user',
+          createdAt: '2026-01-24T10:00:00.000Z', updatedAt: '2026-01-24T10:00:00.000Z',
+        }));
+
+        const request = new Request(
+          'https://api.example.com/api/sites/site-1/branches/branch-1/documents/doc-1',
+          {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'text/plain' },
+            body: JSON.stringify({ redirect: { fromPath: '/a', destination: '/b' } }),
+          },
+        );
+
+        const response = await handleDocumentRoutes(request, {
+          siteId: 'site-1', branchId: 'branch-1', documentId: 'doc-1',
+          principal: makePrincipal({ id: 'user-1', type: 'user' }),
+        });
+
+        expect(response.status).toBe(415);
+        expect(services.deleteDocumentOnBranch).not.toHaveBeenCalled();
+        expect(services.deleteDocumentWithRedirect).not.toHaveBeenCalled();
+      });
+
+      it('PCC-3583: should return 400 when a non-empty body is malformed JSON', async () => {
+        const { handleDocumentRoutes } = await import('../../src/routes/document-api');
+        const services = await import('../../src/services');
+
+        vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
+          id: 'branch-1', siteId: 'site-1', name: 'feature',
+          status: 'active', isMain: false,
+          createdById: 'user-1', createdByType: 'user',
+          createdAt: '2026-01-24T10:00:00.000Z', updatedAt: '2026-01-24T10:00:00.000Z',
+        }));
+
+        const request = new Request(
+          'https://api.example.com/api/sites/site-1/branches/branch-1/documents/doc-1',
+          { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: '{not valid json' },
+        );
+
+        const response = await handleDocumentRoutes(request, {
+          siteId: 'site-1', branchId: 'branch-1', documentId: 'doc-1',
+          principal: makePrincipal({ id: 'user-1', type: 'user' }),
+        });
+
+        expect(response.status).toBe(400);
+        expect(services.deleteDocumentOnBranch).not.toHaveBeenCalled();
+      });
+
       it('should delete document and create redirect atomically', async () => {
         const { handleDocumentRoutes } = await import('../../src/routes/document-api');
         const services = await import('../../src/services');

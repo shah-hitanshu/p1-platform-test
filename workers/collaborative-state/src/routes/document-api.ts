@@ -524,6 +524,14 @@ interface DeleteDocumentBody {
  * Accepts an optional JSON body with a `redirect` field. When present, the
  * document is tombstoned and a redirect is created atomically within a single
  * database transaction. When absent, behavior is unchanged (204 with no body).
+ *
+ * Body presence is determined by reading the actual bytes rather than by
+ * checking `request.body !== null` or trusting the Content-Type header alone:
+ * on Cloudflare's runtime, non-GET/HEAD requests get a non-null body stream
+ * even when zero bytes were sent, and clients commonly attach a default
+ * Content-Type (e.g. `application/json` or `text/plain`) to bodyless
+ * requests. An empty body is therefore always treated as absent, regardless
+ * of Content-Type.
  */
 async function handleDeleteDocumentOnBranch(
   request: Request,
@@ -532,19 +540,19 @@ async function handleDeleteDocumentOnBranch(
   siteId: string,
   principal: AuthenticatedPrincipal,
 ): Promise<Response> {
-  const contentType = request.headers.get('Content-Type');
+  const rawBody = await request.text();
   let body: DeleteDocumentBody | undefined;
 
-  if (contentType?.includes('application/json') === true) {
+  if (rawBody.trim() !== '') {
+    const contentType = request.headers.get('Content-Type');
+    if (contentType?.includes('application/json') !== true) {
+      return errorResponse('Content-Type must be application/json when sending a request body', 415);
+    }
     try {
-      body = await request.json();
+      body = JSON.parse(rawBody) as DeleteDocumentBody;
     } catch {
       return errorResponse('Invalid JSON body', 400);
     }
-  }
-
-  if (body === undefined && request.body !== null) {
-    return errorResponse('Content-Type must be application/json when sending a request body', 415);
   }
 
   if (body?.redirect === undefined) {
