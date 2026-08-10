@@ -10,6 +10,7 @@ import pLimit from 'p-limit';
 import type { ScreenshotQueueMessage } from '../types/queue-messages';
 import { runWithConnection } from '../db';
 import { upsertSiteScreenshot } from '../services/site-screenshot-service';
+import { bypassCookies } from '../utils/interstitial-bypass';
 
 interface ConsumerEnv {
   HYPERDRIVE?: Hyperdrive;
@@ -170,6 +171,7 @@ async function captureScreenshot(
         url,
         viewport: VIEWPORT,
         gotoOptions: { waitUntil: 'networkidle0', timeout: GOTO_TIMEOUT_MS },
+        cookies: bypassCookies(url),
       }),
       signal: controller.signal,
     });

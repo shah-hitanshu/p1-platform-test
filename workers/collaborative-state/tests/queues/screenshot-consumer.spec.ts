@@ -74,6 +74,15 @@ function createEnv(overrides: Partial<MockEnv> = {}): MockEnv {
   };
 }
 
+/** Every Browser Rendering request body sent this test, in call order. */
+function capturedRequestBodies(): { cookies?: unknown; url: string }[] {
+  return vi.mocked(globalThis.fetch).mock.calls.map(([, init]) => {
+    const raw = init?.body;
+    if (typeof raw !== 'string') throw new Error('test setup: expected a JSON string body');
+    return JSON.parse(raw) as { cookies?: unknown; url: string };
+  });
+}
+
 describe('Screenshot consumer', () => {
   let originalFetch: typeof fetch;
 
@@ -221,5 +230,31 @@ describe('Screenshot consumer', () => {
     const upsertCall = vi.mocked(upsertSiteScreenshot).mock.calls[0][0];
     expect(upsertCall.status).toBe('failed');
     expect(upsertCall.error).toContain('network unreachable');
+  });
+
+  it('sends bypass cookies scoped to each captured URL', async () => {
+    const { handleScreenshotQueue } = await import('../../src/queues/screenshot-consumer');
+    const { bypassCookies } = await import('../../src/utils/interstitial-bypass');
+
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(new ArrayBuffer(8), { status: 200 }),
+    ) as typeof fetch;
+
+    const batch = createBatch([
+      createMessage({ siteId: 'site-a', url: 'https://one.pantheonsite.io/', enqueuedAt: 1, reason: 'cron' }),
+      createMessage({ siteId: 'site-b', url: 'https://two.pantheonsite.io/', enqueuedAt: 1, reason: 'cron' }),
+    ]);
+
+    await handleScreenshotQueue(
+      batch as unknown as MessageBatch<ScreenshotQueueMessage>,
+      createEnv() as unknown as Parameters<typeof handleScreenshotQueue>[1],
+    );
+
+    const bodies = capturedRequestBodies();
+    expect(bodies).toHaveLength(2);
+    for (const body of bodies) {
+      expect(body.cookies).toEqual(bypassCookies(body.url));
+    }
+    expect(new Set(bodies.map((b) => b.url)).size).toBe(2);
   });
 });
