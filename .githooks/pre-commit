@@ -1,0 +1,15 @@
+#!/bin/sh
+# Autofixes lint on staged files. See .lintstagedrc.mjs.
+# Skip with `git commit --no-verify`.
+set -e
+
+root=$(git rev-parse --show-toplevel)
+
+# --verbose: lint-staged only shows a task's output when the task exits
+# non-zero, and autofix deliberately exits 0 even when problems remain. Without
+# it, unfixable findings scroll by as a bare green checkmark.
+if [ -x "$root/node_modules/.bin/lint-staged" ]; then
+  exec "$root/node_modules/.bin/lint-staged" --verbose
+fi
+
+echo "pre-commit: lint-staged not installed, skipping autofix (run 'pnpm install')" >&2

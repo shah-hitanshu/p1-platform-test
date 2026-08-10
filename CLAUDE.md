@@ -8,6 +8,7 @@ pnpm + Turborepo monorepo. Root commands: `pnpm build|test|lint|typecheck` (turb
 - Supported env lanes: **local, staging, production**. sbx1/sandbox is retired — don't add it back.
 - Cross-package deps inside the repo are `workspace:*`. Published packages must not depend on `apps/*` or `workers/*`.
 - pnpm `overrides` in pnpm-workspace.yaml carry parity pins from the repo merge (partysocket, @puckeditor/core, scoped ajv/vite). Don't loosen them casually — each has a comment explaining why; upgrades are deliberate tasks.
+- A pre-commit hook (`.githooks/`, wired up by `pnpm install`) runs `eslint --fix` on staged JS/TS files, so expect commits to carry autofixes it made. It never blocks on unfixable problems. Formatting is not covered and Prettier is not enforced — don't mass-reformat. See README "Pre-commit autofix".
 - The CSS worker's typecheck/lint and puck-css tests have known pre-existing failures (counts in docs/migration/STATUS.md). Don't "fix" them incidentally in unrelated PRs.
 
 ## Where things came from

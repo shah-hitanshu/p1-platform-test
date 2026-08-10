@@ -4,6 +4,7 @@
   "private": true,
   "description": "P1 platform monorepo: collaborative state system, Puck CSS SDK, AI chat, and media",
   "scripts": {
+    "prepare": "git config core.hooksPath .githooks || true",
     "dev:starter": "dotenv -e .env.fullstack.local -- turbo run dev --filter=@pantheon-systems/p1-starter",
     "dev:agent": "turbo run dev --filter=@p1/agent",
     "dev:media": "turbo run dev --filter=p1-media-worker",
@@ -34,6 +35,7 @@
     "@vitest/coverage-v8": "^4.1.5",
     "dotenv-cli": "^11.0.0",
     "eslint": "^9.27.0",
+    "lint-staged": "^17.3.0",
     "prettier": "^3.8.1",
     "tsx": "^4.23.1",
     "turbo": "^2.9.14",

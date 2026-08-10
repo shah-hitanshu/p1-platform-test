@@ -66,6 +66,18 @@ All run from the repo root.
 | `make tf-plan ENV=staging` | Terraform plan (needs local GCP creds) |
 | `pnpm --filter <worker-package> exec wrangler <cmd> --env staging` | raw wrangler against a worker |
 
+## Pre-commit autofix
+
+`pnpm install` points `core.hooksPath` at `.githooks/`, so committing runs `eslint --fix` over **staged JS/TS files only**, then restages them. Each file is linted against its own package's `eslint.config.js`. Partially staged files (`git add -p`) keep their unstaged hunks.
+
+The hook only fixes. Problems ESLint can't autofix are printed but don't block the commit — CI stays the hard gate, and several packages carry known pre-existing lint failures a blocking hook would make uncommittable.
+
+The one thing that *does* block is ESLint failing to run at all (exit 2 — broken config, unresolvable plugin), because those files were never examined and would otherwise pass as if they had been.
+
+Formatting is *not* covered: `eslint-config-prettier` disables the stylistic rules, so the hook fixes semantic issues (`prefer-const`, `no-var`, …) and leaves whitespace and quoting alone. Prettier is configured in the repo but enforced nowhere, and wiring it up is a separate decision.
+
+Escape hatches: `git commit --no-verify` for one commit, `git config --unset core.hooksPath` to opt out until the next `pnpm install`.
+
 ## TL;DR — what this repo can and can't do today
 
 | Feature | Supported | How |
