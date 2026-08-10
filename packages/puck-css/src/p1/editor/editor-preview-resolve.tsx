@@ -14,6 +14,7 @@ import {
 } from "react";
 
 import { getBlockPropsById } from "../../data/cross-reference";
+import { sanitizeRichtextDefaults } from "../../editor/utils/sanitizeRichtextDefaults";
 import type { RemoteDatasourceContext } from "../../data/remote-datasources/loader";
 import { useResolvePreview } from "./hooks/api-hooks";
 
@@ -128,7 +129,12 @@ function PreviewMergeBlock({
  * Wraps root + component renders so the canvas can show resolved `pages[…]` / datasource strings
  * while the document JSON in Puck state stays unchanged.
  */
-export function wrapConfigForEditorPreview(base: Config): Config {
+export function wrapConfigForEditorPreview(input: Config): Config {
+  // An empty-string richtext default is fatal at render (see
+  // sanitizeRichtextDefaults), so strip those before anything else sees the
+  // config. Every P1 editor surface routes through here, so consumers get the
+  // guard without an app-side change.
+  const base = sanitizeRichtextDefaults(input);
   const components = { ...(base.components as Record<string, { render?: ComponentType<Record<string, unknown>>; [k: string]: unknown }>) };
   for (const key of Object.keys(components)) {
     const c = components[key];

@@ -314,6 +314,9 @@ export type {
 // Stable Plugin Array Utility
 export { createStablePluginArray } from './editor/utils/createStablePluginArray.js';
 
+// Config hardening
+export { sanitizeRichtextDefaults } from './editor/utils/sanitizeRichtextDefaults.js';
+
 // Feature Configuration
 export { P1_PRESETS, resolveFeatureConfig } from './core/featureConfig.js';
 export type { P1FeatureConfig } from './core/featureConfig.js';
