@@ -162,6 +162,28 @@ Only two environment variables are required:
 
 Everything else has sensible defaults and can be omitted.
 
+**Post-login redirect:**
+
+| Variable | Side | Description |
+|----------|------|-------------|
+| `P1_SITE_URL` | Server | Public URL of *this* environment, used to build the post-login redirect. Read at runtime, so redeploy after changing it. |
+
+Set `P1_SITE_URL` **per environment** — dev, test, live and each multidev need their
+own value matching their own public URL. A single site-level value is inherited by
+every environment, which sends logins to the wrong origin with no error.
+
+It can be omitted once the site's origins are registered in the P1 dashboard. The
+browser then states its own origin and the backend verifies it against that list,
+where one wildcard entry (`https://*-<site>.pantheonsite.io`) covers every
+environment including multidevs created later. Explicit configuration always wins,
+so a site that sets `P1_SITE_URL` behaves exactly as before — to adopt the
+registered-origins path, register the origins, confirm login works, and only then
+remove the variable.
+
+With neither set, the redirect falls back to the incoming request's origin, which
+behind Pantheon's proxy is an internal hostname — the cause of post-login
+redirects to `localhost`.
+
 **Features** — enabled by default, set to `false` to disable:
 
 | Variable | Default | Description |

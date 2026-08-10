@@ -60,6 +60,28 @@ function brokerHeaders(config: BrokerAuthConfig): Record<string, string> {
   return {};
 }
 
+/**
+ * State the browser's origin so the server side can propose it as the post-login
+ * redirect target (PCC-3531). Makes no security decision — CCR validates it.
+ *
+ * Two shapes because the hops differ: proxy mode sends `origin` only, since the
+ * app's route composes the full URL from that plus its own base path; direct mode
+ * has no server hop, so it sends the complete URL. Undefined with no location, so
+ * the request stays as it was before this existed.
+ */
+function buildLoginBody(config: BrokerAuthConfig): Record<string, string> | undefined {
+  const location = typeof window === 'undefined' ? undefined : window.location;
+  const origin = location?.origin;
+  if (!origin) {
+    return undefined;
+  }
+
+  if (config.siteApiToken) {
+    return { proposedRedirectUrl: `${origin}${location?.pathname ?? ''}` };
+  }
+  return { origin };
+}
+
 export function createBrokerAuth(config: BrokerAuthConfig): OAuthSession {
   const storageKey = config.storageKey ?? 'css_broker_token';
   const pollIntervalMs = config.pollIntervalMs ?? 2000;
@@ -77,9 +99,13 @@ export function createBrokerAuth(config: BrokerAuthConfig): OAuthSession {
     provider: 'broker',
 
     async login(): Promise<void> {
+      const loginBody = buildLoginBody(config);
       const loginResponse = await fetch(brokerEndpoint(config, 'login'), {
         method: 'POST',
-        headers: brokerHeaders(config),
+        headers: loginBody
+          ? { ...brokerHeaders(config), 'Content-Type': 'application/json' }
+          : brokerHeaders(config),
+        ...(loginBody ? { body: JSON.stringify(loginBody) } : {}),
       });
 
       if (!loginResponse.ok) {

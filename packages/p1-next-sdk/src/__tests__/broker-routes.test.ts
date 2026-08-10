@@ -46,6 +46,17 @@ function makeLocalDevRequest(host: string): Request {
   });
 }
 
+function makeLoginRequest(body?: unknown): Request {
+  if (body === undefined) {
+    return new Request("http://localhost/p1/auth/login", { method: "POST" });
+  }
+  return new Request("http://localhost/p1/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
 function okResponse(data: unknown) {
   return new Response(JSON.stringify(data), {
     status: 200,
@@ -122,24 +133,6 @@ describe("postBrokerLogin", () => {
 
     const respBody = (resp as { __body: unknown }).__body;
     expect(respBody).toEqual(upstream);
-  });
-
-  it("PCC-3574/PCC-3531: also sends proposedRedirectUrl, matching redirectUrl, for backend validation", async () => {
-    const upstream = { transactionId: "tx-1b", loginUrl: "https://auth0.example.com/login" };
-    fetchSpy.mockResolvedValueOnce(okResponse(upstream));
-
-    await postBrokerLogin(
-      makeRequest(),
-      "key",
-      "https://css.example.com",
-      undefined,
-      "https://myapp.example.com/p1/editor",
-    );
-
-    const [, opts] = fetchSpy.mock.calls[0];
-    const body = JSON.parse(opts.body);
-    expect(body.proposedRedirectUrl).toBe(body.redirectUrl);
-    expect(body.proposedRedirectUrl).toBe("https://myapp.example.com/p1/editor");
   });
 
   it("auto-derives redirectUrl from request origin and app base path", async () => {
@@ -321,6 +314,167 @@ describe("postBrokerLogin", () => {
 
     warnSpy.mockRestore();
     process.env.NODE_ENV = originalEnv;
+  });
+
+  // PCC-3531: request.url resolves to an internal listener on Pantheon, which is
+  // why redirects land on localhost. The browser sends the real origin; CCR decides
+  // whether to trust it. This handler never decides.
+  describe("proposedRedirectUrl (PCC-3531)", () => {
+    function upstreamBody(callIndex = 0): Record<string, unknown> {
+      const [, opts] = fetchSpy.mock.calls[callIndex];
+      return JSON.parse(opts.body);
+    }
+
+    it("proposes the browser origin when no explicit config exists", async () => {
+      fetchSpy.mockResolvedValueOnce(okResponse({ transactionId: "tx", loginUrl: "u" }));
+
+      await postBrokerLogin(
+        makeLoginRequest({ origin: "https://live-mysite.pantheonsite.io" }),
+        "key",
+        "https://css.example.com",
+      );
+
+      const body = upstreamBody();
+      // The status-quo value still goes up, so a rejected proposal changes nothing.
+      expect(body.redirectUrl).toBe("http://localhost/p1");
+      expect(body.proposedRedirectUrl).toBe("https://live-mysite.pantheonsite.io/p1");
+    });
+
+    // The compatibility guarantee, asserted on the wire rather than in intent.
+    it("sends no proposal at all when p1SiteUrl is configured", async () => {
+      fetchSpy.mockResolvedValueOnce(okResponse({ transactionId: "tx", loginUrl: "u" }));
+
+      await postBrokerLogin(
+        makeLoginRequest({ origin: "https://live-mysite.pantheonsite.io" }),
+        "key",
+        "https://css.example.com",
+        "https://www.configured.com",
+      );
+
+      const body = upstreamBody();
+      expect(body.redirectUrl).toBe("https://www.configured.com/p1");
+      expect(body).not.toHaveProperty("proposedRedirectUrl");
+    });
+
+    it("sends no proposal when an explicit redirectUrl is configured", async () => {
+      fetchSpy.mockResolvedValueOnce(okResponse({ transactionId: "tx", loginUrl: "u" }));
+
+      await postBrokerLogin(
+        makeLoginRequest({ origin: "https://live-mysite.pantheonsite.io" }),
+        "key",
+        "https://css.example.com",
+        undefined,
+        "https://explicit.example.com/callback",
+      );
+
+      const body = upstreamBody();
+      expect(body.redirectUrl).toBe("https://explicit.example.com/callback");
+      expect(body).not.toHaveProperty("proposedRedirectUrl");
+    });
+
+    it("behaves exactly as before when the request carries no body", async () => {
+      fetchSpy.mockResolvedValueOnce(okResponse({ transactionId: "tx", loginUrl: "u" }));
+
+      await postBrokerLogin(makeLoginRequest(), "key", "https://css.example.com");
+
+      const body = upstreamBody();
+      expect(body.redirectUrl).toBe("http://localhost/p1");
+      expect(body).not.toHaveProperty("proposedRedirectUrl");
+    });
+
+    it("ignores a body that is not valid JSON", async () => {
+      fetchSpy.mockResolvedValueOnce(okResponse({ transactionId: "tx", loginUrl: "u" }));
+
+      const request = new Request("http://localhost/p1/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "not json",
+      });
+      await postBrokerLogin(request, "key", "https://css.example.com");
+
+      const body = upstreamBody();
+      expect(body.redirectUrl).toBe("http://localhost/p1");
+      expect(body).not.toHaveProperty("proposedRedirectUrl");
+    });
+
+    it.each([
+      ["a non-string origin", 42],
+      ["an origin with a path", "https://evil.example/wp-admin"],
+      ["a relative value", "/p1"],
+      ["an unparseable value", "not-a-url"],
+      ["an empty string", ""],
+    ])("does not forward %s as a proposal", async (_label, origin) => {
+      fetchSpy.mockResolvedValueOnce(okResponse({ transactionId: "tx", loginUrl: "u" }));
+
+      await postBrokerLogin(
+        makeLoginRequest({ origin }),
+        "key",
+        "https://css.example.com",
+      );
+
+      const body = upstreamBody();
+      expect(body).not.toHaveProperty("proposedRedirectUrl");
+    });
+
+    // CCR warns alongside a normal 200 when it declines; swallowing that would
+    // leave the operator with the same mystery localhost redirect.
+    it("logs a warning returned by the broker and passes the body through", async () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const upstream = {
+        transactionId: "tx",
+        loginUrl: "u",
+        warning: "proposed origin https://evil.example is not registered for this site; ignoring it",
+      };
+      fetchSpy.mockResolvedValueOnce(okResponse(upstream));
+
+      const resp = await postBrokerLogin(
+        makeLoginRequest({ origin: "https://evil.example" }),
+        "key",
+        "https://css.example.com",
+      );
+
+      expect(warn).toHaveBeenCalled();
+      const logged = warn.mock.calls.map((c) => c.join(" ")).join(" ");
+      expect(logged).toContain("[P1AuthHandler]");
+      expect(logged).toContain("https://evil.example");
+
+      // Not echoed to the caller: /p1/auth/login is public, so returning it would
+      // let anyone probe whether an origin is registered for a site.
+      const returned = (resp as { __body: Record<string, unknown> }).__body;
+      expect(returned.transactionId).toBe("tx");
+      expect(returned.loginUrl).toBe("u");
+      expect(returned).not.toHaveProperty("warning");
+      warn.mockRestore();
+    });
+
+    it("does not log when the broker returns no warning", async () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      fetchSpy.mockResolvedValueOnce(okResponse({ transactionId: "tx", loginUrl: "u" }));
+
+      await postBrokerLogin(
+        makeLoginRequest({ origin: "https://live-mysite.pantheonsite.io" }),
+        "key",
+        "https://css.example.com",
+      );
+
+      expect(warn).not.toHaveBeenCalled();
+      warn.mockRestore();
+    });
+
+    it("preserves the app base path when composing the proposal", async () => {
+      fetchSpy.mockResolvedValueOnce(okResponse({ transactionId: "tx", loginUrl: "u" }));
+
+      const request = new Request("http://localhost/nested/base/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ origin: "https://live-mysite.pantheonsite.io" }),
+      });
+      await postBrokerLogin(request, "key", "https://css.example.com");
+
+      const body = upstreamBody();
+      expect(body.redirectUrl).toBe("http://localhost/nested/base");
+      expect(body.proposedRedirectUrl).toBe("https://live-mysite.pantheonsite.io/nested/base");
+    });
   });
 });
 

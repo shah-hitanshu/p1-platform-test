@@ -6,4 +6,4 @@ Fix the post-login redirect landing on `localhost:3000` instead of the site's re
 
 `x-forwarded-host` is deliberately not consulted: on Pantheon it is not validated the way `Host` is (an arbitrary `Host` is rejected upstream; an arbitrary `X-Forwarded-Host` is not), so trusting it here would let a request redirect a login to an attacker-controlled origin. (PCC-3574)
 
-Also, from the same review: a malformed `P1_SITE_URL`/`p1SiteUrl` no longer throws and 500s the login route -- it falls back to the request's own origin and logs a warning instead. And `postBrokerLogin` now also sends the derived redirect as `proposedRedirectUrl` alongside the existing `redirectUrl`, so it picks up CCS's origin-allowlist validation (PCC-3531) -- already live on staging, not yet on production -- with no coordinated release needed on either side.
+Also, from the same review: a malformed `P1_SITE_URL`/`p1SiteUrl` no longer throws and 500s the login route -- it falls back to the request's own origin and logs a warning instead.

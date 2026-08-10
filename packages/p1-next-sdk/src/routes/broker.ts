@@ -70,14 +70,22 @@ export async function postBrokerLogin(
   }
 
   const effectiveRedirectUrl = redirectUrl ?? actualOrigin + basePath;
+
+  // PCC-3531: the fallback above yields localhost on a deployed site because this
+  // server cannot see its own public origin. The browser can, so pass its origin
+  // upstream as a proposal for CCR to validate. Skipped when a target is
+  // configured, keeping those requests byte-identical to before.
+  const hasExplicitTarget = redirectUrl !== undefined || siteUrlValue !== undefined;
+  const proposedOrigin = hasExplicitTarget
+    ? undefined
+    : await readProposedOrigin(request);
+
   headers["Content-Type"] = "application/json";
   fetchInit.body = JSON.stringify({
     redirectUrl: effectiveRedirectUrl,
-    // Also sent as a to-be-validated proposal (PCC-3531): CCS checks this
-    // against the site's registered origins -- live on staging, not yet on
-    // production. Where it's not enforced, an absent/unvalidated proposal is
-    // a no-op: the backend falls back to `redirectUrl` above, same value.
-    proposedRedirectUrl: effectiveRedirectUrl,
+    ...(proposedOrigin !== undefined
+      ? { proposedRedirectUrl: proposedOrigin + basePath }
+      : {}),
     ...(prompt !== undefined ? { prompt } : {}),
   });
 
@@ -89,7 +97,41 @@ export async function postBrokerLogin(
     return NextResponse.json(body, { status: response.status });
   }
 
-  return NextResponse.json(body);
+  // Log then strip: this route is public, so echoing the warning would let anyone
+  // probe whether an origin is registered for a site. The browser never reads it.
+  const { warning, ...clientBody } = body as { warning?: unknown } & Record<string, unknown>;
+  if (typeof warning === "string" && warning !== "") {
+    console.warn(`[P1AuthHandler] ${warning}`);
+  }
+
+  return NextResponse.json(clientBody);
+}
+
+/**
+ * Still untrusted after this — CCR validates against the site's registered
+ * origins. Malformed values are dropped rather than forwarded upstream.
+ */
+async function readProposedOrigin(request: Request): Promise<string | undefined> {
+  let parsed: { origin?: unknown };
+  try {
+    parsed = await request.clone().json() as { origin?: unknown };
+  } catch {
+    return undefined;
+  }
+
+  const candidate = parsed.origin;
+  if (typeof candidate !== "string" || candidate === "") {
+    return undefined;
+  }
+
+  try {
+    // Re-deriving the origin and requiring an exact match rejects anything
+    // carrying a path or credentials.
+    const url = new URL(candidate);
+    return url.origin === candidate ? candidate : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 export async function postBrokerRedeem(

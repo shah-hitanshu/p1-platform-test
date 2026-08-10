@@ -995,3 +995,88 @@ describe('createBrokerAuth', () => {
     });
   });
 });
+
+/**
+ * PCC-3531: the browser is the only party that reliably knows the app's public
+ * origin — the server sees an internal listener behind Pantheon's proxy. The client
+ * states it and lets the server side decide; it makes no security decision.
+ */
+describe('createBrokerAuth — origin proposal (PCC-3531)', () => {
+  const savedFetch = global.fetch;
+  let savedLocation: unknown;
+
+  beforeEach(() => {
+    mockFetch.mockReset();
+    global.fetch = mockFetch as unknown as typeof fetch;
+    savedLocation = (global.window as { location?: unknown }).location;
+    (global.window as { location?: unknown }).location = {
+      origin: 'https://live-mysite.pantheonsite.io',
+      pathname: '/p1/editor',
+    };
+  });
+
+  afterEach(() => {
+    global.fetch = savedFetch;
+    (global.window as { location?: unknown }).location = savedLocation;
+  });
+
+  function mockLoginThenRedeem(): void {
+    const jwt = createTestJwt({ sub: 'user-1', exp: Math.floor(Date.now() / 1000) + 3600 });
+    mockFetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ transactionId: 'tx-1', loginUrl: 'https://broker/login/tx-1' }),
+      })
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ token: jwt }) });
+  }
+
+  it('sends the browser origin to the app proxy so the server can compose a proposal', async () => {
+    mockLoginThenRedeem();
+
+    // No siteApiToken — proxy mode, as the editor uses.
+    const session = createBrokerAuth({
+      cssBaseUrl: 'https://css-api.example.com',
+      onLoginUrl: vi.fn(),
+      pollIntervalMs: 10,
+    });
+    await session.login();
+
+    const [url, init] = mockFetch.mock.calls[0];
+    expect(url).toBe('/p1/auth/login');
+    expect(init.headers['Content-Type']).toBe('application/json');
+    expect(JSON.parse(init.body)).toEqual({ origin: 'https://live-mysite.pantheonsite.io' });
+  });
+
+  // No Next.js route in between, so no server hop to compose the redirect.
+  it('sends a full proposed redirect URL when talking to the broker directly', async () => {
+    mockLoginThenRedeem();
+
+    const session = createBrokerAuth({ ...defaultConfig, onLoginUrl: vi.fn(), pollIntervalMs: 10 });
+    await session.login();
+
+    const [url, init] = mockFetch.mock.calls[0];
+    expect(url).toBe('https://css-api.example.com/broker/login');
+    expect(JSON.parse(init.body)).toEqual({
+      proposedRedirectUrl: 'https://live-mysite.pantheonsite.io/p1/editor',
+    });
+    // The site token still authenticates the call.
+    expect(init.headers['Authorization']).toBe('Bearer sat_test-token-123');
+  });
+
+  it('omits the proposal rather than guessing when location is unavailable', async () => {
+    mockLoginThenRedeem();
+    (global.window as { location?: unknown }).location = undefined;
+
+    const session = createBrokerAuth({
+      cssBaseUrl: 'https://css-api.example.com',
+      onLoginUrl: vi.fn(),
+      pollIntervalMs: 10,
+    });
+    await session.login();
+
+    const [, init] = mockFetch.mock.calls[0];
+    if (init.body !== undefined) {
+      expect(JSON.parse(init.body)).not.toHaveProperty('origin');
+    }
+  });
+});
