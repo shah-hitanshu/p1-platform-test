@@ -1,5 +1,63 @@
 # @pantheon-systems/p1-next-sdk
 
+## 0.9.0
+
+### Minor Changes
+
+- cbaa45c: **css-client:** Add Datasource and Query API endpoints. `DatasourcesEndpoint` provides `list`, `get`, and `delete` for content type datasources. `QueriesEndpoint` provides `list`, `get`, `delete`, and `getResults` with pagination support. New types exported: `Datasource`, `Query`, `QueryResults`, `QueryResultItem`, `QueryResultsMeta`, `QuerySortField`, and `QueryResultsParams`.
+
+  **p1-next-sdk:** Integrate CSS query fetchers into server-side rendering. `createCssQueryFetchers` converts CSS queries into `RemoteDatasourceFetcher` instances for SSR data pre-fetching. Query fetchers are wired into the `datasource-context` and `editor-context` routes. Gracefully handles environments where the queries endpoint is unavailable.
+
+  **puck-css:** Add `cssQueriesToDatasourceDefinitions` adapter to transform CSS query metadata into `RemoteDatasourceDefinition` entries for the editor datasource registry. Fix `mergeBlockForPreview` and `mergeRootForPreview` to preserve React element props (e.g. contentEditable spans) instead of overwriting them with resolved string values. Fix template overlay text visibility and caret rendering. Pass auth tokens to editor-context and datasource-context fetch calls when available.
+
+### Patch Changes
+
+- be8bf28: **puck-css:** The right-hand inspector supports **collapsible field sections** and
+  **per-field help text**, both opt-in through Puck's per-field `metadata` so existing
+  configs render unchanged.
+
+  Help text is declared as `metadata: { help, helpWhenEmpty }` and renders beneath the input.
+  `help` always shows; `helpWhenEmpty` shows only while the field has no value, which is how
+  an inheriting field can say where its value is coming from — a field inherits exactly while
+  it's empty. Fields declaring neither key are untouched.
+
+  `PRODUCTION_BASE_URL` is now re-exported from `@pantheon-systems/puck-css/server`, so apps
+  and SDKs can resolve the default backend without reaching into internals.
+
+  **p1-next-sdk:** Broker login no longer fails when no backend URL is configured. An unset
+  `p1BaseUrl` (neither `CSS_BASE_URL` nor `NEXT_PUBLIC_CSS_BASE_URL` set) now falls back to
+  the production backend for both the login and redeem calls, matching what
+  `createNextConfig` and `createNextContentClient` already did. Previously an unset value was
+  passed straight through and the login round-trip failed.
+
+- f815649: Fix the post-login redirect landing on `localhost:3000` instead of the site's real public URL. `postBrokerLogin` derived its redirect origin from the Route Handler's `request.url`, which reflects the Node server's own bind address once a reverse proxy is involved rather than the Host the browser actually requested. It now reads the `host` header instead, with `P1_SITE_URL`/`p1SiteUrl` still taking priority when set.
+
+  `x-forwarded-host` is deliberately not consulted: on Pantheon it is not validated the way `Host` is (an arbitrary `Host` is rejected upstream; an arbitrary `X-Forwarded-Host` is not), so trusting it here would let a request redirect a login to an attacker-controlled origin. (PCC-3574)
+
+  Also, from the same review: a malformed `P1_SITE_URL`/`p1SiteUrl` no longer throws and 500s the login route -- it falls back to the request's own origin and logs a warning instead.
+
+- 78b00e2: Complete the SDK half of removing the per-environment `P1_SITE_URL` requirement (PCC-3531 phase 3). A multidev inherits its site's `P1_SITE_URL` at provisioning time, which points at the wrong environment with no error -- that cannot be fixed operationally, only by no longer depending on it.
+
+  The browser has always known its own origin; it just never said so. `css-client`'s `login()` now states it -- `{ origin }` in proxy mode, `{ proposedRedirectUrl }` in direct mode, since direct mode has no server hop to compose the URL -- and `p1-next-sdk`'s `postBrokerLogin` forwards it upstream as `proposedRedirectUrl`, but only when neither `P1_SITE_URL`/`p1SiteUrl` nor an explicit `redirectUrl` is configured: a configured site's request is byte-identical to before this existed. Neither layer makes a trust decision -- CCR is the only party that authenticates the site, so it is the only place the proposal is checked against the site's registered origins (already live; this was the unused half).
+
+  Also fixes a disclosure this same mechanism created: `/p1/auth/login` is a public, unauthenticated endpoint, and CCR's decline-warning was being returned straight through in the response body, letting a caller probe whether a given origin is registered for a site by watching the warning appear or vanish. The warning is now logged server-side with a `[P1AuthHandler]` prefix and stripped before the response reaches the browser.
+
+- Updated dependencies [0077a4b]
+- Updated dependencies [be8bf28]
+- Updated dependencies [be8bf28]
+- Updated dependencies [d04d399]
+- Updated dependencies [cbaa45c]
+- Updated dependencies [be8bf28]
+- Updated dependencies [be8bf28]
+- Updated dependencies [be8bf28]
+- Updated dependencies [83567a7]
+- Updated dependencies [be8bf28]
+- Updated dependencies [78b00e2]
+- Updated dependencies [7d51095]
+- Updated dependencies [be8bf28]
+  - @pantheon-systems/puck-css@0.9.0
+  - @pantheon-systems/css-client@0.9.0
+
 ## 0.8.0
 
 ### Minor Changes
