@@ -27,6 +27,7 @@ vi.mock('../../auth/index', () => ({ useOptionalP1Auth: () => null }));
 vi.mock('../../p1/editor/hooks', () => ({ useEditorContext: () => ({ data: null }) }));
 vi.mock('@puckeditor/core', () => ({
   createUsePuck: () => () => null,
+  usePuck: () => ({ dispatch: vi.fn() }),
 }));
 vi.mock('react-dom', async () => {
   const actual = await vi.importActual<typeof import('react-dom')>('react-dom');

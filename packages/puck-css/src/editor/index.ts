@@ -43,6 +43,11 @@ export type { PuckSelectionTrackerProps } from './components/PuckSelectionTracke
 export { Toast } from './components/Toast.js';
 export { NotificationContainer } from './components/NotificationContainer.js';
 export { PublishedStatusBadge } from './components/PublishedStatusBadge.js';
+export { PanelHeader } from './components/PanelHeader.js';
+export type { PanelHeaderProps } from './components/PanelHeader.js';
+export { PanelShell } from './components/PanelShell.js';
+export type { PanelShellProps } from './components/PanelShell.js';
+export { OutlinePanel } from './components/OutlinePanel.js';
 export { Connectable } from './components/connectable.js';
 export type { ConnectableItem, ConnectedItem } from './components/connectable.js';
 

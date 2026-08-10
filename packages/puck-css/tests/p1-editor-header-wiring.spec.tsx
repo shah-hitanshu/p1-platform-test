@@ -60,6 +60,7 @@ vi.mock('@puckeditor/core', () => ({
       return selector(state);
     };
   },
+  usePuck: () => ({ dispatch: mockDispatch }),
 }));
 
 // Controllable CSS context state

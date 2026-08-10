@@ -17,7 +17,7 @@ import { ActionBarPinButton } from '../../features/content-type-templates/ui/Act
 import { P1InspectorFields } from '../components/P1InspectorFields.js';
 import { CollapsibleFieldSection } from '../components/CollapsibleFieldSection.js';
 import { CollapsibleFieldContext } from '../components/collapsibleSectionContext.js';
-import { PreviewPanelOverlay } from '../components/PreviewPanelOverlay.js';
+import { OutlinePanel } from '../components/OutlinePanel.js';
 import { fieldGuidanceFieldTypes } from './fieldGuidance.js';
 // NOTE: PuckDataSynchronizer is NOT imported here - it's used in P1Plugin instead
 // because headerActions renders outside Puck's context where usePuck() doesn't work.
@@ -188,17 +188,6 @@ export interface PuckOverrides {
  * ```
  */
 
-function makePreviewOverride(options: P1OverridesOptions) {
-  return ({ children }: { children: React.ReactNode }) => (
-    <PreviewPanelOverlay
-      isViewingHistoricalVersion={options.isViewingHistoricalVersion ?? false}
-      versionNumber={options.viewingVersion?.versionNumber}
-      onExitPreview={options.onReturnToLatest}
-    >
-      {children}
-    </PreviewPanelOverlay>
-  );
-}
 
 /**
  * An object field opting into a collapsible section. `metadata` is Puck's
@@ -338,7 +327,7 @@ export function createP1Overrides(options: P1OverridesOptions): PuckOverrides {
           <>{children}</>
         ),
     },
-    outline: makePreviewOverride(options),
+    outline: () => <OutlinePanel />,
     headerActions: ({ children }) => {
       // Read presence/agent values lazily from options (Proxy) each render
       // so they reflect the latest state from useP1Overrides' optionsRef.

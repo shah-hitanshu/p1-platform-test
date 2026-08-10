@@ -55,7 +55,7 @@ describe('P1Plugin Version History', () => {
     const plugin = createP1Plugin(baseOptions);
     render(plugin.render());
 
-    expect(screen.queryByText('Version History')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('version-history-panel')).not.toBeInTheDocument();
   });
 
   it('should show version section when versions are provided', () => {
@@ -65,7 +65,7 @@ describe('P1Plugin Version History', () => {
     });
     render(plugin.render());
 
-    expect(screen.getByText('Version History')).toBeInTheDocument();
+    expect(screen.getByTestId('version-history-panel')).toBeInTheDocument();
   });
 
   it('should display version numbers', () => {

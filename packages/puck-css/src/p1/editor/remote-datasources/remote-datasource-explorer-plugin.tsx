@@ -12,6 +12,7 @@ import {
   muted,
   sectionLabel,
 } from "../../../data/styles";
+import { PanelShell } from "../../../editor/components/PanelShell.js";
 import { RemoteDatasourceManager } from "./remote-datasource-manager";
 import { TemplatePreviewParamsToolbar } from "./template-preview-params-toolbar";
 
@@ -90,19 +91,17 @@ function RemoteDatasourceExplorerPanel({
   const registry = useMemo(() => remoteDatasourceRegistry, [remoteDatasourceRegistry]);
 
   return (
-    <div
-      style={{
-        padding: 16,
-        display: "flex",
-        flexDirection: "column",
-        gap: 12,
-        fontSize: 13,
-        lineHeight: 1.45,
-        maxHeight: "100%",
-        overflow: "auto",
-      }}
-    >
+    <PanelShell title="Data sources">
       <style>{panelStyles}</style>
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 12,
+          fontSize: 13,
+          lineHeight: 1.45,
+        }}
+      >
       <p style={{ ...muted, margin: 0 }}>
         Data sources enable you to organize your connected artifacts and integrate them into your page.
       </p>
@@ -309,7 +308,8 @@ function RemoteDatasourceExplorerPanel({
           </details>
         );
       })}
-    </div>
+      </div>
+    </PanelShell>
   );
 }
 

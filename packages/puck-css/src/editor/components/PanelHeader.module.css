@@ -1,0 +1,34 @@
+/**
+ * Panel heading
+ *
+ * One heading for every left-rail panel: Blocks, Outline, Version history,
+ * Data sources. Geometry mirrors the prototype's `.panel-header`
+ * (p1-responsive/editor/editor.css:230).
+ */
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--pds-color-border-default, var(--puck-css-border));
+  flex: none;
+}
+
+.title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-family: var(--pds-typography-ff-compact, 'Inter Tight', 'Inter', sans-serif);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--pds-color-foreground-default, var(--puck-css-text));
+}
+
+/* Trailing controls never shrink when the title is long. */
+.header > *:not(.title) {
+  flex-shrink: 0;
+}

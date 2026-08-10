@@ -1,0 +1,111 @@
+/**
+ * Outline panel
+ */
+
+.eyebrow {
+  padding: 4px 6px 10px;
+  font-size: var(--pds-typography-size-xs, 0.75rem);
+  font-weight: var(--pds-typography-fw-semibold, 600);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--pds-color-foreground-default-secondary, var(--puck-css-text-secondary));
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--pds-spacing-xs, 0.5rem);
+  width: 100%;
+  margin-bottom: 2px;
+  padding: var(--pds-spacing-xs, 0.5rem) var(--pds-spacing-s, 0.75rem);
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.row:hover {
+  background: var(--pds-color-interactive-background-hover, var(--puck-css-bg-secondary));
+}
+
+.row:focus-visible {
+  outline: 2px solid var(--pds-color-interactive-focus, var(--puck-css-primary));
+  outline-offset: 2px;
+}
+
+.rowSelected,
+.rowSelected:hover {
+  background: var(--pds-color-interactive-background-selected, var(--puck-css-bg-secondary));
+  border-color: var(--pds-color-border-hover, var(--puck-css-border));
+}
+
+.rowDropTarget {
+  background: var(--pds-color-panel-sunken-background, var(--puck-css-bg-secondary));
+}
+
+.label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-family: var(--pds-typography-ff-compact, 'Inter Tight', 'Inter', sans-serif);
+  font-size: var(--pds-typography-size-s, 0.875rem);
+  font-weight: var(--pds-typography-fw-semibold, 600);
+  color: var(--pds-color-foreground-default, var(--puck-css-text));
+}
+
+.icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--pds-color-foreground-default-secondary, var(--puck-css-text-secondary));
+}
+
+.rowSelected .icon {
+  color: var(--pds-color-interactive-focus, var(--puck-css-primary));
+}
+
+.grip {
+  display: inline-flex;
+  flex-shrink: 0;
+  cursor: grab;
+  color: var(--pds-color-foreground-default-secondary, var(--puck-css-text-secondary));
+}
+
+/* Hidden until the row is hovered or something inside it has focus — so the
+   affordance stays reachable by keyboard, not just by pointer. */
+.delete {
+  display: inline-flex;
+  flex-shrink: 0;
+  padding: 2px;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  cursor: pointer;
+  opacity: 0;
+  color: var(--pds-color-foreground-default-secondary, var(--puck-css-text-secondary));
+}
+
+.row:hover .delete,
+.row:focus-within .delete,
+.delete:focus-visible {
+  opacity: 1;
+}
+
+.delete:hover {
+  color: var(--pds-color-status-critical-foreground);
+}
+
+.delete:focus-visible {
+  outline: 2px solid var(--pds-color-interactive-focus, var(--puck-css-primary));
+  outline-offset: 1px;
+}
+
+.empty {
+  padding: 40px var(--pds-spacing-l, 1.5rem);
+  text-align: center;
+  font-size: var(--pds-typography-size-s, 0.875rem);
+  color: var(--pds-color-foreground-default-secondary, var(--puck-css-text-secondary));
+}

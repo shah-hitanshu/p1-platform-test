@@ -6,7 +6,7 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Toaster, IconButton, SegmentedButton } from '@pantheon-systems/pds-toolkit-react';
+import { Toaster, SegmentedButton } from '@pantheon-systems/pds-toolkit-react';
 import { createPortal } from 'react-dom';
 import { createUsePuck } from '@puckeditor/core';
 import type {
@@ -18,6 +18,7 @@ import type {
   ActorPresence,
   ActorState,
 } from '@pantheon-systems/css-client';
+import { PanelShell } from '../components/PanelShell.js';
 import { VersionTimeline } from '../components/VersionTimeline.js';
 import { VersionBannerOverride } from '../components/VersionBannerOverride.js';
 import { isMilestone } from '../../versioning/utils/versionKind.js';
@@ -159,8 +160,6 @@ interface P1PluginPanelProps {
   showFocusRegions?: boolean;
   /** Regions being edited by agents */
   agentEditingRegions?: string[];
-  /** Collapses the plugin rail. */
-  onCollapse?: () => void;
   /** Called whenever the displayed (filtered) version list changes. Used to sync filter state to the banner steppers. */
   onFilteredVersionsChange?: (versions: DocumentVersion[]) => void;
 }
@@ -205,7 +204,6 @@ function P1PluginPanel({
   // Focus regions are shown within AgentActivityBanner
   showFocusRegions: _showFocusRegions = false,
   agentEditingRegions: _agentEditingRegions = [],
-  onCollapse,
   onFilteredVersionsChange,
 }: P1PluginPanelProps): React.ReactElement {
   // Suppress unused variable warnings - these are passed through for future use
@@ -238,61 +236,47 @@ function P1PluginPanel({
   }, [displayedVersions, onFilteredVersionsChange]);
 
   return (
-    <div className="css-plugin-panel">
-      {/* Panel-level header: bold title + collapse button */}
-      <div className="css-plugin-panel-header">
-        <span className="css-plugin-panel-title">Version history</span>
-        <IconButton
-          ariaLabel="Collapse panel"
-          iconName="anglesLeft"
-          size="s"
-          hasTooltip={true}
-          hasBorder={false}
-          onClick={onCollapse}
-        />
-      </div>
-
-      {/* Version History */}
+    <>
+      {/* Version History — only rendered when there is version content to show */}
       {(versions.length > 0 || versionsLoading || onVersionSelect) && (
-        <div className="css-plugin-section">
-          <div className="css-plugin-section-header">
-            <label className="css-plugin-label">Version History</label>
-          </div>
+        <PanelShell title="Version History" testId="version-history-panel">
+          <div className="css-plugin-section">
 
-          {/* All versions / Milestones filter */}
-          {versions.length > 0 && (
-            <div className="css-plugin-version-filter">
-              <SegmentedButton
-                id="version-history-filter"
-                label="Version filter"
-                value={filter}
-                onChange={(val) => setFilter(val as 'all' | 'milestones')}
-                options={[
-                  { label: 'All versions', value: 'all' },
-                  { label: 'Milestones', value: 'milestones' },
-                ]}
+            {/* All versions / Milestones filter */}
+            {versions.length > 0 && (
+              <div className="css-plugin-version-filter">
+                <SegmentedButton
+                  id="version-history-filter"
+                  label="Version filter"
+                  value={filter}
+                  onChange={(val) => setFilter(val as 'all' | 'milestones')}
+                  options={[
+                    { label: 'All versions', value: 'all' },
+                    { label: 'Milestones', value: 'milestones' },
+                  ]}
+                />
+              </div>
+            )}
+
+            {versionsLoading ? (
+              <div className="css-plugin-loading">Loading versions...</div>
+            ) : versions.length === 0 ? (
+              <div className="css-plugin-empty">No versions yet</div>
+            ) : (
+              <VersionTimeline
+                dayGroups={dayGroups}
+                allVersions={versions}
+                selectedVersionId={selectedVersionId}
+                currentVersionId={currentVersionId}
+                isPreviewing={isPreviewing}
+                unpublishedCount={unpublishedCount}
+                currentUser={currentUser}
+                resolveAuthorName={resolveAuthorName}
+                onVersionSelect={onVersionSelect}
               />
-            </div>
-          )}
-
-          {versionsLoading ? (
-            <div className="css-plugin-loading">Loading versions...</div>
-          ) : versions.length === 0 ? (
-            <div className="css-plugin-empty">No versions yet</div>
-          ) : (
-            <VersionTimeline
-              dayGroups={dayGroups}
-              allVersions={versions}
-              selectedVersionId={selectedVersionId}
-              currentVersionId={currentVersionId}
-              isPreviewing={isPreviewing}
-              unpublishedCount={unpublishedCount}
-              currentUser={currentUser}
-              resolveAuthorName={resolveAuthorName}
-              onVersionSelect={onVersionSelect}
-            />
-          )}
-        </div>
+            )}
+          </div>
+        </PanelShell>
       )}
 
       {/* Presence Section */}
@@ -355,7 +339,7 @@ function P1PluginPanel({
           </button>
         </div>
       )}
-    </div>
+    </>
   );
 }
 
@@ -653,12 +637,10 @@ function P1SubheaderBridgeInner({
   options,
   p1Context,
   showMergeReviewRef,
-  collapsePluginRailRef,
 }: {
   options: P1PluginOptions;
   p1Context: ReturnType<typeof useP1Puck>;
   showMergeReviewRef: { current: () => void };
-  collapsePluginRailRef: { current: () => void };
 }): React.ReactElement | null {
   const { currentDocument, currentBranch, presence, publishDocument, siteId } = p1Context;
 
@@ -706,14 +688,6 @@ function P1SubheaderBridgeInner({
       localStorage.setItem(pluginRailStorageKey, String(pluginRailVisible));
     } catch { /* ignore quota/private-browsing errors */ }
   }, [pluginRailVisible, pluginRailStorageKey]);
-
-  // Expose collapse fn to the panel header button via ref.
-  // Dispatches leftSideBarVisible:false — same action as the subheader "Toggle left panel" button.
-  React.useEffect(() => {
-    collapsePluginRailRef.current = () => {
-      puckDispatch?.({ type: 'setUi', ui: { leftSideBarVisible: false } });
-    };
-  }, [collapsePluginRailRef, puckDispatch]);
 
   // Persist sidebar visibility to localStorage on every user toggle.
   // Initial state is set via the `ui` prop passed to <Puck> (see useP1Editor.ts),
@@ -854,16 +828,14 @@ function P1SubheaderBridgeInner({
 function P1SubheaderBridge({
   options,
   showMergeReviewRef,
-  collapsePluginRailRef,
 }: {
   options: P1PluginOptions;
   showMergeReviewRef: { current: () => void };
-  collapsePluginRailRef: { current: () => void };
 }): React.ReactElement | null {
   const p1Context = useP1PuckOptional();
   if (!p1Context) return null;
 
-  return <P1SubheaderBridgeInner options={options} p1Context={p1Context} showMergeReviewRef={showMergeReviewRef} collapsePluginRailRef={collapsePluginRailRef} />;
+  return <P1SubheaderBridgeInner options={options} p1Context={p1Context} showMergeReviewRef={showMergeReviewRef} />;
 }
 
 // Minimal pub-sub store so the preview override re-renders when the user
@@ -936,9 +908,6 @@ export function createP1Plugin(options: P1PluginOptions): PuckPlugin {
   // Shared ref for merge review toggle - allows P1SubheaderBridgeInner to trigger
   // the merge review overlay that's owned by HeaderOverride
   const showMergeReviewRef = { current: () => {} };
-
-  // Shared ref for collapsing the plugin rail from the panel header button
-  const collapsePluginRailRef = { current: () => {} };
 
   // Tracks the currently-filtered version list from P1PluginPanel so the
   // banner steppers navigate within the active filter rather than all versions.
@@ -1124,7 +1093,7 @@ export function createP1Plugin(options: P1PluginOptions): PuckPlugin {
         )}
         {/* Nav tooltips are handled by PuckEditorTheme.css — labels are repositioned as hover tooltips */}
         {/* Subheader bridge — portals P1EditorSubheader into the slot placed by header override */}
-        <P1SubheaderBridge options={stableOptions} showMergeReviewRef={showMergeReviewRef} collapsePluginRailRef={collapsePluginRailRef} />
+        <P1SubheaderBridge options={stableOptions} showMergeReviewRef={showMergeReviewRef} />
         <P1PluginPanel
           versions={options.versions}
           versionsLoading={options.versionsLoading}
@@ -1143,7 +1112,6 @@ export function createP1Plugin(options: P1PluginOptions): PuckPlugin {
           onStopAgent={options.onStopAgent}
           showFocusRegions={options.showFocusRegions}
           agentEditingRegions={options.agentEditingRegions}
-          onCollapse={() => collapsePluginRailRef.current()}
           onFilteredVersionsChange={handleFilteredVersionsChange}
         />
       </>

@@ -37,6 +37,12 @@
   background: var(--pds-color-bg-default, oklch(1 0 0)) !important;
 }
 
+/* PanelShell must fill the Puck container flush. Zero out Puck's built-in 
+   16px so it doesn't stack on PanelShell's own 12px body padding. */
+[class*='_BlocksPlugin_'],[class*='_OutlinePlugin_'] {
+  padding: 0 !important;
+}
+
 /* Override all nested backgrounds in right sidebar */
 [class*='_Sidebar--right_'] [class*='_SidebarSection'],
 [class*='_Sidebar--right_'] [class*='_Breadcrumbs_'],
@@ -1087,36 +1093,9 @@
    CSS Plugin Panel
    ============================================ */
 .css-plugin-panel {
-  padding: 12px;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-family: var(--pds-typography-ff-default, 'Inter', sans-serif);
   font-size: 13px;
   color: var(--puck-css-text);
-}
-
-/* Panel-level header: bold title + collapse button */
-.css-plugin-panel-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
-  /* Reach panel edges, overriding parent 12px padding */
-  margin: -12px -12px 12px -12px;
-  border-bottom: 1px solid var(--pds-color-border-default, #ebebeb);
-  flex: none;
-}
-
-.css-plugin-panel-title {
-  font-size: 14px;
-  font-weight: 700;
-  font-family: var(--pds-typography-ff-compact, 'Inter Tight', 'Inter', sans-serif);
-  color: var(--pds-color-fg-default, #171717);
-  line-height: 1;
-}
-
-/* Push the PDS IconButton to the trailing edge of the header */
-.css-plugin-panel-header > *:last-child {
-  margin-left: auto;
-  flex-shrink: 0;
 }
 
 .css-plugin-section {
@@ -3322,39 +3301,6 @@ svg.lucide-layers {
 /* ============================================
    Live Thumbnail Blocks Drawer
    ============================================ */
-
-.p1-blocks-drawer {
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  height: 100%;
-  overflow: hidden;
-  box-sizing: border-box;
-}
-
-.css-plugin-panel-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--pds-color-border-default, var(--puck-css-border));
-  flex: none;
-}
-
-.css-plugin-panel-title {
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--pds-color-text-primary, var(--puck-css-text));
-  flex: 1;
-  line-height: 1.2;
-}
-
-.p1-blocks-drawer__scroll {
-  flex: 1;
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding: 8px 12px 16px;
-}
 
 .p1-blocks-drawer__toolbar {
   display: flex;

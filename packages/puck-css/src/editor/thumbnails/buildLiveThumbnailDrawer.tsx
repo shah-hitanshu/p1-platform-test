@@ -16,8 +16,9 @@
  */
 
 import React from 'react';
-import { Drawer, usePuck } from '@puckeditor/core';
-import { Icon, IconButton } from '@pantheon-systems/pds-toolkit-react';
+import { Drawer } from '@puckeditor/core';
+import { Icon } from '@pantheon-systems/pds-toolkit-react';
+import { PanelShell } from '../components/PanelShell.js';
 import type { PuckOverrides } from '../plugin/index.js';
 import { useP1Puck } from '../../core/P1PuckContext.js';
 import { PreviewPanelOverlay } from '../components/PreviewPanelOverlay.js';
@@ -66,23 +67,6 @@ function computeSections(config: RenderConfig): Section[] {
   return sections;
 }
 
-function DrawerCloseButton({ onClose }: { onClose?: () => void }) {
-  const { dispatch } = usePuck();
-  return (
-    <IconButton
-      ariaLabel="Collapse panel"
-      iconName="anglesLeft"
-      size="s"
-      hasTooltip={true}
-      hasBorder={false}
-      onClick={() => {
-        dispatch({ type: 'setUi', ui: { leftSideBarVisible: false } });
-        onClose?.();
-      }}
-    />
-  );
-}
-
 // ─── Drawer ─────────────────────────────────────────────────────────────────
 
 function LiveThumbnailDrawer({
@@ -121,15 +105,7 @@ function LiveThumbnailDrawer({
       versionNumber={viewingVersion?.versionNumber ?? undefined}
       onExitPreview={returnToLatest}
     >
-    <div className="p1-blocks-drawer">
-      {/* Panel header: "Blocks" title + collapse button */}
-      <div className="css-plugin-panel-header">
-        <span className="css-plugin-panel-title">Blocks</span>
-        <DrawerCloseButton onClose={options.onClose} />
-      </div>
-
-      {/* Scrollable content area */}
-      <div className="p1-blocks-drawer__scroll">
+    <PanelShell title="Blocks" onCollapse={options.onClose}>
         {/* Toolbar: category count + expand/collapse all */}
         {sections.length > 0 && (
           <div className="p1-blocks-drawer__toolbar">
@@ -185,8 +161,7 @@ function LiveThumbnailDrawer({
             </section>
           );
         })}
-      </div>
-    </div>
+    </PanelShell>
     </PreviewPanelOverlay>
   );
 }
