@@ -278,10 +278,10 @@ describe('WorkstreamSwitcher — New workstream', () => {
     expect(screen.getByTestId('workstream-new')).toBeDefined();
   });
 
-  it('renders "New workstream" button even without onCreateBranch', () => {
+  it('hides the "New workstream" button when onCreateBranch is not supplied', () => {
     render(<WorkstreamSwitcher {...defaultProps} />);
     fireEvent.click(screen.getByTestId('workstream-trigger'));
-    expect(screen.getByTestId('workstream-new')).toBeDefined();
+    expect(screen.queryByTestId('workstream-new')).toBeNull();
   });
 
   it('clicking "New workstream" shows the create form', () => {

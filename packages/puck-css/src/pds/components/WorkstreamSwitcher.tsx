@@ -4,7 +4,9 @@
  * Displays the current branch in a trigger button and opens a dropdown that
  * lists all branches, supports search filtering, exposes a "Compare with
  * Live" action when the viewer is not on the main branch, and provides an
- * inline "New workstream" create form in the footer.
+ * inline "New workstream" create form in the footer when `onCreateBranch` is
+ * supplied. No consumer supplies it today, so the footer is hidden in the
+ * shipping editor.
  *
  * The dropdown uses createPortal + position:fixed so it escapes any
  * overflow:hidden or z-index constraints on ancestor elements (e.g. Puck's
@@ -24,7 +26,10 @@ export interface WorkstreamSwitcherProps {
   onCompareWithLive: () => void;
   /** Set to true when the parent already renders its own Compare button */
   hideCompareButton?: boolean;
-  /** Called when the user creates a new workstream branch. */
+  /**
+   * Called when the user creates a new workstream branch. When omitted, the
+   * "New workstream" footer is not rendered at all.
+   */
   onCreateBranch?: (name: string) => Promise<void>;
 }
 
@@ -254,52 +259,54 @@ export function WorkstreamSwitcher({
               ))}
             </ul>
 
-            <div className={styles.footer}>
-              {isCreating ? (
-                <form
-                  data-testid="workstream-create-form"
-                  className={styles.createForm}
-                  onSubmit={handleCreate}
-                >
-                  <input
-                    autoFocus
-                    type="text"
-                    data-testid="workstream-create-input"
-                    className={styles.createInput}
-                    placeholder="workstream-name"
-                    value={newName}
-                    onChange={(e) => setNewName(e.target.value)}
-                  />
-                  <div className={styles.createActions}>
-                    <button type="submit" className={styles.createSubmit}>
-                      Create
-                    </button>
-                    <button
-                      type="button"
-                      data-testid="workstream-create-cancel"
-                      className={styles.createCancel}
-                      onClick={() => { setIsCreating(false); setNewName(''); setCreateError(null); }}
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                  {createError && (
-                    <div data-testid="workstream-create-error" className={styles.createError}>
-                      {createError}
+            {onCreateBranch && (
+              <div className={styles.footer}>
+                {isCreating ? (
+                  <form
+                    data-testid="workstream-create-form"
+                    className={styles.createForm}
+                    onSubmit={handleCreate}
+                  >
+                    <input
+                      autoFocus
+                      type="text"
+                      data-testid="workstream-create-input"
+                      className={styles.createInput}
+                      placeholder="workstream-name"
+                      value={newName}
+                      onChange={(e) => setNewName(e.target.value)}
+                    />
+                    <div className={styles.createActions}>
+                      <button type="submit" className={styles.createSubmit}>
+                        Create
+                      </button>
+                      <button
+                        type="button"
+                        data-testid="workstream-create-cancel"
+                        className={styles.createCancel}
+                        onClick={() => { setIsCreating(false); setNewName(''); setCreateError(null); }}
+                      >
+                        Cancel
+                      </button>
                     </div>
-                  )}
-                </form>
-              ) : (
-                <button
-                  type="button"
-                  data-testid="workstream-new"
-                  className={styles.newButton}
-                  onClick={onCreateBranch ? () => setIsCreating(true) : undefined}
-                >
-                  + New workstream
-                </button>
-              )}
-            </div>
+                    {createError && (
+                      <div data-testid="workstream-create-error" className={styles.createError}>
+                        {createError}
+                      </div>
+                    )}
+                  </form>
+                ) : (
+                  <button
+                    type="button"
+                    data-testid="workstream-new"
+                    className={styles.newButton}
+                    onClick={() => setIsCreating(true)}
+                  >
+                    + New workstream
+                  </button>
+                )}
+              </div>
+            )}
           </div>,
           document.body,
         )}

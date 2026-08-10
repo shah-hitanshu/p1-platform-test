@@ -111,6 +111,15 @@ describe('P1EditorSubheader', () => {
     expect(subheader.tagName).toBe('DIV');
   });
 
+  it('does not offer "New workstream" when no onCreateBranch is supplied', () => {
+    render(<P1EditorSubheader {...defaultProps} />);
+
+    fireEvent.click(screen.getByTestId('workstream-trigger'));
+
+    expect(screen.getByTestId('workstream-dropdown')).toBeDefined();
+    expect(screen.queryByTestId('workstream-new')).toBeNull();
+  });
+
   it('renders panel toggle buttons', () => {
     render(<P1EditorSubheader {...defaultProps} />);
 
