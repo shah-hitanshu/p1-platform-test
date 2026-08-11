@@ -22,6 +22,7 @@ import { useP1Overrides } from './useP1Overrides.js';
 import { useComponentRegistry } from './useComponentRegistry.js';
 import { buildThumbnailOverride } from './utils/buildThumbnailOverride.js';
 import { restoreDocumentVersion } from './utils/restoreDocumentVersion.js';
+import { initialPanelUi } from './useResponsivePanels.js';
 import {
   createDocumentSyncStore,
   createDocumentSyncPlugin,
@@ -587,22 +588,11 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
   // clean remount with an empty cache when roles switch.
   const puckKey = `css-${css.userRole}`;
 
-  // Read persisted sidebar visibility from localStorage each time the Puck instance
-  // changes (puckKey changes on role switch). The value is passed as the
-  // initial `ui` prop so Puck never initializes with wrong defaults.
-  const initialSidebarUi = useMemo<Partial<UiState>>(() => {
-    try {
-      const stored = localStorage.getItem(`p1-sidebar-${css.siteId}`);
-      if (!stored) return {};
-      const parsed = JSON.parse(stored) as { left?: boolean; right?: boolean };
-      const ui: Partial<UiState> = {};
-      if (parsed.left !== undefined) ui.leftSideBarVisible = parsed.left;
-      if (parsed.right !== undefined) ui.rightSideBarVisible = parsed.right;
-      return ui;
-    } catch {
-      return {};
-    }
-  }, [puckKey, css.siteId]);
+  // Sidebar visibility for the initial mount. puckKey is the dependency on
+  // purpose even though it is not read here: a new key remounts Puck, which
+  // re-reads this as its initial `ui`, so the budget must be applied again.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const initialSidebarUi = useMemo<Partial<UiState>>(() => initialPanelUi(), [puckKey]);
 
   // Focus highlighting is handled via direct DOM manipulation in
   // PresenceFocusBridge (P1App.tsx) — no config wrapping needed.
@@ -672,7 +662,7 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
       onChange,
       plugins,
       overrides: mergedOverrides,
-      ...(Object.keys(initialSidebarUi).length > 0 ? { ui: initialSidebarUi } : {}),
+      ui: initialSidebarUi,
       permissions,
       onAction: css.handleAction,
     }),

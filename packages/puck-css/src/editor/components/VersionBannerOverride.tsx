@@ -1,8 +1,43 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Icon } from '@pantheon-systems/pds-toolkit-react';
 import type { DocumentVersion } from '@pantheon-systems/css-client';
 import { useP1Puck } from '../../core/P1PuckContext.js';
 import { HistoricalVersionBanner } from '../../versioning/components/HistoricalVersionBanner.js';
+import bannerStyles from '../../versioning/components/HistoricalVersionBanner.module.css';
+
+/**
+ * The slot is a sibling of the frame inside the canvas grid area, which is
+ * outside the transform, so the banner sizes to the real canvas width.
+ * Returns null when Puck's DOM does not match, letting the caller fall back to
+ * rendering in place rather than dropping the banner entirely.
+ */
+function useCanvasChromeSlot(active: boolean, anchor: React.RefObject<HTMLElement | null>): HTMLElement | null {
+  const [slot, setSlot] = useState<HTMLElement | null>(null);
+
+  useLayoutEffect(() => {
+    if (!active) {
+      setSlot(null);
+      return;
+    }
+    const root = anchor.current?.closest('#puck-canvas-root');
+    const frame = root?.parentElement; // PuckCanvas-inner
+    const canvas = frame?.parentElement; // PuckCanvas — the `editor` grid area
+    if (!frame || !canvas) return;
+
+    const el = document.createElement('div');
+    el.className = bannerStyles.slot ?? '';
+    canvas.insertBefore(el, frame);
+    setSlot(el);
+
+    return () => {
+      el.remove();
+      setSlot(null);
+    };
+  }, [active, anchor]);
+
+  return slot;
+}
 
 export interface VersionBannerOverrideProps {
   children: React.ReactNode;
@@ -49,21 +84,26 @@ export function VersionBannerOverride({
     [stepList, currentIdx, hasNext, onVersionSelect],
   );
 
+  const anchorRef = useRef<HTMLDivElement>(null);
+  const slot = useCanvasChromeSlot(isViewingOld, anchorRef);
+
+  const banner = isViewingOld ? (
+    <HistoricalVersionBanner
+      version={viewingVersion}
+      onReturnToLatest={() => { if (versions[0]) onVersionSelect?.(versions[0]); }}
+      onRestoreVersion={onRestoreVersion}
+      canRevert={canRevert}
+      isReturning={isReturning}
+      onPrevious={handlePrevious}
+      onNext={handleNext}
+      hasPrevious={hasPrevious}
+      hasNext={hasNext}
+    />
+  ) : null;
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      {isViewingOld && (
-        <HistoricalVersionBanner
-          version={viewingVersion}
-          onReturnToLatest={() => { if (versions[0]) onVersionSelect?.(versions[0]); }}
-          onRestoreVersion={onRestoreVersion}
-          canRevert={canRevert}
-          isReturning={isReturning}
-          onPrevious={handlePrevious}
-          onNext={handleNext}
-          hasPrevious={hasPrevious}
-          hasNext={hasNext}
-        />
-      )}
+    <div ref={anchorRef} style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      {banner && (slot ? createPortal(banner, slot) : banner)}
       {/* Always render children so Puck's iframe loads and the canvas reaches
           the --ready state (making _PuckCanvas-root visible). Without this,
           the root stays at opacity:0 and our overlay would be invisible too,

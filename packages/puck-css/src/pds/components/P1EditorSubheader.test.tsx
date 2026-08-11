@@ -251,52 +251,20 @@ describe('P1EditorSubheader', () => {
   });
 
   // ---------------------------------------------------------------------------
-  // Plugin Rail Toggle
+  // Plugin rail — permanent, no toggle
   // ---------------------------------------------------------------------------
 
-  it('renders plugin rail toggle button in panel toggles', () => {
+  it('renders no plugin rail toggle', () => {
     render(<P1EditorSubheader {...defaultProps} />);
 
-    const pluginRailToggle = screen.getByLabelText('Toggle plugin rail');
-    expect(pluginRailToggle).toBeDefined();
+    expect(screen.queryByLabelText('Toggle plugin rail')).toBeNull();
   });
 
-  it('renders plugin rail toggle when pluginRailVisible is false', () => {
-    render(<P1EditorSubheader {...defaultProps} pluginRailVisible={false} />);
-
-    const pluginRailToggle = screen.getByLabelText('Toggle plugin rail');
-    expect(pluginRailToggle).toBeDefined();
-  });
-
-  it('renders plugin rail toggle when pluginRailVisible is true', () => {
-    render(<P1EditorSubheader {...defaultProps} pluginRailVisible={true} />);
-
-    const pluginRailToggle = screen.getByLabelText('Toggle plugin rail');
-    expect(pluginRailToggle).toBeDefined();
-  });
-
-  it('clicking plugin rail toggle calls onTogglePluginRail', () => {
-    const onTogglePluginRail = vi.fn();
-    render(
-      <P1EditorSubheader
-        {...defaultProps}
-        onTogglePluginRail={onTogglePluginRail}
-      />
-    );
-
-    const pluginRailToggle = screen.getByLabelText('Toggle plugin rail');
-    fireEvent.click(pluginRailToggle);
-
-    expect(onTogglePluginRail).toHaveBeenCalledTimes(1);
-  });
-
-  it('plugin rail toggle is positioned in panel toggles container', () => {
+  it('still renders both panel toggles', () => {
     render(<P1EditorSubheader {...defaultProps} />);
 
     const panelToggles = screen.getByTestId('panel-toggles');
-    const pluginRailToggle = screen.getByLabelText('Toggle plugin rail');
-
-    // Verify the toggle is within the panel toggles container
-    expect(panelToggles.contains(pluginRailToggle)).toBe(true);
+    expect(panelToggles.contains(screen.getByLabelText('Toggle left panel'))).toBe(true);
+    expect(panelToggles.contains(screen.getByLabelText('Toggle right panel'))).toBe(true);
   });
 });

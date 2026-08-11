@@ -25,6 +25,7 @@ import { isMilestone } from '../../versioning/utils/versionKind.js';
 import { dayLabel } from '../../versioning/utils/formatVersionDate.js';
 import { PuckDataSynchronizer } from '../components/PuckDataSynchronizer.js';
 import { useAIPanelOpen } from '../aiPanelStore.js';
+import { useResponsivePanels } from '../useResponsivePanels.js';
 import { AgentActivityBanner } from '../../collaboration/components/AgentActivityBanner.js';
 import { PuckSelectionTracker } from '../components/PuckSelectionTracker.js';
 import { PuckDataCapture } from '../components/PuckDataCapture.js';
@@ -37,12 +38,12 @@ import type { SiteMenuItem, CurrentUser } from '../../pds/components/P1EditorHea
 import { P1EditorSubheader } from '../../pds/components/P1EditorSubheader.js';
 
 import type { SubheaderActor } from '../../pds/components/P1EditorSubheader.js';
-import { selectHeaderCollaborators } from './selectHeaderCollaborators.js';
 import { deriveDocState } from '../../pds/utils/deriveDocState.js';
 import { deriveLiveDocState } from '../../pds/utils/deriveLiveDocState.js';
 import type { Template } from '../../features/content-type-templates/types.js';
 import { useEditorContext } from '../../p1/editor/index.js';
 import type { TemplateSummary } from '../../features/content-type-templates/types.js';
+import { selectHeaderCollaborators } from './selectHeaderCollaborators.js';
 import type { DocumentSyncStore } from './document-sync-plugin.js';
 import { resolveContextSyncKey } from './context-sync-key.js';
 
@@ -642,7 +643,7 @@ function P1SubheaderBridgeInner({
   p1Context: ReturnType<typeof useP1Puck>;
   showMergeReviewRef: { current: () => void };
 }): React.ReactElement | null {
-  const { currentDocument, currentBranch, presence, publishDocument, siteId } = p1Context;
+  const { currentDocument, currentBranch, presence, publishDocument } = p1Context;
 
   // Read Puck history state — must be called unconditionally (Rules of Hooks)
   const history = usePluginPuckHistory((s) => (s as unknown as PuckStateWithHistory).history);
@@ -656,52 +657,13 @@ function P1SubheaderBridgeInner({
     setSlotEl(el);
   }, []);
 
-  // Plugin rail visibility (local state, not Puck UI state).
-  // MUST be before early return to satisfy Rules of Hooks.
-  // Persisted to localStorage, mirroring leftSideBarVisible/rightSideBarVisible
-  // below — otherwise it silently resets to hidden on every remount/reload.
-  const pluginRailStorageKey = `p1-plugin-rail-${siteId}`;
-  const [pluginRailVisible, setPluginRailVisible] = React.useState(() => {
-    try {
-      const stored = localStorage.getItem(pluginRailStorageKey);
-      return stored === null ? false : stored === 'true'; // default hidden when nothing persisted yet
-    } catch {
-      return false;
-    }
+  // Collapse the left panel then the right as the window narrows, and persist
+  // only the choices made at widths where nothing is auto-collapsed.
+  useResponsivePanels({
+    leftVisible: puckUi?.leftSideBarVisible ?? true,
+    rightVisible: puckUi?.rightSideBarVisible ?? true,
+    dispatch: puckDispatch,
   });
-
-  // Toggle body class to hide/show plugin rail via CSS
-  React.useEffect(() => {
-    if (pluginRailVisible) {
-      document.body.classList.remove('p1-hide-plugin-rail');
-    } else {
-      document.body.classList.add('p1-hide-plugin-rail');
-    }
-    return () => {
-      document.body.classList.remove('p1-hide-plugin-rail');
-    };
-  }, [pluginRailVisible]);
-
-  // Persist on every user toggle.
-  React.useEffect(() => {
-    try {
-      localStorage.setItem(pluginRailStorageKey, String(pluginRailVisible));
-    } catch { /* ignore quota/private-browsing errors */ }
-  }, [pluginRailVisible, pluginRailStorageKey]);
-
-  // Persist sidebar visibility to localStorage on every user toggle.
-  // Initial state is set via the `ui` prop passed to <Puck> (see useP1Editor.ts),
-  // so no restore dispatch is needed here — we only need to write.
-  const sidebarStorageKey = `p1-sidebar-${siteId}`;
-  useEffect(() => {
-    if (!puckUi) return;
-    try {
-      localStorage.setItem(sidebarStorageKey, JSON.stringify({
-        left: puckUi.leftSideBarVisible,
-        right: puckUi.rightSideBarVisible,
-      }));
-    } catch { /* ignore quota/private-browsing errors */ }
-  }, [puckUi?.leftSideBarVisible, puckUi?.rightSideBarVisible, sidebarStorageKey]);
 
   if (!slotEl) return null;
 
@@ -745,9 +707,6 @@ function P1SubheaderBridgeInner({
 
   const handleToggleLeftPanel = () => {
     puckDispatch?.({ type: 'setUi', ui: { leftSideBarVisible: !leftPanelVisible } });
-  };
-  const handleTogglePluginRail = () => {
-    setPluginRailVisible(prev => !prev);
   };
   const handleToggleRightPanel = () => {
     puckDispatch?.({ type: 'setUi', ui: { rightSideBarVisible: !rightPanelVisible } });
@@ -797,10 +756,8 @@ function P1SubheaderBridgeInner({
           onRedo={forward}
           leftPanelVisible={leftPanelVisible}
           rightPanelVisible={rightPanelVisible}
-          pluginRailVisible={pluginRailVisible}
           onToggleLeftPanel={handleToggleLeftPanel}
           onToggleRightPanel={handleToggleRightPanel}
-          onTogglePluginRail={handleTogglePluginRail}
           branches={options.branches ?? []}
           currentBranch={options.currentBranch ?? null}
           onSwitchBranch={options.onBranchSwitch ?? (() => {})}

@@ -53,10 +53,8 @@ export interface P1EditorSubheaderProps {
   onRedo: () => void;
   leftPanelVisible?: boolean;
   rightPanelVisible?: boolean;
-  pluginRailVisible?: boolean;
   onToggleLeftPanel?: () => void;
   onToggleRightPanel?: () => void;
-  onTogglePluginRail?: () => void;
   // Workstream selector props
   branches: Branch[];
   currentBranch: Branch | null;
@@ -84,10 +82,8 @@ export function P1EditorSubheader({
   onRedo,
   leftPanelVisible,
   rightPanelVisible,
-  pluginRailVisible,
   onToggleLeftPanel,
   onToggleRightPanel,
-  onTogglePluginRail,
   branches,
   currentBranch,
   onSwitchBranch,
@@ -98,15 +94,6 @@ export function P1EditorSubheader({
     <div data-testid="p1-editor-subheader" className={styles.subheader}>
       {/* Panel toggles — hidden on mobile */}
       <div data-testid="panel-toggles" className={styles.panelToggles}>
-        <IconButton
-          ariaLabel="Toggle plugin rail"
-          iconName={pluginRailVisible ? "angleRight" : "angleLeft"}
-          size="s"
-          hasTooltip={false}
-          hasBorder={false}
-          aria-pressed={pluginRailVisible}
-          onClick={onTogglePluginRail}
-        />
         <IconButton
           ariaLabel="Toggle left panel"
           iconName="tableRows"

@@ -10,6 +10,7 @@ import { render, screen, fireEvent, waitFor, cleanup, act } from '@testing-libra
 import React from 'react';
 import type { DocumentVersion } from '@pantheon-systems/css-client';
 import { HistoricalVersionBanner } from '../../versioning/components/HistoricalVersionBanner.js';
+import styles from '../../versioning/components/HistoricalVersionBanner.module.css';
 
 afterEach(() => {
   cleanup();
@@ -42,7 +43,7 @@ describe('HistoricalVersionBanner — version label and date', () => {
       <HistoricalVersionBanner version={baseVersion} onReturnToLatest={() => {}} />,
     );
     // Jun 15 is in the formatted date string
-    const dateEl = document.querySelector('.historical-version-banner__date');
+    const dateEl = document.querySelector(`.${styles.date}`);
     expect(dateEl?.textContent).toMatch(/Jun 15/);
   });
 });
@@ -71,7 +72,7 @@ describe('HistoricalVersionBanner — exit-preview button', () => {
       <HistoricalVersionBanner version={baseVersion} onReturnToLatest={() => {}} />,
     );
     const btn = screen.getByRole('button', { name: /return to current/i });
-    expect(btn.className).toContain('historical-version-banner__exit-btn');
+    expect(btn.className).toContain(styles.exitBtn);
   });
 });
 
@@ -121,7 +122,7 @@ describe('HistoricalVersionBanner — revert button visibility', () => {
     );
     const btns = screen.getAllByRole('button');
     const revertBtn = btns.find((b) => b.textContent?.includes('Revert to this version'));
-    expect(revertBtn?.className).toContain('historical-version-banner__revert-btn');
+    expect(revertBtn?.className).toContain(styles.revertBtn);
   });
 });
 
@@ -351,6 +352,87 @@ describe('HistoricalVersionBanner — Previous / Next steppers', () => {
     expect(screen.queryByRole('button', { name: /next version/i })).not.toBeInTheDocument();
   });
 
+  it('shows a "Previous Version" tooltip on the Previous stepper when it is actionable', () => {
+    render(
+      <HistoricalVersionBanner
+        version={baseVersion}
+        onReturnToLatest={() => {}}
+        onPrevious={vi.fn()}
+        hasPrevious={true}
+      />,
+    );
+    expect(screen.getByTitle('Previous Version')).toContainElement(
+      screen.getByRole('button', { name: /previous version/i }),
+    );
+  });
+
+  it('shows a "Next Version" tooltip on the Next stepper when it is actionable', () => {
+    render(
+      <HistoricalVersionBanner
+        version={baseVersion}
+        onReturnToLatest={() => {}}
+        onNext={vi.fn()}
+        hasNext={true}
+      />,
+    );
+    expect(screen.getByTitle('Next Version')).toContainElement(
+      screen.getByRole('button', { name: /next version/i }),
+    );
+  });
+
+  it('omits both stepper tooltips when the steppers are disabled', () => {
+    render(
+      <HistoricalVersionBanner
+        version={baseVersion}
+        onReturnToLatest={() => {}}
+        onPrevious={vi.fn()}
+        onNext={vi.fn()}
+        hasPrevious={false}
+        hasNext={false}
+      />,
+    );
+    expect(screen.queryByTitle('Previous Version')).not.toBeInTheDocument();
+    expect(screen.queryByTitle('Next Version')).not.toBeInTheDocument();
+  });
+
+  it('drops the tooltip from an otherwise-available stepper while reverting', async () => {
+    let resolve: () => void = () => {};
+    const onRestoreVersion = vi.fn().mockReturnValue(
+      new Promise<void>((res) => { resolve = res; }),
+    );
+    render(
+      <HistoricalVersionBanner
+        version={baseVersion}
+        onReturnToLatest={() => {}}
+        canRevert={true}
+        onRestoreVersion={onRestoreVersion}
+        onPrevious={vi.fn()}
+        hasPrevious={true}
+      />,
+    );
+    expect(screen.getByTitle('Previous Version')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText(/Revert to this version/i));
+    await waitFor(() => {
+      expect(screen.queryByTitle('Previous Version')).not.toBeInTheDocument();
+    });
+    await act(async () => { resolve(); });
+  });
+
+  it('keeps the tooltip out of the stepper accessible name', () => {
+    render(
+      <HistoricalVersionBanner
+        version={baseVersion}
+        onReturnToLatest={() => {}}
+        onPrevious={vi.fn()}
+        hasPrevious={true}
+      />,
+    );
+    // The tooltip is supplementary: the button's own aria-label remains the
+    // single accessible name, so the tooltip text is not announced twice.
+    expect(screen.getByRole('button', { name: 'Previous version' })).toBeInTheDocument();
+  });
+
   it('steppers are disabled while reverting', async () => {
     let resolve: () => void = () => {};
     const onRestoreVersion = vi.fn().mockReturnValue(
@@ -385,7 +467,7 @@ describe('HistoricalVersionBanner — actions wrapper', () => {
         onRestoreVersion={vi.fn()}
       />,
     );
-    const actionsDiv = document.querySelector('.historical-version-banner__actions');
+    const actionsDiv = document.querySelector(`.${styles.actions}`);
     expect(actionsDiv).toBeInTheDocument();
     const btns = actionsDiv?.querySelectorAll('button');
     expect(btns?.length).toBe(2);
@@ -395,7 +477,7 @@ describe('HistoricalVersionBanner — actions wrapper', () => {
     const { container } = render(
       <HistoricalVersionBanner version={baseVersion} onReturnToLatest={() => {}} />,
     );
-    expect(container.firstChild).toHaveClass('historical-version-banner');
+    expect(container.firstChild).toHaveClass(styles.banner!);
   });
 
   it('appends an extra className prop to the banner element', () => {
@@ -406,7 +488,7 @@ describe('HistoricalVersionBanner — actions wrapper', () => {
         className="my-custom-class"
       />,
     );
-    expect(container.firstChild).toHaveClass('historical-version-banner');
+    expect(container.firstChild).toHaveClass(styles.banner!);
     expect(container.firstChild).toHaveClass('my-custom-class');
   });
 });

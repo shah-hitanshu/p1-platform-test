@@ -1,10 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import type { DocumentVersion } from '@pantheon-systems/css-client';
-import { Icon } from '@pantheon-systems/pds-toolkit-react';
+import { Icon, Tooltip } from '@pantheon-systems/pds-toolkit-react';
+import styles from './HistoricalVersionBanner.module.css';
 
 const REVERT_ERROR_FALLBACK = 'Revert failed. Please try again.';
 
-const BASE = 'historical-version-banner';
+function StepperTooltip({
+  content,
+  disabled,
+  children,
+}: {
+  content: string;
+  disabled: boolean;
+  children: React.ReactElement;
+}): React.ReactElement {
+  if (disabled) return children;
+  return <Tooltip content={content} preferredPlacement="top" customTrigger={children} />;
+}
 
 export interface VersionBannerActionsProps {
   version?: DocumentVersion;
@@ -32,6 +44,10 @@ export function VersionBannerActions({
   const [isReverting, setIsReverting] = useState(false);
   const [revertError, setRevertError] = useState<string | null>(null);
 
+  const busy = isReverting || isReturning;
+  const prevDisabled = !hasPrevious || busy;
+  const nextDisabled = !hasNext || busy;
+
   useEffect(() => { setRevertError(null); }, [version?.id]);
 
   const handleRevert = async () => {
@@ -54,37 +70,41 @@ export function VersionBannerActions({
 
   return (
     <>
-      <div className={`${BASE}__actions`}>
+      <div className={styles.actions}>
         {(onPrevious || onNext) && (
-          <div className={`${BASE}__steppers`}>
+          <div className={styles.steppers}>
             {onPrevious && (
-              <button
-                type="button"
-                className={`${BASE}__stepper-btn`}
-                aria-label="Previous version"
-                disabled={!hasPrevious || isReverting || isReturning}
-                onClick={onPrevious}
-              >
-                <Icon iconName="angleLeft" size="s" aria-hidden="true" />
-              </button>
+              <StepperTooltip content="Previous Version" disabled={prevDisabled}>
+                <button
+                  type="button"
+                  className={styles.stepperBtn}
+                  aria-label="Previous version"
+                  disabled={prevDisabled}
+                  onClick={onPrevious}
+                >
+                  <Icon iconName="angleLeft" size="s" aria-hidden="true" />
+                </button>
+              </StepperTooltip>
             )}
             {onNext && (
-              <button
-                type="button"
-                className={`${BASE}__stepper-btn`}
-                aria-label="Next version"
-                disabled={!hasNext || isReverting || isReturning}
-                onClick={onNext}
-              >
-                <Icon iconName="angleRight" size="s" aria-hidden="true" />
-              </button>
+              <StepperTooltip content="Next Version" disabled={nextDisabled}>
+                <button
+                  type="button"
+                  className={styles.stepperBtn}
+                  aria-label="Next version"
+                  disabled={nextDisabled}
+                  onClick={onNext}
+                >
+                  <Icon iconName="angleRight" size="s" aria-hidden="true" />
+                </button>
+              </StepperTooltip>
             )}
           </div>
         )}
 
         <button
           type="button"
-          className={`${BASE}__exit-btn`}
+          className={styles.exitBtn}
           disabled={isReverting || isReturning}
           aria-busy={isReturning}
           onClick={onReturnToLatest}
@@ -96,14 +116,14 @@ export function VersionBannerActions({
         {canRevert && onRestoreVersion && version && (
           <button
             type="button"
-            className={`${BASE}__revert-btn`}
+            className={styles.revertBtn}
             disabled={isReverting || isReturning}
             aria-busy={isReverting}
             onClick={() => { void handleRevert(); }}
           >
             {isReverting ? (
               <>
-                <span className={`${BASE}__spinner`} aria-hidden="true" />
+                <span className={styles.spinner} aria-hidden="true" />
                 Reverting…
               </>
             ) : (
@@ -117,7 +137,7 @@ export function VersionBannerActions({
       </div>
 
       {revertError && (
-        <p className={`${BASE}__error`} role="alert">
+        <p className={styles.error} role="alert">
           {revertError}
         </p>
       )}

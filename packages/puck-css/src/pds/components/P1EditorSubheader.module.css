@@ -112,8 +112,4 @@
     padding: 0 var(--pds-spacing-xs, 0.5rem);
     gap: var(--pds-spacing-xs, 0.5rem);
   }
-
-  .panelToggles {
-    display: none;
-  }
 }

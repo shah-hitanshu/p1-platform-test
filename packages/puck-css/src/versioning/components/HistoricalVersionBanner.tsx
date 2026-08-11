@@ -3,6 +3,7 @@ import type { DocumentVersion } from '@pantheon-systems/css-client';
 import { Icon } from '@pantheon-systems/pds-toolkit-react';
 import { formatVersionDate } from '../utils/formatVersionDate.js';
 import { VersionBannerActions } from './VersionBannerActions.js';
+import styles from './HistoricalVersionBanner.module.css';
 
 export interface HistoricalVersionBannerProps {
   /** The historical version being viewed. Omit when the version is not yet loaded — shows exit-only banner. */
@@ -39,22 +40,24 @@ export function HistoricalVersionBanner({
   hasPrevious = false,
   hasNext = false,
 }: HistoricalVersionBannerProps): React.ReactElement {
-  const baseClass = 'historical-version-banner';
-  const classes = [baseClass, className].filter(Boolean).join(' ');
+  const classes = [styles.banner, className].filter(Boolean).join(' ');
   const formattedDate = version ? formatVersionDate(version.createdAt) : null;
 
   return (
     <div className={classes}>
-      <div className={`${baseClass}__icon`} aria-hidden="true">
+      <div className={styles.icon} aria-hidden="true">
         <Icon iconName="rotateLeft" size="s" />
       </div>
 
-      <div className={`${baseClass}__content`}>
-        <span className={`${baseClass}__text`}>
+      <div
+        className={styles.content}
+        title={`Previewing${version ? ` v${version.versionNumber}` : ''}${formattedDate ? ` · ${formattedDate}` : ''}`}
+      >
+        <span className={styles.text}>
           Previewing{version && <> <strong>v{version.versionNumber}</strong></>}
         </span>
         {formattedDate && (
-          <span className={`${baseClass}__date`}>
+          <span className={styles.date}>
             · {formattedDate}
           </span>
         )}

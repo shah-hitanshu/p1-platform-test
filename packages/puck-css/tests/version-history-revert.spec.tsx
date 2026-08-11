@@ -166,6 +166,7 @@ vi.mock('../src/auth/index.js', () => ({
 // =============================================================================
 
 import { VersionBannerOverride } from '../src/editor/components/VersionBannerOverride.js';
+import bannerStyles from '../src/versioning/components/HistoricalVersionBanner.module.css';
 import type { VersionBannerOverrideProps } from '../src/editor/components/VersionBannerOverride.js';
 import { useP1Editor } from '../src/editor/useP1Editor.js';
 
@@ -256,7 +257,7 @@ describe('VersionBannerOverride: revert button', () => {
 
     // During the async call the button should be disabled / replaced by spinner
     await waitFor(() => {
-      const spinner = document.querySelector('.historical-version-banner__spinner');
+      const spinner = document.querySelector(`.${bannerStyles.spinner}`);
       expect(spinner).toBeInTheDocument();
     });
 
@@ -277,7 +278,7 @@ describe('VersionBannerOverride: revert button', () => {
 
     // Wait for spinner to appear
     await waitFor(() => {
-      expect(document.querySelector('.historical-version-banner__spinner')).toBeInTheDocument();
+      expect(document.querySelector(`.${bannerStyles.spinner}`)).toBeInTheDocument();
     });
 
     // Resolve the revert promise
@@ -285,7 +286,7 @@ describe('VersionBannerOverride: revert button', () => {
 
     // Spinner gone (button returns to normal or version is no longer selected)
     await waitFor(() => {
-      expect(document.querySelector('.historical-version-banner__spinner')).not.toBeInTheDocument();
+      expect(document.querySelector(`.${bannerStyles.spinner}`)).not.toBeInTheDocument();
     });
   });
 

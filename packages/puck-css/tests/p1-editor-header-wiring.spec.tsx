@@ -191,8 +191,6 @@ vi.mock('../src/pds/components/P1EditorSubheader.js', () => ({
     agents,
     hasDrift,
     onPublish,
-    pluginRailVisible,
-    onTogglePluginRail,
   }: Record<string, unknown>) => (
     <div data-testid="p1-editor-subheader">
       <button
@@ -221,14 +219,6 @@ vi.mock('../src/pds/components/P1EditorSubheader.js', () => ({
         type="button"
       >
         Publish
-      </button>
-      <span data-testid="plugin-rail-visible">{String(pluginRailVisible)}</span>
-      <button
-        data-testid="toggle-plugin-rail-btn"
-        onClick={onTogglePluginRail as () => void}
-        type="button"
-      >
-        Toggle plugin rail
       </button>
     </div>
   ),
@@ -715,80 +705,6 @@ describe('createP1Plugin render() — P1EditorSubheader portal', () => {
     });
     expect(customPublish).toHaveBeenCalledOnce();
     expect(mockPublishDocument).not.toHaveBeenCalled();
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Tests: render() — plugin rail visibility persists across remounts
-// ---------------------------------------------------------------------------
-// Regression guard for PCC-3429: the plugin rail (Blocks/Outline/History/etc.
-// nav) previously reset to hidden on every remount because its visibility was
-// plain component state with no localStorage persistence, unlike the
-// neighboring left/right sidebar visibility which already persisted correctly.
-// A document switch remounts this plugin tree (fresh `key` per document), so
-// the symptom was: toggle the rail on, switch documents, rail is hidden again.
-
-describe('createP1Plugin render() — plugin rail visibility persistence', () => {
-  beforeEach(() => {
-    // Create the portal anchor that overrides.header would normally place
-    const slot = document.createElement('div');
-    slot.id = 'p1-subheader-slot';
-    document.body.appendChild(slot);
-  });
-
-  afterEach(() => {
-    document.getElementById('p1-subheader-slot')?.remove();
-  });
-
-  it('defaults to hidden when nothing is persisted yet (first-ever visit)', async () => {
-    const plugin = createP1Plugin(baseOptions);
-    renderPlugin(plugin);
-    await waitFor(() => {
-      expect(screen.getByTestId('plugin-rail-visible').textContent).toBe('false');
-    });
-  });
-
-  it('restores a persisted "true" value from localStorage on initial render', async () => {
-    localStorage.setItem('p1-plugin-rail-site-1', 'true');
-    const plugin = createP1Plugin(baseOptions);
-    renderPlugin(plugin);
-    await waitFor(() => {
-      expect(screen.getByTestId('plugin-rail-visible').textContent).toBe('true');
-    });
-  });
-
-  it('persists to localStorage when the user toggles the rail on', async () => {
-    const plugin = createP1Plugin(baseOptions);
-    renderPlugin(plugin);
-    await waitFor(() => {
-      expect(screen.getByTestId('plugin-rail-visible').textContent).toBe('false');
-    });
-    await act(async () => {
-      screen.getByTestId('toggle-plugin-rail-btn').click();
-    });
-    expect(screen.getByTestId('plugin-rail-visible').textContent).toBe('true');
-    expect(localStorage.getItem('p1-plugin-rail-site-1')).toBe('true');
-  });
-
-  it('a fresh mount after toggling on (simulating a document-switch remount) restores the visible state', async () => {
-    const plugin = createP1Plugin(baseOptions);
-    const first = renderPlugin(plugin);
-    await waitFor(() => {
-      expect(screen.getByTestId('plugin-rail-visible').textContent).toBe('false');
-    });
-    await act(async () => {
-      screen.getByTestId('toggle-plugin-rail-btn').click();
-    });
-    expect(localStorage.getItem('p1-plugin-rail-site-1')).toBe('true');
-
-    // Simulate the remount every document switch causes (P1PuckProvider keys
-    // <Puck> per document, tearing down and recreating this whole subtree).
-    first.unmount();
-    const second = createP1Plugin(baseOptions);
-    renderPlugin(second);
-    await waitFor(() => {
-      expect(screen.getByTestId('plugin-rail-visible').textContent).toBe('true');
-    });
   });
 });
 

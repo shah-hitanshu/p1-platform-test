@@ -1,0 +1,174 @@
+/* `flex: none` keeps the banner at its own height inside the canvas column. */
+.slot {
+  flex: none;
+}
+
+/* Grid rather than flex so the actions can never wrap onto a second line as the
+   canvas narrows — the banner would change height and shove the canvas down.
+   The middle column absorbs the squeeze; `error` gets its own row. */
+.banner {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: var(--pds-spacing-s);
+  padding: var(--pds-spacing-xs) var(--pds-spacing-m);
+  background: var(--pds-color-bg-default-secondary, #f9fafb);
+  border-top: 2px solid var(--pds-color-interactive-link-default, #3a5dfb);
+  border-bottom: var(--pds-border-width-default, 1px) solid var(--pds-color-border-secondary, #ececf0);
+  color: var(--pds-color-fg-default, #171717);
+  font-family: var(--pds-typography-ff-default, 'Inter', system-ui, sans-serif);
+}
+
+.icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--pds-color-interactive-link-default, #3a5dfb);
+}
+
+/* `display: block` rather than flex because text-overflow does not apply to flex
+   children — the two spans sit inline in one truncation context, so the
+   timestamp erodes before the version number without needing a breakpoint. */
+.content {
+  min-width: 0;
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.text {
+  font: 500 var(--pds-typography-size-s) var(--pds-typography-ff-default, 'Inter', system-ui, sans-serif);
+  color: var(--pds-color-fg-default, #171717);
+}
+
+.text strong {
+  font: 700 var(--pds-typography-size-s) var(--pds-typography-ff-compact, 'Inter Tight', 'Inter', system-ui, sans-serif);
+}
+
+.date {
+  font: 500 var(--pds-typography-size-s) var(--pds-typography-ff-default, 'Inter', system-ui, sans-serif);
+  color: var(--pds-color-fg-default, #171717);
+  margin-left: var(--pds-spacing-3xs);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: var(--pds-spacing-2xs);
+}
+
+.exitBtn {
+  /* Reset browser button defaults without wiping font (all:unset kills font too) */
+  appearance: none;
+  -webkit-appearance: none;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: var(--pds-border-width-default, 1px) solid var(--pds-color-border-default, #d4d4d4);
+  background: var(--pds-color-bg-surface, white);
+  border-radius: 9px;
+  padding: 9px 20px;
+  font: 600 var(--pds-typography-size-s) var(--pds-typography-ff-compact, 'Inter Tight', 'Inter', system-ui, sans-serif);
+  color: var(--pds-color-fg-default, #171717);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: var(--pds-animation-transition-button);
+  line-height: 1;
+}
+
+.exitBtn:hover:not(:disabled) {
+  background: var(--pds-color-interactive-background-hover, #f5f5f5);
+}
+
+.exitBtn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.revertBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--pds-spacing-button-gap-inline-m);
+  border: none;
+  border-radius: var(--pds-border-radius-button);
+  background: var(--pds-color-fg-default, #171717);
+  color: white;
+  font: 700 var(--pds-typography-size-s) var(--pds-typography-ff-compact, 'Inter Tight', 'Inter', system-ui, sans-serif);
+  padding: 11px 18px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: var(--pds-animation-transition-button);
+  line-height: 1;
+}
+
+.revertBtn:hover:not(:disabled) {
+  filter: brightness(1.15);
+}
+
+.revertBtn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* Its own row, so a revert failure never competes with the actions for width. */
+.error {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 0;
+  font-size: var(--pds-typography-size-s, 0.875rem);
+  color: var(--pds-color-status-error-icon, #c0392b);
+}
+
+.spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  flex: none;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.steppers {
+  display: flex;
+  gap: 2px;
+}
+
+/* PDS wraps the trigger in its own element; the inline padding would push the
+   steppers apart. */
+.steppers :global(.pds-tooltip) {
+  padding-inline: 0;
+}
+
+.stepperBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: var(--pds-color-fg-default, #1a1a1a);
+  transition: background 100ms ease;
+}
+
+.stepperBtn:hover:not(:disabled) {
+  background: var(--pds-color-interactive-background-hover, #f5f5f5);
+}
+
+.stepperBtn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}

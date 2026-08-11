@@ -8,8 +8,18 @@ globalThis.ResizeObserver ??= class ResizeObserver {
   disconnect() {}
 } as unknown as typeof globalThis.ResizeObserver;
 
-// Node 26 defines its own `localStorage` global, which resolves to undefined
-// without --localstorage-file and shadows the one jsdom provides.
+// jsdom defaults to 1024px, which is below the editor's all-open panel budget
+// (see src/editor/useResponsivePanels.ts), so every test would otherwise start by
+// auto-closing the left panel. Pin a desktop width; a test that cares sets
+// innerWidth itself.
+if (typeof window !== 'undefined') {
+  Object.defineProperty(window, 'innerWidth', {
+    value: 1600,
+    configurable: true,
+    writable: true,
+  });
+}
+
 if (!globalThis.localStorage) {
   const store = new Map<string, string>();
   Object.defineProperty(globalThis, 'localStorage', {
