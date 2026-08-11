@@ -9,7 +9,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/pantheon-systems/puck-css-integration.git",
+    "url": "git+https://github.com/pantheon-systems/p1-platform.git",
     "directory": "packages/css-client"
   },
   "type": "module",
@@ -58,5 +58,6 @@
   "dependencies": {
     "partysocket": "1.1.10",
     "yjs": "^13.6.29"
-  }
+  },
+  "homepage": "https://github.com/pantheon-systems/p1-platform/tree/main/packages/css-client"
 }

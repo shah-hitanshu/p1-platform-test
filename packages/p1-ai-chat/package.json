@@ -53,5 +53,11 @@
     "react-dom": "^19.0.0",
     "typescript": "^5.7.3",
     "vitest": "^4.1.4"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pantheon-systems/p1-platform.git",
+    "directory": "packages/p1-ai-chat"
+  },
+  "homepage": "https://github.com/pantheon-systems/p1-platform/tree/main/packages/p1-ai-chat"
 }

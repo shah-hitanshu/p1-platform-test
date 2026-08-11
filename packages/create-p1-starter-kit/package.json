@@ -26,7 +26,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/pantheon-systems/puck-css-integration.git",
+    "url": "git+https://github.com/pantheon-systems/p1-platform.git",
     "directory": "packages/create-p1-starter-kit"
   },
   "keywords": [
@@ -54,5 +54,6 @@
     "@clack/prompts": "^1.5.1",
     "picocolors": "^1.1.1"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "homepage": "https://github.com/pantheon-systems/p1-platform/tree/main/packages/create-p1-starter-kit"
 }

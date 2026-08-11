@@ -4,7 +4,7 @@
   "description": "Validates Puck component edit operations against the CSS component registry",
   "repository": {
     "type": "git",
-    "url": "https://github.com/pantheon-systems/collaborative-state-system.git",
+    "url": "git+https://github.com/pantheon-systems/p1-platform.git",
     "directory": "packages/p1-content-validator"
   },
   "type": "module",
@@ -42,5 +42,6 @@
     "registry": "https://registry.npmjs.org/",
     "provenance": false
   },
-  "license": "MIT"
+  "license": "MIT",
+  "homepage": "https://github.com/pantheon-systems/p1-platform/tree/main/packages/p1-content-validator"
 }

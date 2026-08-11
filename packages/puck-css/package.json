@@ -9,7 +9,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/pantheon-systems/puck-css-integration.git",
+    "url": "git+https://github.com/pantheon-systems/p1-platform.git",
     "directory": "packages/puck-css"
   },
   "type": "module",
@@ -137,5 +137,6 @@
   "engines": {
     "node": ">=24.0.0"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "homepage": "https://github.com/pantheon-systems/p1-platform/tree/main/packages/puck-css"
 }

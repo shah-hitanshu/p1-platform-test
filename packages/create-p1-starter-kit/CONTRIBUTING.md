@@ -1,0 +1,51 @@
+# Contributing to create-p1-starter-kit
+
+Internal notes for developing the scaffolder itself. `README.md` is the public npm page —
+keep anything Pantheon-internal (private repo links, token scopes, release mechanics) out of it.
+
+## Layout
+
+| Path | Purpose |
+| --- | --- |
+| `index.js` | CLI entry point |
+| `lib/` | Prompt handling and scaffold logic |
+| `template/` | Files copied into the generated project |
+
+Everything under `template/` ships to end users verbatim, so treat edits there as user-facing
+changes. `files` in `package.json` controls the tarball, but note npm force-includes
+`README.md`, `LICENSE`, and `package.json` regardless of that allowlist — they cannot be
+excluded, which is why the public README lives at the package root.
+
+## CI registry sync (shipped in the template)
+
+Changing a component's prop shape in code (`puck.config.tsx`, `components/puck/**`) doesn't
+update the CSS backend's component registry until someone opens the Puck editor in a browser —
+that's the only thing that currently triggers a sync. If a team goes a while between editor
+sessions after a code change, AI-assisted edits and other tooling validate against a stale
+schema in the meantime.
+
+The scaffolded project includes `scripts/sync-puck-registry.ts`, which syncs the registry
+headlessly from CI. Because its token has no read access to the registry, it can't check what's
+already there — every run rewrites every component plus the registry index unconditionally,
+unlike the editor's skip-if-unchanged behavior.
+
+Setup:
+
+1. Create a `sat_` site token scoped to `write:registry` **only**. Do not reuse an existing
+   read-scoped API key (`CSS_API_KEY` / `P1_CSS_API_KEY`) — the script refuses to run with an
+   explicit error if you try.
+2. Add `CSS_BASE_URL`, `CSS_SITE_ID`, and `CSS_REGISTRY_API_KEY` as repo secrets.
+3. Copy `ci-examples/github-actions-sync-puck-registry.yml` into `.github/workflows/`. It is
+   inert until this step — it never auto-runs on scaffold.
+
+Run locally with `npm run sync:registry`, or `npm run sync:registry -- --dry-run` to see what
+would change without writing.
+
+The sample workflow triggers on pushes touching `puck.config.tsx` / `components/puck/**` and
+resolves the CSS branch by matching the pushed git branch name. A push on a branch with no CSS
+counterpart is a no-op, not a failure.
+
+## Platform docs
+
+Development setup, release process, and architecture live in the `p1-platform` monorepo
+(private): https://github.com/pantheon-systems/p1-platform

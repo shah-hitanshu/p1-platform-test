@@ -1,65 +1,68 @@
 # @pantheon-systems/create-p1-starter-kit
 
-Scaffold a new P1 starter project with Puck editor and Content Publisher CMS integration.
+Scaffold a new P1 project — a Next.js app with the Puck visual editor and Pantheon Content
+Publisher integration wired up and ready to run.
 
 ## Usage
 
 ```bash
-# Using pnpm
+# pnpm
 pnpm create @pantheon-systems/p1-starter-kit my-app
 
-# Using npm
+# npm
 npm create @pantheon-systems/p1-starter-kit my-app
 
-# Using yarn
+# yarn
 yarn create @pantheon-systems/p1-starter-kit my-app
 ```
 
-The CLI will prompt you for:
-- **Project name** - defaults to the directory name argument
-- **Package manager** - auto-detects pnpm/npm/yarn, allows override
-- **Git initialization** - creates a git repo with initial commit
-- **Dependency installation** - runs install immediately
+The CLI prompts for:
 
-## What's Included
+- **Project name** — defaults to the directory name argument
+- **Package manager** — auto-detects pnpm/npm/yarn, allows override
+- **Git initialization** — creates a repo with an initial commit
+- **Dependency installation** — runs install immediately
 
-The scaffolded project includes:
+## What's included
 
-- **Next.js 16 App Router** - Server components and modern routing
-- **Puck Editor** - Visual drag-and-drop page builder at `/p1/<path>`
-- **Content Publisher Integration** - CMS with datasource bindings
-- **Pre-built Blocks** - Typography, media, layout, and action components
-- **Tailwind CSS v4** - Utility-first styling
-- **TypeScript** - Full type safety
-- **Vitest** - Fast unit testing
-- **ESLint** - Code linting
+- **Next.js 16 App Router** — server components and modern routing
+- **Puck editor** — visual drag-and-drop page building at `/p1/<path>`
+- **Content Publisher integration** — CMS with datasource bindings
+- **Pre-built blocks** — typography, media, layout, and action components
+- **Tailwind CSS v4**, **TypeScript**, **Vitest**, **ESLint**
 
-## Getting Started
+## Getting started
 
-After scaffolding your project:
+After scaffolding:
 
 1. **Configure environment variables:**
+
    ```bash
    cp .env.example .env
-   # Edit .env and fill in:
-   # - PCC_SITE_ID: Your Content Cloud site ID
-   # - PCC_TOKEN: API token for your site
-   # - NEXT_PUBLIC_CSS_BASE_URL: CSS API base URL
-   # - NEXT_PUBLIC_CSS_SITE_ID: Site identifier (UUID)
-   # - CSS_API_KEY: Server-side API key
    ```
 
+   Fill in:
+
+   | Variable | Purpose |
+   | --- | --- |
+   | `PCC_SITE_ID` | Content Cloud site ID |
+   | `PCC_TOKEN` | API token for your site |
+   | `NEXT_PUBLIC_CSS_BASE_URL` | CSS API base URL |
+   | `NEXT_PUBLIC_CSS_SITE_ID` | Site identifier (UUID) |
+   | `CSS_API_KEY` | Server-side API key |
+
 2. **Start the dev server:**
+
    ```bash
    pnpm dev
    ```
 
-3. **Open your browser:**
-   - Site: http://localhost:3000
-   - Dashboard: http://localhost:3000/p1
-   - Editor: http://localhost:3000/p1/your-page-path
+3. **Open:**
+   - Site — http://localhost:3000
+   - Dashboard — http://localhost:3000/p1
+   - Editor — http://localhost:3000/p1/your-page-path
 
-## Project Structure
+## Project structure
 
 ```
 my-app/
@@ -79,53 +82,32 @@ my-app/
 
 ## Customization
 
-- **Add blocks:** Create components in `components/puck/`, register in `puck.config.tsx`
-- **Add datasources:** Define in `lib/` and register for use in blocks
-- **Styling:** Edit Tailwind config or component styles
+- **Add blocks** — create components in `components/puck/`, register them in `puck.config.tsx`
+- **Add datasources** — define in `lib/` and register for use in blocks
+- **Styling** — edit the Tailwind config or component styles
 
-## Optional: CI Registry Sync
-
-Changing a component's prop shape in code (`puck.config.tsx`, `components/puck/**`) doesn't
-update the CSS backend's component registry until someone opens the Puck Editor in a browser —
-that's the only thing that currently triggers a sync. If your team goes a while between editor
-sessions after a code change, AI-assisted edits and other tooling validate against a stale schema
-in the meantime.
-
-The scaffolded project includes `scripts/sync-puck-registry.ts`, which syncs the registry
-headlessly from CI. Because its token has no read access to the registry, it can't check
-what's already there — every run rewrites every component + the registry index
-unconditionally, unlike the editor's skip-if-unchanged behavior:
-
-1. Create a `sat_` site token scoped to `write:registry` **only** — do not reuse your existing
-   read-scoped API key (`CSS_API_KEY`/`P1_CSS_API_KEY`) for this; the script will refuse to run
-   with an explicit error if you try.
-2. Add `CSS_BASE_URL`, `CSS_SITE_ID`, and `CSS_REGISTRY_API_KEY` as repo secrets.
-3. Copy `ci-examples/github-actions-sync-puck-registry.yml` into `.github/workflows/` (it's
-   inert until you do this — never auto-runs on scaffold).
-
-Run it locally any time with `npm run sync:registry` (add `-- --dry-run` to see what would
-change without writing anything). The sample workflow triggers on push to any branch touching
-`puck.config.tsx`/`components/puck/**` and resolves the CSS branch by matching the pushed git
-branch's name; a push on a branch with no CSS counterpart is treated as a no-op, not a failure.
+Your scaffolded project also includes an optional `scripts/sync-puck-registry.ts` for syncing
+the component registry from CI, with a sample workflow in `ci-examples/`. It is inert until you
+wire it up; see the comments in those files for setup.
 
 ## Troubleshooting
 
-### Module resolution errors
+**Module resolution errors.** Next.js needs the P1 packages transpiled. Verify
+`next.config.mjs` includes:
 
-If Next.js can't resolve packages, verify `next.config.mjs` includes:
 ```js
 transpilePackages: [
   "@pantheon-systems/css-client",
   "@pantheon-systems/puck-css",
   "@pantheon-systems/p1-next-sdk",
-]
+],
 ```
 
 ## Resources
 
-- [P1 Documentation](https://github.com/pantheon-systems/puck-css-integration)
-- [Puck Editor Docs](https://puckeditor.com)
-- [Next.js Docs](https://nextjs.org/docs)
+- [Pantheon documentation](https://docs.pantheon.io)
+- [Puck editor docs](https://puckeditor.com)
+- [Next.js docs](https://nextjs.org/docs)
 
 ## License
 
