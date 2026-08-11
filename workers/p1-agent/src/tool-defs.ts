@@ -29,7 +29,7 @@ const RAW_CSS_TOOLS: RawTool[] = [
   },
   {
     name: 'get_document',
-    description: 'Get the full P1 document snapshot. Only call when you need the page structure and do not already have it from earlier in this conversation.',
+    description: 'Get the full P1 document snapshot. Only call when you need the page structure and have not already fetched it in this turn — snapshots are not retained across turns.',
     input_schema: {
       type: 'object' as const,
       properties: {

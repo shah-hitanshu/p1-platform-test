@@ -251,10 +251,8 @@ export function trimForHistory(toolName: string, result: unknown): unknown {
 
   switch (toolName) {
     case 'get_document':
-      // Drop the full snapshot — it can be tens of thousands of tokens and the
-      // model already used it to plan edits. Keeping only the identity fields
-      // prevents it from being re-sent on every subsequent tool-call iteration.
-      return { documentId: r.documentId, versionNumber: r.versionNumber };
+      // Drop the full snapshot: tens of thousands of tokens, and stale by the next turn.
+      return { documentPath: r.documentPath };
 
     case 'apply_document_edits':
       return {

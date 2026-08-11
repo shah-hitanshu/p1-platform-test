@@ -236,18 +236,18 @@ export async function executeTool(
     case 'get_document': {
       const siteId = toolInput.site_id as string;
       const branchId = toolInput.branch_id as string;
-      const rawPath = toolInput.document_path as string;
-      const documentPath = normalizeDocumentPath(rawPath);
-      // The home page's path is literally "/" — prefix-filtering on that value
-      // isn't a case we can verify against the backend, so skip the filter
-      // (an optimization only) and match the root doc against the full listing.
-      const docs = await cssApi.listDocuments(
-        siteId, branchId,
-        documentPath === '/' ? undefined : { pathPrefix: documentPath },
-      );
-      const doc = docs.documents.find(d => d.path === documentPath);
-      if (!doc) throw new Error(`Document not found: ${documentPath}`);
-      return cssApi.getDocumentLatestVersion(siteId, branchId, doc.id);
+      const documentPath = normalizeDocumentPath(toolInput.document_path as string);
+      // Live session state, not `/versions/latest`: version rows come from a debounced
+      // sync that a bare deletion never triggers, so they can still show a removed component.
+      const { snapshot } = await cssApi.getDocument(siteId, branchId, documentPath);
+      // An unloaded session returns `{}` with a 200 — not the same as an empty page.
+      if (!snapshot || !('content' in snapshot)) {
+        throw new Error(
+          `Document "${documentPath}" returned no content — its session may have failed to ` +
+          `load. Do not treat this as an empty page.`,
+        );
+      }
+      return { documentPath, snapshot };
     }
 
     case 'check_edit_permission':
@@ -304,15 +304,8 @@ export async function executeTool(
       if (hasContentOp) {
         const prefetch = await Promise.allSettled([
           (async () => {
-            const docs = await cssApi.listDocuments(
-              siteId, branchId,
-              documentPath === '/' ? undefined : { pathPrefix: documentPath },
-            );
-            const doc = docs.documents.find(d => d.path === documentPath);
-            if (doc) {
-              const version = await cssApi.getDocumentLatestVersion(siteId, branchId, doc.id);
-              snapshot = version.snapshot;
-            }
+            const doc = await cssApi.getDocument(siteId, branchId, documentPath);
+            snapshot = doc.snapshot;
           })(),
           (async () => {
             const result = await cssApi.listComponents(siteId, branchId);

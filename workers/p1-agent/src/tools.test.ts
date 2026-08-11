@@ -311,19 +311,36 @@ describe('executeTool get_document', () => {
   const siteId = 'site-1';
   const branchId = 'branch-1';
 
-  it('resolves the home page document at path "/"', async () => {
-    const listDocuments = vi.fn().mockResolvedValue({
-      documents: [{ id: 'doc-home', path: '/', createdAt: '' }],
+  it('reads live session state, not the version history', async () => {
+    // `/versions/latest` is a debounced projection that a bare deletion never advances.
+    const getDocument = vi.fn().mockResolvedValue({
+      snapshot: { content: [{ type: 'Hero', props: { id: 'A' } }] },
     });
     const getDocumentLatestVersion = vi.fn().mockResolvedValue({
-      id: 'ver-1',
-      documentId: 'doc-home',
-      versionNumber: 1,
-      snapshot: { content: [] },
+      snapshot: { content: [] }, // the stale projection — must not be what we return
     });
-    const stubCssApi = { listDocuments, getDocumentLatestVersion } as unknown as McpApiClient;
+    const stubCssApi = { getDocument, getDocumentLatestVersion } as unknown as McpApiClient;
 
     const result = await executeTool(
+      'get_document',
+      { site_id: siteId, branch_id: branchId, document_path: '/about' },
+      stubCssApi,
+      'user-1',
+    );
+
+    expect(getDocumentLatestVersion).not.toHaveBeenCalled();
+    expect(getDocument).toHaveBeenCalledWith(siteId, branchId, 'about');
+    expect(result).toEqual({
+      documentPath: 'about',
+      snapshot: { content: [{ type: 'Hero', props: { id: 'A' } }] },
+    });
+  });
+
+  it('resolves the home page document at path "/"', async () => {
+    const getDocument = vi.fn().mockResolvedValue({ snapshot: { content: [] } });
+    const stubCssApi = { getDocument } as unknown as McpApiClient;
+
+    await executeTool(
       'get_document',
       { site_id: siteId, branch_id: branchId, document_path: '/' },
       stubCssApi,
@@ -331,41 +348,12 @@ describe('executeTool get_document', () => {
     );
 
     // "/" must be preserved, not stripped down to "" (which matches no document).
-    expect(listDocuments).toHaveBeenCalledWith(siteId, branchId, undefined);
-    expect(getDocumentLatestVersion).toHaveBeenCalledWith(siteId, branchId, 'doc-home');
-    expect(result).toEqual({
-      id: 'ver-1',
-      documentId: 'doc-home',
-      versionNumber: 1,
-      snapshot: { content: [] },
-    });
+    expect(getDocument).toHaveBeenCalledWith(siteId, branchId, '/');
   });
 
-  it('strips a leading slash for non-root documents', async () => {
-    const listDocuments = vi.fn().mockResolvedValue({
-      documents: [{ id: 'doc-about', path: 'about', createdAt: '' }],
-    });
-    const getDocumentLatestVersion = vi.fn().mockResolvedValue({
-      id: 'ver-2',
-      documentId: 'doc-about',
-      versionNumber: 1,
-      snapshot: { content: [] },
-    });
-    const stubCssApi = { listDocuments, getDocumentLatestVersion } as unknown as McpApiClient;
-
-    await executeTool(
-      'get_document',
-      { site_id: siteId, branch_id: branchId, document_path: '/about' },
-      stubCssApi,
-      'user-1',
-    );
-
-    expect(listDocuments).toHaveBeenCalledWith(siteId, branchId, { pathPrefix: 'about' });
-  });
-
-  it('throws a descriptive error when the document is not found', async () => {
+  it('surfaces the backend error when the document is not found', async () => {
     const stubCssApi = {
-      listDocuments: vi.fn().mockResolvedValue({ documents: [] }),
+      getDocument: vi.fn().mockRejectedValue(new Error('Document not found: missing')),
     } as unknown as McpApiClient;
 
     await expect(
@@ -400,15 +388,7 @@ describe('executeTool apply_document_edits key-validation', () => {
 
   function makeCssApi(overrides: Partial<McpApiClient> = {}): McpApiClient {
     return {
-      listDocuments: vi.fn().mockResolvedValue({
-        documents: [{ id: 'doc-1', path: 'index', createdAt: '' }],
-      }),
-      getDocumentLatestVersion: vi.fn().mockResolvedValue({
-        id: 'ver-1',
-        documentId: 'doc-1',
-        versionNumber: 1,
-        snapshot: existingSnapshot,
-      }),
+      getDocument: vi.fn().mockResolvedValue({ snapshot: existingSnapshot }),
       // Registry validation now catches hallucinated keys on Puck-component
       // ops, so the mock needs the schema available.
       listComponents: vi.fn().mockResolvedValue({
@@ -472,10 +452,7 @@ describe('executeTool apply_document_edits key-validation', () => {
 
   it('add to an array where the new item has a renamed key throws', async () => {
     const cssApi = makeCssApi({
-      getDocumentLatestVersion: vi.fn().mockResolvedValue({
-        id: 'ver-1',
-        documentId: 'doc-1',
-        versionNumber: 1,
+      getDocument: vi.fn().mockResolvedValue({
         snapshot: {
           content: [
             { type: 'Hero', props: { id: 'abc', text: 'Hello', visible: true } },
@@ -506,7 +483,7 @@ describe('executeTool apply_document_edits key-validation', () => {
 
   it('validation is skipped and edit proceeds when document fetch fails', async () => {
     const cssApi = makeCssApi({
-      listDocuments: vi.fn().mockRejectedValue(new Error('Network timeout')),
+      getDocument: vi.fn().mockRejectedValue(new Error('Network timeout')),
     });
     await executeTool('apply_document_edits', {
       ...baseInput,
@@ -527,9 +504,7 @@ describe('executeTool apply_document_edits key-validation', () => {
       ],
     };
     const cssApi = makeCssApi({
-      getDocumentLatestVersion: vi.fn().mockResolvedValue({
-        id: 'ver-1', documentId: 'doc-1', versionNumber: 1, snapshot: heteroSnapshot,
-      }),
+      getDocument: vi.fn().mockResolvedValue({ snapshot: heteroSnapshot }),
     });
     await executeTool('apply_document_edits', {
       ...baseInput,
@@ -570,13 +545,6 @@ describe('executeTool apply_document_edits structure validation', () => {
 
   function makeCssApi(overrides: Partial<McpApiClient> = {}): McpApiClient {
     return {
-      listDocuments: vi.fn().mockResolvedValue({
-        documents: [{ id: 'doc-1', path: 'index', createdAt: '' }],
-      }),
-      getDocumentLatestVersion: vi.fn().mockResolvedValue({
-        id: 'ver-1', documentId: 'doc-1', versionNumber: 1,
-        snapshot: { content: [{ type: 'Hero', props: { id: 'h1', text: 'Hi', visible: true } }] },
-      }),
       listComponents: vi.fn().mockResolvedValue({
         components: [
           { name: 'Hero', defaultProps: { text: '', visible: true } },
@@ -691,7 +659,7 @@ describe('executeTool apply_document_edits op translation', () => {
 
   function makeCssApi(): McpApiClient {
     return {
-      listDocuments: vi.fn().mockResolvedValue({ documents: [] }),
+      getDocument: vi.fn().mockResolvedValue({ snapshot: { content: [] } }),
       listComponents: vi.fn().mockResolvedValue({
         components: [{ name: 'Hero', defaultProps: { text: '', visible: true } }],
       }),
@@ -822,13 +790,8 @@ describe('executeTool apply_document_edits registry-based validation', () => {
 
   function makeCssApiWithRegistry(registry: unknown[]): McpApiClient {
     return {
-      listDocuments: vi.fn().mockResolvedValue({
-        documents: [{ id: 'doc-1', path: 'index', createdAt: '' }],
-      }),
-      getDocumentLatestVersion: vi.fn().mockResolvedValue({
-        id: 'ver-1', documentId: 'doc-1', versionNumber: 1,
-        snapshot: { content: [] }, // empty content — snapshot validation would silently pass
-      }),
+      // empty content — snapshot validation would silently pass
+      getDocument: vi.fn().mockResolvedValue({ snapshot: { content: [] } }),
       listComponents: vi.fn().mockResolvedValue({ components: registry }),
       applyEdits: vi.fn().mockResolvedValue({ success: true }),
     } as unknown as McpApiClient;

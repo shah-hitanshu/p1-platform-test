@@ -329,22 +329,14 @@ describe('appendTurn', () => {
 });
 
 describe('trimForHistory', () => {
-  it('drops snapshot from get_document results, keeping only identity fields', () => {
+  it('drops snapshot from get_document results, keeping only the path', () => {
     const result = {
-      documentId: 'doc-1',
-      versionNumber: 4,
+      documentPath: 'about',
       snapshot: { content: [{ type: 'HeroBlock', props: {} }], root: {}, zones: [] },
-      patch: 'huge-json-string',
-      source: 'realtime',
-      createdById: 'user-1',
     };
     const trimmed = trimForHistory('get_document', result) as Record<string, unknown>;
-    expect(trimmed.documentId).toBe('doc-1');
-    expect(trimmed.versionNumber).toBe(4);
+    expect(trimmed.documentPath).toBe('about');
     expect(trimmed.snapshot).toBeUndefined();
-    expect(trimmed.patch).toBeUndefined();
-    expect(trimmed.source).toBeUndefined();
-    expect(trimmed.createdById).toBeUndefined();
   });
 
   it('strips snapshot from apply_document_edits results', () => {
