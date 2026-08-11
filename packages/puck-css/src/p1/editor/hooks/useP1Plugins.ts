@@ -5,28 +5,16 @@ import { createRemoteDatasourceExplorerPlugin } from "../remote-datasources/remo
 import { createFieldConnectPlugin } from "../connect/field-connect-plugin";
 import { useP1PuckOptional } from "../../../core/P1PuckContext";
 import { useEditorContext } from "./useEditorContext";
-import { useRemoteDatasourceContext } from "./api-hooks";
 
 export function useP1Plugins(path: string, config: Config): Plugin[] {
   const p1Puck = useP1PuckOptional();
   const { data: ctx } = useEditorContext(path, p1Puck?.branchId);
-  const {
-    context: remoteDatasourceContext,
-    loadingIds,
-    isLoading: datasourcesLoading,
-  } = useRemoteDatasourceContext(path, ctx?.remoteDatasourceRegistry ?? [], p1Puck?.branchId);
 
   return useMemo(() => {
     if (!ctx) return [];
     return [
-      createPreviewResolvePlugin(remoteDatasourceContext, { loading: datasourcesLoading }),
-      createRemoteDatasourceExplorerPlugin(remoteDatasourceContext, {
-        editorPath: path,
-        routeTemplateKeys: ctx.routeTemplateKeys,
-        savedPreviewParams: ctx.savedPreviewParams,
-        remoteDatasourceRegistry: ctx.remoteDatasourceRegistry,
-        loadingIds,
-      }),
+      createPreviewResolvePlugin({ editorPath: path }),
+      createRemoteDatasourceExplorerPlugin({ editorPath: path }),
       createFieldConnectPlugin({
         routes: ctx.routes,
         config,
@@ -34,5 +22,5 @@ export function useP1Plugins(path: string, config: Config): Plugin[] {
         remoteDatasourceRegistry: ctx.remoteDatasourceRegistry,
       }),
     ];
-  }, [ctx, remoteDatasourceContext, loadingIds, datasourcesLoading, path, config]);
+  }, [ctx, path, config]);
 }

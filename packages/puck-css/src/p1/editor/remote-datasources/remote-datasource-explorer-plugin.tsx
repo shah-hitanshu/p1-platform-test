@@ -1,11 +1,9 @@
 "use client";
 
 import type { Plugin } from "@puckeditor/core";
-import { useMemo } from "react";
 
-import type { RemoteDatasourceDefinition } from "../../../data/remote-datasources/remote-datasource-registry";
-import type { RemoteDatasourceContext } from "../../../data/remote-datasources/loader";
 import { isCanonicalTemplatePath } from "../../../data/route-templates";
+import { useLiveRemoteDatasources } from "../hooks/useLiveRemoteDatasources";
 import {
   card,
   mono,
@@ -74,21 +72,18 @@ const dbIconSvg = (
 );
 
 function RemoteDatasourceExplorerPanel({
-  snapshot,
-  editorPath,
-  routeTemplateKeys,
-  savedPreviewParams,
-  remoteDatasourceRegistry,
-  loadingIds,
+  initialPath,
 }: {
-  snapshot: RemoteDatasourceContext;
-  editorPath: string;
-  routeTemplateKeys: string[];
-  savedPreviewParams: Record<string, string>;
-  remoteDatasourceRegistry: RemoteDatasourceDefinition[];
-  loadingIds?: Set<string>;
+  initialPath: string;
 }) {
-  const registry = useMemo(() => remoteDatasourceRegistry, [remoteDatasourceRegistry]);
+  const {
+    path: editorPath,
+    registry,
+    context: snapshot,
+    loadingIds,
+    routeTemplateKeys,
+    savedPreviewParams,
+  } = useLiveRemoteDatasources(initialPath);
 
   return (
     <PanelShell title="Data sources">
@@ -141,7 +136,7 @@ function RemoteDatasourceExplorerPanel({
       )}
 
       {registry.map((def, index) => {
-        const isLoading = loadingIds?.has(def.id) ?? false;
+        const isLoading = loadingIds.has(def.id);
         const live: Record<string, unknown> = (snapshot[def.id] ?? {}) as Record<string, unknown>;
         const liveKeys = Object.keys(live);
         const empty = liveKeys.length === 0;
@@ -313,16 +308,14 @@ function RemoteDatasourceExplorerPanel({
   );
 }
 
-export function createRemoteDatasourceExplorerPlugin(
-  snapshot: RemoteDatasourceContext,
-  options: {
-    editorPath: string;
-    routeTemplateKeys: string[];
-    savedPreviewParams: Record<string, string>;
-    remoteDatasourceRegistry: RemoteDatasourceDefinition[];
-    loadingIds?: Set<string>;
-  },
-): Plugin {
+/**
+ * Datasource state cannot be passed in by value: Puck holds the plugin array
+ * from the first mount, so anything captured here is frozen before the fetches
+ * that fill it settle. The panel reads it live via useLiveRemoteDatasources.
+ */
+export function createRemoteDatasourceExplorerPlugin(options: {
+  editorPath: string;
+}): Plugin {
   return {
     name: "datasource-explorer",
     label: "Data sources",
@@ -333,15 +326,6 @@ export function createRemoteDatasourceExplorerPlugin(
         <path d="M20 12c0 1.7-3.6 3-8 3s-8-1.3-8-3" />
       </svg>
     ),
-    render: () => (
-      <RemoteDatasourceExplorerPanel
-        snapshot={snapshot}
-        editorPath={options.editorPath}
-        routeTemplateKeys={options.routeTemplateKeys}
-        savedPreviewParams={options.savedPreviewParams}
-        remoteDatasourceRegistry={options.remoteDatasourceRegistry}
-        loadingIds={options.loadingIds}
-      />
-    ),
+    render: () => <RemoteDatasourceExplorerPanel initialPath={options.editorPath} />,
   };
 }

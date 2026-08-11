@@ -27,6 +27,6 @@ describe("datasource explorer skeleton loading", () => {
   });
 
   it("shows skeleton instead of JsonTree or empty message when loading", () => {
-    expect(content).toContain("loadingIds?.has(def.id)");
+    expect(content).toContain("loadingIds.has(def.id)");
   });
 });

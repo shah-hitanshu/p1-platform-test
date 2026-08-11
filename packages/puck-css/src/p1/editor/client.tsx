@@ -6,7 +6,6 @@ import type { ReactNode } from "react";
 import { useCallback, useMemo } from "react";
 import { Toaster, ToastType, useToast } from "@pantheon-systems/pds-toolkit-react";
 import type { RemoteDatasourceDefinition } from "../../data/remote-datasources/remote-datasource-registry";
-import type { RemoteDatasourceContext } from "../../data/remote-datasources/loader";
 import type { RouteRow } from "../../data/page-store";
 import { P1QueryProvider } from "../../data/query-provider";
 import { createRemoteDatasourceExplorerPlugin } from "./remote-datasources/remote-datasource-explorer-plugin";
@@ -70,18 +69,12 @@ type ClientProps = {
   path: string;
   data: Partial<Data>;
   config: Config;
-  remoteDatasourceContext: RemoteDatasourceContext;
   routes: RouteRow[];
-  routeTemplateKeys: string[];
-  savedPreviewParams: Record<string, string>;
   remoteDatasourceRegistry: RemoteDatasourceDefinition[];
 };
 
 function ClientInner(props: ClientProps) {
-  const {
-    path, data, config, remoteDatasourceContext,
-    routes, routeTemplateKeys, savedPreviewParams, remoteDatasourceRegistry,
-  } = props;
+  const { path, data, config, routes, remoteDatasourceRegistry } = props;
 
   const editorConfig = useMemo(
     () => wrapConfigForEditorPreview(config),
@@ -102,13 +95,8 @@ function ClientInner(props: ClientProps) {
 
   const plugins = useMemo(
     () => [
-      createPreviewResolvePlugin(remoteDatasourceContext),
-      createRemoteDatasourceExplorerPlugin(remoteDatasourceContext, {
-        editorPath: path,
-        routeTemplateKeys,
-        savedPreviewParams,
-        remoteDatasourceRegistry,
-      }),
+      createPreviewResolvePlugin({ editorPath: path }),
+      createRemoteDatasourceExplorerPlugin({ editorPath: path }),
       createFieldConnectPlugin({
         routes,
         config,
@@ -116,7 +104,7 @@ function ClientInner(props: ClientProps) {
         remoteDatasourceRegistry,
       }),
     ],
-    [remoteDatasourceContext, path, routeTemplateKeys, savedPreviewParams, remoteDatasourceRegistry, routes, config],
+    [path, remoteDatasourceRegistry, routes, config],
   );
 
   const onPublish = useCallback(

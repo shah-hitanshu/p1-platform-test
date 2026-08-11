@@ -15,8 +15,8 @@ import {
 
 import { getBlockPropsById } from "../../data/cross-reference";
 import { sanitizeRichtextDefaults } from "../../editor/utils/sanitizeRichtextDefaults";
-import type { RemoteDatasourceContext } from "../../data/remote-datasources/loader";
 import { useResolvePreview } from "./hooks/api-hooks";
+import { useLiveRemoteDatasources } from "./hooks/useLiveRemoteDatasources";
 
 interface PreviewResolvedState {
   data: Data | null;
@@ -54,19 +54,18 @@ function shimmerUnresolvedTokens(
 
 function PreviewResolveBoundary({
   children,
-  remoteDatasourceContext,
-  loading,
+  initialPath,
 }: {
   children: ReactNode;
-  remoteDatasourceContext: RemoteDatasourceContext;
-  loading?: boolean;
+  initialPath: string;
 }) {
+  const { context, isLoading } = useLiveRemoteDatasources(initialPath);
   const data = usePuckStore((s) => s.appState.data);
-  const { data: resolved } = useResolvePreview(data, remoteDatasourceContext);
+  const { data: resolved } = useResolvePreview(data, context);
 
   const state = useMemo<PreviewResolvedState>(
-    () => ({ data: resolved ?? null, loading: loading ?? false }),
-    [resolved, loading],
+    () => ({ data: resolved ?? null, loading: isLoading }),
+    [resolved, isLoading],
   );
 
   return (
@@ -166,18 +165,20 @@ export function wrapConfigForEditorPreview(input: Config): Config {
   } as Config;
 }
 
-export function createPreviewResolvePlugin(
-  remoteDatasourceContext: RemoteDatasourceContext,
-  options?: { loading?: boolean },
-): Plugin {
+/**
+ * Datasource context cannot be passed in by value: Puck holds the plugin array
+ * from the first mount, so anything captured here is frozen before the fetch
+ * that fills it settles. The boundary reads it live via useLiveRemoteDatasources.
+ */
+export function createPreviewResolvePlugin(options?: {
+  /** Document path used only outside a P1PuckProvider. */
+  editorPath?: string;
+}): Plugin {
   return {
     name: "preview-resolve",
     overrides: {
       puck: ({ children }: { children: ReactNode }) => (
-        <PreviewResolveBoundary
-          remoteDatasourceContext={remoteDatasourceContext}
-          loading={options?.loading}
-        >
+        <PreviewResolveBoundary initialPath={options?.editorPath ?? ""}>
           {children}
         </PreviewResolveBoundary>
       ),

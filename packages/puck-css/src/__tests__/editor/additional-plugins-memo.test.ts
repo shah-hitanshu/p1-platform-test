@@ -6,13 +6,20 @@ import { describe, expect, it } from "vitest";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const srcDir = resolve(__dirname, "../..");
 
+/**
+ * The plugin array is deliberately identity-stable: new plugin objects mean new
+ * override component identities, which remounts the canvas and every field. It
+ * only rebuilds when the plugin count changes, so plugin *content* does not
+ * propagate through it — plugin-rendered components read live state through
+ * their own hooks instead (see useLiveRemoteDatasources).
+ */
 describe("useP1Editor additionalPlugins reactivity", () => {
   const content = readFileSync(
     resolve(srcDir, "editor/useP1Editor.ts"),
     "utf-8",
   );
 
-  it("uses a ref-guarded useMemo so plugin content changes propagate without unstable deps", () => {
+  it("keeps the plugin array identity-stable across content changes", () => {
     const pluginsBlock = content.slice(
       content.indexOf("const plugins = useMemo"),
       content.indexOf("const plugins = useMemo") + 300,
