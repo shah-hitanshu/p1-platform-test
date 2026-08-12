@@ -298,6 +298,101 @@ describe('Phase 5.1: Queue-Based Sync in DocumentSession', () => {
       );
       expect(syncFetchCalls.length).toBeGreaterThan(0);
     });
+
+    it('should fall back to fetch when the queue rejects the message', async () => {
+      // Queues cap a message at 128KB; a document past that size can only ever
+      // reach PostgreSQL over HTTP.
+      mockQueue.send.mockRejectedValue(
+        new Error('message length of 383056 bytes exceeds limit of 131072'),
+      );
+
+      const { DocumentSession } = await import('../../src/durable-objects/document-session');
+      const session = new DocumentSession(mockState, mockEnv);
+
+      const snapshotReq = new Request('http://localhost/snapshot');
+      await session.fetch(snapshotReq);
+
+      const sender = createMockWebSocket('user-1');
+      mockState.getWebSockets.mockReturnValue([sender]);
+      const doc = new Y.Doc();
+      doc.getMap('root').set('title', 'Oversize Test');
+      const update = Y.encodeStateAsUpdate(doc);
+      await session.webSocketMessage(sender, update.buffer as ArrayBuffer);
+
+      await vi.advanceTimersByTimeAsync(6000);
+      await session.alarm();
+
+      expect(mockQueue.send).toHaveBeenCalled();
+
+      const fetchCalls = (globalThis.fetch as Mock).mock.calls;
+      const syncFetchCalls = fetchCalls.filter(
+        (call) => String(call[0]).includes('/internal/crdt-sync'),
+      );
+      expect(syncFetchCalls.length).toBeGreaterThan(0);
+    });
+
+    it('should clear the sync schedule after a rejected queue send is written over HTTP', async () => {
+      mockQueue.send.mockRejectedValue(new Error('message too large'));
+
+      const { DocumentSession } = await import('../../src/durable-objects/document-session');
+      const session = new DocumentSession(mockState, mockEnv);
+
+      const snapshotReq = new Request('http://localhost/snapshot');
+      await session.fetch(snapshotReq);
+
+      const sender = createMockWebSocket('user-1');
+      mockState.getWebSockets.mockReturnValue([sender]);
+      const doc = new Y.Doc();
+      doc.getMap('root').set('title', 'Oversize Test');
+      const update = Y.encodeStateAsUpdate(doc);
+      await session.webSocketMessage(sender, update.buffer as ArrayBuffer);
+
+      await vi.advanceTimersByTimeAsync(6000);
+      await session.alarm();
+
+      const syncScheduleDeletes = mockState.storage.delete.mock.calls.filter(
+        (call) => call[0] === 'syncSchedule',
+      );
+      expect(syncScheduleDeletes.length).toBeGreaterThan(0);
+    });
+
+    it('should retain the sync schedule when the queue and the HTTP fallback both fail', async () => {
+      // With no write path left, the schedule survives and handleAlarm re-arms
+      // on a dueAt already in the past, so the alarm refires with no backoff.
+      const { DocumentSession } = await import('../../src/durable-objects/document-session');
+      const session = new DocumentSession(mockState, mockEnv);
+
+      const snapshotReq = new Request('http://localhost/snapshot');
+      await session.fetch(snapshotReq);
+
+      const sender = createMockWebSocket('user-1');
+      mockState.getWebSockets.mockReturnValue([sender]);
+      const doc = new Y.Doc();
+      doc.getMap('root').set('title', 'Both Paths Fail');
+      const update = Y.encodeStateAsUpdate(doc);
+      await session.webSocketMessage(sender, update.buffer as ArrayBuffer);
+
+      // Take both write paths away only once the session is loaded, so the
+      // sync is refused for lack of a writer rather than for missing content.
+      mockQueue.send.mockRejectedValue(new Error('message too large'));
+      globalThis.fetch = vi.fn().mockResolvedValue(
+        new Response('internal error', { status: 500 }),
+      );
+
+      await vi.advanceTimersByTimeAsync(6000);
+      await session.alarm();
+
+      expect(mockQueue.send).toHaveBeenCalled();
+      const syncFetchCalls = (globalThis.fetch as Mock).mock.calls.filter(
+        (call) => String(call[0]).includes('/internal/crdt-sync'),
+      );
+      expect(syncFetchCalls.length).toBeGreaterThan(0);
+
+      const syncScheduleDeletes = mockState.storage.delete.mock.calls.filter(
+        (call) => call[0] === 'syncSchedule',
+      );
+      expect(syncScheduleDeletes).toHaveLength(0);
+    });
   });
 
   describe('SYNC_QUEUE in env interface', () => {

@@ -393,25 +393,34 @@ export class PostgresSyncManager {
     try {
       const snapshot = await this.captureSnapshotForWrite(actorId);
 
+      const payload = {
+        siteId: this.sessionInfo.siteId,
+        documentId: this.sessionInfo.documentId,
+        branchId: this.sessionInfo.branchId,
+        snapshot,
+        actorId,
+        actorType,
+        ...(identity?.actorEmail !== undefined ? { actorEmail: identity.actorEmail } : {}),
+        ...(identity?.actorName !== undefined ? { actorName: identity.actorName } : {}),
+        ...(puckActions !== undefined ? { puckActions } : {}),
+      };
+
       // Phase 5.1: Prefer queue-based sync when available
       if (this.env.SYNC_QUEUE !== undefined) {
-        await this.env.SYNC_QUEUE.send({
-          siteId: this.sessionInfo.siteId,
-          documentId: this.sessionInfo.documentId,
-          branchId: this.sessionInfo.branchId,
-          snapshot,
-          actorId,
-          actorType,
-          timestamp: Date.now(),
-          ...(identity?.actorEmail !== undefined ? { actorEmail: identity.actorEmail } : {}),
-          ...(identity?.actorName !== undefined ? { actorName: identity.actorName } : {}),
-          ...(puckActions !== undefined ? { puckActions } : {}),
-        });
-        this.lastSyncedStateVectorHash = this.computeStateVectorHash();
-        this.pendingPuckActions = [];
-        await this.storage.delete(SYNC_SCHEDULE_KEY);
-        console.log(`Queued sync for document ${this.sessionInfo.documentId}, puckActions: ${puckActions ? String(puckActions.length) : 'none'}`);
-        return;
+        try {
+          await this.env.SYNC_QUEUE.send({ ...payload, timestamp: Date.now() });
+          await this.recordSyncSuccess();
+          console.log(`Queued sync for document ${this.sessionInfo.documentId}, puckActions: ${puckActions ? String(puckActions.length) : 'none'}`);
+          return;
+        } catch (error) {
+          // Queues reject any message above their per-message ceiling, so a
+          // document past that size is permanently unqueueable. The HTTP path
+          // carries the same payload under no such limit.
+          console.error(
+            `Queue sync failed for document ${this.sessionInfo.documentId}, using direct sync:`,
+            error,
+          );
+        }
       }
 
       // Fallback: direct HTTP sync via internal API
@@ -423,17 +432,7 @@ export class PostgresSyncManager {
           'Content-Type': 'application/json',
           'X-Internal-Secret': internalSecret,
         },
-        body: JSON.stringify({
-          siteId: this.sessionInfo.siteId,
-          documentId: this.sessionInfo.documentId,
-          branchId: this.sessionInfo.branchId,
-          snapshot,
-          actorId,
-          actorType,
-          ...(identity?.actorEmail !== undefined ? { actorEmail: identity.actorEmail } : {}),
-          ...(identity?.actorName !== undefined ? { actorName: identity.actorName } : {}),
-          ...(puckActions !== undefined ? { puckActions } : {}),
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
@@ -441,14 +440,21 @@ export class PostgresSyncManager {
         console.error(`Sync to PostgreSQL failed: ${String(response.status)} ${errorText}`);
       } else {
         console.log(`Synced document ${this.sessionInfo.documentId} to PostgreSQL`);
-        // Update the state vector hash and clear sync schedule after successful sync
-        this.lastSyncedStateVectorHash = this.computeStateVectorHash();
-        this.pendingPuckActions = [];
-        await this.storage.delete(SYNC_SCHEDULE_KEY);
+        await this.recordSyncSuccess();
       }
     } catch (error) {
       console.error('Error syncing to PostgreSQL:', error);
     }
+  }
+
+  /**
+   * Mark the session's state as durably written: no sync is owed until the
+   * document changes again.
+   */
+  private async recordSyncSuccess(): Promise<void> {
+    this.lastSyncedStateVectorHash = this.computeStateVectorHash();
+    this.pendingPuckActions = [];
+    await this.storage.delete(SYNC_SCHEDULE_KEY);
   }
 
   /**
