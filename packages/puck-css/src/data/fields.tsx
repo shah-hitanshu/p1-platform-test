@@ -67,3 +67,58 @@ export const inlineTextField: TextFieldWithAi = {
     instructions: "Generate concise, plain text. No markdown or HTML.",
   },
 };
+
+export {
+  createDatasourceSelectField,
+  DatasourceRegistryProvider,
+  useDatasourceRegistry,
+  DatasourceDataProvider,
+  useDatasourceData,
+} from "./fields/datasource-select-field.js";
+
+export { createTemplateSelectField } from "./fields/template-select-field.js";
+
+export { createSchemaSelectField } from "./fields/schema-select-field.js";
+
+export {
+  createImagePositionField,
+  clampImagePosition,
+} from "./fields/image-position-field.js";
+
+export { createViewModeField } from "./fields/view-mode-field.js";
+
+export { useP1PuckOptional } from "../core/P1PuckContext.js";
+export { PuckConfigProvider, usePuckConfig } from "../core/PuckConfigContext.js";
+
+export {
+  suggestFieldForRole,
+  autoMapFields,
+} from "./schema-heuristics.js";
+export type { FieldRole } from "./schema-heuristics.js";
+export {
+  sortItems,
+  filterItems,
+  applyCollectionOperators,
+  groupItems,
+} from "./collection-operators.js";
+
+export {
+  createDataListBlock,
+  builtinModes,
+  Cards,
+  Rows,
+  Listing,
+  normalizeItems,
+  resolveItemFields,
+  resolveField,
+  getByDotPath,
+  viewExtractKey,
+} from "./data-list-block/index.js";
+export type {
+  ResolvedItem,
+  LayoutProps,
+  ViewModeDefinition,
+  CreateDataListBlockOptions,
+  ImagePositionOption,
+  PuckFieldDef,
+} from "./data-list-block/index.js";

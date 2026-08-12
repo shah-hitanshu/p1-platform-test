@@ -448,6 +448,9 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
   const additionalPluginsRef = useRef(additionalPlugins);
   additionalPluginsRef.current = additionalPlugins;
 
+  const pluginCount = additionalPlugins?.length ?? 0;
+
+
   const documentSyncPlugin = useMemo(
     () => createDocumentSyncPlugin(documentSyncStore),
     [documentSyncStore]
@@ -467,7 +470,6 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
     });
   }, [loading, error, css.branchId, currentDocumentId, documentSyncStore]);
 
-  const pluginCount = additionalPlugins?.length ?? 0;
   const plugins = useMemo(() => {
     const result: Plugin[] = [p1Plugin, documentSyncPlugin];
     if (additionalPluginsRef.current) {

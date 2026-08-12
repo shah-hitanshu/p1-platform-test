@@ -11,6 +11,7 @@ import {
   getSharedSiteId,
   getSharedBranchId,
   createAuthenticatedClient,
+  runWithAuthToken,
 } from "@pantheon-systems/puck-css/server";
 import type {
   RemoteDatasourceFetcher,
@@ -36,7 +37,9 @@ async function fetchCssQueryDefinitions(request: Request, branchOverride?: strin
   try {
     const queries = await client.queries.list(siteId, branchId);
     return cssQueriesToDatasourceDefinitions(queries);
-  } catch {
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn("[P1] Editor context: CSS query lookup failed:", message);
     return [];
   }
 }
@@ -53,6 +56,22 @@ export async function getEditorContext(
     return NextResponse.json({ error: "invalid_path" }, { status: 400 });
   }
 
+  // Unlike getRoutes, a missing token degrades rather than 401s: the editor
+  // falls back to an unauthenticated fetch and treats any error response as
+  // fatal, so rejecting here would break auth-optional deployments.
+  const token = extractBearerToken(request);
+  const run = <T>(fn: () => Promise<T>): Promise<T> =>
+    token ? runWithAuthToken(token, fn) : fn();
+
+  return run(() => buildEditorContext(request, options, path, branchId));
+}
+
+async function buildEditorContext(
+  request: Request,
+  options: EditorContextOptions,
+  path: string,
+  branchId: string | null,
+) {
   const [routes, routeTemplateKeys, savedPreviewParams, userDefs] =
     await Promise.all([
       listRoutes(),

@@ -35,6 +35,8 @@ function resolveMonsterIndex(params: RemoteDatasourceFetcherParams): string | un
   );
 }
 
+type MonsterItem = { index: string; name: string; url: string } & Record<string, unknown>;
+
 async function fetchMonster(
   index: string | undefined,
   fetchImpl: typeof fetch,
@@ -50,9 +52,10 @@ async function fetchMonster(
     key
     num
     species
-    types
-    abilities { first second hidden special }
-    hp attack defense spAtk spDef speed sprite
+    sprite
+    types { name }
+    abilities { first { name } second { name } hidden { name } }
+    baseStats { hp attack defense specialattack specialdefense speed }
   }
 }`,
         variables: { pokemon: index },
@@ -74,9 +77,7 @@ async function fetchMonster(
   }
 }
 
-async function fetchMonsterList(
-  fetchImpl: typeof fetch,
-): Promise<{ index: string; name: string; url?: string }[]> {
+async function fetchMonsterList(fetchImpl: typeof fetch): Promise<MonsterItem[]> {
   try {
     const res = await fetchImpl(GRAPHQL_POKEMON_ENDPOINT, {
       method: "POST",
@@ -85,7 +86,12 @@ async function fetchMonsterList(
         query: `query GetAllPokemon($take: Int!, $offset: Int!) {
   getAllPokemon(take: $take, offset: $offset) {
     key
+    num
     species
+    sprite
+    types { name }
+    abilities { first { name } second { name } hidden { name } }
+    baseStats { hp attack defense specialattack specialdefense speed }
   }
 }`,
         variables: { take: 200, offset: 89 },
@@ -98,14 +104,14 @@ async function fetchMonsterList(
     if (!data || typeof data !== "object" || Array.isArray(data)) return [];
     const results = (data as { getAllPokemon?: unknown }).getAllPokemon;
     if (!Array.isArray(results)) return [];
-    const out: { index: string; name: string; url?: string }[] = [];
+    const out: MonsterItem[] = [];
     for (const row of results) {
       if (!row || typeof row !== "object" || Array.isArray(row)) continue;
       const r = row as Record<string, unknown>;
       const index = typeof r.key === "string" ? r.key : "";
       const name = typeof r.species === "string" ? r.species : "";
       const url = index ? `/pokemon/${index}` : undefined;
-      if (index && name) out.push({ index, name, url });
+      if (index && name && url) out.push({ ...r, index, name, url });
     }
     return out;
   } catch {

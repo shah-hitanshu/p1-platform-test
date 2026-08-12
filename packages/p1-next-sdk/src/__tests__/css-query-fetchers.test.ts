@@ -103,7 +103,7 @@ describe("createCssQueryFetchers", () => {
     const params = { searchParams: {}, urlParams: {}, savedPreviewParams: {}, fetchImpl: fetch };
     await fetchers[0].fetch(params);
 
-    expect(getResults).toHaveBeenCalledWith("site-1", "branch-1", "news");
+    expect(getResults).toHaveBeenCalledWith("site-1", "branch-1", "news", { includeMetadata: true });
   });
 
   it("fetcher returns empty object on API error", async () => {

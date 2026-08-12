@@ -192,6 +192,27 @@
   font-weight: 600;
 }
 
+.p1-inspector-template-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  margin-top: 8px;
+  border-top: 1px solid var(--pds-color-border-default, oklch(0.9401 0 0));
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.p1-inspector-template-badge__label {
+  color: var(--pds-color-fg-subtle, oklch(0.55 0 0));
+  font-weight: 500;
+}
+
+.p1-inspector-template-badge__name {
+  color: var(--pds-color-fg-default, var(--pds-color-text-primary, var(--puck-css-text)));
+  font-weight: 600;
+}
+
 /* Strip container: min-height bypasses ancestor height constraints;
    overflow:hidden on _Sidebar--right_ clips it to the correct sidebar height. */
 .p1-inspector-reopen-strip {
@@ -3218,3 +3239,192 @@ svg.lucide-layers {
   color: var(--pds-color-text-primary, var(--puck-css-text));
 }
 
+/* ============================================
+   Inspector Field Spacing
+   ============================================ */
+
+.p1-inspector-fields [class*='_InputWrapper_'] + [class*='_InputWrapper_'] {
+  margin-top: 16px;
+}
+
+.p1-inspector-fields [class*='_Input-label_'] {
+  padding-bottom: 8px;
+}
+
+.p1-inspector-fields [class*='_Input-label_']::after {
+  content: ':';
+}
+
+/* ============================================
+   Field Section (collapsible sidebar groups)
+   ============================================ */
+
+.p1-field-section {
+  border-bottom: 1px solid var(--puck-color-grey-09, #e0e0e0);
+}
+
+.p1-field-section:last-of-type {
+  border-bottom: none;
+}
+
+.p1-field-section__header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 13px 20px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+}
+
+.p1-field-section__header::-webkit-details-marker {
+  display: none;
+}
+
+.p1-field-section__label {
+  font: 600 11.5px/1 var(--pds-font-family, sans-serif);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #9a9a9a;
+}
+
+.p1-field-section__header:hover .p1-field-section__label {
+  color: var(--puck-color-grey-01, #1a1a1a);
+}
+
+.p1-field-section__badge {
+  font: 600 10px/1 var(--pds-font-family, sans-serif);
+  letter-spacing: 0;
+  color: #9a9a9a;
+  background: #f0f0f0;
+  border-radius: 99px;
+  padding: 1px 7px;
+}
+
+.p1-field-section__chevron {
+  margin-left: auto;
+  width: 15px;
+  height: 15px;
+  transition: transform 0.15s ease;
+  background: #c4c4c4;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' fill='none' stroke='currentColor' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") center / contain no-repeat;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' fill='none' stroke='currentColor' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+
+.p1-field-section[open] > .p1-field-section__header .p1-field-section__chevron {
+  transform: rotate(0deg);
+}
+
+.p1-field-section:not([open]) > .p1-field-section__header .p1-field-section__chevron {
+  transform: rotate(-90deg);
+}
+
+.p1-field-section__subtitle {
+  margin: 0;
+  padding: 0 20px 8px;
+  font: 400 12px/1.4 var(--pds-font-family, sans-serif);
+  color: #7c7c7c;
+}
+
+.p1-field-section__body {
+  padding: 0 20px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.p1-field-mapping-section__title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--puck-color-grey-01, #1a1a1a);
+  margin: 4px 0 2px;
+  padding: 0;
+}
+
+.p1-field-mapping-section__subtitle {
+  font-size: 12px;
+  font-weight: 500;
+  color: #7c7c7c;
+  margin: 0 0 6px;
+  padding: 0;
+  line-height: 1.4;
+}
+
+/* Schema-select field: custom label with required asterisk and type hint */
+.p1-schema-field__label-row {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+.p1-schema-field__label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--puck-color-grey-01, #1a1a1a);
+}
+
+.p1-schema-field__required {
+  color: #e53e3e;
+  font-weight: 600;
+}
+
+.p1-schema-field__type-hint {
+  font-size: 11px;
+  font-weight: 400;
+  color: #9a9a9a;
+}
+
+/* Unmapped fields counter below field mapping section */
+.p1-field-mapping-section__unmapped {
+  font-size: 11px;
+  font-weight: 500;
+  color: #9a9a9a;
+  margin: 8px 0 0;
+  padding: 0;
+}
+
+/* Schema-select field row: dropdown + eye toggle inline */
+.p1-schema-select-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.p1-schema-select-row__control {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Eye toggle button for schema-select field visibility */
+.p1-eye-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid var(--puck-color-grey-09, #e0e0e0);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--puck-color-grey-04, #666);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.p1-eye-toggle:hover {
+  color: var(--puck-color-grey-01, #1a1a1a);
+  border-color: var(--puck-color-grey-05, #999);
+}
+
+.p1-eye-toggle--off {
+  color: var(--puck-color-grey-07, #bbb);
+}
+
+.p1-eye-toggle--off:hover {
+  color: var(--puck-color-grey-04, #666);
+}

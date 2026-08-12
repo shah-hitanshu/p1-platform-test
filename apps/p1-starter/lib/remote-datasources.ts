@@ -3,7 +3,7 @@ import type { RemoteDatasourceDefinition } from "@pantheon-systems/puck-css/serv
 export const REMOTE_DATASOURCE_REGISTRY: RemoteDatasourceDefinition[] = [
   {
     id: "swapi",
-    label: "Star Wars API (person)",
+    label: "Star Wars character detail",
     description:
       "Person record from SWAPI. Used when editing pages that resolve a numeric person id (see resolution).",
     resolution:
@@ -29,7 +29,7 @@ export const REMOTE_DATASOURCE_REGISTRY: RemoteDatasourceDefinition[] = [
   },
   {
     id: "monster",
-    label: "Pokemon GraphQL (pokemon)",
+    label: "Pokemon detail",
     description: "Single pokemon record from GraphQL Pokemon (`getPokemon`).",
     resolution:
       "Resolved from query params (`?monster=...`, `?monsterIndex=...`, `?index=...`, then `?id=...`), preview params, or route params (`:monster`, `:monsterIndex`, `:index`, `:id`).",
@@ -61,7 +61,7 @@ export const REMOTE_DATASOURCE_REGISTRY: RemoteDatasourceDefinition[] = [
   },
   {
     id: "swapi_list",
-    label: "Star Wars API (people index)",
+    label: "Star Wars characters list",
     description:
       "First page of SWAPI `/people/` (loaded every request). Use with a List block and `markdownLinks` token.",
     resolution:
@@ -70,23 +70,28 @@ export const REMOTE_DATASOURCE_REGISTRY: RemoteDatasourceDefinition[] = [
       {
         path: "items",
         description:
-          "Array of `{ id, name }` rows from SWAPI `/people/`. In an Array field, set value to `{{ swapi_list.items }}` to hydrate cards/rows.",
-      },
-      {
-        path: "items.0.url",
-        description:
-          "Canonical SWAPI URL for each item (available as `item.url` in per-card templates).",
+          "Array of `{ id, name, url }` rows from SWAPI `/people/`. In an Array field, set value to `{{ swapi_list.items }}` to hydrate cards/rows.",
       },
       {
         path: "markdownLinks",
         description:
           'In a List block\'s items field: `{{ swapi_list.markdownLinks "/jedi/{id}" }}` (or bare `{{ swapi_list.markdownLinks }}`) -- expands to one `[name](/jedi/n)` line per person.',
       },
+      { path: "items[].id", description: "Person ID (extracted from URL)" },
+      { path: "items[].name", description: "Character name" },
+      { path: "items[].height", description: "Height" },
+      { path: "items[].mass", description: "Mass" },
+      { path: "items[].hair_color", description: "Hair color" },
+      { path: "items[].skin_color", description: "Skin color" },
+      { path: "items[].eye_color", description: "Eye color" },
+      { path: "items[].birth_year", description: "Birth year" },
+      { path: "items[].gender", description: "Gender" },
+      { path: "items[].url", description: "Canonical person URL" },
     ],
   },
   {
     id: "monster_list",
-    label: "Pokemon GraphQL (pokemon index)",
+    label: "Pokemon list",
     description:
       "Pokemon list from GraphQL Pokemon `getAllPokemon` (loaded every request).",
     resolution:
@@ -97,23 +102,16 @@ export const REMOTE_DATASOURCE_REGISTRY: RemoteDatasourceDefinition[] = [
         description:
           "Array of `{ index, name, url }` rows from `getAllPokemon` (mapped from `key` + `species`). In an Array field, set `{{ monster_list.items }}` to hydrate cards/rows.",
       },
-      {
-        path: "items.0.index",
-        description: "Pokemon slug/index (for example `bulbasaur`).",
-      },
-      {
-        path: "items.0.name",
-        description: "Display name (for example `Bulbasaur`).",
-      },
-      {
-        path: "items.0.url",
-        description: "Synthetic URL path for per-item links.",
-      },
+      { path: "items[].index", description: "Pokemon slug (from key)" },
+      { path: "items[].name", description: "Pokemon name (from species)" },
+      { path: "items[].num", description: "Pokedex number" },
+      { path: "items[].sprite", description: "Sprite URL" },
+      { path: "items[].url", description: "URL path for this pokemon" },
     ],
   },
   {
     id: "article",
-    label: "Content Publisher (article)",
+    label: "Article detail",
     description:
       "Single Content Publisher article resolved from query/preview/route params.",
     resolution:
@@ -131,7 +129,7 @@ export const REMOTE_DATASOURCE_REGISTRY: RemoteDatasourceDefinition[] = [
   },
   {
     id: "article_list",
-    label: "Content Publisher (articles index)",
+    label: "Articles list",
     description:
       "Article list from Content Publisher, loaded every request for list rendering.",
     resolution:
@@ -142,13 +140,10 @@ export const REMOTE_DATASOURCE_REGISTRY: RemoteDatasourceDefinition[] = [
         description:
           "Array of normalized `{ id, title, slug?, url? }` rows. Use `{{ article_list.items }}` to hydrate array/list blocks.",
       },
-      { path: "items.0.id", description: "Article identifier." },
-      { path: "items.0.title", description: "Article title." },
-      {
-        path: "items.0.slug",
-        description: "Article slug/path alias if present.",
-      },
-      { path: "items.0.url", description: "Canonical URL if present." },
+      { path: "items[].id", description: "Article identifier" },
+      { path: "items[].title", description: "Article title" },
+      { path: "items[].slug", description: "Slug/path alias" },
+      { path: "items[].url", description: "Canonical article URL" },
     ],
   },
 ];

@@ -116,6 +116,24 @@ describe("createP1Middleware", () => {
     expect(result.type).toBe("next");
   });
 
+  it("should log a concise warning on getRedirect error, not a full stack", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockGetRedirect.mockRejectedValueOnce(new Error("fetch failed"));
+
+    const middleware = createP1Middleware(config);
+    await middleware(new Request("http://localhost:3000/some-page"));
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      "[P1 Middleware] Redirect lookup skipped:",
+      "fetch failed",
+    );
+    expect(errorSpy).not.toHaveBeenCalled();
+
+    warnSpy.mockRestore();
+    errorSpy.mockRestore();
+  });
+
   it("should handle absolute destination URLs", async () => {
     mockGetRedirect.mockResolvedValueOnce({
       fromPath: "/external",

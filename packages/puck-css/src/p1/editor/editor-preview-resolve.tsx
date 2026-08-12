@@ -44,8 +44,14 @@ function shimmerUnresolvedTokens(
   const result = { ...props };
   for (const key of Object.keys(result)) {
     const val = result[key];
-    if (typeof val === "string" && TEMPLATE_TOKEN_RE.test(val)) {
-      result[key] = val.replace(TEMPLATE_TOKEN_RE, SHIMMER_PLACEHOLDER);
+    if (typeof val !== "string") continue;
+    const replaced = val.replace(TEMPLATE_TOKEN_RE, (match) => {
+      const inner = match.slice(2, -2).trim();
+      if (inner === "item" || inner.startsWith("item.")) return match;
+      return SHIMMER_PLACEHOLDER;
+    });
+    if (replaced !== val) {
+      result[key] = replaced;
       changed = true;
     }
   }

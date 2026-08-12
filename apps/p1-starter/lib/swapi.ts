@@ -39,23 +39,23 @@ async function fetchSwapiPerson(
   }
 }
 
-async function fetchSwapiPeopleList(
-  fetchImpl: typeof fetch,
-): Promise<{ id: string; name: string; url?: string }[]> {
+type SwapiItem = { id: string; name: string; url?: string } & Record<string, unknown>;
+
+async function fetchSwapiPeopleList(fetchImpl: typeof fetch): Promise<SwapiItem[]> {
   try {
     const res = await fetchImpl(`${SWAPI_BASE}/people`);
     if (!res.ok) return [];
     const json: unknown = await res.json();
     const results = Array.isArray(json) ? json : null;
     if (!results) return [];
-    const out: { id: string; name: string; url?: string }[] = [];
+    const out: SwapiItem[] = [];
     for (const row of results) {
       if (!row || typeof row !== "object" || Array.isArray(row)) continue;
       const r = row as Record<string, unknown>;
       const id = swapiPersonIdFromUrl(r.url);
       const name = typeof r.name === "string" ? r.name : "";
       const url = typeof r.url === "string" ? r.url : undefined;
-      if (id && name) out.push({ id, name, url });
+      if (id && name) out.push({ ...r, id, name, url });
     }
     return out;
   } catch {

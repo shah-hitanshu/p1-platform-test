@@ -2,7 +2,12 @@
 
 import type { Config, Data } from "@puckeditor/core";
 import { Render } from "@puckeditor/core";
+import { PuckConfigProvider } from "../../core/PuckConfigContext";
 
 export function RenderClient({ config, data }: { config: Config; data: Data }) {
-  return <Render config={config} data={data} />;
+  return (
+    <PuckConfigProvider config={config}>
+      <Render config={config} data={data} />
+    </PuckConfigProvider>
+  );
 }

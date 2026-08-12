@@ -18,7 +18,9 @@ import { fetchHttpJsonRemoteDatasource } from "./fetch-http-json";
 
 export type RemoteDatasourceContext = Record<string, unknown>;
 
-const TEMPLATE_SOURCE_RE = /\{\{\s*(templates\.[a-zA-Z_]\w*|[a-zA-Z_]\w*)\./g;
+// Template ids carry a CSS query name, which is kebab-case, so that branch has to
+// admit hyphens. Plain datasource ids deliberately do not.
+const TEMPLATE_SOURCE_RE = /\{\{\s*(templates\.[a-zA-Z_][\w-]*|[a-zA-Z_]\w*)\./g;
 
 export function extractReferencedDatasourceIds(data: unknown): Set<string> {
   const ids = new Set<string>();

@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
+@source "../../../packages/puck-css/src";
 
 /* Scoped via :has() rather than a bare `body {...}` selector so this reset
    stays out of Puck's canvas-preview iframe (PCC-3499 / PCC-3513).

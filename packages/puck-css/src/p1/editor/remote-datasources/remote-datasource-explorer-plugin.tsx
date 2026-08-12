@@ -2,6 +2,7 @@
 
 import type { Plugin } from "@puckeditor/core";
 
+import { Icon } from "@pantheon-systems/pds-toolkit-react";
 import { isCanonicalTemplatePath } from "../../../data/route-templates";
 import { useLiveRemoteDatasources } from "../hooks/useLiveRemoteDatasources";
 import {
@@ -319,13 +320,7 @@ export function createRemoteDatasourceExplorerPlugin(options: {
   return {
     name: "datasource-explorer",
     label: "Data sources",
-    icon: (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M12 4c4.4 0 8 1.3 8 3s-3.6 3-8 3-8-1.3-8-3 3.6-3 8-3z" />
-        <path d="M4 7v10c0 1.7 3.6 3 8 3s8-1.3 8-3V7" />
-        <path d="M20 12c0 1.7-3.6 3-8 3s-8-1.3-8-3" />
-      </svg>
-    ),
+    icon: <Icon iconName="server" />,
     render: () => <RemoteDatasourceExplorerPanel initialPath={options.editorPath} />,
   };
 }

@@ -1095,4 +1095,6 @@ export interface QueryResults {
 export interface QueryResultsParams {
   limit?: number;
   offset?: number;
+  includeMetadata?: boolean;
+  includeSnapshot?: boolean;
 }

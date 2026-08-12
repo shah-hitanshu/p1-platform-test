@@ -47,7 +47,8 @@ export function createP1Middleware(config: P1MiddlewareConfig) {
         return NextResponse.redirect(destinationUrl.toString(), statusCode);
       }
     } catch (error) {
-      console.error('[P1 Middleware] Redirect lookup failed:', error);
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn('[P1 Middleware] Redirect lookup skipped:', message);
     }
 
     return NextResponse.next();

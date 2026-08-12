@@ -9,10 +9,13 @@ import {
   useP1Editor,
   useP1Plugins,
   useP1Auth,
+  useEditorContext,
+  useRemoteDatasourceContext,
   wrapConfigForEditorPreview,
   P1QueryProvider,
   editorPathHref,
 } from "@pantheon-systems/puck-css";
+import { DatasourceRegistryProvider, DatasourceDataProvider } from "@pantheon-systems/puck-css/fields";
 import { LoadingMessage } from "@pantheon-systems/puck-css/pds";
 import { P1NextRouterProvider } from "@pantheon-systems/p1-next-sdk";
 import { createAIChatPlugin } from "@pantheon-systems/p1-ai-chat";
@@ -208,6 +211,10 @@ function EditorContent({
 }) {
   const router = useRouter();
   const { getToken } = useP1Auth();
+  const { data: editorCtx } = useEditorContext(path);
+  const {
+    context: remoteDatasourceContext,
+  } = useRemoteDatasourceContext(path, editorCtx?.remoteDatasourceRegistry ?? []);
   const p1Plugins = useP1Plugins(path, config);
   const mediaPlugin = React.useMemo(() => createMediaPlugin({}), []);
   const flags = useFlags();
@@ -367,8 +374,12 @@ function EditorContent({
           `}</style>
         </div>
       )}
-      {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-      <Puck key={`${displayState.puckKey}-${chatbotEnabled ? "ai" : "no-ai"}`} {...displayState.puckProps as any} _experimentalFullScreenCanvas={true} />
+      <DatasourceRegistryProvider registry={editorCtx?.remoteDatasourceRegistry ?? []}>
+        <DatasourceDataProvider context={remoteDatasourceContext}>
+          {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+          <Puck key={`${displayState.puckKey}-${chatbotEnabled ? "ai" : "no-ai"}`} {...displayState.puckProps as any} _experimentalFullScreenCanvas={true} />
+        </DatasourceDataProvider>
+      </DatasourceRegistryProvider>
     </div>
   );
 }

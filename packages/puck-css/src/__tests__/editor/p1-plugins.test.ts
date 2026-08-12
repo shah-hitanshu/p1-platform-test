@@ -192,7 +192,7 @@ describe('useP1Plugins', () => {
     expect(result.current).toEqual([]);
   });
 
-  it('returns three plugins after editor context loads (before datasource data)', async () => {
+  it('returns three plugins after editor context loads', async () => {
     const router = createMockRouter();
     const mockFetch = vi.fn().mockImplementation((url: string) => {
       if (url.includes('/p1/api/editor-context')) {
@@ -200,9 +200,6 @@ describe('useP1Plugins', () => {
           ok: true,
           json: () => Promise.resolve(MOCK_EDITOR_CONTEXT),
         });
-      }
-      if (url.includes('/p1/api/datasource-context')) {
-        return new Promise(() => {});
       }
       return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
     });

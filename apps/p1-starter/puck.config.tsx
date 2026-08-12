@@ -12,6 +12,7 @@ import { quoteBlock } from "./components/puck/quote-block";
 import { puckRoot } from "./components/puck/root";
 import { spacerBlock } from "./components/puck/spacer-block";
 import { welcomeBlock } from "./components/puck/welcome-block";
+import { dataListBlock } from "./components/puck/data-list-block";
 
 export const config = {
   categories: {
@@ -25,7 +26,7 @@ export const config = {
     },
     data: {
       title: "Data",
-      components: ["GridBlock"],
+      components: ["GridBlock", "DataListBlock"],
     },
     layout: {
       title: "Layout",
@@ -52,6 +53,7 @@ export const config = {
     DividerBlock: dividerBlock,
     SpacerBlock: spacerBlock,
     ButtonBlock: buttonBlock,
+    DataListBlock: dataListBlock,
     P1WelcomeBlock: welcomeBlock,
   },
 } as Config;

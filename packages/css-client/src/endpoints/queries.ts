@@ -39,6 +39,12 @@ export class QueriesEndpoint {
     if (params?.offset !== undefined) {
       searchParams.set('offset', String(params.offset));
     }
+    if (params?.includeMetadata !== undefined) {
+      searchParams.set('includeMetadata', String(params.includeMetadata));
+    }
+    if (params?.includeSnapshot !== undefined) {
+      searchParams.set('includeSnapshot', String(params.includeSnapshot));
+    }
     const qs = searchParams.toString();
     const path = `/api/sites/${siteId}/branches/${branchId}/queries/${queryName}/results${qs ? `?${qs}` : ''}`;
 

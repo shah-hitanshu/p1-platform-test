@@ -23,8 +23,16 @@ const SKIP_PATTERNS = new Set([
   'README.md',
 ]);
 
+// Tests that resolve puck-css through the monorepo-only vitest aliases in
+// apps/p1-starter/vitest.config.ts, so they cannot run against the published package.
+const SKIP_FILES = new Set([
+  'data-list-block.test.ts',
+  'data-list-block-utils.test.ts',
+  'data-list-block-sub-components.test.tsx',
+]);
+
 function shouldSkip(name) {
-  return SKIP_PATTERNS.has(name);
+  return SKIP_PATTERNS.has(name) || SKIP_FILES.has(name);
 }
 
 function copyRecursive(src, dest, rootDest) {

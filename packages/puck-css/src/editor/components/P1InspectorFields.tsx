@@ -14,9 +14,11 @@ import React from 'react';
 import { createUsePuck, usePuck } from '@puckeditor/core';
 import { IconButton } from '@pantheon-systems/pds-toolkit-react';
 import { useP1PuckOptional } from '../../core/P1PuckContext.js';
+import { useSidebarScrollPreservation } from '../useSidebarScrollPreservation.js';
 import { templateFromRegistryPath } from '../utils/templatePath.js';
 import { ReadOnlyFieldsGuard } from '../../versioning/components/ReadOnlyFieldsGuard.js';
 import { VersionReadOnlyBanner } from '../../versioning/components/VersionReadOnlyBanner.js';
+import { DataListFieldsGrouper } from '../../data/data-list-block/DataListFieldsGrouper.js';
 import { P1TemplateFields } from './P1TemplateFields.js';
 import { InspectorTabHeader } from './InspectorTabHeader.js';
 
@@ -38,6 +40,8 @@ export function P1InspectorFields({
       (s as unknown as { appState?: { ui?: { itemSelector?: unknown } } }).appState?.ui
         ?.itemSelector ?? null,
   );
+
+  useSidebarScrollPreservation(itemSelector);
   const selectedBlockType = useInspectorSelectedType(
     (s) => (s as unknown as { selectedItem?: { type?: string } | null }).selectedItem?.type ?? null,
   );
@@ -111,6 +115,15 @@ export function P1InspectorFields({
     );
   }
 
+  const templateLabel = !itemSelector
+    ? (css?.currentTemplate as { root?: { props?: { _template?: { label?: string } } } } | null)
+        ?.root?.props?._template?.label
+      ?? (css?.templates as { id: string; label: string }[] | undefined)?.find(
+           (t) => t.id === (css?.currentDocument as { templateId?: string } | undefined)?.templateId,
+         )?.label
+      ?? null
+    : null;
+
   return (
     <div className={`p1-inspector-fields${isReadOnly ? ' p1-inspector-fields--readonly' : ''}`}>
       <InspectorTabHeader
@@ -131,7 +144,16 @@ export function P1InspectorFields({
         </div>
       )}
       <ReadOnlyFieldsGuard isReadOnly={isReadOnly}>
-        {children}
+        {selectedBlockType &&
+         (config.components as Record<string, { _fieldGroups?: Record<string, string> }>)[selectedBlockType]?._fieldGroups
+          ? <DataListFieldsGrouper>{children}</DataListFieldsGrouper>
+          : children}
+        {templateLabel && (
+          <div className="p1-inspector-template-badge">
+            <span className="p1-inspector-template-badge__label">Template</span>
+            <span className="p1-inspector-template-badge__name">{templateLabel}</span>
+          </div>
+        )}
       </ReadOnlyFieldsGuard>
     </div>
   );

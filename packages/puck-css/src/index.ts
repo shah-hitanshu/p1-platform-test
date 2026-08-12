@@ -30,6 +30,7 @@ export type {
 // Provider and Context
 export { P1PuckProvider } from './editor/P1PuckProvider.js';
 export { P1PuckContext, useP1Puck } from './core/P1PuckContext.js';
+export { PuckConfigProvider, usePuckConfig } from './core/PuckConfigContext.js';
 export { NotificationProvider, NotificationContext, useNotifications } from './core/NotificationContext.js';
 export { PresenceContext, usePresenceContext } from './core/PresenceContext.js';
 export type { PresenceContextValue } from './core/PresenceContext.js';
@@ -417,6 +418,9 @@ export {
 } from './data/cross-reference.js';
 export { buildRemoteDatasourceRegistry } from './data/remote-datasources/remote-datasource-registry.js';
 export type { RemoteDatasourceDefinition, RemoteDatasourceFieldDoc } from './data/remote-datasources/remote-datasource-registry.js';
+export { suggestFieldForRole, autoMapFields } from './data/schema-heuristics.js';
+export type { FieldRole } from './data/schema-heuristics.js';
+export { sortItems, filterItems, applyCollectionOperators } from './data/collection-operators.js';
 export { fetchHttpJsonRemoteDatasource } from './data/remote-datasources/fetch-http-json.js';
 export type { RemoteDatasourceScope } from './data/remote-datasources/user-remote-datasource-types.js';
 export {

@@ -8,6 +8,8 @@ import { Toaster, ToastType, useToast } from "@pantheon-systems/pds-toolkit-reac
 import type { RemoteDatasourceDefinition } from "../../data/remote-datasources/remote-datasource-registry";
 import type { RouteRow } from "../../data/page-store";
 import { P1QueryProvider } from "../../data/query-provider";
+import { PuckConfigProvider } from "../../core/PuckConfigContext";
+import { DatasourceRegistryProvider } from "../../data/fields/datasource-select-field";
 import { createRemoteDatasourceExplorerPlugin } from "./remote-datasources/remote-datasource-explorer-plugin";
 import { createFieldConnectPlugin } from "./connect/field-connect-plugin";
 import {
@@ -25,6 +27,7 @@ import { ListBlockIcon } from "./icons/list-block-icon";
 import { ParagraphBlockIcon } from "./icons/paragraph-block-icon";
 import { QuoteBlockIcon } from "./icons/quote-block-icon";
 import { SpacerBlockIcon } from "./icons/spacer-block-icon";
+import { DataListBlockIcon } from "./icons/data-list-block-icon";
 
 const iconStyle = {
   width: 16,
@@ -43,6 +46,7 @@ const blockIcons: Record<string, React.FC<React.SVGProps<SVGSVGElement>>> = {
   DividerBlock: DividerBlockIcon,
   SpacerBlock: SpacerBlockIcon,
   ButtonBlock: ButtonBlockIcon,
+  DataListBlock: DataListBlockIcon,
 };
 
 function ComponentListIcon({ name }: { name: string }) {
@@ -135,7 +139,11 @@ function ClientInner(props: ClientProps) {
 export function Client(props: ClientProps) {
   return (
     <P1QueryProvider>
-      <ClientInner {...props} />
+      <PuckConfigProvider config={props.config}>
+        <DatasourceRegistryProvider registry={props.remoteDatasourceRegistry}>
+          <ClientInner {...props} />
+        </DatasourceRegistryProvider>
+      </PuckConfigProvider>
     </P1QueryProvider>
   );
 }

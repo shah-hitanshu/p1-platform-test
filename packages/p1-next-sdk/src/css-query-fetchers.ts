@@ -64,7 +64,9 @@ export async function createCssQueryFetchers(
     id: `${CSS_QUERY_ID_PREFIX}${query.name}`,
     fetch: async () => {
       try {
-        const results = await queries.getResults(siteId, branchId, query.name);
+        const results = await queries.getResults(siteId, branchId, query.name, {
+          includeMetadata: true,
+        });
         return results as unknown as Record<string, unknown>;
       } catch {
         return {};

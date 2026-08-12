@@ -177,7 +177,7 @@ describe("monster_list fetcher", () => {
     });
     const result = await fetcher.fetch(makeFetcherParams({ fetchImpl }));
     expect(result).toEqual({
-      items: [{ index: "bulbasaur", name: "Bulbasaur", url: "/pokemon/bulbasaur" }],
+      items: [{ key: "bulbasaur", species: "Bulbasaur", index: "bulbasaur", name: "Bulbasaur", url: "/pokemon/bulbasaur" }],
     });
   });
 });

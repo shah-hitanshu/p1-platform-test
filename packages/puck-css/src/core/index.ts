@@ -3,6 +3,8 @@ export type * from './types.js';
 
 export { P1PuckContext, useP1Puck, useP1PuckOptional } from './P1PuckContext.js';
 
+export { PuckConfigProvider, usePuckConfig } from './PuckConfigContext.js';
+
 export {
   PresenceContext,
   usePresenceContext,

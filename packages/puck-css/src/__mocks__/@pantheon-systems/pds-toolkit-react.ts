@@ -6,9 +6,41 @@
  */
 import * as React from 'react';
 
-export const TextInput = () => null;
+// TextInput stub: renders a native <input> so test queries (getByRole, getByDisplayValue) work
+export const TextInput = (props: Record<string, unknown>) => {
+  return React.createElement('input', {
+    id: props.id,
+    type: (props.type as string) ?? 'text',
+    value: props.value as string,
+    disabled: props.disabled,
+    min: props.min,
+    max: props.max,
+    onChange: props.onChange,
+  });
+};
 export const Textarea = () => null;
-export const Select = () => null;
+// Select stub: renders a native <select> so existing test queries (getByRole('combobox')) work
+export const Select = (props: Record<string, unknown>) => {
+  const options = (props.options ?? []) as { label: string; value: string }[];
+  return React.createElement(
+    'select',
+    {
+      id: props.id,
+      value: props.value as string,
+      disabled: props.disabled,
+      'aria-label': props.label ?? props['aria-label'],
+      onChange: (e: React.ChangeEvent<HTMLSelectElement>) => {
+        const opt = options.find((o) => o.value === e.target.value);
+        if (opt && typeof props.onOptionSelect === 'function') {
+          (props.onOptionSelect as (o: { label: string; value: string }) => void)(opt);
+        }
+      },
+    },
+    ...options.map((opt) =>
+      React.createElement('option', { key: opt.value, value: opt.value }, opt.label),
+    ),
+  );
+};
 export const RadioGroup = () => null;
 // SegmentedButton stub: renders radio-like buttons for value-based selection testing
 export const SegmentedButton = (props: Record<string, unknown>) => {
@@ -32,7 +64,7 @@ export const SegmentedButton = (props: Record<string, unknown>) => {
             .filter(Boolean)
             .join(' '),
           'aria-pressed': isActive(opt.value),
-          disabled: opt.disabled ?? false,
+          disabled: (props.disabled as boolean) || (opt.disabled ?? false),
           onClick: () => {
             if (!opt.disabled) {
               (props.onChange as (v: string) => void)?.(opt.value);
@@ -44,6 +76,19 @@ export const SegmentedButton = (props: Record<string, unknown>) => {
     ),
   );
 };
+// Switch stub: renders an <input type="checkbox"> for toggle testing
+export const Switch = (props: Record<string, unknown>) => {
+  return React.createElement('input', {
+    type: 'checkbox',
+    id: props.id,
+    role: 'switch',
+    checked: props.checked as boolean,
+    disabled: props.disabled,
+    onChange: props.onChange,
+    'aria-label': props.label,
+  });
+};
+
 export const Icon = () => null;
 export const PantheonLogo = (props: Record<string, unknown>) => {
   return React.createElement('span', { 'data-testid': props['data-testid'], className: 'pds-pantheon-logo' });

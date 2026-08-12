@@ -231,4 +231,14 @@ declare module '@pantheon-systems/pds-toolkit-react' {
     linkContent?: import('react').ReactNode;
     [key: string]: unknown;
   }>;
+
+  export const Switch: FC<{
+    id?: string;
+    label?: string;
+    checked?: boolean;
+    onChange?: (e: import('react').ChangeEvent<HTMLInputElement>) => void;
+    showLabel?: boolean;
+    disabled?: boolean;
+    [key: string]: unknown;
+  }>;
 }

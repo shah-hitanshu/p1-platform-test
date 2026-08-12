@@ -25,6 +25,8 @@ const RESULT_FIELDS: { path: string; description: string }[] = [
   { path: "items[].path", description: "Document path" },
   { path: "items[].createdAt", description: "Document creation timestamp" },
   { path: "items[].metadata", description: "Document metadata (title, custom fields)" },
+  { path: "items[].metadata.title", description: "Page title" },
+  { path: "items[].metadata.description", description: "Page description" },
   { path: "items[].snapshot", description: "Full document content snapshot" },
 ];
 

@@ -113,6 +113,8 @@ describe("cssQueriesToDatasourceDefinitions", () => {
     expect(fieldPaths).toContain("items[].path");
     expect(fieldPaths).toContain("items[].createdAt");
     expect(fieldPaths).toContain("items[].metadata");
+    expect(fieldPaths).toContain("items[].metadata.title");
+    expect(fieldPaths).toContain("items[].metadata.description");
     expect(fieldPaths).toContain("items[].snapshot");
   });
 
