@@ -93,7 +93,6 @@ function Avatar({
           alt={actor.name}
           className={`${baseClass}__image`}
           referrerPolicy="no-referrer"
-          crossOrigin="anonymous"
         />
       ) : (
         <span className={`${baseClass}__initials`}>{getInitials(actor.name)}</span>

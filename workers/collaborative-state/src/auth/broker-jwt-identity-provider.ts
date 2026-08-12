@@ -34,6 +34,7 @@ interface BrokerJwtClaims {
   site_id?: string;
   email?: string;
   name?: string;
+  picture?: string;
   provider?: string;
 }
 
@@ -178,6 +179,7 @@ export class BrokerJwtIdentityProvider implements IdentityProvider {
         type: 'user',
         email: claims.email,
         name: claims.name,
+        avatarUrl: claims.picture,
         authProvider: 'broker',
         pantheonSiteRoles: {},
         tokenExpiry: new Date(claims.exp * 1000).toISOString(),

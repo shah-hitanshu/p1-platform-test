@@ -462,7 +462,6 @@ export function P1EditorHeader({
                 className="pds-avatar__image"
                 src={currentUser.avatar}
                 referrerPolicy="no-referrer"
-                crossOrigin="anonymous"
               />
             </span>
           </div>

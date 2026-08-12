@@ -22,8 +22,8 @@ import {
   hasRealAuthProviders,
   authenticate,
   getMASClient,
-  handleAuthRoutes,
 } from './middleware/authentication';
+import { handleAuthRoutes } from './auth/mock-auth';
 import { handleHealth } from './middleware/health';
 import { handleDocsRoute, handleDocsSpecRoute } from './routes/docs-handler';
 import {
@@ -255,6 +255,12 @@ async function handleRequest(
     if (!principal) {
       return cors(errorResponse('Authentication required', 401));
     }
+    // Gates user principals only. extractActingUser runs on the dispatched path
+    // below, so an agent — which carries no email of its own — no-ops here.
+    const allowlistResult = await gateAndEnrichPrincipal(principal, env);
+    if (allowlistResult !== null) {
+      return cors(allowlistResult);
+    }
     return cors(jsonResponse({
       id: principal.id,
       type: principal.type,
@@ -348,25 +354,9 @@ async function handleRequest(
   }
 
   // Allowlist check: if users table has entries, only listed users can access.
-  // Skip for mock auth mode (development ergonomics).
-  // Skip for service principals (they authenticate via site API tokens, not user accounts).
-  //
-  // PCC-3190: agent principals carry no email of their own, so the previous
-  // `principal.email !== undefined` guard caused the gate to be skipped
-  // entirely for agent traffic — letting any authenticated Google user
-  // reach handlers via the MCP server's acting-user forwarding without
-  // being checked against the allowlist. When an agent forwards an
-  // acting user, treat the acting user's email as the allowlist subject.
-  const isMockOnly = !hasRealAuthProviders(env);
-  const subjectEmail =
-    principal.email
-    ?? (principal.type === 'agent' ? principal.actingUserEmail : undefined);
-
-  if (!isMockOnly && principal.type !== 'service' && subjectEmail !== undefined) {
-    const allowlistResult = await checkUserAllowlist(principal, subjectEmail);
-    if (allowlistResult !== null) {
-      return cors(allowlistResult);
-    }
+  const allowlistResult = await gateAndEnrichPrincipal(principal, env);
+  if (allowlistResult !== null) {
+    return cors(allowlistResult);
   }
 
   // Initialize MAS client (undefined when not enabled)
@@ -382,6 +372,32 @@ async function handleRequest(
     console.error('Request handler error:', error);
     return cors(errorResponse('Internal server error', 500));
   }
+}
+
+/**
+ * Applies the allowlist gate and DB name/avatar enrichment, returning an error
+ * Response only when the user is not authorized. The gate is skipped for
+ * mock-only deployments and for service principals (site API tokens, not users).
+ */
+async function gateAndEnrichPrincipal(
+  principal: AuthenticatedPrincipal,
+  env: Env,
+): Promise<Response | null> {
+  // Agent principals carry no email of their own. When an agent forwards an
+  // acting user, that user's email is the subject the allowlist gates on.
+  const subjectEmail =
+    principal.email
+    ?? (principal.type === 'agent' ? principal.actingUserEmail : undefined);
+
+  if (
+    !hasRealAuthProviders(env)
+    || principal.type === 'service'
+    || subjectEmail === undefined
+  ) {
+    return null;
+  }
+
+  return checkUserAllowlist(principal, subjectEmail);
 }
 
 /**
@@ -401,13 +417,13 @@ async function checkUserAllowlist(
   principal: AuthenticatedPrincipal,
   subjectEmail: string,
 ): Promise<Response | null> {
-  const userCountResult = await query<{ count: string }>(
-    'SELECT COUNT(*) as count FROM app.users',
+  // EXISTS, not COUNT(*): this only asks whether the allowlist is populated,
+  // and /api/auth/me now runs it on every editor mount and token refresh.
+  const allowlistProbe = await query<{ populated: boolean }>(
+    'SELECT EXISTS (SELECT 1 FROM app.users) AS populated',
   );
-  const countRow = userCountResult.rows[0];
-  const userCount = countRow !== undefined ? parseInt(countRow.count, 10) : 0;
 
-  if (userCount > 0) {
+  if (allowlistProbe.rows[0]?.populated === true) {
     const userResult = await query<{
       id: string;
       principal_id: string | null;
@@ -432,6 +448,16 @@ async function checkUserAllowlist(
       return null;
     }
 
+    // Only the broker JWT carries the upstream photo, so an absent avatar there
+    // means it was removed and the column is cleared; other providers have no
+    // opinion and fall back to the stored value.
+    principal.name ??= userRow.name ?? undefined;
+    const resolvedAvatarUrl =
+      principal.authProvider === 'broker'
+        ? principal.avatarUrl ?? null
+        : principal.avatarUrl ?? userRow.avatar_url;
+    principal.avatarUrl = resolvedAvatarUrl ?? undefined;
+
     // Link principal_id on first login, and update name/avatar_url.
     // PCC-3457: stamp the normalized (UUIDv5) form, never a raw OAuth
     // subject — the persistence actor resolver looks this column up by
@@ -439,8 +465,8 @@ async function checkUserAllowlist(
     // backfills (incident PCC-3464).
     if (userRow.principal_id === null) {
       await query(
-        'UPDATE app.users SET principal_id = $1, auth_provider = $2, name = COALESCE($3, name), avatar_url = COALESCE($4, avatar_url), updated_at = NOW() WHERE id = $5',
-        [await normalizePrincipalIdForDb(principal.id), principal.authProvider ?? 'unknown', principal.name ?? null, principal.avatarUrl ?? null, userRow.id],
+        'UPDATE app.users SET principal_id = $1, auth_provider = $2, name = COALESCE($3, name), avatar_url = $4, updated_at = NOW() WHERE id = $5',
+        [await normalizePrincipalIdForDb(principal.id), principal.authProvider ?? 'unknown', principal.name ?? null, resolvedAvatarUrl, userRow.id],
       );
 
       // Self-heal orphan user_site_roles rows from before dbUserId was used.
@@ -467,21 +493,13 @@ async function checkUserAllowlist(
     // Refresh DB name/avatar when returning user's JWT has newer values
     if (userRow.principal_id !== null) {
       const nameChanged = principal.name !== undefined && principal.name !== userRow.name;
-      const avatarChanged = principal.avatarUrl !== undefined && principal.avatarUrl !== userRow.avatar_url;
+      const avatarChanged = resolvedAvatarUrl !== userRow.avatar_url;
       if (nameChanged || avatarChanged) {
         await query(
-          'UPDATE app.users SET name = COALESCE($1, name), avatar_url = COALESCE($2, avatar_url), updated_at = NOW() WHERE id = $3',
-          [principal.name ?? null, principal.avatarUrl ?? null, userRow.id],
+          'UPDATE app.users SET name = COALESCE($1, name), avatar_url = $2, updated_at = NOW() WHERE id = $3',
+          [principal.name ?? null, resolvedAvatarUrl, userRow.id],
         );
       }
-    }
-
-    // Enrich principal from database when JWT claims are missing
-    if (principal.name === undefined && userRow.name !== null) {
-      principal.name = userRow.name;
-    }
-    if (principal.avatarUrl === undefined && userRow.avatar_url !== null) {
-      principal.avatarUrl = userRow.avatar_url;
     }
 
     // Store DB user ID for authorization queries (role tables reference users.id, not the UUIDv5 principal id)

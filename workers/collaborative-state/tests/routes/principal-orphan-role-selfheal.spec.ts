@@ -35,8 +35,8 @@ vi.mock('../../src/db', () => ({
   ),
   query: vi.fn().mockImplementation((sql: string, params?: unknown[]) => {
     executedQueries.push({ sql, params: params ?? [] });
-    if (sql.includes('SELECT COUNT(*)')) {
-      return Promise.resolve({ rows: [{ count: '1' }] });
+    if (sql.includes('SELECT EXISTS')) {
+      return Promise.resolve({ rows: [{ populated: true }] });
     }
     if (sql.includes('FROM app.users WHERE email')) {
       return Promise.resolve({ rows: [mockUserRow] });

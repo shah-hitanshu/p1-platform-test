@@ -51,6 +51,7 @@ interface UserTokenPayload {
   sub: string;
   email: string;
   name: string;
+  picture?: string;
   type: 'user';
   siteRoles: Record<string, PantheonRole>;
 }
@@ -126,6 +127,10 @@ export class MockIdentityProvider {
       siteRoles: user.siteRoles,
     };
 
+    if (user.avatarUrl !== undefined) {
+      payload.picture = user.avatarUrl;
+    }
+
     const token = await new jose.SignJWT(payload as unknown as jose.JWTPayload)
       .setProtectedHeader({ alg: 'HS256' })
       .setIssuer(ISSUER)
@@ -156,6 +161,7 @@ export class MockIdentityProvider {
       const type = payload.type as 'user' | 'agent' | 'service' | undefined;
       const email = payload.email as string | undefined;
       const name = payload.name as string | undefined;
+      const picture = payload.picture as string | undefined;
       const siteRoles = payload.siteRoles as
         | Record<string, PantheonRole>
         | undefined;
@@ -173,6 +179,7 @@ export class MockIdentityProvider {
         type,
         email,
         name,
+        avatarUrl: picture,
         pantheonSiteRoles: siteRoles ?? {},
         tokenExpiry,
       };

@@ -652,3 +652,45 @@ describe('Phase 2.1: Mock Identity Provider', () => {
     });
   });
 });
+
+/**
+ * The real broker JWT carries a `picture` claim that becomes
+ * `principal.avatarUrl`. The mock provider stands in for that provider in
+ * local development, so it has to carry an avatar too — otherwise the editor
+ * can never render a profile picture on a developer's machine.
+ */
+describe('MockIdentityProvider - avatar', () => {
+  const AVATAR = 'https://www.gravatar.com/avatar/abc?d=identicon&s=96';
+
+  function configWithAvatar(): MockIdentityConfig {
+    return {
+      ...TEST_CONFIG,
+      users: [{ ...TEST_CONFIG.users[0], avatarUrl: AVATAR }],
+    };
+  }
+
+  it('maps a configured avatarUrl onto the validated principal', async () => {
+    const provider = new MockIdentityProvider({
+      config: configWithAvatar(),
+      jwtSecret: TEST_JWT_SECRET,
+    });
+
+    const token = await provider.issueToken('user-alice');
+    const principal = await provider.validateToken(token);
+
+    expect(principal?.avatarUrl).toBe(AVATAR);
+  });
+
+  it('leaves avatarUrl undefined for a user with no configured avatar', async () => {
+    const provider = new MockIdentityProvider({
+      config: TEST_CONFIG,
+      jwtSecret: TEST_JWT_SECRET,
+    });
+
+    const token = await provider.issueToken('user-alice');
+    const principal = await provider.validateToken(token);
+
+    expect(principal).not.toBeNull();
+    expect(principal?.avatarUrl).toBeUndefined();
+  });
+});

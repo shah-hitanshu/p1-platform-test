@@ -31,12 +31,25 @@ vi.mock('../../../src/services/site-service.js', () => ({
 // Mock transaction responses - set by tests
 let mockTransactionResponse: unknown = null;
 
+// Records every DO RPC the routes make, so tests can assert on what was sent.
+// A fresh stub is created per `brokerTx.get()`, so the log has to live here.
+let capturedDoCalls: { path: string; body: unknown }[] = [];
+
 function createMockDurableObjectStub(): DurableObjectStub {
   return {
-    fetch: vi.fn(async (request: Request | string) => {
+    // The routes call `stub.fetch(url, init)` as well as `stub.fetch(request)`,
+    // so `init` has to be honoured or the POST body is lost.
+    fetch: vi.fn(async (request: Request | string, init?: RequestInit) => {
       if (typeof request === 'string') {
-        request = new Request(request);
+        request = new Request(request, init);
       }
+      let body: unknown = null;
+      try {
+        body = await request.clone().json();
+      } catch {
+        // GET RPCs carry no body
+      }
+      capturedDoCalls.push({ path: new URL(request.url).pathname, body });
       return new Response(JSON.stringify(mockTransactionResponse), {
         headers: { 'Content-Type': 'application/json' },
       });
@@ -54,7 +67,9 @@ function createMockBrokerTx(): DurableObjectNamespace {
   } as unknown as DurableObjectNamespace;
 }
 
-function createMockEnv(): Record<string, unknown> {
+/** Only the bindings the broker routes read; cast past the document, presence
+ *  and KV bindings on Env, which these routes never touch. */
+function createMockEnv(): Env {
   return {
     BROKER_TX: createMockBrokerTx(),
     AUTH0_CLIENT_ID: 'test-client-id',
@@ -64,13 +79,14 @@ function createMockEnv(): Record<string, unknown> {
     GCP_KMS_KEY_RESOURCE: 'projects/p/locations/l/keyRings/r/cryptoKeys/k',
     BROKER_JWT_AUDIENCE: 'css-api',
     INTERNAL_SECRET: 'test-secret-at-least-32-characters-long',
-  };
+  } as unknown as Env;
 }
 
 describe('BrokerRoutes', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     mockTransactionResponse = null;
+    capturedDoCalls = [];
   });
   afterEach(() => { vi.restoreAllMocks(); });
 
@@ -229,7 +245,7 @@ describe('BrokerRoutes', () => {
           } as unknown as DurableObjectNamespace,
           ...overrides,
         };
-        return { env: env as unknown as Env, fetchMock };
+        return { env: env, fetchMock };
       }
 
       /** The redirectUrl the route asked the Durable Object to store. */
@@ -594,6 +610,44 @@ describe('BrokerRoutes', () => {
       expect(body).toContain('close this window');
     });
 
+    it('forwards the Auth0 picture claim to the transaction as userAvatarUrl', async () => {
+      const { handleBrokerRoutes } = await import('../../../src/routes/broker-routes.js');
+      const { exchangeAuth0Code } = await import('../../../src/auth/oauth/auth0-handler.js');
+      const { verifyAndParseState } = await import('../../../src/auth/oauth/state-signing.js');
+
+      vi.mocked(verifyAndParseState).mockResolvedValue({ txId: 'tx-avatar-1' });
+
+      vi.mocked(exchangeAuth0Code).mockResolvedValue({
+        accessToken: 'auth0-access-token',
+        user: {
+          sub: 'auth0|user-1',
+          email: 'user@example.com',
+          name: 'Test User',
+          picture: 'https://lh3.googleusercontent.com/a/alice=s96-c',
+        },
+      });
+
+      mockTransactionResponse = {
+        id: 'tx-avatar-1',
+        siteId: 'site-123',
+        siteApiTokenId: 'token-id-1',
+        status: 'approved',
+        createdAt: 1000,
+        expiresAt: 1300,
+        userId: 'auth0|user-1',
+        userEmail: 'user@example.com',
+        userName: 'Test User',
+      };
+
+      const url = 'https://css.example.com/auth/callback?code=auth-code&state=signed-state';
+      await handleBrokerRoutes(new Request(url), createMockEnv(), '/auth/callback');
+
+      const approveCall = capturedDoCalls.find((c) => c.path === '/approve');
+      expect(approveCall?.body).toMatchObject({
+        userAvatarUrl: 'https://lh3.googleusercontent.com/a/alice=s96-c',
+      });
+    });
+
     it('returns 400 if state verification fails', async () => {
       const { handleBrokerRoutes } = await import('../../../src/routes/broker-routes.js');
       const { verifyAndParseState } = await import('../../../src/auth/oauth/state-signing.js');
@@ -648,6 +702,50 @@ describe('BrokerRoutes', () => {
 
       const body: { token: string } = await response?.json();
       expect(body.token).toBe('mock.broker.jwt');
+    });
+
+    it('passes the transaction avatar URL into the issued JWT', async () => {
+      const { handleBrokerRoutes } = await import('../../../src/routes/broker-routes.js');
+      const { issueBrokerJwt } = await import('../../../src/auth/broker/jwt-issuer.js');
+      const { authenticate } = await import('../../../src/middleware/authentication.js');
+
+      vi.mocked(authenticate).mockResolvedValue({
+        id: 'token-id-1',
+        type: 'service',
+        authProvider: 'site_token',
+        siteId: 'site-123',
+        pantheonSiteRoles: {},
+        tokenExpiry: new Date(Date.now() + 3600000).toISOString(),
+      });
+
+      mockTransactionResponse = {
+        id: 'tx-avatar-2',
+        siteId: 'site-123',
+        siteApiTokenId: 'token-id-1',
+        status: 'redeemed',
+        createdAt: 1000,
+        expiresAt: 1300,
+        userId: 'auth0|user-1',
+        userEmail: 'user@example.com',
+        userName: 'Test User',
+        userAvatarUrl: 'https://lh3.googleusercontent.com/a/alice=s96-c',
+      };
+
+      vi.mocked(issueBrokerJwt).mockResolvedValue('mock.broker.jwt');
+
+      const request = new Request('https://css.example.com/broker/redeem', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ transactionId: 'tx-avatar-2' }),
+      });
+
+      await handleBrokerRoutes(request, createMockEnv(), '/broker/redeem');
+
+      expect(issueBrokerJwt).toHaveBeenCalledWith(
+        expect.objectContaining({
+          avatarUrl: 'https://lh3.googleusercontent.com/a/alice=s96-c',
+        }),
+      );
     });
 
     it('returns 400 if transactionId is missing', async () => {

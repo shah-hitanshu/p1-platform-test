@@ -20,6 +20,7 @@ export interface BrokerJwtParams {
   siteId: string;
   email: string;
   name?: string;
+  avatarUrl?: string;
   provider: string;
 }
 
@@ -52,6 +53,10 @@ export async function issueBrokerJwt(params: BrokerJwtParams): Promise<string> {
 
   if (params.name !== undefined) {
     payload.name = params.name;
+  }
+
+  if (params.avatarUrl !== undefined) {
+    payload.picture = params.avatarUrl;
   }
 
   const headerB64 = base64url.encode(encoder.encode(JSON.stringify(header)));

@@ -165,6 +165,7 @@ describe('PresenceStack', () => {
     expect(img.src).toBe('https://example.com/m.jpg');
     // Google OAuth avatars 403 without this.
     expect(img.getAttribute('referrerpolicy')).toBe('no-referrer');
+    expect(img.getAttribute('crossorigin')).toBeNull();
     expect(avatar.textContent).toBe('');
     withImage.unmount();
 

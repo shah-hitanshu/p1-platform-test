@@ -42,8 +42,8 @@ vi.mock('../../src/db', () => ({
   ),
   query: vi.fn().mockImplementation((sql: string, params?: unknown[]) => {
     executedQueries.push({ sql, params: params ?? [] });
-    if (sql.includes('SELECT COUNT(*)')) {
-      return Promise.resolve({ rows: [{ count: '1' }] });
+    if (sql.includes('SELECT EXISTS')) {
+      return Promise.resolve({ rows: [{ populated: true }] });
     }
     if (sql.includes('FROM app.users WHERE email')) {
       return Promise.resolve({ rows: [mockUserRow] });
@@ -167,14 +167,16 @@ vi.mock('../../src/auth/identity-provider', async () => {
       async validateToken(token: string): Promise<AuthenticatedPrincipal | null> {
         const principal = await this.mockProvider.validateToken(token);
         if (principal !== null) {
-          principal.authProvider = 'mock';
+          // A test may override the provider to exercise a non-mock path.
+          principal.authProvider = testPrincipalOverrides.authProvider ?? 'mock';
         }
         return principal;
       }
       async validateAgentKey(apiKey: string): Promise<AuthenticatedPrincipal | null> {
         const principal = await this.mockProvider.validateAgentKey(apiKey);
         if (principal !== null) {
-          principal.authProvider = 'mock';
+          // A test may override the provider to exercise a non-mock path.
+          principal.authProvider = testPrincipalOverrides.authProvider ?? 'mock';
         }
         return principal;
       }
@@ -199,6 +201,7 @@ describe('Principal Name/Avatar Enrichment from Database', () => {
     DOCUMENT_STATE: {} as DurableObjectNamespace,
     PRESENCE: {} as DurableObjectNamespace,
     SESSION: {} as DurableObjectNamespace,
+    BROKER_TX: {} as DurableObjectNamespace,
     CONFIG_KV: {} as KVNamespace,
     SESSION_KV: {} as KVNamespace,
   };
@@ -279,7 +282,7 @@ describe('Principal Name/Avatar Enrichment from Database', () => {
     expect(capturedPrincipal.avatarUrl).toBe('https://jwt.example.com/alice.jpg');
   });
 
-  it('should use COALESCE for avatar_url in first-login UPDATE', async () => {
+  it('should not null out a stored avatar_url on first login for a provider that carries none', async () => {
     // JWT has name but no avatarUrl
     testPrincipalOverrides = {
       name: 'Alice JWT',
@@ -301,8 +304,57 @@ describe('Principal Name/Avatar Enrichment from Database', () => {
       q.sql.includes('UPDATE app.users') && q.sql.includes('principal_id'),
     );
     expect(updateQueries.length).toBe(1);
-    // avatar_url should use COALESCE to not overwrite existing value with null
-    expect(updateQueries[0].sql).toContain('COALESCE($4');
+    // The stored value is written back, not clobbered with null.
+    expect(updateQueries[0].params[3]).toBe('https://existing.example.com/alice.jpg');
+  });
+
+  // Only the broker JWT carries the upstream photo, so an absent one there means
+  // the photo was removed.
+  it('should clear a stored avatar_url when a broker login carries no picture', async () => {
+    testPrincipalOverrides = {
+      authProvider: 'broker',
+      name: 'Alice Broker',
+      avatarUrl: undefined,
+    };
+    mockUserRow = {
+      ...mockUserRow,
+      principal_id: PROVIDER_DERIVED_ID,
+      name: 'Alice Broker',
+      avatar_url: 'https://db.example.com/removed.jpg',
+    };
+
+    const module = await import('../../src/index');
+    await module.default.fetch(makeRequest(), mockEnv, mockContext);
+
+    const refreshQueries = executedQueries.filter((q) =>
+      q.sql.includes('UPDATE app.users') && !q.sql.includes('principal_id'),
+    );
+    expect(refreshQueries.length).toBe(1);
+    expect(refreshQueries[0].params[1]).toBeNull();
+    // ...and the principal falls back to initials rather than the stale photo.
+    if (capturedPrincipal === null) {
+      throw new Error('Expected capturedPrincipal to be set');
+    }
+    expect(capturedPrincipal.avatarUrl).toBeUndefined();
+  });
+
+  it('should keep enriching a non-broker principal from the stored avatar_url', async () => {
+    testPrincipalOverrides = { authProvider: 'auth0', avatarUrl: undefined };
+    mockUserRow = {
+      ...mockUserRow,
+      principal_id: PROVIDER_DERIVED_ID,
+      avatar_url: 'https://db.example.com/alice.jpg',
+    };
+
+    const module = await import('../../src/index');
+    await module.default.fetch(makeRequest(), mockEnv, mockContext);
+
+    if (capturedPrincipal === null) {
+      throw new Error('Expected capturedPrincipal to be set');
+    }
+    expect(capturedPrincipal.avatarUrl).toBe('https://db.example.com/alice.jpg');
+    // Nothing changed, so no write.
+    expect(executedQueries.filter((q) => q.sql.includes('UPDATE app.users')).length).toBe(0);
   });
 
   it('should update DB when returning user has changed name', async () => {
@@ -372,5 +424,67 @@ describe('Principal Name/Avatar Enrichment from Database', () => {
     }
     expect(capturedPrincipal.name).toBeUndefined();
     expect(capturedPrincipal.avatarUrl).toBeUndefined();
+  });
+
+  // /api/auth/me used to return before the allowlist check ran, so it reported
+  // only what the token carried — leaving the header avatar blank.
+  it('enriches /api/auth/me from the DB when the token carries no avatarUrl', async () => {
+    testPrincipalOverrides = { name: undefined, avatarUrl: undefined };
+    mockUserRow = {
+      ...mockUserRow,
+      name: 'Alice from DB',
+      avatar_url: 'https://db.example.com/alice.jpg',
+    };
+
+    const module = await import('../../src/index');
+    const response = await module.default.fetch(
+      new Request('https://api.example.com/api/auth/me', {
+        method: 'GET',
+        headers: {
+          Origin: 'http://localhost:5173',
+          Authorization: 'Bearer valid-mock-token',
+        },
+      }),
+      mockEnv,
+      mockContext,
+    );
+
+    expect(response.status).toBe(200);
+    const body = await response.json<{ name?: string; avatarUrl?: string }>();
+    expect(body.avatarUrl).toBe('https://db.example.com/alice.jpg');
+    expect(body.name).toBe('Alice from DB');
+  });
+
+  // The allowlist rejection path had no coverage, and /api/auth/me now shares
+  // the same gate as dispatched routes — an inactive row must refuse both.
+  it('refuses /api/auth/me with 403 when the user row is not active', async () => {
+    mockUserRow = { ...mockUserRow, is_active: false };
+
+    const module = await import('../../src/index');
+    const response = await module.default.fetch(
+      new Request('https://api.example.com/api/auth/me', {
+        method: 'GET',
+        headers: {
+          Origin: 'http://localhost:5173',
+          Authorization: 'Bearer valid-mock-token',
+        },
+      }),
+      mockEnv,
+      mockContext,
+    );
+
+    expect(response.status).toBe(403);
+    const body = await response.json<{ error?: string }>();
+    expect(body.error).toBe('User not authorized');
+  });
+
+  it('refuses a dispatched route with 403 when the user row is not active', async () => {
+    mockUserRow = { ...mockUserRow, is_active: false };
+
+    const module = await import('../../src/index');
+    const response = await module.default.fetch(makeRequest(), mockEnv, mockContext);
+
+    expect(response.status).toBe(403);
+    expect(capturedPrincipal).toBeNull();
   });
 });

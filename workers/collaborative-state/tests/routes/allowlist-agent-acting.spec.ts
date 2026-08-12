@@ -32,7 +32,7 @@ const ACTING_USER_ID = 'acting-user-provider-id';
 const ACTING_DB_USER_ID = 'db-acting-user-id-22222222';
 
 let agentPrincipalOverrides: Partial<AuthenticatedPrincipal> = {};
-let userCount = 1; // by default the allowlist has rows
+let allowlistPopulated = true; // by default the allowlist has rows
 let allowlistRow: Record<string, unknown> | null = null;
 let executedQueries: { sql: string; params: unknown[] }[] = [];
 let siteApiCalled = false;
@@ -45,8 +45,8 @@ vi.mock('../../src/db', () => ({
   ),
   query: vi.fn().mockImplementation((sql: string, params?: unknown[]) => {
     executedQueries.push({ sql, params: params ?? [] });
-    if (sql.includes('SELECT COUNT(*)') && sql.includes('app.users')) {
-      return Promise.resolve({ rows: [{ count: String(userCount) }] });
+    if (sql.includes('SELECT EXISTS') && sql.includes('app.users')) {
+      return Promise.resolve({ rows: [{ populated: allowlistPopulated }] });
     }
     if (sql.includes('FROM app.users WHERE email')) {
       return Promise.resolve({ rows: allowlistRow !== null ? [allowlistRow] : [] });
@@ -233,7 +233,7 @@ describe('PCC-3190: allowlist gate for agent principals with acting user', () =>
     siteApiCalled = false;
     capturedSiteApiPrincipal = null;
     agentPrincipalOverrides = {};
-    userCount = 1;
+    allowlistPopulated = true;
     allowlistRow = {
       id: ACTING_DB_USER_ID,
       principal_id: ACTING_USER_ID,
@@ -246,7 +246,7 @@ describe('PCC-3190: allowlist gate for agent principals with acting user', () =>
 
   it('rejects with 403 when agent acts on behalf of a user that is NOT in the allowlist', async () => {
     // Allowlist is non-empty but the acting user is not in it.
-    userCount = 1;
+    allowlistPopulated = true;
     allowlistRow = null;
 
     const module = await import('../../src/index');
@@ -268,7 +268,7 @@ describe('PCC-3190: allowlist gate for agent principals with acting user', () =>
   });
 
   it('rejects with 403 when agent acts on behalf of an inactive allowlisted user', async () => {
-    userCount = 1;
+    allowlistPopulated = true;
     allowlistRow = {
       id: ACTING_DB_USER_ID,
       principal_id: ACTING_USER_ID,
@@ -290,7 +290,7 @@ describe('PCC-3190: allowlist gate for agent principals with acting user', () =>
   });
 
   it('passes the gate and reaches the route handler when acting user IS in the allowlist', async () => {
-    userCount = 1;
+    allowlistPopulated = true;
     // Default allowlistRow set in beforeEach: active user.
 
     const module = await import('../../src/index');
@@ -312,7 +312,7 @@ describe('PCC-3190: allowlist gate for agent principals with acting user', () =>
   it('does NOT mutate principal.dbUserId or systemRole from the acting user row', async () => {
     // Regression guard: the agent path must not adopt the acting user's DB
     // identity, otherwise downstream agent-keyed authorization breaks.
-    userCount = 1;
+    allowlistPopulated = true;
 
     const module = await import('../../src/index');
     await module.default.fetch(
@@ -328,7 +328,7 @@ describe('PCC-3190: allowlist gate for agent principals with acting user', () =>
 
   it('preserves legacy agent traffic (no acting user) by NOT applying the allowlist gate', async () => {
     // Agent without acting-user headers -- the gate stays bypassed exactly as it did before.
-    userCount = 1;
+    allowlistPopulated = true;
     allowlistRow = null; // even with no allowlist row, the gate must not engage.
 
     const module = await import('../../src/index');
@@ -351,7 +351,7 @@ describe('PCC-3190: allowlist gate for agent principals with acting user', () =>
   it('skips the gate entirely when the allowlist is empty (count=0)', async () => {
     // When app.users has no rows the allowlist is treated as "open" --
     // this preserves the existing behavior for fresh dev/test databases.
-    userCount = 0;
+    allowlistPopulated = false;
     allowlistRow = null;
 
     const module = await import('../../src/index');

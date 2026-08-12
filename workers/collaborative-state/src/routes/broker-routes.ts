@@ -266,6 +266,7 @@ export async function handleBrokerRoutes(
         userId: user.sub,
         userEmail: user.email,
         userName: user.name,
+        userAvatarUrl: user.picture,
       }),
     });
 
@@ -366,6 +367,7 @@ export async function handleBrokerRoutes(
         siteId: tx.siteId,
         email: tx.userEmail ?? '',
         name: tx.userName,
+        avatarUrl: tx.userAvatarUrl,
         provider: 'auth0',
       });
 

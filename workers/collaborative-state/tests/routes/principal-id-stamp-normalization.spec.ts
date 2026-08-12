@@ -56,8 +56,8 @@ vi.mock('../../src/db', () => ({
   runWithConnection: vi.fn().mockImplementation((_connStr: string, _opts: unknown, fn: () => unknown) => fn()),
   query: vi.fn().mockImplementation((sql: string, params?: unknown[]) => {
     recordedQueries.push({ sql, params: params ?? [] });
-    if (sql.includes('SELECT COUNT(*)')) {
-      return Promise.resolve({ rows: [{ count: '1' }] });
+    if (sql.includes('SELECT EXISTS')) {
+      return Promise.resolve({ rows: [{ populated: true }] });
     }
     if (sql.includes('FROM app.users WHERE email')) {
       // First login: allowlist row exists but has never been linked.

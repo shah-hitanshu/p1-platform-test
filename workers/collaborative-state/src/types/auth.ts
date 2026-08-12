@@ -147,6 +147,7 @@ export interface MockUser {
   id: string;
   email: string;
   name: string;
+  avatarUrl?: string;
   siteRoles: Record<string, PantheonRole>;
 }
 

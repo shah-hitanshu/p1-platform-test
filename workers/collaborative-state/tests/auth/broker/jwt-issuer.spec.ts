@@ -152,6 +152,66 @@ describe('BrokerJwtIssuer', () => {
       expect(data.length).toBeGreaterThan(32);
     });
 
+    it('includes the picture claim when avatarUrl is provided', async () => {
+      const { macSign, getPrimaryKeyVersion } = await import('../../../src/auth/broker/gcp-kms-client.js');
+      const { issueBrokerJwt } = await import('../../../src/auth/broker/jwt-issuer.js');
+
+      vi.mocked(getPrimaryKeyVersion).mockResolvedValueOnce(KEY_VERSION);
+      vi.mocked(macSign).mockResolvedValueOnce({
+        mac: new Uint8Array([1]),
+        keyVersion: KEY_VERSION,
+      });
+
+      const jwt = await issueBrokerJwt({
+        serviceAccountKeyJson: '{}',
+        keyResource: KEY_RESOURCE,
+        issuer: 'https://css.example.com',
+        subject: 'sub-1',
+        audience: 'css-api',
+        ttlSeconds: 3600,
+        siteId: 'site-1',
+        email: 'alice@example.com',
+        name: 'Alice',
+        avatarUrl: 'https://lh3.googleusercontent.com/a/alice=s96-c',
+        provider: 'auth0',
+      });
+
+      const payloadB64 = jwt.split('.')[1];
+      const padded = payloadB64.replace(/-/g, '+').replace(/_/g, '/') +
+        '='.repeat((4 - payloadB64.length % 4) % 4);
+      const payload = JSON.parse(atob(padded));
+      expect(payload.picture).toBe('https://lh3.googleusercontent.com/a/alice=s96-c');
+    });
+
+    it('omits picture from payload when avatarUrl is not provided', async () => {
+      const { macSign, getPrimaryKeyVersion } = await import('../../../src/auth/broker/gcp-kms-client.js');
+      const { issueBrokerJwt } = await import('../../../src/auth/broker/jwt-issuer.js');
+
+      vi.mocked(getPrimaryKeyVersion).mockResolvedValueOnce(KEY_VERSION);
+      vi.mocked(macSign).mockResolvedValueOnce({
+        mac: new Uint8Array([1]),
+        keyVersion: KEY_VERSION,
+      });
+
+      const jwt = await issueBrokerJwt({
+        serviceAccountKeyJson: '{}',
+        keyResource: KEY_RESOURCE,
+        issuer: 'https://css.example.com',
+        subject: 'sub-1',
+        audience: 'css-api',
+        ttlSeconds: 3600,
+        siteId: 'site-1',
+        email: 'a@b.com',
+        provider: 'auth0',
+      });
+
+      const payloadB64 = jwt.split('.')[1];
+      const padded = payloadB64.replace(/-/g, '+').replace(/_/g, '/') +
+        '='.repeat((4 - payloadB64.length % 4) % 4);
+      const payload = JSON.parse(atob(padded));
+      expect(payload.picture).toBeUndefined();
+    });
+
     it('omits name from payload when not provided', async () => {
       const { macSign, getPrimaryKeyVersion } = await import('../../../src/auth/broker/gcp-kms-client.js');
       const { issueBrokerJwt } = await import('../../../src/auth/broker/jwt-issuer.js');

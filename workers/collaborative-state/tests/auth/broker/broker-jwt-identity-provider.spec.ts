@@ -124,6 +124,44 @@ describe('BrokerJwtIdentityProvider', () => {
       expect(principal?.siteId).toBe('site-123');
     });
 
+    it('maps the picture claim onto principal.avatarUrl', async () => {
+      const { macVerify } = await import('../../../src/auth/broker/gcp-kms-client.js');
+      const { BrokerJwtIdentityProvider } = await import('../../../src/auth/broker-jwt-identity-provider.js');
+
+      vi.mocked(macVerify).mockResolvedValue(true);
+
+      const provider = new BrokerJwtIdentityProvider({
+        issuer: ISSUER,
+        audience: AUDIENCE,
+        serviceAccountKeyJson: '{}',
+        keyResource: KEY_RESOURCE,
+      });
+
+      const token = buildJwt({}, { picture: 'https://lh3.googleusercontent.com/a/alice=s96-c' });
+      const principal = await provider.validateToken(token);
+
+      expect(principal?.avatarUrl).toBe('https://lh3.googleusercontent.com/a/alice=s96-c');
+    });
+
+    it('leaves avatarUrl undefined when the token carries no picture claim', async () => {
+      const { macVerify } = await import('../../../src/auth/broker/gcp-kms-client.js');
+      const { BrokerJwtIdentityProvider } = await import('../../../src/auth/broker-jwt-identity-provider.js');
+
+      vi.mocked(macVerify).mockResolvedValue(true);
+
+      const provider = new BrokerJwtIdentityProvider({
+        issuer: ISSUER,
+        audience: AUDIENCE,
+        serviceAccountKeyJson: '{}',
+        keyResource: KEY_RESOURCE,
+      });
+
+      const principal = await provider.validateToken(buildJwt());
+
+      expect(principal).not.toBeNull();
+      expect(principal?.avatarUrl).toBeUndefined();
+    });
+
     it('calls macVerify with correct key version derived from kid', async () => {
       const { macVerify } = await import('../../../src/auth/broker/gcp-kms-client.js');
       const { BrokerJwtIdentityProvider } = await import('../../../src/auth/broker-jwt-identity-provider.js');

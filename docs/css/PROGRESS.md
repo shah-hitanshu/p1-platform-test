@@ -5852,3 +5852,68 @@ Nothing changes for any site until origins are registered, and there is currentl
 write them (the CCR admin SPA was retired in #170). Interim population is a direct
 `PATCH /api/sites/{siteId}`. Also note sbx1 and staging set `CORS_ORIGINS: "*"`, so the CORS half of
 `allowed_origins` is inert there — only the redirect half is testable outside production.
+
+## Editor profile pictures (PCC-3598, 2026-08-12)
+
+**Branch:** `hs-pcc-3598`
+
+The avatar was never a per-account problem — nobody's photo rendered, because the Auth0
+`picture` claim was dropped before it ever reached the browser. `decodeAuth0IdTokenClaims`
+casts the ID token wholesale but `Auth0User` never declared `picture`, `LoginTransaction`
+never persisted it, `issueBrokerJwt` never emitted it, and `BrokerJwtIdentityProvider` never
+assigned `principal.avatarUrl`. Every consumer downstream of `/api/auth/me` was already wired
+correctly and simply had `undefined` handed to it, all the way to `PresenceStack`, which reads
+`actor.avatar` and falls through to `getInitials()`.
+
+The `app.users.avatar_url` column and its read-back at login could never have helped: its only
+writers were `COALESCE(..., avatar_url)` fed from the same always-`undefined`
+`principal.avatarUrl`, so the column stayed `NULL` permanently and the fallback never fired.
+The same dead guard gated the `X-Verified-Avatar-Url` propagation that carries *other*
+collaborators' avatars into the presence roster, so those were blank too.
+
+### What changed
+
+The claim is now threaded through the broker chain — ID token → login transaction → broker JWT
+`picture` claim → `principal.avatarUrl` — which lights up the existing persistence, enrichment,
+and presence paths unchanged. Two client-side fixes ship alongside it:
+
+- `P1AuthProvider`'s broker-redeem branch set the user from the redeemed `userInfo` and then
+  immediately overwrote it with `picture: validated.avatarUrl`, discarding the picture it had
+  just set. It now falls back to `result.userInfo?.picture`, matching the sibling branch. This
+  matters on first login, when `/api/auth/me` has no stored avatar yet. The two mock-login
+  branches keep the plain `validated.avatarUrl`: `loginMockUser` returns no picture, so there is
+  nothing to fall back to.
+- `PresenceStack`'s avatar `<img>` no longer sets `crossOrigin="anonymous"`. It forced a CORS
+  request for an image that is never read back from a canvas, so a response missing
+  `Access-Control-Allow-Origin` would trip `onError` and drop a perfectly good avatar into the
+  initials fallback. `referrerPolicy="no-referrer"` is unchanged — Google avatars 403 without it.
+
+### Key decisions
+
+- **`Auth0IdentityProvider` is deliberately left alone.** It validates Auth0 *access* tokens,
+  which carry no `picture` claim — that is an ID-token/userinfo claim, so there is nothing there
+  to read without a second network call. Principals from that path now pick up an avatar from
+  the `app.users.avatar_url` enrichment instead, once a broker login has populated the column.
+- **The avatar can never fail a login.** `BrokerTransaction.approve` drops an unusable `picture`
+  claim rather than validating it like the other fields, because Auth0 maps `picture` from
+  whatever the upstream connection sends: `sanitizeAvatarUrl` keeps only a printable-ASCII
+  `http(s)` URL within the length limit. Everything else — an inline `data:` image from a SAML
+  IdP, a non-ASCII path, an embedded newline or NUL — is dropped at that one boundary, before it
+  can reach a `X-Verified-Avatar-Url` header value (`Headers.set` throws above code point 255)
+  or a Postgres write (NUL is rejected in `text`). Users with no upstream photo — or a dropped
+  one — fall back to initials, and then to the PDS user icon, exactly as before.
+
+### Behaviour changes
+
+- `/api/auth/me` now runs the same allowlist gate as the dispatched routes, so it returns 403
+  for a deactivated or unlisted user where it previously returned 200. It has to: the DB
+  name/avatar enrichment lives behind that gate, and without it the endpoint reported only what
+  the token itself carried. The gate's `SELECT COUNT(*) FROM app.users` became
+  `SELECT EXISTS (…)` in the same pass, since this endpoint is hit on every editor mount and
+  only ever asks whether the allowlist is populated.
+- A broker login is now authoritative about the avatar: an absent `picture` claim clears
+  `app.users.avatar_url` instead of leaving the stored value in place. The
+  `COALESCE(…, avatar_url)` writers could set the column but never clear it, so a user who
+  removed their upstream photo would have kept showing the old one forever. Providers that carry
+  no avatar at all — the Auth0 access-token path — still fall back to the stored value and leave
+  it untouched.

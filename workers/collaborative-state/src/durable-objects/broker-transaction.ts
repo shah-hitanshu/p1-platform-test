@@ -60,6 +60,7 @@ export interface LoginTransaction {
   userId?: string;
   userEmail?: string;
   userName?: string;
+  userAvatarUrl?: string;
   redirectUrl?: string;
   prompt?: string;
 }
@@ -68,6 +69,7 @@ export interface ApproveUserInfo {
   userId: string;
   userEmail: string;
   userName?: string;
+  userAvatarUrl?: string;
 }
 
 /** This Durable Object takes no bindings. */
@@ -297,6 +299,7 @@ export class BrokerTransaction extends DurableObject<BrokerTransactionEnv> {
     this.transaction.userId = userInfo.userId;
     this.transaction.userEmail = userInfo.userEmail;
     this.transaction.userName = userInfo.userName;
+    this.transaction.userAvatarUrl = userInfo.userAvatarUrl;
 
     // Persist updated state
     await this.state.storage.put(TRANSACTION_STORAGE_KEY, this.transaction);

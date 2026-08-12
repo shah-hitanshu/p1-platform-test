@@ -11,14 +11,18 @@ export type { AgentStatusResult } from './agent-status-middleware';
 
 // Authentication Middleware
 export {
-  DEFAULT_MOCK_CONFIG,
   hasRealAuthProviders,
   getIdentityProvider,
   getMASClient,
   authenticate,
+} from './authentication';
+
+// Mock Authentication (local development only)
+export {
+  DEFAULT_MOCK_CONFIG,
   getMockIdentityProvider,
   handleAuthRoutes,
-} from './authentication';
+} from '../auth/mock-auth';
 
 // Health Check
 export { handleHealth } from './health';

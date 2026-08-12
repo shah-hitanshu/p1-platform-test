@@ -46,7 +46,6 @@ function ActorAvatar({ actor }: { actor: ActorPresence }): React.JSX.Element {
             className="pds-avatar__image"
             src={actor.avatar}
             referrerPolicy="no-referrer"
-            crossOrigin="anonymous"
             onError={() => setFailedUrl(actor.avatar ?? null)}
           />
         </span>

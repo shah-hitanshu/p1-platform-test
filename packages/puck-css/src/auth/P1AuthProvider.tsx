@@ -160,7 +160,7 @@ export function P1AuthProvider(props: P1AuthProviderProps): React.ReactElement {
                 id: validated.id,
                 name: validated.name ?? validated.email ?? validated.id,
                 email: validated.email,
-                picture: validated.avatarUrl,
+                picture: validated.avatarUrl ?? result.userInfo?.picture,
               });
             }
           }

@@ -201,6 +201,32 @@ describe('BrokerTransaction Durable Object', () => {
       expect(approved.userName).toBe('Test User');
     });
 
+    it('binds the user avatar URL so redeem can put it in the JWT', async () => {
+      const state = createMockDurableObjectState('tx-approve-avatar');
+      const doInstance = new BrokerTransaction(state, {});
+
+      await doInstance.fetch(new Request('http://do/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ txId: 'tx-approve-avatar', siteId: 'site-123', siteApiTokenId: 'tok-1' }),
+      }));
+
+      const response = await doInstance.fetch(new Request('http://do/approve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: 'auth0|user-1',
+          userEmail: 'user@example.com',
+          userName: 'Test User',
+          userAvatarUrl: 'https://lh3.googleusercontent.com/a/alice=s96-c',
+        }),
+      }));
+
+      const approved = await readJson(response);
+
+      expect(approved.userAvatarUrl).toBe('https://lh3.googleusercontent.com/a/alice=s96-c');
+    });
+
     it('returns null for non-existent transaction', async () => {
       const state = createMockDurableObjectState('tx-no-approve');
       const doInstance = new BrokerTransaction(state, {});

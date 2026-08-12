@@ -23,6 +23,8 @@ vi.mock('@pantheon-systems/css-client', () => ({
 import {
   createBrokerAuth,
   validateToken,
+  hasPendingBrokerLogin,
+  redeemPendingBrokerLogin,
 } from '@pantheon-systems/css-client';
 
 import { P1AuthProvider, useP1Auth } from '../auth/P1AuthProvider';
@@ -60,6 +62,8 @@ beforeEach(() => {
   localStorage.clear();
   vi.mocked(validateToken).mockResolvedValue(null);
   vi.mocked(createBrokerAuth).mockReturnValue(makeFakeOAuthSession());
+  vi.mocked(hasPendingBrokerLogin).mockReturnValue(false);
+  vi.mocked(redeemPendingBrokerLogin).mockResolvedValue(null);
 });
 
 describe('P1AuthProvider — avatar picture from oauth getUserInfo', () => {
@@ -131,6 +135,41 @@ describe('P1AuthProvider — avatar picture from oauth getUserInfo', () => {
     );
     expect(capturedUser).not.toBeNull();
     expect((capturedUser as NonNullable<typeof capturedUser>).picture).toBe('https://lh3.googleusercontent.com/fallback.jpg');
+  });
+
+  it('keeps the redeemed userInfo picture when validateToken() returns no avatarUrl', async () => {
+    // The redeem branch sets the user from `result.userInfo`, then re-sets it from
+    // /api/auth/me — without a fallback that second write drops the picture.
+    vi.mocked(hasPendingBrokerLogin).mockReturnValue(true);
+    vi.mocked(redeemPendingBrokerLogin).mockResolvedValue({
+      token: 'redeemed-token-abc',
+      userInfo: {
+        id: 'user-3',
+        email: 'redeemed@example.com',
+        name: 'Redeemed User',
+        picture: 'https://lh3.googleusercontent.com/redeemed.jpg',
+      },
+    });
+    vi.mocked(validateToken).mockResolvedValue({
+      id: 'user-3',
+      type: 'user',
+      email: 'redeemed@example.com',
+    });
+
+    render(
+      <P1AuthProvider
+        authMode="broker"
+        p1BaseUrl="http://localhost:8787"
+      >
+        <CaptureAuthUser onUser={() => {}} />
+      </P1AuthProvider>,
+    );
+
+    await act(async () => {});
+
+    expect(screen.getByTestId('consumer').getAttribute('data-picture')).toBe(
+      'https://lh3.googleusercontent.com/redeemed.jpg',
+    );
   });
 
   it('sets user.picture to undefined when getUserInfo() returns no picture', async () => {

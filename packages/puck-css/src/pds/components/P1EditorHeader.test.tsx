@@ -611,6 +611,17 @@ describe('P1EditorHeader', () => {
     expect(img.getAttribute('referrerpolicy')).toBe('no-referrer');
   });
 
+  // It opts the fetch into CORS mode for a canvas read that never happens, and
+  // fails on an avatar host sending no ACAO. Matches PresenceStack.
+  it('does not set crossOrigin on the user avatar image', () => {
+    render(<P1EditorHeader {...defaultProps} />);
+
+    const trigger = screen.getByTestId('user-menu-trigger');
+    const img = trigger.querySelector('.pds-avatar__image') as HTMLImageElement;
+    expect(img).toBeTruthy();
+    expect(img.getAttribute('crossorigin')).toBeNull();
+  });
+
   it('renders user avatar with fallback when no profile image', () => {
     render(<P1EditorHeader {...defaultProps} currentUser={{ id: 'user-99' }} />);
 

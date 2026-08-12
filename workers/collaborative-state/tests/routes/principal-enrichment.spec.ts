@@ -47,8 +47,8 @@ vi.mock('../../src/db', () => ({
   initializeDatabaseFromConnectionString: vi.fn(),
   runWithConnection: vi.fn().mockImplementation((_connStr: string, _opts: unknown, fn: () => unknown) => fn()),
   query: vi.fn().mockImplementation((sql: string) => {
-    if (sql.includes('SELECT COUNT(*)')) {
-      return Promise.resolve({ rows: [{ count: '1' }] });
+    if (sql.includes('SELECT EXISTS')) {
+      return Promise.resolve({ rows: [{ populated: true }] });
     }
     if (sql.includes('FROM app.users WHERE email')) {
       return Promise.resolve({
