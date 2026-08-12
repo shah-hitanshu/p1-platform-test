@@ -95,6 +95,7 @@ describe("document sync when the dispatch fails", () => {
     const store = createDocumentSyncStore();
     store.publish({ syncKey: "branch1:docA", data: docA });
     renderPlugin(store);
+    mockSetHistories.mockClear();
 
     act(() => {
       store.publish({ syncKey: "branch1:docB", data: docB });

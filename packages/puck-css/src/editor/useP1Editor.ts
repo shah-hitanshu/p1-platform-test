@@ -27,6 +27,7 @@ import {
   createDocumentSyncStore,
   createDocumentSyncPlugin,
   documentSyncKey,
+  BLANK_SYNC_KEY,
 } from './plugin/document-sync-plugin.js';
 import type { ThumbnailMap } from './utils/buildThumbnailOverride.js';
 import { resolveLiveThumbnailDrawer } from './thumbnails/resolveLiveThumbnailDrawer.js';
@@ -456,19 +457,42 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
     [documentSyncStore]
   );
 
-  // Read through a ref so a publish happens once per settled load, not on
-  // every safeData edit.
-  const safeDataRef = useRef(css.safeData);
-  safeDataRef.current = css.safeData;
-
+  // Publish the loaded document into the live Puck instance.
+  //
+  // Both the key and the data come from the payload's own origin, so a key can
+  // never be paired with a different document's data. Keying off the live
+  // branchId instead published the incoming branch's key beside the outgoing
+  // branch's data the instant a switch began; the plugin applied that pairing,
+  // recorded the new key as applied, and then ignored the correct document when
+  // it arrived under the same key — leaving the canvas a workstream behind.
+  //
+  // safeData is read directly rather than through a ref: it only advances when
+  // the provider loads a document (saveData deliberately never touches
+  // currentData), so it cannot re-fire on every keystroke.
   const currentDocumentId = css.currentDocument?.id;
+  const origin = css.currentDataOrigin;
   useEffect(() => {
-    if (loading || error || !currentDocumentId) return;
+    if (loading || error || !origin) return;
+    // Historical versions sync through ContextSyncBridge, which does not reset
+    // the undo stack.
+    if (origin.historical) return;
+    // Mid-switch the payload still belongs to the outgoing branch or document.
+    // Withholding it keeps the applied key naming what the canvas really shows.
+    if (origin.branchId !== css.branchId) return;
+    if (origin.documentId !== currentDocumentId) return;
     documentSyncStore.publish({
-      syncKey: documentSyncKey(css.branchId, currentDocumentId),
-      data: safeDataRef.current,
+      syncKey: documentSyncKey(origin.branchId, origin.documentId),
+      data: css.safeData,
     });
-  }, [loading, error, css.branchId, currentDocumentId, documentSyncStore]);
+  }, [
+    loading,
+    error,
+    origin,
+    css.safeData,
+    css.branchId,
+    currentDocumentId,
+    documentSyncStore,
+  ]);
 
   const plugins = useMemo(() => {
     const result: Plugin[] = [p1Plugin, documentSyncPlugin];
@@ -498,8 +522,10 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
   const onChange = useCallback(
     (data: unknown) => {
       if (isViewingHistoricalRef.current) return;
+      // The blank sentinel stays permissive so a consumer running without the
+      // document-sync plugin is not frozen read-only.
       const appliedKey = documentSyncStore.getAppliedKey();
-      if (appliedKey !== null && appliedKey !== saveTargetKeyRef.current) {
+      if (appliedKey !== BLANK_SYNC_KEY && appliedKey !== saveTargetKeyRef.current) {
         console.warn(
           '[useP1Editor] save SKIPPED: canvas/document mismatch during switch.',
           'canvas:', appliedKey, 'target:', saveTargetKeyRef.current,

@@ -38,13 +38,11 @@ export function resolveContextSyncKey({
   if (!currentDocument) return null;
 
   if (documentSyncStore) {
-    const appliedKey = documentSyncStore.getAppliedKey();
-    // A null applied key means the plugin has not observed a document yet, so
-    // Puck was mounted with this one and there is no switch to defer to.
-    if (
-      appliedKey !== null &&
-      appliedKey !== documentSyncKey(branchId, currentDocument.id)
-    ) {
+    // Only speak for the document the canvas already shows. The plugin now owns
+    // the first document too — Puck mounts blank and the branch is restored from
+    // storage after mount, so there was never a case where Puck could be assumed
+    // to already hold the first document observed.
+    if (documentSyncStore.getAppliedKey() !== documentSyncKey(branchId, currentDocument.id)) {
       return null;
     }
   }

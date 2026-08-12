@@ -47,6 +47,7 @@ const mockCssContext = {
   documentsLoading: false,
   currentDocument: null as null | { id: string; path: string; siteId: string },
   currentData: null,
+  currentDataOrigin: null as null | Record<string, unknown>,
   safeData: { content: [], root: { props: {} }, zones: {} },
   siteId: "site-test",
   siteName: null,
@@ -151,6 +152,23 @@ function makeDoc(id: string, path: string) {
   return { id, path, siteId: "site-test" };
 }
 
+/**
+ * A settled load: the document and the identity its data was loaded under land
+ * together, exactly as the provider commits them. Only a payload carrying an
+ * origin is publishable, so the canvas cannot be told it holds a document whose
+ * data never arrived.
+ */
+function commitLoaded(id: string, path: string) {
+  mockCssContext.currentDocument = makeDoc(id, path);
+  mockCssContext.currentDataOrigin = {
+    branchId: mockCssContext.branchId,
+    documentId: id,
+    documentPath: path,
+    versionId: `v-${id}`,
+    historical: false,
+  };
+}
+
 const editData = {
   root: { props: { title: "edited" } },
   content: [],
@@ -173,13 +191,14 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockCssContext.branchId = "branch-a";
   mockCssContext.currentDocument = null;
+  mockCssContext.currentDataOrigin = null;
   mockCssContext.isViewingHistoricalVersion = false;
 });
 
 describe("useP1Editor write-back guard", () => {
   it("saves normally when no document has been applied yet (initial mount)", async () => {
     mockLoadDocument.mockImplementation(async () => {
-      mockCssContext.currentDocument = makeDoc("doc-a", "/a");
+      commitLoaded("doc-a", "/a");
     });
 
     const { result } = renderHook(() =>
@@ -196,7 +215,7 @@ describe("useP1Editor write-back guard", () => {
 
   it("saves when the applied document matches the current document", async () => {
     mockLoadDocument.mockImplementation(async () => {
-      mockCssContext.currentDocument = makeDoc("doc-a", "/a");
+      commitLoaded("doc-a", "/a");
     });
 
     const { result, rerender } = renderHook(() =>
@@ -215,7 +234,7 @@ describe("useP1Editor write-back guard", () => {
 
   it("drops saves while a switch is in flight and the target document changed", async () => {
     mockLoadDocument.mockImplementationOnce(async () => {
-      mockCssContext.currentDocument = makeDoc("doc-a", "/a");
+      commitLoaded("doc-a", "/a");
     });
 
     const { result, rerender } = renderHook(
@@ -227,12 +246,14 @@ describe("useP1Editor write-back guard", () => {
     rerender({ path: "/a" });
     mountSyncPlugin(result.current.puckProps.plugins as Plugin[]);
 
-    // Switch begins: css already points at doc-b, canvas still shows doc-a
+    // Switch begins: css already targets doc-b and the provider has cleared the
+    // data origin, so no payload is publishable while the fetch is in flight.
     let resolveLoad: () => void = () => undefined;
     mockLoadDocument.mockImplementationOnce(
       () =>
         new Promise<void>((resolve) => {
           mockCssContext.currentDocument = makeDoc("doc-b", "/b");
+          mockCssContext.currentDataOrigin = null;
           resolveLoad = resolve;
         }),
     );
@@ -244,8 +265,11 @@ describe("useP1Editor write-back guard", () => {
     });
     expect(mockSaveData).not.toHaveBeenCalled();
 
-    // Load settles and the sync plugin pushes doc-b into the canvas
-    act(() => resolveLoad());
+    // doc-b's data lands, so the sync plugin can push it into the canvas
+    act(() => {
+      commitLoaded("doc-b", "/b");
+      resolveLoad();
+    });
     await waitFor(() => expect(result.current.loading).toBe(false));
     rerender({ path: "/b" });
 
@@ -257,7 +281,7 @@ describe("useP1Editor write-back guard", () => {
 
   it("keeps allowing saves to the old document until css switches away from it", async () => {
     mockLoadDocument.mockImplementationOnce(async () => {
-      mockCssContext.currentDocument = makeDoc("doc-a", "/a");
+      commitLoaded("doc-a", "/a");
     });
 
     const { result, rerender } = renderHook(
@@ -280,9 +304,57 @@ describe("useP1Editor write-back guard", () => {
     expect(mockSaveData).toHaveBeenCalledWith(editData);
   });
 
+  it("blocks a save when only the branch differs, until the new branch's copy lands", async () => {
+    mockLoadDocument.mockImplementationOnce(async () => {
+      commitLoaded("doc-a", "/a");
+    });
+
+    const { result, rerender } = renderHook(() =>
+      useP1Editor({ documentPath: "/a", puckConfig: {} }),
+    );
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    rerender();
+    mountSyncPlugin(result.current.puckProps.plugins as Plugin[]);
+
+    // Same page, different workstream: the canvas still holds branch-a's copy
+    // while css targets branch-b's. Saving would cross-write between branches.
+    let resolveLoad: () => void = () => undefined;
+    mockLoadDocument.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveLoad = resolve;
+        }),
+    );
+    act(() => {
+      mockCssContext.branchId = "branch-b";
+      mockCssContext.currentDataOrigin = null;
+    });
+    rerender();
+    await waitFor(() => expect(result.current.loading).toBe(true));
+
+    act(() => {
+      result.current.puckProps.onChange(editData);
+    });
+    expect(mockSaveData).not.toHaveBeenCalled();
+
+    // branch-b's copy of the same document lands: the canvas catches up and
+    // saves target the workstream on screen again.
+    act(() => {
+      commitLoaded("doc-a", "/a");
+      resolveLoad();
+    });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    rerender();
+
+    act(() => {
+      result.current.puckProps.onChange(editData);
+    });
+    expect(mockSaveData).toHaveBeenCalledWith(editData);
+  });
+
   it("still blocks saves for historical versions", async () => {
     mockLoadDocument.mockImplementation(async () => {
-      mockCssContext.currentDocument = makeDoc("doc-a", "/a");
+      commitLoaded("doc-a", "/a");
     });
 
     const { result, rerender } = renderHook(() =>

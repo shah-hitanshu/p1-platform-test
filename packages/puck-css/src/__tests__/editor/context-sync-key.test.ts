@@ -15,12 +15,12 @@
 import { describe, it, expect } from "vitest";
 
 import { resolveContextSyncKey } from "../../editor/plugin/context-sync-key";
-import { documentSyncKey } from "../../editor/plugin/document-sync-plugin";
+import { documentSyncKey, BLANK_SYNC_KEY } from "../../editor/plugin/document-sync-plugin";
 
 const docA = { id: "docA" };
 const docB = { id: "docB" };
 
-function storeWithApplied(appliedKey: string | null) {
+function storeWithApplied(appliedKey: string) {
   return { getAppliedKey: () => appliedKey };
 }
 
@@ -82,16 +82,18 @@ describe("resolveContextSyncKey", () => {
     ).toBe("doc-docA-latest");
   });
 
-  it("falls back to doc-latest before the store has observed any document", () => {
+  // The plugin owns the first document too, so a blank canvas is a switch this
+  // bridge must defer to rather than a case where Puck already holds the data.
+  it("stands down while the canvas is still blank", () => {
     expect(
       resolveContextSyncKey({
         remoteSyncKey: null,
         viewingVersion: null,
         currentDocument: docA,
         branchId: "branch1",
-        documentSyncStore: storeWithApplied(null),
+        documentSyncStore: storeWithApplied(BLANK_SYNC_KEY),
       }),
-    ).toBe("doc-docA-latest");
+    ).toBeNull();
   });
 
   it("syncs doc-latest when the canvas already shows this document (return-to-latest)", () => {

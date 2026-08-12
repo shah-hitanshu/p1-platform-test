@@ -14,7 +14,7 @@ import type {
   ActorPresence,
 } from '@pantheon-systems/css-client';
 import isEqual from 'lodash.isequal';
-import type { P1PuckConfig, P1PuckContextValue, SaveStatus, PresenceState } from '../core/types.js';
+import type { P1PuckConfig, P1PuckContextValue, PuckDataOrigin, SaveStatus, PresenceState } from '../core/types.js';
 import { P1PuckContext } from '../core/P1PuckContext.js';
 import { NotificationProvider, useNotifications } from '../core/NotificationContext.js';
 import { PresenceContext } from '../core/PresenceContext.js';
@@ -60,6 +60,29 @@ export interface P1PuckProviderProps extends P1PuckConfig {
    * When omitted, derived from the existing boolean props for backwards compatibility.
    */
   featureConfig?: P1FeatureConfig;
+}
+
+/**
+ * Identity to record alongside a loaded payload.
+ *
+ * `branch` must be the branch the load was requested for, not the branch on the
+ * returned version: for an inherited document the backend serves main's
+ * published version, and recording main would make every consumer treat the
+ * payload as belonging to another workstream.
+ *
+ * Returns a fresh object per call so consumers re-run even when two documents
+ * share payload identity — snapshotToPuckData yields one shared constant for
+ * every blank snapshot.
+ */
+function originFor(
+  doc: { id: string; path: string } | null,
+  branch: string | null,
+  versionId: string | null,
+  historical: boolean,
+): PuckDataOrigin | null {
+  return doc
+    ? { branchId: branch, documentId: doc.id, documentPath: doc.path, versionId, historical }
+    : null;
 }
 
 /**
@@ -197,6 +220,7 @@ function P1PuckProviderInner({
   // Document state
   const [currentDocument, setCurrentDocument] = useState<Document | null>(null);
   const [currentData, setCurrentData] = useState<PuckData | null>(null);
+  const [currentDataOrigin, setCurrentDataOrigin] = useState<PuckDataOrigin | null>(null);
   // True while loadDocument is in flight. Consumers use it to distinguish
   // "no document while switching" (keep showing the old canvas) from
   // "genuinely no document" (show the empty state).
@@ -226,6 +250,24 @@ function P1PuckProviderInner({
   // Checked before every write (realtime or REST) to prevent cross-document
   // corruption during rapid document switching.
   const currentDataDocumentPathRef = useRef<string | null>(null);
+
+  const currentDataOriginRef = useRef<PuckDataOrigin | null>(null);
+
+  // Commit data and the identity it was loaded under in a single render pass.
+  //
+  // Path alone cannot distinguish two branches' copies of the same page, which
+  // is what let one workstream's data be published under another's sync key.
+  // Because both land in one commit, a consumer reading them together can never
+  // see a new identity beside old data.
+  const commitCurrentData = useCallback(
+    (data: PuckData | null, origin: PuckDataOrigin | null) => {
+      currentDataDocumentPathRef.current = origin?.documentPath ?? null;
+      currentDataOriginRef.current = origin;
+      setCurrentDataOrigin(origin);
+      setCurrentData(data);
+    },
+    [],
+  );
 
   // Snapshot of the data loadDocument just loaded. The first onChange after a
   // load echoes this back; saveData drops that echo by structural compare
@@ -386,9 +428,18 @@ function P1PuckProviderInner({
           // prevent actual echo loops at the Y.Doc/WebSocket layer.
           pendingRemoteUpdatesRef.current += 1;
 
-          // Update current data when remote changes arrive
-          currentDataDocumentPathRef.current = currentDocumentRef.current?.path ?? null;
-          setCurrentData(dataToSync);
+          // Update current data when remote changes arrive. Same document and
+          // branch as whatever is loaded, but no longer a stored version — this
+          // syncs through remoteSyncKey below, not the document-sync plugin.
+          commitCurrentData(
+            dataToSync,
+            originFor(
+              currentDocumentRef.current,
+              currentDataOriginRef.current?.branchId ?? null,
+              null,
+              currentDataOriginRef.current?.historical ?? false,
+            ),
+          );
           // Update sync key to trigger Puck re-sync
           setRemoteSyncKey(`remote-${Date.now()}`);
 
@@ -1014,8 +1065,7 @@ function P1PuckProviderInner({
       // Pre-clear the current document so nothing can save against the old
       // one while the fetch is in flight. The canvas keeps showing the
       // previous document — documentLoading suppresses the empty state.
-      currentDataDocumentPathRef.current = null;
-      setCurrentData(null);
+      commitCurrentData(null, null);
 
       try {
         const doc = await userClient.documents.getByPath(
@@ -1034,8 +1084,7 @@ function P1PuckProviderInner({
         const isSameDocument = doc.id === currentDocumentRef.current?.id;
 
         // Null data before identity update so useRealtime sees initialData=null.
-        currentDataDocumentPathRef.current = null;
-        setCurrentData(null);
+        commitCurrentData(null, null);
         if (!isSameDocument) {
           setCurrentDocument(null);
         }
@@ -1101,9 +1150,13 @@ function P1PuckProviderInner({
         }
         realtimeDataCaptureRef.current = null;
 
-        currentDataDocumentPathRef.current = doc.path;
         suppressNextSaveRef.current = puckData;
-        setCurrentData(puckData);
+        // branchId is the branch this load requested, deliberately not
+        // version.branchId: for an inherited document the backend serves main's
+        // published version, so the version names main while the payload is what
+        // the requested branch should display. Recording main here would make
+        // every consumer reject the payload as foreign.
+        commitCurrentData(puckData, originFor(doc, branchId, version.id, false));
         latestVersionDataRef.current = puckData;
         setViewingVersion(null);
         // Clear remoteSyncKey so document sync takes priority
@@ -1117,8 +1170,7 @@ function P1PuckProviderInner({
         console.warn('[P1PuckProvider] loadDocument failed:', error);
         // Unload the current document so VersionBannerOverride shows the empty
         // state instead of the previous document's content.
-        currentDataDocumentPathRef.current = null;
-        setCurrentData(null);
+        commitCurrentData(null, null);
         setCurrentDocument(null);
         throw error;
       } finally {
@@ -1129,7 +1181,7 @@ function P1PuckProviderInner({
         }
       }
     },
-    [userClient, siteId, branchId, cancelPendingRemoteSync, enableRealtime, debouncedSave, performSave]
+    [userClient, siteId, branchId, cancelPendingRemoteSync, enableRealtime, debouncedSave, performSave, commitCurrentData]
   );
 
   // Load a specific version into the editor
@@ -1166,8 +1218,9 @@ function P1PuckProviderInner({
         // Remote updates check this ref, so we need it set synchronously
         viewingVersionRef.current = versionToUse;
 
-        currentDataDocumentPathRef.current = currentDocumentRef.current?.path ?? null;
-        setCurrentData(puckData);
+        // Historical: the document-sync plugin must not push this into the
+        // canvas that owns the live undo stack — the version bridge handles it.
+        commitCurrentData(puckData, originFor(doc, branchId, versionToUse.id, true));
         setViewingVersion(versionToUse);
         // Clear remoteSyncKey so version sync takes priority
         setRemoteSyncKey(null);
@@ -1181,7 +1234,7 @@ function P1PuckProviderInner({
         throw error;
       }
     },
-    [userClient, siteId, branchId, debouncedSave, cancelPendingRemoteSync]
+    [userClient, siteId, branchId, debouncedSave, cancelPendingRemoteSync, commitCurrentData]
   );
 
   // Return to the latest version
@@ -1254,8 +1307,10 @@ function P1PuckProviderInner({
         }, 100);
       }
 
-      currentDataDocumentPathRef.current = currentDocumentRef.current?.path ?? null;
-      setCurrentData(dataToRestore);
+      commitCurrentData(
+        dataToRestore,
+        originFor(currentDocumentRef.current, branchId, null, false),
+      );
       latestVersionDataRef.current = dataToRestore;
       setViewingVersion(null);
       // Clear remoteSyncKey so latest version sync takes priority
@@ -1272,7 +1327,7 @@ function P1PuckProviderInner({
       }
       setSaveStatus('idle');
     }
-  }, [debouncedSave, cancelPendingRemoteSync, enableRealtime, realtime, userClient, siteId, branchId, showErrorNotifications, notificationContext]);
+  }, [debouncedSave, cancelPendingRemoteSync, enableRealtime, realtime, userClient, siteId, branchId, showErrorNotifications, notificationContext, commitCurrentData]);
 
   // Computed property for whether viewing historical version
   const isViewingHistoricalVersion = viewingVersion !== null;
@@ -1822,8 +1877,7 @@ function P1PuckProviderInner({
         viewingVersionRef.current = null;
 
         setCurrentDocument(null);
-        currentDataDocumentPathRef.current = null;
-        setCurrentData(null);
+        commitCurrentData(null, null);
         setViewingVersion(null);
         // Clear remoteSyncKey so new branch document sync takes priority
         setRemoteSyncKey(null);
@@ -1841,7 +1895,7 @@ function P1PuckProviderInner({
         }
       }
     },
-    [branches, debouncedSave, performSave, cancelPendingRemoteSync, persistBranchId]
+    [branches, debouncedSave, performSave, cancelPendingRemoteSync, persistBranchId, commitCurrentData]
   );
 
   // Presence context value (for hooks like useFocusRegionReporting)
@@ -2085,6 +2139,7 @@ function P1PuckProviderInner({
       userId,
       currentDocument,
       currentData,
+      currentDataOrigin,
       documentLoading,
       saveStatus,
       lastSaved,
@@ -2174,6 +2229,7 @@ function P1PuckProviderInner({
       userId,
       currentDocument,
       currentData,
+      currentDataOrigin,
       documentLoading,
       saveStatus,
       lastSaved,

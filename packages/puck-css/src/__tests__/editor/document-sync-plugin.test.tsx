@@ -22,7 +22,7 @@ vi.mock("@puckeditor/core", () => ({
   useGetPuck: () => () => fakePuckState,
 }));
 
-const { createDocumentSyncStore, createDocumentSyncPlugin } = await import(
+const { createDocumentSyncStore, createDocumentSyncPlugin, BLANK_SYNC_KEY } = await import(
   "../../editor/plugin/document-sync-plugin.js"
 );
 
@@ -117,7 +117,11 @@ describe("createDocumentSyncPlugin", () => {
     expect(mockSetHistories).not.toHaveBeenCalled();
   });
 
-  it("treats the first published document as baseline without dispatching", () => {
+  // Puck mounts with blank data and the branch is restored from storage after
+  // mount, so the first document observed was never already on the canvas — it
+  // has to be pushed like any other. Skipping it left the editor one document
+  // behind from the very first load.
+  it("pushes the first published document onto the blank canvas", () => {
     const store = createDocumentSyncStore();
     renderPlugin(store);
 
@@ -125,20 +129,23 @@ describe("createDocumentSyncPlugin", () => {
       store.publish({ syncKey: "branch1:docA", data: docA });
     });
 
-    expect(mockSetHistories).not.toHaveBeenCalled();
+    expect(mockSetHistories).toHaveBeenCalledTimes(1);
+    expect(mockSetHistories.mock.calls[0][0][0].state.data).toBe(docA);
   });
 
-  it("adopts a pre-published snapshot as baseline on mount (role-change remount)", () => {
+  it("pushes a snapshot published before mount", () => {
     const store = createDocumentSyncStore();
     store.publish({ syncKey: "branch1:docA", data: docA });
     renderPlugin(store);
-    expect(mockSetHistories).not.toHaveBeenCalled();
+    expect(mockSetHistories).toHaveBeenCalledTimes(1);
+    expect(mockSetHistories.mock.calls[0][0][0].state.data).toBe(docA);
   });
 
   it("resets history with the new document state when the sync key changes", () => {
     const store = createDocumentSyncStore();
     store.publish({ syncKey: "branch1:docA", data: docA });
     renderPlugin(store);
+    mockSetHistories.mockClear();
 
     act(() => {
       store.publish({ syncKey: "branch1:docB", data: docB });
@@ -159,6 +166,7 @@ describe("createDocumentSyncPlugin", () => {
     const store = createDocumentSyncStore();
     store.publish({ syncKey: "branch1:docA", data: docA });
     renderPlugin(store);
+    mockSetHistories.mockClear();
 
     act(() => {
       store.publish({
@@ -174,6 +182,7 @@ describe("createDocumentSyncPlugin", () => {
     const store = createDocumentSyncStore();
     store.publish({ syncKey: "branch1:docA", data: docA });
     renderPlugin(store);
+    mockSetHistories.mockClear();
 
     act(() => {
       store.publish({ syncKey: "branch1:docB", data: null });
@@ -182,19 +191,19 @@ describe("createDocumentSyncPlugin", () => {
     expect(mockSetHistories).not.toHaveBeenCalled();
   });
 
-  it("marks the baseline document as applied without dispatching", () => {
+  it("marks the first document applied after pushing it", () => {
     const store = createDocumentSyncStore();
     store.publish({ syncKey: "branch1:docA", data: docA });
     renderPlugin(store);
 
     expect(store.getAppliedKey()).toBe("branch1:docA");
-    expect(mockSetHistories).not.toHaveBeenCalled();
+    expect(mockSetHistories).toHaveBeenCalledTimes(1);
   });
 
-  it("has no applied key before any document is observed", () => {
+  it("reports the blank sentinel before any document is observed", () => {
     const store = createDocumentSyncStore();
     renderPlugin(store);
-    expect(store.getAppliedKey()).toBeNull();
+    expect(store.getAppliedKey()).toBe(BLANK_SYNC_KEY);
   });
 
   it("marks the new document as applied after pushing it", () => {
@@ -214,8 +223,10 @@ describe("createDocumentSyncPlugin", () => {
     store.publish({ syncKey: "branch1:docA", data: docA });
     const { unmount } = renderPlugin(store);
     unmount();
+    mockSetHistories.mockClear();
     renderPlugin(store);
 
+    // The store outlives the remount, so the same document is not pushed twice.
     expect(store.getAppliedKey()).toBe("branch1:docA");
     expect(mockSetHistories).not.toHaveBeenCalled();
   });
@@ -224,6 +235,7 @@ describe("createDocumentSyncPlugin", () => {
     const store = createDocumentSyncStore();
     store.publish({ syncKey: "branch1:docA", data: docA });
     renderPlugin(store);
+    mockSetHistories.mockClear();
 
     act(() => {
       store.publish({ syncKey: "branch1:docB", data: docB });
@@ -233,5 +245,23 @@ describe("createDocumentSyncPlugin", () => {
     });
 
     expect(mockSetHistories).toHaveBeenCalledTimes(2);
+  });
+
+  // The same page on two branches: identical documentId, and blank snapshots
+  // even share payload identity via snapshotToPuckData's shared empty constant.
+  // Only the branch component of the key distinguishes them.
+  it("pushes the same document across a branch switch", () => {
+    const store = createDocumentSyncStore();
+    const blank = { content: [], root: { props: {} } };
+    store.publish({ syncKey: "branch1:docA", data: blank });
+    renderPlugin(store);
+    mockSetHistories.mockClear();
+
+    act(() => {
+      store.publish({ syncKey: "branch2:docA", data: blank });
+    });
+
+    expect(mockSetHistories).toHaveBeenCalledTimes(1);
+    expect(store.getAppliedKey()).toBe("branch2:docA");
   });
 });

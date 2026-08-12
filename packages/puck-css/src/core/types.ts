@@ -183,6 +183,24 @@ export interface P1PuckConfig {
 }
 
 /**
+ * Identity a loaded PuckData payload came from.
+ *
+ * `branchId` is the branch the payload was *requested for*, not the branch on
+ * the returned version: for an inherited (copy-on-write) document the backend
+ * falls back to main's published version, so the version's own branchId names
+ * main even though the payload is what the requested branch should display.
+ */
+export interface PuckDataOrigin {
+  branchId: string | null;
+  documentId: string;
+  documentPath: string;
+  /** Version the payload came from; null for realtime/local payloads. Diagnostic only. */
+  versionId: string | null;
+  /** True while a historical version is being viewed. */
+  historical: boolean;
+}
+
+/**
  * Context value provided by P1PuckProvider.
  */
 export interface P1PuckContextValue {
@@ -226,6 +244,16 @@ export interface P1PuckContextValue {
    * Current Puck data.
    */
   currentData: PuckData | null;
+
+  /**
+   * Identity the current data was actually loaded under, set in the same commit
+   * as currentData. Consumers key their sync on this rather than on the live
+   * branchId, which flips the instant a switch starts and so describes what was
+   * requested rather than what is in hand.
+   *
+   * Optional so consumers that construct this value by hand keep compiling.
+   */
+  currentDataOrigin?: PuckDataOrigin | null;
 
   /**
    * True while loadDocument is fetching a document. Distinguishes "no

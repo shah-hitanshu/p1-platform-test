@@ -22,7 +22,13 @@ import type { Plugin } from "@puckeditor/core";
 import type { PuckData } from "@pantheon-systems/css-client";
 
 export interface DocumentSyncSnapshot {
-  /** Identity of the loaded document (e.g. `${branchId}:${documentId}`) */
+  /**
+   * Identity of the document this data actually *is* (`${branchId}:${documentId}`),
+   * derived from the payload's own origin. It must never be built from the live
+   * branchId: that flips the moment a switch starts, so it names the document
+   * being requested rather than the one in hand, and publishing a new key beside
+   * the outgoing branch's data made the canvas render a branch behind.
+   */
   syncKey: string | null;
   data: PuckData | null;
 }
@@ -31,11 +37,24 @@ export interface DocumentSyncStore {
   publish(snapshot: DocumentSyncSnapshot): void;
   subscribe(onChange: VoidFunction): VoidFunction;
   getSnapshot(): DocumentSyncSnapshot;
-  /** Records which document the Puck canvas currently shows; null before the first */
-  markApplied(syncKey: string | null): void;
-  /** Sync key of the document the canvas shows, or null before the first one */
-  getAppliedKey(): string | null;
+  /** Records which document the Puck canvas currently shows */
+  markApplied(syncKey: string): void;
+  /** Sync key of the document the canvas shows; BLANK_SYNC_KEY before the first */
+  getAppliedKey(): string;
 }
+
+/**
+ * Applied key while Puck still shows the blank data it mounted with.
+ *
+ * A distinct sentinel rather than null because "no document yet" and "the
+ * document Puck was mounted with" are different states, and conflating them
+ * dropped the first real payload: Puck mounts with empty data and the branch is
+ * restored from storage after mount, so the assumption that the first observed
+ * document was already on the canvas never held.
+ *
+ * Contains no colon, so it can never collide with a documentSyncKey.
+ */
+export const BLANK_SYNC_KEY = "blank";
 
 const EMPTY_SNAPSHOT: DocumentSyncSnapshot = { syncKey: null, data: null };
 
@@ -75,7 +94,7 @@ export function normalizeSyncData(data: PuckData): PuckData {
 
 export function createDocumentSyncStore(): DocumentSyncStore {
   let snapshot = EMPTY_SNAPSHOT;
-  let appliedKey: string | null = null;
+  let appliedKey: string = BLANK_SYNC_KEY;
   const listeners = new Set<VoidFunction>();
 
   return {
@@ -133,11 +152,6 @@ function DocumentSync({ store }: { store: DocumentSyncStore }) {
 
     const appliedKey = store.getAppliedKey();
     if (appliedKey === syncKey) return;
-    if (appliedKey === null) {
-      // First document observed: Puck was mounted with it, nothing to push.
-      store.markApplied(syncKey);
-      return;
-    }
     const { appState, history } = getPuck() as unknown as PuckStateSlice;
     // Omit indexes so Puck re-runs walkAppState for the new content.
     const { indexes: _indexes, ...rest } = appState;
