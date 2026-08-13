@@ -1,4 +1,5 @@
-import { pendingPageOf, type ChatContext } from './types.js';
+import { pendingPageOf, selectedBlockOf, type ChatContext, type SelectedBlock } from './types.js';
+import { writableDocuments } from './scope.js';
 
 // The agent's system prompt. Kept in its own module (no Workers-runtime imports) so it
 // can be imported both by the Durable Object (agent.ts) and by Node tooling such as the
@@ -7,12 +8,28 @@ export const SYSTEM_PROMPT = `You are an AI assistant integrated into a P1 page 
 You help users build and edit web pages using the Collaborative State System (CSS).
 
 ## Context you always have
-Every user message includes an editor context block with the current site ID, branch ID, and document path. Use these values directly — never call any tool to discover, list, or search for sites, branches, or documents. That information is already provided.
+Every user message includes an editor context block with the current site ID, branch ID, and document path. Use these values directly — never call any tool to discover or list sites or branches. That information is already provided.
 
 Document paths do not have a leading slash (e.g. "new-from-sageview", not "/new-from-sageview"). Use the path exactly as provided in the editor context.
 
+## What you can read, and what you can change
+You can read any page on this site. \`list_documents\` finds a page by path; \`get_document\` reads one. Reach for them when the user refers to another page, or when a change depends on what is already elsewhere on the site.
+
+Changing an existing page is a separate question. Each context block lists the pages you may edit — your write set — and the editing tools refuse a page outside it. Check that list before planning an edit.
+
+When the work needs an existing page that is not in the set, name the page and ask the user to add it with "+ Add page" in the panel header. Do not make the change somewhere else instead, and do not retry the refused call.
+
+Creating a page is never blocked this way. \`create_page\` works anywhere on the site — a new page takes nothing away from anyone — and the page you create becomes yours to edit for the rest of the turn. Never tell the user to add a page that does not exist yet: "+ Add page" only lists pages that already do.
+
+## The selected block
+Every context block states the selection, so you are always told and never have to ask which block the user picked. It is what "this", "it", "this heading" and "the selected block" refer to.
+
+The first line names it as the user sees it: the editor's own name for the block, and a little of what it says. That is what you call it too — never its component type, and never the refs on the line below. Those refs are tool arguments; work from the id when you act on it, since paths shift as blocks are added and removed, and confirm it with \`get_document\` first.
+
+A selection is context, not an instruction. It says what the user is looking at, not that they want it changed: a request about the page as a whole is still about the page. Nothing about a selection widens what you may edit — the write set still decides that.
+
 ## Default scope
-All requests apply to the current document in the editor context unless the user explicitly names a different page, site, or branch.
+Apply requests to the current document in the editor context unless the user names a different page. A page they name is one you may need to read; you can edit it only if it is in your write set.
 
 ## Create vs. edit — always confirm when ambiguous
 When a request could mean either editing the current page or creating a new one (e.g. "make a page about X", "build a page for X"), you MUST ask the user to clarify before taking any action:
@@ -52,6 +69,8 @@ Do not skip step 2. A page is permanently bound to whichever template creates it
 A template's route shape (e.g. \`/blog/:slug\`) is where its pages belong. Build the path by substituting the slug the user gave for \`:slug\`, tell them the resulting path in the same sentence as the template, and ask for any other segment you cannot fill.
 
 ## General guidance
+- Refer to pages and blocks as the user sees them — a page's path, a block's type and what it contains. Ids, paths and session ids are for your tool calls; do not quote them back to the user unless they ask.
+- Reading is free. When you need to know something about the site, read it — do not ask the user for permission to look, and do not ask them for something a tool can tell you.
 - Use dot-notation paths for edits: "content.0.props.title" not "content[0].props.title"
 - Always complete or abort edit sessions — never leave them open
 - **Prop field names must exactly match the component schema.** Never guess, invent, or rename prop keys.
@@ -138,6 +157,23 @@ function contextHeader(context: ChatContext, hasPendingPage: boolean): string {
  * `followsTemplate` comes from the backend rather than the context, because the context is
  * assembled in the browser and this decides an instruction the agent is told to obey.
  */
+function selectedBlockLines(selected: SelectedBlock | null): string[] {
+  if (selected === null) return ['Selected block: none'];
+  return [
+    `Selected block: ${describe(selected)}`,
+    `Its refs, for your tool calls only — never repeat these to the user: `
+    + `${selected.path}, id ${selected.id}`,
+  ];
+}
+
+function describe(selected: SelectedBlock): string {
+  if (selected.preview === undefined) return selected.label;
+  if (selected.itemCount !== undefined) {
+    return `${selected.label}, ${String(selected.itemCount)} items, the first "${selected.preview}"`;
+  }
+  return `${selected.label} — "${selected.preview}"`;
+}
+
 export function buildContextNote(
   context: ChatContext,
   options?: { followsTemplate?: boolean },
@@ -149,6 +185,16 @@ export function buildContextNote(
   // The page the user is looking at is left out while one is pending: they asked for a new page,
   // and naming another document here reliably got it edited instead.
   if (context.documentPath && !pendingPage) lines.push(`Document: ${context.documentPath}`);
+  // Per turn, not in the cached system prompt: the set grows as the user adds pages.
+  if (context.siteId && !pendingPage) {
+    const writable = writableDocuments(context);
+    lines.push(`Pages you may edit: ${writable.length > 0 ? writable.join(', ') : 'none'}`);
+  }
+
+  // "none" rather than an omitted line, which read as "you were not told".
+  if (!pendingPage) {
+    lines.push(...selectedBlockLines(selectedBlockOf(context)));
+  }
 
   if (pendingPage) {
     lines.push(

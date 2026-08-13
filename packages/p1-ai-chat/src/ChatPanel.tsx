@@ -3,7 +3,9 @@ import { Icon, IconButton, Textarea } from '@pantheon-systems/pds-toolkit-react'
 import { useP1Puck, useP1Auth } from '@pantheon-systems/puck-css';
 import { ChatPanelHeader } from './ChatPanelHeader.js';
 import { useAgentChat } from './useAgentChat.js';
+import { normalizeDocumentPath } from './chatState.js';
 import { useDraftRequest } from './useDraftRequest.js';
+import { useSelectedBlock } from './useSelectedBlock.js';
 import { toolCallLabel } from './toolLabels.js';
 import { activeStep } from './messageParts.js';
 import { ChatMessage } from './ChatMessage.js';
@@ -66,6 +68,9 @@ export function ChatPanel({ options }: Props): React.ReactElement {
   cssRef.current = css;
   const getTokenRef = useRef(getToken);
   getTokenRef.current = getToken;
+  const selectedBlock = useSelectedBlock();
+  const selectedBlockRef = useRef(selectedBlock);
+  selectedBlockRef.current = selectedBlock;
 
   // Site-scoped, not per page, so the transcript follows the user around. The turn's own
   // document rides along in `getContext`.
@@ -84,11 +89,14 @@ export function ChatPanel({ options }: Props): React.ReactElement {
     documentPath: cssRef.current.currentDocument?.path ?? '',
     documentId: cssRef.current.currentDocument?.id ?? '',
     token: (await getTokenRef.current()) ?? '',
+    ...(selectedBlockRef.current ? { selectedBlock: selectedBlockRef.current } : {}),
   }), []);
 
   const {
     messages, input, setInput, submit, sendMessage, isLoading, ready,
     reconnecting, historyLoaded, canRetry, clearMessages, stop, retry, awaitingNewPage,
+    writeSet, visitPage, addWritablePage, removeWritablePage,
+    scopeExpanded, setScopeExpanded,
   } = useAgentChat({
     agentUrl: options.agentUrl,
     agentId,
@@ -100,6 +108,23 @@ export function ChatPanel({ options }: Props): React.ReactElement {
   // waiting on a page it asked for is about to create one — and the answer it is waiting for
   // ("yes, use that template") has to be typeable with nothing open.
   const canSend = currentDocument !== null || awaitingNewPage;
+
+  const currentPath = currentDocument?.path ?? null;
+
+  // Keyed on whether the set exists, not on the set: removing a chip must not re-add the page.
+  const unseeded = writeSet === null;
+  useEffect(() => {
+    if (currentPath !== null) visitPage(currentPath);
+  }, [currentPath, unseeded, visitPage]);
+
+  // `_registry/...` holds component and template definitions: documents to the API, but not pages.
+  const sitePages = useMemo(
+    () => css.documents
+      .filter(doc => !doc.archived && !normalizeDocumentPath(doc.path).startsWith('_registry/'))
+      .map(doc => normalizeDocumentPath(doc.path))
+      .sort((a, b) => a.localeCompare(b)),
+    [css.documents],
+  );
 
   // Clear takes effect immediately. It also stops any turn in flight, so it can't leave
   // the agent editing the page for a conversation that no longer exists.
@@ -232,7 +257,16 @@ export function ChatPanel({ options }: Props): React.ReactElement {
       // Containing block for the visually-hidden status region below.
       position: 'relative',
     }}>
-      <ChatPanelHeader canClear={messages.length > 0} onClear={handleClear} />
+      <ChatPanelHeader
+        canClear={messages.length > 0}
+        onClear={handleClear}
+        writeSet={writeSet}
+        sitePages={sitePages}
+        onAddPage={addWritablePage}
+        onRemovePage={removeWritablePage}
+        isExpanded={scopeExpanded}
+        onExpandedChange={setScopeExpanded}
+      />
       {/* Messages */}
       <div
         ref={scrollRef}

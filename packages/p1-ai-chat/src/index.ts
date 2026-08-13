@@ -10,6 +10,7 @@ export type {
   TextPart,
   MessageOrigin,
   ChatContext,
+  SelectedBlock,
   ToolCallStatus,
   DraftRequest,
   FillPageRequest,

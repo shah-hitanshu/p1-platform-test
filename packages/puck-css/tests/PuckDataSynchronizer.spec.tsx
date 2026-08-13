@@ -6,8 +6,8 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, act, waitFor } from '@testing-library/react';
-import { PuckDataSynchronizer, _resetSyncTracking } from '../src/editor/components/PuckDataSynchronizer.js';
 import type { PuckData } from '@pantheon-systems/css-client';
+import { PuckDataSynchronizer, _resetSyncTracking } from '../src/editor/components/PuckDataSynchronizer.js';
 
 // Mock @puckeditor/core
 const mockDispatch = vi.fn();
@@ -28,6 +28,12 @@ vi.mock('@puckeditor/core', () => ({
     };
   },
 }));
+
+function dispatched(): { type: string }[] {
+  return (mockDispatch.mock.calls as [{ type: string }][]).map(([action]) => action);
+}
+
+const setDataCalls = (): { type: string }[] => dispatched().filter(a => a.type === 'setData');
 
 describe('PuckDataSynchronizer', () => {
   const sampleData: PuckData = {
@@ -73,7 +79,7 @@ describe('PuckDataSynchronizer', () => {
     });
 
     // Initial render with data should dispatch
-    expect(mockDispatch).toHaveBeenCalledTimes(1);
+    expect(setDataCalls()).toHaveLength(1);
     expect(mockDispatch).toHaveBeenCalledWith({
       type: 'setData',
       data: sampleData,
@@ -92,11 +98,22 @@ describe('PuckDataSynchronizer', () => {
     await act(async () => {
       vi.advanceTimersByTime(10);
     });
-    expect(mockDispatch).toHaveBeenCalledTimes(1);
+    expect(setDataCalls()).toHaveLength(1);
     expect(mockDispatch).toHaveBeenCalledWith({
       type: 'setData',
       data: sampleData2,
     });
+  });
+
+  it('clears the selection before the new document lands', async () => {
+    render(<PuckDataSynchronizer data={sampleData} syncKey="key1" />);
+
+    await act(async () => {
+      vi.advanceTimersByTime(10);
+    });
+
+    expect(dispatched().map(action => action.type)).toEqual(['setUi', 'setData']);
+    expect(mockDispatch).toHaveBeenNthCalledWith(1, { type: 'setUi', ui: { itemSelector: null } });
   });
 
   it('should not dispatch when syncKey is null (null means do not sync)', async () => {
@@ -125,7 +142,7 @@ describe('PuckDataSynchronizer', () => {
       vi.advanceTimersByTime(10);
     });
 
-    expect(mockDispatch).toHaveBeenCalledTimes(1);
+    expect(setDataCalls()).toHaveLength(1);
   });
 
   it('should not dispatch when syncKey changes from value to null', async () => {
@@ -137,7 +154,7 @@ describe('PuckDataSynchronizer', () => {
       vi.advanceTimersByTime(10);
     });
 
-    expect(mockDispatch).toHaveBeenCalledTimes(1);
+    expect(setDataCalls()).toHaveLength(1);
 
     // Changing to null should NOT trigger a dispatch
     mockDispatch.mockClear();

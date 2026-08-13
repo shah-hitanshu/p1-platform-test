@@ -2,20 +2,26 @@ import type { ChatContext, SendMessageOptions, ServerMessage } from './types.js'
 import {
   EMPTY_STATE,
   makeId,
+  addToWriteSet,
   appendToken,
   beginTurn,
   clearTranscript,
   dropLastExchange,
   completeToolCall,
   endTurn,
+  forgetWriteSet,
   markDisconnected,
   markHistoryLoaded,
   markReady,
   markReconnecting,
+  normalizeDocumentPath,
+  removeFromWriteSet,
   restoreHistory,
+  visitPage,
   setDraft,
   setPendingPage,
   setRetry,
+  setScopeExpanded,
   startToolCall,
   stopTurn,
   type ChatSessionState,
@@ -346,7 +352,7 @@ export function createdPagePath(toolResult: unknown): string | null {
 function notePageCreated(session: ChatSession, toolResult: unknown): void {
   const path = createdPagePath(toolResult);
   if (!path) return;
-  update(session, setPendingPage(session.state, null));
+  update(session, addToWriteSet(setPendingPage(session.state, null), path));
   session.onPageCreated?.(path);
 }
 
@@ -478,6 +484,10 @@ async function sessionSendMessage(
       ...(opts?.documentPath != null ? { documentPath: opts.documentPath } : {}),
       ...(opts?.newPage ? { newPage: true } : {}),
       ...(session.state.pendingPage ? { pendingPage: session.state.pendingPage } : {}),
+      // Absent rather than [] while unseeded: [] reads as "edit nothing" on the first turn.
+      ...(session.state.writeSet !== null
+        ? { writeSet: withTarget(session.state.writeSet, opts?.documentPath) }
+        : {}),
     };
     // Stop stays live while auth resolves, so this turn may already be abandoned.
     if (session.currentAssistantId !== assistantId) return;
@@ -492,12 +502,24 @@ async function sessionSendMessage(
   }
 }
 
+/**
+ * The write set plus this turn's own target page, if it named one outside the set. The host app
+ * pointing a turn at a page is as explicit a grant as the user adding it — without this, a
+ * `fill-page` request lands on a conversation seeded elsewhere and every edit it makes is refused.
+ */
+function withTarget(writeSet: string[], target: string | undefined): string[] {
+  if (target === undefined) return writeSet;
+  const normalized = normalizeDocumentPath(target);
+  if (normalized === '' || writeSet.includes(normalized)) return writeSet;
+  return [...writeSet, normalized];
+}
+
 async function sessionClearMessages(session: ChatSession): Promise<void> {
   // Stop first, or the agent keeps editing a page for a conversation that is gone.
   sessionStop(session);
   // The request for a pending page went with the transcript, so the next turn must not still be
   // asking for one.
-  update(session, clearTranscript(setPendingPage(session.state, null)));
+  update(session, clearTranscript(forgetWriteSet(setPendingPage(session.state, null))));
   const ws = session.ws;
   // The local view is cleared either way; telling the agent is best-effort.
   if (ws?.readyState !== WebSocket.OPEN) return;
@@ -548,6 +570,14 @@ export interface ChatSessionHandle {
   retry: () => Promise<void>;
   /** Update the composer text, which lives in session state so a remount can't discard it. */
   setDraft: (text: string) => void;
+  /** Note the page now open in the editor, which the agent may edit while it stays open. */
+  visitPage: (path: string) => void;
+  /** Show the pages in the scope row, or collapse it to a count. */
+  setScopeExpanded: (expanded: boolean) => void;
+  /** Let the agent change one more page, at the user's request. */
+  addWritablePage: (path: string) => void;
+  /** Take a page back from the agent. */
+  removeWritablePage: (path: string) => void;
 }
 
 /**
@@ -600,6 +630,22 @@ export function acquireChatSession(
     setDraft: (text: string) => {
       const session = resolve();
       update(session, setDraft(session.state, text));
+    },
+    visitPage: (path: string) => {
+      const session = resolve();
+      update(session, visitPage(session.state, path));
+    },
+    setScopeExpanded: (expanded: boolean) => {
+      const session = resolve();
+      update(session, setScopeExpanded(session.state, expanded));
+    },
+    addWritablePage: (path: string) => {
+      const session = resolve();
+      update(session, addToWriteSet(session.state, path));
+    },
+    removeWritablePage: (path: string) => {
+      const session = resolve();
+      update(session, removeFromWriteSet(session.state, path));
     },
   };
 }

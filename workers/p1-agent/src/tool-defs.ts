@@ -3,8 +3,9 @@ import type OpenAI from 'openai';
 /**
  * A provider-neutral tool specification — the single source of truth for tool specs.
  * Each transport converts it to its own wire format (`toOpenAiTools` here;
- * `toAnthropicTools` in anthropic.ts). `list_sites`/`list_branches`/`list_documents` are
- * intentionally excluded — the site, branch, and document always come from the editor context.
+ * `toAnthropicTools` in anthropic.ts). `list_sites`/`list_branches` are intentionally
+ * excluded — the site and branch always come from the editor context. Documents are not:
+ * the agent reads across the whole site and is held to its write set when it edits.
  */
 export interface RawTool {
   /** Tool name the model calls (must match a case in `executeTool`). */
@@ -15,6 +16,18 @@ export interface RawTool {
   input_schema: Record<string, unknown>;
 }
 const RAW_CSS_TOOLS: RawTool[] = [
+  {
+    name: 'list_documents',
+    description: 'List the pages on this site. Use it to find a page the user named, or to see what else is on the site before making a change. Being able to read a page does not mean you may edit it — editing is limited to your write set.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        site_id: { type: 'string' },
+        branch_id: { type: 'string' },
+      },
+      required: ['site_id', 'branch_id'],
+    },
+  },
   {
     name: 'list_components',
     description: 'List P1 components available for building a new page. Only needed when creating a new page — do not call when editing an existing page.',

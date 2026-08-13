@@ -10,11 +10,15 @@ let currentDocument: { id: string; path: string } | null = { id: 'doc1', path: '
 let branchId = 'main';
 
 vi.mock('@pantheon-systems/puck-css', () => ({
-  useP1Puck: () => ({ userId: 'u1', siteId: 'site1', branchId, currentDocument }),
+  useP1Puck: () => ({ userId: 'u1', siteId: 'site1', branchId, currentDocument, documents: [] }),
   useP1Auth: () => ({ getToken: async () => baseContext.token, isAuthenticated: true }),
   aiPanelStore: { close: vi.fn(), open: vi.fn(), toggle: vi.fn(), isOpen: () => true, subscribe: () => () => {} },
 }));
-vi.mock('@puckeditor/core', () => ({ useGetPuck: () => () => ({ dispatch: vi.fn() }) }));
+vi.mock('@puckeditor/core', () => ({
+  useGetPuck: () => () => ({ dispatch: vi.fn() }),
+  createUsePuck: () => (selector: (state: unknown) => unknown) =>
+    selector({ selectedItem: null, appState: { ui: { itemSelector: null } } }),
+}));
 
 const { ChatPanel } = await import('../src/ChatPanel.js');
 

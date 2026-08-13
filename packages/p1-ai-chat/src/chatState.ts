@@ -42,6 +42,21 @@ export interface ChatSessionState {
    * agent's question about which template to use must not need a page open.
    */
   pendingPage: PendingPage | null;
+  /**
+   * The pages the agent may change, or null before the conversation has seeded itself. `[]` is a
+   * user who removed every page, and re-seeding that would hand the pages back.
+   */
+  writeSet: string[] | null;
+  /**
+   * Whether the scope row lists the pages, or only says how many. Session state rather than the
+   * row's own, so opening it survives navigating and the panel closing and reopening.
+   */
+  scopeExpanded: boolean;
+  /**
+   * The one entry in `writeSet` that is there only because the page is open. Navigating on expires
+   * it; a page the user added themselves, or asked the agent to create, has no such expiry.
+   */
+  autoWritePath: string | null;
 }
 
 export const EMPTY_STATE: ChatSessionState = {
@@ -53,7 +68,82 @@ export const EMPTY_STATE: ChatSessionState = {
   reconnecting: false,
   retry: null,
   pendingPage: null,
+  writeSet: null,
+  autoWritePath: null,
+  scopeExpanded: false,
 };
+
+/**
+ * Canonical document path, matching the CSS backend's own normalization. It has to agree with the
+ * Worker's copy in `scope.ts`, which compares the set it receives against the backend's form: a
+ * chip reading `About` would be refused on the `about` it was granted for. The home page's path is
+ * literally "/"; an empty path means no document is open.
+ */
+export function normalizeDocumentPath(path: string): string {
+  const trimmed = path.trim();
+  if (trimmed === '' || trimmed === '/') return trimmed;
+  return trimmed
+    .toLowerCase()
+    .replace(/\\/g, '/')
+    .split('/')
+    .filter(segment => segment !== '')
+    .join('/');
+}
+
+export function setScopeExpanded(state: ChatSessionState, expanded: boolean): ChatSessionState {
+  if (state.scopeExpanded === expanded) return state;
+  return { ...state, scopeExpanded: expanded };
+}
+
+/**
+ * Open a page, which grants it. The grant the last visit made expires here, so browsing does not
+ * accumulate pages; a page that was already in the set keeps whatever standing put it there.
+ */
+export function visitPage(state: ChatSessionState, path: string): ChatSessionState {
+  const visited = normalizeDocumentPath(path);
+  if (visited === '') return state;
+  const kept = (state.writeSet ?? []).filter(entry => entry !== state.autoWritePath);
+  const already = kept.includes(visited);
+  const writeSet = already ? kept : [...kept, visited];
+  const autoWritePath = already ? null : visited;
+  if (autoWritePath === state.autoWritePath && sameEntries(writeSet, state.writeSet)) return state;
+  return { ...state, writeSet, autoWritePath };
+}
+
+/** Add a page at the user's request, which makes it stick even once they navigate away. */
+export function addToWriteSet(state: ChatSessionState, path: string): ChatSessionState {
+  const normalized = normalizeDocumentPath(path);
+  if (normalized === '') return state;
+  const current = state.writeSet ?? [];
+  const autoWritePath = state.autoWritePath === normalized ? null : state.autoWritePath;
+  if (current.includes(normalized)) {
+    return autoWritePath === state.autoWritePath ? state : { ...state, autoWritePath };
+  }
+  return { ...state, writeSet: [...current, normalized], autoWritePath };
+}
+
+export function forgetWriteSet(state: ChatSessionState): ChatSessionState {
+  if (state.writeSet === null && state.autoWritePath === null) return state;
+  return { ...state, writeSet: null, autoWritePath: null };
+}
+
+export function removeFromWriteSet(state: ChatSessionState, path: string): ChatSessionState {
+  const normalized = normalizeDocumentPath(path);
+  const current = state.writeSet;
+  if (current === null || !current.includes(normalized)) return state;
+  return {
+    ...state,
+    writeSet: current.filter(entry => entry !== normalized),
+    autoWritePath: state.autoWritePath === normalized ? null : state.autoWritePath,
+  };
+}
+
+// The write set is a React dependency, so an unchanged visit has to return the same array.
+function sameEntries(next: string[], previous: string[] | null): boolean {
+  return previous !== null
+    && next.length === previous.length
+    && next.every((entry, index) => entry === previous[index]);
+}
 
 /** Remember, or forget, the page the conversation is waiting to have created. */
 export function setPendingPage(

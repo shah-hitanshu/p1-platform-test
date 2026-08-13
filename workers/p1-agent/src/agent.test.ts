@@ -3,6 +3,7 @@ import type OpenAI from 'openai';
 import type { Connection, ConnectionContext } from 'agents';
 import { trimHistory, sanitizeHistory, appendTurn, trimForHistory, buildRestoredHistory, turnMayCommit, turnHasOutput } from './history.js';
 import { buildContextNote } from './prompt.js';
+import type { SelectedBlock } from './types.js';
 import { injectPuckIds } from './tools.js';
 import { ChatAgent, resolveFollowsTemplate } from './agent.js';
 
@@ -483,6 +484,103 @@ describe('injectPuckIds', () => {
 
 describe('buildContextNote', () => {
   const base = { siteId: 's1', branchId: 'b1', documentPath: '/pricing', token: 't' };
+
+  describe('write set', () => {
+    it('names the pages the turn may edit', () => {
+      const note = buildContextNote({ ...base, writeSet: ['/pricing', 'blog/hello'] });
+
+      expect(note).toContain('Pages you may edit: pricing, blog/hello');
+    });
+
+    it('names the open document when the client sent no write set', () => {
+      expect(buildContextNote(base)).toContain('Pages you may edit: pricing');
+    });
+
+    // Silence would read as "no restriction" to the model, which is the opposite of the truth.
+    it('says so explicitly when nothing is editable', () => {
+      const note = buildContextNote({ ...base, documentPath: '', writeSet: [] });
+
+      expect(note).toContain('Pages you may edit: none');
+    });
+  });
+
+  describe('selected block', () => {
+    const selectedBlock = {
+      id: '01JABCDEF',
+      type: 'HeadingBlock',
+      path: 'content.2',
+      label: 'Heading',
+      preview: 'Simple pricing',
+    };
+
+    it('names the block as the user sees it, and keeps the refs off that line', () => {
+      const note = buildContextNote({ ...base, selectedBlock });
+
+      expect(note).toContain('Selected block: Heading — "Simple pricing"');
+      expect(note).toContain('never repeat these to the user: content.2, id 01JABCDEF');
+    });
+
+    it('describes a repeated block by its first entry and a count', () => {
+      const note = buildContextNote({
+        ...base,
+        selectedBlock: {
+          id: '01JLIST',
+          type: 'ListBlock',
+          path: 'content.5',
+          label: 'List',
+          preview: '40% faster build times with Turbo',
+          itemCount: 4,
+        },
+      });
+
+      expect(note).toContain('Selected block: List, 4 items, the first "40% faster build times with Turbo"');
+    });
+
+    it('names it by label alone when it has no text of its own', () => {
+      const note = buildContextNote({
+        ...base,
+        selectedBlock: { id: '01J', type: 'DividerBlock', path: 'content.3', label: 'Divider' },
+      });
+
+      expect(note).toContain('Selected block: Divider');
+    });
+
+    it('falls back to the component type when the client sent no label', () => {
+      const note = buildContextNote({
+        ...base,
+        selectedBlock: { id: '01J', type: 'HeadingBlock', path: 'content.2' } as SelectedBlock,
+      });
+
+      expect(note).toContain('Selected block: HeadingBlock');
+    });
+
+    it('says so outright when the user has selected nothing', () => {
+      expect(buildContextNote(base)).toContain('Selected block: none');
+    });
+
+    it('is left out while a page is pending', () => {
+      const note = buildContextNote({
+        ...base,
+        selectedBlock,
+        pendingPage: { title: 'Pricing', path: 'pricing' },
+      });
+
+      expect(note).not.toContain('Selected block');
+    });
+
+    it.each([
+      ['a missing id', { type: 'HeadingBlock', path: 'content.2', label: 'Heading' }],
+      ['a missing type', { id: '01J', path: 'content.2', label: 'Heading' }],
+      ['a missing path', { id: '01J', type: 'HeadingBlock', label: 'Heading' }],
+      ['an empty id', { id: '  ', type: 'HeadingBlock', path: 'content.2', label: 'Heading' }],
+      ['a non-string path', { id: '01J', type: 'HeadingBlock', path: 2, label: 'Heading' }],
+      ['not an object', 'content.2'],
+    ])('reports no selection at all for one with %s', (_case, malformed) => {
+      const note = buildContextNote({ ...base, selectedBlock: malformed as unknown as SelectedBlock });
+
+      expect(note).toContain('Selected block: none');
+    });
+  });
 
   // The product decision on PCC-3440: a thin brief gets a draft, not a question. Without
   // this the model opens with "which page would you like me to use?".

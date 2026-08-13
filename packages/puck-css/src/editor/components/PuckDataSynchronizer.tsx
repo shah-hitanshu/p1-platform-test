@@ -136,6 +136,10 @@ function PuckDataSynchronizerInner({
       // This is safe because we're in useEffect, not during render
       lastSyncedKeyModule = syncKey;
 
+      // `setData` leaves `ui` alone and Puck is never remounted, so the old selector would point
+      // into the new document. Cleared first, so the new data never renders against it.
+      dispatch({ type: 'setUi', ui: { itemSelector: null } });
+
       // Dispatch setData to update Puck's internal state
       dispatch({
         type: 'setData',

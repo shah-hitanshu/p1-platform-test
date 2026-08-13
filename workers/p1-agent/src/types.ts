@@ -35,6 +35,16 @@ export interface ChatContext {
   documentPath: string;
   documentId?: string;
   token: string; // CSS auth token
+  /** Context only: a selection grants nothing. */
+  selectedBlock?: SelectedBlock;
+  /**
+   * Document paths this turn may modify; reads are not restricted by it. Assembled in the browser,
+   * so it can only narrow what the acting user's own site role already allows.
+   *
+   * Optional because the client package and this Worker deploy separately, and can stop being
+   * optional once no client predating it is in the field.
+   */
+  writeSet?: string[];
   /**
    * A page the user asked for that does not exist yet. Sent on every turn until it has been
    * created, because the confirmation the agent waits for arrives on a later one.
@@ -50,6 +60,39 @@ export interface ChatContext {
    * an older client can still send it. Remove once both have shipped past that.
    */
   newPage?: boolean;
+}
+
+export interface SelectedBlock {
+  id: string;
+  type: string;
+  path: string;
+  label: string;
+  preview?: string;
+  itemCount?: number;
+}
+
+/** All three fields are reported to the model as fact, so a partial selection is dropped. */
+export function selectedBlockOf(context: ChatContext): SelectedBlock | null {
+  const selected: unknown = context.selectedBlock;
+  if (typeof selected !== 'object' || selected === null) return null;
+  const { id, type, path, label, preview, itemCount } = selected as {
+    id?: unknown; type?: unknown; path?: unknown;
+    label?: unknown; preview?: unknown; itemCount?: unknown;
+  };
+  if (typeof id !== 'string' || id.trim() === '') return null;
+  if (typeof type !== 'string' || type.trim() === '') return null;
+  if (typeof path !== 'string' || path.trim() === '') return null;
+  return {
+    id: id.trim(),
+    type: type.trim(),
+    path: path.trim(),
+    // A client too old to send a label leaves the type as its only name.
+    label: typeof label === 'string' && label.trim() !== '' ? label.trim() : type.trim(),
+    ...(typeof preview === 'string' && preview.trim() !== '' ? { preview: preview.trim() } : {}),
+    ...(typeof itemCount === 'number' && Number.isInteger(itemCount) && itemCount > 1
+      ? { itemCount }
+      : {}),
+  };
 }
 
 /** Where a page the agent is about to create should go, as the Create Page dialog collected it. */

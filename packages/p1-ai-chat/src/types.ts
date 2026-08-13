@@ -1,9 +1,31 @@
+export interface SelectedBlock {
+  /** The component instance's ULID, which is how it is found in a document snapshot. */
+  id: string;
+  /** Component type, e.g. `HeadingBlock`. */
+  type: string;
+  /** Dot notation, as the editing tools take it: `content.2`. */
+  path: string;
+  /** What the editor calls this block on its overlay, e.g. `Heading`. */
+  label: string;
+  /** A little of what the block says, so it can be named as the user sees it. */
+  preview?: string;
+  /** How many entries a repeated block has, e.g. a list's items. */
+  itemCount?: number;
+}
+
 export interface ChatContext {
   siteId: string;
   branchId: string;
   documentPath: string;
   documentId?: string;
   token: string;
+  /** The block selected in the canvas. Context only: it grants nothing. */
+  selectedBlock?: SelectedBlock;
+  /**
+   * The pages this turn may change; reads are not restricted by it. The Worker enforces it, which
+   * is what makes the panel header's "Editing:" list true rather than decorative.
+   */
+  writeSet?: string[];
   /** This turn targets a just-created empty page, so the agent should draft without asking. */
   newPage?: boolean;
   /**

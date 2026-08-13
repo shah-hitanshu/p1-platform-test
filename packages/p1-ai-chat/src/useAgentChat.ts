@@ -35,6 +35,18 @@ export interface UseAgentChatReturn {
    * a page of its own, so it needs no document open in the editor.
    */
   awaitingNewPage: boolean;
+  /** The pages the agent may change; null means the conversation has not seeded itself yet. */
+  writeSet: string[] | null;
+  /** Note the page now open in the editor, which the agent may edit while it stays open. */
+  visitPage: (path: string) => void;
+  /** Whether the scope row lists the pages, or only says how many. */
+  scopeExpanded: boolean;
+  /** Show the pages in the scope row, or collapse it to a count. */
+  setScopeExpanded: (expanded: boolean) => void;
+  /** Let the agent change one more page, at the user's request. */
+  addWritablePage: (path: string) => void;
+  /** Take a page back from the agent. */
+  removeWritablePage: (path: string) => void;
   clearMessages: () => void;
   /** Stop the turn in flight, keeping whatever it already streamed. */
   stop: () => void;
@@ -102,6 +114,12 @@ export function useAgentChat({
     historyLoaded: state.historyLoaded,
     canRetry: state.retry !== null,
     awaitingNewPage: state.pendingPage !== null,
+    writeSet: state.writeSet,
+    visitPage: session.visitPage,
+    scopeExpanded: state.scopeExpanded,
+    setScopeExpanded: session.setScopeExpanded,
+    addWritablePage: session.addWritablePage,
+    removeWritablePage: session.removeWritablePage,
     clearMessages,
     stop: session.stop,
     retry,

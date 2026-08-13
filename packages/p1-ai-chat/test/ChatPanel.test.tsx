@@ -1,3 +1,4 @@
+import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, act, within } from '@testing-library/react';
 import type { DraftRequest, DraftRequestChannel } from '../src/types.js';
@@ -10,17 +11,29 @@ const dispatch = vi.fn();
 // panel is constructed by Puck and reads them from context.
 let currentDocument: { id: string; path: string } | null = { id: 'doc1', path: '/current' };
 
+const branchDocuments = [
+  { id: 'doc1', path: '/current', archived: false },
+  { id: 'doc2', path: '/pricing', archived: false },
+  { id: 'doc3', path: '/old', archived: true },
+  { id: 'doc4', path: '_registry/components/Hero', archived: false },
+];
+
 vi.mock('@pantheon-systems/puck-css', () => ({
   useP1Puck: () => ({
     userId: 'u1',
     siteId: 'site1',
     branchId: 'main',
     currentDocument,
+    documents: branchDocuments,
   }),
   useP1Auth: () => ({ getToken: async () => baseContext.token, isAuthenticated: true }),
   aiPanelStore: { close: vi.fn(), open: vi.fn(), toggle: vi.fn(), isOpen: () => true, subscribe: () => () => {} },
 }));
-vi.mock('@puckeditor/core', () => ({ useGetPuck: () => () => ({ dispatch }) }));
+vi.mock('@puckeditor/core', () => ({
+  useGetPuck: () => () => ({ dispatch }),
+  createUsePuck: () => (selector: (state: unknown) => unknown) =>
+    selector({ selectedItem: null, appState: { ui: { itemSelector: null } } }),
+}));
 
 const { ChatPanel } = await import('../src/ChatPanel.js');
 
@@ -37,14 +50,37 @@ afterEach(() => { vi.unstubAllGlobals(); });
 /** Render the panel on its own conversation scope and open its socket. */
 async function renderPanel() {
   const agentId = `panel-scope-${++scopeCounter}`;
-  const view = render(<ChatPanel options={{ agentUrl: 'http://agent.test', getAgentId: () => agentId }} />);
+  const panel = (): React.ReactElement =>
+    <ChatPanel options={{ agentUrl: 'http://agent.test', getAgentId: () => agentId }} />;
+  const view = render(panel());
   await act(async () => { MockWebSocket.instances[0].open(); });
   const ws = (): MockWebSocket => MockWebSocket.instances[MockWebSocket.instances.length - 1];
   await act(async () => { ws().emit({ type: 'history', history: [] }); });
-  return { ...view, ws };
+  return {
+    ...view,
+    ws,
+    /** Tear the panel down and mount it again on the same conversation. */
+    remount: async (): Promise<void> => {
+      view.unmount();
+      render(panel());
+      await act(async () => { await Promise.resolve(); });
+    },
+    /** Open another page in the editor, as navigating within the same session does. */
+    navigate: async (doc: { id: string; path: string } | null): Promise<void> => {
+      currentDocument = doc;
+      // A fresh element: React bails out of a re-render handed the identical one.
+      await act(async () => { view.rerender(panel()); });
+    },
+  };
 }
 
 const composer = (): HTMLTextAreaElement => screen.getByRole('textbox') as HTMLTextAreaElement;
+
+/** The scope row starts collapsed, so anything about the pages themselves has to open it. */
+async function showScope(): Promise<void> {
+  const summary = screen.queryByText(/Reads the whole site/);
+  if (summary) await act(async () => { fireEvent.click(summary); });
+}
 
 /** Minimal stand-in for the app-owned intent bus that seeds the panel. */
 function makeDraftChannel(): DraftRequestChannel {
@@ -437,6 +473,208 @@ describe('ChatPanel', () => {
 
       expect(screen.getByText('Reconnecting…')).toBeTruthy();
       expect(screen.queryByText(/Enter to send/)).toBeNull();
+    });
+  });
+
+  describe('scope row', () => {
+    it('states that the agent reads the whole site', async () => {
+      await renderPanel();
+      await showScope();
+
+      expect(screen.getByText('entire site')).toBeTruthy();
+    });
+
+    it('starts out able to edit the page that was open', async () => {
+      await renderPanel();
+      await showScope();
+
+      expect(screen.getByText('current')).toBeTruthy();
+    });
+
+    it('swaps in the page the user navigates to', async () => {
+      const { navigate } = await renderPanel();
+      await showScope();
+
+      await navigate({ id: 'doc2', path: '/pricing' });
+
+      expect(screen.getByText('pricing')).toBeTruthy();
+      // Browsing past a page is not a reason to keep it: only the last visit's page is here.
+      expect(screen.queryByText('current')).toBeNull();
+    });
+
+    it('keeps a page the user added themselves when they navigate away', async () => {
+      const { navigate } = await renderPanel();
+      await showScope();
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: /Add page/ }));
+      });
+      await act(async () => {
+        fireEvent.click(screen.getByText('pricing'));
+      });
+
+      await navigate({ id: 'doc9', path: '/blog' });
+
+      expect(screen.getByText('pricing')).toBeTruthy();
+      expect(screen.getByText('blog')).toBeTruthy();
+      expect(screen.queryByText('current')).toBeNull();
+    });
+
+    // The set is not what the effect keys on, so the chip for the page you are on can be removed.
+    it('leaves a dismissed page out while you stay on it', async () => {
+      const { navigate } = await renderPanel();
+      await showScope();
+      await navigate({ id: 'doc2', path: '/pricing' });
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Stop editing: pricing' }));
+      });
+
+      expect(screen.queryByText('pricing')).toBeNull();
+    });
+
+    it('adopts it again on the next visit', async () => {
+      const { navigate } = await renderPanel();
+      await showScope();
+      await navigate({ id: 'doc2', path: '/pricing' });
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Stop editing: pricing' }));
+      });
+
+      await navigate({ id: 'doc1', path: '/current' });
+      await navigate({ id: 'doc2', path: '/pricing' });
+
+      expect(screen.getByText('pricing')).toBeTruthy();
+    });
+
+    // Without re-seeding, the header claimed nothing was editable while the Worker still allowed it.
+    it('adopts the open page again after the conversation is cleared', async () => {
+      const { ws } = await renderPanel();
+      await showScope();
+      await send('change the heading', ws);
+      await act(async () => { ws().emit({ type: 'done' }); });
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Clear conversation' }));
+      });
+
+      expect(screen.getByText('current')).toBeTruthy();
+      expect(screen.queryByText(/not change existing pages/)).toBeNull();
+    });
+
+    it('takes a page back when its chip is dismissed', async () => {
+      await renderPanel();
+      await showScope();
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: /Stop editing/ }));
+      });
+
+      expect(screen.queryByText('current')).toBeNull();
+      // Not "cannot change anything": creating a page is not gated by the write set.
+      expect(screen.getByText(/not change existing pages/)).toBeTruthy();
+    });
+
+    it('starts collapsed, saying how many pages it is not listing', async () => {
+      await renderPanel();
+
+      expect(screen.getByText('Reads the whole site, edits 1 page')).toBeTruthy();
+      expect(screen.queryByText('current')).toBeNull();
+    });
+
+    it('lists the pages once opened, and hides them again', async () => {
+      await renderPanel();
+
+      await showScope();
+      expect(screen.getByText('current')).toBeTruthy();
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: /Hide which pages/ }));
+      });
+      expect(screen.queryByText('current')).toBeNull();
+    });
+
+    it('counts the pages it is hiding', async () => {
+      const { navigate } = await renderPanel();
+      await showScope();
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: /Add page/ }));
+      });
+      await act(async () => { fireEvent.click(screen.getByText('pricing')); });
+      await navigate({ id: 'doc9', path: '/blog' });
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: /Hide which pages/ }));
+      });
+
+      expect(screen.getByText('Reads the whole site, edits 2 pages')).toBeTruthy();
+    });
+
+    it('says so when it is hiding nothing', async () => {
+      await renderPanel();
+      await showScope();
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Stop editing: current' }));
+      });
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: /Hide which pages/ }));
+      });
+
+      expect(screen.getByText('Reads the whole site, edits no existing pages')).toBeTruthy();
+    });
+
+    // Local state would collapse again here, and this is the flow the toggle is for.
+    it('stays open across a remount and a navigation', async () => {
+      const { navigate, remount } = await renderPanel();
+      await showScope();
+
+      await navigate({ id: 'doc2', path: '/pricing' });
+      await remount();
+
+      expect(screen.getByText('pricing')).toBeTruthy();
+      expect(screen.queryByText(/Reads the whole site/)).toBeNull();
+    });
+
+    it('offers the site\'s other pages, and nothing archived or internal', async () => {
+      await renderPanel();
+      await showScope();
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: /Add page/ }));
+      });
+
+      expect(screen.getByText('pricing')).toBeTruthy();
+      expect(screen.queryByText('old')).toBeNull();
+      expect(screen.queryByText(/_registry/)).toBeNull();
+    });
+
+    // jsdom lays nothing out, so this cannot catch the overlap itself — only stop the two
+    // properties being dropped as decoration. See AddPageDropdown for what they do.
+    it('keeps picker rows from being shrunk under their content', async () => {
+      await renderPanel();
+      await showScope();
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: /Add page/ }));
+      });
+
+      const row = screen.getByText('pricing').closest('li') as HTMLLIElement;
+      expect(row.style.flexShrink).toBe('0');
+      expect(row.style.minWidth).toBe('15rem');
+    });
+
+    it('adds a page the user picks', async () => {
+      await renderPanel();
+      await showScope();
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: /Add page/ }));
+      });
+      await act(async () => {
+        fireEvent.click(screen.getByText('pricing'));
+      });
+
+      expect(screen.getAllByRole('button', { name: /Stop editing/ })).toHaveLength(2);
     });
   });
 });

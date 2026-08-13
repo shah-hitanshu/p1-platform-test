@@ -1,6 +1,8 @@
 import { validateOps, validateDocumentStructure } from '@pantheon-systems/p1-content-validator';
 import type { ComponentSchema } from '@pantheon-systems/p1-content-validator';
 import type { McpApiClient, TemplateSummaryInfo } from './css-api.js';
+import type { ChatContext } from './types.js';
+import { assertDocumentWritable, assertWritable, normalizeDocumentPath } from './scope.js';
 import { TEMPLATE_FILL_CONTRACT } from './prompt.js';
 
 // Inline ULID generator — no external dependency required in Workers
@@ -33,14 +35,6 @@ function normalizePath(path: string): string {
     return path.slice(1).split('/').join('.');
   }
   return path.replace(/^\.+/, '');
-}
-
-// The home page's canonical document path is the literal string "/" — every
-// other document is stored without a leading slash. Stripping the slash
-// unconditionally turns "/" into "", which matches no document.
-function normalizeDocumentPath(path: string): string {
-  if (path === '/') return path;
-  return path.startsWith('/') ? path.slice(1) : path;
 }
 
 // Recursively inject ULID ids into any Puck component (or array of components)
@@ -208,9 +202,11 @@ export async function executeTool(
   toolInput: Record<string, unknown>,
   cssApi: McpApiClient,
   userId: string,
+  context: ChatContext,
   webConfig?: { token: string; mediaWorkerUrl: string },
 ): Promise<unknown> {
   const name = toolName as ToolName;
+  assertWritable(name, toolInput, context);
 
   switch (name) {
     case 'list_sites':
@@ -219,8 +215,20 @@ export async function executeTool(
     case 'list_branches':
       return cssApi.listBranches(toolInput.site_id as string);
 
-    case 'list_documents':
-      return cssApi.listDocuments(toolInput.site_id as string, toolInput.branch_id as string);
+    case 'list_documents': {
+      const { documents } = await cssApi.listDocuments(
+        toolInput.site_id as string,
+        toolInput.branch_id as string,
+      );
+      // `_registry/` holds component and template definitions: documents, but not pages to edit.
+      // Projected to paths because the backend applies no default limit and the full rows are
+      // re-sent to the model on every iteration of the turn, then persisted.
+      return {
+        documents: documents
+          .map(doc => normalizeDocumentPath(doc.path))
+          .filter(path => !path.startsWith('_registry/')),
+      };
+    }
 
     case 'list_components': {
       const result = await cssApi.listComponents(toolInput.site_id as string, toolInput.branch_id as string);
@@ -446,6 +454,13 @@ export async function executeTool(
 
       if (documentPath.replace(/^\//, '').startsWith('_registry/')) {
         throw new Error('Cannot create pages at the _registry/ path prefix — this is reserved for system use.');
+      }
+
+      // Creating at a taken path is not adding a page: on a branch the backend gives a page
+      // inherited from main a branch-local version 1, and wipes a tombstoned page's branch history
+      // to recreate it. Both change what the route serves, so both need an edit's grant.
+      if (await cssApi.lookupDocumentByPath(toolInput.site_id as string, documentPath) !== null) {
+        assertDocumentWritable(documentPath, context);
       }
 
       const components = (toolInput.components ?? []) as {

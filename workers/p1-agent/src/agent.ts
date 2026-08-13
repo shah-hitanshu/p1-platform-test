@@ -4,6 +4,7 @@ import type { ChatContext, Env, IncomingMessage, OutgoingMessage, TurnFrame, Val
 import { McpApiClient } from './css-api.js';
 import { CSS_TOOLS, WEB_TOOLS, executeTool } from './tools.js';
 import { validateCSSToken } from './auth.js';
+import { createdDocumentPath, withCreatedPage } from './scope.js';
 import { appendTurn, sanitizeHistory, trimForHistory, buildRestoredHistory, turnMayCommit, turnHasOutput } from './history.js';
 import {
   createTransport,
@@ -306,6 +307,15 @@ export class ChatAgent extends Agent<Env, AgentState> {
       history.push({ role: 'user', content: userContent });
       newEntries.push({ role: 'user', content: message });
 
+      // Counted in Workers Logs: a fleet still on a client that sends no write set is otherwise
+      // invisible, and every such turn silently narrows to the open document.
+      if (!Array.isArray(context.writeSet)) {
+        console.warn('[scope] turn carried no write set; holding the agent to the open document');
+      }
+
+      // Widened as the turn creates pages, so the agent can fill in what it just made.
+      let scope = context;
+
       // Agentic loop — keep calling the model until it stops requesting tools. The
       // transport normalizes any provider's response to OpenAI-shaped tool calls.
       while (true) {
@@ -369,10 +379,15 @@ export class ChatAgent extends Agent<Env, AgentState> {
           let input: Record<string, unknown> = {};
           try {
             input = JSON.parse(tc.function.arguments || '{}') as Record<string, unknown>;
-            result = await executeTool(tc.function.name, input, cssApi, user.id, {
+            result = await executeTool(tc.function.name, input, cssApi, user.id, scope, {
               token: context.token,
               mediaWorkerUrl: this.env.MEDIA_WORKER_URL,
             });
+
+            if (tc.function.name === 'create_page') {
+              const created = createdDocumentPath(result);
+              if (created !== null) scope = withCreatedPage(scope, created);
+            }
 
             // Track edit session lifecycle for cleanup on failure
             if (tc.function.name === 'start_edit_session') {

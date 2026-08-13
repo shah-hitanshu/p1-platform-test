@@ -1,6 +1,16 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { validatePublicUrl, executeTool, WEB_TOOLS, CSS_TOOLS } from './tools.js';
 import type { McpApiClient } from './css-api.js';
+import type { ChatContext } from './types.js';
+
+// Scoped to the pages these tests use; the write set's own behaviour lives in scope.test.ts.
+const TEST_CONTEXT: ChatContext = {
+  siteId: 'site-1',
+  branchId: 'branch-1',
+  documentPath: 'about',
+  token: 'test-token',
+  writeSet: ['about', 'blog/hello', 'index', 'missing', '/'],
+};
 
 // ---------------------------------------------------------------------------
 // validatePublicUrl
@@ -106,7 +116,7 @@ describe('executeTool list_media', () => {
 
   it('throws when webConfig is not provided', async () => {
     await expect(
-      executeTool('list_media', { site_id: 'site-1' }, stubCssApi, 'user-1'),
+      executeTool('list_media', { site_id: 'site-1' }, stubCssApi, 'user-1', TEST_CONTEXT),
     ).rejects.toThrow('not available');
   });
 
@@ -118,7 +128,7 @@ describe('executeTool list_media', () => {
     });
     vi.stubGlobal('fetch', mockFetch);
 
-    const result = await executeTool('list_media', { site_id: 'site-1' }, stubCssApi, 'user-1', webConfig);
+    const result = await executeTool('list_media', { site_id: 'site-1' }, stubCssApi, 'user-1', TEST_CONTEXT, webConfig);
 
     expect(mockFetch).toHaveBeenCalledOnce();
     const [calledUrl, calledInit] = mockFetch.mock.calls[0] as [string, RequestInit];
@@ -135,7 +145,7 @@ describe('executeTool list_media', () => {
     });
     vi.stubGlobal('fetch', mockFetch);
 
-    await executeTool('list_media', { site_id: 'site-1', search: 'logo' }, stubCssApi, 'user-1', webConfig);
+    await executeTool('list_media', { site_id: 'site-1', search: 'logo' }, stubCssApi, 'user-1', TEST_CONTEXT, webConfig);
 
     const [calledUrl] = mockFetch.mock.calls[0] as [string, RequestInit];
     expect(calledUrl).toContain('search=logo');
@@ -148,7 +158,7 @@ describe('executeTool list_media', () => {
     });
     vi.stubGlobal('fetch', mockFetch);
 
-    await executeTool('list_media', { site_id: 'site-1' }, stubCssApi, 'user-1', webConfig);
+    await executeTool('list_media', { site_id: 'site-1' }, stubCssApi, 'user-1', TEST_CONTEXT, webConfig);
 
     const [calledUrl] = mockFetch.mock.calls[0] as [string, RequestInit];
     expect(calledUrl).not.toContain('search=');
@@ -163,7 +173,7 @@ describe('executeTool list_media', () => {
     vi.stubGlobal('fetch', mockFetch);
 
     await expect(
-      executeTool('list_media', { site_id: 'site-1' }, stubCssApi, 'user-1', webConfig),
+      executeTool('list_media', { site_id: 'site-1' }, stubCssApi, 'user-1', TEST_CONTEXT, webConfig),
     ).rejects.toThrow('403');
   });
 });
@@ -181,13 +191,13 @@ describe('executeTool fetch_page', () => {
 
   it('throws on a private IP URL', async () => {
     await expect(
-      executeTool('fetch_page', { url: 'http://192.168.0.1' }, stubCssApi, 'user-1'),
+      executeTool('fetch_page', { url: 'http://192.168.0.1' }, stubCssApi, 'user-1', TEST_CONTEXT),
     ).rejects.toThrow('private IP');
   });
 
   it('throws on localhost URL', async () => {
     await expect(
-      executeTool('fetch_page', { url: 'http://localhost/admin' }, stubCssApi, 'user-1'),
+      executeTool('fetch_page', { url: 'http://localhost/admin' }, stubCssApi, 'user-1', TEST_CONTEXT),
     ).rejects.toThrow('localhost');
   });
 
@@ -197,7 +207,7 @@ describe('executeTool fetch_page', () => {
     vi.stubGlobal('fetch', mockFetch);
 
     await expect(
-      executeTool('fetch_page', { url: 'https://example.com/missing' }, stubCssApi, 'user-1'),
+      executeTool('fetch_page', { url: 'https://example.com/missing' }, stubCssApi, 'user-1', TEST_CONTEXT),
     ).rejects.toThrow('404');
   });
 
@@ -254,7 +264,7 @@ describe('executeTool fetch_page', () => {
     const mockFetch = vi.fn().mockResolvedValue({ ok: true, status: 200 });
     vi.stubGlobal('fetch', mockFetch);
 
-    const result = await executeTool('fetch_page', { url: 'https://example.com/' }, stubCssApi, 'user-1') as string;
+    const result = await executeTool('fetch_page', { url: 'https://example.com/' }, stubCssApi, 'user-1', TEST_CONTEXT) as string;
 
     expect(typeof result).toBe('string');
     expect(result).toContain('My Page Title');
@@ -285,7 +295,7 @@ describe('executeTool fetch_page', () => {
     vi.stubGlobal('HTMLRewriter', FakeHTMLRewriter);
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200 }));
 
-    const result = await executeTool('fetch_page', { url: 'https://example.com/' }, stubCssApi, 'user-1') as string;
+    const result = await executeTool('fetch_page', { url: 'https://example.com/' }, stubCssApi, 'user-1', TEST_CONTEXT) as string;
     expect(result.length).toBeLessThanOrEqual(5000);
   });
 });
@@ -298,7 +308,7 @@ describe('executeTool unknown tool', () => {
   it('throws on an unrecognised tool name', async () => {
     const stubCssApi = {} as McpApiClient;
     await expect(
-      executeTool('nonexistent_tool', {}, stubCssApi, 'user-1'),
+      executeTool('nonexistent_tool', {}, stubCssApi, 'user-1', TEST_CONTEXT),
     ).rejects.toThrow('Unknown tool: nonexistent_tool');
   });
 });
@@ -325,7 +335,7 @@ describe('executeTool get_document', () => {
       'get_document',
       { site_id: siteId, branch_id: branchId, document_path: '/about' },
       stubCssApi,
-      'user-1',
+      'user-1', TEST_CONTEXT,
     );
 
     expect(getDocumentLatestVersion).not.toHaveBeenCalled();
@@ -344,7 +354,7 @@ describe('executeTool get_document', () => {
       'get_document',
       { site_id: siteId, branch_id: branchId, document_path: '/' },
       stubCssApi,
-      'user-1',
+      'user-1', TEST_CONTEXT,
     );
 
     // "/" must be preserved, not stripped down to "" (which matches no document).
@@ -361,7 +371,7 @@ describe('executeTool get_document', () => {
         'get_document',
         { site_id: siteId, branch_id: branchId, document_path: '/missing' },
         stubCssApi,
-        'user-1',
+        'user-1', TEST_CONTEXT,
       ),
     ).rejects.toThrow('Document not found: missing');
   });
@@ -389,6 +399,7 @@ describe('executeTool apply_document_edits key-validation', () => {
   function makeCssApi(overrides: Partial<McpApiClient> = {}): McpApiClient {
     return {
       getDocument: vi.fn().mockResolvedValue({ snapshot: existingSnapshot }),
+      lookupDocumentByPath: vi.fn().mockResolvedValue(null),
       // Registry validation now catches hallucinated keys on Puck-component
       // ops, so the mock needs the schema available.
       listComponents: vi.fn().mockResolvedValue({
@@ -417,7 +428,7 @@ describe('executeTool apply_document_edits key-validation', () => {
         operations: [
           { type: 'replace', path: 'content.0.props', content: { id: '550e8400-e29b-41d4-a716-446655440000', label: 'Hello', visible: true } },
         ],
-      }, cssApi, 'user-1'),
+      }, cssApi, 'user-1', TEST_CONTEXT),
     ).rejects.toThrow(/Unknown prop "label" on "Hero"/);
   });
 
@@ -428,7 +439,7 @@ describe('executeTool apply_document_edits key-validation', () => {
       operations: [
         { type: 'replace', path: 'content.0.props', content: { id: '550e8400-e29b-41d4-a716-446655440000', text: 'Updated', visible: false } },
       ],
-    }, cssApi, 'user-1');
+    }, cssApi, 'user-1', TEST_CONTEXT);
     expect(cssApi.applyEdits).toHaveBeenCalledOnce();
   });
 
@@ -446,7 +457,7 @@ describe('executeTool apply_document_edits key-validation', () => {
             ],
           },
         ],
-      }, cssApi, 'user-1'),
+      }, cssApi, 'user-1', TEST_CONTEXT),
     ).rejects.toThrow(/Unknown prop "label" on "Hero"/);
   });
 
@@ -466,7 +477,7 @@ describe('executeTool apply_document_edits key-validation', () => {
         operations: [
           { type: 'add', path: 'content.1', content: { type: 'Hero', props: { id: '550e8400-e29b-41d4-a716-446655440000', label: 'Bad', visible: false } } },
         ],
-      }, cssApi, 'user-1'),
+      }, cssApi, 'user-1', TEST_CONTEXT),
     ).rejects.toThrow(/Unknown prop "label" on "Hero"/);
   });
 
@@ -477,7 +488,7 @@ describe('executeTool apply_document_edits key-validation', () => {
       operations: [
         { type: 'add', path: 'content.1', content: { type: 'Hero', props: { id: '550e8400-e29b-41d4-a716-446655440000', text: 'New', visible: false } } },
       ],
-    }, cssApi, 'user-1');
+    }, cssApi, 'user-1', TEST_CONTEXT);
     expect(cssApi.applyEdits).toHaveBeenCalledOnce();
   });
 
@@ -490,7 +501,7 @@ describe('executeTool apply_document_edits key-validation', () => {
       operations: [
         { type: 'replace', path: 'content.0.props', content: { id: '550e8400-e29b-41d4-a716-446655440000', label: 'Bad key', visible: true } },
       ],
-    }, cssApi, 'user-1');
+    }, cssApi, 'user-1', TEST_CONTEXT);
     expect(cssApi.applyEdits).toHaveBeenCalledOnce();
   });
 
@@ -519,7 +530,7 @@ describe('executeTool apply_document_edits key-validation', () => {
           ],
         },
       ],
-    }, cssApi, 'user-1');
+    }, cssApi, 'user-1', TEST_CONTEXT);
     expect(cssApi.applyEdits).toHaveBeenCalledOnce();
   });
 });
@@ -578,7 +589,7 @@ describe('executeTool apply_document_edits structure validation', () => {
       }),
     });
     await expect(
-      executeTool('apply_document_edits', { ...baseInput, ...removeOp }, cssApi, 'user-1'),
+      executeTool('apply_document_edits', { ...baseInput, ...removeOp }, cssApi, 'user-1', TEST_CONTEXT),
     ).rejects.toThrow(/abort_edit_session/);
     expect(cssApi.applyEdits).toHaveBeenCalledOnce();
   });
@@ -590,7 +601,7 @@ describe('executeTool apply_document_edits structure validation', () => {
       }),
     });
     await expect(
-      executeTool('apply_document_edits', { ...baseInput, ...removeOp }, cssApi, 'user-1'),
+      executeTool('apply_document_edits', { ...baseInput, ...removeOp }, cssApi, 'user-1', TEST_CONTEXT),
     ).rejects.toThrow(/Hero/);
   });
 
@@ -616,13 +627,13 @@ describe('executeTool apply_document_edits structure validation', () => {
       }),
     });
     await expect(
-      executeTool('apply_document_edits', { ...baseInput, ...removeOp }, cssApi, 'user-1'),
+      executeTool('apply_document_edits', { ...baseInput, ...removeOp }, cssApi, 'user-1', TEST_CONTEXT),
     ).rejects.toThrow(/abort_edit_session/);
   });
 
   it('passes when structure still conforms after the edit', async () => {
     const cssApi = makeCssApi();
-    await executeTool('apply_document_edits', { ...baseInput, ...removeOp }, cssApi, 'user-1');
+    await executeTool('apply_document_edits', { ...baseInput, ...removeOp }, cssApi, 'user-1', TEST_CONTEXT);
     expect(cssApi.applyEdits).toHaveBeenCalledOnce();
     expect(cssApi.getTemplate).toHaveBeenCalledOnce();
   });
@@ -633,7 +644,7 @@ describe('executeTool apply_document_edits structure validation', () => {
       // even a non-conforming snapshot must not fail when there's no template
       getDocument: vi.fn().mockResolvedValue({ snapshot: { content: [] } }),
     });
-    await executeTool('apply_document_edits', { ...baseInput, ...removeOp }, cssApi, 'user-1');
+    await executeTool('apply_document_edits', { ...baseInput, ...removeOp }, cssApi, 'user-1', TEST_CONTEXT);
     expect(cssApi.applyEdits).toHaveBeenCalledOnce();
     expect(cssApi.getTemplate).not.toHaveBeenCalled();
   });
@@ -642,7 +653,7 @@ describe('executeTool apply_document_edits structure validation', () => {
     const cssApi = makeCssApi({
       getTemplate: vi.fn().mockRejectedValue(new Error('Network timeout')),
     });
-    await executeTool('apply_document_edits', { ...baseInput, ...removeOp }, cssApi, 'user-1');
+    await executeTool('apply_document_edits', { ...baseInput, ...removeOp }, cssApi, 'user-1', TEST_CONTEXT);
     expect(cssApi.applyEdits).toHaveBeenCalledOnce();
   });
 });
@@ -660,6 +671,7 @@ describe('executeTool apply_document_edits op translation', () => {
   function makeCssApi(): McpApiClient {
     return {
       getDocument: vi.fn().mockResolvedValue({ snapshot: { content: [] } }),
+      lookupDocumentByPath: vi.fn().mockResolvedValue(null),
       listComponents: vi.fn().mockResolvedValue({
         components: [{ name: 'Hero', defaultProps: { text: '', visible: true } }],
       }),
@@ -674,7 +686,7 @@ describe('executeTool apply_document_edits op translation', () => {
       operations: [
         { type: 'add', path: 'content.2', content: { type: 'Hero', props: { id: '550e8400-e29b-41d4-a716-446655440000', text: 'hi' } } },
       ],
-    }, cssApi, 'user-1');
+    }, cssApi, 'user-1', TEST_CONTEXT);
     const call = (cssApi.applyEdits as ReturnType<typeof vi.fn>).mock.calls[0][0] as { operations: Record<string, unknown>[] };
     expect(call.operations).toHaveLength(1);
     expect(call.operations[0].type).toBe('insert');
@@ -691,7 +703,7 @@ describe('executeTool apply_document_edits op translation', () => {
         operations: [
           { type: 'add', path: 'content.0.props.title', content: 'oops' },
         ],
-      }, cssApi, 'user-1'),
+      }, cssApi, 'user-1', TEST_CONTEXT),
     ).rejects.toThrow(/numeric index at the end/);
   });
 
@@ -700,7 +712,7 @@ describe('executeTool apply_document_edits op translation', () => {
     await executeTool('apply_document_edits', {
       ...baseInput,
       operations: [{ type: 'remove', path: 'content.1' }],
-    }, cssApi, 'user-1');
+    }, cssApi, 'user-1', TEST_CONTEXT);
     const call = (cssApi.applyEdits as ReturnType<typeof vi.fn>).mock.calls[0][0] as { operations: Record<string, unknown>[] };
     expect(call.operations[0].type).toBe('delete');
     expect(call.operations[0].path).toBe('content.1');
@@ -711,7 +723,7 @@ describe('executeTool apply_document_edits op translation', () => {
     await executeTool('apply_document_edits', {
       ...baseInput,
       operations: [{ type: 'replace', path: 'content.0.props.text', content: 'New' }],
-    }, cssApi, 'user-1');
+    }, cssApi, 'user-1', TEST_CONTEXT);
     const call = (cssApi.applyEdits as ReturnType<typeof vi.fn>).mock.calls[0][0] as { operations: Record<string, unknown>[] };
     expect(call.operations[0].type).toBe('replace');
     expect(call.operations[0].path).toBe('content.0.props.text');
@@ -723,7 +735,7 @@ describe('executeTool apply_document_edits op translation', () => {
     await executeTool('apply_document_edits', {
       ...baseInput,
       operations: [{ type: 'move', path: 'content', fromIndex: 0, toIndex: 3 }],
-    }, cssApi, 'user-1');
+    }, cssApi, 'user-1', TEST_CONTEXT);
     const call = (cssApi.applyEdits as ReturnType<typeof vi.fn>).mock.calls[0][0] as { operations: Record<string, unknown>[] };
     expect(call.operations[0]).toEqual({ type: 'move', path: 'content', fromIndex: 0, toIndex: 3 });
   });
@@ -734,7 +746,7 @@ describe('executeTool apply_document_edits op translation', () => {
       executeTool('apply_document_edits', {
         ...baseInput,
         operations: [{ type: 'move', path: 'content', fromIndex: 0 }],
-      }, cssApi, 'user-1'),
+      }, cssApi, 'user-1', TEST_CONTEXT),
     ).rejects.toThrow(/fromIndex and toIndex/);
   });
 
@@ -748,7 +760,7 @@ describe('executeTool apply_document_edits op translation', () => {
         { type: 'move', path: 'content', fromIndex: 0, toIndex: 2 },
         { type: 'remove', path: 'content.3' },
       ],
-    }, cssApi, 'user-1');
+    }, cssApi, 'user-1', TEST_CONTEXT);
     const call = (cssApi.applyEdits as ReturnType<typeof vi.fn>).mock.calls[0][0] as { operations: Record<string, unknown>[] };
     expect(call.operations).toHaveLength(4);
     expect(call.operations[0].type).toBe('insert');
@@ -764,7 +776,7 @@ describe('executeTool apply_document_edits op translation', () => {
       operations: [
         { type: 'add', path: 'content.0', content: { type: 'Hero', props: { text: 'No id provided' } } },
       ],
-    }, cssApi, 'user-1');
+    }, cssApi, 'user-1', TEST_CONTEXT);
     const call = (cssApi.applyEdits as ReturnType<typeof vi.fn>).mock.calls[0][0] as {
       operations: { type: string; value: { props: { id: string } } }[];
     };
@@ -809,7 +821,7 @@ describe('executeTool apply_document_edits registry-based validation', () => {
             content: [{ type: 'Hero', props: { id: '550e8400-e29b-41d4-a716-446655440000', label: 'Bad', visible: true } }],
           },
         ],
-      }, cssApi, 'user-1'),
+      }, cssApi, 'user-1', TEST_CONTEXT),
     ).rejects.toThrow(/Unknown prop "label" on "Hero"/);
     expect(cssApi.applyEdits).not.toHaveBeenCalled();
   });
@@ -826,7 +838,7 @@ describe('executeTool apply_document_edits registry-based validation', () => {
             content: { type: 'Hero', props: { id: '550e8400-e29b-41d4-a716-446655440000', label: 'Bad', visible: true } },
           },
         ],
-      }, cssApi, 'user-1'),
+      }, cssApi, 'user-1', TEST_CONTEXT),
     ).rejects.toThrow(/Unknown prop "label" on "Hero"/);
     expect(cssApi.applyEdits).not.toHaveBeenCalled();
   });
@@ -842,7 +854,7 @@ describe('executeTool apply_document_edits registry-based validation', () => {
           content: [{ type: 'Hero', props: { id: '550e8400-e29b-41d4-a716-446655440000', text: 'Hello', visible: true } }],
         },
       ],
-    }, cssApi, 'user-1');
+    }, cssApi, 'user-1', TEST_CONTEXT);
     expect(cssApi.applyEdits).toHaveBeenCalledOnce();
   });
 
@@ -858,7 +870,7 @@ describe('executeTool apply_document_edits registry-based validation', () => {
           content: [{ type: 'Hero', props: { id: '550e8400-e29b-41d4-a716-446655440000', label: 'Bad' } }],
         },
       ],
-    }, cssApi, 'user-1');
+    }, cssApi, 'user-1', TEST_CONTEXT);
     expect(cssApi.applyEdits).toHaveBeenCalledOnce();
   });
 
@@ -869,7 +881,7 @@ describe('executeTool apply_document_edits registry-based validation', () => {
       operations: [
         { type: 'replace', path: 'content.0.props.text', content: 'Updated text' },
       ],
-    }, cssApi, 'user-1');
+    }, cssApi, 'user-1', TEST_CONTEXT);
     expect(cssApi.listComponents).toHaveBeenCalledOnce();
     expect(cssApi.applyEdits).toHaveBeenCalledOnce();
   });
@@ -881,7 +893,7 @@ describe('executeTool apply_document_edits registry-based validation', () => {
       operations: [
         { type: 'remove', path: 'content.0' },
       ],
-    }, cssApi, 'user-1');
+    }, cssApi, 'user-1', TEST_CONTEXT);
     expect(cssApi.listComponents).not.toHaveBeenCalled();
   });
 
@@ -897,7 +909,7 @@ describe('executeTool apply_document_edits registry-based validation', () => {
             content: [{ type: 'Hallucinated', props: { id: '550e8400-e29b-41d4-a716-446655440000', text: 'hi' } }],
           },
         ],
-      }, cssApi, 'user-1'),
+      }, cssApi, 'user-1', TEST_CONTEXT),
     ).rejects.toThrow(/Unknown component type "Hallucinated"/);
     expect(cssApi.applyEdits).not.toHaveBeenCalled();
   });
@@ -910,6 +922,7 @@ describe('executeTool apply_document_edits registry-based validation', () => {
 describe('executeTool list_components', () => {
   function makeCssApi(components: unknown[]): McpApiClient {
     return {
+      lookupDocumentByPath: vi.fn().mockResolvedValue(null),
       listComponents: vi.fn().mockResolvedValue({ components }),
     } as unknown as McpApiClient;
   }
@@ -931,7 +944,7 @@ describe('executeTool list_components', () => {
       'list_components',
       { site_id: 'site-1', branch_id: 'branch-1' },
       cssApi,
-      'user-1',
+      'user-1', TEST_CONTEXT,
     ) as Record<string, unknown>[];
 
     expect(result).toHaveLength(1);
@@ -960,7 +973,7 @@ describe('executeTool list_components', () => {
       'list_components',
       { site_id: 'site-1', branch_id: 'branch-1' },
       cssApi,
-      'user-1',
+      'user-1', TEST_CONTEXT,
     ) as Record<string, unknown>[];
 
     expect(result[0]).toEqual({
@@ -983,7 +996,7 @@ describe('executeTool list_components', () => {
       'list_components',
       { site_id: 'site-1', branch_id: 'branch-1' },
       cssApi,
-      'user-1',
+      'user-1', TEST_CONTEXT,
     ) as Record<string, unknown>[];
 
     expect(result[0]).not.toHaveProperty('instructions');
@@ -1000,6 +1013,7 @@ describe('executeTool create_page prop validation', () => {
 
   function makeCssApi(components: unknown[]): McpApiClient {
     return {
+      lookupDocumentByPath: vi.fn().mockResolvedValue(null),
       listComponents: vi.fn().mockResolvedValue({ components }),
       createDocument: vi.fn().mockResolvedValue({ documentId: 'doc-1', documentPath: 'about', versionId: 'v-1' }),
       canAgentEdit: vi.fn().mockResolvedValue({ canEdit: true }),
@@ -1036,7 +1050,7 @@ describe('executeTool create_page prop validation', () => {
             props: { items: [{ text: 'Revenue' }], columns: '3', badProp: 'oops' },
           },
         ],
-      }, cssApi, 'user-1'),
+      }, cssApi, 'user-1', TEST_CONTEXT),
     ).rejects.toThrow(/Unknown prop "badProp" on "Stats"/);
     expect(cssApi.createDocument).not.toHaveBeenCalled();
   });
@@ -1054,7 +1068,7 @@ describe('executeTool create_page prop validation', () => {
             props: { items: [{ text: 'Revenue' }], heading: 'Bad key' },
           },
         ],
-      }, cssApi, 'user-1'),
+      }, cssApi, 'user-1', TEST_CONTEXT),
     ).rejects.toThrow(/Unknown prop "heading" on "Stats"/);
     expect(cssApi.createDocument).not.toHaveBeenCalled();
   });
@@ -1077,7 +1091,7 @@ describe('executeTool create_page prop validation', () => {
           },
         },
       ],
-    }, cssApi, 'user-1');
+    }, cssApi, 'user-1', TEST_CONTEXT);
     expect(cssApi.createDocument).toHaveBeenCalledOnce();
     expect(cssApi.applyEdits).toHaveBeenCalled();
   });
@@ -1094,7 +1108,7 @@ describe('executeTool create_page prop validation', () => {
           props: { items: [{ text: 'Revenue' }], columns: '3' },
         },
       ],
-    }, cssApi, 'user-1');
+    }, cssApi, 'user-1', TEST_CONTEXT);
     expect(cssApi.createDocument).toHaveBeenCalledOnce();
     expect(cssApi.applyEdits).toHaveBeenCalled();
   });
@@ -1112,7 +1126,7 @@ describe('executeTool create_page prop validation', () => {
           props: { items: [{ text: 'Revenue' }], columns: '3', id: 'agent-provided-id' },
         },
       ],
-    }, cssApi, 'user-1');
+    }, cssApi, 'user-1', TEST_CONTEXT);
     expect(cssApi.applyEdits).toHaveBeenCalled();
     const applyCall = (cssApi.applyEdits as ReturnType<typeof vi.fn>).mock.calls[0][0] as {
       operations: { type: string; path: string; content: { props: { id: string } }[] }[];
@@ -1136,7 +1150,7 @@ describe('executeTool create_page prop validation', () => {
         components: [
           { type: 'Nonexistent', props: {} },
         ],
-      }, cssApi, 'user-1'),
+      }, cssApi, 'user-1', TEST_CONTEXT),
     ).rejects.toThrow(/Unknown component type "Nonexistent"/);
     expect(cssApi.createDocument).not.toHaveBeenCalled();
   });
@@ -1148,7 +1162,7 @@ describe('executeTool create_page prop validation', () => {
       branch_id: branchId,
       document_path: '/about',
       components: [],
-    }, cssApi, 'user-1') as Record<string, unknown>;
+    }, cssApi, 'user-1', TEST_CONTEXT) as Record<string, unknown>;
     expect(cssApi.createDocument).toHaveBeenCalledOnce();
     expect(cssApi.canAgentEdit).not.toHaveBeenCalled();
     expect(result.documentId).toBe('doc-1');
@@ -1168,7 +1182,7 @@ describe('executeTool create_page prop validation', () => {
       branch_id: branchId,
       document_path: '/about',
       components: [{ type: 'Stats', props: { items: [{ text: 'Revenue' }], columns: '3' } }],
-    }, cssApi, 'user-1') as Record<string, unknown>;
+    }, cssApi, 'user-1', TEST_CONTEXT) as Record<string, unknown>;
 
     expect(cssApi.createDocument).toHaveBeenCalledOnce();
     expect(cssApi.startAgentEdit).not.toHaveBeenCalled();
@@ -1193,7 +1207,7 @@ describe('executeTool create_page prop validation', () => {
         branch_id: branchId,
         document_path: '/about',
         components: [{ type: 'Stats', props: { items: [{ text: 'Revenue' }], columns: '3' } }],
-      }, cssApi, 'user-1'),
+      }, cssApi, 'user-1', TEST_CONTEXT),
     ).rejects.toThrow('CRDT write failed');
 
     expect(abortMock).toHaveBeenCalledOnce();
@@ -1218,7 +1232,7 @@ describe('executeTool create_page prop validation', () => {
         branch_id: branchId,
         document_path: '/about',
         components: [{ type: 'Stats', props: { items: [{ text: 'Revenue' }], columns: '3' } }],
-      }, cssApi, 'user-1'),
+      }, cssApi, 'user-1', TEST_CONTEXT),
     ).rejects.toThrow('complete failed');
 
     // Must NOT abort — edits are already in the CRDT
@@ -1245,6 +1259,7 @@ describe('executeTool page templates', () => {
 
   function makeCssApi(overrides: Partial<Record<keyof McpApiClient, unknown>> = {}): McpApiClient {
     return {
+      lookupDocumentByPath: vi.fn().mockResolvedValue(null),
       listTemplates: vi.fn().mockResolvedValue({ templates: [blogTemplate] }),
       createDocumentFromTemplate: vi.fn().mockResolvedValue({
         documentId: 'doc-1', documentPath: 'blog/hello', versionId: 'v-1',
@@ -1267,7 +1282,7 @@ describe('executeTool page templates', () => {
   it('lists templates with what the choice is made from, and no layout', async () => {
     const cssApi = makeCssApi();
     const result = await executeTool(
-      'list_page_templates', { site_id: siteId, branch_id: branchId }, cssApi, 'user-1',
+      'list_page_templates', { site_id: siteId, branch_id: branchId }, cssApi, 'user-1', TEST_CONTEXT,
     );
 
     expect(result).toEqual([{
@@ -1288,7 +1303,7 @@ describe('executeTool page templates', () => {
       }),
     });
     const result = (await executeTool(
-      'list_page_templates', { site_id: siteId, branch_id: branchId }, cssApi, 'user-1',
+      'list_page_templates', { site_id: siteId, branch_id: branchId }, cssApi, 'user-1', TEST_CONTEXT,
     )) as { id: string }[];
 
     expect(result.map(t => t.id)).toEqual(['tpl-blog']);
@@ -1304,7 +1319,7 @@ describe('executeTool page templates', () => {
       document_path: 'blog/hello',
       template_id: 'tpl-blog',
       root_props: { title: 'Hello' },
-    }, cssApi, 'user-1');
+    }, cssApi, 'user-1', TEST_CONTEXT);
 
     expect(cssApi.createDocumentFromTemplate).toHaveBeenCalledWith(
       siteId, branchId, 'blog/hello', 'tpl-blog', 'Hello',
@@ -1321,7 +1336,7 @@ describe('executeTool page templates', () => {
       branch_id: branchId,
       document_path: 'blog/hello',
       template_id: 'tpl-blog',
-    }, cssApi, 'user-1')) as Record<string, unknown>;
+    }, cssApi, 'user-1', TEST_CONTEXT)) as Record<string, unknown>;
 
     expect(result.documentPath).toBe('blog/hello');
     expect(result.components).toEqual([{ type: 'Hero', id: 'Hero-aaaa' }]);
@@ -1338,7 +1353,7 @@ describe('executeTool page templates', () => {
       branch_id: branchId,
       document_path: 'blog/hello',
       template_id: 'tpl-blog',
-    }, cssApi, 'user-1')) as Record<string, unknown>;
+    }, cssApi, 'user-1', TEST_CONTEXT)) as Record<string, unknown>;
 
     expect(result.documentId).toBe('doc-1');
     expect(result.components).toEqual([]);
@@ -1354,7 +1369,7 @@ describe('executeTool page templates', () => {
         branch_id: branchId,
         document_path: 'blog/hello',
         template_id: 'tpl-invented',
-      }, cssApi, 'user-1'),
+      }, cssApi, 'user-1', TEST_CONTEXT),
     ).rejects.toThrow(/list_page_templates/);
 
     expect(cssApi.createDocumentFromTemplate).not.toHaveBeenCalled();
@@ -1372,7 +1387,7 @@ describe('executeTool page templates', () => {
         branch_id: branchId,
         document_path: 'about',
         template_id: 'tpl-old',
-      }, cssApi, 'user-1'),
+      }, cssApi, 'user-1', TEST_CONTEXT),
     ).rejects.toThrow(/"Old layout" template is deprecated/);
   });
 
@@ -1385,7 +1400,7 @@ describe('executeTool page templates', () => {
         document_path: 'blog/hello',
         template_id: 'tpl-blog',
         components: [{ type: 'Stats', props: {} }],
-      }, cssApi, 'user-1'),
+      }, cssApi, 'user-1', TEST_CONTEXT),
     ).rejects.toThrow(/takes its components from the template/);
 
     expect(cssApi.createDocumentFromTemplate).not.toHaveBeenCalled();
@@ -1402,7 +1417,7 @@ describe('executeTool page templates', () => {
       site_id: siteId,
       branch_id: branchId,
       document_path: 'about',
-    }, cssApi, 'user-1');
+    }, cssApi, 'user-1', TEST_CONTEXT);
 
     expect(cssApi.createDocument).toHaveBeenCalledOnce();
     expect(result).toEqual({ documentId: 'doc-2', documentPath: 'about', versionId: 'v-2' });
@@ -1422,5 +1437,81 @@ describe('CSS_TOOLS', () => {
     expect(names).toContain('complete_edit_session');
     expect(names).toContain('create_page');
     expect(names).toContain('list_page_templates');
+  });
+
+  it('offers list_documents, so the agent can find a page the user named', () => {
+    expect(CSS_TOOLS.map(t => t.name)).toContain('list_documents');
+  });
+
+  it('withholds list_sites and list_branches, which come from the editor context', () => {
+    const names = CSS_TOOLS.map(t => t.name);
+    expect(names).not.toContain('list_sites');
+    expect(names).not.toContain('list_branches');
+  });
+});
+
+describe('list_documents', () => {
+  it('lists pages without the registry documents behind them', async () => {
+    const listDocuments = vi.fn().mockResolvedValue({
+      documents: [
+        { id: 'd1', path: 'about', createdAt: '' },
+        { id: 'd2', path: '_registry/components/Hero', createdAt: '' },
+        { id: 'd3', path: '/_registry/templates/blog', createdAt: '' },
+      ],
+    });
+    const cssApi = { listDocuments } as unknown as McpApiClient;
+
+    const result = await executeTool(
+      'list_documents',
+      { site_id: 'site-1', branch_id: 'branch-1' },
+      cssApi,
+      'user-1', TEST_CONTEXT,
+    );
+
+    expect(result).toEqual({ documents: ['about'] });
+  });
+});
+
+describe('create_page and existing documents', () => {
+  const created = { document: { id: 'd9', path: 'brand-new' }, version: { id: 'v1' } };
+
+  function apiWithExisting(existing: unknown): McpApiClient {
+    return {
+      lookupDocumentByPath: vi.fn().mockResolvedValue(existing),
+      listComponents: vi.fn().mockResolvedValue({ components: [] }),
+      createDocument: vi.fn().mockResolvedValue({
+        documentId: created.document.id,
+        documentPath: created.document.path,
+        versionId: created.version.id,
+      }),
+    } as unknown as McpApiClient;
+  }
+
+  const input = {
+    site_id: 'site-1',
+    branch_id: 'branch-1',
+    document_path: 'brand-new',
+    components: [],
+  };
+
+  it('creates freely at a path no document occupies', async () => {
+    await expect(
+      executeTool('create_page', input, apiWithExisting(null), 'user-1', TEST_CONTEXT),
+    ).resolves.toMatchObject({ documentPath: 'brand-new' });
+  });
+
+  it('refuses to create over a document that already exists outside the write set', async () => {
+    const existing = { id: 'd1', path: 'brand-new', createdAt: '' };
+    await expect(
+      executeTool('create_page', input, apiWithExisting(existing), 'user-1', TEST_CONTEXT),
+    ).rejects.toThrow('not in your write set');
+  });
+
+  it('allows it when that page is in the write set', async () => {
+    const existing = { id: 'd1', path: 'about', createdAt: '' };
+    const granted = { ...input, document_path: 'about' };
+    await expect(
+      executeTool('create_page', granted, apiWithExisting(existing), 'user-1', TEST_CONTEXT),
+    ).resolves.toBeDefined();
   });
 });
