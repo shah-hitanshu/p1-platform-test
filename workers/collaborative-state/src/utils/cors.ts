@@ -16,9 +16,52 @@
 /** Maximum number of origin patterns allowed */
 const MAX_PATTERNS = 50;
 
+/**
+ * Correlation headers that `css-client` attaches to every request.
+ *
+ * A browser rejects the entire request at preflight if even one of these is missing from
+ * `Access-Control-Allow-Headers`, so every route's allow-list must carry them. Routes
+ * define their own lists, which is why this is a shared constant applied via
+ * `withCorrelationHeaders` rather than something each list repeats.
+ *
+ * Kept in step with `TELEMETRY_HEADERS` in `packages/css-client`. `tracestate` is here
+ * even though our client never sends it on its own: a host application running its own
+ * OpenTelemetry supplies a `traceparent` through `getTraceparent`, and `tracestate`
+ * travels alongside it.
+ */
+export const CORRELATION_HEADERS: readonly string[] = [
+  'traceparent',
+  'tracestate',
+  'X-P1-Request-Id',
+  'X-P1-Sdk',
+  'X-P1-Client-Id',
+];
+
+/** Build an `Access-Control-Allow-Headers` value that includes the correlation headers. */
+export function withCorrelationHeaders(routeHeaders: readonly string[]): string {
+  return [...routeHeaders, ...CORRELATION_HEADERS].join(', ');
+}
+
 /** Default allowed headers for main API routes */
-const DEFAULT_ALLOWED_HEADERS =
-  'Content-Type, Authorization, X-API-Key, X-Principal-Id, X-Principal-Type, X-Actor-Id, X-Actor-Type';
+const DEFAULT_ALLOWED_HEADERS = withCorrelationHeaders([
+  'Content-Type',
+  'Authorization',
+  'X-API-Key',
+  'X-Principal-Id',
+  'X-Principal-Type',
+  'X-Actor-Id',
+  'X-Actor-Type',
+]);
+
+/**
+ * Response headers a browser is allowed to read.
+ *
+ * Without this, `response.headers.get('x-p1-request-id')` returns null cross-origin — the
+ * header is on the wire, but the browser hides it. Nothing fails loudly: the SDK falls
+ * back to its own minted id, and the support-ticket flow silently stops working, because
+ * the id a customer reports is then not the one in our logs.
+ */
+const DEFAULT_EXPOSED_HEADERS = 'X-P1-Request-Id';
 
 /**
  * A parsed CORS origin pattern.
@@ -162,6 +205,7 @@ export function getCorsHeaders(
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
       'Access-Control-Allow-Headers': allowedHeaders ?? DEFAULT_ALLOWED_HEADERS,
+      'Access-Control-Expose-Headers': DEFAULT_EXPOSED_HEADERS,
       'Access-Control-Max-Age': '86400',
     };
   }
@@ -174,6 +218,7 @@ export function getCorsHeaders(
     'Access-Control-Allow-Credentials': 'true',
     'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
     'Access-Control-Allow-Headers': allowedHeaders ?? DEFAULT_ALLOWED_HEADERS,
+    'Access-Control-Expose-Headers': DEFAULT_EXPOSED_HEADERS,
     'Access-Control-Max-Age': '86400',
   };
 }

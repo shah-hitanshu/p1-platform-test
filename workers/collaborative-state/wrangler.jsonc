@@ -75,6 +75,11 @@
   "vars": {
     "ENVIRONMENT": "local",
     "LOG_LEVEL": "debug",
+    // Local ndjson log collector (`pnpm dev:logs`). Deliberately declared only here:
+    // named environments below *replace* `vars` rather than merging, so staging and
+    // production cannot inherit this — the sink is structurally unable to run in a
+    // deployed worker rather than merely unset there.
+    "P1_LOG_SINK": "http://127.0.0.1:8799",
     // CORS_ORIGINS is set in .dev.vars for local development
     // Production environments set this in their respective env config below
     "WEBSOCKET_HEARTBEAT_INTERVAL": "30000",

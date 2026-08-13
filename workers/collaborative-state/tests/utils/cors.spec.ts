@@ -14,7 +14,10 @@ import {
   addCorsHeaders,
   handlePreflight,
   buildCorsPatterns,
+  CORRELATION_HEADERS,
 } from '../../src/utils/cors';
+import { MAIN_ALLOWED_HEADERS } from '../../src/utils/http-helpers';
+import { REALTIME_ALLOWED_HEADERS } from '../../src/routes/realtime-utils';
 
 // =============================================================================
 // parseOriginPatterns
@@ -189,6 +192,48 @@ describe('getCorsHeaders', () => {
     const headers = getCorsHeaders('https://example.com', patterns, customHeaders);
 
     expect(headers['Access-Control-Allow-Headers']).toBe(customHeaders);
+  });
+
+  /**
+   * Every route defines its own allow-list, and a browser rejects the whole request at
+   * preflight if one correlation header is missing from the one it hits. These assert
+   * each list carries them, since the failure is a total outage of that route from the
+   * browser — not a degraded log line.
+   */
+  describe('correlation headers', () => {
+    const lists: [string, string][] = [
+      ['main API', MAIN_ALLOWED_HEADERS],
+      ['realtime API', REALTIME_ALLOWED_HEADERS],
+      ['default', getCorsHeaders('https://example.com', parseOriginPatterns('*'))[
+        'Access-Control-Allow-Headers'
+      ]!],
+    ];
+
+    it.each(lists)('%s allow-list carries every correlation header', (_name, list) => {
+      const lower = list.toLowerCase();
+      for (const header of CORRELATION_HEADERS) {
+        expect(lower).toContain(header.toLowerCase());
+      }
+    });
+
+    it.each(lists)('%s allow-list keeps its own route headers', (_name, list) => {
+      expect(list).toContain('Content-Type');
+    });
+
+    /**
+     * The SDK reads `x-p1-request-id` off the response. Cross-origin that read returns
+     * null unless the header is exposed, and it fails silently — the SDK just keeps its
+     * own id, and the id a customer reports stops matching our logs.
+     */
+    it('exposes the request id so the browser can read it back', () => {
+      const patterns = parseOriginPatterns('https://example.com');
+      expect(
+        getCorsHeaders('https://example.com', patterns)['Access-Control-Expose-Headers'],
+      ).toContain('X-P1-Request-Id');
+      expect(getCorsHeaders(null, parseOriginPatterns('*'))['Access-Control-Expose-Headers']).toContain(
+        'X-P1-Request-Id',
+      );
+    });
   });
 
   it('should return empty origin for null origin', () => {

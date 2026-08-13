@@ -7,6 +7,7 @@
 
 import {
   buildCorsPatterns,
+  withCorrelationHeaders,
   addCorsHeaders as sharedAddCorsHeaders,
   handlePreflight as sharedHandlePreflight,
 } from './cors';
@@ -41,8 +42,15 @@ export function errorResponse(
 }
 
 /** Allowed headers for main API routes */
-export const MAIN_ALLOWED_HEADERS =
-  'Content-Type, Authorization, X-API-Key, X-Principal-Id, X-Principal-Type, X-Actor-Id, X-Actor-Type';
+export const MAIN_ALLOWED_HEADERS = withCorrelationHeaders([
+  'Content-Type',
+  'Authorization',
+  'X-API-Key',
+  'X-Principal-Id',
+  'X-Principal-Type',
+  'X-Actor-Id',
+  'X-Actor-Type',
+]);
 
 /**
  * Add CORS headers to response based on request origin.

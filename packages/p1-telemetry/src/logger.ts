@@ -238,11 +238,19 @@ export class P1Logger {
   }
 }
 
+/**
+ * Probed through `globalThis` rather than the bare `window` / `navigator` globals: a
+ * consumer whose tsconfig omits the DOM lib (every worker here) can't typecheck a direct
+ * reference.
+ */
 function detectRuntime(): Runtime {
-  if (typeof navigator !== 'undefined' && navigator.userAgent?.includes('Cloudflare-Workers')) {
-    return 'worker';
-  }
-  if (typeof window !== 'undefined') return 'browser';
+  const global = globalThis as {
+    navigator?: { userAgent?: string };
+    window?: unknown;
+    document?: unknown;
+  };
+  if (global.navigator?.userAgent?.includes('Cloudflare-Workers')) return 'worker';
+  if (global.window !== undefined && global.document !== undefined) return 'browser';
   return 'node';
 }
 

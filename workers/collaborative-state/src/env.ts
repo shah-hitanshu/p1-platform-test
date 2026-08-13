@@ -4,6 +4,14 @@ export interface Env {
   // Environment variables
   ENVIRONMENT: string;
   LOG_LEVEL: string;
+  /**
+   * Local ndjson log collector (`pnpm dev:logs`), e.g. `http://127.0.0.1:8799`.
+   *
+   * Set in the top-level wrangler `vars` only. Named environments *replace* `vars` rather
+   * than merging, so staging and production cannot inherit it — the local sink is
+   * structurally unable to run in a deployed worker rather than merely unset there.
+   */
+  P1_LOG_SINK?: string;
   CORS_ORIGINS: string;
   WEBSOCKET_HEARTBEAT_INTERVAL: string;
   DOCUMENT_SYNC_BATCH_SIZE: string;

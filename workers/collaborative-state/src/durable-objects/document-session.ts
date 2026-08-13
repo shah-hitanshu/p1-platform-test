@@ -35,6 +35,7 @@ import {
   errorResponse as errorResponseFn,
   jsonResponse as jsonResponseFn,
 } from './websocket-utils';
+import { ensureLogger } from '../telemetry';
 import {
   persistEditSessions as persistEditSessionsFn,
   parseStoredEditSessions,
@@ -144,6 +145,13 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
 
   constructor(state: unknown, env: unknown) {
     super(state as DurableObjectState, env as DocumentSessionEnv);
+    // This DO reaches the database through PostgresSyncManager and the checkpoint client,
+    // both of which log via `getLogger()`. A DO has its own isolate, so without this the
+    // main worker's `initLogger` is invisible here and those lines would come from
+    // `getLogger()`'s bare fallback — stamped `environment: local` at debug level, in
+    // production. Constructor rather than per-entry-point because it runs before any
+    // method, `alarm()` included.
+    ensureLogger(this.env);
     this.sessionInfo = parseSessionId(this.state.id.name);
     this.ydoc = new Y.Doc();
     this.initialized = false;

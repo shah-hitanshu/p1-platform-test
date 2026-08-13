@@ -176,6 +176,14 @@ export interface SyncResponse {
 export interface DocumentSessionEnv {
   API_URL?: string;
   ENVIRONMENT?: string;
+  /**
+   * Logger config. A Durable Object runs in its own isolate, so it has to build its own
+   * logger; these are the top-level wrangler `vars` that reach it. See `ensureLogger`.
+   */
+  LOG_LEVEL?: string;
+  APP_VERSION?: string;
+  P1_LOG_SINK?: string;
+  POSTGRES_CONNECTION_STRING?: string;
   /** Internal API URL for syncing to PostgreSQL */
   INTERNAL_API_URL?: string;
   /** Shared secret for internal API authentication */

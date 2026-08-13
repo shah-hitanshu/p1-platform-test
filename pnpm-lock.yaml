@@ -563,6 +563,9 @@ importers:
       '@pantheon-systems/p1-content-validator':
         specifier: workspace:*
         version: link:../../packages/p1-content-validator
+      '@pantheon-systems/p1-telemetry':
+        specifier: workspace:*
+        version: link:../../packages/p1-telemetry
       ajv:
         specifier: ^8.18.0
         version: 8.20.0

@@ -9,6 +9,7 @@
 import {
   parseOriginPatterns,
   isOriginAllowed,
+  withCorrelationHeaders,
   getCorsHeaders as sharedGetCorsHeaders,
   addCorsHeaders as sharedAddCorsHeaders,
   type CorsPattern,
@@ -44,7 +45,7 @@ export interface RouteParams {
 export const DEFAULT_CORS_ORIGINS = 'http://localhost:3000,http://localhost:8787';
 
 /** Allowed headers for realtime API routes (includes declarative agent context headers) */
-export const REALTIME_ALLOWED_HEADERS = [
+export const REALTIME_ALLOWED_HEADERS = withCorrelationHeaders([
   'Content-Type',
   'X-Actor-Id',
   'X-Actor-Type',
@@ -55,7 +56,7 @@ export const REALTIME_ALLOWED_HEADERS = [
   'X-Agent-Intent',
   'X-Agent-Operation-Type',
   'X-Agent-Target-Regions',
-].join(', ');
+]);
 
 /**
  * Get CORS headers for a specific origin using shared utility

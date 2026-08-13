@@ -38,6 +38,14 @@ import { handleInternalRoutes } from './routes/internal-api';
 import { handleBrokerRoutes } from './routes/broker-routes';
 import { getCachedSiteAllowedOrigins } from './services/site-service';
 import { stripInboundTrustedHeaders } from './utils/trusted-headers';
+import {
+  contextForTask,
+  contextFromRequest,
+  getLogger,
+  withRequestContext,
+  P1_TELEMETRY_HEADERS,
+} from '@pantheon-systems/p1-telemetry';
+import { ensureLogger } from './telemetry';
 
 // Queue consumer (Phase 5.1)
 import { handleSyncQueue } from './queues/sync-consumer';
@@ -63,6 +71,22 @@ export { DocumentState, PresenceManager, SessionManager, BrokerTransaction } fro
 export type { Env } from './env';
 import type { Env } from './env';
 
+/**
+ * Echo the correlation id so a client can quote it in a support request. Responses are
+ * immutable, so this rebuilds rather than mutating — skipped for 101 (WebSocket
+ * upgrade), whose body and headers can't be re-wrapped.
+ */
+function withRequestId(response: Response, requestId: string): Response {
+  if (response.status === 101) return response;
+  const headers = new Headers(response.headers);
+  headers.set(P1_TELEMETRY_HEADERS.requestId, requestId);
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
@@ -85,6 +109,7 @@ export default {
     const path = normalizedPathname;
     const origin = req.headers.get('Origin');
     const requestStart = Date.now();
+    const pathPattern = normalizePathPattern(path);
 
     // Initialize metrics for this request
     initializeMetrics({
@@ -120,88 +145,144 @@ export default {
       );
     }
 
+    const logger = ensureLogger(env);
+    const telemetry = contextFromRequest(req, { route: pathPattern });
+
     // Run request with isolated database connection using AsyncLocalStorage
     // This ensures concurrent requests don't interfere with each other's connections
-    try {
-      const response = await runWithConnection(
-        connectionString,
-        { isHyperdrive },
-        async () => {
-          // OPTIONS preflight runs inside runWithConnection so we can look up
-          // per-site allowed_origins for site-scoped paths (e.g. /api/sites/{id}).
-          if (req.method === 'OPTIONS') {
-            const siteId = /^\/api\/sites\/([^/]+)/.exec(path)?.[1];
-            let siteOrigins: string[] = [];
-            if (siteId !== undefined) {
-              try {
-                siteOrigins = (await getCachedSiteAllowedOrigins(siteId)) ?? [];
-              } catch (err) {
-                // Fail open: system defaults still apply so Pantheon-hosted
-                // sites keep working; per-site custom domains are blocked
-                // until the DB recovers.
-                console.warn('[cors] failed to load site origins for preflight:', err);
+    return withRequestContext(telemetry, async () => {
+      try {
+        const response = await runWithConnection(
+          connectionString,
+          { isHyperdrive },
+          async () => {
+            // OPTIONS preflight runs inside runWithConnection so we can look up
+            // per-site allowed_origins for site-scoped paths (e.g. /api/sites/{id}).
+            if (req.method === 'OPTIONS') {
+              const siteId = /^\/api\/sites\/([^/]+)/.exec(path)?.[1];
+              let siteOrigins: string[] = [];
+              if (siteId !== undefined) {
+                try {
+                  siteOrigins = (await getCachedSiteAllowedOrigins(siteId)) ?? [];
+                } catch (err) {
+                  // Fail open: system defaults still apply so Pantheon-hosted
+                  // sites keep working; per-site custom domains are blocked
+                  // until the DB recovers.
+                  logger.warn('failed to load site origins for preflight', {
+                    reason: err instanceof Error ? err.name : 'unknown',
+                    outcome: 'fail_open',
+                  });
+                }
               }
+              return handlePreflight(req, env, siteOrigins);
             }
-            return handlePreflight(req, env, siteOrigins);
-          }
 
-          const resp = await handleRequest(req, env, path, origin, ctx);
+            const resp = await handleRequest(req, env, path, origin, ctx);
 
-          // Record successful request metrics
-          const durationMs = Date.now() - requestStart;
-          const pathPattern = normalizePathPattern(path);
-          const statusClass = getStatusClass(resp.status);
+            // Record successful request metrics
+            const durationMs = Date.now() - requestStart;
+            const statusClass = getStatusClass(resp.status);
 
-          incrementCounter('css_http_request_total', {
-            method: req.method,
-            path_pattern: pathPattern,
-            status_class: statusClass,
-          });
-          recordTiming('css_http_request_duration_ms', durationMs, {
-            method: req.method,
-            path_pattern: pathPattern,
-            status_class: statusClass,
-          });
+            incrementCounter('css_http_request_total', {
+              method: req.method,
+              path_pattern: pathPattern,
+              status_class: statusClass,
+            });
+            recordTiming('css_http_request_duration_ms', durationMs, {
+              method: req.method,
+              path_pattern: pathPattern,
+              status_class: statusClass,
+            });
 
-          return resp;
-        },
-      );
+            logger.info('request complete', {
+              'http.request.method': req.method,
+              'http.response.status_code': resp.status,
+              duration_ms: durationMs,
+            });
 
-      return response;
-    } catch (error) {
-      // Record error metrics
-      incrementCounter('css_http_errors_total', {
-        error_type: classifyError(error),
-      });
-      // Log so the error appears in wrangler tail for diagnosis
-      console.error('[fetch] unhandled error:', error instanceof Error ? error.message : String(error));
-      // Return a CORS-allowed error response rather than re-throwing.
-      // Re-throwing causes the Workers runtime to generate a bare 500 with no CORS
-      // headers, which the browser sees as a network failure rather than an API error.
-      const message = error instanceof Error ? error.message : 'Internal server error';
-      return addCorsHeaders(errorResponse(message, 500), origin, env);
-    } finally {
-      // Flush metrics (fire-and-forget)
-      await flushMetrics();
-    }
+            return withRequestId(resp, telemetry.requestId);
+          },
+        );
+
+        return response;
+      } catch (error) {
+        // Record error metrics
+        incrementCounter('css_http_errors_total', {
+          error_type: classifyError(error),
+        });
+        // Nothing below this caught it, so it's a boundary failure — alert on
+        // `unhandled=true` rather than on every error-level line.
+        logger.unhandled('request failed', error, {
+          'http.request.method': req.method,
+          duration_ms: Date.now() - requestStart,
+        });
+        // Return a CORS-allowed error response rather than re-throwing.
+        // Re-throwing causes the Workers runtime to generate a bare 500 with no CORS
+        // headers, which the browser sees as a network failure rather than an API error.
+        const message = error instanceof Error ? error.message : 'Internal server error';
+        return withRequestId(
+          addCorsHeaders(errorResponse(message, 500), origin, env),
+          telemetry.requestId,
+        );
+      } finally {
+        // Flush metrics (fire-and-forget)
+        await flushMetrics();
+        // Drains the local ndjson sink when `P1_LOG_SINK` is set; a no-op when console is
+        // the only sink. Under `waitUntil` so it cannot delay the response.
+        ctx.waitUntil(logger.flush());
+      }
+    });
   },
 
   /**
    * Queue dispatcher. Routes a batch to its handler based on the queue name.
    */
   async queue(batch: MessageBatch, env: Env): Promise<void> {
-    if (batch.queue.startsWith('css-screenshot-queue')) {
-      await handleScreenshotQueue(batch as MessageBatch<ScreenshotQueueMessage>, env);
-      return;
-    }
-    await handleSyncQueue(batch as MessageBatch<SyncQueueMessage>, env);
+    const logger = ensureLogger(env);
+
+    // A fresh trace per batch: producers do not yet stamp `taskTraceFields` into the
+    // message body, so there is no enqueuing trace to continue. Joining the producer's
+    // trace needs per-message context, which means reworking the batch handlers below —
+    // until then a queue batch is its own root and does not link back to the request that
+    // caused it.
+    const telemetry = contextForTask({ route: `queue:${batch.queue}` });
+
+    await withRequestContext(telemetry, async () => {
+      try {
+        logger.info('queue batch start', { queue: batch.queue, count: batch.messages.length });
+        if (batch.queue.startsWith('css-screenshot-queue')) {
+          await handleScreenshotQueue(batch as MessageBatch<ScreenshotQueueMessage>, env);
+          return;
+        }
+        await handleSyncQueue(batch as MessageBatch<SyncQueueMessage>, env);
+      } catch (error) {
+        logger.unhandled('queue batch failed', error, { queue: batch.queue });
+        throw error;
+      } finally {
+        await logger.flush();
+      }
+    });
   },
 
   /**
    * Cron handler. Currently runs the weekly screenshot refresh.
    */
   scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): void {
-    ctx.waitUntil(runWeeklyScreenshotRefresh(env));
+    const logger = ensureLogger(env);
+    const telemetry = contextForTask({ route: 'cron:screenshot-refresh' });
+
+    ctx.waitUntil(
+      withRequestContext(telemetry, async () => {
+        try {
+          await runWeeklyScreenshotRefresh(env);
+        } catch (error) {
+          logger.unhandled('scheduled run failed', error);
+          throw error;
+        } finally {
+          await logger.flush();
+        }
+      }),
+    );
   },
 };
 
@@ -227,7 +308,10 @@ async function handleRequest(
     } catch (err) {
       // Fail open: system defaults still apply so Pantheon-hosted sites keep
       // working; per-site custom domains are blocked until the DB recovers.
-      console.warn('[cors] failed to load site origins:', err);
+      getLogger().warn('failed to load site origins', {
+        reason: err instanceof Error ? err.name : 'unknown',
+        outcome: 'fail_open',
+      });
     }
   }
 
