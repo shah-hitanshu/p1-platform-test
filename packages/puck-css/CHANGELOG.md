@@ -1,5 +1,98 @@
 # @pantheon-systems/puck-css
 
+## 0.10.0
+
+### Minor Changes
+
+- e8a472a: Adds the DataListBlock ("List") view-system component: a datasource-driven Puck block that renders a collection in three modes — Grid (cards), Table (rows), and List (listing). Modes come from a registry (`builtin-modes.ts`) mapping each mode key to its layout component, image positions, mode-specific fields, and defaults, so a new mode can be added without touching the block itself. `createDataListBlock()` is exported for apps to instantiate with their own wrapper class.
+
+  When a datasource is selected but field mappings are empty, `autoMapFields()` heuristically assigns datasource fields to the title, subtitle, teaser, image, and icon roles by name pattern, so a freshly dropped block renders real content instead of blanks.
+
+  Adds collection operators (sort, filter, group-by, start-at, max-items, and conditional status filtering for CMS template datasources), applied in the block's `resolveData`.
+
+  Sidebar fields are grouped into collapsible "Content" and "Layout & style" sections via `DataListFieldsGrouper`, which also hides fields belonging to inactive view modes. Puck's built-in field types are replaced throughout with PDS field wrappers (datasource-select, schema-select, template-select, view-mode, image-position) for consistent styling.
+
+  `css-client` gains the query fields and types the block needs to read collection content; `p1-next-sdk` middleware and query fetchers pass them through. The starter-kit template build script now carries the new block's files.
+
+- e8a472a: Adds a template badge to the bottom of the inspector's Page tab, showing which template the current page is bound to. The label is read from the current template's `_template.label`, falling back to matching the document's `templateId` against the loaded template list. The badge is hidden when a block is selected or when the page has no bound template.
+- f9d18df: Fixes the datasource explorer panel being stuck on its loading skeleton, and the canvas never resolving `{{ source.field }}` tokens, on any editor built with `useP1Editor`.
+
+  Puck receives its plugin array once per mount. `useP1Editor` keeps that array identity-stable on purpose — new plugin objects mean new override component identities, which remounts the canvas and every field, losing focus mid-keystroke — so it rebuilds only when the plugin _count_ changes. That made every value a plugin factory closed over permanently frozen. The count changes exactly once, when the editor context arrives and `useP1Plugins` goes from zero plugins to three; the datasource registry only exists at that moment, so the context fetch it triggers is still in flight. The explorer plugin captured `snapshot: {}` and `loadingIds: Set(["…"])`, the preview-resolve plugin captured the same empty context, and the settled data that arrived milliseconds later was rebuilt into fresh plugin objects that Puck never saw. A warm react-query cache hid the bug, since the data was already present at freeze time.
+
+  Plugin-rendered components now read datasource state through the new `useLiveRemoteDatasources` hook instead of receiving it by value. `P1QueryProvider` already wraps the whole editor, so this subscribes them to the same react-query entries the editor host reads: data, loading state, registry, and preview params all stay live without anything crossing the plugin boundary, and the array stays identity-stable. This also fixes the panel pointing at a stale document path after navigating between pages, since the path now comes from `P1PuckContext` rather than the captured `editorPath`.
+
+  **Breaking:** the data arguments those factories took are removed rather than deprecated, since passing them by value could never have worked. `createRemoteDatasourceExplorerPlugin` and `createPreviewResolvePlugin` now take a single options object — drop the leading context argument, and drop the `routeTemplateKeys`, `savedPreviewParams`, `remoteDatasourceRegistry`, `loadingIds`, and `loading` options; all of that is read live. `Client`'s `remoteDatasourceContext`, `routeTemplateKeys`, and `savedPreviewParams` props are removed for the same reason.
+
+  ```diff
+  - createPreviewResolvePlugin(remoteDatasourceContext, { editorPath, loading })
+  + createPreviewResolvePlugin({ editorPath })
+  - createRemoteDatasourceExplorerPlugin(snapshot, { editorPath, routeTemplateKeys, savedPreviewParams, remoteDatasourceRegistry, loadingIds })
+  + createRemoteDatasourceExplorerPlugin({ editorPath })
+  ```
+
+- db21361: The editor chrome is now **responsive**. The plugin rail (Blocks / Outline / History / AI)
+  is permanent — it no longer defaults to hidden behind a toggle, so the panels are visible
+  on a first visit. Its toggle button and the `p1-plugin-rail-<siteId>` localStorage key are
+  both removed; stale values for that key are ignored.
+
+  Horizontal space is governed by one rule: the canvas never drops below 600px, and chrome
+  yields in priority order as the window narrows. The left panel auto-collapses below 1308px
+  and the right follows below 988px, with thresholds derived from the real chrome dimensions
+  rather than fixed breakpoints. Auto-management only ever reopens a panel it closed itself —
+  a panel the author closed stays closed at any width. The panel preference is written only at
+  widths where nothing is auto-collapsed, so a narrow session never overwrites a wide-screen
+  preference. Puck mounts with the budget-constrained visibility, so a narrow first load no
+  longer paints both panels open and then snaps them shut.
+
+  The preference key drops its site suffix: `p1-sidebar-<siteId>` becomes `p1-sidebar`, since
+  localStorage is already origin-scoped and an origin serves a single site. The `{ left, right }`
+  shape is unchanged, but the rename means an existing saved preference is not carried over —
+  authors get the default (both panels open) once, then their next change sticks.
+
+  The historical-version preview banner stays exactly one line tall at every canvas width.
+  Its label truncates with an ellipsis (full text on hover) instead of wrapping the action
+  row onto a second line, and it renders outside Puck's scaled preview wrapper so it measures
+  the real canvas. The version steppers gain "Previous Version" / "Next Version" tooltips,
+  suppressed while disabled or while a revert is in flight.
+
+### Patch Changes
+
+- 03c3ab3: Fixes the editor canvas and preview rendering the _previously_ selected workstream's document after a workstream switch. Deterministic, and it never self-corrected. Also fixes the first document of a cold load being dropped, which is what left you one behind before any switch had happened.
+
+  The document sync key described which document had been **requested** rather than which one was **in hand**. `documentSyncKey(branchId, documentId)` was built from the live `css.branchId` while the data was read from a ref, and those come from different clocks: `switchBranch` commits the branch synchronously but only clears `currentDocument`/`currentData` later, in an async phase that awaits any in-flight switch plus a save-flush, and `documentLoading` is written only inside `loadDocument` so it stays `false` throughout. In that window the publish effect re-ran and published the incoming branch's key beside the outgoing branch's data. The sync plugin applied that pairing and recorded the new key as applied, so the correct document — arriving moments later under the same key — was skipped as already applied.
+
+  Every payload the provider emits now carries the identity it was loaded under, committed in the same render pass as the data itself, and both the sync key and the data are derived from that one record. A new key paired with a different document's data is no longer guarded against; it is unrepresentable.
+
+  The plugin's "first document observed is already on the canvas" special case is gone, replaced by an explicit `BLANK_SYNC_KEY` sentinel. That premise was false: Puck mounts with blank data and the branch is restored from `sessionStorage` _after_ mount, so the first correct payload was being swallowed. `ContextSyncBridge` now stands down unless the applied key matches the current document exactly, since the plugin owns the first document too.
+
+  This also repairs the autosave write-back guard, which the bug had defeated. Both sides of its comparison read the new branch's key while the canvas still held the old branch's content, so it waved the save through — meaning an edit made right after a switch could write one workstream's content into another workstream's document. The applied key now genuinely means "what the canvas shows", so the guard drops those saves as intended.
+
+  Puck is deliberately **not** remounted on a switch. Keying it by branch or document would fix the staleness by tearing down the preview iframe and re-parsing all canvas styles on every switch, which is the lag the sync store exists to avoid.
+
+  No API change for consumers: `P1PuckContextValue` gains an optional `currentDataOrigin`, and the sync store's types are internal to the package.
+
+- 89fd945: Profile pictures now render for logged in user and collaborators in the editor header, instead of everyone falling back to coloured initials. Initials remain the fallback for anyone whose account has no photo.
+- 74dda98: Adds a README to every published package. Each one rendered a blank page on npmjs.com, because
+  no `README.md` existed in the package directory to be included in the tarball — npm renders the
+  README from the published tarball, not from the source repository, so a private repo was never
+  the cause.
+
+  Also repoints every `repository` URL at `pantheon-systems/p1-platform` with the correct
+  `directory`. They still referenced the pre-merge repositories (`puck-css-integration`,
+  `collaborative-state-system`, `p1-media-r2`), so the "Repository" link on each npm page went
+  nowhere. Adds a matching `homepage` for each package.
+
+  No runtime code changes.
+
+- e8a472a: Fixes template datasources, which could not resolve end to end. Three separate faults sat on the same path: `getEditorContext` ran outside the request auth context, so lazy branch resolution never completed and both the template datasource list and the route list came back empty; `extractReferencedDatasourceIds` and `resolveSourcePath` both used `\w`, which excludes the hyphen, so the kebab-case query names behind every `templates.<name>` id failed to match a fetcher and were then read as subtraction by the expression evaluator.
+
+  A failed CSS query lookup in the editor context now warns instead of being swallowed, so an empty datasource dropdown is diagnosable.
+
+- Updated dependencies [d44e904]
+- Updated dependencies [e8a472a]
+- Updated dependencies [74dda98]
+  - @pantheon-systems/css-client@0.10.0
+
 ## 0.9.0
 
 ### Minor Changes

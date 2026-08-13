@@ -1,5 +1,49 @@
 # @pantheon-systems/p1-next-sdk
 
+## 0.10.0
+
+### Minor Changes
+
+- e8a472a: Adds the DataListBlock ("List") view-system component: a datasource-driven Puck block that renders a collection in three modes — Grid (cards), Table (rows), and List (listing). Modes come from a registry (`builtin-modes.ts`) mapping each mode key to its layout component, image positions, mode-specific fields, and defaults, so a new mode can be added without touching the block itself. `createDataListBlock()` is exported for apps to instantiate with their own wrapper class.
+
+  When a datasource is selected but field mappings are empty, `autoMapFields()` heuristically assigns datasource fields to the title, subtitle, teaser, image, and icon roles by name pattern, so a freshly dropped block renders real content instead of blanks.
+
+  Adds collection operators (sort, filter, group-by, start-at, max-items, and conditional status filtering for CMS template datasources), applied in the block's `resolveData`.
+
+  Sidebar fields are grouped into collapsible "Content" and "Layout & style" sections via `DataListFieldsGrouper`, which also hides fields belonging to inactive view modes. Puck's built-in field types are replaced throughout with PDS field wrappers (datasource-select, schema-select, template-select, view-mode, image-position) for consistent styling.
+
+  `css-client` gains the query fields and types the block needs to read collection content; `p1-next-sdk` middleware and query fetchers pass them through. The starter-kit template build script now carries the new block's files.
+
+### Patch Changes
+
+- 74dda98: Adds a README to every published package. Each one rendered a blank page on npmjs.com, because
+  no `README.md` existed in the package directory to be included in the tarball — npm renders the
+  README from the published tarball, not from the source repository, so a private repo was never
+  the cause.
+
+  Also repoints every `repository` URL at `pantheon-systems/p1-platform` with the correct
+  `directory`. They still referenced the pre-merge repositories (`puck-css-integration`,
+  `collaborative-state-system`, `p1-media-r2`), so the "Repository" link on each npm page went
+  nowhere. Adds a matching `homepage` for each package.
+
+  No runtime code changes.
+
+- e8a472a: Fixes template datasources, which could not resolve end to end. Three separate faults sat on the same path: `getEditorContext` ran outside the request auth context, so lazy branch resolution never completed and both the template datasource list and the route list came back empty; `extractReferencedDatasourceIds` and `resolveSourcePath` both used `\w`, which excludes the hyphen, so the kebab-case query names behind every `templates.<name>` id failed to match a fetcher and were then read as subtraction by the expression evaluator.
+
+  A failed CSS query lookup in the editor context now warns instead of being swallowed, so an empty datasource dropdown is diagnosable.
+
+- Updated dependencies [d44e904]
+- Updated dependencies [e8a472a]
+- Updated dependencies [03c3ab3]
+- Updated dependencies [89fd945]
+- Updated dependencies [e8a472a]
+- Updated dependencies [f9d18df]
+- Updated dependencies [74dda98]
+- Updated dependencies [db21361]
+- Updated dependencies [e8a472a]
+  - @pantheon-systems/css-client@0.10.0
+  - @pantheon-systems/puck-css@0.10.0
+
 ## 0.9.0
 
 ### Minor Changes

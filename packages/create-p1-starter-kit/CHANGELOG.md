@@ -1,5 +1,35 @@
 # @pantheon-systems/create-p1-starter-kit
 
+## 0.10.0
+
+### Patch Changes
+
+- e8a472a: Adds the DataListBlock ("List") view-system component: a datasource-driven Puck block that renders a collection in three modes — Grid (cards), Table (rows), and List (listing). Modes come from a registry (`builtin-modes.ts`) mapping each mode key to its layout component, image positions, mode-specific fields, and defaults, so a new mode can be added without touching the block itself. `createDataListBlock()` is exported for apps to instantiate with their own wrapper class.
+
+  When a datasource is selected but field mappings are empty, `autoMapFields()` heuristically assigns datasource fields to the title, subtitle, teaser, image, and icon roles by name pattern, so a freshly dropped block renders real content instead of blanks.
+
+  Adds collection operators (sort, filter, group-by, start-at, max-items, and conditional status filtering for CMS template datasources), applied in the block's `resolveData`.
+
+  Sidebar fields are grouped into collapsible "Content" and "Layout & style" sections via `DataListFieldsGrouper`, which also hides fields belonging to inactive view modes. Puck's built-in field types are replaced throughout with PDS field wrappers (datasource-select, schema-select, template-select, view-mode, image-position) for consistent styling.
+
+  `css-client` gains the query fields and types the block needs to read collection content; `p1-next-sdk` middleware and query fetchers pass them through. The starter-kit template build script now carries the new block's files.
+
+- 74dda98: Adds a README to every published package. Each one rendered a blank page on npmjs.com, because
+  no `README.md` existed in the package directory to be included in the tarball — npm renders the
+  README from the published tarball, not from the source repository, so a private repo was never
+  the cause.
+
+  Also repoints every `repository` URL at `pantheon-systems/p1-platform` with the correct
+  `directory`. They still referenced the pre-merge repositories (`puck-css-integration`,
+  `collaborative-state-system`, `p1-media-r2`), so the "Repository" link on each npm page went
+  nowhere. Adds a matching `homepage` for each package.
+
+  No runtime code changes.
+
+- abc522c: The starter's catch-all route now treats `_redirects/*` as an internal document namespace alongside `_registry/*`, so redirect records can never render as pages.
+
+  Redirect records moved out of `_registry/`, which merge and checkpoint capture treat as code-owned and strip unconditionally — a redirect created on a workstream could never reach the main branch a live site resolves redirects against.
+
 ## 0.9.0
 
 ### Patch Changes

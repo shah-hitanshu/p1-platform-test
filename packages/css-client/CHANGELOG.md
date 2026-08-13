@@ -1,5 +1,58 @@
 # @pantheon-systems/css-client
 
+## 0.10.0
+
+### Minor Changes
+
+- d44e904: **css-client:** Label requests for backend correlation. Every call now sends a W3C
+  `traceparent`, an `x-p1-request-id`, and `x-p1-sdk` identifying the calling package and
+  version, so a request can be traced from your application through the P1 backend to the
+  database.
+
+  The client does not collect, buffer, or transmit telemetry anywhere — it only labels the
+  API calls you already make, and issues no additional network requests.
+
+  Errors now carry the correlation id. `P1ApiError` (and its subclasses), `NetworkError`,
+  `AuthenticationError`, and `SessionExpiredError` expose `requestId`, and it is appended to
+  the error message as `[request id: …]` so it survives into logs and support tickets. The id
+  the server reports is preferred; when a request never reaches the API, the client-minted id
+  is used, so there is always something to quote.
+
+  Three new optional `P1ClientConfig` fields:
+
+  - `sdk` — `{ name, version }` for a wrapper SDK to identify itself instead of `css-client`.
+  - `clientId` — an application identifier sent as `x-p1-client-id`, for telling your own
+    deployments apart in backend logs. Don't put anything personally identifying here.
+  - `getTraceparent` — supplies a `traceparent` from an ambient tracer, so a host application
+    already running OpenTelemetry keeps one trace across its own spans and this client's
+    requests. Omit it and each request starts a fresh trace.
+
+  No breaking changes; every new field is optional and existing behavior is unchanged.
+
+- e8a472a: Adds the DataListBlock ("List") view-system component: a datasource-driven Puck block that renders a collection in three modes — Grid (cards), Table (rows), and List (listing). Modes come from a registry (`builtin-modes.ts`) mapping each mode key to its layout component, image positions, mode-specific fields, and defaults, so a new mode can be added without touching the block itself. `createDataListBlock()` is exported for apps to instantiate with their own wrapper class.
+
+  When a datasource is selected but field mappings are empty, `autoMapFields()` heuristically assigns datasource fields to the title, subtitle, teaser, image, and icon roles by name pattern, so a freshly dropped block renders real content instead of blanks.
+
+  Adds collection operators (sort, filter, group-by, start-at, max-items, and conditional status filtering for CMS template datasources), applied in the block's `resolveData`.
+
+  Sidebar fields are grouped into collapsible "Content" and "Layout & style" sections via `DataListFieldsGrouper`, which also hides fields belonging to inactive view modes. Puck's built-in field types are replaced throughout with PDS field wrappers (datasource-select, schema-select, template-select, view-mode, image-position) for consistent styling.
+
+  `css-client` gains the query fields and types the block needs to read collection content; `p1-next-sdk` middleware and query fetchers pass them through. The starter-kit template build script now carries the new block's files.
+
+### Patch Changes
+
+- 74dda98: Adds a README to every published package. Each one rendered a blank page on npmjs.com, because
+  no `README.md` existed in the package directory to be included in the tarball — npm renders the
+  README from the published tarball, not from the source repository, so a private repo was never
+  the cause.
+
+  Also repoints every `repository` URL at `pantheon-systems/p1-platform` with the correct
+  `directory`. They still referenced the pre-merge repositories (`puck-css-integration`,
+  `collaborative-state-system`, `p1-media-r2`), so the "Repository" link on each npm page went
+  nowhere. Adds a matching `homepage` for each package.
+
+  No runtime code changes.
+
 ## 0.9.0
 
 ### Minor Changes
