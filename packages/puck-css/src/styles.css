@@ -2674,6 +2674,10 @@
      nth-child(3) CSS plugin    → rotateClock       (React NavIcon in CSSPlugin)
      nth-child(4) AI plugin     → sparkles          (targeted by nth-child)
      nth-child(5) PCC plugin    → fileLines         (targeted by nth-child)
+
+   The positional slots only apply when the tab has no PDS icon of its own — the
+   rail reorders whenever a plugin gains or loses `render`, so a slot may hold a
+   plugin that already ships its icon, and painting over it would double up.
    ============================================================================= */
 
 /* 1. Hide all text labels.
@@ -2687,8 +2691,8 @@
 /* 2. Shared pseudo-element for injected SVG icons */
 [class*='NavItem-linkIcon']:has(svg.lucide-hammer)::after,
 [class*='NavItem-linkIcon']:has(svg.lucide-layers)::after,
-[class*='Nav-list'] > li:nth-child(4) [class*='NavItem-linkIcon']::after,
-[class*='Nav-list'] > li:nth-child(5) [class*='NavItem-linkIcon']::after {
+[class*='Nav-list'] > li:nth-child(4) [class*='NavItem-linkIcon']:not(:has(.pds-icon))::after,
+[class*='Nav-list'] > li:nth-child(5) [class*='NavItem-linkIcon']:not(:has(.pds-icon))::after {
   content: '';
   display: block;
   width: 20px;
@@ -2704,8 +2708,8 @@ svg.lucide-layers {
   display: none;
 }
 
-[class*='Nav-list'] > li:nth-child(4) [class*='NavItem-linkIcon'] > *,
-[class*='Nav-list'] > li:nth-child(5) [class*='NavItem-linkIcon'] > * {
+[class*='Nav-list'] > li:nth-child(4) [class*='NavItem-linkIcon']:not(:has(.pds-icon)) > *,
+[class*='Nav-list'] > li:nth-child(5) [class*='NavItem-linkIcon']:not(:has(.pds-icon)) > * {
   display: none;
 }
 
@@ -2722,12 +2726,12 @@ svg.lucide-layers {
 }
 
 /* AI plugin (4th) → fa-sparkles */
-[class*='Nav-list'] > li:nth-child(4) [class*='NavItem-linkIcon']::after {
+[class*='Nav-list'] > li:nth-child(4) [class*='NavItem-linkIcon']:not(:has(.pds-icon))::after {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 576 512'%3E%3Cpath fill='%23374151' d='M391.5 53.2c-4.5 1.7-7.5 6-7.5 10.8s3 9.1 7.5 10.8L448 96 469.2 152.5c1.7 4.5 6 7.5 10.8 7.5s9.1-3 10.8-7.5L512 96 568.5 74.8c4.5-1.7 7.5-6 7.5-10.8s-3-9.1-7.5-10.8L512 32 490.8-24.5c-1.7-4.5-6-7.5-10.8-7.5s-9.1 3-10.8 7.5L448 32 391.5 53.2zm-185 20.1c-2.6-5.7-8.3-9.3-14.5-9.3s-11.9 3.6-14.5 9.3l-53.1 115-115 53.1C3.6 244.1 0 249.8 0 256s3.6 11.9 9.3 14.5l115 53.1 53.1 115c2.6 5.7 8.3 9.3 14.5 9.3s11.9-3.6 14.5-9.3l53.1-115 115-53.1c5.7-2.6 9.3-8.3 9.3-14.5s-3.6-11.9-9.3-14.5l-115-53.1-53.1-115zM416 416l-56.5 21.2c-4.5 1.7-7.5 6-7.5 10.8s3 9.1 7.5 10.8L416 480 437.2 536.5c1.7 4.5 6 7.5 10.8 7.5s9.1-3 10.8-7.5L480 480 536.5 458.8c4.5-1.7 7.5-6 7.5-10.8s-3-9.1-7.5-10.8L480 416 458.8 359.5c-1.7-4.5-6-7.5-10.8-7.5s-9.1 3-10.8 7.5L416 416z'/%3E%3C/svg%3E");
 }
 
 /* PCC plugin (5th) → fa-file-lines */
-[class*='Nav-list'] > li:nth-child(5) [class*='NavItem-linkIcon']::after {
+[class*='Nav-list'] > li:nth-child(5) [class*='NavItem-linkIcon']:not(:has(.pds-icon))::after {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 384 512'%3E%3Cpath fill='%23374151' d='M0 64C0 28.7 28.7 0 64 0L213.5 0c17 0 33.3 6.7 45.3 18.7L365.3 125.3c12 12 18.7 28.3 18.7 45.3L384 448c0 35.3-28.7 64-64 64L64 512c-35.3 0-64-28.7-64-64L0 64zm208-5.5l0 93.5c0 13.3 10.7 24 24 24L325.5 176 208 58.5zM120 256c-13.3 0-24 10.7-24 24s10.7 24 24 24l144 0c13.3 0 24-10.7 24-24s-10.7-24-24-24l-144 0zm0 96c-13.3 0-24 10.7-24 24s10.7 24 24 24l144 0c13.3 0 24-10.7 24-24s-10.7-24-24-24l-144 0z'/%3E%3C/svg%3E");
 }
 
