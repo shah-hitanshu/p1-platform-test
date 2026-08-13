@@ -63,6 +63,40 @@ const DEFAULT_TOKEN_KEY = 'p1_auth_token';
 
 export const P1_LOGGED_IN_KEY = 'p1_logged_in';
 
+/**
+ * Where to land after the broker round trip. The broker can only redirect to
+ * the editor root, so a deep link (page path + ?branch=) is lost without this.
+ */
+const RETURN_TO_KEY = 'p1_auth_return_to';
+
+function currentLocationTarget(): string {
+  return `${window.location.pathname}${window.location.search}`;
+}
+
+function stashAuthReturnTo(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    sessionStorage.setItem(RETURN_TO_KEY, currentLocationTarget());
+  } catch {
+    // sessionStorage unavailable — deep link is lost, login still works
+  }
+}
+
+/** Reads and clears, so a later reload cannot bounce the user a second time. */
+function takeAuthReturnTo(): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const target = sessionStorage.getItem(RETURN_TO_KEY);
+    sessionStorage.removeItem(RETURN_TO_KEY);
+    if (!target) return null;
+    // Same-origin paths only: "//evil.example" would leave the site entirely.
+    if (!target.startsWith('/') || target.startsWith('//')) return null;
+    return target;
+  } catch {
+    return null;
+  }
+}
+
 export interface P1AuthProviderProps {
   /** Auth mode: 'mock' for demo users, 'broker' for auth broker. */
   authMode: AuthMode;
@@ -147,9 +181,11 @@ export function P1AuthProvider(props: P1AuthProviderProps): React.ReactElement {
             cssBaseUrl: p1BaseUrl,
           });
         }
+        let redeemed = false;
         try {
           const result = await redeemPromiseRef.current;
           if (result && !cancelled) {
+            redeemed = true;
             setToken(result.token);
             if (result.userInfo) {
               setUser(oauthUserToAuthUser(result.userInfo));
@@ -170,6 +206,15 @@ export function P1AuthProvider(props: P1AuthProviderProps): React.ReactElement {
           }
         }
         if (!cancelled) {
+          // A full navigation, not a client-side push: the editor reads
+          // ?branch= when its provider mounts, which has already happened.
+          // The redeemed token lives in localStorage, so the reload stays
+          // authenticated instead of looping back through login.
+          const returnTo = redeemed ? takeAuthReturnTo() : null;
+          if (returnTo && returnTo !== currentLocationTarget()) {
+            window.location.replace(returnTo);
+            return;
+          }
           setIsLoading(false);
           redeemPromiseRef.current = null;
         }
@@ -249,11 +294,15 @@ export function P1AuthProvider(props: P1AuthProviderProps): React.ReactElement {
             picture: validated?.avatarUrl,
           });
         } else if (brokerSession) {
+          // Stashed before the redirect, while the deep link is still the
+          // current URL — the broker sends the user back to the editor root.
+          stashAuthReturnTo();
           await brokerSession.login();
           if (hasPendingBrokerLogin()) {
             redirectingRef.current = true;
             return;
           }
+          takeAuthReturnTo();
           const brokerToken = await brokerSession.getToken();
           if (brokerToken) {
             setToken(brokerToken);

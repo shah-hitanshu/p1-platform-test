@@ -127,6 +127,49 @@ export function P1PuckProvider(props: P1PuckProviderProps): React.ReactElement {
   );
 }
 
+/** Query param naming the workstream to open, set by the dashboard's "Open in visual editor". */
+const BRANCH_QUERY_PARAM = 'branch';
+
+/**
+ * Rejected here rather than downstream: the value reaches API paths and the
+ * realtime URL unescaped, so anything that could change a URL's shape ("/",
+ * ".", "?", "#") must never get that far. refreshBranches still decides whether
+ * a well-formed id actually exists.
+ */
+const BRANCH_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
+
+/** Kept pure — the param is consumed in an effect, not while rendering. */
+function readDeepLinkBranchId(): string {
+  if (typeof window === 'undefined') return '';
+  try {
+    const raw = new URL(window.location.href).searchParams
+      .get(BRANCH_QUERY_PARAM)?.trim() ?? '';
+    return BRANCH_ID_PATTERN.test(raw) ? raw : '';
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Left in place the param would re-apply on the next remount (this provider
+ * remounts on route-param changes), silently undoing a manual workstream switch.
+ */
+function stripDeepLinkBranchParam(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has(BRANCH_QUERY_PARAM)) return;
+    url.searchParams.delete(BRANCH_QUERY_PARAM);
+    window.history.replaceState(
+      window.history.state,
+      '',
+      `${url.pathname}${url.search}${url.hash}`,
+    );
+  } catch {
+    // history/URL unavailable — the param is harmless if it stays
+  }
+}
+
 /**
  * Inner provider component that has access to notification context.
  */
@@ -197,8 +240,15 @@ function P1PuckProviderInner({
       .catch(() => {});
   }, [client, siteId]);
 
-  // Branch state - start with initialBranchId, persisted branch, or empty (will be set to main)
+  // Outranks the prop (a build-time default) and sessionStorage (a previous
+  // visit): this names the workstream the user just asked for. refreshBranches
+  // validates it, so a stale or foreign id still falls back to main.
+  const [deepLinkBranchId] = useState(readDeepLinkBranchId);
+
+  // Branch state - start with the deep link, initialBranchId, persisted branch,
+  // or empty (will be set to main)
   const [branchId, setBranchId] = useState(() => {
+    if (deepLinkBranchId) return deepLinkBranchId;
     if (initialBranchId) return initialBranchId;
     try {
       return (typeof window !== 'undefined' && sessionStorage.getItem(branchStorageKey)) || '';
@@ -209,13 +259,22 @@ function P1PuckProviderInner({
   const [branches, setBranches] = useState<Branch[]>([]);
   const [currentBranch, setCurrentBranch] = useState<Branch | null>(null);
   const [branchesLoading, setBranchesLoading] = useState(() => {
-    if (initialBranchId) return false;
+    if (deepLinkBranchId || initialBranchId) return false;
     try {
       return !(typeof window !== 'undefined' && sessionStorage.getItem(branchStorageKey));
     } catch {
       return true;
     }
   });
+
+  // Persist before stripping: once the param is gone, a remount landing before
+  // the branch list resolves would otherwise fall back to a stale persisted
+  // branch. refreshBranches replaces this with a validated value.
+  useEffect(() => {
+    if (!deepLinkBranchId) return;
+    persistBranchId(deepLinkBranchId);
+    stripDeepLinkBranchParam();
+  }, [deepLinkBranchId, persistBranchId]);
 
   // Document state
   const [currentDocument, setCurrentDocument] = useState<Document | null>(null);
