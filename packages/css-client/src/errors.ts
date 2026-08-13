@@ -12,6 +12,12 @@ export class P1ApiError extends Error {
   public readonly status: number;
   public readonly code?: string;
   public readonly details?: unknown;
+  /**
+   * Correlation id for this request, echoed by the API. Quote it in a support request
+   * and the server-side story for exactly this call can be found. Assigned after
+   * construction so every subclass gets it without changing its constructor.
+   */
+  public requestId?: string;
 
   constructor(message: string, status: number, code?: string, details?: unknown) {
     super(message);
@@ -28,6 +34,8 @@ export class P1ApiError extends Error {
 export class NetworkError extends Error {
   override name = 'NetworkError';
   public readonly cause?: Error;
+  /** See {@link P1ApiError.requestId}. */
+  public requestId?: string;
 
   constructor(message: string, cause?: Error) {
     super(message);
@@ -41,6 +49,8 @@ export class NetworkError extends Error {
  */
 export class AuthenticationError extends Error {
   override name = 'AuthenticationError';
+  /** See {@link P1ApiError.requestId}. */
+  public requestId?: string;
 
   constructor(message = 'Authentication failed') {
     super(message);
@@ -92,9 +102,24 @@ export class ValidationError extends P1ApiError {
  */
 export class SessionExpiredError extends Error {
   override name = 'SessionExpiredError';
+  /** See {@link P1ApiError.requestId}. */
+  public requestId?: string;
 
   constructor(message = 'Session expired — please sign in again') {
     super(message);
     Object.setPrototypeOf(this, SessionExpiredError.prototype);
   }
+}
+
+/**
+ * Stamp the correlation id onto an error and surface it in the message.
+ *
+ * The message is appended to on purpose: the id is only useful if a human sees it, and
+ * error messages are what end up in a customer's logs and support tickets.
+ */
+export function attachRequestId<E extends Error>(error: E, requestId: string | undefined): E {
+  if (requestId === undefined || requestId === '') return error;
+  (error as E & { requestId?: string }).requestId = requestId;
+  error.message = `${error.message} [request id: ${requestId}]`;
+  return error;
 }

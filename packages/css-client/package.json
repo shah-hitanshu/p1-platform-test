@@ -36,6 +36,8 @@
     "dist"
   ],
   "scripts": {
+    "sync-version": "node scripts/sync-sdk-version.mjs",
+    "prebuild": "node scripts/sync-sdk-version.mjs",
     "build": "pnpm run clean && tsc",
     "clean": "rm -rf dist *.tsbuildinfo",
     "lint": "eslint src",

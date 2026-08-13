@@ -7,6 +7,7 @@
 import type { AuthProvider } from '../auth.js';
 import type { Principal } from '../types.js';
 import {
+  attachRequestId,
   P1ApiError,
   NetworkError,
   AuthenticationError,
@@ -15,6 +16,14 @@ import {
   ValidationError,
   SessionExpiredError,
 } from '../errors.js';
+import {
+  correlationHeaders,
+  newRequestId,
+  SDK_NAME,
+  SDK_VERSION,
+  TELEMETRY_HEADERS,
+  type SdkIdentity,
+} from '../telemetry-headers.js';
 
 export interface BaseEndpointConfig {
   baseUrl: string;
@@ -31,6 +40,15 @@ export interface BaseEndpointConfig {
    * Returns a fresh token string, or null if the session cannot be refreshed.
    */
   tokenRefresher?: () => Promise<string | null>;
+  /**
+   * Identifies the calling SDK in `x-p1-sdk`. Defaults to this package; a wrapper such
+   * as `p1-next-sdk` passes its own so the backend sees which one is in the field.
+   */
+  sdk?: SdkIdentity;
+  /** Caller-supplied application identifier, sent as `x-p1-client-id`. */
+  clientId?: string;
+  /** See {@link CorrelationHeaderOptions.getTraceparent}. */
+  getTraceparent?: () => string | undefined;
 }
 
 export interface RequestOptions {
@@ -46,12 +64,28 @@ interface ErrorResponse {
   details?: unknown;
 }
 
+/**
+ * Prefer the id the server reports, falling back to the one we sent.
+ *
+ * Tolerates a response without a `Headers` instance: callers can inject their own fetch
+ * implementation, and a response-like object is a legitimate thing to receive. Reading a
+ * correlation id must never be what breaks someone's API call.
+ */
+function adoptServerRequestId(response: Response, fallback: string): string {
+  const headers = (response as { headers?: Headers }).headers;
+  const echoed = typeof headers?.get === 'function' ? headers.get(TELEMETRY_HEADERS.requestId) : null;
+  return echoed !== null && echoed.trim() !== '' ? echoed.trim() : fallback;
+}
+
 export class BaseEndpoint {
   private readonly baseUrl: string;
   private readonly authProvider?: AuthProvider;
   private readonly principal?: Principal;
   private readonly sessionId?: string;
   private readonly tokenRefresher?: () => Promise<string | null>;
+  private readonly sdk: SdkIdentity;
+  private readonly clientId?: string;
+  private readonly getTraceparent?: () => string | undefined;
 
   constructor(config: BaseEndpointConfig) {
     // Remove trailing slash from base URL
@@ -60,16 +94,46 @@ export class BaseEndpoint {
     this.principal = config.principal;
     this.sessionId = config.sessionId;
     this.tokenRefresher = config.tokenRefresher;
+    this.sdk = config.sdk ?? { name: SDK_NAME, version: SDK_VERSION };
+    this.clientId = config.clientId;
+    this.getTraceparent = config.getTraceparent;
   }
 
   /**
    * Make an authenticated HTTP request to the P1 API.
+   *
+   * Every failure leaves here carrying the request id, so a caller can quote it and the
+   * server-side story for this exact call can be found. Stamped in one place rather than
+   * at each of the throw sites below.
    */
   async request<T>(path: string, options: RequestOptions): Promise<T> {
+    // Minted client-side so an id exists even when the request never reaches the API — a
+    // network failure still gives the caller something to quote. If the API responds it
+    // echoes the id back, and that value wins.
+    const correlation = { requestId: newRequestId() };
+    try {
+      return await this.send<T>(path, options, correlation);
+    } catch (error) {
+      throw error instanceof Error ? attachRequestId(error, correlation.requestId) : error;
+    }
+  }
+
+  private async send<T>(
+    path: string,
+    options: RequestOptions,
+    correlation: { requestId: string },
+  ): Promise<T> {
     const url = `${this.baseUrl}${path}`;
+    const { requestId } = correlation;
 
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
+      ...correlationHeaders({
+        sdk: this.sdk,
+        requestId,
+        clientId: this.clientId,
+        getTraceparent: this.getTraceparent,
+      }),
       ...options.headers,
     };
 
@@ -115,6 +179,9 @@ export class BaseEndpoint {
         error instanceof Error ? error : undefined
       );
     }
+    // The server's id wins: it may have rejected ours as malformed and minted its own,
+    // and the whole point is to name the id the server actually logged.
+    correlation.requestId = adoptServerRequestId(response, correlation.requestId);
 
     // Handle 401 with token refresh
     if (response.status === 401 && this.tokenRefresher) {
@@ -135,6 +202,7 @@ export class BaseEndpoint {
             error instanceof Error ? error : undefined,
           );
         }
+        correlation.requestId = adoptServerRequestId(response, correlation.requestId);
         if (response.status === 401) {
           throw new SessionExpiredError();
         }

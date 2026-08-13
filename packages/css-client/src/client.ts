@@ -6,6 +6,7 @@
 
 import type { AuthProvider } from './auth.js';
 import type { Principal } from './types.js';
+import type { SdkIdentity } from './telemetry-headers.js';
 import {
   BaseEndpoint,
   SitesEndpoint,
@@ -58,6 +59,30 @@ export interface P1ClientConfig {
    * a SessionExpiredError is thrown.
    */
   tokenRefresher?: () => Promise<string | null>;
+
+  /**
+   * Identifies the calling SDK in the `x-p1-sdk` request header. Defaults to this
+   * package. A wrapper such as `p1-next-sdk` passes its own name and version so the
+   * backend can see which SDK versions are actually in the field.
+   */
+  sdk?: SdkIdentity;
+
+  /**
+   * Optional application identifier, sent as `x-p1-client-id`. Useful for telling your
+   * own deployments apart in backend logs. Do not put anything personally identifying
+   * here — it is recorded server-side.
+   */
+  clientId?: string;
+
+  /**
+   * Supplies a W3C `traceparent` from an ambient tracer, so a host application already
+   * running OpenTelemetry keeps one trace across its own spans and this client's requests.
+   * Omit it and each request starts a fresh trace.
+   *
+   * This client never sends telemetry anywhere itself — it only labels its own requests so
+   * the P1 backend can correlate them.
+   */
+  getTraceparent?: () => string | undefined;
 }
 
 /**
@@ -170,6 +195,9 @@ export class P1Client {
         authProvider,
         principal: config.principal,
         tokenRefresher: config.tokenRefresher,
+        sdk: config.sdk,
+        clientId: config.clientId,
+        getTraceparent: config.getTraceparent,
       });
     }
 

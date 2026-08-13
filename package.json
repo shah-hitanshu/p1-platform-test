@@ -26,7 +26,7 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "clean": "pnpm -r run clean",
-    "ci:version": "changeset version",
+    "ci:version": "changeset version && pnpm --filter @pantheon-systems/css-client sync-version",
     "ci:publish": "changeset publish"
   },
   "devDependencies": {
