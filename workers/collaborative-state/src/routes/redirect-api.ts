@@ -1,5 +1,6 @@
 import type { AuthenticatedPrincipal, RedirectSnapshot, RedirectType } from '../types';
 import {
+  REDIRECTS_PATH_PREFIX,
   isRedirectBody,
   isValidRedirectType,
   readRedirectSnapshot,
@@ -9,6 +10,7 @@ import {
   createDocumentOnBranch,
   listDocumentsOnBranch,
   getDocument,
+  getMainBranch,
   getLatestDocumentVersion,
   createDocumentVersion,
   deleteDocumentOnBranch,
@@ -26,6 +28,37 @@ function stripTrailingSlashes(path: string): string {
 }
 
 const MAX_REDIRECT_PATH_LENGTH = 1024;
+
+/**
+ * True when a page still renders at `pagePath` on this branch, so a redirect
+ * from it would shadow reachable content.
+ *
+ * Two reasons the app.documents row alone can't answer this: deleting a page
+ * only tombstones it per branch and leaves the row behind — rejecting on the row
+ * would refuse a redirect for exactly the page most redirects are written for —
+ * and a page untouched on a workstream has no version there at all, yet still
+ * renders inherited from main. Registry documents never count: they aren't routable.
+ */
+async function livePageOccupies(
+  siteId: string,
+  branchId: string,
+  pagePath: string,
+): Promise<boolean> {
+  const existing = await getDocumentByPath(siteId, pagePath);
+  if (existing === null) return false;
+  if (existing.path.startsWith('_registry/')) return false;
+
+  const local = await getLatestDocumentVersion(existing.id, branchId);
+  if (local !== null) return local.isTombstone !== true;
+
+  // Main's latest version, not its latest published one: an unpublished page
+  // would otherwise read as absent, and the redirect written over it would
+  // shadow the page the moment it went live.
+  const mainBranch = await getMainBranch(siteId);
+  if (mainBranch === null || mainBranch.id === branchId) return false;
+  const inherited = await getLatestDocumentVersion(existing.id, mainBranch.id);
+  return inherited !== null && inherited.isTombstone !== true;
+}
 
 export interface RedirectRouteContext {
   siteId: string;
@@ -45,7 +78,7 @@ function validationErrorResponse(invalidParams: InvalidParam[]): Response {
 
 async function handleListRedirects(branchId: string): Promise<Response> {
   const documents = await listDocumentsOnBranch(branchId, {
-    pathPrefix: '_registry/redirects/',
+    pathPrefix: REDIRECTS_PATH_PREFIX,
   });
 
   const redirects = await Promise.all(
@@ -84,7 +117,7 @@ async function handleGetRedirect(
     return errorResponse('Redirect not found', 404);
   }
 
-  if (!document.path.startsWith('_registry/redirects/')) {
+  if (!document.path.startsWith(REDIRECTS_PATH_PREFIX)) {
     return errorResponse('Document is not a redirect', 400);
   }
 
@@ -166,8 +199,7 @@ async function handleCreateRedirect(
   const parenting = body.parenting ?? false;
   const originPath = normalizedFromPath.slice(1);
 
-  const existingPage = await getDocumentByPath(siteId, originPath);
-  if (existingPage && !existingPage.path.startsWith('_registry/')) {
+  if (await livePageOccupies(siteId, branchId, originPath)) {
     return errorResponse('A page already exists at this origin path', 409);
   }
 
@@ -181,7 +213,7 @@ async function handleCreateRedirect(
   const result = await createDocumentOnBranch({
     siteId,
     branchId,
-    path: `_registry/redirects/${originPath}`,
+    path: `${REDIRECTS_PATH_PREFIX}${originPath}`,
     snapshot: { ...snapshot },
     createdById: principal.dbUserId ?? principal.id,
     createdByType: toDocumentActorType(principal.type),
@@ -220,7 +252,7 @@ async function handleUpdateRedirect(
     return errorResponse('Redirect not found', 404);
   }
 
-  if (!document.path.startsWith('_registry/redirects/')) {
+  if (!document.path.startsWith(REDIRECTS_PATH_PREFIX)) {
     return errorResponse('Document is not a redirect', 400);
   }
 
@@ -273,8 +305,7 @@ async function handleUpdateRedirect(
     }
 
     newFromPath = normalizedFromPath.slice(1);
-    const existingPage = await getDocumentByPath(siteId, newFromPath);
-    if (existingPage && !existingPage.path.startsWith('_registry/') && existingPage.id !== redirectId) {
+    if (await livePageOccupies(siteId, branchId, newFromPath)) {
       return errorResponse('A page already exists at this path', 409);
     }
   }
@@ -290,7 +321,7 @@ async function handleUpdateRedirect(
   };
 
   if (newFromPath !== undefined) {
-    await updateDocumentPath(redirectId, `_registry/redirects/${newFromPath}`);
+    await updateDocumentPath(redirectId, `${REDIRECTS_PATH_PREFIX}${newFromPath}`);
   }
 
   const version = await createDocumentVersion({
@@ -327,7 +358,7 @@ async function handleDeleteRedirect(
     return errorResponse('Redirect not found', 404);
   }
 
-  if (!document.path.startsWith('_registry/redirects/')) {
+  if (!document.path.startsWith(REDIRECTS_PATH_PREFIX)) {
     return errorResponse('Document is not a redirect', 400);
   }
 

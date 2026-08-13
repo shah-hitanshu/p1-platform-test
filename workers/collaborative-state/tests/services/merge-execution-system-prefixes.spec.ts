@@ -627,8 +627,10 @@ describe('previewMerge — system-managed path exclusion', () => {
 
   it('keeps non-system underscore prefixes (e.g. _translations/) in the merge', async () => {
     // Sanity check: only `_registry/` is system-managed. Other underscore-
-    // prefixed paths like `_translations/` or `_structure/` are user content
-    // and must continue to merge normally.
+    // prefixed paths like `_translations/`, `_structure/` or `_redirects/` are
+    // user content and must continue to merge normally. Redirects belong here
+    // specifically: under `_registry/` this exclusion kept them off main, so a
+    // merged page deletion took effect while its redirect never shipped.
     const { previewMerge } = await import(
       '../../src/services/merge-execution-service'
     );
@@ -661,14 +663,26 @@ describe('previewMerge — system-managed path exclusion', () => {
           baseVersionId: null,
           baseVersionNumber: null,
         },
+        {
+          documentId: 'doc-redirect',
+          documentPath: '_redirects/old-page',
+          latestVersionId: 'v-redirect',
+          latestVersionNumber: 1,
+          baseVersionId: null,
+          baseVersionNumber: null,
+        },
       ],
       targetChanges: [],
     });
 
     const preview = await previewMerge('source-branch', 'main-branch');
 
-    expect(preview.sourceChanges).toHaveLength(2);
+    expect(preview.sourceChanges).toHaveLength(3);
     const paths = preview.sourceChanges.map((c) => c.documentPath).sort();
-    expect(paths).toEqual(['_structure/menu', '_translations/es/home']);
+    expect(paths).toEqual([
+      '_redirects/old-page',
+      '_structure/menu',
+      '_translations/es/home',
+    ]);
   });
 });

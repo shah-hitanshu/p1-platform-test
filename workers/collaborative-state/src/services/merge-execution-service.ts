@@ -51,8 +51,10 @@ import {
  * code, not in any branch.
  *
  * NOTE: This intentionally does NOT include other underscore-prefixed paths
- * such as `_translations/` or `_structure/` — those are user content and
- * must continue to merge normally.
+ * such as `_translations/`, `_structure/` or `_redirects/` — those are user
+ * content and must continue to merge normally. Redirects in particular were
+ * once stored under `_registry/`, where this exclusion silently kept them off
+ * the main branch a live site resolves against; don't move them back.
  *
  * EXCEPTION: `_registry/templates/` documents are user-authored content types
  * and must merge normally to support cross-branch template propagation

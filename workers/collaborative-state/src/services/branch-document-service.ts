@@ -9,6 +9,8 @@
 
 import type { Document } from '../types';
 import { query, withTransaction } from '../db';
+import type { RedirectSnapshot } from '../types/redirects';
+import { REDIRECTS_PATH_PREFIX } from '../types/redirects';
 import type {
   ListDocumentsOnBranchOptions,
   CreateDocumentOnBranchParams,
@@ -42,7 +44,6 @@ import {
   branchInheritsFromMain,
 } from './document-queries';
 import { enforceUniqueSlotIds } from './slot-id-backstop';
-import type { RedirectSnapshot } from '../types/redirects';
 
 function appendPaginationClauses(
   sql: string,
@@ -773,7 +774,7 @@ export async function deleteDocumentWithRedirect(
       deletedByType: params.deletedByType,
     });
 
-    const redirectPath = normalizePath(`_registry/redirects/${params.redirect.fromPath}`);
+    const redirectPath = normalizePath(`${REDIRECTS_PATH_PREFIX}${params.redirect.fromPath}`);
     validatePath(redirectPath);
 
     let redirectDocId: string;

@@ -55,7 +55,7 @@ describe('Content Redirect Lookup API', () => {
       vi.mocked(services.getDocumentByPath).mockResolvedValueOnce({
         id: 'redirect-doc-uuid',
         siteId: 'site-1',
-        path: '_registry/redirects/old-page',
+        path: '_redirects/old-page',
         createdAt: '2026-01-24T10:00:00.000Z',
       });
 
@@ -114,7 +114,7 @@ describe('Content Redirect Lookup API', () => {
       vi.mocked(services.getDocumentByPath).mockResolvedValueOnce({
         id: 'redirect-doc-uuid',
         siteId: 'site-1',
-        path: '_registry/redirects/temp-page',
+        path: '_redirects/temp-page',
         createdAt: '2026-01-24T10:00:00.000Z',
       });
 
@@ -227,7 +227,7 @@ describe('Content Redirect Lookup API', () => {
       vi.mocked(services.getDocumentByPath).mockResolvedValueOnce({
         id: 'redirect-doc-uuid',
         siteId: 'site-1',
-        path: '_registry/redirects/old-page',
+        path: '_redirects/old-page',
         createdAt: '2026-01-24T10:00:00.000Z',
       });
 
@@ -278,7 +278,7 @@ describe('Content Redirect Lookup API', () => {
         .mockResolvedValueOnce({
           id: 'parent-redirect-uuid',
           siteId: 'site-1',
-          path: '_registry/redirects/news',
+          path: '_redirects/news',
           createdAt: '2026-01-24T10:00:00.000Z',
         });
 
@@ -340,7 +340,7 @@ describe('Content Redirect Lookup API', () => {
         .mockResolvedValueOnce({
           id: 'parent-redirect-uuid',
           siteId: 'site-1',
-          path: '_registry/redirects/news',
+          path: '_redirects/news',
           createdAt: '2026-01-24T10:00:00.000Z',
         });
 
@@ -402,7 +402,7 @@ describe('Content Redirect Lookup API', () => {
         .mockResolvedValueOnce({
           id: 'docs-redirect-uuid',
           siteId: 'site-1',
-          path: '_registry/redirects/docs',
+          path: '_redirects/docs',
           createdAt: '2026-01-24T10:00:00.000Z',
         });
 

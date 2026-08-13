@@ -1,10 +1,21 @@
 /**
  * Collaborative State System - Redirect Types
  *
- * Redirect records stored as documents at _registry/redirects/*
+ * Redirect records stored as documents at _redirects/*
  */
 
 import type { RedirectType } from './enums';
+
+/**
+ * Document path prefix for redirect records.
+ *
+ * Deliberately NOT under `_registry/`: everything there is treated as
+ * code-owned by merge and checkpoint capture and is stripped from both
+ * (see isSystemManagedPath in merge-execution-service.ts), so redirects
+ * stored there could never reach the main branch a live site reads from.
+ * Redirects are user content and must branch, merge and revert like it.
+ */
+export const REDIRECTS_PATH_PREFIX = '_redirects/';
 
 /**
  * Shape of the document snapshot for a redirect record.

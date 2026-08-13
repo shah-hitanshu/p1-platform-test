@@ -20,6 +20,19 @@ import { Client } from "./client";
 
 const getCssQueryFetchers = cache(() => createCssQueryFetchers());
 
+// Document namespaces that live alongside pages but are never routable.
+const INTERNAL_PATH_PREFIXES = ["/_registry", "/_redirects"];
+
+// Lowercased to match the server, which normalizes document paths to lower case
+// before looking them up — so /_Redirects/x resolves the same record as
+// /_redirects/x and must be refused just the same.
+function isInternalPath(path: string): boolean {
+  const normalized = path.toLowerCase();
+  return INTERNAL_PATH_PREFIXES.some(
+    (prefix) => normalized === prefix || normalized.startsWith(`${prefix}/`),
+  );
+}
+
 const initPromise = ensureInitialized({
   p1BaseUrl: process.env.NEXT_PUBLIC_CSS_BASE_URL,
   p1ApiKey: process.env.CSS_API_KEY,
@@ -40,7 +53,7 @@ export async function generateMetadata({
   const { puckPath = [] } = await params;
   const path = pagePathFromCatchAllSegments(puckPath);
 
-  if (path.startsWith("/_registry/") || path === "/_registry") {
+  if (isInternalPath(path)) {
     return { title: "Not Found" };
   }
 
@@ -59,7 +72,7 @@ export default async function Page({
   const { puckPath = [] } = await params;
   const path = pagePathFromCatchAllSegments(puckPath);
 
-  if (path.startsWith("/_registry/") || path === "/_registry") {
+  if (isInternalPath(path)) {
     const { notFound } = await import("next/navigation");
     notFound();
   }

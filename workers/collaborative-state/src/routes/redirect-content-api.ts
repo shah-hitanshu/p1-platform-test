@@ -1,5 +1,5 @@
 import type { AuthenticatedPrincipal, RedirectSnapshot } from '../types';
-import { readRedirectSnapshot } from '../types';
+import { REDIRECTS_PATH_PREFIX, readRedirectSnapshot } from '../types';
 import {
   getMainBranch,
   getDocumentByPath,
@@ -18,7 +18,7 @@ async function resolveRedirect(
   mainBranchId: string,
   lookupPath: string,
 ): Promise<{ snapshot: RedirectSnapshot; computedDestination: string } | null> {
-  const redirectDoc = await getDocumentByPath(siteId, `_registry/redirects/${lookupPath}`);
+  const redirectDoc = await getDocumentByPath(siteId, `${REDIRECTS_PATH_PREFIX}${lookupPath}`);
   if (redirectDoc !== null) {
     const version = await getLatestDocumentVersion(redirectDoc.id, mainBranchId);
     const snapshot = readRedirectSnapshot(version?.snapshot);
@@ -39,7 +39,7 @@ async function resolveRedirect(
 
   const results = await Promise.all(
     ancestors.map(async ({ parentPath, childSuffix }) => {
-      const parentDoc = await getDocumentByPath(siteId, `_registry/redirects/${parentPath}`);
+      const parentDoc = await getDocumentByPath(siteId, `${REDIRECTS_PATH_PREFIX}${parentPath}`);
       if (parentDoc === null) return null;
       const parentVersion = await getLatestDocumentVersion(parentDoc.id, mainBranchId);
       const parentSnapshot = readRedirectSnapshot(parentVersion?.snapshot);

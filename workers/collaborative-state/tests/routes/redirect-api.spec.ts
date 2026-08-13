@@ -2,7 +2,7 @@
  * Redirect API Routes Tests (TDD)
  *
  * Tests for REST API endpoints for redirect CRUD operations.
- * Redirects are stored as documents at _registry/redirects/* using document services.
+ * Redirects are stored as documents at _redirects/* using document services.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -15,7 +15,7 @@ vi.mock('../../src/services', () => ({
   listDocumentsOnBranch: vi.fn(),
   getDocument: vi.fn(),
   getLatestDocumentVersion: vi.fn(),
-  documentExistsOnBranch: vi.fn(),
+  getMainBranch: vi.fn().mockResolvedValue({ id: 'main-branch', siteId: 'site-1', name: 'main', isMain: true }),
   createDocumentVersion: vi.fn(),
   deleteDocumentOnBranch: vi.fn(),
   getBranch: vi.fn().mockResolvedValue({ id: 'branch-1', siteId: 'site-1', name: 'main', isMain: true }),
@@ -44,6 +44,22 @@ vi.mock('../../src/auth/authorization', () => ({
     }
   },
 }));
+
+/** A page version as the fromPath-occupancy check sees it. */
+function makePageVersion(overrides: { isTombstone?: boolean; branchId?: string } = {}) {
+  return {
+    id: 'page-version-1',
+    documentId: 'page-doc-uuid',
+    branchId: overrides.branchId ?? 'branch-1',
+    versionNumber: 1,
+    snapshot: { title: 'Old page' },
+    source: 'edit' as const,
+    createdById: 'db-user-1',
+    createdByType: 'user' as const,
+    createdAt: '2026-01-24T10:00:00.000Z',
+    isTombstone: overrides.isTombstone ?? false,
+  };
+}
 
 const testPrincipal = makePrincipal({
   id: 'user-1',
@@ -75,7 +91,7 @@ describe('Redirect API Routes', () => {
         document: {
           id: 'redirect-uuid',
           siteId: 'site-1',
-          path: '_registry/redirects/redirect-uuid',
+          path: '_redirects/redirect-uuid',
           createdAt: '2026-01-24T10:00:00.000Z',
         },
         version: {
@@ -322,7 +338,7 @@ describe('Redirect API Routes', () => {
       vi.mocked(services.getDocumentByPath).mockResolvedValueOnce(null);
 
       vi.mocked(services.createDocumentOnBranch).mockRejectedValueOnce(
-        new services.DuplicateDocumentPathError('_registry/redirects/old-page'),
+        new services.DuplicateDocumentPathError('_redirects/old-page'),
       );
 
       const request = new Request(
@@ -361,6 +377,9 @@ describe('Redirect API Routes', () => {
         path: 'old-page',
         createdAt: '2026-01-24T10:00:00.000Z',
       });
+      vi.mocked(services.getLatestDocumentVersion).mockResolvedValueOnce(
+        makePageVersion(),
+      );
 
       const request = new Request(
         'https://api.example.com/api/sites/site-1/branches/branch-1/redirects',
@@ -387,6 +406,119 @@ describe('Redirect API Routes', () => {
       expect(body.error).toContain('page');
     });
 
+    // Deleting a page tombstones it per branch but leaves the app.documents row,
+    // so an existence check alone rejected a redirect for the page it was written for.
+    it('should create a redirect when the page at fromPath is deleted on this branch', async () => {
+      const { handleRedirectRoutes } = await import(
+        '../../src/routes/redirect-api'
+      );
+      const services = await import('../../src/services');
+
+      vi.mocked(services.getDocumentByPath).mockResolvedValueOnce({
+        id: 'page-doc-uuid',
+        siteId: 'site-1',
+        path: 'old-page',
+        createdAt: '2026-01-24T10:00:00.000Z',
+      });
+      vi.mocked(services.getLatestDocumentVersion).mockResolvedValueOnce(
+        makePageVersion({ isTombstone: true }),
+      );
+
+      vi.mocked(services.createDocumentOnBranch).mockResolvedValueOnce({
+        document: {
+          id: 'redirect-uuid',
+          siteId: 'site-1',
+          path: '_redirects/old-page',
+          createdAt: '2026-01-24T10:00:00.000Z',
+        },
+        version: {
+          id: 'version-uuid',
+          documentId: 'redirect-uuid',
+          branchId: 'branch-1',
+          versionNumber: 1,
+          snapshot: {
+            fromPath: '/old-page',
+            destination: '/new-page',
+            redirectType: 'permanent',
+            parenting: false,
+          },
+          source: 'edit',
+          createdAt: '2026-01-24T10:00:00.000Z',
+          createdById: 'db-user-1',
+          createdByType: 'user',
+        },
+      });
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-1/branches/branch-1/redirects',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fromPath: '/old-page',
+            destination: '/new-page',
+          }),
+        },
+      );
+
+      const response = await handleRedirectRoutes(request, {
+        siteId: 'site-1',
+        branchId: 'branch-1',
+        principal: testPrincipal,
+      });
+
+      expect(response.status).toBe(201);
+      expect(vi.mocked(services.createDocumentOnBranch)).toHaveBeenCalledWith(
+        expect.objectContaining({ path: '_redirects/old-page' }),
+      );
+    });
+
+    // A page untouched on a workstream has no version there but still renders,
+    // inherited from main, so a redirect from its path would shadow live content.
+    it('should return 409 when the page at fromPath is inherited from main', async () => {
+      const { handleRedirectRoutes } = await import(
+        '../../src/routes/redirect-api'
+      );
+      const services = await import('../../src/services');
+
+      vi.mocked(services.getDocumentByPath).mockResolvedValueOnce({
+        id: 'page-doc-uuid',
+        siteId: 'site-1',
+        path: 'old-page',
+        createdAt: '2026-01-24T10:00:00.000Z',
+      });
+      vi.mocked(services.getLatestDocumentVersion)
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(makePageVersion({ branchId: 'main-branch' }));
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-1/branches/workstream-1/redirects',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fromPath: '/old-page',
+            destination: '/new-page',
+          }),
+        },
+      );
+
+      const response = await handleRedirectRoutes(request, {
+        siteId: 'site-1',
+        branchId: 'workstream-1',
+        principal: testPrincipal,
+      });
+
+      expect(response.status).toBe(409);
+      // Main's latest version, not its latest published one — an unpublished
+      // page must still block a redirect that would shadow it once it ships.
+      expect(services.getLatestDocumentVersion).toHaveBeenCalledWith(
+        'page-doc-uuid',
+        'main-branch',
+      );
+      expect(services.createDocumentOnBranch).not.toHaveBeenCalled();
+    });
+
     it('should default redirectType to permanent and parenting to false', async () => {
       const { handleRedirectRoutes } = await import(
         '../../src/routes/redirect-api'
@@ -399,7 +531,7 @@ describe('Redirect API Routes', () => {
         document: {
           id: 'redirect-uuid',
           siteId: 'site-1',
-          path: '_registry/redirects/redirect-uuid',
+          path: '_redirects/redirect-uuid',
           createdAt: '2026-01-24T10:00:00.000Z',
         },
         version: {
@@ -466,13 +598,13 @@ describe('Redirect API Routes', () => {
         {
           id: 'redirect-1',
           siteId: 'site-1',
-          path: '_registry/redirects/redirect-1',
+          path: '_redirects/redirect-1',
           createdAt: '2026-01-24T10:00:00.000Z',
         },
         {
           id: 'redirect-2',
           siteId: 'site-1',
-          path: '_registry/redirects/redirect-2',
+          path: '_redirects/redirect-2',
           createdAt: '2026-01-24T11:00:00.000Z',
         },
       ]);
@@ -525,7 +657,7 @@ describe('Redirect API Routes', () => {
       expect(body.redirects).toHaveLength(2);
       expect(services.listDocumentsOnBranch).toHaveBeenCalledWith(
         'branch-1',
-        expect.objectContaining({ pathPrefix: '_registry/redirects/' }),
+        expect.objectContaining({ pathPrefix: '_redirects/' }),
       );
     });
 
@@ -568,7 +700,7 @@ describe('Redirect API Routes', () => {
       vi.mocked(services.getDocument).mockResolvedValueOnce({
         id: 'redirect-1',
         siteId: 'site-1',
-        path: '_registry/redirects/redirect-1',
+        path: '_redirects/redirect-1',
         createdAt: '2026-01-24T10:00:00.000Z',
       });
 
@@ -670,12 +802,11 @@ describe('Redirect API Routes', () => {
       );
       const services = await import('../../src/services');
 
-      vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(true);
 
       vi.mocked(services.getDocument).mockResolvedValueOnce({
         id: 'redirect-1',
         siteId: 'site-1',
-        path: '_registry/redirects/redirect-1',
+        path: '_redirects/redirect-1',
         createdAt: '2026-01-24T10:00:00.000Z',
       });
 
@@ -740,7 +871,7 @@ describe('Redirect API Routes', () => {
       );
       const services = await import('../../src/services');
 
-      vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(false);
+      vi.mocked(services.getDocument).mockResolvedValueOnce(null);
 
       const request = new Request(
         'https://api.example.com/api/sites/site-1/branches/branch-1/redirects/nonexistent',
@@ -769,12 +900,11 @@ describe('Redirect API Routes', () => {
       );
       const services = await import('../../src/services');
 
-      vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(true);
 
       vi.mocked(services.getDocument).mockResolvedValueOnce({
         id: 'redirect-1',
         siteId: 'site-1',
-        path: '_registry/redirects/redirect-1',
+        path: '_redirects/redirect-1',
         createdAt: '2026-01-24T10:00:00.000Z',
       });
 
@@ -856,12 +986,11 @@ describe('Redirect API Routes', () => {
       );
       const services = await import('../../src/services');
 
-      vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(true);
 
       vi.mocked(services.getDocument).mockResolvedValueOnce({
         id: 'redirect-1',
         siteId: 'site-1',
-        path: '_registry/redirects/redirect-1',
+        path: '_redirects/redirect-1',
         createdAt: '2026-01-24T10:00:00.000Z',
       });
 
@@ -888,7 +1017,7 @@ describe('Redirect API Routes', () => {
       );
       const services = await import('../../src/services');
 
-      vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(false);
+      vi.mocked(services.getDocument).mockResolvedValueOnce(null);
 
       const request = new Request(
         'https://api.example.com/api/sites/site-1/branches/branch-1/redirects/nonexistent',
@@ -956,7 +1085,7 @@ describe('Redirect API Routes', () => {
         document: {
           id: 'redirect-uuid',
           siteId: 'site-1',
-          path: '_registry/redirects/redirect-uuid',
+          path: '_redirects/redirect-uuid',
           createdAt: '2026-01-24T10:00:00.000Z',
         },
         version: {

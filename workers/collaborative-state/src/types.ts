@@ -97,6 +97,7 @@ export type {
 } from './types/redirects';
 
 export {
+  REDIRECTS_PATH_PREFIX,
   VALID_REDIRECT_TYPES,
   isValidRedirectType,
   isRedirectBody,
