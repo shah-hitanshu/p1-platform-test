@@ -12,6 +12,8 @@
     "dev:stack": "make docker-up db-ready && dotenv -e .env.fullstack.local -- turbo run dev:stack --filter='!@p1/agent' --filter='!p1-media-worker'",
     "dev:stack:full": "make docker-up db-ready && dotenv -e .env.fullstack.local -- turbo run dev:stack",
     "dev:starter:staging": "dotenv -e .env.staging.local -- turbo run dev --filter=@pantheon-systems/p1-starter",
+    "dev:logs": "node scripts/log-sink.mjs",
+    "logs:tail": "tail -f .logs/current.ndjson | jq -c '{t:(.ts/1000|strftime(\"%H:%M:%SZ\")),lvl:.level,app:.[\"service.name\"],msg:.msg,trace:(.trace_id//\"\")[0:8],context:.context}'",
     "build": "turbo run build",
     "lint": "turbo run lint lint:root",
     "lint:root": "eslint scripts e2e eslint.config.js playwright.config.ts vitest.workspace.ts",

@@ -25,6 +25,11 @@ build/
 .wrangler/
 worker-configuration.d.ts
 
+# Local ndjson logs (scripts/log-sink.mjs). Gitignored, but note that redaction — not
+# this entry — is what keeps customer content out of them: an agent reading these files
+# can carry content into memory files, transcripts, or PR comments.
+.logs/
+
 # Terraform
 **/.terraform/*
 *.tfstate
