@@ -21,6 +21,7 @@ import { useP1Plugin } from './useP1Plugin.js';
 import { useP1Overrides } from './useP1Overrides.js';
 import { useComponentRegistry } from './useComponentRegistry.js';
 import { buildThumbnailOverride } from './utils/buildThumbnailOverride.js';
+import { makeEagerVersionHandler } from './utils/makeEagerVersionHandler.js';
 import { restoreDocumentVersion } from './utils/restoreDocumentVersion.js';
 import { initialPanelUi } from './useResponsivePanels.js';
 import {
@@ -282,8 +283,10 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
     documentId: css.currentDocument?.id ?? null,
   });
 
-  // Refresh versions when document changes
+  // Refresh versions when document changes; also reset eager-version flag so a
+  // stale post-publish signal from the previous document never fires on the new one.
   useEffect(() => {
+    needsVersionRef.current = false;
     if (css.currentDocument?.id) void refreshVersions();
   }, [css.currentDocument?.id, refreshVersions]);
 
@@ -374,6 +377,12 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
   // Plugin & Overrides (composed hooks)
   // =========================================================================
 
+  // Set true after a successful publish; the next onChange fires the eager
+  // version create and clears this immediately.
+  const needsVersionRef = useRef(false);
+  const eagerVersionParamsRef = useRef({ siteId: css.siteId, branchId: css.branchId, documentId: css.currentDocument?.id ?? null });
+  eagerVersionParamsRef.current = { siteId: css.siteId, branchId: css.branchId, documentId: css.currentDocument?.id ?? null };
+
   // Wrap publish to refresh version list and call consumer callback after success.
   const consumerOnPublishSuccessRef = useRef(overrideOptions?.onPublishSuccess);
   consumerOnPublishSuccessRef.current = overrideOptions?.onPublishSuccess;
@@ -381,6 +390,7 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
   const handlePublish = useCallback(
     async () => {
       const checkpoint = await css.publishDocument();
+      needsVersionRef.current = true;
       void refreshVersions();
       consumerOnPublishSuccessRef.current?.(checkpoint);
     },
@@ -519,6 +529,19 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
     ? documentSyncKey(css.branchId, css.currentDocument.id)
     : null;
 
+  const eagerVersionHandler = useMemo(
+    () => makeEagerVersionHandler(
+      needsVersionRef,
+      () => eagerVersionParamsRef.current,
+      {
+        createVersion: (siteId, params) => css.client.versions.create(siteId, params),
+        refreshVersions,
+      },
+    ),
+    [css.client, refreshVersions],
+  );
+
+  const { saveData } = css;
   const onChange = useCallback(
     (data: unknown) => {
       if (isViewingHistoricalRef.current) return;
@@ -532,9 +555,10 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
         );
         return;
       }
-      css.saveData(data as PuckData);
+      eagerVersionHandler(data as Record<string, unknown>);
+      saveData(data as PuckData);
     },
-    [css.saveData, documentSyncStore]
+    [saveData, documentSyncStore, eagerVersionHandler]
   );
 
   // =========================================================================
