@@ -18,7 +18,6 @@ import {
   updateDocumentPath,
   DuplicateDocumentPathError,
 } from '../services';
-import { getLogger } from '@pantheon-systems/p1-telemetry';
 import { assertPermission, AuthorizationError } from '../auth/authorization';
 import { jsonResponse, errorResponse } from '../utils/http-helpers';
 
@@ -99,23 +98,9 @@ async function handleListRedirects(branchId: string): Promise<Response> {
     }),
   );
 
-  const visible = redirects.filter((r): r is NonNullable<typeof r> => r !== null);
-
-  // [claude] What the dashboard's Redirects panel is actually reading. `count` vs
-  // `documents.length` separates "no redirect documents on this branch" from "documents
-  // exist but their versions don't parse as redirect snapshots".
-  getLogger().info('redirects listed', {
-    branch_id: branchId,
-    path_prefix: REDIRECTS_PATH_PREFIX,
-    count: visible.length,
-    outcome: documents.length === visible.length ? 'all_readable' : 'some_unreadable',
-    reason:
-      documents.length === visible.length
-        ? undefined
-        : `${String(documents.length)} documents on branch`,
+  return jsonResponse({
+    redirects: redirects.filter((r): r is NonNullable<typeof r> => r !== null),
   });
-
-  return jsonResponse({ redirects: visible });
 }
 
 async function handleGetRedirect(
@@ -215,15 +200,6 @@ async function handleCreateRedirect(
   const originPath = normalizedFromPath.slice(1);
 
   if (await livePageOccupies(siteId, branchId, originPath)) {
-    getLogger().warn('redirect create rejected: live page occupies origin', {
-      site_id: siteId,
-      branch_id: branchId,
-      doc_path: originPath,
-      from_path: normalizedFromPath,
-      outcome: 'rejected',
-      reason: 'live_page_occupies',
-      'http.response.status_code': 409,
-    });
     return errorResponse('A page already exists at this origin path', 409);
   }
 
@@ -234,33 +210,13 @@ async function handleCreateRedirect(
     parenting,
   };
 
-  const documentPath = `${REDIRECTS_PATH_PREFIX}${originPath}`;
   const result = await createDocumentOnBranch({
     siteId,
     branchId,
-    path: documentPath,
+    path: `${REDIRECTS_PATH_PREFIX}${originPath}`,
     snapshot: { ...snapshot },
     createdById: principal.dbUserId ?? principal.id,
     createdByType: toDocumentActorType(principal.type),
-  });
-
-  // [claude] The write half of the puzzle: the exact document path a redirect was
-  // stored at, and the branch it landed on. Compare `doc_path` here against the
-  // `doc_path` the resolver probes, and `branch_id` here against its `main_branch_id`
-  // — a redirect that resolves nowhere is almost always one of those two disagreeing.
-  getLogger().info('redirect created', {
-    site_id: siteId,
-    branch_id: branchId,
-    document_id: result.document.id,
-    version_id: result.version.id,
-    doc_path: documentPath,
-    path_prefix: REDIRECTS_PATH_PREFIX,
-    from_path: snapshot.fromPath,
-    destination: snapshot.destination,
-    redirect_type: snapshot.redirectType,
-    parenting: snapshot.parenting,
-    principal_type: principal.type,
-    outcome: 'created',
   });
 
   return jsonResponse(
@@ -365,14 +321,6 @@ async function handleUpdateRedirect(
   };
 
   if (newFromPath !== undefined) {
-    // [claude] A rename moves the document, so the path the resolver probes changes.
-    getLogger().info('redirect path renamed', {
-      site_id: siteId,
-      branch_id: branchId,
-      redirect_id: redirectId,
-      doc_path: `${REDIRECTS_PATH_PREFIX}${newFromPath}`,
-      reason: 'from_path_changed',
-    });
     await updateDocumentPath(redirectId, `${REDIRECTS_PATH_PREFIX}${newFromPath}`);
   }
 
@@ -383,21 +331,6 @@ async function handleUpdateRedirect(
     source: 'edit',
     createdById: principal.dbUserId ?? principal.id,
     createdByType: toDocumentActorType(principal.type),
-  });
-
-  getLogger().info('redirect updated', {
-    site_id: siteId,
-    branch_id: branchId,
-    redirect_id: redirectId,
-    document_id: redirectId,
-    version_id: version.id,
-    doc_path: document.path,
-    from_path: updatedSnapshot.fromPath,
-    destination: updatedSnapshot.destination,
-    redirect_type: updatedSnapshot.redirectType,
-    parenting: updatedSnapshot.parenting,
-    principal_type: principal.type,
-    outcome: 'updated',
   });
 
   return jsonResponse({
@@ -429,18 +362,6 @@ async function handleDeleteRedirect(
     return errorResponse('Document is not a redirect', 400);
   }
 
-  // [claude] Deletion only tombstones per branch, so the document row survives. Worth
-  // seeing when a redirect looks deleted in the dashboard but still resolves elsewhere.
-  getLogger().info('redirect deleted', {
-    site_id: siteId,
-    branch_id: branchId,
-    redirect_id: redirectId,
-    document_id: redirectId,
-    doc_path: document.path,
-    principal_type: principal.type,
-    outcome: 'deleted',
-  });
-
   await deleteDocumentOnBranch({
     documentId: redirectId,
     branchId,
@@ -463,22 +384,6 @@ export async function handleRedirectRoutes(
     }
 
     const branchId = context.branchId;
-
-    // [claude] The heart of it: writes are branch-scoped, but the live site resolves
-    // redirects against main only. When `resolved_via` is 'workstream' the redirect will
-    // not fire on the live site until the workstream is published.
-    // Costs one extra query per redirect API call — temporary, remove with these logs.
-    const mainBranchForLog = await getMainBranch(context.siteId);
-    getLogger().info('redirect api request', {
-      site_id: context.siteId,
-      branch_id: branchId,
-      main_branch_id: mainBranchForLog?.id,
-      redirect_id: context.redirectId,
-      principal_type: context.principal.type,
-      resolved_via: mainBranchForLog?.id === branchId ? 'main' : 'workstream',
-      'http.request.method': method,
-      'http.route': '/api/sites/:siteId/branches/:branchId/redirects',
-    });
 
     if (method === 'GET') {
       await assertPermission(context.principal, context.siteId, branchId, 'canView');
