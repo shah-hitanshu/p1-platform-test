@@ -42,7 +42,7 @@ describe('PuckEditorTheme.css', () => {
     it('maps --puck-color-black to PDS foreground default', () => {
       const css = readThemeCSS();
       expect(css).toContain('--puck-color-black');
-      expect(css).toContain('var(--pds-color-fg-default)');
+      expect(css).toContain('var(--pds-color-foreground-default)');
     });
   });
 
@@ -56,7 +56,7 @@ describe('PuckEditorTheme.css', () => {
     it('maps --puck-color-grey-03 to PDS secondary foreground', () => {
       const css = readThemeCSS();
       expect(css).toMatch(
-        /--puck-color-grey-03:\s*var\(--pds-color-fg-default-secondary\)/,
+        /--puck-color-grey-03:\s*var\(--pds-color-foreground-default-secondary\)/,
       );
     });
 
@@ -69,13 +69,13 @@ describe('PuckEditorTheme.css', () => {
     it('maps --puck-color-grey-09 to PDS secondary foreground', () => {
       const css = readThemeCSS();
       expect(css).toContain('--puck-color-grey-09');
-      expect(css).toContain('var(--pds-color-fg-default-secondary)');
+      expect(css).toContain('var(--pds-color-foreground-default-secondary)');
     });
 
     it('maps --puck-color-grey-11 to PDS foreground default', () => {
       const css = readThemeCSS();
       expect(css).toContain('--puck-color-grey-11');
-      expect(css).toContain('var(--pds-color-fg-default)');
+      expect(css).toContain('var(--pds-color-foreground-default)');
     });
 
     it('uses an oklch fallback for grey-02 (no direct PDS token)', () => {
@@ -97,13 +97,13 @@ describe('PuckEditorTheme.css', () => {
       expect(css).toContain('--puck-color-azure-04');
       // PDS v2 interactive-link-default is purple — we intentionally map to
       // fg-default (near-black) to avoid purple in the UI.
-      expect(css).toContain('--puck-color-azure-04: var(--pds-color-fg-default)');
+      expect(css).toContain('--puck-color-azure-04: var(--pds-color-foreground-default)');
     });
 
     it('maps --puck-color-azure-05 to PDS foreground default (not purple interactive-link)', () => {
       const css = readThemeCSS();
       expect(css).toContain('--puck-color-azure-05');
-      expect(css).toContain('--puck-color-azure-05: var(--pds-color-fg-default)');
+      expect(css).toContain('--puck-color-azure-05: var(--pds-color-foreground-default)');
     });
   });
 
@@ -157,7 +157,7 @@ describe('PuckEditorTheme.css', () => {
       // descendant), so `color` inherits down to every chrome element that
       // declares no color of its own (e.g. @puckeditor/core's _DrawerItem-name_).
       expect(css).toMatch(
-        /(?<![^\s{};])\.puck-editor-theme\s*\{[^}]*color:\s*var\(--pds-color-fg-default[^)]*\)[^}]*background:\s*var\(--pds-color-bg-default[^)]*\)[^}]*\}/,
+        /(?<![^\s{};])\.puck-editor-theme\s*\{[^}]*color:\s*var\(--pds-color-foreground-default[^)]*\)[^}]*background:\s*var\(--pds-color-bg-default[^)]*\)[^}]*\}/,
       );
     });
 

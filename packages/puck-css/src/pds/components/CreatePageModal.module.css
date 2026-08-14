@@ -47,7 +47,7 @@
   height: 32px;
   font-size: 18px;
   font-weight: 600;
-  color: var(--pds-color-text-interactive, oklch(0.55 0.18 256));
+  color: var(--pds-color-interactive-foreground-hover, oklch(0.55 0.18 256));
   background: var(--pds-color-bg-interactive-subtle, oklch(0.95 0.03 256));
   border-radius: var(--pds-border-radius-medium, 8px);
 }
@@ -60,13 +60,13 @@
   margin: 0;
   font-size: 18px;
   font-weight: 600;
-  color: var(--pds-color-text-default, oklch(0.2 0 0));
+  color: var(--pds-color-foreground-default, oklch(0.2 0 0));
 }
 
 .subtitle {
   margin: 2px 0 0;
   font-size: 13px;
-  color: var(--pds-color-text-subtle, oklch(0.5 0 0));
+  color: var(--pds-color-foreground-default-secondary, oklch(0.5 0 0));
 }
 
 .closeButton {
@@ -78,7 +78,7 @@
   font-size: 20px;
   line-height: 1;
   cursor: pointer;
-  color: var(--pds-color-text-subtle, oklch(0.5 0 0));
+  color: var(--pds-color-foreground-default-secondary, oklch(0.5 0 0));
   background: transparent;
   border: none;
   border-radius: var(--pds-border-radius-medium, 8px);
@@ -112,7 +112,7 @@
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--pds-color-text-subtle, oklch(0.5 0 0));
+  color: var(--pds-color-foreground-default-secondary, oklch(0.5 0 0));
 }
 
 .optionGrid {
@@ -172,13 +172,13 @@
   margin-bottom: 8px;
   border-radius: var(--pds-border-radius-medium, 8px);
   /* Unselected: light blue icon on a subtle chip. */
-  color: var(--pds-color-fg-interactive-subtle, oklch(0.72 0.11 256));
+  color: var(--pds-color-interactive-foreground-inactive, oklch(0.72 0.11 256));
   background: var(--pds-color-bg-interactive-subtle, oklch(0.96 0.02 256));
 }
 
 .optionButtonSelected .optionIcon {
   /* Selected: white icon on a deep-blue chip. */
-  color: var(--pds-color-fg-on-emphasis, oklch(1 0 0));
+  color: var(--pds-color-foreground-reverse, oklch(1 0 0));
   background: var(--pds-color-bg-interactive, oklch(0.55 0.18 256));
 }
 
@@ -230,30 +230,30 @@
 }
 
 .contentTypeCardNew .contentTypeName {
-  color: var(--pds-color-text-interactive, oklch(0.55 0.18 256));
+  color: var(--pds-color-interactive-foreground-hover, oklch(0.55 0.18 256));
 }
 
 .contentTypeName {
   font-size: 14px;
   font-weight: 600;
-  color: var(--pds-color-text-default, oklch(0.2 0 0));
+  color: var(--pds-color-foreground-default, oklch(0.2 0 0));
 }
 
 .contentTypeDescription {
   font-size: 12px;
   line-height: 1.35;
-  color: var(--pds-color-text-subtle, oklch(0.5 0 0));
+  color: var(--pds-color-foreground-default-secondary, oklch(0.5 0 0));
 }
 
 .optionLabel {
   font-size: 14px;
   font-weight: 600;
-  color: var(--pds-color-text-default, oklch(0.2 0 0));
+  color: var(--pds-color-foreground-default, oklch(0.2 0 0));
 }
 
 .optionDescription {
   font-size: 12px;
-  color: var(--pds-color-text-subtle, oklch(0.5 0 0));
+  color: var(--pds-color-foreground-default-secondary, oklch(0.5 0 0));
 }
 
 /* ---- Fields ---- */
@@ -283,11 +283,11 @@
 .fieldLabel {
   font-size: 13px;
   font-weight: 600;
-  color: var(--pds-color-text-default, oklch(0.2 0 0));
+  color: var(--pds-color-foreground-default, oklch(0.2 0 0));
 }
 
 .required {
-  color: var(--pds-color-text-critical, oklch(0.55 0.2 25));
+  color: var(--pds-color-status-critical-foreground, oklch(0.55 0.2 25));
 }
 
 .backLink {
@@ -297,7 +297,7 @@
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
-  color: var(--pds-color-text-interactive, oklch(0.55 0.18 256));
+  color: var(--pds-color-interactive-foreground-hover, oklch(0.55 0.18 256));
   background: transparent;
   border: none;
 }
@@ -307,7 +307,7 @@
   width: 100%;
   padding: 8px 10px;
   font-size: 14px;
-  color: var(--pds-color-text-default, oklch(0.2 0 0));
+  color: var(--pds-color-foreground-default, oklch(0.2 0 0));
   background: var(--pds-color-bg-default, oklch(1 0 0));
   border: 1px solid var(--pds-color-border-default, oklch(0.92 0 0));
   border-radius: var(--pds-border-radius-medium, 8px);
@@ -344,7 +344,7 @@
   align-items: center;
   padding: 8px 10px;
   font-size: 13px;
-  color: var(--pds-color-text-subtle, oklch(0.5 0 0));
+  color: var(--pds-color-foreground-default-secondary, oklch(0.5 0 0));
   background: var(--pds-color-bg-subtle, oklch(0.97 0 0));
   border-right: 1px solid var(--pds-color-border-default, oklch(0.92 0 0));
 }
@@ -353,7 +353,7 @@
   flex: 1;
   padding: 8px 10px;
   font-size: 14px;
-  color: var(--pds-color-text-default, oklch(0.2 0 0));
+  color: var(--pds-color-foreground-default, oklch(0.2 0 0));
   background: transparent;
   border: none;
 }
@@ -379,13 +379,13 @@
   min-width: 86px;
   font-size: 12px;
   font-weight: 600;
-  color: var(--pds-color-text-default, oklch(0.2 0 0));
+  color: var(--pds-color-foreground-default, oklch(0.2 0 0));
 }
 
 /* Fixed parts (domain + pattern statics) read as greyed, like the slug prefix. */
 .routeSep,
 .routeStatic {
-  color: var(--pds-color-text-subtle, oklch(0.5 0 0));
+  color: var(--pds-color-foreground-default-secondary, oklch(0.5 0 0));
 }
 
 /* Only the user-typed params look like editable input fields. */
@@ -393,7 +393,7 @@
   min-width: 4ch;
   padding: 6px 8px;
   font-size: 14px;
-  color: var(--pds-color-text-default, oklch(0.2 0 0));
+  color: var(--pds-color-foreground-default, oklch(0.2 0 0));
   background: var(--pds-color-bg-default, oklch(1 0 0));
   border: 1px solid var(--pds-color-border-default, oklch(0.92 0 0));
   border-radius: var(--pds-border-radius-medium, 8px);
@@ -409,7 +409,7 @@
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  color: var(--pds-color-text-interactive, oklch(0.55 0.18 256));
+  color: var(--pds-color-interactive-foreground-hover, oklch(0.55 0.18 256));
   background: transparent;
   border: 1px dashed var(--pds-color-border-interactive, oklch(0.55 0.18 256));
   border-radius: 6px;
@@ -427,13 +427,13 @@
 }
 
 .paramColon {
-  color: var(--pds-color-text-subtle, oklch(0.5 0 0));
+  color: var(--pds-color-foreground-default-secondary, oklch(0.5 0 0));
 }
 
 .paramChipInput {
   padding: 2px 2px;
   font-size: 14px;
-  color: var(--pds-color-text-default, oklch(0.2 0 0));
+  color: var(--pds-color-foreground-default, oklch(0.2 0 0));
   background: transparent;
   border: none;
 }
@@ -451,14 +451,14 @@
   font-size: 13px;
   line-height: 1;
   cursor: pointer;
-  color: var(--pds-color-text-subtle, oklch(0.5 0 0));
+  color: var(--pds-color-foreground-default-secondary, oklch(0.5 0 0));
   background: transparent;
   border: none;
   border-radius: 4px;
 }
 
 .paramChipRemove:hover {
-  color: var(--pds-color-text-critical, oklch(0.55 0.2 25));
+  color: var(--pds-color-status-critical-foreground, oklch(0.55 0.2 25));
   background: var(--pds-color-bg-default, oklch(1 0 0));
 }
 
@@ -480,14 +480,14 @@
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
-  color: var(--pds-color-text-interactive, oklch(0.55 0.18 256));
+  color: var(--pds-color-interactive-foreground-hover, oklch(0.55 0.18 256));
   background: transparent;
   border: none;
 }
 
 .advancedHint {
   font-weight: 400;
-  color: var(--pds-color-text-subtle, oklch(0.5 0 0));
+  color: var(--pds-color-foreground-default-secondary, oklch(0.5 0 0));
 }
 
 .advancedPanel {
@@ -522,11 +522,11 @@
 
 .segmentedActive {
   background: var(--pds-color-bg-emphasis, oklch(0.2 0 0));
-  color: var(--pds-color-text-on-emphasis, oklch(1 0 0));
+  color: var(--pds-color-foreground-reverse, oklch(1 0 0));
 }
 
 .segmentedOption {
-  color: var(--pds-color-text-subtle, oklch(0.5 0 0));
+  color: var(--pds-color-foreground-default-secondary, oklch(0.5 0 0));
 }
 
 .dynamicRoute {
@@ -578,7 +578,7 @@
 
 .fieldHint {
   font-size: 12px;
-  color: var(--pds-color-text-subtle, oklch(0.5 0 0));
+  color: var(--pds-color-foreground-default-secondary, oklch(0.5 0 0));
 }
 
 /* Two-pane data-source workspace: pick configured sources (left) / add on the fly (right). */
@@ -610,7 +610,7 @@
 .collectionSummary {
   margin: 0;
   font-size: 12px;
-  color: var(--pds-color-text-subtle, oklch(0.5 0 0));
+  color: var(--pds-color-foreground-default-secondary, oklch(0.5 0 0));
 }
 
 /* Inline creation status / recap — read as the next message in the flow. */
@@ -620,7 +620,7 @@
   gap: 8px;
   margin-top: 8px;
   font-size: 14px;
-  color: var(--pds-color-text-subtle, oklch(0.5 0 0));
+  color: var(--pds-color-foreground-default-secondary, oklch(0.5 0 0));
 }
 
 .recap {
@@ -634,21 +634,21 @@
 .recapLead {
   margin: 0 0 8px;
   font-size: 15px;
-  color: var(--pds-color-text-default, oklch(0.2 0 0));
+  color: var(--pds-color-foreground-default, oklch(0.2 0 0));
 }
 
 .recapBody {
   margin: 0 0 12px;
   font-size: 14px;
   line-height: 1.5;
-  color: var(--pds-color-text-default, oklch(0.3 0 0));
+  color: var(--pds-color-foreground-default, oklch(0.3 0 0));
 }
 
 .recapRoutes {
   margin: 0;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 12px;
-  color: var(--pds-color-text-subtle, oklch(0.5 0 0));
+  color: var(--pds-color-foreground-default-secondary, oklch(0.5 0 0));
 }
 
 .dynamicRouteLabel {
@@ -657,7 +657,7 @@
   gap: 8px;
   font-size: 14px;
   font-weight: 600;
-  color: var(--pds-color-text-default, oklch(0.2 0 0));
+  color: var(--pds-color-foreground-default, oklch(0.2 0 0));
 }
 
 .devBadge {
@@ -666,7 +666,7 @@
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: var(--pds-color-text-interactive, oklch(0.55 0.18 256));
+  color: var(--pds-color-interactive-foreground-hover, oklch(0.55 0.18 256));
   background: var(--pds-color-bg-subtle, oklch(0.96 0.02 256));
   border-radius: 4px;
 }
@@ -674,14 +674,14 @@
 .dynamicRouteDescription {
   margin: 4px 0 0;
   font-size: 12px;
-  color: var(--pds-color-text-subtle, oklch(0.5 0 0));
+  color: var(--pds-color-foreground-default-secondary, oklch(0.5 0 0));
 }
 
 /* ---- Footer ---- */
 
 .errorMessage {
   font-size: 13px;
-  color: var(--pds-color-text-critical, oklch(0.55 0.2 25));
+  color: var(--pds-color-status-critical-foreground, oklch(0.55 0.2 25));
 }
 
 .footer {
@@ -714,7 +714,7 @@
 }
 
 .cancelButton {
-  color: var(--pds-color-text-default, oklch(0.2 0 0));
+  color: var(--pds-color-foreground-default, oklch(0.2 0 0));
   background: var(--pds-color-bg-default, oklch(1 0 0));
   border: 1px solid var(--pds-color-border-default, oklch(0.92 0 0));
 }
@@ -723,7 +723,7 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  color: var(--pds-color-text-on-emphasis, oklch(1 0 0));
+  color: var(--pds-color-foreground-reverse, oklch(1 0 0));
   background: var(--pds-color-bg-emphasis, oklch(0.2 0 0));
   border: 1px solid transparent;
 }
@@ -765,13 +765,13 @@
   background: var(--pds-color-bg-interactive-subtle, oklch(0.96 0.02 256));
   font-size: 12px;
   line-height: 1.4;
-  color: var(--pds-color-text-interactive, oklch(0.55 0.18 256));
+  color: var(--pds-color-interactive-foreground-hover, oklch(0.55 0.18 256));
 }
 
 .aiNoteIcon {
   flex: none;
   margin-top: 1px;
-  color: var(--pds-color-text-interactive, oklch(0.55 0.18 256));
+  color: var(--pds-color-interactive-foreground-hover, oklch(0.55 0.18 256));
 }
 
 .submitIcon {

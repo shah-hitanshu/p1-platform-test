@@ -119,7 +119,7 @@ img.logo {
   font-family: var(--pds-typography-ff-default, 'Inter', sans-serif);
   font-size: var(--pds-typography-size-s, 0.875rem);
   font-weight: var(--pds-typography-fw-medium, 500);
-  color: var(--pds-color-fg-default, oklch(0.2046 0 0));
+  color: var(--pds-color-foreground-default, oklch(0.2046 0 0));
   white-space: nowrap;
   flex-shrink: 1;
   min-width: 0;
@@ -135,7 +135,7 @@ img.logo {
 /* ── Breadcrumb separator between site label and page selector ── */
 
 .breadcrumbSeparator {
-  color: var(--pds-color-fg-subtle, oklch(0.65 0 0));
+  color: var(--pds-color-foreground-default-secondary, oklch(0.65 0 0));
   font-size: var(--pds-typography-size-s, 0.875rem);
   flex-shrink: 0;
   user-select: none;
@@ -185,7 +185,7 @@ img.logo {
   font-family: var(--pds-typography-ff-default, 'Inter', sans-serif);
   font-size: var(--pds-typography-size-s, 0.875rem);
   font-weight: var(--pds-typography-fw-medium, 500);
-  color: var(--pds-color-fg-default, oklch(0.2046 0 0));
+  color: var(--pds-color-foreground-default, oklch(0.2046 0 0));
   cursor: pointer;
   line-height: 1;
   text-align: left;
@@ -213,7 +213,7 @@ img.logo {
   background: transparent;
   border: none;
   border-radius: var(--pds-border-radius-button, 3.5rem);
-  color: var(--pds-color-fg-default, oklch(0.2046 0 0));
+  color: var(--pds-color-foreground-default, oklch(0.2046 0 0));
   cursor: pointer;
   text-decoration: none;
   transition: var(--pds-animation-transition-button);
@@ -321,7 +321,7 @@ img.logo {
   font-family: var(--pds-typography-ff-default, 'Inter', sans-serif);
   font-size: var(--pds-typography-size-s, 0.875rem);
   font-weight: var(--pds-typography-fw-medium, 500);
-  color: var(--pds-color-fg-default, oklch(0.2046 0 0));
+  color: var(--pds-color-foreground-default, oklch(0.2046 0 0));
   border-bottom: 1px solid var(--pds-color-border-default, oklch(0.9401 0 0));
   margin-bottom: var(--pds-spacing-4xs, 0.25rem);
 }
@@ -337,7 +337,7 @@ img.logo {
   border-radius: var(--pds-border-radius-default, 0.188rem);
   font-family: var(--pds-typography-ff-default, 'Inter', sans-serif);
   font-size: var(--pds-typography-size-s, 0.875rem);
-  color: var(--pds-color-fg-default, oklch(0.2046 0 0));
+  color: var(--pds-color-foreground-default, oklch(0.2046 0 0));
   cursor: pointer;
   text-align: left;
 }

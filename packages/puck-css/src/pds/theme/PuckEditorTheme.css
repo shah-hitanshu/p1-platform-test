@@ -41,20 +41,20 @@
    */
 
   /* Dark text (grey-01=#181818 is Puck's DARKEST) */
-  --puck-color-grey-01: var(--pds-color-fg-default);
+  --puck-color-grey-01: var(--pds-color-foreground-default);
   /* grey-02/04: required by tests — map to near-dark fallbacks */
   --puck-color-grey-02: oklch(0.96 0 0);
   /* grey-03: outline sidebar item text (unselected). Secondary foreground gives
      legible mid-grey in light mode while keeping visual hierarchy vs selected. */
-  --puck-color-grey-03: var(--pds-color-fg-default-secondary);
+  --puck-color-grey-03: var(--pds-color-foreground-default-secondary);
   --puck-color-grey-04: oklch(0.88 0 0);
   /* grey-05 (section header text, array labels, disabled text)
      Puck uses #767676 by default — map to PDSv2 secondary foreground.
      NOTE: var(--pds-color-border-input) still appears in PdsFields.module.css
      so the test assertion for grey-05 → border-input continues to pass. */
-  --puck-color-grey-05: var(--pds-color-fg-default-secondary);
-  --puck-color-grey-06: var(--pds-color-fg-default-secondary);
-  --puck-color-grey-07: var(--pds-color-fg-default-secondary);
+  --puck-color-grey-05: var(--pds-color-foreground-default-secondary);
+  --puck-color-grey-06: var(--pds-color-foreground-default-secondary);
+  --puck-color-grey-07: var(--pds-color-foreground-default-secondary);
   /* grey-08/09=#dcdcdc (drawer item borders) */
   --puck-color-grey-08: var(--pds-color-border-default);
   --puck-color-grey-09: var(--pds-color-border-default);
@@ -64,14 +64,14 @@
   --puck-color-grey-11: var(--pds-color-bg-default-secondary);
   --puck-color-grey-12: var(--pds-color-bg-default);
   --puck-color-white: var(--pds-color-bg-default);
-  --puck-color-black: var(--pds-color-fg-default);
+  --puck-color-black: var(--pds-color-foreground-default);
 
   /* ── Interactive — Puck uses azure for links, selected states, etc.
      PDS v2 interactive-link tokens are purple, which is wrong for this UI.
      Map azure to neutral near-black (fg-default) so Puck's selected/active
      states use dark text instead of purple. ── */
-  --puck-color-azure-04: var(--pds-color-fg-default);
-  --puck-color-azure-05: var(--pds-color-fg-default);
+  --puck-color-azure-04: var(--pds-color-foreground-default);
+  --puck-color-azure-05: var(--pds-color-foreground-default);
   /* azure-10/11/12: hover/active backgrounds for drawer items and icon buttons */
   --puck-color-azure-10: oklch(0.96 0 0);
   --puck-color-azure-11: var(--pds-color-bg-default-secondary);
@@ -138,8 +138,8 @@
    --puck-color-grey-04 is used by _PuckFields-field_ for label/field text;
    it defaults to near-white (oklch 0.88) which is invisible on a light bg. */
 .puck-editor-theme [class*="_Sidebar"] {
-  color: var(--pds-color-fg-default);
-  --puck-color-grey-04: var(--pds-color-fg-default);
+  color: var(--pds-color-foreground-default);
+  --puck-color-grey-04: var(--pds-color-foreground-default);
 }
 
 .puck-editor-theme [class*="_Sidebar"] {
@@ -161,21 +161,21 @@
 }
 
 /* Plugin rail icon colors — match PDSv2 SegmentedButton token pattern:
-   active   → --pds-color-fg-default (near-black text)
-   inactive → --pds-color-fg-default (same near-black — distinction comes from
+   active   → --pds-color-foreground-default (near-black text)
+   inactive → --pds-color-foreground-default (same near-black — distinction comes from
               Puck's own active indicator, not from dimming the inactive icon) */
 .puck-editor-theme [class*="_NavItem--active_"] [class*="_NavItem-linkIcon_"],
 .puck-editor-theme [class*="_NavItem--active_"] [class*="_NavItem-linkIcon_"] svg,
 .puck-editor-theme [class*="_NavItem_"]:not([class*="_NavItem--active_"]) [class*="_NavItem-linkIcon_"],
 .puck-editor-theme [class*="_NavItem_"]:not([class*="_NavItem--active_"]) [class*="_NavItem-linkIcon_"] svg {
-  color: var(--pds-color-fg-default, #23232d);
+  color: var(--pds-color-foreground-default, #23232d);
   opacity: 1;
 }
 
 /* Use fg-default (near-black) for active nav icons — Puck's own active
    indicator handles the visual highlight */
 .puck-editor-theme [class*="_NavItem--active_"] {
-  --puck-color-azure-04: var(--pds-color-fg-default, #23232d);
+  --puck-color-azure-04: var(--pds-color-foreground-default, #23232d);
 }
 
 /* Replace Blocks nav icon with PDSv2 "grid" */
@@ -333,7 +333,7 @@
  * direction.
  */
 .puck-editor-theme {
-  color: var(--pds-color-fg-default, #23232d);
+  color: var(--pds-color-foreground-default, #23232d);
   background: var(--pds-color-bg-default, #fff);
 }
 

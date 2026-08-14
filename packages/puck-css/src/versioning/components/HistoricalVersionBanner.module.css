@@ -15,7 +15,7 @@
   background: var(--pds-color-bg-default-secondary, #f9fafb);
   border-top: 2px solid var(--pds-color-interactive-link-default, #3a5dfb);
   border-bottom: var(--pds-border-width-default, 1px) solid var(--pds-color-border-secondary, #ececf0);
-  color: var(--pds-color-fg-default, #171717);
+  color: var(--pds-color-foreground-default, #171717);
   font-family: var(--pds-typography-ff-default, 'Inter', system-ui, sans-serif);
 }
 
@@ -39,7 +39,7 @@
 
 .text {
   font: 500 var(--pds-typography-size-s) var(--pds-typography-ff-default, 'Inter', system-ui, sans-serif);
-  color: var(--pds-color-fg-default, #171717);
+  color: var(--pds-color-foreground-default, #171717);
 }
 
 .text strong {
@@ -48,7 +48,7 @@
 
 .date {
   font: 500 var(--pds-typography-size-s) var(--pds-typography-ff-default, 'Inter', system-ui, sans-serif);
-  color: var(--pds-color-fg-default, #171717);
+  color: var(--pds-color-foreground-default, #171717);
   margin-left: var(--pds-spacing-3xs);
 }
 
@@ -71,7 +71,7 @@
   border-radius: 9px;
   padding: 9px 20px;
   font: 600 var(--pds-typography-size-s) var(--pds-typography-ff-compact, 'Inter Tight', 'Inter', system-ui, sans-serif);
-  color: var(--pds-color-fg-default, #171717);
+  color: var(--pds-color-foreground-default, #171717);
   cursor: pointer;
   white-space: nowrap;
   transition: var(--pds-animation-transition-button);
@@ -94,7 +94,7 @@
   gap: var(--pds-spacing-button-gap-inline-m);
   border: none;
   border-radius: var(--pds-border-radius-button);
-  background: var(--pds-color-fg-default, #171717);
+  background: var(--pds-color-foreground-default, #171717);
   color: white;
   font: 700 var(--pds-typography-size-s) var(--pds-typography-ff-compact, 'Inter Tight', 'Inter', system-ui, sans-serif);
   padding: 11px 18px;
@@ -160,7 +160,7 @@
   border: none;
   background: transparent;
   cursor: pointer;
-  color: var(--pds-color-fg-default, #1a1a1a);
+  color: var(--pds-color-foreground-default, #1a1a1a);
   transition: background 100ms ease;
 }
 

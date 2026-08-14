@@ -38,7 +38,7 @@ const fieldStyle: React.CSSProperties = {
 const labelStyle: React.CSSProperties = {
   fontSize: 'var(--pds-font-size-text-small, 13px)',
   fontWeight: 600,
-  color: 'var(--pds-color-text-default, #1a1a1a)',
+  color: 'var(--pds-color-foreground-default, #1a1a1a)',
 };
 const inputStyle: React.CSSProperties = {
   width: '100%',
@@ -46,7 +46,7 @@ const inputStyle: React.CSSProperties = {
   padding: 'var(--pds-spacing-2xs, 6px) var(--pds-spacing-xs, 8px)',
   fontSize: 'var(--pds-font-size-text-small, 13px)',
   fontFamily: 'inherit',
-  color: 'var(--pds-color-text-default, #1a1a1a)',
+  color: 'var(--pds-color-foreground-default, #1a1a1a)',
   border: '1px solid var(--pds-color-border-default, #ccc)',
   borderRadius: 'var(--pds-border-radius-md, 4px)',
 };
@@ -132,7 +132,7 @@ export function TemplateDetailsPanel({
         style={{
           margin: 0,
           fontSize: 'var(--pds-font-size-text-small, 13px)',
-          color: 'var(--pds-color-text-subtle, #6b6b6b)',
+          color: 'var(--pds-color-foreground-default-secondary, #6b6b6b)',
         }}
       >
         Template details — applied to pages created from this template.
@@ -151,7 +151,7 @@ export function TemplateDetailsPanel({
           value={template.name ?? ''}
           style={{
             ...inputStyle,
-            color: 'var(--pds-color-text-subtle, #6b6b6b)',
+            color: 'var(--pds-color-foreground-default-secondary, #6b6b6b)',
             background: 'var(--pds-color-background-subtle, #f4f4f4)',
             cursor: 'not-allowed',
           }}
@@ -159,7 +159,7 @@ export function TemplateDetailsPanel({
         <span
           style={{
             fontSize: 'var(--pds-font-size-text-xsmall, 12px)',
-            color: 'var(--pds-color-text-subtle, #6b6b6b)',
+            color: 'var(--pds-color-foreground-default-secondary, #6b6b6b)',
           }}
         >
           Identifier — can’t be changed.
@@ -214,7 +214,7 @@ export function TemplateDetailsPanel({
           data-testid="template-details-error"
           role="alert"
           style={{
-            color: 'var(--pds-color-text-danger, #c00)',
+            color: 'var(--pds-color-status-critical-foreground, #c00)',
             fontSize: 'var(--pds-font-size-text-small, 13px)',
           }}
         >
@@ -228,7 +228,7 @@ export function TemplateDetailsPanel({
         style={{
           minHeight: '1.25em',
           fontSize: 'var(--pds-font-size-text-xsmall, 12px)',
-          color: 'var(--pds-color-text-subtle, #6b6b6b)',
+          color: 'var(--pds-color-foreground-default-secondary, #6b6b6b)',
         }}
       >
         {!label.trim()

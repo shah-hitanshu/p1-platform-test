@@ -32,11 +32,11 @@ export interface WizardQuestionProps {
 const headingStyle: React.CSSProperties = {
   fontSize: 'var(--pds-font-size-text-default, 15px)',
   fontWeight: 600,
-  color: 'var(--pds-color-text-default, #1a1a1a)',
+  color: 'var(--pds-color-foreground-default, #1a1a1a)',
 };
 const hintStyle: React.CSSProperties = {
   fontSize: 'var(--pds-font-size-text-small, 13px)',
-  color: 'var(--pds-color-text-subtle, #6b6b6b)',
+  color: 'var(--pds-color-foreground-default-secondary, #6b6b6b)',
   marginTop: 2,
 };
 const pillRowStyle: React.CSSProperties = {
@@ -59,7 +59,7 @@ function pillStyle(selected: boolean): React.CSSProperties {
         : 'var(--pds-color-border-default, #d4d4d4)'
     }`,
     background: selected ? 'var(--pds-color-bg-subtle, #f1f1f1)' : '#fff',
-    color: 'var(--pds-color-text-default, #1a1a1a)',
+    color: 'var(--pds-color-foreground-default, #1a1a1a)',
     fontSize: 'var(--pds-font-size-text-small, 13px)',
     fontWeight: selected ? 600 : 400,
     fontFamily: 'inherit',

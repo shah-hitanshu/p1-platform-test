@@ -9,5 +9,5 @@
   margin: -8px 0 12px;
   font-size: 11px;
   line-height: 1.4;
-  color: var(--pds-color-text-secondary, var(--puck-css-text-secondary));
+  color: var(--pds-color-foreground-default-secondary, var(--puck-css-text-secondary));
 }

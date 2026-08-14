@@ -130,7 +130,7 @@ export function VersionBannerOverride({
               alignItems: 'center',
               justifyContent: 'center',
               gap: '1rem',
-              color: 'var(--pds-color-text-subtle)',
+              color: 'var(--pds-color-foreground-default-secondary)',
               backgroundColor: 'var(--pds-color-bg-default, white)',
             }}
           >

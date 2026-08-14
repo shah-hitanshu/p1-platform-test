@@ -246,7 +246,7 @@ function RemoteDatasourceExplorerPanel({
                       style={{
                         ...mono,
                         fontSize: 11.5,
-                        color: "var(--pds-color-fg-default-secondary, #4a4a4a)",
+                        color: "var(--pds-color-foreground-default-secondary, #4a4a4a)",
                         padding: "4px 0",
                         borderTop: i > 0 ? "1px solid var(--puck-color-grey-10, #f0f0f0)" : "none",
                         whiteSpace: "nowrap",
