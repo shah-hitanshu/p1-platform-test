@@ -12,7 +12,7 @@
   align-items: center;
   gap: var(--pds-spacing-s);
   padding: var(--pds-spacing-xs) var(--pds-spacing-m);
-  background: var(--pds-color-bg-default-secondary, #f9fafb);
+  background: var(--pds-color-surface-default-secondary, #f9fafb);
   border-top: 2px solid var(--pds-color-interactive-link-default, #3a5dfb);
   border-bottom: var(--pds-border-width-default, 1px) solid var(--pds-color-border-secondary, #ececf0);
   color: var(--pds-color-foreground-default, #171717);
@@ -67,7 +67,7 @@
   align-items: center;
   justify-content: center;
   border: var(--pds-border-width-default, 1px) solid var(--pds-color-border-default, #d4d4d4);
-  background: var(--pds-color-bg-surface, white);
+  background: var(--pds-color-surface-default, white);
   border-radius: 9px;
   padding: 9px 20px;
   font: 600 var(--pds-typography-size-s) var(--pds-typography-ff-compact, 'Inter Tight', 'Inter', system-ui, sans-serif);

@@ -8,7 +8,7 @@
 
 .subheader {
   height: var(--p1-subheader-h);
-  background: var(--pds-color-bg-default, oklch(1 0 0));
+  background: var(--pds-color-surface-default, oklch(1 0 0));
   border-top: 1px solid oklch(0.96 0 0); /* borderSubtle */
   border-bottom: 1px solid oklch(0.96 0 0); /* borderSubtle */
   display: flex;

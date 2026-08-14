@@ -42,7 +42,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--pds-color-bg-default, oklch(1 0 0));
+  color: var(--pds-color-surface-default, oklch(1 0 0));
   pointer-events: none;
 }
 
@@ -119,7 +119,7 @@
   width: 1.563rem;
   height: 1.563rem;
   padding: 0;
-  background: var(--pds-color-bg-default, oklch(1 0 0));
+  background: var(--pds-color-surface-default, oklch(1 0 0));
   color: var(--pds-color-status-critical-foreground, oklch(0.5103 0.1942 29.6));
   border: 1px solid var(--pds-color-border-default, oklch(0.9401 0 0));
   border-radius: 50%;

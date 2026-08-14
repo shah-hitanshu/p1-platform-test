@@ -20,7 +20,7 @@
 [class*='_BlocksPlugin_'],
 [class*='_Sidebar--left_'],
 [class*='_Sidebar--right_'] {
-  background: var(--pds-color-bg-default, oklch(1 0 0)) !important;
+  background: var(--pds-color-surface-default, oklch(1 0 0)) !important;
 }
 
 /* PanelShell must fill the Puck container flush. Zero out Puck's built-in 
@@ -87,7 +87,7 @@
   font-weight: 500;
   line-height: 1.4;
   color: var(--pds-color-foreground-default-secondary, var(--puck-css-text-secondary));
-  background: var(--pds-color-bg-default-secondary, var(--puck-css-bg-secondary));
+  background: var(--pds-color-surface-default-secondary, var(--puck-css-bg-secondary));
   border-bottom: 1px solid var(--pds-color-border-default, var(--puck-css-border));
   flex-shrink: 0;
 }
@@ -219,7 +219,7 @@
   width: 100%;
   /* Follows the header/subheader knobs (P1EditorHeader/P1EditorSubheader modules) */
   min-height: calc(100vh - (var(--p1-header-h, 60px) + var(--p1-subheader-h, 48px)));
-  background: var(--pds-color-bg-default, #fff);
+  background: var(--pds-color-surface-default, #fff);
   border-left: 1px solid var(--pds-color-border-default, oklch(0.9401 0 0));
   display: flex;
   justify-content: center;
@@ -1236,7 +1236,7 @@
 }
 
 .css-plugin-version-row--selected {
-  background: var(--pds-color-bg-default-secondary, #f9fafb);
+  background: var(--pds-color-surface-default-secondary, #f9fafb);
   border-left: 3px solid var(--pds-color-interactive-link-default, #3A5DFB);
 }
 
@@ -1307,7 +1307,7 @@
 
 .css-plugin-version-kind-tag--reverted {
   color: var(--pds-color-foreground-default-secondary, #6b6b6b);
-  background: var(--pds-color-bg-default-secondary, #f0f0f0);
+  background: var(--pds-color-surface-default-secondary, #f0f0f0);
 }
 
 /* Day group headers */
@@ -1324,7 +1324,7 @@
   padding: 8px var(--pds-spacing-s, 12px) 4px;
   position: sticky;
   top: 0;
-  background: var(--pds-color-bg-default, #fff);
+  background: var(--pds-color-surface-default, #fff);
   z-index: 1;
 }
 
@@ -2830,7 +2830,7 @@ svg.lucide-layers {
   position: fixed;
   inset: 0;
   z-index: 10001;
-  background: var(--pds-color-bg-default, #fff);
+  background: var(--pds-color-surface-default, #fff);
   display: flex;
   flex-direction: column;
 }
@@ -2906,7 +2906,7 @@ svg.lucide-layers {
 }
 
 .template-manager-overlay__template-item:hover {
-  background: var(--pds-color-bg-default-secondary, #f9fafb);
+  background: var(--pds-color-surface-default-secondary, #f9fafb);
 }
 
 .template-manager-overlay__template-info {
@@ -2991,7 +2991,7 @@ svg.lucide-layers {
 }
 
 .template-manager-overlay__input:disabled {
-  background: var(--pds-color-bg-default-secondary, #f9fafb);
+  background: var(--pds-color-surface-default-secondary, #f9fafb);
   color: var(--pds-color-foreground-default-secondary, #6b7280);
 }
 
@@ -3053,7 +3053,7 @@ svg.lucide-layers {
 }
 
 .template-pin-panel__item:hover {
-  background: var(--pds-color-bg-default-secondary, #f9fafb);
+  background: var(--pds-color-surface-default-secondary, #f9fafb);
 }
 
 .template-pin-panel__type {
@@ -3085,7 +3085,7 @@ svg.lucide-layers {
   flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem;
-  background: var(--pds-color-bg-default-secondary);
+  background: var(--pds-color-surface-default-secondary);
   padding: 0.5rem 0.75rem;
   border-bottom: 1px solid var(--pds-color-border-default, #e5e7eb);
 }
@@ -3217,7 +3217,7 @@ svg.lucide-layers {
   border: 1px solid var(--pds-color-border-default, #e5e7eb);
   border-radius: 8px;
   overflow: hidden;
-  background: var(--pds-color-bg-default, #fff);
+  background: var(--pds-color-surface-default, #fff);
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
   cursor: grab;
 }

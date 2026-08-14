@@ -58,7 +58,7 @@ function pillStyle(selected: boolean): React.CSSProperties {
         ? 'var(--pds-color-border-strong, #1a1a1a)'
         : 'var(--pds-color-border-default, #d4d4d4)'
     }`,
-    background: selected ? 'var(--pds-color-bg-subtle, #f1f1f1)' : '#fff',
+    background: selected ? 'var(--pds-color-panel-sunken-background, #f1f1f1)' : '#fff',
     color: 'var(--pds-color-foreground-default, #1a1a1a)',
     fontSize: 'var(--pds-font-size-text-small, 13px)',
     fontWeight: selected ? 600 : 400,

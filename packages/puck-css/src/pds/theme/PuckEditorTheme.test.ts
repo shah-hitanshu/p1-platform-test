@@ -36,7 +36,7 @@ describe('PuckEditorTheme.css', () => {
     it('maps --puck-color-white to PDS background default', () => {
       const css = readThemeCSS();
       expect(css).toContain('--puck-color-white');
-      expect(css).toContain('var(--pds-color-bg-default)');
+      expect(css).toContain('var(--pds-color-surface-default)');
     });
 
     it('maps --puck-color-black to PDS foreground default', () => {
@@ -50,7 +50,7 @@ describe('PuckEditorTheme.css', () => {
     it('maps --puck-color-grey-01 to PDS secondary background', () => {
       const css = readThemeCSS();
       expect(css).toContain('--puck-color-grey-01');
-      expect(css).toContain('var(--pds-color-bg-default-secondary)');
+      expect(css).toContain('var(--pds-color-surface-default-secondary)');
     });
 
     it('maps --puck-color-grey-03 to PDS secondary foreground', () => {
@@ -157,7 +157,7 @@ describe('PuckEditorTheme.css', () => {
       // descendant), so `color` inherits down to every chrome element that
       // declares no color of its own (e.g. @puckeditor/core's _DrawerItem-name_).
       expect(css).toMatch(
-        /(?<![^\s{};])\.puck-editor-theme\s*\{[^}]*color:\s*var\(--pds-color-foreground-default[^)]*\)[^}]*background:\s*var\(--pds-color-bg-default[^)]*\)[^}]*\}/,
+        /(?<![^\s{};])\.puck-editor-theme\s*\{[^}]*color:\s*var\(--pds-color-foreground-default[^)]*\)[^}]*background:\s*var\(--pds-color-surface-default[^)]*\)[^}]*\}/,
       );
     });
 

@@ -18,7 +18,7 @@
 
 .header {
   height: var(--p1-header-h);
-  background: var(--pds-color-bg-default, oklch(1 0 0));
+  background: var(--pds-color-surface-default, oklch(1 0 0));
   border-bottom: 1px solid oklch(0.96 0 0); /* c.borderSubtle — no direct token */
   display: flex;
   align-items: center;
@@ -303,7 +303,7 @@ img.logo {
 
 .dropdownMenu {
   min-width: 180px;
-  background: var(--pds-color-bg-default, oklch(1 0 0));
+  background: var(--pds-color-surface-default, oklch(1 0 0));
   border: 1px solid var(--pds-color-border-default, oklch(0.9401 0 0));
   border-radius: var(--pds-border-radius-container, 0.375rem);
   box-shadow: var(
@@ -343,7 +343,7 @@ img.logo {
 }
 
 .dropdownMenuItem:hover {
-  background: var(--pds-color-bg-default-secondary, oklch(0.9702 0 0));
+  background: var(--pds-color-surface-default-secondary, oklch(0.9702 0 0));
 }
 
 /* ── Responsive label text ──────────────────────────────────────────── */

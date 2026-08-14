@@ -59,11 +59,11 @@
   --puck-color-grey-08: var(--pds-color-border-default);
   --puck-color-grey-09: var(--pds-color-border-default);
   /* grey-10=#efefef (hover backgrounds) */
-  --puck-color-grey-10: var(--pds-color-bg-default-secondary);
+  --puck-color-grey-10: var(--pds-color-surface-default-secondary);
   /* Light backgrounds — MUST stay light (grey-11/12 are Puck's LIGHTEST) */
-  --puck-color-grey-11: var(--pds-color-bg-default-secondary);
-  --puck-color-grey-12: var(--pds-color-bg-default);
-  --puck-color-white: var(--pds-color-bg-default);
+  --puck-color-grey-11: var(--pds-color-surface-default-secondary);
+  --puck-color-grey-12: var(--pds-color-surface-default);
+  --puck-color-white: var(--pds-color-surface-default);
   --puck-color-black: var(--pds-color-foreground-default);
 
   /* ── Interactive — Puck uses azure for links, selected states, etc.
@@ -74,7 +74,7 @@
   --puck-color-azure-05: var(--pds-color-foreground-default);
   /* azure-10/11/12: hover/active backgrounds for drawer items and icon buttons */
   --puck-color-azure-10: oklch(0.96 0 0);
-  --puck-color-azure-11: var(--pds-color-bg-default-secondary);
+  --puck-color-azure-11: var(--pds-color-surface-default-secondary);
   /* azure-12: drawer item hover bg — must be VISIBLY different from white */
   --puck-color-azure-12: oklch(0.96 0 0);
 
@@ -121,7 +121,7 @@
 /* Sidebar + plugin rail backgrounds — scoped to the editor wrapper added by CSSApp.tsx */
 .puck-editor-theme [class*="_PuckLayout-nav_"],
 .puck-editor-theme [class*="_Sidebar"] {
-  background: var(--pds-color-bg-default-secondary, oklch(0.9702 0 0));
+  background: var(--pds-color-surface-default-secondary, oklch(0.9702 0 0));
 }
 
 /* Allow PDS dropdown menus (SplitButton, etc.) in the subheader to overflow the
@@ -334,7 +334,7 @@
  */
 .puck-editor-theme {
   color: var(--pds-color-foreground-default, #23232d);
-  background: var(--pds-color-bg-default, #fff);
+  background: var(--pds-color-surface-default, #fff);
 }
 
 /* ── AI chat panel: fill the inspector rail ──────────────────────────────────

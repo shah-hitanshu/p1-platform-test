@@ -131,7 +131,7 @@ export function VersionBannerOverride({
               justifyContent: 'center',
               gap: '1rem',
               color: 'var(--pds-color-foreground-default-secondary)',
-              backgroundColor: 'var(--pds-color-bg-default, white)',
+              backgroundColor: 'var(--pds-color-surface-default, white)',
             }}
           >
             <Icon iconName="userAstronaut" size="3xl" aria-hidden="true" />

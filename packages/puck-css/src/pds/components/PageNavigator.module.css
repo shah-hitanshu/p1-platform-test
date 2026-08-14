@@ -17,7 +17,7 @@
 .root {
   display: flex;
   flex-direction: column;
-  background: var(--pds-color-bg-default, oklch(1.0000 0 0));
+  background: var(--pds-color-surface-default, oklch(1.0000 0 0));
   border: 1px solid oklch(0.96 0 0); /* c.borderSubtle */
   border-radius: var(--pds-border-radius-container, 0.375rem);
   box-shadow:
@@ -40,7 +40,7 @@
   padding: var(--pds-spacing-xs, 0.625rem);
   border-bottom: 1px solid oklch(0.96 0 0); /* c.borderSubtle */
   gap: 0.512rem;
-  background: var(--pds-color-bg-default-secondary, oklch(0.9702 0 0));
+  background: var(--pds-color-surface-default-secondary, oklch(0.9702 0 0));
 }
 
 /* ── Search input ──────────────────────────────────────────────────────── */
@@ -52,7 +52,7 @@
   border-radius: var(--pds-border-radius-default, 0.188rem);
   outline: none;
   padding: 0.5rem 0.64rem;
-  background: var(--pds-color-bg-default, oklch(1.0000 0 0));
+  background: var(--pds-color-surface-default, oklch(1.0000 0 0));
   font-family: var(--pds-typography-ff-default, 'Inter', sans-serif);
   font-size: var(--pds-typography-size-s, 0.875rem);
   color: var(--pds-color-foreground-default, oklch(0.2046 0 0));
@@ -108,7 +108,7 @@
   gap: 0.25rem;
   padding: 0 var(--pds-spacing-xs, 0.625rem);
   border-bottom: 1px solid oklch(0.96 0 0);
-  background: var(--pds-color-bg-default-secondary, oklch(0.9702 0 0));
+  background: var(--pds-color-surface-default-secondary, oklch(0.9702 0 0));
 }
 .tab {
   appearance: none;
@@ -158,7 +158,7 @@
 }
 
 .item:hover {
-  background: var(--pds-color-bg-default-secondary, oklch(0.9702 0 0));
+  background: var(--pds-color-surface-default-secondary, oklch(0.9702 0 0));
 }
 
 /* ── Inherited (live-only) item — exists on live but not this branch ─── */
@@ -182,7 +182,7 @@
 .footer {
   padding: 0.512rem 0.64rem;
   border-top: 1px solid oklch(0.96 0 0); /* c.borderSubtle */
-  background: var(--pds-color-bg-default-secondary, oklch(0.9702 0 0));
+  background: var(--pds-color-surface-default-secondary, oklch(0.9702 0 0));
   display: flex;
   align-items: center;
 }
@@ -202,7 +202,7 @@
   border-radius: var(--pds-border-radius-default, 0.188rem);
   outline: none;
   padding: 0.375rem 0.5rem;
-  background: var(--pds-color-bg-default, oklch(1.0000 0 0));
+  background: var(--pds-color-surface-default, oklch(1.0000 0 0));
   font-family: var(--pds-typography-ff-default, 'Inter', sans-serif);
   font-size: var(--pds-typography-size-s, 0.875rem);
   color: var(--pds-color-foreground-default, oklch(0.2046 0 0));
@@ -249,7 +249,7 @@
 }
 
 .createCancel:hover {
-  background: var(--pds-color-bg-default-secondary, oklch(0.9702 0 0));
+  background: var(--pds-color-surface-default-secondary, oklch(0.9702 0 0));
 }
 
 .createError {
@@ -279,7 +279,7 @@
 }
 
 .newButton:hover {
-  background: var(--pds-color-bg-default-secondary, oklch(0.9702 0 0));
+  background: var(--pds-color-surface-default-secondary, oklch(0.9702 0 0));
 }
 
 /* ── Template selector ─────────────────────────────────────────────────── */
@@ -317,7 +317,7 @@
   align-items: flex-start;
   gap: 0.125rem;
   padding: 0.5rem 0.64rem;
-  background: var(--pds-color-bg-default, oklch(1.0000 0 0));
+  background: var(--pds-color-surface-default, oklch(1.0000 0 0));
   border: 1px solid var(--pds-color-border-input, oklch(0.8853 0 0));
   border-radius: var(--pds-border-radius-default, 0.188rem);
   cursor: pointer;
@@ -327,7 +327,7 @@
 }
 
 .templateOption:hover {
-  background: var(--pds-color-bg-default-secondary, oklch(0.9702 0 0));
+  background: var(--pds-color-surface-default-secondary, oklch(0.9702 0 0));
   border-color: var(--pds-color-interactive-focus, oklch(0.5558 0.2372 267.79));
 }
 
