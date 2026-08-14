@@ -48,7 +48,7 @@ const inputStyle: React.CSSProperties = {
   fontFamily: 'inherit',
   color: 'var(--pds-color-foreground-default, #1a1a1a)',
   border: '1px solid var(--pds-color-border-default, #ccc)',
-  borderRadius: 'var(--pds-border-radius-md, 4px)',
+  borderRadius: 'var(--pds-border-radius-input, 4px)',
 };
 
 export function TemplateDetailsPanel({

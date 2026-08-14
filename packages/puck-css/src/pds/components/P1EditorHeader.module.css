@@ -249,7 +249,7 @@ img.logo {
   padding: 0.375rem;
   background: transparent;
   border: none;
-  border-radius: var(--pds-border-radius-md, 0.375rem);
+  border-radius: var(--pds-border-radius-container, 0.375rem);
   /* Not `brand-default`, which is the yellow rather than the blue the design uses. */
   color: var(--pds-color-interactive-background-current);
   cursor: pointer;

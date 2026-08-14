@@ -26,7 +26,7 @@
   max-height: 92vh;
   overflow: hidden;
   background: var(--pds-color-surface-default, oklch(1 0 0));
-  border-radius: var(--pds-border-radius-large, 12px);
+  border-radius: var(--pds-border-radius-panel, 12px);
   box-shadow: var(--pds-box-shadow-l, 0 25px 50px -12px rgba(0, 0, 0, 0.25));
 }
 
@@ -49,7 +49,7 @@
   font-weight: 600;
   color: var(--pds-color-interactive-foreground-hover, oklch(0.55 0.18 256));
   background: var(--pds-color-interactive-background-hover, oklch(0.95 0.03 256));
-  border-radius: var(--pds-border-radius-medium, 8px);
+  border-radius: var(--pds-border-radius-card, 8px);
 }
 
 .headerText {
@@ -81,7 +81,7 @@
   color: var(--pds-color-foreground-default-secondary, oklch(0.5 0 0));
   background: transparent;
   border: none;
-  border-radius: var(--pds-border-radius-medium, 8px);
+  border-radius: var(--pds-border-radius-card, 8px);
 }
 
 .closeButton:hover {
@@ -139,7 +139,7 @@
   cursor: pointer;
   background: transparent;
   border: 1px solid var(--pds-color-border-default, oklch(0.92 0 0));
-  border-radius: var(--pds-border-radius-medium, 8px);
+  border-radius: var(--pds-border-radius-card, 8px);
   transition: border-color 0.15s ease, background-color 0.15s ease;
 }
 
@@ -170,7 +170,7 @@
   width: 28px;
   height: 28px;
   margin-bottom: 8px;
-  border-radius: var(--pds-border-radius-medium, 8px);
+  border-radius: var(--pds-border-radius-card, 8px);
   /* Unselected: light blue icon on a subtle chip. */
   color: var(--pds-color-interactive-foreground-inactive, oklch(0.72 0.11 256));
   background: var(--pds-color-interactive-background-hover, oklch(0.96 0.02 256));
@@ -205,7 +205,7 @@
   cursor: pointer;
   background: var(--pds-color-surface-default, oklch(1 0 0));
   border: 1px solid var(--pds-color-border-default, oklch(0.92 0 0));
-  border-radius: var(--pds-border-radius-medium, 8px);
+  border-radius: var(--pds-border-radius-card, 8px);
   transition: border-color 0.15s ease, background-color 0.15s ease;
 }
 
@@ -310,7 +310,7 @@
   color: var(--pds-color-foreground-default, oklch(0.2 0 0));
   background: var(--pds-color-surface-default, oklch(1 0 0));
   border: 1px solid var(--pds-color-border-default, oklch(0.92 0 0));
-  border-radius: var(--pds-border-radius-medium, 8px);
+  border-radius: var(--pds-border-radius-card, 8px);
 }
 
 .textarea {
@@ -335,7 +335,7 @@
   display: flex;
   align-items: stretch;
   border: 1px solid var(--pds-color-border-default, oklch(0.92 0 0));
-  border-radius: var(--pds-border-radius-medium, 8px);
+  border-radius: var(--pds-border-radius-card, 8px);
   overflow: hidden;
 }
 
@@ -396,7 +396,7 @@
   color: var(--pds-color-foreground-default, oklch(0.2 0 0));
   background: var(--pds-color-surface-default, oklch(1 0 0));
   border: 1px solid var(--pds-color-border-default, oklch(0.92 0 0));
-  border-radius: var(--pds-border-radius-medium, 8px);
+  border-radius: var(--pds-border-radius-card, 8px);
 }
 
 .routeInput:focus-visible {
@@ -497,7 +497,7 @@
   padding: 16px;
   background: var(--pds-color-panel-sunken-background, oklch(0.98 0 0));
   border: 1px solid var(--pds-color-border-default, oklch(0.92 0 0));
-  border-radius: var(--pds-border-radius-medium, 8px);
+  border-radius: var(--pds-border-radius-card, 8px);
 }
 
 .segmented {
@@ -506,7 +506,7 @@
   padding: 2px;
   background: var(--pds-color-surface-default, oklch(1 0 0));
   border: 1px solid var(--pds-color-border-default, oklch(0.92 0 0));
-  border-radius: var(--pds-border-radius-medium, 8px);
+  border-radius: var(--pds-border-radius-card, 8px);
 }
 
 .segmentedActive,
@@ -627,7 +627,7 @@
   margin-top: 8px;
   padding: 14px 16px;
   border: 1px solid var(--pds-color-border-default, oklch(0.9 0 0));
-  border-radius: var(--pds-border-radius-md, 8px);
+  border-radius: var(--pds-border-radius-card, 8px);
   background: var(--pds-color-panel-sunken-background, oklch(0.98 0 0));
 }
 
@@ -710,7 +710,7 @@
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
-  border-radius: var(--pds-border-radius-medium, 8px);
+  border-radius: var(--pds-border-radius-card, 8px);
 }
 
 .cancelButton {
