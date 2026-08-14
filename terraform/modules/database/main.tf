@@ -131,6 +131,12 @@ variable "ci_service_account_id" {
   default     = "css-github-actions"
 }
 
+variable "iam_users" {
+  description = "Email addresses of individuals granted IAM database login"
+  type        = list(string)
+  default     = []
+}
+
 # -----------------------------------------------------------------------------
 # Locals
 # -----------------------------------------------------------------------------
@@ -281,6 +287,21 @@ resource "google_sql_user" "ci_iam" {
   project        = var.gcp_project
   instance       = google_sql_database_instance.main[0].name
   type           = "CLOUD_IAM_SERVICE_ACCOUNT"
+  database_roles = ["cssuser"]
+
+  depends_on = [google_sql_user.main]
+}
+
+# IAM database users for individuals, authenticating with their own short-lived
+# IAM OAuth tokens (e.g. via `gcloud sql connect`) rather than a shared password.
+resource "google_sql_user" "iam_users" {
+  for_each = local.is_local ? toset([]) : toset(var.iam_users)
+  provider = google
+
+  name           = each.value
+  project        = var.gcp_project
+  instance       = google_sql_database_instance.main[0].name
+  type           = "CLOUD_IAM_USER"
   database_roles = ["cssuser"]
 
   depends_on = [google_sql_user.main]

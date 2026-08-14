@@ -101,6 +101,16 @@ module "database" {
   cloudsql_authorized_networks = var.cloudsql_authorized_networks
   deletion_protection          = false
 
+  # TODO: move to an IAM group role and grant the group instead of
+  # listing individuals here.
+  iam_users = [
+    "andrew.glago@pantheon.io",
+    "nickheinbaugh@pantheon.io",
+    "chris.yates@pantheon.io",
+    "hitanshushah@pantheon.io",
+    "anthonytran@pantheon.io",
+  ]
+
   tags = local.default_tags
 }
 

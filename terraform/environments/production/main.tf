@@ -110,6 +110,16 @@ module "database" {
   deletion_protection          = true
   cloudsql_max_connections     = 200 # 2.5x Hyperdrive total (60+20=80)
 
+  # TODO: move to an IAM group role and grant the group instead of
+  # listing individuals here.
+  iam_users = [
+    "andrew.glago@pantheon.io",
+    "nickheinbaugh@pantheon.io",
+    "chris.yates@pantheon.io",
+    "hitanshushah@pantheon.io",
+    "anthonytran@pantheon.io",
+  ]
+
   tags = local.default_tags
 }
 
