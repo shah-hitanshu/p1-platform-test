@@ -62,6 +62,11 @@ const DEFAULT_ALLOWED: readonly string[] = [
   'loop_iteration', 'acting_user_present',
   // sdk
   'sdk_name', 'sdk_version', 'client_id', 'trigger',
+  // [claude] redirects — temporary, for diagnosing why staging doesn't redirect.
+  // Site-relative URLs of the same kind as the already-allowed `doc_path`, plus the
+  // branch the resolver actually read. Remove with the log lines they serve.
+  'from_path', 'destination', 'redirect_type', 'parenting', 'redirect_id',
+  'lookup_path', 'resolved_via', 'main_branch_id', 'path_prefix',
 ];
 
 const MAX_STRING = 512;

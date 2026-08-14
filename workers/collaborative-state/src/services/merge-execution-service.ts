@@ -11,6 +11,7 @@
  * Based on collaborative-state-system-architecture-v2.2.md
  */
 
+import { getLogger } from '@pantheon-systems/p1-telemetry';
 import { detectConflicts } from './conflict-detection-service';
 import type { ConflictDetectionResult } from './conflict-detection-service';
 import { resolveAllConflicts } from './conflict-resolution-service';
@@ -84,6 +85,24 @@ function isSystemManagedPath(path: string): boolean {
 function applySystemManagedExclusions(
   detectionResult: ConflictDetectionResult,
 ): ConflictDetectionResult {
+  // [claude] This filter is what used to eat redirects at `_registry/redirects/*`.
+  // If a redirect is still being dropped from a merge, its path shows up here — and a
+  // `_redirects/` path appearing in this list means the deployed code is older than
+  // the move, not that the filter is wrong.
+  const excluded = [
+    ...detectionResult.sourceChanges,
+    ...detectionResult.targetChanges,
+  ]
+    .map((c) => c.documentPath)
+    .filter((p) => isSystemManagedPath(p));
+  if (excluded.length > 0) {
+    getLogger().info('merge: excluding system-managed paths', {
+      count: excluded.length,
+      doc_path: excluded.slice(0, 20).join(','),
+      outcome: 'excluded',
+    });
+  }
+
   return {
     ...detectionResult,
     conflicts: {
