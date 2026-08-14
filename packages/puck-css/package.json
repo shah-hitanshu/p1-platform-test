@@ -112,7 +112,7 @@
   "devDependencies": {
     "@floating-ui/react": "^0.27.19",
     "@pantheon-systems/eslint-config": "workspace:*",
-    "@pantheon-systems/pds-toolkit-react": "2.0.0-alpha.51",
+    "@pantheon-systems/pds-toolkit-react": "2.0.0-alpha.66",
     "@tanstack/react-query": "^5.99.0",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.9.1",

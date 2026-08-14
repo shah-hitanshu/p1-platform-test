@@ -41,7 +41,7 @@
   },
   "devDependencies": {
     "@pantheon-systems/eslint-config": "workspace:*",
-    "@pantheon-systems/pds-toolkit-react": "2.0.0-alpha.43",
+    "@pantheon-systems/pds-toolkit-react": "2.0.0-alpha.66",
     "@pantheon-systems/puck-css": "workspace:*",
     "@puckeditor/core": "^0.21.1",
     "@testing-library/dom": "^10.4.0",

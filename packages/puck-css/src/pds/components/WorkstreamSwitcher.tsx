@@ -184,7 +184,7 @@ export function WorkstreamSwitcher({
         <span className={styles.labelText}>
           {isPending ? 'Switching...' : triggerLabel}
           {isPending ? (
-            <Icon iconName="spinner" size="s" aria-hidden="true" />
+            <Icon iconName="circleNotch" size="s" aria-hidden="true" />
           ) : (
             <Icon iconName="angleDown" size="s" aria-hidden="true" />
           )}
@@ -196,7 +196,7 @@ export function WorkstreamSwitcher({
           data-testid="compare-with-live"
           label="Compare with Live"
           variant="secondary"
-          size="sm"
+          size="s"
           onClick={onCompareWithLive}
           buttonType="button"
         />
@@ -248,7 +248,6 @@ export function WorkstreamSwitcher({
                         data-testid="workstream-live-label"
                         type="discovery"
                         label="Live"
-                        size="s"
                         className={styles.liveIndicator}
                       />
                     ) : (

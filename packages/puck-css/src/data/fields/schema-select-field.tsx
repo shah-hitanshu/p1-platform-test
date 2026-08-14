@@ -75,9 +75,11 @@ export function createSchemaSelectField(
   return {
     type: "custom" as const,
     label,
-    render({ label: fieldLabel, value, onChange, readOnly }) {
+    render({ id, label: fieldLabel, value, onChange, readOnly }) {
       const inner = (
         <SchemaSelectFieldInner
+          id={id}
+          label={fieldLabel}
           value={value ?? ""}
           onChange={onChange}
           readOnly={readOnly}
@@ -110,6 +112,8 @@ export function createSchemaSelectField(
 }
 
 function SchemaSelectFieldInner({
+  id,
+  label,
   value,
   onChange,
   readOnly,
@@ -117,6 +121,8 @@ function SchemaSelectFieldInner({
   fallbackFields,
   togglePropName,
 }: {
+  id: string;
+  label: string;
   value: string;
   onChange: (value: string) => void;
   readOnly?: boolean;
@@ -243,6 +249,9 @@ function SchemaSelectFieldInner({
         <div className="p1-schema-select-row">
           <div className="p1-schema-select-row__control">
             <Select
+              id={id}
+              label={label}
+              showLabel={false}
               value={value}
               options={fallbackOptions}
               onOptionSelect={(opt) => onChange(opt.value)}
@@ -282,6 +291,9 @@ function SchemaSelectFieldInner({
     <div className="p1-schema-select-row">
       <div className="p1-schema-select-row__control">
         <Select
+          id={id}
+          label={label}
+          showLabel={false}
           value={value}
           options={selectOptions}
           onOptionSelect={(opt) => onChange(opt.value)}

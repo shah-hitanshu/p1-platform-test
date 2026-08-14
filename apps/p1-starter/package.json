@@ -21,7 +21,7 @@
     "@pantheon-systems/p1-ai-chat": "workspace:*",
     "@pantheon-systems/p1-media": "workspace:*",
     "@pantheon-systems/p1-next-sdk": "workspace:*",
-    "@pantheon-systems/pds-toolkit-react": "2.0.0-alpha.51",
+    "@pantheon-systems/pds-toolkit-react": "2.0.0-alpha.66",
     "@pantheon-systems/puck-css": "workspace:*",
     "@puckeditor/core": "^0.21.1",
     "@tailwindcss/postcss": "^4.2.2",

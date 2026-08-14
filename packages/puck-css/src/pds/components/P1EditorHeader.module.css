@@ -39,7 +39,7 @@
 }
 
 /* ── Logo ─────────────────────────────────────────────────────────────── */
-/* Uses PDSv1 PantheonLogo displayType="sub-brand" subBrand="P1".
+/* PantheonLogo displayType="icon" plus a locally-rendered "P1" wordmark.
    The PDS component defaults to 3.052rem icon height; we scale it down
    proportionally to --p1-header-h. */
 
@@ -84,10 +84,19 @@ img.logo {
   width: auto;
 }
 
+.logoLockup {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
 /* Scale sub-brand wordmark proportionally with header height */
-.logo :global(.pds-pantheon-logo__sub-brand-wordmark) {
+.subBrand {
   font-size: calc(var(--p1-header-h) * 0.367);
-  padding-inline-end: 0;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--pds-color-foreground-default);
+  user-select: none;
 }
 
 .logoLinkSaving {

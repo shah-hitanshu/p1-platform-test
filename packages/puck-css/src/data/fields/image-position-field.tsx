@@ -89,9 +89,10 @@ export function createImagePositionField(
   return {
     type: "custom" as const,
     label,
-    render({ label: fieldLabel, value, onChange, readOnly }) {
+    render({ id, label: fieldLabel, value, onChange, readOnly }) {
       return (
         <ImagePositionFieldInner
+          id={id}
           label={fieldLabel}
           value={value}
           onChange={onChange}
@@ -106,6 +107,7 @@ export function createImagePositionField(
 }
 
 function ImagePositionFieldInner({
+  id,
   label,
   value,
   onChange,
@@ -114,6 +116,7 @@ function ImagePositionFieldInner({
   visibleWhenPropName,
   modePositions,
 }: {
+  id: string;
   label: string;
   value: string;
   onChange: (value: string) => void;
@@ -140,6 +143,9 @@ function ImagePositionFieldInner({
   return (
     <FieldLabel label={label}>
       <Select
+        id={id}
+        label={label}
+        showLabel={false}
         value={value}
         options={options}
         onOptionSelect={(opt) => onChange(opt.value)}

@@ -33,6 +33,8 @@ export function createPdsTextField(label: string): CustomFieldDef {
         <FieldLabel label={fieldLabel}>
           <TextInput
             id={id}
+            label={fieldLabel}
+            showLabel={false}
             value={String(value ?? "")}
             onChange={(e: { target: { value: string } }) =>
               onChange(e.target.value)
@@ -57,10 +59,13 @@ export function createPdsNumberField(
         <FieldLabel label={fieldLabel}>
           <TextInput
             id={id}
+            label={fieldLabel}
+            showLabel={false}
             type="number"
             value={String(value ?? "")}
-            min={options?.min}
-            max={options?.max}
+            // min/max belong on the inner <input>; as top-level props they
+            // were spread onto the wrapper div and never constrained anything.
+            inputProps={{ min: options?.min, max: options?.max }}
             onChange={(e: { target: { value: string } }) => {
               const num = Number(e.target.value);
               onChange(Number.isFinite(num) ? num : 0);
@@ -141,6 +146,8 @@ export function createPdsSelectField(
         <FieldLabel label={fieldLabel}>
           <Select
             id={id}
+            label={fieldLabel}
+            showLabel={false}
             value={String(value ?? "")}
             options={fieldOptions}
             onOptionSelect={(opt) => onChange(opt.value)}

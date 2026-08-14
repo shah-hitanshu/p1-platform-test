@@ -32,11 +32,13 @@ const STATUS_OPTIONS = [
 const useStatusPuck = createUsePuck();
 
 function StatusSelectFieldInner({
+  id,
   label,
   value,
   onChange,
   readOnly,
 }: {
+  id: string;
   label: string;
   value: string;
   onChange: (v: string) => void;
@@ -50,6 +52,9 @@ function StatusSelectFieldInner({
   return (
     <FieldLabel label={label}>
       <Select
+        id={id}
+        label={label}
+        showLabel={false}
         value={value}
         options={STATUS_OPTIONS}
         onOptionSelect={(opt: { value: string }) => onChange(opt.value)}
@@ -147,6 +152,7 @@ export function createDataListBlock(options?: CreateDataListBlockOptions): DataL
       type: "custom" as const,
       label: "Status",
       render(props: {
+        id: string;
         label: string;
         value: string;
         onChange: (v: string) => void;
@@ -154,6 +160,7 @@ export function createDataListBlock(options?: CreateDataListBlockOptions): DataL
       }) {
         return (
           <StatusSelectFieldInner
+            id={props.id}
             label={props.label}
             value={props.value}
             onChange={props.onChange}

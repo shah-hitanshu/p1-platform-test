@@ -86,3 +86,4 @@ packageExtensions:
 
 minimumReleaseAgeExclude:
   - '@anthropic-ai/sdk@0.112.3'
+  - '@pantheon-systems/pds-toolkit-react@2.0.0-alpha.66'

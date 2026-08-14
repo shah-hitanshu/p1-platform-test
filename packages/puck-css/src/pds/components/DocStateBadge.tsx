@@ -37,7 +37,6 @@ export function DocStateBadge({ docState, hasDrift = false }: DocStateBadgeProps
       <StatusIndicator
         label={LABEL_TEXT[docState]}
         type={STATUS_TYPE[docState]}
-        size="xs"
       />
       {showDrift && (
         <span

@@ -290,14 +290,18 @@ export function P1EditorHeader({
             onError={() => setLogoImgError(true)}
           />
         ) : (
-          <PantheonLogo
-            data-testid="p1-logo"
-            className={styles.logo}
-            displayType="sub-brand"
-            subBrand="P1"
-            size="s"
-            linkContent={null}
-          />
+          // PDS dropped sub-brand support, so the bolt and the "P1" wordmark
+          // are composed here instead of via the removed `subBrand` prop.
+          <span className={styles.logoLockup}>
+            <PantheonLogo
+              data-testid="p1-logo"
+              className={styles.logo}
+              displayType="icon"
+              size="s"
+              linkContent={null}
+            />
+            <span className={styles.subBrand}>P1</span>
+          </span>
         )}
       </a>
       <div className={styles.divider} aria-hidden="true" />

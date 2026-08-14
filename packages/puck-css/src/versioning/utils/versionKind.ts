@@ -3,9 +3,9 @@ import type { DocumentVersion } from '@pantheon-systems/css-client';
 export type VersionKind = 'current' | 'published' | 'reverted' | 'autosave';
 
 export const VERSION_KIND_META: Record<VersionKind, { tag: string | null; badgeClass: string; milestone: boolean }> = {
-  current:  { tag: 'Current',   badgeClass: '',                                         milestone: false },
-  published: { tag: 'Published', badgeClass: 'pds-badge pds-badge--info pds-badge--s',    milestone: true  },
-  reverted:  { tag: 'Reverted',  badgeClass: 'pds-badge pds-badge--warning pds-badge--s', milestone: true  },
+  current:   { tag: 'Current',   badgeClass: 'pds-badge pds-badge--success pds-badge--xs', milestone: false },
+  published: { tag: 'Published', badgeClass: 'pds-badge pds-badge--info pds-badge--xs',    milestone: true  },
+  reverted:  { tag: 'Reverted',  badgeClass: 'pds-badge pds-badge--warning pds-badge--xs', milestone: true  },
   autosave:  { tag: null,        badgeClass: '',                                         milestone: false },
 };
 

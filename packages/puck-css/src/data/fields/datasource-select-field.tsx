@@ -66,10 +66,12 @@ export function createDatasourceSelectField(): DatasourceSelectFieldDef {
   return {
     type: "custom" as const,
     label: "Datasource",
-    render({ label: fieldLabel, value, onChange, readOnly }) {
+    render({ id, label: fieldLabel, value, onChange, readOnly }) {
       return (
         <FieldLabel label={fieldLabel}>
           <DatasourceSelectFieldInner
+            id={id}
+            label={fieldLabel}
             value={value}
             onChange={onChange}
             readOnly={readOnly}
@@ -81,10 +83,14 @@ export function createDatasourceSelectField(): DatasourceSelectFieldDef {
 }
 
 function DatasourceSelectFieldInner({
+  id,
+  label,
   value,
   onChange,
   readOnly,
 }: {
+  id: string;
+  label: string;
   value: string;
   onChange: (value: string) => void;
   readOnly?: boolean;
@@ -102,6 +108,9 @@ function DatasourceSelectFieldInner({
 
   return (
     <Select
+      id={id}
+      label={label}
+      showLabel={false}
       value={value}
       options={options}
       onOptionSelect={(opt) => onChange(opt.value)}

@@ -86,14 +86,14 @@ export function PublishControl({
               toastApi.dismiss(PUBLISH_CONFIRM_TOAST_ID);
               void onPublish?.();
             }}
-            size="sm"
-            variant={"primary" as never}
+            size="s"
+            variant="primary"
           />
           <Button
             label="Cancel"
             onClick={() => toastApi.dismiss(PUBLISH_CONFIRM_TOAST_ID)}
-            size="sm"
-            variant={"secondary" as never}
+            size="s"
+            variant="secondary"
           />
         </div>
       </div>,
@@ -113,14 +113,14 @@ export function PublishControl({
               toastApi.dismiss(DELETE_CONFIRM_TOAST_ID);
               void onDeleteDocument?.();
             }}
-            size="sm"
-            variant={"primary" as never}
+            size="s"
+            variant="primary"
           />
           <Button
             label="Cancel"
             onClick={() => toastApi.dismiss(DELETE_CONFIRM_TOAST_ID)}
-            size="sm"
-            variant={"secondary" as never}
+            size="s"
+            variant="secondary"
           />
         </div>
       </div>,

@@ -18,13 +18,16 @@ interface TemplateSelectFieldDef {
   }) => ReactElement;
 }
 
+const TEMPLATE_FIELD_LABEL = "Template";
+
 export function createTemplateSelectField(): TemplateSelectFieldDef {
   return {
     type: "custom" as const,
-    label: "Template",
-    render({ value, onChange, readOnly }) {
+    label: TEMPLATE_FIELD_LABEL,
+    render({ id, value, onChange, readOnly }) {
       return (
         <TemplateSelectFieldInner
+          id={id}
           value={value}
           onChange={onChange}
           readOnly={readOnly}
@@ -35,10 +38,12 @@ export function createTemplateSelectField(): TemplateSelectFieldDef {
 }
 
 function TemplateSelectFieldInner({
+  id,
   value,
   onChange,
   readOnly,
 }: {
+  id: string;
   value: string;
   onChange: (value: string) => void;
   readOnly?: boolean;
@@ -62,6 +67,9 @@ function TemplateSelectFieldInner({
 
   return (
     <Select
+      id={id}
+      label={TEMPLATE_FIELD_LABEL}
+      showLabel={false}
       value={value}
       options={options}
       onOptionSelect={(opt) => onChange(opt.value)}
