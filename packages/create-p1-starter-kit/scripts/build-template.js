@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { indexWorkspacePackages, resolveWorkspaceDeps } from './workspace-deps.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -72,16 +73,6 @@ function copyRecursive(src, dest, rootDest) {
   }
 }
 
-function getPublishedVersion(packageName) {
-  const pkgPath = path.join(repoRoot, 'packages', packageName.replace('@pantheon-systems/', ''), 'package.json');
-  try {
-    const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
-    return pkg.version;
-  } catch (error) {
-    throw new Error(`Failed to read version for ${packageName}: ${error.message}`);
-  }
-}
-
 function transformPackageJson(destPath) {
   const pkgPath = path.join(destPath, 'package.json');
   let pkg;
@@ -98,18 +89,8 @@ function transformPackageJson(destPath) {
   pkg.version = '0.1.0';
   delete pkg.private;
 
-  // Replace workspace: deps with published versions
-  const pantheonPackages = ['css-client', 'p1-next-sdk', 'puck-css'];
-  for (const pkgName of pantheonPackages) {
-    const fullName = `@pantheon-systems/${pkgName}`;
-    if (pkg.dependencies && pkg.dependencies[fullName]) {
-      const version = getPublishedVersion(fullName);
-      pkg.dependencies[fullName] = `^${version}`;
-      console.log(`  ${fullName}: workspace:* → ^${version}`);
-    }
-  }
-
-  // Replace shared eslint-config with its actual dependencies
+  // Must precede resolveWorkspaceDeps: eslint-config is private, so leaving it in
+  // place would abort the build instead of inlining its dependencies.
   if (pkg.devDependencies) {
     delete pkg.devDependencies['@pantheon-systems/eslint-config'];
     const eslintConfigPkg = JSON.parse(
@@ -118,6 +99,8 @@ function transformPackageJson(destPath) {
     Object.assign(pkg.devDependencies, eslintConfigPkg.dependencies);
     console.log('  Replaced @pantheon-systems/eslint-config with standalone eslint deps');
   }
+
+  resolveWorkspaceDeps(pkg, indexWorkspacePackages(path.join(repoRoot, 'packages')), console.log);
 
   fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
 }
