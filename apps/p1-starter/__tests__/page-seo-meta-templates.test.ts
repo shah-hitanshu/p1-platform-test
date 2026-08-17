@@ -4,8 +4,11 @@ vi.mock("../lib/remote-datasource-fetchers", () => ({
   REMOTE_DATASOURCE_FETCHERS: {},
 }));
 
+vi.mock("@pantheon-systems/p1-next-sdk/server", () => ({
+  loadRouteTemplateKeys: vi.fn().mockResolvedValue([]),
+}));
+
 vi.mock("@pantheon-systems/puck-css/server", () => ({
-  listRouteTemplateKeysFromDatabase: vi.fn().mockResolvedValue([]),
   extractReferencedDatasourceIds: vi.fn().mockReturnValue([]),
   loadRemoteDatasourceContext: vi.fn().mockResolvedValue({}),
   resolveStringTemplates: vi.fn(async (input: string) =>
@@ -40,7 +43,6 @@ const resolve = (props: Record<string, unknown>) =>
   resolvePageMetadata({
     pageData: pageWithRootProps(props),
     path: "/q3",
-    searchParams: {},
   });
 
 const og = (m: Awaited<ReturnType<typeof resolvePageMetadata>>) =>

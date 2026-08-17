@@ -6,8 +6,11 @@ vi.mock("../lib/remote-datasource-fetchers", () => ({
   REMOTE_DATASOURCE_FETCHERS: {},
 }));
 
+vi.mock("@pantheon-systems/p1-next-sdk/server", () => ({
+  loadRouteTemplateKeys: vi.fn().mockResolvedValue([]),
+}));
+
 vi.mock("@pantheon-systems/puck-css/server", () => ({
-  listRouteTemplateKeysFromDatabase: vi.fn().mockResolvedValue([]),
   extractReferencedDatasourceIds: vi.fn().mockReturnValue([]),
   loadRemoteDatasourceContext: vi.fn().mockResolvedValue({}),
   resolveStringTemplates: vi.fn(async (input: string) =>
@@ -36,7 +39,6 @@ describe("resolvePageMetadata", () => {
         _seo: { siteName: "Acme Docs" },
       }),
       path: "/about/team",
-      searchParams: {},
     });
 
     expect(meta.title).toBe("About Our Team");
@@ -62,7 +64,6 @@ describe("resolvePageMetadata", () => {
         _seo: { siteName: "Acme Docs" },
       }),
       path: "/untitled",
-      searchParams: {},
     });
 
     expect(meta.title).toBeUndefined();
@@ -81,7 +82,6 @@ describe("resolvePageMetadata", () => {
         description: "Welcome, {{name}}!",
       }),
       path: "/greet",
-      searchParams: {},
     });
 
     expect(meta.title).toBe("Hello World");
@@ -103,7 +103,6 @@ describe("resolvePageMetadata", () => {
         },
       }),
       path: "/untitled",
-      searchParams: {},
     });
 
     expect(meta.title).toBe("Root Title");
@@ -116,7 +115,6 @@ describe("resolvePageMetadata", () => {
     const meta = await resolvePageMetadata({
       pageData: null,
       path: "/",
-      searchParams: {},
     });
 
     expect(meta.title).toBeUndefined();

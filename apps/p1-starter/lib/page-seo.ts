@@ -6,9 +6,9 @@ import type {
 import {
   loadRemoteDatasourceContext,
   extractReferencedDatasourceIds,
-  listRouteTemplateKeysFromDatabase,
   resolveStringTemplates,
 } from "@pantheon-systems/puck-css/server";
+import { loadRouteTemplateKeys } from "@pantheon-systems/p1-next-sdk/server";
 import { REMOTE_DATASOURCE_FETCHERS } from "./remote-datasource-fetchers";
 import { buildPageMetadata } from "./seo-metadata";
 import type { PageMetaFields } from "./seo-metadata";
@@ -43,11 +43,9 @@ const carriesTemplate = (value: unknown): value is string =>
 export async function resolvePageMetadata({
   pageData,
   path,
-  searchParams,
 }: {
   pageData: PageData;
   path: string;
-  searchParams: Record<string, string | string[] | undefined>;
 }): Promise<Metadata> {
   const rootProps: Record<string, unknown> | undefined = pageData?.root.props;
   const seo: Partial<SeoMetadata> | undefined = rootProps?._seo;
@@ -67,10 +65,9 @@ export async function resolvePageMetadata({
   let meta = authoredMeta;
 
   if (needsTemplates && pageData) {
-    const routeTemplateKeys = await listRouteTemplateKeysFromDatabase();
+    const routeTemplateKeys = await loadRouteTemplateKeys();
     const referencedDatasourceIds = extractReferencedDatasourceIds(pageData);
     const context = await loadRemoteDatasourceContext({
-      searchParams,
       fetchImpl: fetch,
       pagePath: path,
       routeTemplateKeys,

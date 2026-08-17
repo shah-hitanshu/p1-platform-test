@@ -1,44 +1,44 @@
 import {
-  ensureInitialized,
-  getPage,
-  listRouteTemplateKeysFromDatabase,
   resolveDataTemplates,
   extractReferencedDatasourceIds,
   loadRemoteDatasourceContext,
 } from "@pantheon-systems/puck-css/server";
+import {
+  loadPublishedPage,
+  loadRouteTemplateKeys,
+} from "@pantheon-systems/p1-next-sdk/server";
 import type { Metadata } from "next";
 import { WelcomeBlockRender } from "../components/puck/welcome-block-render";
 import { resolvePageMetadata } from "../lib/page-seo";
 import { REMOTE_DATASOURCE_FETCHERS } from "../lib/remote-datasource-fetchers";
 import { Client } from "./[...puckPath]/client";
 
-const initPromise = ensureInitialized({
-  p1BaseUrl: process.env.NEXT_PUBLIC_CSS_BASE_URL,
-  p1ApiKey: process.env.CSS_API_KEY,
-  p1SiteId: process.env.NEXT_PUBLIC_CSS_SITE_ID,
-  // Default to "main" when unset: server components (no user token) need a
-  // branch to list/read documents (e.g. the /structure routes table).
-  p1BranchId: process.env.NEXT_PUBLIC_CSS_BRANCH_ID ?? "main",
-});
+/**
+ * Backstop only: publishing calls revalidatePath("/"), so the home page
+ * normally refreshes the moment its content changes. This bounds how long an
+ * edit made outside that path can stay stale.
+ */
+export const revalidate = 300;
 
 export async function generateMetadata(): Promise<Metadata> {
-  await initPromise;
-  const pageData = await getPage("/");
-  if (!pageData) {
+  const result = await loadPublishedPage("/");
+  if (result.status !== "ok") {
     return { title: "P1 Starter Kit" };
   }
-  return resolvePageMetadata({ pageData, path: "/", searchParams: {} });
+  return resolvePageMetadata({ pageData: result.data, path: "/" });
 }
 
 export default async function HomePage() {
-  await initPromise;
-  const data = await getPage("/");
+  const result = await loadPublishedPage("/");
 
-  if (data) {
-    const routeTemplateKeys = await listRouteTemplateKeysFromDatabase();
+  // Unlike the catch-all, "/" never 404s: it is a single fixed URL rather than
+  // an unbounded crawler surface, and the welcome block is the correct state for
+  // a freshly scaffolded site — including one with no backend configured yet.
+  if (result.status === "ok") {
+    const data = result.data;
+    const routeTemplateKeys = await loadRouteTemplateKeys();
     const referencedDatasourceIds = extractReferencedDatasourceIds(data);
     const context = await loadRemoteDatasourceContext({
-      searchParams: {},
       fetchImpl: fetch,
       pagePath: "/",
       routeTemplateKeys,
@@ -75,5 +75,3 @@ export default async function HomePage() {
     />
   );
 }
-
-export const dynamic = "force-dynamic";

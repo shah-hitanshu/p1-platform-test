@@ -4,17 +4,20 @@
 
 import { cache } from "react";
 import type { Metadata } from "next";
+import { notFound } from "next/navigation";
 import {
   loadRemoteDatasourceContext,
   extractReferencedDatasourceIds,
-  getPage,
-  listRouteTemplateKeysFromDatabase,
   resolveDataTemplates,
-  ensureInitialized,
   pagePathFromCatchAllSegments,
 } from "@pantheon-systems/puck-css/server";
-import { createCssQueryFetchers } from "@pantheon-systems/p1-next-sdk/server";
+import {
+  createCssQueryFetchers,
+  loadPublishedPage,
+  loadRouteTemplateKeys,
+} from "@pantheon-systems/p1-next-sdk/server";
 import { REMOTE_DATASOURCE_FETCHERS } from "../../lib/remote-datasource-fetchers";
+import { ContentUnavailable } from "../../components/content-unavailable";
 import { resolvePageMetadata } from "../../lib/page-seo";
 import { Client } from "./client";
 
@@ -33,23 +36,30 @@ function isInternalPath(path: string): boolean {
   );
 }
 
-const initPromise = ensureInitialized({
-  p1BaseUrl: process.env.NEXT_PUBLIC_CSS_BASE_URL,
-  p1ApiKey: process.env.CSS_API_KEY,
-  p1SiteId: process.env.NEXT_PUBLIC_CSS_SITE_ID,
-  // Default to "main" when unset: server components (no user token) need a
-  // branch to list/read documents (e.g. the /structure routes table).
-  p1BranchId: process.env.NEXT_PUBLIC_CSS_BRANCH_ID ?? "main",
-});
+/**
+ * Backstop only: publishing calls revalidatePath for the affected routes, so
+ * cached pages normally refresh the moment their content changes. This bounds
+ * how long an edit made outside that path (a direct API write, a restored
+ * branch) can stay stale.
+ */
+export const revalidate = 300;
+
+/**
+ * Empty on purpose. Routes are authored in P1, so there is nothing to enumerate
+ * at build time — but declaring this is what marks the segment statically
+ * renderable at all; without it every path here renders fully dynamically and
+ * no response is ever cacheable. Unlisted paths render on first request and are
+ * cached from then on (dynamicParams defaults to true).
+ */
+export function generateStaticParams(): { puckPath: string[] }[] {
+  return [];
+}
 
 export async function generateMetadata({
   params,
-  searchParams,
 }: {
   params: Promise<{ puckPath: string[] }>;
-  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }): Promise<Metadata> {
-  await initPromise;
   const { puckPath = [] } = await params;
   const path = pagePathFromCatchAllSegments(puckPath);
 
@@ -57,78 +67,52 @@ export async function generateMetadata({
     return { title: "Not Found" };
   }
 
-  const [pageData, sp] = await Promise.all([getPage(path), searchParams]);
-  return resolvePageMetadata({ pageData, path, searchParams: sp });
+  const result = await loadPublishedPage(path);
+  if (result.status === "missing") return { title: "Not Found" };
+  if (result.status === "unavailable") {
+    return { title: "Temporarily unavailable" };
+  }
+  return resolvePageMetadata({ pageData: result.data, path });
 }
 
 export default async function Page({
   params,
-  searchParams,
 }: {
   params: Promise<{ puckPath: string[] }>;
-  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  await initPromise;
   const { puckPath = [] } = await params;
   const path = pagePathFromCatchAllSegments(puckPath);
 
   if (isInternalPath(path)) {
-    const { notFound } = await import("next/navigation");
     notFound();
   }
 
-  const [data, searchParamData, routeTemplateKeys, cssQueryFetchers] = await Promise.all([
-    getPage(path),
-    searchParams,
-    listRouteTemplateKeysFromDatabase(),
+  const result = await loadPublishedPage(path);
+
+  // A real 404, so misses are not cached as successes now that this route is
+  // statically renderable. An outage is deliberately not a 404 — that would
+  // deindex published pages over a transient blip.
+  if (result.status === "missing") {
+    notFound();
+  }
+  if (result.status === "unavailable") {
+    return <ContentUnavailable />;
+  }
+
+  const data = result.data;
+
+  const [routeTemplateKeys, cssQueryFetchers] = await Promise.all([
+    loadRouteTemplateKeys(),
     getCssQueryFetchers(),
   ]);
-
-  if (!data) {
-    return (
-      <main className="flex min-h-screen items-center justify-center bg-gray-50">
-        <div className="mx-auto max-w-lg px-6 py-16 text-center">
-          <h1 className="text-3xl font-bold tracking-tight text-gray-900">
-            404 &ndash; This page doesn&apos;t exist yet
-          </h1>
-          <p className="mt-4 text-gray-600">
-            This page hasn&apos;t been created. Use the editor to build it.
-          </p>
-
-          <nav className="mt-10 flex flex-col gap-3">
-            <a
-              href={`/p1${path}`}
-              className="rounded-lg bg-gray-900 px-5 py-3 text-sm font-medium text-white hover:bg-gray-700"
-            >
-              Edit this page
-            </a>
-            <a
-              href="/p1"
-              className="rounded-lg border border-gray-300 px-5 py-3 text-sm font-medium text-gray-900 hover:bg-gray-100"
-            >
-              Open the Page Editor
-            </a>
-            <a
-              href={`${process.env.NEXT_PUBLIC_P1_ADMIN_DASHBOARD_URL || "https://content.pantheon.io"}/dashboard/sites`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="rounded-lg border border-gray-300 px-5 py-3 text-sm font-medium text-gray-900 hover:bg-gray-100"
-            >
-              P1 Dashboard &rarr;
-            </a>
-          </nav>
-        </div>
-      </main>
-    );
-  }
+  const builtinFetchers = [...REMOTE_DATASOURCE_FETCHERS, ...cssQueryFetchers];
 
   const referencedDatasourceIds = extractReferencedDatasourceIds(data);
   const context = await loadRemoteDatasourceContext({
-    searchParams: searchParamData,
     fetchImpl: fetch,
     pagePath: path,
     routeTemplateKeys,
-    builtinFetchers: [...REMOTE_DATASOURCE_FETCHERS, ...cssQueryFetchers],
+    builtinFetchers,
     referencedDatasourceIds,
   });
   const resolvedData = await resolveDataTemplates(data, context);
@@ -144,5 +128,3 @@ export default async function Page({
     />
   );
 }
-
-export const dynamic = "force-dynamic";

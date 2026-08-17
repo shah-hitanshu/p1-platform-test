@@ -62,7 +62,11 @@ export type P1PagesConfig = P1DataConfig & {
 
 export function createP1Pages(opts: P1PagesConfig) {
   const { EditorClient } = opts;
-  const initPromise = ensureInitialized(opts);
+  // Called per request, not pinned at module load: ensureInitialized dedupes
+  // successful inits and clears its state on failure, so a transient failure at
+  // cold start retries instead of leaving every later request awaiting a
+  // permanently rejected promise.
+  const init = () => ensureInitialized(opts);
 
   // A parent layout always renders before its child page within a request, so
   // if the editor is mounted correctly Layout flips this before Page reads it.
@@ -77,7 +81,7 @@ export function createP1Pages(opts: P1PagesConfig) {
   }: {
     params: Promise<{ p1?: string[] }>;
   }): Promise<Metadata> {
-    await initPromise;
+    await init();
     const { p1 = [] } = await params;
     const pagePath = parseEditorSegments(p1);
     return { title: "P1 Editor: " + pagePath };
@@ -87,7 +91,7 @@ export function createP1Pages(opts: P1PagesConfig) {
   // synchronously (before any await) so Page can observe it in the same request.
   async function Layout({ children }: { children: React.ReactNode }) {
     layoutRendered = true;
-    await initPromise;
+    await init();
     return (
       <>
         <EditorClient />

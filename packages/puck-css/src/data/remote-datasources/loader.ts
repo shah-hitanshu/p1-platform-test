@@ -99,7 +99,12 @@ function normalizeSearchParams(
 }
 
 export type LoadRemoteDatasourceContextOpts = {
-  searchParams: URLSearchParams | Record<string, string | string[] | undefined>;
+  /**
+   * Omit for a page rendered ahead of its request. Published pages are cached,
+   * so they never read the query string; route template params come from the
+   * path either way.
+   */
+  searchParams?: URLSearchParams | Record<string, string | string[] | undefined>;
   fetchImpl?: typeof fetch;
   pagePath?: string;
   routeTemplateKeys?: string[];
@@ -119,7 +124,7 @@ export async function loadRemoteDatasourceContext(
   opts: LoadRemoteDatasourceContextOpts
 ): Promise<RemoteDatasourceContext> {
   const {
-    searchParams,
+    searchParams = {},
     fetchImpl: fetchImplOpt,
     pagePath,
     routeTemplateKeys = [],

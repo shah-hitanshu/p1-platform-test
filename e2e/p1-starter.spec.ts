@@ -51,6 +51,19 @@ test.describe('P1 Starter - Public Pages', () => {
       page.getByRole('link', { name: 'Edit this page' })
     ).toBeVisible();
   });
+
+  // Not just cosmetic: the route is statically renderable, so a 200 here would
+  // write every URL a crawler probes into the response cache as a success and
+  // let it be indexed.
+  test('unknown paths respond 404, not a soft 404', async ({ request }) => {
+    const response = await request.get('/this-page-does-not-exist');
+    expect(response.status()).toBe(404);
+  });
+
+  test('a published page still responds 200', async ({ request }) => {
+    const response = await request.get('/contact-us');
+    expect(response.status()).toBe(200);
+  });
 });
 
 test.describe('P1 Starter - Editor', () => {

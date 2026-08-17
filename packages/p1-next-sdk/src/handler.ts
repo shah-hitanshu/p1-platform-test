@@ -42,6 +42,13 @@ export type P1HandlerConfig = P1DataConfig & {
   config: Config;
   builtinFetchers?: RemoteDatasourceFetcher[];
   builtinDatasourceRegistry?: RemoteDatasourceDefinition[];
+  /**
+   * Dynamic segment this app renders public pages from, as Next.js names it for
+   * revalidatePath. Publishing a route template invalidates it so instance URLs
+   * that resolve by template fall-through alone are refreshed too. Defaults to
+   * the scaffolded app's `/[...puckPath]`.
+   */
+  publicPageSegment?: string;
 };
 
 function withAuth<T>(request: Request, fn: () => T): T | NextResponse {
@@ -51,13 +58,17 @@ function withAuth<T>(request: Request, fn: () => T): T | NextResponse {
 }
 
 export function createP1Handler(opts: P1HandlerConfig) {
-  const initPromise = ensureInitialized(opts);
+  // Called per request, not pinned at module load: ensureInitialized dedupes
+  // successful inits and clears its state on failure, so a transient failure at
+  // cold start retries instead of leaving every later request awaiting a
+  // permanently rejected promise.
+  const init = () => ensureInitialized(opts);
 
   async function GET(
     request: Request,
     { params }: { params: Promise<{ p1?: string[] }> },
   ) {
-    await initPromise;
+    await init();
     const { p1 = [] } = await params;
     const { action } = parseP1Segments(p1);
 
@@ -81,11 +92,14 @@ export function createP1Handler(opts: P1HandlerConfig) {
     request: Request,
     { params }: { params: Promise<{ p1?: string[] }> },
   ) {
-    await initPromise;
+    await init();
     const { p1 = [] } = await params;
     const { action } = parseP1Segments(p1);
 
-    if (action === "publish") return withAuth(request, () => postPublish(request));
+    if (action === "publish")
+      return withAuth(request, () =>
+        postPublish(request, { publicPageSegment: opts.publicPageSegment }),
+      );
     if (action === "resolve-preview") return postResolvePreview(request);
     if (action === "preview-meta") return postPreviewMeta(request);
     if (action === "datasources") return withAuth(request, () => postRemoteDatasources(request));
@@ -97,7 +111,7 @@ export function createP1Handler(opts: P1HandlerConfig) {
     request: Request,
     { params }: { params: Promise<{ p1?: string[] }> },
   ) {
-    await initPromise;
+    await init();
     const { p1 = [] } = await params;
     const { action } = parseP1Segments(p1);
 

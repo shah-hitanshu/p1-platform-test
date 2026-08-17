@@ -4,8 +4,11 @@ vi.mock("../lib/remote-datasource-fetchers", () => ({
   REMOTE_DATASOURCE_FETCHERS: {},
 }));
 
+vi.mock("@pantheon-systems/p1-next-sdk/server", () => ({
+  loadRouteTemplateKeys: vi.fn().mockResolvedValue([]),
+}));
+
 vi.mock("@pantheon-systems/puck-css/server", () => ({
-  listRouteTemplateKeysFromDatabase: vi.fn().mockResolvedValue([]),
   extractReferencedDatasourceIds: vi.fn().mockReturnValue([]),
   loadRemoteDatasourceContext: vi.fn().mockResolvedValue({}),
   resolveStringTemplates: vi.fn(async (input: string) =>
@@ -46,7 +49,6 @@ describe("resolvePageMetadata — _meta", () => {
         },
       }),
       path: "/q3",
-      searchParams: {},
     });
 
     expect(og(meta).title).toBe("The launch, in numbers");
@@ -63,7 +65,6 @@ describe("resolvePageMetadata — _meta", () => {
         description: "How the launch went.",
       }),
       path: "/q3",
-      searchParams: {},
     });
 
     expect(og(meta).title).toBe("Q3 Launch Recap");
@@ -78,7 +79,6 @@ describe("resolvePageMetadata — _meta", () => {
         _meta: { ogDescription: "Static description." },
       }),
       path: "/greet",
-      searchParams: {},
     });
 
     expect(meta.title).toBe("Hello World");
@@ -89,7 +89,6 @@ describe("resolvePageMetadata — _meta", () => {
     const meta = await resolvePageMetadata({
       pageData: pageWithRootProps({ title: "My Puck Editor" }),
       path: "/new",
-      searchParams: {},
     });
 
     expect(meta.title).toBeUndefined();

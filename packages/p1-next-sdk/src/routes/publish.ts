@@ -11,7 +11,17 @@ import {
 
 export { postPublish as POST };
 
-export async function postPublish(request: Request) {
+/**
+ * Dynamic segment rendering public pages, as Next.js names it for
+ * revalidatePath. Overridable for an app whose catch-all directory is not
+ * `[...puckPath]`.
+ */
+export const DEFAULT_PUBLIC_PAGE_SEGMENT = "/[...puckPath]";
+
+export async function postPublish(
+  request: Request,
+  { publicPageSegment = DEFAULT_PUBLIC_PAGE_SEGMENT }: { publicPageSegment?: string } = {},
+) {
   const payload = (await request.json()) as { path: string; data: Data };
 
   const path = payload.path === "/" ? "/" : normalizePath(payload.path);
@@ -26,6 +36,12 @@ export async function postPublish(request: Request) {
     for (const p of await listOverridePathsForBase(path)) {
       revalidatePath(p);
     }
+    // Instance URLs that resolve by template fall-through alone (/jedi/5 against
+    // /jedi/:id) have no store entry, so listOverridePathsForBase cannot
+    // enumerate them. Invalidating the catch-all segment is the only way to
+    // reach them; without it they serve pre-edit content until revalidate
+    // expires.
+    revalidatePath(publicPageSegment, "page");
   }
 
   return NextResponse.json({ status: "ok" });
