@@ -24,7 +24,7 @@ cp .env.fullstack.example .env.fullstack.local
 pnpm dev:stack
 ```
 
-`pnpm dev:stack` brings up everything for local development in one command: Postgres (via podman/docker, with `.dev.vars` generated and migrations applied automatically), the CSS worker on **:8787**, and the starter app on **:3000**.
+`pnpm dev:stack` brings up everything for local development in one command: Postgres (via podman/docker, with `.dev.vars` generated and migrations applied automatically), the CSS worker on **:8787**, and the starter app on **:3002**.
 
 On a **fresh database**, create a site and an API token via the worker API (see `docs/css/`), then put the site id + token into `.env.fullstack.local` and restart. To develop against staging instead: `cp .env.staging.example .env.staging.local`, fill in the staging site id + `CSS_API_KEY`, and run `pnpm dev:starter:staging`.
 
@@ -36,7 +36,7 @@ All run from the repo root.
 
 | Script | What it runs |
 |---|---|
-| `pnpm dev:stack` | Postgres + CSS worker (:8787) + starter app (:3000) — the default day-to-day stack |
+| `pnpm dev:stack` | Postgres + CSS worker (:8787) + starter app (:3002) — the default day-to-day stack |
 | `pnpm dev:stack:full` | everything above **plus** media worker (:8788) and chat agent (:8790); agent chat needs secrets in `workers/p1-agent/.env` |
 | `pnpm dev:starter` | starter app only (:3000), against the local backend profile |
 | `pnpm dev:starter:staging` | starter app against staging (`.env.staging.local` profile) |

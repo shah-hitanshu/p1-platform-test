@@ -23,6 +23,11 @@ POSTGRES_HOST="${POSTGRES_HOST:-localhost}"
 POSTGRES_PORT="${POSTGRES_PORT:-5432}"
 POSTGRES_DB="${POSTGRES_DB:-cssdb}"
 
+# Auth0 defaults mirror the staging worker (workers/collaborative-state/wrangler.jsonc)
+# so a dashboard pointed at the staging tenant authenticates against a local worker.
+AUTH0_ISSUER_BASE_URL="${AUTH0_ISSUER_BASE_URL:-https://auth-staging.pantheon.io}"
+AUTH0_AUDIENCE="${AUTH0_AUDIENCE:-https://staging.mcp.p1.pantheon.io,https://addonapi-cxog5ytt4a-uc.a.run.app}"
+
 echo -e "${YELLOW}Generating ${DEV_VARS_FILE}...${NC}"
 
 # Create the file
@@ -49,9 +54,10 @@ INTERNAL_SECRET=development-internal-secret
 # Mock JWT secret (local development only)
 MOCK_JWT_SECRET=local-dev-jwt-secret-do-not-use-in-production
 
-# Auth0 configuration (optional — uncomment and fill in to enable Auth0 provider)
-# AUTH0_ISSUER_BASE_URL=https://your-tenant.auth0.com
-# AUTH0_AUDIENCE=your-api-identifier
+# Auth0 provider. Registered only when both are set; the mock provider stays
+# active alongside it while ENVIRONMENT=local, so mock and real tokens both work.
+AUTH0_ISSUER_BASE_URL=${AUTH0_ISSUER_BASE_URL}
+AUTH0_AUDIENCE=${AUTH0_AUDIENCE}
 
 # Site screenshot pipeline (optional locally — leave unset to skip captures)
 # CF_ACCOUNT_ID and CF_BROWSER_API_TOKEN are needed by the screenshot consumer
