@@ -10,17 +10,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { AuthenticatedPrincipal } from '../../src/types';
 
-vi.mock('cloudflare:workers', () => ({
-  DurableObject: class DurableObject {
-    ctx: unknown;
-    env: unknown;
-    constructor(ctx: unknown, env: unknown) {
-      this.ctx = ctx;
-      this.env = env;
-    }
-  },
-}));
-
 const PROVIDER_DERIVED_ID = '3f5f62dd-27bd-528d-94d7-015b99a0c90e';
 const DB_USER_ID = '6624d07e-aab3-4bde-a48a-5db1ccffffa0';
 

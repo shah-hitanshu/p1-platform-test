@@ -11,6 +11,14 @@
     { "type": "Text", "globs": ["**/*.yaml"] }
   ],
 
+  // Workers Caching, enabled only on the CachedContent entrypoint. The default
+  // entrypoint must stay uncached: its cache key would exclude the sat_ token
+  // in X-API-Key, so a hit would serve content without authenticating.
+  // Published reads are invalidated by tag on publish (src/cache/purge.ts).
+  "exports": {
+    "CachedContent": { "type": "worker", "cache": { "enabled": true } }
+  },
+
   // Compatibility settings
   "compatibility_date": "2024-12-01",
   "compatibility_flags": ["nodejs_compat"],

@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
 
 /**
@@ -36,6 +37,12 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': './src',
+      // These run in Node, not the Workers runtime, so cloudflare: imports do
+      // not resolve. Reached transitively via the publish services, which
+      // purge the edge cache.
+      'cloudflare:workers': fileURLToPath(
+        new URL('tests/stubs/cloudflare-workers.ts', import.meta.url),
+      ),
     },
   },
 });

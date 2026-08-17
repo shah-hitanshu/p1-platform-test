@@ -26,13 +26,18 @@ vi.stubGlobal('crypto', {
 });
 
 describe('Site API Token Service', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.resetAllMocks();
 
     // Default mock for SHA-256 digest — returns a predictable hash
     mockDigest.mockResolvedValue(
       new Uint8Array(32).fill(0xab).buffer,
     );
+
+    // The fixed digest means every token hashes identically across tests, so
+    // the per-isolate validation cache must be emptied between them.
+    const { clearTokenValidationCache } = await import('../../src/services/site-api-token-service');
+    clearTokenValidationCache();
   });
 
   // Database row format
@@ -333,6 +338,112 @@ describe('Site API Token Service', () => {
         expect.stringContaining('revoked_at IS NULL'),
         expect.any(Array),
       );
+    });
+  });
+
+  // ===========================================================================
+  // validateToken memoization
+  // ===========================================================================
+
+  describe('validateToken memoization', () => {
+    it('should serve repeat validations from the cache without a second query', async () => {
+      const { validateToken } = await import('../../src/services/site-api-token-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValue({ rows: [createMockTokenRow()] });
+
+      const first = await validateToken('sat_somevalidtoken');
+      const second = await validateToken('sat_somevalidtoken');
+
+      expect(first).toEqual(second);
+      expect(db.query).toHaveBeenCalledTimes(1);
+    });
+
+    it('should cache misses so junk-token storms hit Postgres once', async () => {
+      const { validateToken } = await import('../../src/services/site-api-token-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValue({ rows: [] });
+
+      expect(await validateToken('sat_junk')).toBeNull();
+      expect(await validateToken('sat_junk')).toBeNull();
+      expect(db.query).toHaveBeenCalledTimes(1);
+    });
+
+    it('should collapse concurrent validations of the same token into one query', async () => {
+      const { validateToken } = await import('../../src/services/site-api-token-service');
+      const db = await import('../../src/db');
+
+      let resolveQuery: (value: { rows: unknown[] }) => void = () => {};
+      vi.mocked(db.query).mockReturnValue(
+        new Promise((resolve) => {
+          resolveQuery = resolve;
+        }),
+      );
+
+      const inFlight = Promise.all([
+        validateToken('sat_somevalidtoken'),
+        validateToken('sat_somevalidtoken'),
+        validateToken('sat_somevalidtoken'),
+      ]);
+      await vi.waitFor(() => {
+        expect(db.query).toHaveBeenCalled();
+      });
+      resolveQuery({ rows: [createMockTokenRow()] });
+
+      const results = await inFlight;
+      expect(results.every((r) => r?.tokenId === 'token-uuid-123')).toBe(true);
+      expect(db.query).toHaveBeenCalledTimes(1);
+    });
+
+    it('should not cache a failed lookup', async () => {
+      const { validateToken } = await import('../../src/services/site-api-token-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query)
+        .mockRejectedValueOnce(new Error('connection reset'))
+        .mockResolvedValueOnce({ rows: [createMockTokenRow()] });
+
+      await expect(validateToken('sat_somevalidtoken')).rejects.toThrow('connection reset');
+      const retry = await validateToken('sat_somevalidtoken');
+
+      expect(retry?.tokenId).toBe('token-uuid-123');
+      expect(db.query).toHaveBeenCalledTimes(2);
+    });
+
+    it('should expire entries after the TTL', async () => {
+      vi.useFakeTimers();
+      try {
+        const { validateToken } = await import('../../src/services/site-api-token-service');
+        const db = await import('../../src/db');
+
+        vi.mocked(db.query).mockResolvedValue({ rows: [createMockTokenRow()] });
+
+        await validateToken('sat_somevalidtoken');
+        vi.advanceTimersByTime(61_000);
+        await validateToken('sat_somevalidtoken');
+
+        expect(db.query).toHaveBeenCalledTimes(2);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('should drop cached entries when a token is revoked', async () => {
+      const { validateToken, revokeToken } = await import('../../src/services/site-api-token-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [createMockTokenRow()] }) // validate → cached
+        .mockResolvedValueOnce({ rows: [], rowCount: 1 }) // revoke
+        .mockResolvedValueOnce({ rows: [] }); // re-validate → revoked
+
+      await validateToken('sat_somevalidtoken');
+      await revokeToken('token-uuid-123', 'site-uuid-456');
+      const afterRevoke = await validateToken('sat_somevalidtoken');
+
+      expect(afterRevoke).toBeNull();
+      expect(db.query).toHaveBeenCalledTimes(3);
     });
   });
 

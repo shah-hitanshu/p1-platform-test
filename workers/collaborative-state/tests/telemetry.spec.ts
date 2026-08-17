@@ -127,6 +127,27 @@ describe('ensureLogger', () => {
   });
 });
 
+describe('field allow-list extensions', () => {
+  // The reconstruction-failure log is only useful if these survive redaction —
+  // they say which version a read asked for and which one broke rebuilding it.
+  it('keeps the version-number fields the content routes log', () => {
+    const logger = ensureLogger(envWith());
+    const lines: Record<string, unknown>[] = [];
+    logger.addSink({
+      id: 'capture',
+      write: (line) => lines.push(line as unknown as Record<string, unknown>),
+      flush: async () => undefined,
+    });
+
+    logger.error('probe', undefined, { requested_version: 16, broken_version: 15 });
+
+    const context = lines[0]?.context as Record<string, unknown>;
+    expect(context.requested_version).toBe(16);
+    expect(context.broken_version).toBe(15);
+    expect(context._dropped).toBeUndefined();
+  });
+});
+
 describe('local ndjson sink', () => {
   /**
    * `P1_LOG_SINK` is declared only in top-level wrangler `vars`, which named environments

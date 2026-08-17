@@ -28,6 +28,8 @@ import {
   getSiteSettings,
   getEffectiveCacheTtl,
 } from '../services/site-settings-service';
+import { contentCacheTags, notFoundCacheControl } from '../cache/content-cache';
+import { getLogger } from '@pantheon-systems/p1-telemetry';
 
 /**
  * Route context for content delivery endpoints
@@ -52,6 +54,22 @@ function jsonResponse(
 
 function errorResponse(error: string, status: number): Response {
   return jsonResponse({ error }, status);
+}
+
+/**
+ * A miss costs three serialized Postgres queries and the dead-path space is
+ * effectively unbounded, so misses are cached — briefly, since a path that
+ * 404s today may be published tomorrow.
+ *
+ * Site tag only: a miss has no document, and every publish purge is anchored
+ * on the site, so this is what lets publishing a page clear the 404 cached at
+ * its path instead of waiting out the TTL.
+ */
+function notFoundResponse(error: string, siteId: string): Response {
+  return jsonResponse({ error }, 404, {
+    'Cache-Control': notFoundCacheControl(),
+    'Cache-Tag': contentCacheTags({ siteId }).join(','),
+  });
 }
 
 import { UUID_RE } from '../utils/branch-ref';
@@ -104,7 +122,12 @@ export async function handleContentRoutes(
         return errorResponse('Not found', 404);
     }
   } catch (error) {
-    console.error('Content API error:', error);
+    getLogger().error('content route failed', error, {
+      site_id: context.siteId,
+      doc_path: context.documentPath,
+      action,
+      outcome: 'error',
+    });
     return errorResponse('Internal server error', 500);
   }
 }
@@ -118,13 +141,13 @@ async function handleGetContent(
   // Resolve branch
   const branch = await resolveBranch(request, siteId);
   if (branch === null) {
-    return errorResponse('Branch not found', 404);
+    return notFoundResponse('Branch not found', siteId);
   }
 
   // Get document by path
   const document = await getDocumentByPath(siteId, documentPath ?? '/');
   if (document === null) {
-    return errorResponse('Document not found', 404);
+    return notFoundResponse('Document not found', siteId);
   }
 
   // Main branch: serve only published (checkpoint-captured) content.
@@ -150,12 +173,12 @@ async function handleGetContent(
   }
 
   if (version == null) {
-    return errorResponse('Document not found', 404);
+    return notFoundResponse('Document not found', siteId);
   }
 
   // Tombstone check
   if (version.isTombstone === true) {
-    return errorResponse('Document has been deleted', 404);
+    return notFoundResponse('Document has been deleted', siteId);
   }
 
   const [settings, site] = await Promise.all([
@@ -171,6 +194,11 @@ async function handleGetContent(
     : `"v-${version.id}-s-${String(new Date(site.updatedAt).getTime())}"`;
 
   const ifNoneMatch = request.headers.get('If-None-Match');
+  const cacheTag = contentCacheTags({
+    siteId,
+    branchId: branch.id,
+    documentId: document.id,
+  }).join(',');
 
   if (ifNoneMatch === etag) {
     return new Response(null, {
@@ -178,6 +206,7 @@ async function handleGetContent(
       headers: {
         'ETag': etag,
         'Cache-Control': `public, s-maxage=${String(ttl)}, stale-while-revalidate=${String(ttl * 5)}`,
+        'Cache-Tag': cacheTag,
         'Vary': 'Accept-Encoding',
       },
     });
@@ -196,11 +225,14 @@ async function handleGetContent(
       if (!(error instanceof VersionReconstructionError)) throw error;
       // The route is public, so the response stays generic; the identifiers
       // that pin down which version broke go to the log.
-      console.error('[content-api] Version reconstruction failed', {
-        documentId: error.documentId,
-        branchId: error.branchId,
-        requestedVersion: error.requestedVersion,
-        brokenVersion: error.brokenVersion,
+      getLogger().error('version reconstruction failed', error, {
+        site_id: siteId,
+        doc_path: document.path,
+        document_id: error.documentId,
+        branch_id: error.branchId,
+        requested_version: error.requestedVersion,
+        broken_version: error.brokenVersion,
+        outcome: 'reconstruction_failed',
       });
       return errorResponse('Internal server error', 500);
     }
@@ -228,6 +260,7 @@ async function handleGetContent(
     200,
     {
       'Cache-Control': `public, s-maxage=${String(ttl)}, stale-while-revalidate=${String(ttl * 5)}`,
+      'Cache-Tag': cacheTag,
       'ETag': etag,
       'Vary': 'Accept-Encoding',
     },
@@ -243,7 +276,7 @@ async function handleGetContentPages(
   // Resolve branch
   const branch = await resolveBranch(request, siteId);
   if (branch === null) {
-    return errorResponse('Branch not found', 404);
+    return notFoundResponse('Branch not found', siteId);
   }
 
   // List documents on this branch
@@ -292,6 +325,10 @@ async function handleGetContentPages(
     200,
     {
       'Cache-Control': `public, s-maxage=${String(listTtl)}, stale-while-revalidate=${String(listTtl * 5)}`,
+      // No doc tag: publishing any document changes this list, so no single
+      // document's tag could invalidate it. The site-wide publish purge is
+      // what clears this.
+      'Cache-Tag': contentCacheTags({ siteId, branchId: branch.id }).join(','),
       'Vary': 'Accept-Encoding',
     },
   );

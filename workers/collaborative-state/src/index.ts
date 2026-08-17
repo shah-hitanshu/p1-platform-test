@@ -9,6 +9,8 @@ import {
   runWithConnection,
   query,
 } from './db';
+import { resolveConnection } from './db/resolve-connection';
+import { forwardToCachedContent, isCacheableContentRequest } from './routes/cached-content-forward';
 import type { AuthenticatedPrincipal } from './types';
 import { AuthorizationError } from './auth/authorization';
 import { isServicePrincipalAllowed } from './auth/service-principal';
@@ -66,6 +68,7 @@ import {
 
 // Export Durable Objects for wrangler
 export { DocumentState, PresenceManager, SessionManager, BrokerTransaction } from './durable-objects';
+export { CachedContent } from './entrypoints/cached-content';
 
 // Re-export Env from dedicated module (avoids circular dependency)
 export type { Env } from './env';
@@ -120,25 +123,11 @@ export default {
       version: env.APP_VERSION ?? 'dev',
     });
 
-    // Determine connection string and options
-    // Prefer Hyperdrive (production) over direct connection (local dev)
-    // Admin routes use HYPERDRIVE_NOCACHE for immediate read-after-write consistency
     let connectionString: string;
-    let isHyperdrive = false;
-    const isAdminRoute = path.startsWith('/api/admin/');
-    const hyperdrive = isAdminRoute && env.HYPERDRIVE_NOCACHE
-      ? env.HYPERDRIVE_NOCACHE
-      : env.HYPERDRIVE;
-
-    if (hyperdrive !== undefined) {
-      connectionString = hyperdrive.connectionString;
-      isHyperdrive = true;
-    } else if (
-      env.POSTGRES_CONNECTION_STRING !== undefined &&
-      env.POSTGRES_CONNECTION_STRING !== ''
-    ) {
-      connectionString = env.POSTGRES_CONNECTION_STRING;
-    } else {
+    let isHyperdrive: boolean;
+    try {
+      ({ connectionString, isHyperdrive } = resolveConnection(env, path));
+    } catch {
       return new Response(
         JSON.stringify({ error: 'No database connection configured' }),
         { status: 503, headers: { 'Content-Type': 'application/json' } },
@@ -447,6 +436,12 @@ async function handleRequest(
   const masClient = getMASClient(env);
 
   try {
+    // Every gate above has run; past this point the response depends only on
+    // the URL, which is what makes the cached entrypoint safe.
+    if (isCacheableContentRequest(route, request.method)) {
+      return cors(await forwardToCachedContent(request));
+    }
+
     const response = await dispatchRoute(request, route, principal, env, masClient, ctx);
     return cors(response);
   } catch (error) {

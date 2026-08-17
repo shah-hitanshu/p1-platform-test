@@ -13,6 +13,7 @@ import type {
   PublishDocumentResult,
 } from './checkpoint-types';
 import { getFirstRow, mapRowToCheckpoint } from './checkpoint-mappers';
+import { purgeContentCache } from '../cache/purge';
 
 /**
  * Publishes a document by creating a publish checkpoint capturing the latest
@@ -126,6 +127,14 @@ export async function publishDocument(
     );
 
     await query('COMMIT');
+
+    // Purging before COMMIT would let a concurrent read re-cache the
+    // pre-publish version and keep it for a full TTL.
+    await purgeContentCache({
+      siteId: params.siteId,
+      branchId: mainBranch.id,
+      documentId: params.documentId,
+    });
 
     // After COMMIT, resolve source branch name
     let sourceBranchName: string | undefined;

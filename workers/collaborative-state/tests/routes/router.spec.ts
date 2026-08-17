@@ -9,18 +9,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { AuthenticatedPrincipal } from '../../src/types';
 import { readJson } from '../helpers/http';
 
-// Mock cloudflare:workers DurableObject base class for Hibernatable WebSocket API
-vi.mock('cloudflare:workers', () => ({
-  DurableObject: class DurableObject {
-    ctx: unknown;
-    env: unknown;
-    constructor(ctx: unknown, env: unknown) {
-      this.ctx = ctx;
-      this.env = env;
-    }
-  },
-}));
-
 // Mock branch-ref resolution to pass through any branchId as-is (router
 // tests verify wiring, not branch resolution — that's tested in branch-ref.spec.ts)
 vi.mock('../../src/utils/branch-ref', () => ({

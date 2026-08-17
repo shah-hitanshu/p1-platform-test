@@ -12,8 +12,21 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { AuthenticatedPrincipal } from '../../src/types';
 
+// Content GETs are forwarded to the cacheable entrypoint rather than handled
+// inline, so routing is observed there.
+const cachedContent = vi.hoisted(() => ({ fetch: vi.fn() }));
+
 // Mock cloudflare:workers DurableObject base class for Hibernatable WebSocket API
 vi.mock('cloudflare:workers', () => ({
+  WorkerEntrypoint: class WorkerEntrypoint {
+    ctx: unknown;
+    env: unknown;
+    constructor(ctx: unknown, env: unknown) {
+      this.ctx = ctx;
+      this.env = env;
+    }
+  },
+  exports: { CachedContent: cachedContent },
   DurableObject: class DurableObject {
     ctx: unknown;
     env: unknown;
@@ -251,6 +264,13 @@ describe('sat_ token routing', () => {
     vi.resetModules();
     vi.clearAllMocks();
 
+    cachedContent.fetch.mockResolvedValue(
+      new Response(JSON.stringify({ mock: 'cached-content' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
     // Default: sat_ tokens are valid
     mockSatValidateToken.mockResolvedValue({
       tokenId: 'tok-123',
@@ -261,7 +281,6 @@ describe('sat_ token routing', () => {
 
   it('should authenticate sat_ tokens via X-API-Key header', async () => {
     const module = await import('../../src/index');
-    const contentApi = await import('../../src/routes/content-api');
 
     const request = new Request('https://api.example.com/api/sites/site-123/content/home', {
       method: 'GET',
@@ -273,7 +292,7 @@ describe('sat_ token routing', () => {
     const response = await module.default.fetch(request, mockEnv, mockContext);
 
     expect(response.status).toBe(200);
-    expect(contentApi.handleContentRoutes).toHaveBeenCalled();
+    expect(cachedContent.fetch).toHaveBeenCalled();
   });
 
   it('should authenticate sat_ tokens via apiKey query parameter', async () => {

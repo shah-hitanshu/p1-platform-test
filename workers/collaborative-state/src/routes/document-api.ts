@@ -68,6 +68,7 @@ import { applyTitleToSnapshot } from '../services/document-title';
 import { assertPermission, AuthorizationError, getEffectiveRole } from '../auth/authorization';
 import { templateMetadata } from './template-api';
 import { validatePagination } from './validation';
+import { purgeContentCache } from '../cache/purge';
 
 /** The operation a document route path names beyond the document itself. */
 export type DocumentRouteAction =
@@ -318,6 +319,14 @@ async function handleDeleteDocument(context: DocumentRouteContext): Promise<Resp
     return errorResponse('Document not found', 404);
   }
 
+  // Archiving hides the document from content delivery immediately, so without
+  // this the edge keeps serving the taken-down page for the full TTL plus its
+  // stale-while-revalidate window.
+  await purgeContentCache({
+    siteId: context.siteId,
+    documentId: context.documentId,
+  });
+
   return new Response(null, { status: 204 });
 }
 
@@ -330,6 +339,12 @@ async function handleRestoreDocument(context: DocumentRouteContext): Promise<Res
   }
 
   const document = await restoreDocument(context.documentId);
+
+  // The archive cached a 404 at this path; restoring has to clear it.
+  await purgeContentCache({
+    siteId: context.siteId,
+    documentId: context.documentId,
+  });
 
   return jsonResponse(document);
 }

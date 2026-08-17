@@ -66,6 +66,9 @@ const TOKEN_RANDOM_BYTES = 32;
 const DISPLAY_PREFIX_LENGTH = 8; // chars after sat_ to store for display
 const DEFAULT_SCOPES = ['read:published'];
 
+const VALIDATION_CACHE_TTL_MS = 60_000;
+const VALIDATION_CACHE_MAX_ENTRIES = 1_000;
+
 export const VALID_SCOPES = ['read:published', 'read:all', 'read:draft', 'write:create', 'write:registry'] as const;
 export type TokenScope = typeof VALID_SCOPES[number];
 
@@ -91,6 +94,77 @@ async function sha256Hex(input: string): Promise<string> {
   return Array.from(hashArray)
     .map((b) => b.toString(16).padStart(2, '0'))
     .join('');
+}
+
+/**
+ * Per-isolate memoization of token validation.
+ *
+ * Keyed by token hash (never the raw token) and storing the in-flight promise,
+ * so a burst of concurrent requests carrying the same token collapses into a
+ * single Postgres lookup. Both hits and misses are cached: junk-token storms
+ * are exactly the case this shields against.
+ *
+ * Revocation clears this isolate's cache immediately; other isolates hold the
+ * stale positive entry for at most VALIDATION_CACHE_TTL_MS.
+ */
+interface ValidationCacheEntry {
+  promise: Promise<ValidateTokenResult | null>;
+  expiresAt: number;
+}
+
+const validationCache = new Map<string, ValidationCacheEntry>();
+
+function memoizedLookup(tokenHash: string): Promise<ValidateTokenResult | null> {
+  const cached = validationCache.get(tokenHash);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.promise;
+  }
+  validationCache.delete(tokenHash);
+
+  if (validationCache.size >= VALIDATION_CACHE_MAX_ENTRIES) {
+    const oldest = validationCache.keys().next().value;
+    if (oldest !== undefined) {
+      validationCache.delete(oldest);
+    }
+  }
+
+  const promise = lookupTokenByHash(tokenHash);
+  validationCache.set(tokenHash, {
+    promise,
+    expiresAt: Date.now() + VALIDATION_CACHE_TTL_MS,
+  });
+  // A failed query must not be served for the rest of the TTL.
+  promise.catch(() => {
+    if (validationCache.get(tokenHash)?.promise === promise) {
+      validationCache.delete(tokenHash);
+    }
+  });
+  return promise;
+}
+
+async function lookupTokenByHash(
+  tokenHash: string,
+): Promise<ValidateTokenResult | null> {
+  const result = await query<TokenRow>(
+    `SELECT id, site_id, scopes
+     FROM app.site_api_tokens
+     WHERE token_hash = $1 AND revoked_at IS NULL`,
+    [tokenHash],
+  );
+
+  const row = result.rows[0];
+  if (!row) {
+    return null;
+  }
+  return {
+    tokenId: row.id,
+    siteId: row.site_id,
+    scopes: row.scopes,
+  };
+}
+
+export function clearTokenValidationCache(): void {
+  validationCache.clear();
 }
 
 function mapRowToMetadata(row: TokenRow): TokenMetadata {
@@ -165,6 +239,9 @@ export async function generateToken(
 /**
  * Validate a raw site API token.
  *
+ * Results are memoized per isolate for a short TTL (see memoizedLookup), so
+ * repeat requests carrying the same token skip the Postgres round trip.
+ *
  * @returns Token info if valid and not revoked, null otherwise
  */
 export async function validateToken(
@@ -175,27 +252,7 @@ export async function validateToken(
   }
 
   const tokenHash = await sha256Hex(rawToken);
-
-  const result = await query<TokenRow>(
-    `SELECT id, site_id, scopes
-     FROM app.site_api_tokens
-     WHERE token_hash = $1 AND revoked_at IS NULL`,
-    [tokenHash],
-  );
-
-  if (result.rows.length === 0) {
-    return null;
-  }
-
-  const row = result.rows[0];
-  if (!row) {
-    return null;
-  }
-  return {
-    tokenId: row.id,
-    siteId: row.site_id,
-    scopes: row.scopes,
-  };
+  return memoizedLookup(tokenHash);
 }
 
 /**
@@ -229,5 +286,11 @@ export async function revokeToken(
     [tokenId, siteId],
   );
 
-  return (result.rowCount ?? 0) > 0;
+  const revoked = (result.rowCount ?? 0) > 0;
+  if (revoked) {
+    // Entries are keyed by hash and we only have the id; revocation is rare
+    // enough that dropping the whole isolate-local cache is the simple answer.
+    clearTokenValidationCache();
+  }
+  return revoked;
 }

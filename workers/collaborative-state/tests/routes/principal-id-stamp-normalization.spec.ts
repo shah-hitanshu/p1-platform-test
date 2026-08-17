@@ -26,18 +26,6 @@ const RAW_SUBJECT = 'google-oauth2|107221644627712432289';
 // The DB-generated users.id of the pre-provisioned allowlist row.
 const DB_USER_ID = '6624d07e-aab3-4bde-a48a-5db1ccffffa0';
 
-// Mock cloudflare:workers DurableObject base class for Hibernatable WebSocket API
-vi.mock('cloudflare:workers', () => ({
-  DurableObject: class DurableObject {
-    ctx: unknown;
-    env: unknown;
-    constructor(ctx: unknown, env: unknown) {
-      this.ctx = ctx;
-      this.env = env;
-    }
-  },
-}));
-
 const mockPrincipal: AuthenticatedPrincipal = {
   id: RAW_SUBJECT,
   type: 'user',

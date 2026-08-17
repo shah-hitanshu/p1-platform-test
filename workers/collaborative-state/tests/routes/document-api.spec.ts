@@ -93,6 +93,9 @@ vi.mock('../../src/services', () => ({
   getMainBranch: vi.fn(),
 }));
 
+const purgeContentCache = vi.hoisted(() => vi.fn());
+vi.mock('../../src/cache/purge', () => ({ purgeContentCache }));
+
 // Mock authorization
 vi.mock('../../src/auth/authorization', () => ({
   assertPermission: vi.fn(),
@@ -758,6 +761,75 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
       expect(services.archiveDocument).toHaveBeenCalledWith('doc-1');
     });
 
+    // Archiving takes the page down immediately; without a purge the edge keeps
+    // serving it for the full TTL plus stale-while-revalidate window.
+    it('should purge the edge cache after archiving', async () => {
+      const { handleDocumentRoutes } = await import(
+        '../../src/routes/document-api'
+      );
+      const services = await import('../../src/services');
+
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce(makeBranch({
+        id: 'main-branch-id',
+        siteId: 'site-1',
+        name: 'main',
+        isMain: true,
+        status: 'active',
+        createdAt: '2026-01-24T10:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+      }));
+      vi.mocked(services.archiveDocument).mockResolvedValueOnce(true);
+
+      await handleDocumentRoutes(
+        new Request('https://api.example.com/api/sites/site-1/documents/doc-1', {
+          method: 'DELETE',
+        }),
+        {
+          siteId: 'site-1',
+          documentId: 'doc-1',
+          principal: makePrincipal({ id: 'user-1', type: 'user' }),
+        },
+      );
+
+      expect(purgeContentCache).toHaveBeenCalledWith({
+        siteId: 'site-1',
+        documentId: 'doc-1',
+      });
+    });
+
+    it('should not purge when the document was not found', async () => {
+      const { handleDocumentRoutes } = await import(
+        '../../src/routes/document-api'
+      );
+      const services = await import('../../src/services');
+
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce(makeBranch({
+        id: 'main-branch-id',
+        siteId: 'site-1',
+        name: 'main',
+        isMain: true,
+        status: 'active',
+        createdAt: '2026-01-24T10:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+      }));
+      vi.mocked(services.archiveDocument).mockResolvedValueOnce(false);
+
+      await handleDocumentRoutes(
+        new Request('https://api.example.com/api/sites/site-1/documents/doc-1', {
+          method: 'DELETE',
+        }),
+        {
+          siteId: 'site-1',
+          documentId: 'doc-1',
+          principal: makePrincipal({ id: 'user-1', type: 'user' }),
+        },
+      );
+
+      expect(purgeContentCache).not.toHaveBeenCalled();
+    });
+
     it('should return 404 for non-existent document', async () => {
       const { handleDocumentRoutes } = await import(
         '../../src/routes/document-api'
@@ -834,6 +906,11 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
       expect(response.status).toBe(200);
       const body = await readJson(response);
       expect(body.id).toBe('doc-1');
+      // The archive left a cached 404 at this path.
+      expect(purgeContentCache).toHaveBeenCalledWith({
+        siteId: 'site-1',
+        documentId: 'doc-1',
+      });
     });
 
     it('should return 404 for non-existent or non-archived document', async () => {

@@ -39,6 +39,18 @@ vi.mock('../../src/services/site-settings-service', () => ({
   getEffectiveCacheTtl: vi.fn(),
 }));
 
+const logger = vi.hoisted(() => ({
+  info: vi.fn(),
+  warn: vi.fn(),
+  error: vi.fn(),
+  debug: vi.fn(),
+}));
+
+vi.mock('@pantheon-systems/p1-telemetry', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@pantheon-systems/p1-telemetry')>();
+  return { ...actual, getLogger: () => logger };
+});
+
 // =============================================================================
 // Test Data
 // =============================================================================
@@ -635,7 +647,6 @@ describe('Content Delivery API Routes', () => {
       const { handleContentRoutes } = await import('../../src/routes/content-api');
       const services = await import('../../src/services');
       const settingsService = await import('../../src/services/site-settings-service');
-      const errorLog = vi.spyOn(console, 'error').mockImplementation(() => undefined);
 
       vi.mocked(services.getMainBranch).mockResolvedValue(mockMainBranch);
       vi.mocked(services.getDocumentByPath).mockResolvedValue(mockDocument);
@@ -660,16 +671,17 @@ describe('Content Delivery API Routes', () => {
       expect(response.status).toBe(500);
       const body = await readJson(response);
       expect(body.error).toBe('Internal server error');
-      expect(errorLog).toHaveBeenCalledWith(
-        '[content-api] Version reconstruction failed',
-        {
-          documentId: 'doc-uuid-abc',
-          branchId: 'branch-main-uuid',
-          requestedVersion: 16,
-          brokenVersion: 15,
-        },
-      );
-      errorLog.mockRestore();
+      expect(logger.error).toHaveBeenCalledTimes(1);
+      const [msg, , fields] = logger.error.mock.calls[0] as [string, unknown, Record<string, unknown>];
+      expect(msg).toBe('version reconstruction failed');
+      expect(fields).toMatchObject({
+        site_id: 'site-uuid-123',
+        document_id: 'doc-uuid-abc',
+        branch_id: 'branch-main-uuid',
+        requested_version: 16,
+        broken_version: 15,
+        outcome: 'reconstruction_failed',
+      });
     });
 
     it('should return null data when reconstruction fails for diff-only version', async () => {

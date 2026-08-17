@@ -85,6 +85,9 @@ export function ensureLogger(env: TelemetryEnv): P1Logger {
     minLevel: toLevel(env.LOG_LEVEL),
     dataClass: resolveDataClass(backendUrl(env)),
     sinks: buildSinks(env),
+    // Version *numbers* (the allowlist's version_id is the row id): which
+    // version a content read asked for and which one broke reconstructing it.
+    allowFields: ['requested_version', 'broken_version'],
   });
   return logger;
 }

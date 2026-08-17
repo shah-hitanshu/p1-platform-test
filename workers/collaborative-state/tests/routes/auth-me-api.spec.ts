@@ -9,18 +9,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { AuthenticatedPrincipal } from '../../src/types';
 import { readJson } from '../helpers/http';
 
-// Mock cloudflare:workers DurableObject base class for Hibernatable WebSocket API
-vi.mock('cloudflare:workers', () => ({
-  DurableObject: class DurableObject {
-    ctx: unknown;
-    env: unknown;
-    constructor(ctx: unknown, env: unknown) {
-      this.ctx = ctx;
-      this.env = env;
-    }
-  },
-}));
-
 // Mock the database
 vi.mock('../../src/db', () => ({
   initializeDatabaseFromConnectionString: vi.fn(),

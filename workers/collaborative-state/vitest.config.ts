@@ -49,12 +49,14 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': './src',
-      // Stub Cloudflare Workers-specific package for Node-based unit tests.
-      // The real package uses cloudflare: protocol imports unavailable in Node.
-      // Integration tests (vitest.integration.config.ts) use the real module via
-      // @cloudflare/vitest-pool-workers which provides the CF runtime.
+      // Stub Cloudflare Workers-specific packages: these tests run in Node,
+      // where cloudflare: protocol imports do not resolve. The integration
+      // config runs in Node too and needs the same aliases.
       '@cloudflare/workers-oauth-provider': fileURLToPath(
         new URL('tests/stubs/workers-oauth-provider.ts', import.meta.url),
+      ),
+      'cloudflare:workers': fileURLToPath(
+        new URL('tests/stubs/cloudflare-workers.ts', import.meta.url),
       ),
     },
   },

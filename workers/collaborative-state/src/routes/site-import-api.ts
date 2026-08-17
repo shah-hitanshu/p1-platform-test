@@ -40,6 +40,7 @@ import {
 import type { CreatedByRef } from '../services/bundle-export-service';
 import { assertPermission, AuthorizationError } from '../auth/authorization';
 import { query } from '../db';
+import { purgeContentCache } from '../cache/purge';
 import { jsonResponse, errorResponse } from '../utils/http-helpers';
 
 const SYSTEM_UUID = '00000000-0000-0000-0000-000000000000';
@@ -422,6 +423,11 @@ export async function handleSiteImportRoute(
           agents: { name: string; role: string }[];
         })
       : null;
+
+    // Import writes publish checkpoints with raw SQL, bypassing the publish
+    // service's purge. An import requires an empty site, so the exposure is
+    // cached 404s at the paths it just filled — those carry the site tag.
+    await purgeContentCache({ siteId });
 
     return jsonResponse({
       importKey,

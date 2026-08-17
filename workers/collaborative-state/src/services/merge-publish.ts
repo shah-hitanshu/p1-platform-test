@@ -17,6 +17,7 @@
 
 import { query } from '../db';
 import { createCheckpoint } from './checkpoint-service';
+import { purgeContentCache } from '../cache/purge';
 
 export interface MergedVersionWithSource {
   documentId: string;
@@ -83,22 +84,33 @@ export async function publishMergedVersions(
     })),
   });
 
-  for (const entry of mergedVersions) {
-    if (entry.sourceVersionId === null) {
-      continue;
+  // In a finally because the checkpoint above has already committed: a throw
+  // from the best-effort provenance UPDATEs would otherwise leave content
+  // live-published but the edge serving pre-merge content for a full TTL plus
+  // stale-while-revalidate window, with no purge log to show it happened.
+  try {
+    for (const entry of mergedVersions) {
+      if (entry.sourceVersionId === null) {
+        continue;
+      }
+      await query(
+        `UPDATE app.document_versions
+         SET source_branch_id = $1, source_version_id = $2
+         WHERE id = $3`,
+        [sourceBranchId, entry.sourceVersionId, entry.documentVersionId],
+      );
+      await query(
+        `UPDATE app.document_versions
+         SET published_to_version_id = $1
+         WHERE id = $2`,
+        [entry.documentVersionId, entry.sourceVersionId],
+      );
     }
-    await query(
-      `UPDATE app.document_versions
-       SET source_branch_id = $1, source_version_id = $2
-       WHERE id = $3`,
-      [sourceBranchId, entry.sourceVersionId, entry.documentVersionId],
-    );
-    await query(
-      `UPDATE app.document_versions
-       SET published_to_version_id = $1
-       WHERE id = $2`,
-      [entry.documentVersionId, entry.sourceVersionId],
-    );
+  } finally {
+    await purgeContentCache({
+      siteId: params.siteId,
+      branchId: mainBranchId,
+    });
   }
 
   return {
