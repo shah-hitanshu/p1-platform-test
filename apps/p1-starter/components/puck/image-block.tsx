@@ -6,18 +6,39 @@ export const imageBlock = {
     src: { type: "text" as const, label: "Image URL" },
     alt: { type: "text" as const, label: "Alt text" },
     caption: { type: "textarea" as const, label: "Caption (optional)" },
+    loading: {
+      type: "radio" as const,
+      label: "Loading",
+      options: [
+        { label: "Lazy", value: "lazy" },
+        { label: "Eager", value: "eager" },
+      ],
+    },
   },
   defaultProps: {
     src: "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=1200&q=80",
     alt: "Mountain landscape",
     caption: "",
+    loading: "lazy",
   },
-  render: ({ src, alt, caption }: { src?: string; alt?: string; caption?: string }) => (
+  render: ({
+    src,
+    alt,
+    caption,
+    loading,
+  }: {
+    src?: string;
+    alt?: string;
+    caption?: string;
+    loading?: "lazy" | "eager";
+  }) => (
     <figure className={`m-0 ${blockPaddingClass}`}>
       {src ? (
         <img
           src={src}
           alt={alt || ""}
+          loading={loading === "eager" ? "eager" : "lazy"}
+          decoding="async"
           className="block h-auto max-h-[400px] w-full max-w-4xl rounded-lg object-contain"
         />
       ) : (

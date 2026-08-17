@@ -16,6 +16,7 @@ export function Rows({
   showIcon,
   rowDensity,
   imagePosition,
+  imageLoading = "lazy",
 }: RowsProps) {
   const padding = rowDensity === "compact" ? "p-2" : "p-3";
   const textSize = rowDensity === "compact" ? "text-sm" : "";
@@ -30,6 +31,8 @@ export function Rows({
               <img
                 src={item.image}
                 alt={item.title || ""}
+                loading={imageLoading}
+                decoding="async"
                 className="h-full w-full object-cover"
               />
             </div>

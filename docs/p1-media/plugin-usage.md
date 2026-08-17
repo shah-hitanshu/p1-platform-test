@@ -58,6 +58,11 @@ const config = {
 | `schema` | — | `MetadataFieldDef[]` passed to `MediaFigure`; pins figcaption field order/labels |
 | `className` / `captionClassName` | — | Forwarded to `MediaFigure` |
 | `placeholder` | `"Choose a photo from the media library"` | Rendered when no photo is chosen (or its URL fails validation) |
+| `defaultLoading` | `"lazy"` | Default of the block's "Loading" field. Editors can switch an instance to `"eager"`; set this to `"eager"` when the block is reliably above the fold |
+
+`MediaImage` and `MediaFigure` also default to `loading="lazy"` + `decoding="async"`,
+so custom blocks built on them inherit the behavior. Pass `loading="eager"` on a hero
+image whose eager fetch is worth the bytes.
 
 To put the field on your own component instead, declare it directly. `p1-media` is
 registered by the plugin at editor runtime, so it is not part of Puck's built-in `Field`

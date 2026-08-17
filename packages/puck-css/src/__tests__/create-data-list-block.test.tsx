@@ -53,6 +53,27 @@ vi.mock("@pantheon-systems/pds-toolkit-react", () => ({
       onChange={onChange}
     />
   ),
+  SegmentedButton: ({
+    options,
+    value,
+    onChange,
+  }: {
+    options?: { label: string; value: string }[];
+    value?: string;
+    onChange?: (v: string) => void;
+  }) => (
+    <div role="group">
+      {options?.map((opt) => (
+        <button
+          key={opt.value}
+          aria-pressed={opt.value === value}
+          onClick={() => onChange?.(opt.value)}
+        >
+          {opt.label}
+        </button>
+      ))}
+    </div>
+  ),
   Select: ({
     value,
     options,
@@ -122,6 +143,44 @@ describe("createDataListBlock", () => {
       const block = createDataListBlock();
       expect(block.fields.imagePosition).toBeDefined();
       expect(block.fields.imagePosition.type).toBe("custom");
+    });
+
+    describe("imageLoading field visibility", () => {
+      function renderImageLoading(props: Record<string, unknown>) {
+        mockSelectedItem = { type: "DataListBlock", props };
+        const field = createDataListBlock().fields.imageLoading;
+        return render(
+          field.render({
+            field,
+            name: "imageLoading",
+            id: "field-imageLoading",
+            label: field.label,
+            value: props.imageLoading ?? "",
+            onChange: () => {},
+          }),
+        );
+      }
+
+      it("shows the field for documents saved before it existed", () => {
+        renderImageLoading({ id: "DL-1" });
+        expect(screen.getByText("Eager")).toBeInTheDocument();
+      });
+
+      it("defaults the control to Lazy when no value is stored", () => {
+        renderImageLoading({ id: "DL-1" });
+        expect(screen.getByText("Lazy")).toHaveAttribute(
+          "aria-pressed",
+          "true",
+        );
+      });
+
+      it("hides the field when images are turned off", () => {
+        const { container } = renderImageLoading({
+          id: "DL-1",
+          showImage: false,
+        });
+        expect(container.innerHTML).toBe("");
+      });
     });
 
     it("has per-mode fields from all built-in modes", () => {

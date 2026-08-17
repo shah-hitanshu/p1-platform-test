@@ -3,6 +3,7 @@
 import { type ReactElement } from "react";
 import { createUsePuck, FieldLabel } from "@puckeditor/core";
 import { Select } from "@pantheon-systems/pds-toolkit-react";
+import { useVisibleWhenProp } from "./visible-when.js";
 
 const usePuckState = createUsePuck();
 
@@ -129,10 +130,9 @@ function ImagePositionFieldInner({
     type: string;
     props: Record<string, unknown>;
   } | null;
+  const visible = useVisibleWhenProp(visibleWhenPropName);
 
-  if (visibleWhenPropName && !selectedItem?.props?.[visibleWhenPropName]) {
-    return null;
-  }
+  if (!visible) return null;
 
   const posMap = modePositions ?? IMAGE_POSITION_OPTIONS;
   const defaultMode = Object.keys(posMap)[0] ?? "grid";

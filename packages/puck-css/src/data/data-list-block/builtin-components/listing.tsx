@@ -16,6 +16,7 @@ export function Listing({
   showIcon,
   listingWidth,
   imagePosition,
+  imageLoading = "lazy",
 }: ListingProps) {
   const widthClass = listingWidth === "narrow" ? "mx-auto max-w-2xl" : "";
 
@@ -38,6 +39,8 @@ export function Listing({
                 <img
                   src={item.image}
                   alt={item.title || ""}
+                  loading={imageLoading}
+                  decoding="async"
                   className="h-full w-full object-cover"
                 />
               </div>

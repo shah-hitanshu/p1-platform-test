@@ -13,6 +13,7 @@ export {
 export type {
   ResolvedItem,
   LayoutProps,
+  ImageLoading,
   ViewModeDefinition,
   CreateDataListBlockOptions,
   ImagePositionOption,

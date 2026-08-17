@@ -14,6 +14,7 @@ export const DATA_LIST_FIELD_GROUPS: Record<string, FieldGroup> = {
   teaserField: "content:fieldMapping",
   imageField: "content:fieldMapping",
   imagePosition: "content:fieldMapping",
+  imageLoading: "content:fieldMapping",
   iconField: "content:fieldMapping",
   viewMode: "layout",
   columns: "layout",

@@ -108,6 +108,8 @@ export function MediaImage({
   mediaBaseUrl,
   transform,
   alt,
+  loading = "lazy",
+  decoding = "async",
   ...rest
 }: {
   image: MediaFieldValue | null | undefined;
@@ -120,6 +122,8 @@ export function MediaImage({
     <img
       src={props.src}
       alt={alt ?? props.alt}
+      loading={loading}
+      decoding={decoding}
       {...(props.width !== undefined ? { width: props.width } : {})}
       {...(props.height !== undefined ? { height: props.height } : {})}
       {...rest}
@@ -170,6 +174,8 @@ export function MediaFigure({
   transform,
   className,
   captionClassName,
+  loading = "lazy",
+  decoding = "async",
 }: {
   image: MediaFieldValue | null | undefined;
   schema?: MetadataFieldDef[];
@@ -177,6 +183,9 @@ export function MediaFigure({
   transform?: ImageTransformParams;
   className?: string;
   captionClassName?: string;
+  /** Defaults to "lazy"; pass "eager" for an above-the-fold figure. */
+  loading?: ImgHTMLAttributes<HTMLImageElement>["loading"];
+  decoding?: ImgHTMLAttributes<HTMLImageElement>["decoding"];
 }): ReactElement | null {
   const props = getMediaProps(image, { mediaBaseUrl, transform });
   if (!props.src) return null;
@@ -188,6 +197,8 @@ export function MediaFigure({
       <img
         src={props.src}
         alt={props.alt}
+        loading={loading}
+        decoding={decoding}
         {...(props.width !== undefined ? { width: props.width } : {})}
         {...(props.height !== undefined ? { height: props.height } : {})}
       />

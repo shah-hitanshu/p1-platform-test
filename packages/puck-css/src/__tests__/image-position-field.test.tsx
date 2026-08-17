@@ -192,6 +192,27 @@ describe('createImagePositionField', () => {
       expect(container.innerHTML).toBe('');
     });
 
+    it('renders the field when the visibility prop is absent', () => {
+      mockSelectedItem = {
+        type: 'DataListBlock',
+        props: { id: 'DL-1', viewMode: 'cards' },
+      };
+      const fieldDef = createImagePositionField({
+        visibleWhenPropName: 'showImage',
+      });
+      render(
+        fieldDef.render({
+          field: fieldDef,
+          name: 'imagePosition',
+          id: 'field-imagePosition',
+          label: fieldDef.label,
+          value: 'top',
+          onChange: () => {},
+        }),
+      );
+      expect(screen.getByRole('combobox')).toBeInTheDocument();
+    });
+
     it('hides the field label when the visibility prop is false', () => {
       renderWithVisibility(false);
       expect(screen.queryByText('Image position')).not.toBeInTheDocument();

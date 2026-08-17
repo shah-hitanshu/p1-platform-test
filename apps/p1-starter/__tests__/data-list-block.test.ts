@@ -181,6 +181,14 @@ describe("dataListBlock", () => {
     expect(result.props).toEqual({});
   });
 
+  it("exposes an imageLoading field defaulting to lazy", async () => {
+    const { dataListBlock } = await import(
+      "../components/puck/data-list-block"
+    );
+    expect(fieldsOf(dataListBlock).imageLoading.type).toBe("custom");
+    expect(dataListBlock.defaultProps.imageLoading).toBe("lazy");
+  });
+
   it("provides a render function", async () => {
     const { dataListBlock } = await import(
       "../components/puck/data-list-block"

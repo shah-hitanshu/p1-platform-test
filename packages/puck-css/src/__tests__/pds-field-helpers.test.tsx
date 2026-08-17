@@ -2,7 +2,14 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import React from 'react';
 
+let mockSelectedItem: { type: string; props: Record<string, unknown> } | null =
+  null;
+
 vi.mock('@puckeditor/core', () => ({
+  createUsePuck:
+    () =>
+    (selector: (state: Record<string, unknown>) => unknown): unknown =>
+      selector({ selectedItem: mockSelectedItem }),
   FieldLabel: ({
     children,
     label,
@@ -160,6 +167,42 @@ describe('createPdsSegmentedField', () => {
     renderCustomField(field, 'asc', onChange);
     fireEvent.click(screen.getByText('Descending'));
     expect(onChange).toHaveBeenCalledWith('desc');
+  });
+
+  it('falls back to defaultValue when the stored value is empty', () => {
+    const field = createPdsSegmentedField('Sort direction', OPTIONS, {
+      defaultValue: 'asc',
+    });
+    renderCustomField(field, undefined);
+    expect(screen.getByText('Ascending')).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+  });
+
+  describe('visibleWhenPropName', () => {
+    function renderGated(props: Record<string, unknown>) {
+      mockSelectedItem = { type: 'DataListBlock', props };
+      const field = createPdsSegmentedField('Sort direction', OPTIONS, {
+        visibleWhenPropName: 'showImage',
+      });
+      return renderCustomField(field, 'asc');
+    }
+
+    it('renders when the visibility prop is true', () => {
+      renderGated({ showImage: true });
+      expect(screen.getByText('Ascending')).toBeInTheDocument();
+    });
+
+    it('hides only when the visibility prop is explicitly false', () => {
+      const { container } = renderGated({ showImage: false });
+      expect(container.innerHTML).toBe('');
+    });
+
+    it('renders when the visibility prop is absent', () => {
+      renderGated({ id: 'DL-1' });
+      expect(screen.getByText('Ascending')).toBeInTheDocument();
+    });
   });
 });
 

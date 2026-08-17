@@ -8,6 +8,7 @@ import {
   SegmentedButton,
   Select,
 } from "@pantheon-systems/pds-toolkit-react";
+import { VisibleWhenProp } from "./visible-when.js";
 
 interface CustomFieldDef {
   [key: string]: unknown;
@@ -112,23 +113,30 @@ export function createPdsSwitchField(
 export function createPdsSegmentedField(
   label: string,
   fieldOptions: { label: string; value: string }[],
+  options?: { visibleWhenPropName?: string; defaultValue?: string },
 ): CustomFieldDef {
   return {
     type: "custom" as const,
     label,
     render({ label: fieldLabel, id, value, onChange, readOnly }) {
-      return (
+      const control = (
         <FieldLabel label={fieldLabel}>
           <SegmentedButton
             id={id}
             label=""
             options={fieldOptions}
-            value={String(value ?? "")}
+            value={String(value ?? "") || (options?.defaultValue ?? "")}
             onChange={(v) => onChange(v)}
             disabled={readOnly}
             size="s"
           />
         </FieldLabel>
+      );
+      if (!options?.visibleWhenPropName) return control;
+      return (
+        <VisibleWhenProp propName={options.visibleWhenPropName}>
+          {control}
+        </VisibleWhenProp>
       );
     },
   };

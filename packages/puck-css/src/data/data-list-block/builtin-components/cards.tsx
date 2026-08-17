@@ -1,6 +1,6 @@
 "use client";
 
-import type { LayoutProps, ResolvedItem } from "../types.js";
+import type { ImageLoading, LayoutProps, ResolvedItem } from "../types.js";
 
 interface CardsProps extends LayoutProps {
   columns: number;
@@ -20,10 +20,12 @@ function CardImage({
   src,
   alt,
   position,
+  loading,
 }: {
   src: string;
   alt: string;
   position: string;
+  loading: ImageLoading;
 }) {
   if (position === "backdrop") {
     return null;
@@ -36,7 +38,13 @@ function CardImage({
 
   return (
     <div className={`overflow-hidden bg-slate-100 ${sizeClasses}`}>
-      <img src={src} alt={alt} className="h-full w-full object-cover" />
+      <img
+        src={src}
+        alt={alt}
+        loading={loading}
+        decoding="async"
+        className="h-full w-full object-cover"
+      />
     </div>
   );
 }
@@ -81,6 +89,7 @@ export function Cards({
   showIcon,
   columns,
   imagePosition,
+  imageLoading = "lazy",
 }: CardsProps) {
   return (
     <div className={`grid gap-4 ${GRID_COLS[columns] ?? "grid-cols-3"}`}>
@@ -113,6 +122,7 @@ export function Cards({
                   src={item.image}
                   alt={item.title || ""}
                   position={imagePosition}
+                  loading={imageLoading}
                 />
               )}
             <div className={isBackdrop ? "relative z-10 text-white" : isHorizontal ? "flex-1 min-w-0" : ""}>
@@ -131,6 +141,7 @@ export function Cards({
                   src={item.image}
                   alt={item.title || ""}
                   position={imagePosition}
+                  loading={imageLoading}
                 />
               )}
           </div>

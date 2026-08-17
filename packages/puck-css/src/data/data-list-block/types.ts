@@ -9,6 +9,8 @@ export interface ResolvedItem {
   _raw: Record<string, unknown>;
 }
 
+export type ImageLoading = "lazy" | "eager";
+
 export interface LayoutProps {
   items: ResolvedItem[];
   showTitle: boolean;
@@ -16,6 +18,7 @@ export interface LayoutProps {
   showTeaser: boolean;
   showImage: boolean;
   showIcon: boolean;
+  imageLoading?: ImageLoading;
 }
 
 export interface ImagePositionOption {

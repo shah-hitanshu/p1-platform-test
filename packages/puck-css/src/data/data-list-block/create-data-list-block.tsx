@@ -18,6 +18,7 @@ import { isTemplateDatasource, normalizeItems, resolveItemFields, viewExtractKey
 import type {
   CreateDataListBlockOptions,
   DataListBlockConfig,
+  ImageLoading,
   ViewModeDefinition,
   ResolvedItem,
   ImagePositionOption,
@@ -29,7 +30,7 @@ const STATUS_OPTIONS = [
   { label: "Any status", value: "Any status" },
 ];
 
-const useStatusPuck = createUsePuck();
+const usePuckState = createUsePuck();
 
 function StatusSelectFieldInner({
   id,
@@ -44,7 +45,7 @@ function StatusSelectFieldInner({
   onChange: (v: string) => void;
   readOnly?: boolean;
 }): ReactElement | null {
-  const selectedItem = useStatusPuck((s) => s.selectedItem) as {
+  const selectedItem = usePuckState((s) => s.selectedItem) as {
     props: Record<string, unknown>;
   } | null;
   const datasourceId = (selectedItem?.props?.datasourceId as string) ?? "";
@@ -63,6 +64,11 @@ function StatusSelectFieldInner({
     </FieldLabel>
   );
 }
+
+const IMAGE_LOADING_OPTIONS = [
+  { label: "Lazy", value: "lazy" },
+  { label: "Eager", value: "eager" },
+];
 
 export function createDataListBlock(options?: CreateDataListBlockOptions): DataListBlockConfig {
   const modes: Record<string, ViewModeDefinition> =
@@ -135,6 +141,11 @@ export function createDataListBlock(options?: CreateDataListBlockOptions): DataL
       visibleWhenPropName: "showImage",
       modePositions,
     }),
+    imageLoading: createPdsSegmentedField(
+      "Image loading",
+      IMAGE_LOADING_OPTIONS,
+      { visibleWhenPropName: "showImage", defaultValue: "lazy" },
+    ),
     iconField: createSchemaSelectField({
       label: "Icon",
       togglePropName: "showIcon",
@@ -194,6 +205,7 @@ export function createDataListBlock(options?: CreateDataListBlockOptions): DataL
     showImage: true,
     showIcon: false,
     imagePosition: defaultImagePosition,
+    imageLoading: "lazy",
     heading: "",
     groupBy: "",
     startAt: 1,
@@ -231,6 +243,10 @@ export function createDataListBlock(options?: CreateDataListBlockOptions): DataL
     const showImage = (props.showImage as boolean) ?? true;
     const showIcon = (props.showIcon as boolean) ?? false;
     const imagePosition = (props.imagePosition as string) ?? defaultImagePosition;
+    // Documents saved before the field existed have no value; those pages are
+    // exactly the image-heavy ones this defaults lazy for.
+    const imageLoading: ImageLoading =
+      props.imageLoading === "eager" ? "eager" : "lazy";
     const heading = (props.heading as string) ?? "";
     const groupBy = (props.groupBy as string) ?? "";
     const startAt = (props.startAt as number) ?? 1;
@@ -374,6 +390,7 @@ export function createDataListBlock(options?: CreateDataListBlockOptions): DataL
       showTeaser,
       showImage,
       showIcon,
+      imageLoading,
     };
 
     function renderLayout(resolved: ResolvedItem[]) {

@@ -26,9 +26,13 @@ function collectImgs(node: ReactNode, acc: Record<string, unknown>[]): void {
   }
 }
 
-function renderBlock(block: ReturnType<typeof createMediaFigureBlock>, photo: unknown): ReactElement {
+function renderBlock(
+  block: ReturnType<typeof createMediaFigureBlock>,
+  photo: unknown,
+  loading?: string,
+): ReactElement {
 
-  return (block.render as (p: any) => ReactElement)({ photo });
+  return (block.render as (p: any) => ReactElement)({ photo, loading });
 }
 
 describe("createMediaFigureBlock", () => {
@@ -37,8 +41,26 @@ describe("createMediaFigureBlock", () => {
   it("declares a p1-media field and a null default", () => {
 
     expect((block.fields as any).photo.type).toBe("p1-media");
-    expect(block.defaultProps).toEqual({ photo: null });
+    expect(block.defaultProps).toEqual({ photo: null, loading: "lazy" });
     expect(block.label).toBe("Media Figure");
+  });
+
+  it("lazy-loads by default and honors an eager override", () => {
+    const photo: MediaValue = { assetId: "a", versionId: "v", url: CDN_URL };
+
+    const lazy: Record<string, unknown>[] = [];
+    collectImgs(renderBlock(block, photo), lazy);
+    expect(lazy[0].loading).toBe("lazy");
+    expect(lazy[0].decoding).toBe("async");
+
+    const eager: Record<string, unknown>[] = [];
+    collectImgs(renderBlock(block, photo, "eager"), eager);
+    expect(eager[0].loading).toBe("eager");
+  });
+
+  it("takes its loading default from defaultLoading", () => {
+    const hero = createMediaFigureBlock({ mediaBaseUrl: CDN, defaultLoading: "eager" });
+    expect(hero.defaultProps?.loading).toBe("eager");
   });
 
   it("renders the placeholder when no photo is set", () => {

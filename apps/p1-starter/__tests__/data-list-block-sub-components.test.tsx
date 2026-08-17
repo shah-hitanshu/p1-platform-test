@@ -205,3 +205,42 @@ describe("Listing sub-component", () => {
     expect(html).toContain("A brief preview of the first item");
   });
 });
+
+describe("image loading", () => {
+  it("lazy-loads item images in every layout by default", async () => {
+    const { Cards, Rows, Listing } = await import(
+      "@pantheon-systems/puck-css/fields"
+    );
+    const markups = [
+      renderToStaticMarkup(
+        <Cards {...BASE_PROPS} columns={3} imagePosition="top" />,
+      ),
+      renderToStaticMarkup(
+        <Rows {...BASE_PROPS} rowDensity="comfortable" imagePosition="left" />,
+      ),
+      renderToStaticMarkup(
+        <Listing {...BASE_PROPS} imagePosition="left" listingWidth="wide" />,
+      ),
+    ];
+    for (const html of markups) {
+      expect(html).toContain("<img");
+      expect(html).toContain('loading="lazy"');
+      expect(html).toContain('decoding="async"');
+      expect(html).not.toContain('loading="eager"');
+    }
+  });
+
+  it("honors an eager override", async () => {
+    const { Cards } = await import("@pantheon-systems/puck-css/fields");
+    const html = renderToStaticMarkup(
+      <Cards
+        {...BASE_PROPS}
+        imageLoading="eager"
+        columns={3}
+        imagePosition="top"
+      />,
+    );
+    expect(html).toContain('loading="eager"');
+    expect(html).not.toContain('loading="lazy"');
+  });
+});

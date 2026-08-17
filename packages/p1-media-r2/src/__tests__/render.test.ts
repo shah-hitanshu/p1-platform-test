@@ -170,6 +170,19 @@ describe("MediaImage", () => {
     const el = MediaImage({ image: "https://evil/x.jpg", mediaBaseUrl: CDN });
     expect(el).toBeNull();
   });
+
+  it("lazy-loads and async-decodes by default", () => {
+    const { imgs } = inspect(MediaImage({ image: CDN_URL, mediaBaseUrl: CDN }));
+    expect(imgs[0].loading).toBe("lazy");
+    expect(imgs[0].decoding).toBe("async");
+  });
+
+  it("lets the caller opt into eager loading", () => {
+    const { imgs } = inspect(
+      MediaImage({ image: CDN_URL, mediaBaseUrl: CDN, loading: "eager" }),
+    );
+    expect(imgs[0].loading).toBe("eager");
+  });
 });
 
 describe("MediaFigure — generic, escaped rendering (R14 + R6)", () => {
@@ -224,6 +237,14 @@ describe("MediaFigure — generic, escaped rendering (R14 + R6)", () => {
   it("renders nothing (and no caption) when the src is rejected", () => {
     const image: MediaValue = { assetId: "a", versionId: "v", url: "https://evil/x.jpg", byline: "Jane" };
     expect(MediaFigure({ image, schema, mediaBaseUrl: CDN })).toBeNull();
+  });
+
+  it("lazy-loads by default and honors an eager override", () => {
+    const image: MediaValue = { assetId: "a", versionId: "v", url: CDN_URL };
+    expect(inspect(MediaFigure({ image, mediaBaseUrl: CDN })).imgs[0].loading).toBe("lazy");
+    expect(
+      inspect(MediaFigure({ image, mediaBaseUrl: CDN, loading: "eager" })).imgs[0].loading,
+    ).toBe("eager");
   });
 
   it("renders no figcaption when a basic string value carries no metadata", () => {

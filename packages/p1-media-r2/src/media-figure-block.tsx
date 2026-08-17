@@ -8,6 +8,7 @@ import type { MediaFieldValue, MetadataFieldDef } from "./types";
 
 export interface MediaFigureBlockProps {
   photo: MediaFieldValue | null;
+  loading?: "lazy" | "eager";
 }
 
 export interface MediaFigureBlockOptions {
@@ -33,6 +34,12 @@ export interface MediaFigureBlockOptions {
   captionClassName?: string;
   /** Rendered when no photo is chosen (or its URL fails origin validation). */
   placeholder?: ReactNode;
+  /**
+   * Default for the block's "Loading" field. "lazy" (the default) keeps
+   * off-screen images off the wire on image-heavy pages; use "eager" when the
+   * block is reliably above the fold.
+   */
+  defaultLoading?: "lazy" | "eager";
 }
 
 const DEFAULT_TRANSFORM: ImageTransformParams = { width: 1200, height: 630, format: "auto" };
@@ -76,6 +83,7 @@ export function createMediaFigureBlock(
     className,
     captionClassName,
     placeholder = "Choose a photo from the media library",
+    defaultLoading = "lazy",
   } = options;
 
   return {
@@ -84,11 +92,20 @@ export function createMediaFigureBlock(
       // `p1-media` is registered by createMediaPlugin via overrides.fieldTypes,
       // so it is not part of Puck's built-in Field union.
       photo: { type: "p1-media", label: fieldLabel } as unknown as Field,
+      loading: {
+        type: "radio",
+        label: "Loading",
+        options: [
+          { label: "Lazy", value: "lazy" },
+          { label: "Eager", value: "eager" },
+        ],
+      },
     },
     defaultProps: {
       photo: null,
+      loading: defaultLoading,
     },
-    render: ({ photo }: MediaFigureBlockProps): ReactElement => {
+    render: ({ photo, loading }: MediaFigureBlockProps): ReactElement => {
       const { src } = getMediaProps(photo ?? null, { mediaBaseUrl });
       if (!src) {
         return <div style={placeholderStyle}>{placeholder}</div>;
@@ -101,6 +118,7 @@ export function createMediaFigureBlock(
           schema={schema}
           className={className}
           captionClassName={captionClassName}
+          loading={loading === "eager" ? "eager" : "lazy"}
         />
       );
     },
