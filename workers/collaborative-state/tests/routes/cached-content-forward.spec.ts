@@ -12,6 +12,18 @@ import {
   isCacheableContentRequest,
 } from '../../src/routes/cached-content-forward';
 
+const logger = vi.hoisted(() => ({
+  info: vi.fn(),
+  warn: vi.fn(),
+  error: vi.fn(),
+  debug: vi.fn(),
+}));
+
+vi.mock('@pantheon-systems/p1-telemetry', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@pantheon-systems/p1-telemetry')>();
+  return { ...actual, getLogger: () => logger };
+});
+
 const fetchSpy = vi.fn();
 
 beforeEach(() => {
@@ -102,6 +114,24 @@ describe('forwardToCachedContent', () => {
 
     const response = await forwardToCachedContent(new Request(url, { method: 'GET' }));
 
-    expect(await response.text()).toBe('{"cached":true}');
+    expect(response).not.toBeNull();
+    expect(await response?.text()).toBe('{"cached":true}');
+  });
+
+  // The exports map is empty unless the enable_ctx_exports compatibility flag
+  // is set — losing the flag (or the exports config) must cost cache hits,
+  // not 500 every published page on every site [PCC-3666].
+  it('returns null instead of throwing when the loopback binding is missing', async () => {
+    delete (workerExports as Record<string, unknown>).CachedContent;
+
+    const response = await forwardToCachedContent(new Request(url, { method: 'GET' }));
+
+    expect(response).toBeNull();
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.stringContaining('CachedContent loopback binding unavailable'),
+      undefined,
+      expect.objectContaining({ outcome: 'fail_open' }),
+    );
   });
 });

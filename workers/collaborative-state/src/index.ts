@@ -437,9 +437,25 @@ async function handleRequest(
 
   try {
     // Every gate above has run; past this point the response depends only on
-    // the URL, which is what makes the cached entrypoint safe.
+    // the URL, which is what makes the cached entrypoint safe. The cache layer
+    // must never be a point of failure for content serving [PCC-3666]: a null
+    // forward (loopback binding unavailable) or a throw from the forward both
+    // fall through to the uncached dispatch below. Entrypoint-level failures
+    // return as Response objects and pass through untouched — only transport
+    // failures land in the catch.
     if (isCacheableContentRequest(route, request.method)) {
-      return cors(await forwardToCachedContent(request));
+      try {
+        const cached = await forwardToCachedContent(request);
+        if (cached !== null) {
+          return cors(cached);
+        }
+      } catch (error) {
+        getLogger().error('cached content forward failed, serving uncached', error, {
+          site_id: route.params.siteId,
+          doc_path: route.params.documentPath,
+          outcome: 'fail_open',
+        });
+      }
     }
 
     const response = await dispatchRoute(request, route, principal, env, masClient, ctx);

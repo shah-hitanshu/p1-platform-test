@@ -19,9 +19,11 @@
     "CachedContent": { "type": "worker", "cache": { "enabled": true } }
   },
 
-  // Compatibility settings
+  // Compatibility settings. enable_ctx_exports populates the cloudflare:workers
+  // exports map (loopback bindings) that cached-content-forward.ts depends on;
+  // it is flag-gated until compat date 2025-11-17 [PCC-3666].
   "compatibility_date": "2024-12-01",
-  "compatibility_flags": ["nodejs_compat"],
+  "compatibility_flags": ["nodejs_compat", "enable_ctx_exports"],
   
   // ==========================================================================
   // Durable Objects Configuration
