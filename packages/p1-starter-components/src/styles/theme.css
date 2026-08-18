@@ -1,0 +1,28 @@
+/* Tailwind v4 theme configuration */
+/* Maps p1-* CSS variables to Tailwind utility classes */
+
+@theme inline {
+  /* Colors - generates bg-p1-*, text-p1-*, border-p1-* utilities */
+  --color-p1-primary: var(--p1-primary);
+  --color-p1-secondary: var(--p1-secondary);
+  --color-p1-success: var(--p1-success);
+  --color-p1-warning: var(--p1-warning);
+  --color-p1-error: var(--p1-error);
+  --color-p1-bg-light: var(--p1-bg-light);
+  --color-p1-bg-default: var(--p1-bg-default);
+  --color-p1-text: var(--p1-text);
+  --color-p1-text-muted: var(--p1-text-muted);
+  --color-p1-border: var(--p1-border);
+
+  /* Spacing - generates p-p1-*, m-p1-*, gap-p1-*, etc. utilities */
+  --spacing-p1-xs: var(--p1-spacing-xs);
+  --spacing-p1-sm: var(--p1-spacing-sm);
+  --spacing-p1-md: var(--p1-spacing-md);
+  --spacing-p1-lg: var(--p1-spacing-lg);
+  --spacing-p1-xl: var(--p1-spacing-xl);
+
+  /* Border Radius - generates rounded-p1-* utilities */
+  --radius-p1-sm: var(--p1-radius-sm);
+  --radius-p1-md: var(--p1-radius-md);
+  --radius-p1-lg: var(--p1-radius-lg);
+}
