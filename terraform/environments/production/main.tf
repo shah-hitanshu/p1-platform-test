@@ -59,6 +59,16 @@ variable "cloudflare_account_id" {
   type        = string
 }
 
+variable "cloudflare_api_token" {
+  description = "Cloudflare API token"
+  type        = string
+  sensitive   = true
+}
+
+provider "cloudflare" {
+  api_token = var.cloudflare_api_token
+}
+
 variable "cloudsql_authorized_networks" {
   description = "Authorized networks for CloudSQL access (Cloudflare egress IPs, VPN, etc.)"
   type = list(object({

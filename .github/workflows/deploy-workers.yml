@@ -1,6 +1,8 @@
 name: Deploy Workers
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       environment:
@@ -27,7 +29,7 @@ permissions:
 
 # Queue deploys per environment; never cancel one mid-flight.
 concurrency:
-  group: deploy-workers-${{ inputs.environment }}
+  group: deploy-workers-${{ github.event_name == 'push' && 'staging' || inputs.environment }}
   cancel-in-progress: false
 
 env:
@@ -39,8 +41,29 @@ env:
     --filter=...p1-media-worker
 
 jobs:
-  # Deploys are dispatched manually and can target any ref, so nothing
-  # guarantees CI has run on what is about to ship.
+  # `inputs` is empty on a push-triggered run; every job reads the deploy
+  # target from these outputs.
+  config:
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.set.outputs.environment }}
+      run_migrations: ${{ steps.set.outputs.run_migrations }}
+      dry_run: ${{ steps.set.outputs.dry_run }}
+    steps:
+      - id: set
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo "environment=staging" >> "$GITHUB_OUTPUT"
+            echo "run_migrations=true" >> "$GITHUB_OUTPUT"
+            echo "dry_run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "environment=${{ inputs.environment }}" >> "$GITHUB_OUTPUT"
+            echo "run_migrations=${{ inputs.run_migrations }}" >> "$GITHUB_OUTPUT"
+            echo "dry_run=${{ inputs.dry_run }}" >> "$GITHUB_OUTPUT"
+          fi
+
+  # Deploys can target any ref, so nothing guarantees CI has run on what is
+  # about to ship.
   verify:
     name: lint / typecheck
     runs-on: ubuntu-latest
@@ -64,9 +87,9 @@ jobs:
       - run: pnpm exec turbo run lint ${{ env.DEPLOYED }}
 
   backend:
-    needs: verify
+    needs: [verify, config]
     runs-on: ubuntu-latest
-    environment: ${{ inputs.environment }}
+    environment: ${{ needs.config.outputs.environment }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
@@ -98,7 +121,7 @@ jobs:
             auth0_client_secret:${{ vars.GCP_PROJECT_ID }}/CCR_BACKEND_AUTH0_CLIENT_SECRET
 
       - name: Start Cloud SQL Auth Proxy
-        if: inputs.run_migrations
+        if: needs.config.outputs.run_migrations == 'true'
         run: |
           URL="https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.21.2"
           curl "$URL/cloud-sql-proxy.linux.amd64" -o cloud-sql-proxy
@@ -110,7 +133,7 @@ jobs:
           done
 
       - name: Run migrations
-        if: inputs.run_migrations
+        if: needs.config.outputs.run_migrations == 'true'
         env:
           POSTGRES_SET_ROLE: cssuser
         run: |
@@ -121,30 +144,30 @@ jobs:
           pnpm --filter collaborative-state-worker db:migrate
 
       - name: Set Wrangler secrets
-        if: ${{ !inputs.dry_run }}
+        if: ${{ needs.config.outputs.dry_run != 'true' }}
         working-directory: workers/collaborative-state
         env:
           CLOUDFLARE_API_TOKEN: ${{ steps.secrets.outputs.cf_token }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
           AUTH0_CLIENT_SECRET: ${{ steps.secrets.outputs.auth0_client_secret }}
-          DEPLOY_ENV: ${{ inputs.environment }}
+          DEPLOY_ENV: ${{ needs.config.outputs.environment }}
         run: |
           printf '%s' "$AUTH0_CLIENT_SECRET" | pnpm exec wrangler secret put AUTH0_CLIENT_SECRET --env "$DEPLOY_ENV"
 
       - name: Deploy
         run: >
           pnpm exec wrangler deploy
-          --env ${{ inputs.environment }}
-          ${{ inputs.dry_run && '--dry-run' || '' }}
+          --env ${{ needs.config.outputs.environment }}
+          ${{ needs.config.outputs.dry_run == 'true' && '--dry-run' || '' }}
         working-directory: workers/collaborative-state
         env:
           CLOUDFLARE_API_TOKEN: ${{ steps.secrets.outputs.cf_token }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
 
   mcp-server:
-    needs: verify
+    needs: [verify, config]
     runs-on: ubuntu-latest
-    environment: ${{ inputs.environment }}
+    environment: ${{ needs.config.outputs.environment }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
@@ -177,14 +200,14 @@ jobs:
             state_signing_secret:${{ vars.GCP_PROJECT_ID }}/CCR_MCP_STATE_SIGNING_SECRET
 
       - name: Set Wrangler secrets
-        if: ${{ !inputs.dry_run }}
+        if: ${{ needs.config.outputs.dry_run != 'true' }}
         working-directory: workers/css-mcp-server
         env:
           CLOUDFLARE_API_TOKEN: ${{ steps.secrets.outputs.cf_token }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
           AUTH0_CLIENT_SECRET: ${{ steps.secrets.outputs.auth0_client_secret }}
           MCP_STATE_SIGNING_SECRET: ${{ steps.secrets.outputs.state_signing_secret }}
-          DEPLOY_ENV: ${{ inputs.environment }}
+          DEPLOY_ENV: ${{ needs.config.outputs.environment }}
         run: |
           printf '%s' "$AUTH0_CLIENT_SECRET" | pnpm exec wrangler secret put AUTH0_CLIENT_SECRET --env "$DEPLOY_ENV"
           printf '%s' "$MCP_STATE_SIGNING_SECRET" | pnpm exec wrangler secret put MCP_STATE_SIGNING_SECRET --env "$DEPLOY_ENV"
@@ -192,8 +215,8 @@ jobs:
       - name: Deploy
         run: >
           pnpm exec wrangler deploy
-          --env ${{ inputs.environment }}
-          ${{ inputs.dry_run && '--dry-run' || '' }}
+          --env ${{ needs.config.outputs.environment }}
+          ${{ needs.config.outputs.dry_run == 'true' && '--dry-run' || '' }}
         working-directory: workers/css-mcp-server
         env:
           CLOUDFLARE_API_TOKEN: ${{ steps.secrets.outputs.cf_token }}
@@ -202,9 +225,9 @@ jobs:
   # NOTE: the agent has no production env in wrangler.jsonc; selecting
   # production for this job fails fast.
   p1-agent:
-    needs: verify
+    needs: [verify, config]
     runs-on: ubuntu-latest
-    environment: ${{ inputs.environment }}
+    environment: ${{ needs.config.outputs.environment }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
@@ -237,8 +260,8 @@ jobs:
       - name: Deploy
         run: >
           pnpm exec wrangler deploy
-          --env ${{ inputs.environment }}
-          ${{ inputs.dry_run && '--dry-run' || '' }}
+          --env ${{ needs.config.outputs.environment }}
+          ${{ needs.config.outputs.dry_run == 'true' && '--dry-run' || '' }}
         working-directory: workers/p1-agent
         env:
           CLOUDFLARE_API_TOKEN: ${{ steps.secrets.outputs.cf_token }}
@@ -246,9 +269,9 @@ jobs:
 
   # Absorbed from p1-media-r2's deploy-worker.yml (sandbox lane removed).
   p1-media:
-    needs: verify
+    needs: [verify, config]
     runs-on: ubuntu-latest
-    environment: ${{ inputs.environment }}
+    environment: ${{ needs.config.outputs.environment }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
@@ -289,11 +312,11 @@ jobs:
       # Additive-only D1 schema migrations; safe ahead of the new worker code.
       # Requires the CF token to carry D1 edit scope.
       - name: Apply D1 migrations
-        if: ${{ !inputs.dry_run }}
+        if: ${{ needs.config.outputs.dry_run != 'true' }}
         run: >
           pnpm exec wrangler d1 migrations apply
-          "p1-media-${{ inputs.environment == 'production' && 'prod' || inputs.environment }}"
-          --env ${{ inputs.environment }}
+          "p1-media-${{ needs.config.outputs.environment == 'production' && 'prod' || needs.config.outputs.environment }}"
+          --env ${{ needs.config.outputs.environment }}
           --remote
         working-directory: workers/p1-media
         env:
@@ -301,10 +324,10 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
 
       - name: Push R2 credentials to the Worker
-        if: ${{ !inputs.dry_run }}
+        if: ${{ needs.config.outputs.dry_run != 'true' }}
         run: |
-          echo -n "$R2_ACCESS_KEY_ID" | pnpm exec wrangler secret put R2_ACCESS_KEY_ID --env ${{ inputs.environment }}
-          echo -n "$R2_SECRET_ACCESS_KEY" | pnpm exec wrangler secret put R2_SECRET_ACCESS_KEY --env ${{ inputs.environment }}
+          echo -n "$R2_ACCESS_KEY_ID" | pnpm exec wrangler secret put R2_ACCESS_KEY_ID --env ${{ needs.config.outputs.environment }}
+          echo -n "$R2_SECRET_ACCESS_KEY" | pnpm exec wrangler secret put R2_SECRET_ACCESS_KEY --env ${{ needs.config.outputs.environment }}
         working-directory: workers/p1-media
         env:
           CLOUDFLARE_API_TOKEN: ${{ steps.secrets.outputs.cf_token }}
@@ -315,8 +338,8 @@ jobs:
       - name: Deploy
         run: >
           pnpm exec wrangler deploy
-          --env ${{ inputs.environment }}
-          ${{ inputs.dry_run && '--dry-run' || '' }}
+          --env ${{ needs.config.outputs.environment }}
+          ${{ needs.config.outputs.dry_run == 'true' && '--dry-run' || '' }}
         working-directory: workers/p1-media
         env:
           CLOUDFLARE_API_TOKEN: ${{ steps.secrets.outputs.cf_token }}
@@ -329,8 +352,8 @@ jobs:
   #
   # Staging deploys are not released: a release records what is in production.
   release:
-    needs: [backend, mcp-server, p1-agent, p1-media]
-    if: ${{ always() && inputs.environment == 'production' && !inputs.dry_run }}
+    needs: [config, backend, mcp-server, p1-agent, p1-media]
+    if: ${{ always() && needs.config.outputs.environment == 'production' && needs.config.outputs.dry_run != 'true' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write # create tags and releases
