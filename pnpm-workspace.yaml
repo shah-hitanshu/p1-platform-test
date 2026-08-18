@@ -9,9 +9,10 @@ confirmModulesPurge: false
 # Union of the four source repos' overrides. Where the same package was pinned
 # differently, the strictest spec that satisfies every repo's intent was kept.
 overrides:
-  # nanoid 3.x: GHSA-2v37-7h3g-55p8 (dev). Per-major pin — a global nanoid pin would drag the
+  # nanoid 3.x: GHSA-2v37-7h3g-55p8 (dev). Fixed in 3.3.18 (NOT 3.3.17 — 3.3.17 is still
+  # < 3.3.18 and stays flagged). Per-major pin — a global nanoid pin would drag the
   # legitimate nanoid@5 copy down to 3.x and break it.
-  'nanoid@3': '3.3.17'
+  'nanoid@3': '3.3.18'
   # Source repos all resolved 0.21.1; fresh resolution drifted to a split 0.21.3/0.22.2
   # (puck-css declares it as peer >=0.21.0, so auto-install grabbed latest). Revisit
   # as a deliberate upgrade once the tree is stable.
