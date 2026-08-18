@@ -170,3 +170,27 @@ jobs:
           name: playwright-report
           path: playwright-report/
           retention-days: 7
+
+  storybook:
+    name: storybook (build + story render tests)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # Chromium is installed here and not in `verify` so the repo's main
+      # gate keeps its current runtime.
+      - run: pnpm exec playwright install --with-deps chromium
+      - name: Render every story
+        run: pnpm --filter @pantheon-systems/p1-starter-components test:storybook
+      - name: Build the static Storybook
+        run: pnpm --filter @pantheon-systems/p1-starter-components build-storybook
+      - uses: actions/upload-artifact@v4
+        with:
+          name: storybook-static
+          path: packages/p1-starter-components/storybook-static/
+          retention-days: 7
