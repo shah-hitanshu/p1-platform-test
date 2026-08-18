@@ -145,11 +145,12 @@ export class VersionReconstructionError extends Error {
     public readonly branchId: string,
     public readonly requestedVersion: number,
     public readonly brokenVersion: number,
+    reason = 'holds neither a snapshot nor a patch',
   ) {
     super(
       `Cannot reconstruct version ${String(requestedVersion)} of document `
       + `"${documentId}" on branch "${branchId}": version ${String(brokenVersion)} `
-      + 'holds neither a snapshot nor a patch.',
+      + `${reason}.`,
     );
     Object.setPrototypeOf(this, VersionReconstructionError.prototype);
   }
@@ -374,6 +375,23 @@ export async function createDocumentVersion(
     // it is left with no way to rebuild its content. Several write paths
     // (document create, realtime sync, publish copies, merges, reverts) insert
     // full snapshots with no patch at any version number.
+    // A pinned or publish-checkpointed row is never nulled either [PCC-3652]:
+    // published content must stay servable without patch-chain replay, whose
+    // integrity a later defect anywhere in the chain would silently break.
+    // The NOT EXISTS is scoped to publish checkpoints deliberately — session
+    // checkpoints reference every document's tip on every editing session,
+    // and an unscoped guard would stop compaction reclaiming anything on the
+    // common editing path. Snapshots for non-publish checkpoint reverts are
+    // PCC-3662/PCC-3663.
+    // Both tests are needed. NOT EXISTS alone cannot close the publish-moment
+    // race: if this statement is already waiting on the row's lock when
+    // publish commits, it resumes without an EvalPlanQual recheck (publish
+    // holding FOR UPDATE modifies nothing), so its NOT EXISTS was evaluated
+    // against a pre-publish snapshot. pinned_at closes it: publish stamps the
+    // row — a real tuple update, which forces the recheck — and pinned_at IS
+    // NULL is then tested against the updated tuple. NOT EXISTS still covers
+    // rows published before the stamp existed, where the checkpoint long
+    // predates this statement and no race exists.
     const shouldNullPrevious = latestVersion != null
       && latestVersion.versionNumber > 1
       && latestVersion.patch != null
@@ -386,6 +404,13 @@ export async function createDocumentVersion(
         WHERE id = $11::uuid
           AND $12::boolean = true
           AND patch IS NOT NULL
+          AND pinned_at IS NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM app.checkpoint_documents cd
+            JOIN app.checkpoints cp ON cp.id = cd.checkpoint_id
+            WHERE cd.document_version_id = document_versions.id
+              AND cp.checkpoint_type = 'publish'
+          )
         RETURNING id
       )
       INSERT INTO app.document_versions (
@@ -732,8 +757,24 @@ export async function reconstructVersionSnapshot(
     const ops = typeof diffRow.patch === 'string'
       ? JSON.parse(diffRow.patch) as import('fast-json-patch').Operation[]
       : diffRow.patch;
-    const patchResult = applyPatch(snapshot, ops, false, false);
-    snapshot = patchResult.newDocument;
+    try {
+      const patchResult = applyPatch(snapshot, ops, false, false);
+      snapshot = patchResult.newDocument;
+    } catch (applyError) {
+      // A stored patch that no longer applies to its predecessor is the same
+      // class of chain damage as a missing one. With validation off,
+      // fast-json-patch surfaces it as a raw TypeError — rethrow it typed,
+      // with the broken version named. [PCC-3652]
+      const error = new VersionReconstructionError(
+        documentId,
+        branchId,
+        versionNumber,
+        diffRow.version_number,
+        'holds a patch that does not apply to its predecessor',
+      );
+      error.cause = applyError;
+      throw error;
+    }
   }
 
   return snapshot;
@@ -1028,14 +1069,23 @@ export async function batchSyncToPostgres(
         if (patchOps.length > 0) {
           // Store forward patch on the NEW version, null previous snapshot atomically.
           // The previous row keeps its snapshot unless it carries a patch of its
-          // own to rebuild from.
+          // own to rebuild from. Pinned or publish-checkpointed rows are never
+          // nulled [PCC-3652] — see createDocumentVersion's CTE for why both
+          // tests are needed and why the checkpoint filter is publish-only.
           const shouldNullPrev = prevRow.version_number > 1 && prevRow.patch != null;
           await query(
             `WITH update_new AS (
               UPDATE app.document_versions SET patch = $1 WHERE id = $2
             )
             UPDATE app.document_versions SET snapshot = NULL
-            WHERE id = $3 AND $4::boolean = true AND patch IS NOT NULL`,
+            WHERE id = $3 AND $4::boolean = true AND patch IS NOT NULL
+              AND pinned_at IS NULL
+              AND NOT EXISTS (
+                SELECT 1 FROM app.checkpoint_documents cd
+                JOIN app.checkpoints cp ON cp.id = cd.checkpoint_id
+                WHERE cd.document_version_id = document_versions.id
+                  AND cp.checkpoint_type = 'publish'
+              )`,
             [
               JSON.stringify(patchOps),
               insertedVersion.id,

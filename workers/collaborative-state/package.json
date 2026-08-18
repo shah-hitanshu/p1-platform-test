@@ -36,6 +36,8 @@
     "db:adopt-slot-ids:execute": "tsx src/db/adopt-slot-ids.ts --execute",
     "db:backfill-page-titles": "tsx src/db/backfill-page-titles.ts",
     "db:backfill-page-titles:execute": "tsx src/db/backfill-page-titles.ts --execute",
+    "db:repair-published-snapshots": "tsx src/db/repair-published-snapshots.ts",
+    "db:repair-published-snapshots:execute": "tsx src/db/repair-published-snapshots.ts --execute",
     "cf:login": "wrangler login",
     "cf:whoami": "wrangler whoami",
     "cf:tail": "wrangler tail",

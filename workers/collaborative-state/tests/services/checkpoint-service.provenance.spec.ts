@@ -117,6 +117,7 @@ describe('publishDocument provenance tracking', () => {
         rows: [{ id: 'new-version-on-main', version_number: 8 }],
       }) // create version on main
       .mockResolvedValueOnce({ rows: [] }) // UPDATE source version with published_to_version_id
+      .mockResolvedValueOnce({ rows: [] }) // pin published version (pinned_at)
       .mockResolvedValueOnce({ rows: [mockCheckpointRow] }) // insert checkpoint on main
       .mockResolvedValueOnce({ rows: [] }) // insert checkpoint_documents
       .mockResolvedValueOnce({ rows: [] }); // COMMIT
@@ -175,6 +176,7 @@ describe('publishDocument provenance tracking', () => {
         rows: [{ id: 'new-version-on-main', version_number: 5 }],
       }) // create version on main
       .mockResolvedValueOnce({ rows: [] }) // UPDATE source version with published_to_version_id
+      .mockResolvedValueOnce({ rows: [] }) // pin published version (pinned_at)
       .mockResolvedValueOnce({ rows: [mockCheckpointRow] }) // insert checkpoint on main
       .mockResolvedValueOnce({ rows: [] }) // insert checkpoint_documents
       .mockResolvedValueOnce({ rows: [] }); // COMMIT
@@ -233,6 +235,7 @@ describe('publishDocument provenance tracking', () => {
         rows: [{ id: 'main-ver-new-001', version_number: 6 }],
       }) // create version on main
       .mockResolvedValueOnce({ rows: [] }) // UPDATE source version with published_to_version_id
+      .mockResolvedValueOnce({ rows: [] }) // pin published version (pinned_at)
       .mockResolvedValueOnce({ rows: [mockCheckpointRow] }) // insert checkpoint on main
       .mockResolvedValueOnce({ rows: [] }) // insert checkpoint_documents
       .mockResolvedValueOnce({ rows: [] }); // COMMIT
@@ -285,6 +288,7 @@ describe('publishDocument provenance tracking', () => {
     vi.mocked(db.query)
       .mockResolvedValueOnce({ rows: [] }) // BEGIN
       .mockResolvedValueOnce({ rows: [mockVersionRow] }) // get latest version (already on main)
+      .mockResolvedValueOnce({ rows: [] }) // pin published version (pinned_at)
       .mockResolvedValueOnce({ rows: [mockCheckpointRow] }) // insert checkpoint
       .mockResolvedValueOnce({ rows: [] }) // insert checkpoint_documents
       .mockResolvedValueOnce({ rows: [] }); // COMMIT
@@ -330,6 +334,7 @@ describe('publishDocument provenance tracking', () => {
     vi.mocked(db.query)
       .mockResolvedValueOnce({ rows: [] }) // BEGIN
       .mockResolvedValueOnce({ rows: [mockVersionRow] }) // get latest version (already on main)
+      .mockResolvedValueOnce({ rows: [] }) // pin published version (pinned_at)
       .mockResolvedValueOnce({ rows: [mockCheckpointRow] }) // insert checkpoint
       .mockResolvedValueOnce({ rows: [] }) // insert checkpoint_documents
       .mockResolvedValueOnce({ rows: [] }); // COMMIT
@@ -380,6 +385,7 @@ describe('publishDocument provenance tracking', () => {
         rows: [{ id: 'new-version-on-main', version_number: 8 }],
       }) // create version on main
       .mockResolvedValueOnce({ rows: [] }) // UPDATE source version with published_to_version_id
+      .mockResolvedValueOnce({ rows: [] }) // pin published version (pinned_at)
       .mockResolvedValueOnce({ rows: [mockCheckpointRow] }) // insert checkpoint on main
       .mockResolvedValueOnce({ rows: [] }) // insert checkpoint_documents
       .mockResolvedValueOnce({ rows: [] }); // COMMIT

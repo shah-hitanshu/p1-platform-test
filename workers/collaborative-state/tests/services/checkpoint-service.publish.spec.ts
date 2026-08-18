@@ -110,6 +110,7 @@ describe('publishDocument', () => {
       .mockResolvedValueOnce({ rows: [mockVersionRow] }) // get latest version on source branch
       .mockResolvedValueOnce({ rows: [{ id: 'new-version-on-main', version_number: 8 }] }) // create version on main
       .mockResolvedValueOnce({ rows: [] }) // UPDATE source version with published_to_version_id
+      .mockResolvedValueOnce({ rows: [] }) // pin published version (pinned_at)
       .mockResolvedValueOnce({ rows: [mockCheckpointRow] }) // insert checkpoint on main
       .mockResolvedValueOnce({ rows: [] }) // insert checkpoint_documents
       .mockResolvedValueOnce({ rows: [] }); // COMMIT
@@ -164,6 +165,7 @@ describe('publishDocument', () => {
       .mockResolvedValueOnce({ rows: [mockVersionRow] }) // get latest version on source
       .mockResolvedValueOnce({ rows: [{ id: 'copied-version-on-main', version_number: 4 }] }) // create version on main
       .mockResolvedValueOnce({ rows: [] }) // UPDATE source version with published_to_version_id
+      .mockResolvedValueOnce({ rows: [] }) // pin published version (pinned_at)
       .mockResolvedValueOnce({ rows: [mockCheckpointRow] }) // insert checkpoint
       .mockResolvedValueOnce({ rows: [] }) // insert checkpoint_documents
       .mockResolvedValueOnce({ rows: [] }); // COMMIT
@@ -226,6 +228,7 @@ describe('publishDocument', () => {
       .mockResolvedValueOnce({ rows: [mockVersionRow] }) // get latest version
       .mockResolvedValueOnce({ rows: [{ id: 'main-version-id', version_number: 5 }] }) // version on main
       .mockResolvedValueOnce({ rows: [] }) // UPDATE source version with published_to_version_id
+      .mockResolvedValueOnce({ rows: [] }) // pin published version (pinned_at)
       .mockResolvedValueOnce({ rows: [mockCheckpointRow] }) // checkpoint
       .mockResolvedValueOnce({ rows: [] }) // checkpoint_documents
       .mockResolvedValueOnce({ rows: [] }); // COMMIT
@@ -276,6 +279,7 @@ describe('publishDocument', () => {
     vi.mocked(db.query)
       .mockResolvedValueOnce({ rows: [] }) // BEGIN
       .mockResolvedValueOnce({ rows: [mockVersionRow] }) // get latest version (already on main)
+      .mockResolvedValueOnce({ rows: [] }) // pin published version (pinned_at)
       .mockResolvedValueOnce({ rows: [mockCheckpointRow] }) // insert checkpoint
       .mockResolvedValueOnce({ rows: [] }) // insert checkpoint_documents
       .mockResolvedValueOnce({ rows: [] }); // COMMIT
