@@ -1,6 +1,6 @@
 {
   "name": "@pantheon-systems/puck-css",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "description": "Puck editor integration with Collaborative State System",
   "publishConfig": {
     "access": "public",
