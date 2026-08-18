@@ -14,7 +14,7 @@ import {
   computeSemanticOps,
   type SemanticOp,
 } from "./semantic-ops";
-import { isReservedPath, stripTrailingSlash } from "./paths";
+import { hasStaticAssetExtension, isReservedPath, stripTrailingSlash } from "./paths";
 
 /** Regex that matches safe route-path keys (e.g. `/`, `/foo/bar`, `/jedi/:id`). */
 const SAFE_ROUTE_KEY_REGEX = /^\/[a-zA-Z0-9/:._-]*$/;
@@ -252,6 +252,9 @@ function routeKindForPath(
 }
 
 export async function resolvePageData(path: string): Promise<Data | null> {
+  if (hasStaticAssetExtension(path)) {
+    return null;
+  }
 
   const store = getPageStore();
   const normalized = stripTrailingSlash(path);

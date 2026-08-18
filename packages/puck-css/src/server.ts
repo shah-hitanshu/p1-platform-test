@@ -3,7 +3,7 @@
 // pulling React context/hooks into server module graphs.
 
 // --- Pure utilities (also in client barrel, re-exported here for server use) ---
-export { normalizePath, stripTrailingSlash, isReservedPath, PATH_REGEX } from "./data/paths.js";
+export { normalizePath, stripTrailingSlash, isReservedPath, hasStaticAssetExtension, PATH_REGEX } from "./data/paths.js";
 export {
   isRouteTemplatePath,
   pagePathFromCatchAllSegments,

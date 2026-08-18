@@ -393,7 +393,7 @@ export type { ThumbnailCardProps } from './editor/thumbnails/ThumbnailCard.js';
 export { humanizeComponentName } from './editor/thumbnails/humanizeComponentName.js';
 
 // P1 Client SDK — Lib Utilities (client-safe)
-export { normalizePath, stripTrailingSlash, isReservedPath, PATH_REGEX } from './data/paths.js';
+export { normalizePath, stripTrailingSlash, isReservedPath, hasStaticAssetExtension, PATH_REGEX } from './data/paths.js';
 export {
   isCanonicalTemplatePath,
   templatePathParamNames,

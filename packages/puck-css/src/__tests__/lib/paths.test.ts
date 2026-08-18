@@ -6,6 +6,7 @@ import {
   stripTrailingSlash,
   PATH_REGEX,
   isReservedPath,
+  hasStaticAssetExtension,
   normalizePath,
 } from '../../data/paths';
 
@@ -98,6 +99,51 @@ describe('isReservedPath', () => {
   });
 });
 
+describe('hasStaticAssetExtension', () => {
+  it('detects asset extensions', () => {
+    expect(hasStaticAssetExtension('/logo.png')).toBe(true);
+    expect(hasStaticAssetExtension('/assets/app.min.js')).toBe(true);
+    expect(hasStaticAssetExtension('/fonts/inter.woff2')).toBe(true);
+    expect(hasStaticAssetExtension('/hero.WEBP')).toBe(true);
+  });
+
+  it('leaves page paths alone', () => {
+    expect(hasStaticAssetExtension('/about')).toBe(false);
+    expect(hasStaticAssetExtension('/')).toBe(false);
+    expect(hasStaticAssetExtension('/blog/2026/launch')).toBe(false);
+  });
+
+  it('treats dots in slugs as part of the slug', () => {
+    expect(hasStaticAssetExtension('/dr.smith')).toBe(false);
+    expect(hasStaticAssetExtension('/v1.2-release-notes')).toBe(false);
+  });
+
+  it('leaves legacy-CMS extensions routable so their redirects still resolve', () => {
+    expect(hasStaticAssetExtension('/old-page.html')).toBe(false);
+    expect(hasStaticAssetExtension('/index.php')).toBe(false);
+    expect(hasStaticAssetExtension('/legacy.aspx')).toBe(false);
+    expect(hasStaticAssetExtension('/brochure.pdf')).toBe(false);
+  });
+
+  it('ignores a leading dot on a dotfile-style segment', () => {
+    expect(hasStaticAssetExtension('/.well-known/thing')).toBe(false);
+  });
+
+  it('detects asset extensions behind trailing slashes', () => {
+    expect(hasStaticAssetExtension('/logo.png/')).toBe(true);
+    expect(hasStaticAssetExtension('/assets/app.min.js//')).toBe(true);
+  });
+
+  it('stays linear on long slash runs', () => {
+    const slashes = '/'.repeat(200_000);
+    expect(hasStaticAssetExtension(`/logo.png${slashes}`)).toBe(true);
+
+    const started = performance.now();
+    expect(hasStaticAssetExtension(`${slashes}x`)).toBe(false);
+    expect(performance.now() - started).toBeLessThan(500);
+  });
+});
+
 describe('normalizePath', () => {
   it('normalizes valid paths', () => {
     expect(normalizePath('/about/')).toBe('/about');
@@ -108,6 +154,12 @@ describe('normalizePath', () => {
   it('returns null for reserved paths', () => {
     expect(normalizePath('/p1/edit')).toBeNull();
     expect(normalizePath('/_next/data')).toBeNull();
+  });
+
+  it('returns null for static-asset paths so writes match the read path', () => {
+    expect(normalizePath('/press-kit.svg')).toBeNull();
+    expect(normalizePath('/logo.png/')).toBeNull();
+    expect(normalizePath('/old-page.html')).toBe('/old-page.html');
   });
 
   it('normalizes non-string inputs to root', () => {

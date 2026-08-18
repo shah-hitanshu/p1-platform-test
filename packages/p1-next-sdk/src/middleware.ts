@@ -26,6 +26,10 @@ export function createP1Middleware(config: P1MiddlewareConfig) {
       }
     }
 
+    // Asset-extension paths deliberately still reach getRedirect: redirects are
+    // user-configured for arbitrary paths, and migrating sites point old asset
+    // URLs at their new home. Only the document lookup is skipped (see
+    // resolvePageData).
     try {
       const redirect = await client.getRedirect(pathname);
       if (redirect !== null) {

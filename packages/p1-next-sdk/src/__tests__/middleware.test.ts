@@ -106,6 +106,41 @@ describe("createP1Middleware", () => {
     expect(mockGetRedirect).not.toHaveBeenCalled();
   });
 
+  it("should still look up redirects for static-asset paths", async () => {
+    mockGetRedirect.mockResolvedValue(null);
+
+    const middleware = createP1Middleware(config);
+    for (const path of ["/logo.png", "/wp-content/uploads/old-logo.png", "/fonts/inter.woff2"]) {
+      await middleware(new Request(`http://localhost:3000${path}`));
+      expect(mockGetRedirect).toHaveBeenCalledWith(path);
+    }
+  });
+
+  it("should redirect a migrated asset path to its new home", async () => {
+    mockGetRedirect.mockResolvedValueOnce({
+      destination: "https://cdn.example.com/logo.png",
+      statusCode: 301,
+    });
+
+    const middleware = createP1Middleware(config);
+    const result = await middleware(
+      new Request("http://localhost:3000/wp-content/uploads/old-logo.png")
+    ) as { type: string; url: string; status: number };
+
+    expect(result.type).toBe("redirect");
+    expect(result.url).toBe("https://cdn.example.com/logo.png");
+    expect(result.status).toBe(301);
+  });
+
+  it("should still look up redirects for legacy-CMS extensions", async () => {
+    mockGetRedirect.mockResolvedValueOnce(null);
+
+    const middleware = createP1Middleware(config);
+    await middleware(new Request("http://localhost:3000/old-page.html"));
+
+    expect(mockGetRedirect).toHaveBeenCalledWith("/old-page.html");
+  });
+
   it("should pass through on getRedirect error", async () => {
     mockGetRedirect.mockRejectedValueOnce(new Error("Network error"));
 
