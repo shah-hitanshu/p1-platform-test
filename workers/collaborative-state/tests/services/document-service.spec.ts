@@ -763,7 +763,7 @@ describe('Phase 3.1: Document Service', () => {
         await listDocumentsOnBranch('branch-uuid-456');
 
         expect(db.query).toHaveBeenCalledWith(
-          expect.stringMatching(/JOIN.*document_versions|document_versions.*JOIN/i),
+          expect.stringMatching(/JOIN[\s\S]*app\.document_versions/i),
           expect.any(Array),
         );
       });

@@ -41,6 +41,11 @@ import type { DocumentOnBranch } from './document-types';
 import {
   TEMPLATE_RELATION_JOIN,
   DOCUMENT_WITH_TEMPLATE_COLUMNS,
+  LATEST_VERSION_LISTING_COLUMNS,
+  latestVersionOnBranchJoin,
+  latestPublishOnBranchJoin,
+  publishedOnBranchPredicate,
+  documentInBranchSitePredicate,
   branchInheritsFromMain,
 } from './document-queries';
 import { enforceUniqueSlotIds } from './slot-id-backstop';
@@ -82,59 +87,32 @@ export async function listDocumentsOnBranch(
     // Copy-on-write query: include documents from branch + inherited from main
     // Includes publish state via LEFT JOIN LATERAL on checkpoint_documents
     let sql = `
-      SELECT DISTINCT ${DOCUMENT_WITH_TEMPLATE_COLUMNS},
+      SELECT ${DOCUMENT_WITH_TEMPLATE_COLUMNS},
         false AS inherited,
         pub.document_version_id AS published_version_id,
         pub.published_at,
-        snap.snapshot_title,
-        snap.latest_version_at,
-        snap.last_modified_by_id,
-        snap.last_modified_by_type
+        top.snapshot_title,
+        top.latest_version_at,
+        top.last_modified_by_id,
+        top.last_modified_by_type
       FROM app.documents d
       ${TEMPLATE_RELATION_JOIN}
-      INNER JOIN app.document_versions dv ON dv.document_id = d.id
-      LEFT JOIN LATERAL (
-        SELECT cd.document_version_id, cp.created_at AS published_at
-        FROM app.checkpoint_documents cd
-        INNER JOIN app.checkpoints cp ON cp.id = cd.checkpoint_id
-        WHERE cd.document_id = d.id AND cp.branch_id = $2
-          AND cp.checkpoint_type = 'publish'
-        ORDER BY cp.created_at DESC
-        LIMIT 1
-      ) pub ON true
-      LEFT JOIN LATERAL (
-        SELECT COALESCE(dv_snap.snapshot->'root'->'props'->>'title', dv_snap.snapshot->>'title') AS snapshot_title,
-          dv_snap.created_at AS latest_version_at,
-          dv_snap.created_by_id AS last_modified_by_id,
-          dv_snap.created_by_type AS last_modified_by_type
-        FROM app.document_versions dv_snap
-        WHERE dv_snap.document_id = d.id AND dv_snap.branch_id = $1
-          AND dv_snap.is_tombstone = false
-        ORDER BY dv_snap.version_number DESC
-        LIMIT 1
-      ) snap ON true
-      WHERE dv.branch_id = $1
-        AND d.archived_at IS NULL
-        AND NOT EXISTS (
-          SELECT 1 FROM app.document_versions dv2
-          WHERE dv2.document_id = d.id
-            AND dv2.branch_id = $1
-            AND dv2.is_tombstone = true
-            AND dv2.version_number = (
-              SELECT MAX(dv3.version_number)
-              FROM app.document_versions dv3
-              WHERE dv3.document_id = d.id AND dv3.branch_id = $1
-            )
-        )`;
+      ${latestVersionOnBranchJoin('$1', LATEST_VERSION_LISTING_COLUMNS)}
+      ${latestPublishOnBranchJoin('$2')}
+      WHERE d.archived_at IS NULL
+        AND ${documentInBranchSitePredicate('$1')}
+        AND top.is_tombstone = false`;
 
     const params: unknown[] = [branchId, mainBranchId];
 
+    let pathParamIdx: number | undefined;
     if (pathPrefix !== undefined && pathPrefix !== '') {
       // Normalize prefix to match stored paths, then escape LIKE wildcards
       const normalizedPrefix = normalizePath(pathPrefix);
       const escapedPrefix = escapeLikePattern(normalizedPrefix) + '%';
       params.push(escapedPrefix);
-      sql += ` AND d.path LIKE $${String(params.length)} ESCAPE '\\'`;
+      pathParamIdx = params.length;
+      sql += ` AND d.path LIKE $${String(pathParamIdx)} ESCAPE '\\'`;
     }
 
     let templateParamIdx: number | undefined;
@@ -144,69 +122,39 @@ export async function listDocumentsOnBranch(
       sql += ` AND dr.target_document_id = $${String(templateParamIdx)}`;
     }
 
+    // The arms are disjoint — the second takes only documents with no version on
+    // the branch — and each emits one row per document, so UNION ALL suffices.
     sql += `
 
-      UNION
+      UNION ALL
 
-      SELECT DISTINCT ${DOCUMENT_WITH_TEMPLATE_COLUMNS},
+      SELECT ${DOCUMENT_WITH_TEMPLATE_COLUMNS},
         true AS inherited,
         pub.document_version_id AS published_version_id,
         pub.published_at,
-        snap.snapshot_title,
-        snap.latest_version_at,
-        snap.last_modified_by_id,
-        snap.last_modified_by_type
+        top.snapshot_title,
+        top.latest_version_at,
+        top.last_modified_by_id,
+        top.last_modified_by_type
       FROM app.documents d
       ${TEMPLATE_RELATION_JOIN}
-      INNER JOIN app.document_versions dv ON dv.document_id = d.id
-      INNER JOIN app.checkpoint_documents cd ON cd.document_version_id = dv.id
-      INNER JOIN app.checkpoints cp ON cp.id = cd.checkpoint_id
-      LEFT JOIN LATERAL (
-        SELECT cd2.document_version_id, cp2.created_at AS published_at
-        FROM app.checkpoint_documents cd2
-        INNER JOIN app.checkpoints cp2 ON cp2.id = cd2.checkpoint_id
-        WHERE cd2.document_id = d.id AND cp2.branch_id = $2
-          AND cp2.checkpoint_type = 'publish'
-        ORDER BY cp2.created_at DESC
-        LIMIT 1
-      ) pub ON true
-      LEFT JOIN LATERAL (
-        SELECT COALESCE(dv_snap.snapshot->'root'->'props'->>'title', dv_snap.snapshot->>'title') AS snapshot_title,
-          dv_snap.created_at AS latest_version_at,
-          dv_snap.created_by_id AS last_modified_by_id,
-          dv_snap.created_by_type AS last_modified_by_type
-        FROM app.document_versions dv_snap
-        WHERE dv_snap.document_id = d.id AND dv_snap.branch_id = $2
-          AND dv_snap.is_tombstone = false
-        ORDER BY dv_snap.version_number DESC
-        LIMIT 1
-      ) snap ON true
-      WHERE dv.branch_id = $2
-        AND cp.branch_id = $2
-        AND cp.checkpoint_type = 'publish'
-        AND d.archived_at IS NULL
+      ${latestVersionOnBranchJoin('$2', LATEST_VERSION_LISTING_COLUMNS)}
+      ${latestPublishOnBranchJoin('$2')}
+      WHERE d.archived_at IS NULL
+        AND ${documentInBranchSitePredicate('$1')}
+        AND top.is_tombstone = false
+        AND ${publishedOnBranchPredicate('$2')}
         AND NOT EXISTS (
           SELECT 1 FROM app.document_versions dv_branch
           WHERE dv_branch.document_id = d.id
             AND dv_branch.branch_id = $1
-        )
-        AND NOT EXISTS (
-          SELECT 1 FROM app.document_versions dv_tomb
-          WHERE dv_tomb.document_id = d.id
-            AND dv_tomb.branch_id = $2
-            AND dv_tomb.is_tombstone = true
-            AND dv_tomb.version_number = (
-              SELECT MAX(dv_latest.version_number)
-              FROM app.document_versions dv_latest
-              WHERE dv_latest.document_id = d.id AND dv_latest.branch_id = $2
-            )
         )`;
 
-    if (pathPrefix !== undefined && pathPrefix !== '') {
-      sql += ` AND d.path LIKE $${String(params.length)} ESCAPE '\\'`;
+    if (pathParamIdx !== undefined) {
+      sql += ` AND d.path LIKE $${String(pathParamIdx)} ESCAPE '\\'`;
     }
 
-    if (templateId !== undefined && templateParamIdx !== undefined) {
+    if (templateParamIdx !== undefined) {
       sql += ` AND dr.target_document_id = $${String(templateParamIdx)}`;
     }
 
@@ -221,50 +169,21 @@ export async function listDocumentsOnBranch(
   // Original query: only documents with versions on the branch
   // When called without mainBranchId, the branchId itself is treated as main
   let sql = `
-    SELECT DISTINCT ${DOCUMENT_WITH_TEMPLATE_COLUMNS},
+    SELECT ${DOCUMENT_WITH_TEMPLATE_COLUMNS},
       false AS inherited,
       pub.document_version_id AS published_version_id,
       pub.published_at,
-      snap.snapshot_title,
-      snap.latest_version_at,
-      snap.last_modified_by_id,
-      snap.last_modified_by_type
+      top.snapshot_title,
+      top.latest_version_at,
+      top.last_modified_by_id,
+      top.last_modified_by_type
     FROM app.documents d
     ${TEMPLATE_RELATION_JOIN}
-    INNER JOIN app.document_versions dv ON dv.document_id = d.id
-    LEFT JOIN LATERAL (
-      SELECT cd.document_version_id, cp.created_at AS published_at
-      FROM app.checkpoint_documents cd
-      INNER JOIN app.checkpoints cp ON cp.id = cd.checkpoint_id
-      WHERE cd.document_id = d.id AND cp.branch_id = $1
-        AND cp.checkpoint_type = 'publish'
-      ORDER BY cp.created_at DESC
-      LIMIT 1
-    ) pub ON true
-    LEFT JOIN LATERAL (
-      SELECT COALESCE(dv_snap.snapshot->'root'->'props'->>'title', dv_snap.snapshot->>'title') AS snapshot_title,
-        dv_snap.created_at AS latest_version_at,
-        dv_snap.created_by_id AS last_modified_by_id,
-        dv_snap.created_by_type AS last_modified_by_type
-      FROM app.document_versions dv_snap
-      WHERE dv_snap.document_id = d.id AND dv_snap.branch_id = $1
-        AND dv_snap.is_tombstone = false
-      ORDER BY dv_snap.version_number DESC
-      LIMIT 1
-    ) snap ON true
-    WHERE dv.branch_id = $1
-      AND d.archived_at IS NULL
-      AND NOT EXISTS (
-        SELECT 1 FROM app.document_versions dv2
-        WHERE dv2.document_id = d.id
-          AND dv2.branch_id = $1
-          AND dv2.is_tombstone = true
-          AND dv2.version_number = (
-            SELECT MAX(dv3.version_number)
-            FROM app.document_versions dv3
-            WHERE dv3.document_id = d.id AND dv3.branch_id = $1
-          )
-      )`;
+    ${latestVersionOnBranchJoin('$1', LATEST_VERSION_LISTING_COLUMNS)}
+    ${latestPublishOnBranchJoin('$1')}
+    WHERE d.archived_at IS NULL
+      AND ${documentInBranchSitePredicate('$1')}
+      AND top.is_tombstone = false`;
 
   const params: unknown[] = [branchId];
 

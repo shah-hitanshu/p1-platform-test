@@ -121,7 +121,7 @@ describe('Copy-on-Write: listDocumentsOnBranch inherited field', () => {
     const unionIndex = sql.indexOf('UNION');
     const inheritedArm = sql.slice(unionIndex);
     expect(inheritedArm).toContain('is_tombstone');
-    expect(inheritedArm).toContain('MAX');
+    expect(inheritedArm).toContain('ORDER BY dv.version_number DESC');
   });
 
   it('should include inherited column in COW UNION query', async () => {
