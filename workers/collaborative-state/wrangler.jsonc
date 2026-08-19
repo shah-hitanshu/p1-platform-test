@@ -24,6 +24,16 @@
   // it is flag-gated until compat date 2025-11-17 [PCC-3666].
   "compatibility_date": "2024-12-01",
   "compatibility_flags": ["nodejs_compat", "enable_ctx_exports"],
+
+  // Inherited by every environment. Source maps are what make the stacks the
+  // logger serializes resolve to src/ instead of the bundle.
+  "upload_source_maps": true,
+  "observability": {
+    "logs": {
+      "enabled": true,
+      "invocation_logs": true
+    }
+  },
   
   // ==========================================================================
   // Durable Objects Configuration
@@ -97,6 +107,8 @@
     "PRESENCE_TTL_SECONDS": "120",
     // Metrics configuration (disabled by default for local dev)
     "METRICS_ENABLED": "false",
+    // Stamped onto every log line as service.version. CI overrides it with the
+    // commit sha; the values here are the fallback for a deploy run by hand.
     "APP_VERSION": "dev",
     // Internal API for DO-to-PostgreSQL sync (Phase 1.3)
     // INTERNAL_SECRET is set in .dev.vars (local) or secrets (production)
@@ -170,7 +182,7 @@
         "WEBSOCKET_HEARTBEAT_INTERVAL": "30000",
         "DOCUMENT_SYNC_BATCH_SIZE": "50",
         "PRESENCE_TTL_SECONDS": "120",
-        "APP_VERSION": "staging",
+        "APP_VERSION": "unknown",
         "R2_SCREENSHOTS_BUCKET": "css-screenshots-staging",
         "R2_BUNDLES_BUCKET": "ccr-bundles-staging",
         "AUTH0_ISSUER_BASE_URL": "https://auth-staging.pantheon.io",
@@ -229,13 +241,7 @@
       },
       "hyperdrive": [
         { "binding": "HYPERDRIVE", "id": "31d5f144f71148309aa4350e816f455f" }
-      ],
-      "observability": {
-          "logs": {
-            "enabled": true,
-            "invocation_logs": true
-          }
-        }
+      ]
     },
 
     // Production environment
@@ -251,7 +257,7 @@
         "WEBSOCKET_HEARTBEAT_INTERVAL": "30000",
         "DOCUMENT_SYNC_BATCH_SIZE": "50",
         "PRESENCE_TTL_SECONDS": "120",
-        "APP_VERSION": "production",
+        "APP_VERSION": "unknown",
         "R2_SCREENSHOTS_BUCKET": "css-screenshots-production",
         "R2_BUNDLES_BUCKET": "ccr-bundles-production",
         "AUTH0_ISSUER_BASE_URL": "https://pantheon.auth0.com",
@@ -309,13 +315,7 @@
       "hyperdrive": [
         { "binding": "HYPERDRIVE", "id": "a5250d151e014f72996ed54a627e0939" },
         { "binding": "HYPERDRIVE_NOCACHE", "id": "a554c113c98c488ab201a4debca73f20" }
-      ],
-      "observability": {
-        "logs": {
-          "enabled": true,
-          "invocation_logs": true
-        }
-      }
+      ]
     }
   }
 }

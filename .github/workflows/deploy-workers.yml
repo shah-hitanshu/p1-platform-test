@@ -158,6 +158,7 @@ jobs:
         run: >
           pnpm exec wrangler deploy
           --env ${{ needs.config.outputs.environment }}
+          --var APP_VERSION:${{ github.sha }}
           ${{ needs.config.outputs.dry_run == 'true' && '--dry-run' || '' }}
         working-directory: workers/collaborative-state
         env:

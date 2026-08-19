@@ -7,6 +7,16 @@
   "compatibility_date": "2024-12-01",
   "compatibility_flags": ["nodejs_compat"],
 
+  // Inherited by every environment. Source maps are what make error stacks
+  // resolve to src/ instead of the bundle.
+  "upload_source_maps": true,
+  "observability": {
+    "logs": {
+      "enabled": true,
+      "invocation_logs": true
+    }
+  },
+
   // KV namespace for OAuth token storage (used by @cloudflare/workers-oauth-provider)
   // The library requires the binding name to be "OAUTH_KV"
   "kv_namespaces": [
@@ -98,13 +108,7 @@
         { "name": "RL_TOOLS_MUTATION", "namespace_id": "3192420", "simple": { "limit": 30,  "period": 60 } },
         { "name": "RL_OAUTH",          "namespace_id": "3192430", "simple": { "limit": 20,  "period": 60 } },
         { "name": "RL_TOOLS_ANON",     "namespace_id": "3192440", "simple": { "limit": 60,  "period": 60 } }
-      ],
-      "observability": {
-        "logs": {
-          "enabled": true,
-          "invocation_logs": false
-        }
-      }
+      ]
     },
     "production": {
       "name": "css-mcp-server-production",
@@ -139,14 +143,7 @@
         { "name": "RL_TOOLS_MUTATION", "namespace_id": "3192220", "simple": { "limit": 30,  "period": 60 } },
         { "name": "RL_OAUTH",          "namespace_id": "3192230", "simple": { "limit": 20,  "period": 60 } },
         { "name": "RL_TOOLS_ANON",     "namespace_id": "3192240", "simple": { "limit": 60,  "period": 60 } }
-      ],
-      // Workers Logs — same rationale as staging.
-      "observability": {
-        "logs": {
-          "enabled": true,
-          "invocation_logs": false
-        }
-      }
+      ]
     }
   }
 }

@@ -11,8 +11,12 @@
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["ChatAgent"] }
   ],
+  "upload_source_maps": true,
   "observability": {
-    "enabled": true
+    "logs": {
+      "enabled": true,
+      "invocation_logs": true
+    }
   },
   "vars": {
     "ENVIRONMENT": "local",
