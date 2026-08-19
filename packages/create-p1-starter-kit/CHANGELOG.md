@@ -1,5 +1,13 @@
 # @pantheon-systems/create-p1-starter-kit
 
+## 0.11.1
+
+### Patch Changes
+
+- a16d921: Set `license` to `UNLICENSED` to match the rest of the suite. These packages had drifted
+  to `MIT` (or had no `license` field at all), but they are closed-source and were never
+  intended to be published under an open-source license.
+
 ## 0.11.0
 
 ### Minor Changes

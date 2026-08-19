@@ -1,5 +1,17 @@
 # @pantheon-systems/p1-next-sdk
 
+## 0.11.1
+
+### Patch Changes
+
+- a16d921: Set `license` to `UNLICENSED` to match the rest of the suite. These packages had drifted
+  to `MIT` (or had no `license` field at all), but they are closed-source and were never
+  intended to be published under an open-source license.
+- Updated dependencies [a16d921]
+- Updated dependencies [1297cd2]
+  - @pantheon-systems/css-client@0.11.1
+  - @pantheon-systems/puck-css@0.11.1
+
 ## 0.11.0
 
 ### Minor Changes

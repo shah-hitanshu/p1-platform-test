@@ -1,5 +1,20 @@
 # @pantheon-systems/puck-css
 
+## 0.11.1
+
+### Patch Changes
+
+- a16d921: Set `license` to `UNLICENSED` to match the rest of the suite. These packages had drifted
+  to `MIT` (or had no `license` field at all), but they are closed-source and were never
+  intended to be published under an open-source license.
+- 1297cd2: **[Fix]** Template references to hyphenated datasource ids (e.g. `{{ blog-post.title }}`) now resolve; previously they were never fetched and rendered as an empty string.
+
+  ### What Changed
+  - P1 auto-generates content-type datasource ids in kebab-case (`blog-post`, `customer-story`). Template resolution only accepted `A–Z`, `a–z`, `0–9`, and `_` in datasource ids, so hyphenated ids were silently skipped during datasource loading and evaluated to `""` at render time. Both plain (`{{ blog-post.title }}`) and namespaced (`{{ templates.blog-post.title }}`) references now resolve, including `.markdownLinks` expansion.
+
+- Updated dependencies [a16d921]
+  - @pantheon-systems/css-client@0.11.1
+
 ## 0.11.0
 
 ### Minor Changes
