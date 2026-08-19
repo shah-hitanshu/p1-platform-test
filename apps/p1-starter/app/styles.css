@@ -1,6 +1,10 @@
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
-@source "../../../packages/puck-css/src";
+/* Tailwind must scan puck-css's own components for the utility classes they use.
+   node_modules-relative so the same path resolves in this monorepo (pnpm symlink)
+   and in a scaffolded project; dist rather than src because the published package
+   ships only compiled output. */
+@source "../node_modules/@pantheon-systems/puck-css/dist";
 
 /* Scoped via :has() rather than a bare `body {...}` selector so this reset
    stays out of Puck's canvas-preview iframe (PCC-3499 / PCC-3513).
