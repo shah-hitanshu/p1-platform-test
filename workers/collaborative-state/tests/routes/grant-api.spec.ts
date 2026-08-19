@@ -10,49 +10,26 @@ import { makePrincipal } from '../helpers/principal';
 import { makeBranch } from '../helpers/branch';
 
 // Mock the services
-vi.mock('../../src/services', () => ({
-  createGrant: vi.fn(),
-  getGrant: vi.fn(),
-  listGrants: vi.fn(),
-  deleteGrant: vi.fn(),
-  getBranch: vi.fn().mockResolvedValue({ id: 'branch-1', siteId: 'site-1', name: 'main', isMain: true }),
-  GrantNotFoundError: class GrantNotFoundError extends Error {
-    name = 'GrantNotFoundError';
-    constructor(public grantId: string) {
-      super(`Grant not found: ${grantId}`);
-    }
-  },
-  BranchNotFoundError: class BranchNotFoundError extends Error {
-    name = 'BranchNotFoundError';
-    constructor(public branchId: string) {
-      super(`Branch not found: ${branchId}`);
-    }
-  },
-  DuplicateGrantError: class DuplicateGrantError extends Error {
-    name = 'DuplicateGrantError';
-    constructor(
-      public branchId: string,
-      public actorId: string,
-    ) {
-      super('Grant already exists for actor on branch');
-    }
-  },
-}));
+vi.mock('../../src/services', async () => {
+  const actual = await vi.importActual('../../src/services');
+  return {
+    ...actual,
+    createGrant: vi.fn(),
+    getGrant: vi.fn(),
+    listGrants: vi.fn(),
+    deleteGrant: vi.fn(),
+    getBranch: vi.fn().mockResolvedValue({ id: 'branch-1', siteId: 'site-1', name: 'main', isMain: true }),
+  };
+});
 
 // Mock authorization
-vi.mock('../../src/auth/authorization', () => ({
-  assertPermission: vi.fn(),
-  AuthorizationError: class AuthorizationError extends Error {
-    override name = 'AuthorizationError';
-    constructor(
-      message: string,
-      public requiredPermission: string,
-      public roleName: string,
-    ) {
-      super(message);
-    }
-  },
-}));
+vi.mock('../../src/auth/authorization', async () => {
+  const actual = await vi.importActual('../../src/auth/authorization');
+  return {
+    ...actual,
+    assertPermission: vi.fn(),
+  };
+});
 
 describe('Phase 7.1d: Grant API Routes', () => {
   beforeEach(() => {

@@ -210,8 +210,8 @@ describe('Migration atomicity', () => {
     });
 
     it('rejects re-resolving a conflict with a different resolution', async () => {
-      const { resolveMigrationConflict, ConflictAlreadyResolvedError } =
-        await import('../../src/services/migration-service');
+      const { resolveMigrationConflict } = await import('../../src/services/migration-service');
+      const { ConflictAlreadyResolvedError } = await import('../../src/services/errors');
       const db = await import('../../src/db');
       const { createDocumentVersion } = await import('../../src/services/document-version-service');
 

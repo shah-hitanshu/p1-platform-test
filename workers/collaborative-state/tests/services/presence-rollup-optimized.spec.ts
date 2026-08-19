@@ -165,9 +165,8 @@ describe('Phase 3.3: Presence Rollup Optimization (PresenceManager DO)', () => {
     });
 
     it('should still validate branch exists before querying presence', async () => {
-      const { getBranchPresence, BranchNotFoundError } = await import(
-        '../../src/services/presence-rollup-service'
-      );
+      const { getBranchPresence } = await import('../../src/services/presence-rollup-service');
+      const { BranchNotFoundError } = await import('../../src/services/errors');
       const branchService = await import('../../src/services/branch-service');
 
       vi.mocked(branchService.getBranch).mockResolvedValue(null);
@@ -303,9 +302,8 @@ describe('Phase 3.3: Presence Rollup Optimization (PresenceManager DO)', () => {
     });
 
     it('should still validate site exists before querying presence', async () => {
-      const { getSitePresence, SiteNotFoundError } = await import(
-        '../../src/services/presence-rollup-service'
-      );
+      const { getSitePresence } = await import('../../src/services/presence-rollup-service');
+      const { SiteNotFoundError } = await import('../../src/services/errors');
       const siteService = await import('../../src/services/site-service');
 
       vi.mocked(siteService.getSite).mockResolvedValue(null);
@@ -436,9 +434,8 @@ describe('Phase 3.3: Presence Rollup Optimization (PresenceManager DO)', () => {
     });
 
     it('should still validate agent exists', async () => {
-      const { getAgentPresence, AgentNotFoundError } = await import(
-        '../../src/services/presence-rollup-service'
-      );
+      const { getAgentPresence } = await import('../../src/services/presence-rollup-service');
+      const { AgentNotFoundError } = await import('../../src/services/errors');
       const agentService = await import('../../src/services/agent-service');
 
       vi.mocked(agentService.getAgentById).mockResolvedValue(null);

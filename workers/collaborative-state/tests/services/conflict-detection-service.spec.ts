@@ -290,9 +290,8 @@ describe('Phase 5.2a: Conflict Detection Service', () => {
     });
 
     it('should throw NoMergeBaseError when no common ancestor found', async () => {
-      const { detectConflicts, NoMergeBaseError } = await import(
-        '../../src/services/conflict-detection-service'
-      );
+      const { detectConflicts } = await import('../../src/services/conflict-detection-service');
+      const { NoMergeBaseError } = await import('../../src/services/errors');
       const mergeBaseService = await import('../../src/services/merge-base-service');
 
       vi.mocked(mergeBaseService.findMergeBase).mockResolvedValueOnce(null);
@@ -613,7 +612,7 @@ describe('Phase 5.2a: Conflict Detection Service', () => {
 
   describe('Error Classes', () => {
     it('should export NoMergeBaseError with correct properties', async () => {
-      const { NoMergeBaseError } = await import('../../src/services/conflict-detection-service');
+      const { NoMergeBaseError } = await import('../../src/services/errors');
 
       const error = new NoMergeBaseError('source-id', 'target-id');
 

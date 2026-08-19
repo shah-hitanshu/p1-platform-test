@@ -11,43 +11,32 @@ import { makePrincipal } from '../helpers/principal';
 import { makeBranch } from '../helpers/branch';
 
 // Mock the services
-vi.mock('../../src/services', () => ({
-  createSite: vi.fn(),
-  createMainBranch: vi.fn(),
-  getSite: vi.fn(),
-  updateSite: vi.fn(),
-  deleteSite: vi.fn(),
-  archiveSite: vi.fn(),
-  restoreSite: vi.fn(),
-  listSites: vi.fn(),
-  listBranches: vi.fn(),
-  getMainBranch: vi.fn(),
-  DuplicatePantheonSiteIdError: class DuplicatePantheonSiteIdError extends Error {
-    name = 'DuplicatePantheonSiteIdError';
-    constructor(public pantheonSiteId: string) {
-      super(`A site with Pantheon site ID "${pantheonSiteId}" already exists.`);
-    }
-  },
-  InvalidSiteParamsError: class InvalidSiteParamsError extends Error {
-    override name = 'InvalidSiteParamsError';
-  },
-}));
+vi.mock('../../src/services', async () => {
+  const actual = await vi.importActual('../../src/services');
+  return {
+    ...actual,
+    createSite: vi.fn(),
+    createMainBranch: vi.fn(),
+    getSite: vi.fn(),
+    updateSite: vi.fn(),
+    deleteSite: vi.fn(),
+    archiveSite: vi.fn(),
+    restoreSite: vi.fn(),
+    listSites: vi.fn(),
+    listBranches: vi.fn(),
+    getMainBranch: vi.fn(),
+  };
+});
 
 // Mock authorization
-vi.mock('../../src/auth/authorization', () => ({
-  assertPermission: vi.fn(),
-  getSiteRole: vi.fn().mockResolvedValue('ADMIN'),
-  AuthorizationError: class AuthorizationError extends Error {
-    override name = 'AuthorizationError';
-    constructor(
-      message: string,
-      public requiredPermission: string,
-      public roleName: string,
-    ) {
-      super(message);
-    }
-  },
-}));
+vi.mock('../../src/auth/authorization', async () => {
+  const actual = await vi.importActual('../../src/auth/authorization');
+  return {
+    ...actual,
+    assertPermission: vi.fn(),
+    getSiteRole: vi.fn().mockResolvedValue('ADMIN'),
+  };
+});
 
 // Mock db (used by the route layer for the acting-user email -> users.id lookup)
 vi.mock('../../src/db', () => ({

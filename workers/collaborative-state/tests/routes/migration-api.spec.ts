@@ -27,20 +27,23 @@ vi.mock('../../src/auth/authorization', async (importOriginal) => {
   };
 });
 
-vi.mock('../../src/services', () => ({
-  getBranch: vi.fn(),
-  getBranchByName: vi.fn(),
-  getMainBranch: vi.fn(),
-}));
+vi.mock('../../src/services', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/services')>();
+  return {
+    ...actual,
+    getBranch: vi.fn(),
+    getBranchByName: vi.fn(),
+    getMainBranch: vi.fn(),
+  };
+});
 
 import { handleMigrationRoutes } from '../../src/routes/migration-api';
 import {
   getMigrationJob,
   resolveMigrationConflict,
-  LegacyConflictDeltaError,
 } from '../../src/services/migration-service';
 import { getEffectiveRole } from '../../src/auth/authorization';
-import { getBranch } from '../../src/services';
+import { getBranch, LegacyConflictDeltaError } from '../../src/services';
 import type { AuthenticatedPrincipal } from '../../src/types';
 import { readJson } from '../helpers/http';
 

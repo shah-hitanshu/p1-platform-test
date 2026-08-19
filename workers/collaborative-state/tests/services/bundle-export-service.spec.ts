@@ -23,20 +23,13 @@ describe('abandoned scripts cleanup (Test 36)', () => {
 });
 
 vi.mock('../../src/db', () => ({ query: vi.fn() }));
-vi.mock('../../src/services/document-version-service', async () => ({
+vi.mock('../../src/services/document-version-service', () => ({
   reconstructVersionSnapshot: vi.fn(),
-  VersionReconstructionError: (
-    await vi.importActual<typeof import('../../src/services/document-version-service')>(
-      '../../src/services/document-version-service',
-    )
-  ).VersionReconstructionError,
 }));
 
 import { query } from '../../src/db';
-import {
-  reconstructVersionSnapshot,
-  VersionReconstructionError,
-} from '../../src/services/document-version-service';
+import { reconstructVersionSnapshot } from '../../src/services/document-version-service';
+import { VersionReconstructionError } from '../../src/services/errors';
 import {
   resolveCreatedByRefsBatch,
   selectVersionsForDocument,

@@ -31,46 +31,7 @@ import type {
   SitePresenceResult,
   AgentPresenceResult,
 } from '../durable-objects/presence-manager';
-
-// =============================================================================
-// Error Classes
-// =============================================================================
-
-/**
- * Error thrown when a branch is not found during presence rollup.
- */
-export class BranchNotFoundError extends Error {
-  public readonly name = 'BranchNotFoundError';
-
-  constructor(public readonly branchId: string) {
-    super(`Branch with ID "${branchId}" not found.`);
-    Object.setPrototypeOf(this, BranchNotFoundError.prototype);
-  }
-}
-
-/**
- * Error thrown when a site is not found during presence rollup.
- */
-export class SiteNotFoundError extends Error {
-  public readonly name = 'SiteNotFoundError';
-
-  constructor(public readonly siteId: string) {
-    super(`Site with ID "${siteId}" not found.`);
-    Object.setPrototypeOf(this, SiteNotFoundError.prototype);
-  }
-}
-
-/**
- * Error thrown when an agent is not found during presence rollup.
- */
-export class AgentNotFoundError extends Error {
-  public readonly name = 'AgentNotFoundError';
-
-  constructor(public readonly agentId: string) {
-    super(`Agent with ID "${agentId}" not found.`);
-    Object.setPrototypeOf(this, AgentNotFoundError.prototype);
-  }
-}
+import { BranchNotFoundError, SiteNotFoundError, AgentNotFoundError } from './errors';
 
 // =============================================================================
 // Types

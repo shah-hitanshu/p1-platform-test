@@ -23,6 +23,7 @@ import type {
 import { query } from '../db';
 import { ROLES, mapPantheonRole, mapAgentRole, maxRole, minRole } from './roles';
 import type { MASClient } from '../services/mas-client';
+import { HttpError } from '../services/errors';
 
 /**
  * Result of an effective role calculation.
@@ -35,8 +36,8 @@ export interface EffectiveRoleResult {
 /**
  * Error thrown when a principal lacks the required permission.
  */
-export class AuthorizationError extends Error {
-  public readonly name = 'AuthorizationError';
+export class AuthorizationError extends HttpError {
+  readonly status = 403;
 
   constructor(
     message: string,
@@ -44,8 +45,6 @@ export class AuthorizationError extends Error {
     public readonly roleName: RoleName,
   ) {
     super(message);
-    // Ensure proper prototype chain for instanceof checks
-    Object.setPrototypeOf(this, AuthorizationError.prototype);
   }
 }
 

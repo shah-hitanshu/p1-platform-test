@@ -4,6 +4,81 @@
  * Central export point for all service modules.
  */
 
+// Shared error hierarchy — see errors.ts for why each error carries its own status.
+export {
+  HttpError,
+  SiteNotFoundError,
+  DocumentNotFoundError,
+  BranchNotFoundError,
+  SourceBranchNotFoundError,
+  TargetBranchNotFoundError,
+  OrganizationNotFoundError,
+  AgentNotFoundError,
+  StructureNotFoundError,
+  NodeNotFoundError,
+  MergeRequestNotFoundError,
+  CheckpointNotFoundError,
+  TemplateNotFoundError,
+  MigrationJobNotFoundError,
+  GrantNotFoundError,
+  VersionNotFoundError,
+  RestoreVersionNotFoundError,
+  CanonicalVersionNotFoundError,
+  QueryNotFoundError,
+  DatasourceNotFoundError,
+  DocumentVersionNotFoundError,
+  BranchStructureStateNotFoundError,
+  DocumentMetadataNotFoundError,
+  PageConflictError,
+  DuplicateDocumentPathError,
+  DocumentPathConflictError,
+  DuplicateStructureSlugError,
+  DuplicateNodeSlugError,
+  DuplicateAgentNameError,
+  DuplicateAgentIdError,
+  DuplicateBranchNameError,
+  CannotDeleteMergedRequestError,
+  OrganizationHasSitesError,
+  OrganizationHasActiveSitesError,
+  DuplicateGrantError,
+  LegacyConflictDeltaError,
+  ConflictAlreadyResolvedError,
+  DuplicatePantheonSiteIdError,
+  TranslationAlreadyExistsError,
+  DatasourceInUseError,
+  MergeConflictsError,
+  InvalidSlugError,
+  InvalidDocumentPathError,
+  InvalidAgentParamsError,
+  InvalidMergeRequestParamsError,
+  InvalidBranchParamsError,
+  InvalidCheckpointParamsError,
+  InvalidOrganizationParamsError,
+  InvalidDocumentVersionParamsError,
+  InvalidSiteParamsError,
+  InvalidSettingsError,
+  InvalidLocaleError,
+  InvalidBodyError,
+  InvalidVersionRangeError,
+  UnsupportedStrategyError,
+  ManualResolutionError,
+  CircularReferenceError,
+  InvalidMergeRequestStatusTransitionError,
+  TargetBranchNotMainError,
+  MainBranchProtectionError,
+  InvalidBranchStatusTransitionError,
+  MainBranchOnlyError,
+  NoMergeBaseError,
+  MergeNotAllowedError,
+  AuthorityOverrideLimitError,
+  SchemaValidationError,
+  MaxPresencesExceededError,
+  SyncError,
+  MergeExecutionError,
+  VersionReconstructionError,
+  DatabaseError,
+} from './errors';
+
 // Site Service
 export {
   createSite,
@@ -14,8 +89,6 @@ export {
   archiveSite,
   restoreSite,
   listSites,
-  DuplicatePantheonSiteIdError,
-  InvalidSiteParamsError,
 } from './site-service';
 
 export type {
@@ -56,12 +129,6 @@ export {
   documentExistsOnBranch,
   deleteDocumentOnBranch,
   deleteDocumentWithRedirect,
-  PageConflictError,
-  SiteNotFoundError,
-  DuplicateDocumentPathError,
-  InvalidDocumentPathError,
-  DocumentNotFoundError,
-  DocumentPathConflictError,
 } from './document-service';
 
 export type {
@@ -107,9 +174,6 @@ export type {
 export {
   createTranslation,
   listLocaleVariants,
-  InvalidLocaleError,
-  CanonicalVersionNotFoundError,
-  TranslationAlreadyExistsError,
 } from './create-translation-service';
 
 export type {
@@ -133,15 +197,6 @@ export {
   archiveBranch,
   restoreBranch,
   isValidStatusTransition,
-  // Note: SiteNotFoundError is already exported from document-service
-  // Import directly from branch-service if you need the branch-specific error class
-  BranchNotFoundError,
-  DuplicateBranchNameError,
-  InvalidBranchParamsError,
-  MainBranchProtectionError,
-  MainBranchOnlyError,
-  InvalidBranchStatusTransitionError,
-  DatabaseError,
 } from './branch-service';
 
 export type {
@@ -165,10 +220,6 @@ export {
   getLatestTemplateVersionWithFallback,
   reconstructVersionSnapshot,
   restoreDocumentVersion,
-  // Note: DocumentNotFoundError already exported from document-service
-  InvalidDocumentVersionParamsError,
-  RestoreVersionNotFoundError,
-  VersionReconstructionError,
 } from './document-version-service';
 
 export type {
@@ -194,9 +245,6 @@ export {
   updateCheckpointStatus,
   listCheckpointsByAgent,
   listCheckpointsByOperationType,
-  // Note: BranchNotFoundError is already exported from branch-service
-  CheckpointNotFoundError,
-  InvalidCheckpointParamsError,
   publishDocument,
 } from './checkpoint-service';
 
@@ -224,13 +272,6 @@ export {
   updateMergeRequestConflicts,
   deleteMergeRequest,
   isValidStatusTransition as isValidMergeRequestStatusTransition,
-  MergeRequestNotFoundError,
-  InvalidMergeRequestParamsError,
-  InvalidMergeRequestStatusTransitionError,
-  SourceBranchNotFoundError,
-  TargetBranchNotFoundError,
-  CannotDeleteMergedRequestError,
-  TargetBranchNotMainError,
 } from './merge-request-service';
 
 export type {
@@ -246,8 +287,6 @@ export {
   getModifiedDocumentsSince,
   getDocumentsAtCheckpoint as getMergeBaseDocumentsAtCheckpoint,
   getBranchLineage,
-  SourceBranchNotFoundError as MergeBaseSourceBranchNotFoundError,
-  TargetBranchNotFoundError as MergeBaseTargetBranchNotFoundError,
 } from './merge-base-service';
 
 export type {
@@ -262,7 +301,6 @@ export type {
 export {
   detectConflicts,
   checkMergeability,
-  NoMergeBaseError,
 } from './conflict-detection-service';
 
 export type {
@@ -275,8 +313,6 @@ export {
   resolveConflict,
   resolveAllConflicts,
   resolveDeletedConflict,
-  VersionNotFoundError,
-  UnsupportedStrategyError,
 } from './conflict-resolution-service';
 
 export type {
@@ -294,9 +330,6 @@ export {
   executeMerge,
   executeMergeWithResolution,
   previewMerge,
-  MergeNotAllowedError,
-  MergeConflictsError,
-  MergeExecutionError,
 } from './merge-execution-service';
 
 export type {
@@ -325,13 +358,6 @@ export {
   moveNode,
   reorderNodes,
   buildNavigationTree,
-  // Note: SiteNotFoundError is already exported from document-service
-  StructureNotFoundError,
-  NodeNotFoundError,
-  DuplicateStructureSlugError,
-  DuplicateNodeSlugError,
-  CircularReferenceError,
-  InvalidSlugError,
   normalizeSlug,
 } from './structure-service';
 
@@ -360,9 +386,6 @@ export {
   validateMetadata,
   validateAllDocuments,
   getSchemaValidationSummary,
-  BranchStructureStateNotFoundError,
-  DocumentMetadataNotFoundError,
-  SchemaValidationError,
 } from './metadata-service';
 
 export type {
@@ -385,8 +408,6 @@ export {
   getGrant,
   listGrants,
   deleteGrant,
-  GrantNotFoundError,
-  DuplicateGrantError,
 } from './grant-service';
 
 export type {
@@ -400,7 +421,6 @@ export {
   computeJsonDiff,
   computeDocumentDiff,
   computeDocumentDiffs,
-  DocumentVersionNotFoundError,
 } from './document-diff-service';
 
 export type {
@@ -432,8 +452,6 @@ export type {
 export {
   syncCrdtToPostgres,
   loadLatestCrdtState,
-  DocumentNotFoundError as CrdtSyncDocumentNotFoundError,
-  SyncError,
 } from './crdt-sync-service';
 
 export type {
@@ -454,10 +472,6 @@ export {
   unlinkSiteFromOrganization,
   getSitesByOrganization,
   getOrganizationForSite,
-  InvalidOrganizationParamsError,
-  OrganizationHasSitesError,
-  OrganizationHasActiveSitesError,
-  OrganizationNotFoundError,
 } from './organization-service';
 
 export type {
@@ -477,10 +491,6 @@ export {
   listAgents,
   getAgentsByOrganization,
   getActiveAgentCount,
-  InvalidAgentParamsError,
-  DuplicateAgentNameError,
-  OrganizationNotFoundError as AgentOrganizationNotFoundError,
-  AgentNotFoundError,
 } from './agent-service';
 
 export type {
@@ -495,7 +505,6 @@ export {
   PresenceManager,
   regionsOverlap,
   MAX_PRESENCES,
-  MaxPresencesExceededError,
 } from './presence-service';
 
 export type { RegisterPresenceOptions } from './presence-service';
@@ -547,9 +556,6 @@ export {
   getSitePresence,
   getAgentPresence,
   queryDocumentPresence,
-  BranchNotFoundError as PresenceRollupBranchNotFoundError,
-  SiteNotFoundError as PresenceRollupSiteNotFoundError,
-  AgentNotFoundError as PresenceRollupAgentNotFoundError,
 } from './presence-rollup-service';
 
 // Branch Invalidation Service
@@ -560,7 +566,6 @@ export {
   getSiteSettings,
   updateSiteSettings,
   getEffectiveCacheTtl,
-  InvalidSettingsError,
 } from './site-settings-service';
 
 export type {
@@ -583,9 +588,6 @@ export {
   getMigrationJob,
   listMigrationConflicts,
   resolveMigrationConflict,
-  TemplateNotFoundError,
-  MigrationJobNotFoundError,
-  InvalidVersionRangeError,
 } from './migration-service';
 
 export type {
@@ -658,8 +660,6 @@ export {
   createQuery,
   deleteQuery,
   executeQuery,
-  QueryNotFoundError,
-  DatasourceNotFoundError,
 } from './query-service';
 
 export type {

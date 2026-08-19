@@ -3,11 +3,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import {
-  normalizePath,
-  validatePath,
-  InvalidDocumentPathError,
-} from '../../src/services/document-types';
+import { normalizePath, validatePath } from '../../src/services/document-types';
+import { InvalidDocumentPathError } from '../../src/services/errors';
 
 describe('normalizePath', () => {
   it('should keep "/" as the canonical root path', () => {

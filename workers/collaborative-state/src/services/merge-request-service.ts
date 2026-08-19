@@ -9,6 +9,15 @@
 
 import type { MergeRequest, MergeRequestStatus, ConflictDetails } from '../types';
 import { query } from '../db';
+import {
+  MergeRequestNotFoundError,
+  InvalidMergeRequestParamsError,
+  InvalidMergeRequestStatusTransitionError,
+  SourceBranchNotFoundError,
+  TargetBranchNotFoundError,
+  CannotDeleteMergedRequestError,
+  TargetBranchNotMainError,
+} from './errors';
 
 // =============================================================================
 // Types
@@ -76,98 +85,6 @@ interface MergeRequestRow {
   merged_at: string | null;
   merged_by_id: string | null;
   merged_by_type: string | null;
-}
-
-// =============================================================================
-// Error Classes
-// =============================================================================
-
-/**
- * Error thrown when the referenced merge request does not exist.
- */
-export class MergeRequestNotFoundError extends Error {
-  public readonly name = 'MergeRequestNotFoundError';
-
-  constructor(public readonly mergeRequestId: string) {
-    super(`Merge request with ID "${mergeRequestId}" not found.`);
-    Object.setPrototypeOf(this, MergeRequestNotFoundError.prototype);
-  }
-}
-
-/**
- * Error thrown when merge request parameters are invalid.
- */
-export class InvalidMergeRequestParamsError extends Error {
-  public readonly name = 'InvalidMergeRequestParamsError';
-
-  constructor(message: string) {
-    super(message);
-    Object.setPrototypeOf(this, InvalidMergeRequestParamsError.prototype);
-  }
-}
-
-/**
- * Error thrown when attempting an invalid merge request status transition.
- */
-export class InvalidMergeRequestStatusTransitionError extends Error {
-  public readonly name = 'InvalidMergeRequestStatusTransitionError';
-
-  constructor(
-    public readonly fromStatus: MergeRequestStatus,
-    public readonly toStatus: MergeRequestStatus,
-  ) {
-    super(`Cannot transition merge request from "${fromStatus}" to "${toStatus}".`);
-    Object.setPrototypeOf(this, InvalidMergeRequestStatusTransitionError.prototype);
-  }
-}
-
-/**
- * Error thrown when the source branch does not exist.
- */
-export class SourceBranchNotFoundError extends Error {
-  public readonly name = 'SourceBranchNotFoundError';
-
-  constructor(public readonly branchId: string) {
-    super(`Source branch with ID "${branchId}" not found.`);
-    Object.setPrototypeOf(this, SourceBranchNotFoundError.prototype);
-  }
-}
-
-/**
- * Error thrown when the target branch does not exist.
- */
-export class TargetBranchNotFoundError extends Error {
-  public readonly name = 'TargetBranchNotFoundError';
-
-  constructor(public readonly branchId: string) {
-    super(`Target branch with ID "${branchId}" not found.`);
-    Object.setPrototypeOf(this, TargetBranchNotFoundError.prototype);
-  }
-}
-
-/**
- * Error thrown when attempting to delete a merged merge request.
- */
-export class CannotDeleteMergedRequestError extends Error {
-  public readonly name = 'CannotDeleteMergedRequestError';
-
-  constructor(public readonly mergeRequestId: string) {
-    super(`Cannot delete merge request "${mergeRequestId}" because it has already been merged.`);
-    Object.setPrototypeOf(this, CannotDeleteMergedRequestError.prototype);
-  }
-}
-
-/**
- * Error thrown when the target branch is not the main branch.
- * Merge requests can only target the main branch.
- */
-export class TargetBranchNotMainError extends Error {
-  public readonly name = 'TargetBranchNotMainError';
-
-  constructor(public readonly targetBranchId: string) {
-    super(`Target branch "${targetBranchId}" is not the main branch. Merge requests can only target the main branch.`);
-    Object.setPrototypeOf(this, TargetBranchNotMainError.prototype);
-  }
 }
 
 // =============================================================================

@@ -10,40 +10,32 @@ import { readJson } from '../helpers/http';
 import { makePrincipal } from '../helpers/principal';
 
 // Mock the services
-vi.mock('../../src/services', () => ({
-  createDocumentOnBranch: vi.fn(),
-  listDocumentsOnBranch: vi.fn(),
-  getDocument: vi.fn(),
-  getLatestDocumentVersion: vi.fn(),
-  getMainBranch: vi.fn().mockResolvedValue({ id: 'main-branch', siteId: 'site-1', name: 'main', isMain: true }),
-  createDocumentVersion: vi.fn(),
-  deleteDocumentOnBranch: vi.fn(),
-  getBranch: vi.fn().mockResolvedValue({ id: 'branch-1', siteId: 'site-1', name: 'main', isMain: true }),
-  getBranchByName: vi.fn(),
-  getDocumentByPath: vi.fn(),
-  updateDocumentPath: vi.fn(),
-  DuplicateDocumentPathError: class DuplicateDocumentPathError extends Error {
-    override name = 'DuplicateDocumentPathError';
-    constructor(public path: string) {
-      super(`Document already exists at path: ${path}`);
-    }
-  },
-}));
+vi.mock('../../src/services', async () => {
+  const actual = await vi.importActual('../../src/services');
+  return {
+    ...actual,
+    createDocumentOnBranch: vi.fn(),
+    listDocumentsOnBranch: vi.fn(),
+    getDocument: vi.fn(),
+    getLatestDocumentVersion: vi.fn(),
+    getMainBranch: vi.fn().mockResolvedValue({ id: 'main-branch', siteId: 'site-1', name: 'main', isMain: true }),
+    createDocumentVersion: vi.fn(),
+    deleteDocumentOnBranch: vi.fn(),
+    getBranch: vi.fn().mockResolvedValue({ id: 'branch-1', siteId: 'site-1', name: 'main', isMain: true }),
+    getBranchByName: vi.fn(),
+    getDocumentByPath: vi.fn(),
+    updateDocumentPath: vi.fn(),
+  };
+});
 
 // Mock authorization
-vi.mock('../../src/auth/authorization', () => ({
-  assertPermission: vi.fn(),
-  AuthorizationError: class AuthorizationError extends Error {
-    override name = 'AuthorizationError';
-    constructor(
-      message: string,
-      public requiredPermission: string,
-      public roleName: string,
-    ) {
-      super(message);
-    }
-  },
-}));
+vi.mock('../../src/auth/authorization', async () => {
+  const actual = await vi.importActual('../../src/auth/authorization');
+  return {
+    ...actual,
+    assertPermission: vi.fn(),
+  };
+});
 
 /** A page version as the fromPath-occupancy check sees it. */
 function makePageVersion(overrides: { isTombstone?: boolean; branchId?: string } = {}) {

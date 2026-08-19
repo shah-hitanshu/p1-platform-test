@@ -10,95 +10,33 @@ import { makePrincipal } from '../helpers/principal';
 import { makeBranch } from '../helpers/branch';
 
 // Mock the services
-vi.mock('../../src/services', () => ({
-  checkMergeability: vi.fn(),
-  executeMerge: vi.fn(),
-  executeMergeWithResolution: vi.fn(),
-  previewMerge: vi.fn(),
-  createMergeRequest: vi.fn(),
-  getMergeRequest: vi.fn(),
-  listMergeRequests: vi.fn(),
-  updateMergeRequest: vi.fn(),
-  updateMergeRequestStatus: vi.fn(),
-  deleteMergeRequest: vi.fn(),
-  getBranch: vi.fn(),
-  getMainBranch: vi.fn(),
-  MergeRequestNotFoundError: class MergeRequestNotFoundError extends Error {
-    name = 'MergeRequestNotFoundError';
-    constructor(public requestId: string) {
-      super(`Merge request not found: ${requestId}`);
-    }
-  },
-  BranchNotFoundError: class BranchNotFoundError extends Error {
-    name = 'BranchNotFoundError';
-    constructor(public branchId: string) {
-      super(`Branch not found: ${branchId}`);
-    }
-  },
-  SourceBranchNotFoundError: class SourceBranchNotFoundError extends Error {
-    name = 'SourceBranchNotFoundError';
-    constructor(public branchId: string) {
-      super(`Source branch not found: ${branchId}`);
-    }
-  },
-  TargetBranchNotFoundError: class TargetBranchNotFoundError extends Error {
-    name = 'TargetBranchNotFoundError';
-    constructor(public branchId: string) {
-      super(`Target branch not found: ${branchId}`);
-    }
-  },
-  TargetBranchNotMainError: class TargetBranchNotMainError extends Error {
-    name = 'TargetBranchNotMainError';
-    constructor(public targetBranchId: string) {
-      super(`Target branch "${targetBranchId}" is not the main branch`);
-    }
-  },
-  InvalidMergeRequestParamsError: class InvalidMergeRequestParamsError extends Error {
-    name = 'InvalidMergeRequestParamsError';
-  },
-  InvalidMergeRequestStatusTransitionError: class InvalidMergeRequestStatusTransitionError extends Error {
-    name = 'InvalidMergeRequestStatusTransitionError';
-    constructor(public fromStatus: string, public toStatus: string) {
-      super(`Cannot transition from "${fromStatus}" to "${toStatus}"`);
-    }
-  },
-  CannotDeleteMergedRequestError: class CannotDeleteMergedRequestError extends Error {
-    name = 'CannotDeleteMergedRequestError';
-    constructor(public mergeRequestId: string) {
-      super(`Cannot delete merged request "${mergeRequestId}"`);
-    }
-  },
-  NoMergeBaseError: class NoMergeBaseError extends Error {
-    name = 'NoMergeBaseError';
-    constructor(public sourceBranchId: string, public targetBranchId: string) {
-      super('No merge base found');
-    }
-  },
-  MergeConflictsError: class MergeConflictsError extends Error {
-    name = 'MergeConflictsError';
-    constructor(
-      public mergeRequestId: string,
-      public conflictCount: number,
-    ) {
-      super('Merge has unresolved conflicts');
-    }
-  },
-}));
+vi.mock('../../src/services', async () => {
+  const actual = await vi.importActual('../../src/services');
+  return {
+    ...actual,
+    checkMergeability: vi.fn(),
+    executeMerge: vi.fn(),
+    executeMergeWithResolution: vi.fn(),
+    previewMerge: vi.fn(),
+    createMergeRequest: vi.fn(),
+    getMergeRequest: vi.fn(),
+    listMergeRequests: vi.fn(),
+    updateMergeRequest: vi.fn(),
+    updateMergeRequestStatus: vi.fn(),
+    deleteMergeRequest: vi.fn(),
+    getBranch: vi.fn(),
+    getMainBranch: vi.fn(),
+  };
+});
 
 // Mock authorization
-vi.mock('../../src/auth/authorization', () => ({
-  assertPermission: vi.fn(),
-  AuthorizationError: class AuthorizationError extends Error {
-    override name = 'AuthorizationError';
-    constructor(
-      message: string,
-      public requiredPermission: string,
-      public roleName: string,
-    ) {
-      super(message);
-    }
-  },
-}));
+vi.mock('../../src/auth/authorization', async () => {
+  const actual = await vi.importActual('../../src/auth/authorization');
+  return {
+    ...actual,
+    assertPermission: vi.fn(),
+  };
+});
 
 describe('Phase 7.1c: Merge API Routes', () => {
   beforeEach(() => {

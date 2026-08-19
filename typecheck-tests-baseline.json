@@ -1,5 +1,5 @@
 {
-  "maxErrors": 735,
+  "maxErrors": 734,
   "packages": [
     "workers/collaborative-state"
   ]

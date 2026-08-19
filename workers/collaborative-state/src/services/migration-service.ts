@@ -38,6 +38,13 @@ import {
   isSlotDelta,
   type SlotDelta,
 } from './slot-delta';
+import {
+  TemplateNotFoundError,
+  MigrationJobNotFoundError,
+  InvalidVersionRangeError,
+  LegacyConflictDeltaError,
+  ConflictAlreadyResolvedError,
+} from './errors';
 
 // =============================================================================
 // Types
@@ -195,58 +202,6 @@ export interface MigrationPreview {
   estimatedConflicts: number;
   cleanDocuments: number;
   documents?: MigrationPreviewDocument[];
-}
-
-// =============================================================================
-// Error Classes
-// =============================================================================
-
-export class TemplateNotFoundError extends Error {
-  public readonly name = 'TemplateNotFoundError';
-  constructor(public readonly templateId: string) {
-    super(`Template with ID "${templateId}" not found.`);
-    Object.setPrototypeOf(this, TemplateNotFoundError.prototype);
-  }
-}
-
-export class MigrationJobNotFoundError extends Error {
-  public readonly name = 'MigrationJobNotFoundError';
-  constructor(public readonly jobId: string) {
-    super(`Migration job with ID "${jobId}" not found.`);
-    Object.setPrototypeOf(this, MigrationJobNotFoundError.prototype);
-  }
-}
-
-export class InvalidVersionRangeError extends Error {
-  public readonly name = 'InvalidVersionRangeError';
-  constructor(fromVersion: number, toVersion: number) {
-    super(`Invalid version range: from=${String(fromVersion)}, to=${String(toVersion)} (from must be < to)`);
-    Object.setPrototypeOf(this, InvalidVersionRangeError.prototype);
-  }
-}
-
-export class LegacyConflictDeltaError extends Error {
-  public readonly name = 'LegacyConflictDeltaError';
-  constructor(public readonly conflictId: string) {
-    super(
-      `Migration conflict "${conflictId}" holds a legacy action-array delta that predates the ` +
-        'id-keyed engine; re-run the migration to regenerate its conflicts.',
-    );
-    Object.setPrototypeOf(this, LegacyConflictDeltaError.prototype);
-  }
-}
-
-export class ConflictAlreadyResolvedError extends Error {
-  public readonly name = 'ConflictAlreadyResolvedError';
-  constructor(
-    public readonly conflictId: string,
-    public readonly existingResolution: string,
-  ) {
-    super(
-      `Migration conflict "${conflictId}" is already resolved as "${existingResolution}".`,
-    );
-    Object.setPrototypeOf(this, ConflictAlreadyResolvedError.prototype);
-  }
 }
 
 // =============================================================================

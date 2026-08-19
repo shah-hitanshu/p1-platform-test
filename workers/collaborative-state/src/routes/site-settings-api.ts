@@ -12,11 +12,10 @@ import type { AuthenticatedPrincipal } from '../types';
 import {
   getSiteSettings,
   updateSiteSettings,
-  InvalidSettingsError,
 } from '../services/site-settings-service';
 import type { SiteSettingsUpdate } from '../services/site-settings-service';
-import { getMainBranch } from '../services';
-import { assertPermission, AuthorizationError } from '../auth/authorization';
+import { getMainBranch, HttpError } from '../services';
+import { assertPermission } from '../auth/authorization';
 
 /**
  * Route context for site settings endpoints
@@ -73,11 +72,8 @@ export async function handleSiteSettingsRoutes(
         return errorResponse('Method not allowed', 405);
     }
   } catch (error) {
-    if (error instanceof AuthorizationError) {
-      return errorResponse(error.message, 403);
-    }
-    if (error instanceof InvalidSettingsError) {
-      return errorResponse(error.message, 400);
+    if (error instanceof HttpError) {
+      return errorResponse(error.message, error.status);
     }
     console.error('Site Settings API error:', error);
     return errorResponse('Internal server error', 500);

@@ -10,12 +10,9 @@ import {
   getMigrationJob,
   listMigrationConflicts,
   resolveMigrationConflict,
-  MigrationJobNotFoundError,
-  LegacyConflictDeltaError,
-  ConflictAlreadyResolvedError,
 } from '../services/migration-service';
 import { getEffectiveRole, AuthorizationError } from '../auth/authorization';
-import { getBranch, getBranchByName, getMainBranch } from '../services';
+import { getBranch, getBranchByName, getMainBranch, HttpError, InvalidBodyError } from '../services';
 
 const VALID_PRINCIPAL_TYPES = new Set(['user', 'agent', 'system', 'service']);
 
@@ -73,10 +70,6 @@ async function parseJsonBody<T extends Record<string, unknown>>(request: Request
     throw new InvalidBodyError();
   }
   return json as T;
-}
-
-class InvalidBodyError extends Error {
-  constructor() { super('Request body must be a JSON object'); }
 }
 
 /**
@@ -209,24 +202,12 @@ export async function handleMigrationRoutes(
 
     return errorResponse('Not found', 404);
   } catch (error) {
-    if (error instanceof InvalidBodyError) {
-      return errorResponse(error.message, 400);
-    }
-    if (error instanceof AuthorizationError) {
-      return errorResponse(error.message, 403);
-    }
-    if (error instanceof MigrationJobNotFoundError) {
-      return errorResponse(error.message, 404);
-    }
-    if (error instanceof LegacyConflictDeltaError) {
-      return errorResponse(error.message, 409);
-    }
-    if (error instanceof ConflictAlreadyResolvedError) {
-      return errorResponse(error.message, 409);
-    }
-
     if (error instanceof SyntaxError) {
       return errorResponse('Invalid JSON in request body', 400);
+    }
+
+    if (error instanceof HttpError) {
+      return errorResponse(error.message, error.status);
     }
 
     console.error('Migration API error:', error);

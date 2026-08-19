@@ -19,13 +19,13 @@ import { createSite } from '../../src/services/site-service';
 import { createDocumentOnBranch } from '../../src/services/branch-document-service';
 import { createTranslation } from '../../src/services/create-translation-service';
 import {
-  AuthorityOverrideLimitError,
   MAX_OVERRIDE_ENTRIES,
   clearAuthorityOverride,
   getAuthorityOverride,
   getAuthorityOverrides,
   setAuthorityOverride,
 } from '../../src/services/relations-service';
+import { AuthorityOverrideLimitError } from '../../src/services/errors';
 
 const TEST_USER_ID = '77777777-7777-7777-7777-777777777777';
 const SITE_PREFIX = 'override-cap-test';

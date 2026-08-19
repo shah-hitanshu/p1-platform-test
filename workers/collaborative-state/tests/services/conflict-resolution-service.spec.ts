@@ -122,9 +122,8 @@ describe('Phase 5.2b: Conflict Resolution Service', () => {
     });
 
     it('should throw VersionNotFoundError when source version does not exist', async () => {
-      const { resolveConflict, VersionNotFoundError } = await import(
-        '../../src/services/conflict-resolution-service'
-      );
+      const { resolveConflict } = await import('../../src/services/conflict-resolution-service');
+      const { VersionNotFoundError } = await import('../../src/services/errors');
       const docVersionService = await import('../../src/services/document-version-service');
 
       vi.mocked(docVersionService.getDocumentVersion).mockResolvedValueOnce(null);
@@ -144,9 +143,8 @@ describe('Phase 5.2b: Conflict Resolution Service', () => {
     });
 
     it('should throw VersionNotFoundError when target version does not exist for take-target', async () => {
-      const { resolveConflict, VersionNotFoundError } = await import(
-        '../../src/services/conflict-resolution-service'
-      );
+      const { resolveConflict } = await import('../../src/services/conflict-resolution-service');
+      const { VersionNotFoundError } = await import('../../src/services/errors');
       const docVersionService = await import('../../src/services/document-version-service');
 
       vi.mocked(docVersionService.getDocumentVersion).mockResolvedValueOnce(null);
@@ -166,9 +164,8 @@ describe('Phase 5.2b: Conflict Resolution Service', () => {
     });
 
     it('should throw ManualResolutionError for manual strategy without resolvedSnapshot', async () => {
-      const { resolveConflict, ManualResolutionError } = await import(
-        '../../src/services/conflict-resolution-service'
-      );
+      const { resolveConflict } = await import('../../src/services/conflict-resolution-service');
+      const { ManualResolutionError } = await import('../../src/services/errors');
 
       await expect(
         resolveConflict({
@@ -401,9 +398,7 @@ describe('Phase 5.2b: Conflict Resolution Service', () => {
 
   describe('resolveDeletedConflict', () => {
     it('should handle deleted-in-source by deleting document on target when take-source', async () => {
-      const { resolveDeletedConflict } = await import(
-        '../../src/services/conflict-resolution-service'
-      );
+      const { resolveDeletedConflict } = await import('../../src/services/conflict-resolution-service');
       const db = await import('../../src/db');
 
       // Mock soft delete (mark latest version as deleted)
@@ -423,9 +418,7 @@ describe('Phase 5.2b: Conflict Resolution Service', () => {
     });
 
     it('should handle deleted-in-source by keeping target when take-target', async () => {
-      const { resolveDeletedConflict } = await import(
-        '../../src/services/conflict-resolution-service'
-      );
+      const { resolveDeletedConflict } = await import('../../src/services/conflict-resolution-service');
 
       const result = await resolveDeletedConflict({
         documentId: 'doc-1',
@@ -441,9 +434,7 @@ describe('Phase 5.2b: Conflict Resolution Service', () => {
     });
 
     it('should handle deleted-in-target by restoring from source when take-source', async () => {
-      const { resolveDeletedConflict } = await import(
-        '../../src/services/conflict-resolution-service'
-      );
+      const { resolveDeletedConflict } = await import('../../src/services/conflict-resolution-service');
       const docVersionService = await import('../../src/services/document-version-service');
 
       // Mock source version to restore
@@ -487,9 +478,7 @@ describe('Phase 5.2b: Conflict Resolution Service', () => {
     });
 
     it('should handle deleted-in-target by keeping deleted when take-target', async () => {
-      const { resolveDeletedConflict } = await import(
-        '../../src/services/conflict-resolution-service'
-      );
+      const { resolveDeletedConflict } = await import('../../src/services/conflict-resolution-service');
 
       const result = await resolveDeletedConflict({
         documentId: 'doc-1',
@@ -556,9 +545,8 @@ describe('Phase 5.2b: Conflict Resolution Service', () => {
     });
 
     it('should reject manual strategy without resolvedSnapshot', async () => {
-      const { resolveConflict, ManualResolutionError } = await import(
-        '../../src/services/conflict-resolution-service'
-      );
+      const { resolveConflict } = await import('../../src/services/conflict-resolution-service');
+      const { ManualResolutionError } = await import('../../src/services/errors');
 
       await expect(
         resolveConflict({
@@ -613,9 +601,7 @@ describe('Phase 5.2b: Conflict Resolution Service', () => {
 
   describe('Error Classes', () => {
     it('should export VersionNotFoundError with correct properties', async () => {
-      const { VersionNotFoundError } = await import(
-        '../../src/services/conflict-resolution-service'
-      );
+      const { VersionNotFoundError } = await import('../../src/services/errors');
 
       const error = new VersionNotFoundError('version-123');
 
@@ -625,9 +611,7 @@ describe('Phase 5.2b: Conflict Resolution Service', () => {
     });
 
     it('should export UnsupportedStrategyError with correct properties', async () => {
-      const { UnsupportedStrategyError } = await import(
-        '../../src/services/conflict-resolution-service'
-      );
+      const { UnsupportedStrategyError } = await import('../../src/services/errors');
 
       const error = new UnsupportedStrategyError('manual');
 

@@ -16,9 +16,9 @@ import {
   listBranches,
   getMainBranch,
   DuplicatePantheonSiteIdError,
-  InvalidSiteParamsError,
+  HttpError,
 } from '../services';
-import { assertPermission, getSiteRole, AuthorizationError } from '../auth/authorization';
+import { assertPermission, getSiteRole } from '../auth/authorization';
 import { validatePagination, validateAllowedOriginPatterns } from './validation';
 import type { ScreenshotProducerEnv } from '../queues/screenshot-producer';
 import { query } from '../db';
@@ -371,14 +371,12 @@ export async function handleSiteRoutes(
     }
   } catch (error) {
     // Handle known errors
-    if (error instanceof AuthorizationError) {
-      return errorResponse(error.message, 403);
-    }
     if (error instanceof DuplicatePantheonSiteIdError) {
       return errorResponse('A site with this Pantheon site ID already exists', 409);
     }
-    if (error instanceof InvalidSiteParamsError) {
-      return errorResponse(error.message, 400);
+
+    if (error instanceof HttpError) {
+      return errorResponse(error.message, error.status);
     }
 
     // Log and return generic error for unknown errors

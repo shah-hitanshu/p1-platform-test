@@ -87,9 +87,8 @@ describe('Agent Politeness Phase 1.3: Organization Service', () => {
     });
 
     it('should throw InvalidOrganizationParamsError for empty name', async () => {
-      const { createOrganization, InvalidOrganizationParamsError } = await import(
-        '../../src/services/organization-service'
-      );
+      const { createOrganization } = await import('../../src/services/organization-service');
+      const { InvalidOrganizationParamsError } = await import('../../src/services/errors');
 
       await expect(
         createOrganization({
@@ -99,9 +98,8 @@ describe('Agent Politeness Phase 1.3: Organization Service', () => {
     });
 
     it('should throw InvalidOrganizationParamsError for whitespace-only name', async () => {
-      const { createOrganization, InvalidOrganizationParamsError } = await import(
-        '../../src/services/organization-service'
-      );
+      const { createOrganization } = await import('../../src/services/organization-service');
+      const { InvalidOrganizationParamsError } = await import('../../src/services/errors');
 
       await expect(
         createOrganization({
@@ -199,9 +197,8 @@ describe('Agent Politeness Phase 1.3: Organization Service', () => {
     });
 
     it('should throw InvalidOrganizationParamsError for empty name', async () => {
-      const { updateOrganization, InvalidOrganizationParamsError } = await import(
-        '../../src/services/organization-service'
-      );
+      const { updateOrganization } = await import('../../src/services/organization-service');
+      const { InvalidOrganizationParamsError } = await import('../../src/services/errors');
 
       await expect(
         updateOrganization('org-uuid-123', {
@@ -235,9 +232,8 @@ describe('Agent Politeness Phase 1.3: Organization Service', () => {
     });
 
     it('should throw OrganizationHasSitesError when organization has linked sites', async () => {
-      const { deleteOrganization, OrganizationHasSitesError } = await import(
-        '../../src/services/organization-service'
-      );
+      const { deleteOrganization } = await import('../../src/services/organization-service');
+      const { OrganizationHasSitesError } = await import('../../src/services/errors');
       const db = await import('../../src/db');
 
       // Simulate foreign key constraint violation
@@ -306,7 +302,8 @@ describe('Agent Politeness Phase 1.3: Organization Service', () => {
     });
 
     it('should throw OrganizationHasActiveSitesError when org has active sites', async () => {
-      const { archiveOrganization, OrganizationHasActiveSitesError } = await import('../../src/services/organization-service');
+      const { archiveOrganization } = await import('../../src/services/organization-service');
+      const { OrganizationHasActiveSitesError } = await import('../../src/services/errors');
       const db = await import('../../src/db');
 
       vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ count: '2' }] }); // active sites found
@@ -441,9 +438,8 @@ describe('Agent Politeness Phase 1.3: Organization Service', () => {
     });
 
     it('should throw OrganizationNotFoundError when organization does not exist', async () => {
-      const { linkSiteToOrganization, OrganizationNotFoundError } = await import(
-        '../../src/services/organization-service'
-      );
+      const { linkSiteToOrganization } = await import('../../src/services/organization-service');
+      const { OrganizationNotFoundError } = await import('../../src/services/errors');
       const db = await import('../../src/db');
 
       // Simulate foreign key constraint violation

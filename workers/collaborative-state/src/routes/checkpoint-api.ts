@@ -15,8 +15,9 @@ import {
   getBranch,
   CheckpointNotFoundError,
   BranchNotFoundError,
+  HttpError,
 } from '../services';
-import { assertPermission, AuthorizationError } from '../auth/authorization';
+import { assertPermission } from '../auth/authorization';
 
 /**
  * Request context for checkpoint routes
@@ -281,14 +282,14 @@ export async function handleCheckpointRoutes(
     return errorResponse('Invalid route', 400);
   } catch (error) {
     // Handle known errors
-    if (error instanceof AuthorizationError) {
-      return errorResponse(error.message, 403);
-    }
     if (error instanceof CheckpointNotFoundError) {
       return errorResponse('Checkpoint not found', 404);
     }
     if (error instanceof BranchNotFoundError) {
       return errorResponse('Branch not found', 404);
+    }
+    if (error instanceof HttpError) {
+      return errorResponse(error.message, error.status);
     }
 
     // Re-throw unknown errors

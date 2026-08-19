@@ -8,6 +8,7 @@
  */
 
 import { query } from '../db';
+import { InvalidSettingsError } from './errors';
 
 // =============================================================================
 // Types
@@ -58,22 +59,6 @@ export interface EnvDefaults {
  */
 interface SettingsRow {
   settings: SiteSettings | string;
-}
-
-// =============================================================================
-// Error Classes
-// =============================================================================
-
-/**
- * Error thrown when site settings values are invalid.
- */
-export class InvalidSettingsError extends Error {
-  public readonly name = 'InvalidSettingsError';
-
-  constructor(message: string) {
-    super(message);
-    Object.setPrototypeOf(this, InvalidSettingsError.prototype);
-  }
 }
 
 // =============================================================================

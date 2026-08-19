@@ -6,6 +6,7 @@
  */
 
 import { query } from '../db';
+import { DuplicateGrantError } from './errors';
 import type { RoleName } from '../types';
 
 /**
@@ -43,31 +44,6 @@ export interface ListGrantsOptions {
   branchId: string;
   actorType?: 'user' | 'agent';
   role?: RoleName;
-}
-
-/**
- * Error thrown when a grant is not found
- */
-export class GrantNotFoundError extends Error {
-  public readonly name = 'GrantNotFoundError';
-
-  constructor(public readonly grantId: string) {
-    super(`Grant not found: ${grantId}`);
-  }
-}
-
-/**
- * Error thrown when a duplicate grant is attempted
- */
-export class DuplicateGrantError extends Error {
-  public readonly name = 'DuplicateGrantError';
-
-  constructor(
-    public readonly branchId: string,
-    public readonly actorId: string,
-  ) {
-    super(`Grant already exists for actor ${actorId} on branch ${branchId}`);
-  }
 }
 
 /**

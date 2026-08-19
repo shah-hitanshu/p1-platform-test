@@ -11,63 +11,31 @@ import { makePrincipal } from '../helpers/principal';
 import { makeBranch } from '../helpers/branch';
 
 // Mock the services
-vi.mock('../../src/services', () => ({
-  createNode: vi.fn(),
-  getNode: vi.fn(),
-  listNodes: vi.fn(),
-  updateNode: vi.fn(),
-  deleteNode: vi.fn(),
-  moveNode: vi.fn(),
-  reorderNodes: vi.fn(),
-  buildNavigationTree: vi.fn(),
-  getBranch: vi.fn().mockResolvedValue({ id: 'branch-1', siteId: 'site-1', name: 'main', isMain: true }),
-  getBranchStructure: vi.fn(),
-  StructureNotFoundError: class StructureNotFoundError extends Error {
-    override name = 'StructureNotFoundError';
-    constructor(public structureId: string) {
-      super(`Structure not found: ${structureId}`);
-    }
-  },
-  NodeNotFoundError: class NodeNotFoundError extends Error {
-    override name = 'NodeNotFoundError';
-    constructor(public nodeId: string) {
-      super(`Node not found: ${nodeId}`);
-    }
-  },
-  DuplicateNodeSlugError: class DuplicateNodeSlugError extends Error {
-    override name = 'DuplicateNodeSlugError';
-    constructor(
-      public structureId: string,
-      public slug: string,
-    ) {
-      super(`Node with slug "${slug}" already exists in structure`);
-    }
-  },
-  CircularReferenceError: class CircularReferenceError extends Error {
-    override name = 'CircularReferenceError';
-    constructor() {
-      super('Move would create circular reference');
-    }
-  },
-  InvalidSlugError: class InvalidSlugError extends Error {
-    override name = 'InvalidSlugError';
-  },
-}));
+vi.mock('../../src/services', async () => {
+  const actual = await vi.importActual('../../src/services');
+  return {
+    ...actual,
+    createNode: vi.fn(),
+    getNode: vi.fn(),
+    listNodes: vi.fn(),
+    updateNode: vi.fn(),
+    deleteNode: vi.fn(),
+    moveNode: vi.fn(),
+    reorderNodes: vi.fn(),
+    buildNavigationTree: vi.fn(),
+    getBranch: vi.fn().mockResolvedValue({ id: 'branch-1', siteId: 'site-1', name: 'main', isMain: true }),
+    getBranchStructure: vi.fn(),
+  };
+});
 
 // Mock authorization
-vi.mock('../../src/auth/authorization', () => ({
-  assertPermission: vi.fn(),
-  AuthorizationError: class AuthorizationError extends Error {
-    override name = 'AuthorizationError';
-    constructor(
-      message: string,
-      public requiredPermission: string,
-      public roleName: string,
-    ) {
-      super(message);
-    }
-  },
-}));
+vi.mock('../../src/auth/authorization', async () => {
+  const actual = await vi.importActual('../../src/auth/authorization');
+  return {
+    ...actual,
+    assertPermission: vi.fn(),
+  };
+});
 
 describe('Phase 7.1.1b: Node API Routes', () => {
   beforeEach(() => {

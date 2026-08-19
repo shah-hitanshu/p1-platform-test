@@ -8,7 +8,8 @@
  * createdByRef: portable cross-environment user/agent references.
  */
 import { query } from '../db';
-import { reconstructVersionSnapshot, VersionReconstructionError } from './document-version-service';
+import { reconstructVersionSnapshot } from './document-version-service';
+import { VersionReconstructionError } from './errors';
 import { hmacSha256 } from '../utils/hash';
 
 export type CreatedByRef =

@@ -11,105 +11,46 @@ import { makePrincipal } from '../helpers/principal';
 import { makeBranch } from '../helpers/branch';
 
 // Mock the services
-vi.mock('../../src/services', () => ({
-  createDocument: vi.fn(),
-  getDocument: vi.fn(),
-  getDocumentByPath: vi.fn(),
-  updateDocumentFields: vi.fn(),
-  archiveDocument: vi.fn(),
-  restoreDocument: vi.fn(),
-  listDocuments: vi.fn(),
-  // Branch-scoped document operations
-  listDocumentsOnBranch: vi.fn(),
-  createDocumentOnBranch: vi.fn(),
-  documentExistsOnBranch: vi.fn(),
-  deleteDocumentOnBranch: vi.fn(),
-  deleteDocumentWithRedirect: vi.fn(),
-  getBranch: vi.fn(),
-  // Document version operations
-  getLatestDocumentVersion: vi.fn(),
-  getDocumentVersion: vi.fn(),
-  listDocumentVersions: vi.fn(),
-  createDocumentVersion: vi.fn(),
-  reconstructVersionSnapshot: vi.fn(),
-  restoreDocumentVersion: vi.fn(),
-  RestoreVersionNotFoundError: class RestoreVersionNotFoundError extends Error {
-    override name = 'RestoreVersionNotFoundError';
-    constructor(public versionId: string) {
-      super(`Version with ID "${versionId}" not found.`);
-    }
-  },
-  SiteNotFoundError: class SiteNotFoundError extends Error {
-    override name = 'SiteNotFoundError';
-    constructor(public siteId: string) {
-      super(`Site with ID "${siteId}" not found.`);
-    }
-  },
-  DuplicateDocumentPathError: class DuplicateDocumentPathError extends Error {
-    override name = 'DuplicateDocumentPathError';
-    constructor(public path: string) {
-      super(`A document with path "${path}" already exists.`);
-    }
-  },
-  InvalidDocumentPathError: class InvalidDocumentPathError extends Error {
-    override name = 'InvalidDocumentPathError';
-  },
-  DocumentNotFoundError: class DocumentNotFoundError extends Error {
-    override name = 'DocumentNotFoundError';
-    constructor(public documentId: string) {
-      super(`Document with ID "${documentId}" not found.`);
-    }
-  },
-  DocumentPathConflictError: class DocumentPathConflictError extends Error {
-    override name = 'DocumentPathConflictError';
-    constructor(public path: string) {
-      super(`Path "${path}" is occupied by another document.`);
-    }
-  },
-  BranchNotFoundError: class BranchNotFoundError extends Error {
-    override name = 'BranchNotFoundError';
-    constructor(public branchId: string) {
-      super(`Branch with ID "${branchId}" not found.`);
-    }
-  },
-  PageConflictError: class PageConflictError extends Error {
-    override name = 'PageConflictError';
-    constructor(public path: string) {
-      super(`A page already exists at path "${path}"`);
-    }
-  },
-  InvalidDocumentVersionParamsError: class InvalidDocumentVersionParamsError extends Error {
-    override name = 'InvalidDocumentVersionParamsError';
-  },
-  InvalidLocaleError: class InvalidLocaleError extends Error {
-    override name = 'InvalidLocaleError';
-  },
-  CanonicalVersionNotFoundError: class CanonicalVersionNotFoundError extends Error {
-    override name = 'CanonicalVersionNotFoundError';
-  },
-  TranslationAlreadyExistsError: class TranslationAlreadyExistsError extends Error {
-    override name = 'TranslationAlreadyExistsError';
-  },
-  getMainBranch: vi.fn(),
-}));
+vi.mock('../../src/services', async () => {
+  const actual = await vi.importActual('../../src/services');
+  return {
+    ...actual,
+    createDocument: vi.fn(),
+    getDocument: vi.fn(),
+    getDocumentByPath: vi.fn(),
+    updateDocumentFields: vi.fn(),
+    archiveDocument: vi.fn(),
+    restoreDocument: vi.fn(),
+    listDocuments: vi.fn(),
+    // Branch-scoped document operations
+    listDocumentsOnBranch: vi.fn(),
+    createDocumentOnBranch: vi.fn(),
+    documentExistsOnBranch: vi.fn(),
+    deleteDocumentOnBranch: vi.fn(),
+    deleteDocumentWithRedirect: vi.fn(),
+    getBranch: vi.fn(),
+    // Document version operations
+    getLatestDocumentVersion: vi.fn(),
+    getDocumentVersion: vi.fn(),
+    listDocumentVersions: vi.fn(),
+    createDocumentVersion: vi.fn(),
+    reconstructVersionSnapshot: vi.fn(),
+    restoreDocumentVersion: vi.fn(),
+    getMainBranch: vi.fn(),
+  };
+});
 
 const purgeContentCache = vi.hoisted(() => vi.fn());
 vi.mock('../../src/cache/purge', () => ({ purgeContentCache }));
 
 // Mock authorization
-vi.mock('../../src/auth/authorization', () => ({
-  assertPermission: vi.fn(),
-  AuthorizationError: class AuthorizationError extends Error {
-    override name = 'AuthorizationError';
-    constructor(
-      message: string,
-      public requiredPermission: string,
-      public roleName: string,
-    ) {
-      super(message);
-    }
-  },
-}));
+vi.mock('../../src/auth/authorization', async () => {
+  const actual = await vi.importActual('../../src/auth/authorization');
+  return {
+    ...actual,
+    assertPermission: vi.fn(),
+  };
+});
 
 describe('Phase 7.1.1b: Document CRUD API Routes', () => {
   beforeEach(() => {

@@ -7,6 +7,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { QuerySnapshot } from '../../src/types/query';
 import { readJson } from '../helpers/http';
+import { QueryNotFoundError } from '../../src/services/errors';
 
 vi.mock('../../src/services/query-service', () => ({
   getQuery: vi.fn(),
@@ -14,18 +15,6 @@ vi.mock('../../src/services/query-service', () => ({
   createQuery: vi.fn(),
   deleteQuery: vi.fn(),
   executeQuery: vi.fn(),
-  QueryNotFoundError: class QueryNotFoundError extends Error {
-    constructor(name: string) {
-      super(`Query "${name}" not found.`);
-      this.name = 'QueryNotFoundError';
-    }
-  },
-  DatasourceNotFoundError: class DatasourceNotFoundError extends Error {
-    constructor(name: string) {
-      super(`Datasource "${name}" not found.`);
-      this.name = 'DatasourceNotFoundError';
-    }
-  },
 }));
 
 vi.mock('../../src/auth/authorization', () => ({
@@ -209,7 +198,7 @@ describe('query-api', () => {
       } as never);
 
       vi.mocked(queryService.executeQuery).mockRejectedValueOnce(
-        new queryService.QueryNotFoundError('nonexistent'),
+        new QueryNotFoundError('nonexistent'),
       );
 
       const request = new Request('http://localhost/api/sites/s1/branches/b1/queries/nonexistent/results', {

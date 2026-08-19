@@ -20,24 +20,6 @@ vi.mock('../../src/services/presence-rollup-service', () => ({
   getSitePresence: vi.fn(),
   getAgentPresence: vi.fn(),
   queryDocumentPresence: vi.fn(),
-  BranchNotFoundError: class BranchNotFoundError extends Error {
-    name = 'BranchNotFoundError';
-    constructor(public branchId: string) {
-      super(`Branch with ID "${branchId}" not found.`);
-    }
-  },
-  SiteNotFoundError: class SiteNotFoundError extends Error {
-    name = 'SiteNotFoundError';
-    constructor(public siteId: string) {
-      super(`Site with ID "${siteId}" not found.`);
-    }
-  },
-  AgentNotFoundError: class AgentNotFoundError extends Error {
-    name = 'AgentNotFoundError';
-    constructor(public agentId: string) {
-      super(`Agent with ID "${agentId}" not found.`);
-    }
-  },
 }));
 
 // Mock the branch service for authorization checks
@@ -221,9 +203,10 @@ describe('Phase 8: Presence API Routes', () => {
     it('should return 404 for non-existent branch', async () => {
       const { handlePresenceRoutes } = await import('../../src/routes/presence-api');
       const presenceService = await import('../../src/services/presence-rollup-service');
+      const { BranchNotFoundError } = await import('../../src/services/errors');
 
       vi.mocked(presenceService.getBranchPresence).mockRejectedValueOnce(
-        new presenceService.BranchNotFoundError('non-existent'),
+        new BranchNotFoundError('non-existent'),
       );
 
       const request = new Request(
@@ -319,9 +302,10 @@ describe('Phase 8: Presence API Routes', () => {
     it('should return 404 for non-existent site', async () => {
       const { handlePresenceRoutes } = await import('../../src/routes/presence-api');
       const presenceService = await import('../../src/services/presence-rollup-service');
+      const { SiteNotFoundError } = await import('../../src/services/errors');
 
       vi.mocked(presenceService.getSitePresence).mockRejectedValueOnce(
-        new presenceService.SiteNotFoundError('non-existent'),
+        new SiteNotFoundError('non-existent'),
       );
 
       const request = new Request(
@@ -388,9 +372,10 @@ describe('Phase 8: Presence API Routes', () => {
     it('should return 404 for non-existent agent', async () => {
       const { handlePresenceRoutes } = await import('../../src/routes/presence-api');
       const presenceService = await import('../../src/services/presence-rollup-service');
+      const { AgentNotFoundError } = await import('../../src/services/errors');
 
       vi.mocked(presenceService.getAgentPresence).mockRejectedValueOnce(
-        new presenceService.AgentNotFoundError('non-existent'),
+        new AgentNotFoundError('non-existent'),
       );
 
       const request = new Request(

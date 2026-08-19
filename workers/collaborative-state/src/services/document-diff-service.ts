@@ -11,6 +11,7 @@ import { compare, type Operation } from 'fast-json-patch';
 import { getDocumentVersion, reconstructVersionSnapshot } from './document-version-service';
 import type { ModifiedDocument } from './merge-base-service';
 import type { DocumentConflict } from '../types';
+import { DocumentVersionNotFoundError } from './errors';
 
 // =============================================================================
 // Types
@@ -42,22 +43,6 @@ export interface ComputedDiff {
   sourceSnapshot: Record<string, unknown>;
   targetSnapshot: Record<string, unknown>;
   diffOperations: DiffOperation[];
-}
-
-// =============================================================================
-// Error Classes
-// =============================================================================
-
-/**
- * Error thrown when a document version is not found.
- */
-export class DocumentVersionNotFoundError extends Error {
-  public readonly name = 'DocumentVersionNotFoundError';
-
-  constructor(public readonly versionId: string) {
-    super(`Document version with ID "${versionId}" not found.`);
-    Object.setPrototypeOf(this, DocumentVersionNotFoundError.prototype);
-  }
 }
 
 // =============================================================================

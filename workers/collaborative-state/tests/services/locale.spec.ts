@@ -6,7 +6,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { validateLocale, InvalidLocaleError } from '../../src/services/locale';
+import { validateLocale } from '../../src/services/locale';
+import { InvalidLocaleError } from '../../src/services/errors';
 
 describe('validateLocale', () => {
   describe('normalization', () => {

@@ -20,7 +20,7 @@ import {
   StructureNotFoundError,
   DuplicateStructureSlugError,
   CheckpointNotFoundError,
-  InvalidSlugError,
+  HttpError,
 } from '../services';
 import { assertPermission, AuthorizationError } from '../auth/authorization';
 import type { AuthenticatedPrincipal } from '../types';
@@ -342,9 +342,6 @@ export async function handleStructureRoutes(
     }
   } catch (error) {
     // Handle known errors
-    if (error instanceof AuthorizationError) {
-      return errorResponse(error.message, 403);
-    }
     if (error instanceof BranchNotFoundError) {
       return errorResponse('Branch not found', 404);
     }
@@ -354,11 +351,11 @@ export async function handleStructureRoutes(
     if (error instanceof DuplicateStructureSlugError) {
       return errorResponse('Structure with this slug already exists', 409);
     }
-    if (error instanceof InvalidSlugError) {
-      return errorResponse(error.message, 400);
-    }
     if (error instanceof CheckpointNotFoundError) {
       return errorResponse('Checkpoint not found', 404);
+    }
+    if (error instanceof HttpError) {
+      return errorResponse(error.message, error.status);
     }
 
     // Log and return generic error for unknown errors

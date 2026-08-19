@@ -13,78 +13,40 @@ import { makePrincipal } from '../helpers/principal';
 import { makeBranch } from '../helpers/branch';
 
 // Mock the services
-vi.mock('../../src/services', () => ({
-  createDocument: vi.fn(),
-  getDocument: vi.fn(),
-  getDocumentByPath: vi.fn(),
-  updateDocumentPath: vi.fn(),
-  archiveDocument: vi.fn(),
-  restoreDocument: vi.fn(),
-  listDocuments: vi.fn(),
-  listDocumentsOnBranch: vi.fn(),
-  createDocumentOnBranch: vi.fn(),
-  documentExistsOnBranch: vi.fn(),
-  deleteDocumentOnBranch: vi.fn(),
-  getBranch: vi.fn(),
-  getMainBranch: vi.fn(),
-  getLatestDocumentVersion: vi.fn(),
-  getLatestDocumentVersionWithFallback: vi.fn(),
-  getDocumentVersion: vi.fn(),
-  listDocumentVersions: vi.fn(),
-  createDocumentVersion: vi.fn(),
-  publishDocument: vi.fn(),
-  SiteNotFoundError: class SiteNotFoundError extends Error {
-    override name = 'SiteNotFoundError';
-    constructor(public siteId: string) {
-      super(`Site with ID "${siteId}" not found.`);
-    }
-  },
-  DuplicateDocumentPathError: class DuplicateDocumentPathError extends Error {
-    override name = 'DuplicateDocumentPathError';
-    constructor(public path: string) {
-      super(`A document with path "${path}" already exists.`);
-    }
-  },
-  InvalidDocumentPathError: class InvalidDocumentPathError extends Error {
-    override name = 'InvalidDocumentPathError';
-  },
-  DocumentNotFoundError: class DocumentNotFoundError extends Error {
-    override name = 'DocumentNotFoundError';
-    constructor(public documentId: string) {
-      super(`Document with ID "${documentId}" not found.`);
-    }
-  },
-  DocumentPathConflictError: class DocumentPathConflictError extends Error {
-    override name = 'DocumentPathConflictError';
-    constructor(public path: string) {
-      super(`Path "${path}" is occupied.`);
-    }
-  },
-  BranchNotFoundError: class BranchNotFoundError extends Error {
-    override name = 'BranchNotFoundError';
-    constructor(public branchId: string) {
-      super(`Branch with ID "${branchId}" not found.`);
-    }
-  },
-  InvalidDocumentVersionParamsError: class InvalidDocumentVersionParamsError extends Error {
-    override name = 'InvalidDocumentVersionParamsError';
-  },
-}));
+vi.mock('../../src/services', async () => {
+  const actual = await vi.importActual('../../src/services');
+  return {
+    ...actual,
+    createDocument: vi.fn(),
+    getDocument: vi.fn(),
+    getDocumentByPath: vi.fn(),
+    updateDocumentPath: vi.fn(),
+    archiveDocument: vi.fn(),
+    restoreDocument: vi.fn(),
+    listDocuments: vi.fn(),
+    listDocumentsOnBranch: vi.fn(),
+    createDocumentOnBranch: vi.fn(),
+    documentExistsOnBranch: vi.fn(),
+    deleteDocumentOnBranch: vi.fn(),
+    getBranch: vi.fn(),
+    getMainBranch: vi.fn(),
+    getLatestDocumentVersion: vi.fn(),
+    getLatestDocumentVersionWithFallback: vi.fn(),
+    getDocumentVersion: vi.fn(),
+    listDocumentVersions: vi.fn(),
+    createDocumentVersion: vi.fn(),
+    publishDocument: vi.fn(),
+  };
+});
 
 // Mock authorization
-vi.mock('../../src/auth/authorization', () => ({
-  assertPermission: vi.fn(),
-  AuthorizationError: class AuthorizationError extends Error {
-    override name = 'AuthorizationError';
-    constructor(
-      message: string,
-      public requiredPermission: string,
-      public roleName: string,
-    ) {
-      super(message);
-    }
-  },
-}));
+vi.mock('../../src/auth/authorization', async () => {
+  const actual = await vi.importActual('../../src/auth/authorization');
+  return {
+    ...actual,
+    assertPermission: vi.fn(),
+  };
+});
 
 // ---------------------------------------------------------------------------
 // Shared test fixtures

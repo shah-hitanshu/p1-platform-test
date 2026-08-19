@@ -149,7 +149,8 @@ describe('Phase 3.2: Branch Service', () => {
     });
 
     it('should throw DuplicateBranchNameError for duplicate branch name in same site', async () => {
-      const { createBranch, DuplicateBranchNameError } = await import('../../src/services/branch-service');
+      const { createBranch } = await import('../../src/services/branch-service');
+      const { DuplicateBranchNameError } = await import('../../src/services/errors');
       const db = await import('../../src/db');
 
       // Simulate unique constraint violation during INSERT
@@ -172,7 +173,8 @@ describe('Phase 3.2: Branch Service', () => {
     });
 
     it('should throw SiteNotFoundError when site does not exist', async () => {
-      const { createBranch, SiteNotFoundError } = await import('../../src/services/branch-service');
+      const { createBranch } = await import('../../src/services/branch-service');
+      const { SiteNotFoundError } = await import('../../src/services/errors');
       const db = await import('../../src/db');
 
       // Simulate foreign key constraint violation during INSERT
@@ -195,7 +197,8 @@ describe('Phase 3.2: Branch Service', () => {
     });
 
     it('should throw InvalidBranchParamsError for empty branch name', async () => {
-      const { createBranch, InvalidBranchParamsError } = await import('../../src/services/branch-service');
+      const { createBranch } = await import('../../src/services/branch-service');
+      const { InvalidBranchParamsError } = await import('../../src/services/errors');
 
       await expect(
         createBranch({
@@ -209,7 +212,8 @@ describe('Phase 3.2: Branch Service', () => {
     });
 
     it('should throw InvalidBranchParamsError for whitespace-only branch name', async () => {
-      const { createBranch, InvalidBranchParamsError } = await import('../../src/services/branch-service');
+      const { createBranch } = await import('../../src/services/branch-service');
+      const { InvalidBranchParamsError } = await import('../../src/services/errors');
 
       await expect(
         createBranch({
@@ -223,7 +227,8 @@ describe('Phase 3.2: Branch Service', () => {
     });
 
     it('should throw InvalidBranchParamsError for missing sourceBranchId', async () => {
-      const { createBranch, InvalidBranchParamsError } = await import('../../src/services/branch-service');
+      const { createBranch } = await import('../../src/services/branch-service');
+      const { InvalidBranchParamsError } = await import('../../src/services/errors');
 
       await expect(
         createBranch({
@@ -319,7 +324,8 @@ describe('Phase 3.2: Branch Service', () => {
     });
 
     it('should throw DuplicateBranchNameError if main already exists', async () => {
-      const { createMainBranch, DuplicateBranchNameError } = await import('../../src/services/branch-service');
+      const { createMainBranch } = await import('../../src/services/branch-service');
+      const { DuplicateBranchNameError } = await import('../../src/services/errors');
       const db = await import('../../src/db');
 
       // Simulate unique constraint violation on is_main partial index
@@ -337,7 +343,8 @@ describe('Phase 3.2: Branch Service', () => {
     });
 
     it('should throw SiteNotFoundError when site does not exist', async () => {
-      const { createMainBranch, SiteNotFoundError } = await import('../../src/services/branch-service');
+      const { createMainBranch } = await import('../../src/services/branch-service');
+      const { SiteNotFoundError } = await import('../../src/services/errors');
       const db = await import('../../src/db');
 
       // Simulate foreign key constraint violation
@@ -690,7 +697,8 @@ describe('Phase 3.2: Branch Service', () => {
     });
 
     it('should throw DuplicateBranchNameError for duplicate name in same site', async () => {
-      const { updateBranch, DuplicateBranchNameError } = await import('../../src/services/branch-service');
+      const { updateBranch } = await import('../../src/services/branch-service');
+      const { DuplicateBranchNameError } = await import('../../src/services/errors');
       const db = await import('../../src/db');
 
       // Simulate unique constraint violation
@@ -704,7 +712,8 @@ describe('Phase 3.2: Branch Service', () => {
     });
 
     it('should throw InvalidBranchParamsError for empty name', async () => {
-      const { updateBranch, InvalidBranchParamsError } = await import('../../src/services/branch-service');
+      const { updateBranch } = await import('../../src/services/branch-service');
+      const { InvalidBranchParamsError } = await import('../../src/services/errors');
 
       await expect(
         updateBranch('branch-123', { name: '' }),
@@ -779,7 +788,8 @@ describe('Phase 3.2: Branch Service', () => {
     });
 
     it('should throw InvalidBranchStatusTransitionError for invalid transition', async () => {
-      const { updateBranchStatus, InvalidBranchStatusTransitionError } = await import('../../src/services/branch-service');
+      const { updateBranchStatus } = await import('../../src/services/branch-service');
+      const { InvalidBranchStatusTransitionError } = await import('../../src/services/errors');
       const db = await import('../../src/db');
 
       // Branch is already merged, cannot go back to active
@@ -792,7 +802,8 @@ describe('Phase 3.2: Branch Service', () => {
     });
 
     it('should throw InvalidBranchStatusTransitionError when transitioning archived to active', async () => {
-      const { updateBranchStatus, InvalidBranchStatusTransitionError } = await import('../../src/services/branch-service');
+      const { updateBranchStatus } = await import('../../src/services/branch-service');
+      const { InvalidBranchStatusTransitionError } = await import('../../src/services/errors');
       const db = await import('../../src/db');
 
       const currentRow = createMockBranchRow({ id: 'branch-123', status: 'archived' });
@@ -804,7 +815,8 @@ describe('Phase 3.2: Branch Service', () => {
     });
 
     it('should throw MainBranchProtectionError when archiving main branch', async () => {
-      const { updateBranchStatus, MainBranchProtectionError } = await import('../../src/services/branch-service');
+      const { updateBranchStatus } = await import('../../src/services/branch-service');
+      const { MainBranchProtectionError } = await import('../../src/services/errors');
       const db = await import('../../src/db');
 
       const mainRow = createMainBranchRow('site-uuid-456');
@@ -855,7 +867,8 @@ describe('Phase 3.2: Branch Service', () => {
     });
 
     it('should throw MainBranchProtectionError when deleting main branch', async () => {
-      const { deleteBranch, MainBranchProtectionError } = await import('../../src/services/branch-service');
+      const { deleteBranch } = await import('../../src/services/branch-service');
+      const { MainBranchProtectionError } = await import('../../src/services/errors');
       const db = await import('../../src/db');
 
       const mainRow = createMainBranchRow('site-uuid-456');
@@ -923,7 +936,8 @@ describe('Phase 3.2: Branch Service', () => {
     });
 
     it('should throw MainBranchProtectionError for main branch', async () => {
-      const { archiveBranch, MainBranchProtectionError } = await import('../../src/services/branch-service');
+      const { archiveBranch } = await import('../../src/services/branch-service');
+      const { MainBranchProtectionError } = await import('../../src/services/errors');
       const db = await import('../../src/db');
 
       const mainRow = createMainBranchRow('site-uuid-456');
@@ -1039,7 +1053,7 @@ describe('Phase 3.2: Branch Service', () => {
 
   describe('Error Classes', () => {
     it('DuplicateBranchNameError should be an instance of Error', async () => {
-      const { DuplicateBranchNameError } = await import('../../src/services/branch-service');
+      const { DuplicateBranchNameError } = await import('../../src/services/errors');
 
       const error = new DuplicateBranchNameError('site-123', 'feature-x');
 
@@ -1050,7 +1064,7 @@ describe('Phase 3.2: Branch Service', () => {
     });
 
     it('InvalidBranchParamsError should be an instance of Error', async () => {
-      const { InvalidBranchParamsError } = await import('../../src/services/branch-service');
+      const { InvalidBranchParamsError } = await import('../../src/services/errors');
 
       const error = new InvalidBranchParamsError('name is required');
 
@@ -1060,7 +1074,7 @@ describe('Phase 3.2: Branch Service', () => {
     });
 
     it('SiteNotFoundError should be an instance of Error', async () => {
-      const { SiteNotFoundError } = await import('../../src/services/branch-service');
+      const { SiteNotFoundError } = await import('../../src/services/errors');
 
       const error = new SiteNotFoundError('site-123');
 
@@ -1070,7 +1084,7 @@ describe('Phase 3.2: Branch Service', () => {
     });
 
     it('MainBranchProtectionError should be an instance of Error', async () => {
-      const { MainBranchProtectionError } = await import('../../src/services/branch-service');
+      const { MainBranchProtectionError } = await import('../../src/services/errors');
 
       const error = new MainBranchProtectionError('delete');
 
@@ -1081,7 +1095,7 @@ describe('Phase 3.2: Branch Service', () => {
     });
 
     it('InvalidBranchStatusTransitionError should be an instance of Error', async () => {
-      const { InvalidBranchStatusTransitionError } = await import('../../src/services/branch-service');
+      const { InvalidBranchStatusTransitionError } = await import('../../src/services/errors');
 
       const error = new InvalidBranchStatusTransitionError('merged', 'active');
 
@@ -1094,7 +1108,7 @@ describe('Phase 3.2: Branch Service', () => {
     });
 
     it('BranchNotFoundError should be an instance of Error', async () => {
-      const { BranchNotFoundError } = await import('../../src/services/branch-service');
+      const { BranchNotFoundError } = await import('../../src/services/errors');
 
       const error = new BranchNotFoundError('branch-123');
 
@@ -1156,7 +1170,8 @@ describe('Phase 3.2: Branch Service', () => {
 
   describe('Main-Only Branch Creation Validation', () => {
     it('should throw MainBranchOnlyError when source branch is not main', async () => {
-      const { createBranch, MainBranchOnlyError } = await import('../../src/services/branch-service');
+      const { createBranch } = await import('../../src/services/branch-service');
+      const { MainBranchOnlyError } = await import('../../src/services/errors');
       const db = await import('../../src/db');
 
       vi.mocked(db.query)
@@ -1209,7 +1224,7 @@ describe('Phase 3.2: Branch Service', () => {
     });
 
     it('should throw MainBranchOnlyError with correct properties', async () => {
-      const { MainBranchOnlyError } = await import('../../src/services/branch-service');
+      const { MainBranchOnlyError } = await import('../../src/services/errors');
 
       const error = new MainBranchOnlyError('some-branch-id');
 
@@ -1220,7 +1235,8 @@ describe('Phase 3.2: Branch Service', () => {
     });
 
     it('should throw MainBranchOnlyError when source branch does not exist', async () => {
-      const { createBranch, MainBranchOnlyError } = await import('../../src/services/branch-service');
+      const { createBranch } = await import('../../src/services/branch-service');
+      const { MainBranchOnlyError } = await import('../../src/services/errors');
       const db = await import('../../src/db');
 
       vi.mocked(db.query)

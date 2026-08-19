@@ -337,9 +337,8 @@ describe('Phase 8: Presence Rollup Service', () => {
     });
 
     it('should throw BranchNotFoundError for non-existent branch', async () => {
-      const { getBranchPresence, BranchNotFoundError } = await import(
-        '../../src/services/presence-rollup-service'
-      );
+      const { getBranchPresence } = await import('../../src/services/presence-rollup-service');
+      const { BranchNotFoundError } = await import('../../src/services/errors');
       const branchService = await import('../../src/services/branch-service');
 
       vi.mocked(branchService.getBranch).mockResolvedValue(null);
@@ -415,9 +414,8 @@ describe('Phase 8: Presence Rollup Service', () => {
     });
 
     it('should throw SiteNotFoundError for non-existent site', async () => {
-      const { getSitePresence, SiteNotFoundError } = await import(
-        '../../src/services/presence-rollup-service'
-      );
+      const { getSitePresence } = await import('../../src/services/presence-rollup-service');
+      const { SiteNotFoundError } = await import('../../src/services/errors');
       const siteService = await import('../../src/services/site-service');
 
       vi.mocked(siteService.getSite).mockResolvedValue(null);
@@ -528,9 +526,8 @@ describe('Phase 8: Presence Rollup Service', () => {
     });
 
     it('should throw AgentNotFoundError for non-existent agent', async () => {
-      const { getAgentPresence, AgentNotFoundError } = await import(
-        '../../src/services/presence-rollup-service'
-      );
+      const { getAgentPresence } = await import('../../src/services/presence-rollup-service');
+      const { AgentNotFoundError } = await import('../../src/services/errors');
       const agentService = await import('../../src/services/agent-service');
 
       vi.mocked(agentService.getAgentById).mockResolvedValue(null);

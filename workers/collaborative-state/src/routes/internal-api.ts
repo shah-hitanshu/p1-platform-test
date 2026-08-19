@@ -11,9 +11,8 @@
 import {
   syncCrdtToPostgres,
   loadLatestCrdtState,
-  DocumentNotFoundError,
-  SyncError,
 } from '../services/crdt-sync-service';
+import { DocumentNotFoundError, SyncError, HttpError } from '../services/errors';
 import { getSiteAllowedOrigins } from '../services/site-service';
 import {
   createCheckpoint,
@@ -235,6 +234,9 @@ async function handleCrdtSync(request: Request): Promise<Response> {
     }
     if (error instanceof SyncError) {
       return errorResponse(`Sync failed: ${error.message}`, 500);
+    }
+    if (error instanceof HttpError) {
+      return errorResponse(error.message, error.status);
     }
     throw error;
   }
@@ -572,6 +574,9 @@ async function handleAgentCheckpointStart(request: Request): Promise<Response> {
     if (error instanceof BranchNotFoundError) {
       return errorResponse(`Branch not found: ${error.branchId}`, 404);
     }
+    if (error instanceof HttpError) {
+      return errorResponse(error.message, error.status);
+    }
     console.error('Error creating agent pre-edit checkpoint:', error);
     return errorResponse('Failed to create checkpoint', 500);
   }
@@ -617,6 +622,9 @@ async function handleAgentCheckpointComplete(request: Request): Promise<Response
     if (error instanceof BranchNotFoundError) {
       return errorResponse(`Branch not found: ${error.branchId}`, 404);
     }
+    if (error instanceof HttpError) {
+      return errorResponse(error.message, error.status);
+    }
     console.error('Error creating agent post-edit checkpoint:', error);
     return errorResponse('Failed to create checkpoint', 500);
   }
@@ -658,6 +666,9 @@ async function handleAgentCheckpointRollback(request: Request): Promise<Response
   } catch (error) {
     if (error instanceof CheckpointNotFoundError) {
       return errorResponse(`Checkpoint not found: ${error.checkpointId}`, 404);
+    }
+    if (error instanceof HttpError) {
+      return errorResponse(error.message, error.status);
     }
     console.error('Error rolling back to checkpoint:', error);
     return errorResponse('Failed to rollback to checkpoint', 500);

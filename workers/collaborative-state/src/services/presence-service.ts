@@ -6,6 +6,7 @@
  */
 
 import type { ActorPresence, PresenceState } from '../types';
+import { MaxPresencesExceededError } from './errors';
 
 /**
  * Serialized form of PresenceManager state.
@@ -21,16 +22,6 @@ export interface SerializedPresenceState {
  * Prevents memory exhaustion from unbounded registration.
  */
 export const MAX_PRESENCES = 1000;
-
-/**
- * Error thrown when maximum presence limit is reached.
- */
-export class MaxPresencesExceededError extends Error {
-  constructor() {
-    super(`Maximum presence limit (${String(MAX_PRESENCES)}) exceeded`);
-    this.name = 'MaxPresencesExceededError';
-  }
-}
 
 /**
  * Options for registering a new presence.
@@ -148,7 +139,7 @@ export class PresenceManager {
     } else {
       // New registration - check limit
       if (this.presences.size >= MAX_PRESENCES) {
-        throw new MaxPresencesExceededError();
+        throw new MaxPresencesExceededError(MAX_PRESENCES);
       }
     }
 

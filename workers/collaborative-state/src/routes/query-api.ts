@@ -10,11 +10,10 @@ import {
   listQueries,
   deleteQuery,
   executeQuery,
-  QueryNotFoundError,
-  DatasourceNotFoundError,
 } from '../services/query-service';
+import { HttpError } from '../services';
 import { getBranch, getMainBranch } from '../services/branch-service';
-import { assertPermission, AuthorizationError } from '../auth/authorization';
+import { assertPermission } from '../auth/authorization';
 import { jsonResponse, errorResponse } from '../utils/http-helpers';
 import { validatePagination } from './validation';
 import type { AuthenticatedPrincipal } from '../types';
@@ -110,14 +109,8 @@ export async function handleQueryRoutes(
         return errorResponse('Method not allowed', 405);
     }
   } catch (error) {
-    if (error instanceof AuthorizationError) {
-      return errorResponse(error.message, 403);
-    }
-    if (error instanceof QueryNotFoundError) {
-      return errorResponse(error.message, 404);
-    }
-    if (error instanceof DatasourceNotFoundError) {
-      return errorResponse(error.message, 404);
+    if (error instanceof HttpError) {
+      return errorResponse(error.message, error.status);
     }
     console.error('Query API error:', error);
     return errorResponse('Internal server error', 500);

@@ -142,9 +142,8 @@ describe('Phase 5.1a: Merge Request Service', () => {
     });
 
     it('should throw InvalidMergeRequestParamsError when title is empty', async () => {
-      const { createMergeRequest, InvalidMergeRequestParamsError } = await import(
-        '../../src/services/merge-request-service'
-      );
+      const { createMergeRequest } = await import('../../src/services/merge-request-service');
+      const { InvalidMergeRequestParamsError } = await import('../../src/services/errors');
 
       await expect(
         createMergeRequest({
@@ -159,9 +158,8 @@ describe('Phase 5.1a: Merge Request Service', () => {
     });
 
     it('should throw InvalidMergeRequestParamsError when title is only whitespace', async () => {
-      const { createMergeRequest, InvalidMergeRequestParamsError } = await import(
-        '../../src/services/merge-request-service'
-      );
+      const { createMergeRequest } = await import('../../src/services/merge-request-service');
+      const { InvalidMergeRequestParamsError } = await import('../../src/services/errors');
 
       await expect(
         createMergeRequest({
@@ -176,9 +174,8 @@ describe('Phase 5.1a: Merge Request Service', () => {
     });
 
     it('should throw InvalidMergeRequestParamsError when source and target are the same', async () => {
-      const { createMergeRequest, InvalidMergeRequestParamsError } = await import(
-        '../../src/services/merge-request-service'
-      );
+      const { createMergeRequest } = await import('../../src/services/merge-request-service');
+      const { InvalidMergeRequestParamsError } = await import('../../src/services/errors');
 
       await expect(
         createMergeRequest({
@@ -193,9 +190,8 @@ describe('Phase 5.1a: Merge Request Service', () => {
     });
 
     it('should throw SourceBranchNotFoundError when source branch does not exist', async () => {
-      const { createMergeRequest, SourceBranchNotFoundError } = await import(
-        '../../src/services/merge-request-service'
-      );
+      const { createMergeRequest } = await import('../../src/services/merge-request-service');
+      const { SourceBranchNotFoundError } = await import('../../src/services/errors');
       const db = await import('../../src/db');
 
       // Simulate foreign key violation for source branch
@@ -219,9 +215,8 @@ describe('Phase 5.1a: Merge Request Service', () => {
     });
 
     it('should throw TargetBranchNotMainError when target branch does not exist', async () => {
-      const { createMergeRequest, TargetBranchNotMainError } = await import(
-        '../../src/services/merge-request-service'
-      );
+      const { createMergeRequest } = await import('../../src/services/merge-request-service');
+      const { TargetBranchNotMainError } = await import('../../src/services/errors');
       const db = await import('../../src/db');
 
       // Target branch not found - validation query returns empty
@@ -455,9 +450,8 @@ describe('Phase 5.1a: Merge Request Service', () => {
     });
 
     it('should throw MergeRequestNotFoundError when merge request does not exist', async () => {
-      const { updateMergeRequest, MergeRequestNotFoundError } = await import(
-        '../../src/services/merge-request-service'
-      );
+      const { updateMergeRequest } = await import('../../src/services/merge-request-service');
+      const { MergeRequestNotFoundError } = await import('../../src/services/errors');
       const db = await import('../../src/db');
 
       vi.mocked(db.query).mockResolvedValue({ rows: [] });
@@ -468,9 +462,8 @@ describe('Phase 5.1a: Merge Request Service', () => {
     });
 
     it('should throw InvalidMergeRequestParamsError when title is empty', async () => {
-      const { updateMergeRequest, InvalidMergeRequestParamsError } = await import(
-        '../../src/services/merge-request-service'
-      );
+      const { updateMergeRequest } = await import('../../src/services/merge-request-service');
+      const { InvalidMergeRequestParamsError } = await import('../../src/services/errors');
 
       await expect(updateMergeRequest('mr-uuid-123', { title: '' })).rejects.toThrow(
         InvalidMergeRequestParamsError,
@@ -548,9 +541,8 @@ describe('Phase 5.1a: Merge Request Service', () => {
     });
 
     it('should throw InvalidMergeRequestStatusTransitionError for invalid transition', async () => {
-      const { updateMergeRequestStatus, InvalidMergeRequestStatusTransitionError } = await import(
-        '../../src/services/merge-request-service'
-      );
+      const { updateMergeRequestStatus } = await import('../../src/services/merge-request-service');
+      const { InvalidMergeRequestStatusTransitionError } = await import('../../src/services/errors');
       const db = await import('../../src/db');
 
       // merged is terminal state
@@ -562,9 +554,8 @@ describe('Phase 5.1a: Merge Request Service', () => {
     });
 
     it('should throw MergeRequestNotFoundError when merge request does not exist', async () => {
-      const { updateMergeRequestStatus, MergeRequestNotFoundError } = await import(
-        '../../src/services/merge-request-service'
-      );
+      const { updateMergeRequestStatus } = await import('../../src/services/merge-request-service');
+      const { MergeRequestNotFoundError } = await import('../../src/services/errors');
       const db = await import('../../src/db');
 
       vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
@@ -629,9 +620,8 @@ describe('Phase 5.1a: Merge Request Service', () => {
     });
 
     it('should throw MergeRequestNotFoundError when merge request does not exist', async () => {
-      const { updateMergeRequestConflicts, MergeRequestNotFoundError } = await import(
-        '../../src/services/merge-request-service'
-      );
+      const { updateMergeRequestConflicts } = await import('../../src/services/merge-request-service');
+      const { MergeRequestNotFoundError } = await import('../../src/services/errors');
       const db = await import('../../src/db');
 
       vi.mocked(db.query).mockResolvedValue({ rows: [] });
@@ -656,9 +646,8 @@ describe('Phase 5.1a: Merge Request Service', () => {
     });
 
     it('should throw MergeRequestNotFoundError when merge request does not exist', async () => {
-      const { deleteMergeRequest, MergeRequestNotFoundError } = await import(
-        '../../src/services/merge-request-service'
-      );
+      const { deleteMergeRequest } = await import('../../src/services/merge-request-service');
+      const { MergeRequestNotFoundError } = await import('../../src/services/errors');
       const db = await import('../../src/db');
 
       vi.mocked(db.query).mockResolvedValue({ rows: [] });
@@ -669,9 +658,8 @@ describe('Phase 5.1a: Merge Request Service', () => {
     });
 
     it('should not allow deleting a merged merge request', async () => {
-      const { deleteMergeRequest, CannotDeleteMergedRequestError } = await import(
-        '../../src/services/merge-request-service'
-      );
+      const { deleteMergeRequest } = await import('../../src/services/merge-request-service');
+      const { CannotDeleteMergedRequestError } = await import('../../src/services/errors');
       const db = await import('../../src/db');
 
       // First call checks status
@@ -754,9 +742,7 @@ describe('Phase 5.1a: Merge Request Service', () => {
 
   describe('Error Classes', () => {
     it('should export MergeRequestNotFoundError with correct properties', async () => {
-      const { MergeRequestNotFoundError } = await import(
-        '../../src/services/merge-request-service'
-      );
+      const { MergeRequestNotFoundError } = await import('../../src/services/errors');
 
       const error = new MergeRequestNotFoundError('mr-uuid-123');
 
@@ -766,9 +752,7 @@ describe('Phase 5.1a: Merge Request Service', () => {
     });
 
     it('should export InvalidMergeRequestParamsError with correct properties', async () => {
-      const { InvalidMergeRequestParamsError } = await import(
-        '../../src/services/merge-request-service'
-      );
+      const { InvalidMergeRequestParamsError } = await import('../../src/services/errors');
 
       const error = new InvalidMergeRequestParamsError('Title is required');
 
@@ -777,9 +761,7 @@ describe('Phase 5.1a: Merge Request Service', () => {
     });
 
     it('should export InvalidMergeRequestStatusTransitionError with correct properties', async () => {
-      const { InvalidMergeRequestStatusTransitionError } = await import(
-        '../../src/services/merge-request-service'
-      );
+      const { InvalidMergeRequestStatusTransitionError } = await import('../../src/services/errors');
 
       const error = new InvalidMergeRequestStatusTransitionError('open', 'merged');
 
@@ -789,9 +771,7 @@ describe('Phase 5.1a: Merge Request Service', () => {
     });
 
     it('should export SourceBranchNotFoundError with correct properties', async () => {
-      const { SourceBranchNotFoundError } = await import(
-        '../../src/services/merge-request-service'
-      );
+      const { SourceBranchNotFoundError } = await import('../../src/services/errors');
 
       const error = new SourceBranchNotFoundError('branch-uuid');
 
@@ -800,9 +780,7 @@ describe('Phase 5.1a: Merge Request Service', () => {
     });
 
     it('should export TargetBranchNotFoundError with correct properties', async () => {
-      const { TargetBranchNotFoundError } = await import(
-        '../../src/services/merge-request-service'
-      );
+      const { TargetBranchNotFoundError } = await import('../../src/services/errors');
 
       const error = new TargetBranchNotFoundError('branch-uuid');
 
@@ -811,9 +789,7 @@ describe('Phase 5.1a: Merge Request Service', () => {
     });
 
     it('should export CannotDeleteMergedRequestError with correct properties', async () => {
-      const { CannotDeleteMergedRequestError } = await import(
-        '../../src/services/merge-request-service'
-      );
+      const { CannotDeleteMergedRequestError } = await import('../../src/services/errors');
 
       const error = new CannotDeleteMergedRequestError('mr-uuid-123');
 
@@ -824,9 +800,8 @@ describe('Phase 5.1a: Merge Request Service', () => {
 
   describe('Main-Only Merge Target Validation', () => {
     it('should throw TargetBranchNotMainError when target branch is not main', async () => {
-      const { createMergeRequest, TargetBranchNotMainError } = await import(
-        '../../src/services/merge-request-service'
-      );
+      const { createMergeRequest } = await import('../../src/services/merge-request-service');
+      const { TargetBranchNotMainError } = await import('../../src/services/errors');
       const db = await import('../../src/db');
 
       // First query checks if target branch is main - returns non-main branch
@@ -874,9 +849,7 @@ describe('Phase 5.1a: Merge Request Service', () => {
     });
 
     it('should throw TargetBranchNotMainError with correct properties', async () => {
-      const { TargetBranchNotMainError } = await import(
-        '../../src/services/merge-request-service'
-      );
+      const { TargetBranchNotMainError } = await import('../../src/services/errors');
 
       const error = new TargetBranchNotMainError('branch-uuid');
 

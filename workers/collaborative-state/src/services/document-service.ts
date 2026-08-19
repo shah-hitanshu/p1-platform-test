@@ -17,11 +17,13 @@ import {
   escapeLikePattern,
   isUniqueConstraintViolation,
   isForeignKeyViolation,
+} from './document-types';
+import {
   SiteNotFoundError,
   DuplicateDocumentPathError,
   DocumentNotFoundError,
   DocumentPathConflictError,
-} from './document-types';
+} from './errors';
 import type { DocumentWithArchive } from './document-types';
 import { TEMPLATE_RELATION_JOIN, DOCUMENT_WITH_TEMPLATE_COLUMNS } from './document-queries';
 import { validateLocale } from './locale';
@@ -32,11 +34,6 @@ import { validateLocale } from './locale';
 
 // Re-export everything from document-types
 export {
-  SiteNotFoundError,
-  DuplicateDocumentPathError,
-  InvalidDocumentPathError,
-  DocumentNotFoundError,
-  DocumentPathConflictError,
   isTombstoneRow,
   mapRowToDocumentOnBranch,
   mapRowToDocument,
@@ -47,6 +44,15 @@ export {
   isForeignKeyViolation,
   mapRowToDocumentVersion,
 } from './document-types';
+
+export {
+  SiteNotFoundError,
+  DuplicateDocumentPathError,
+  InvalidDocumentPathError,
+  DocumentNotFoundError,
+  DocumentPathConflictError,
+  PageConflictError,
+} from './errors';
 
 export type {
   CreateDocumentParams,
@@ -72,10 +78,6 @@ export {
   deleteDocumentOnBranch,
   deleteDocumentWithRedirect,
 } from './branch-document-service';
-
-export {
-  PageConflictError,
-} from './document-types';
 
 export type {
   DeleteDocumentWithRedirectParams,

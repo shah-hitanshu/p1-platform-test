@@ -6,6 +6,7 @@
  */
 
 import type { AuthenticatedPrincipal, Document } from '../types';
+import { InvalidDocumentPathError } from './errors';
 
 // =============================================================================
 // Types
@@ -153,14 +154,6 @@ export interface DeleteDocumentWithRedirectResult {
   };
 }
 
-export class PageConflictError extends Error {
-  public readonly name = 'PageConflictError';
-  constructor(public readonly path: string) {
-    super(`A page already exists at path "${path}"`);
-    Object.setPrototypeOf(this, PageConflictError.prototype);
-  }
-}
-
 /**
  * Document version type for internal use.
  */
@@ -190,73 +183,6 @@ export interface DocumentVersionRow {
   created_by_type: 'user' | 'agent' | 'system' | 'service';
   created_at: string;
   is_tombstone?: boolean;
-}
-
-// =============================================================================
-// Error Classes
-// =============================================================================
-
-/**
- * Error thrown when attempting to create a document for a non-existent site.
- */
-export class SiteNotFoundError extends Error {
-  public readonly name = 'SiteNotFoundError';
-
-  constructor(public readonly siteId: string) {
-    super(`Site with ID "${siteId}" not found.`);
-    Object.setPrototypeOf(this, SiteNotFoundError.prototype);
-  }
-}
-
-/**
- * Error thrown when attempting to create a document with a duplicate path.
- */
-export class DuplicateDocumentPathError extends Error {
-  public readonly name = 'DuplicateDocumentPathError';
-
-  constructor(
-    public readonly path: string,
-    public readonly siteId?: string,
-  ) {
-    super(`A document with path "${path}" already exists in this site.`);
-    Object.setPrototypeOf(this, DuplicateDocumentPathError.prototype);
-  }
-}
-
-/**
- * Error thrown when document path is invalid.
- */
-export class InvalidDocumentPathError extends Error {
-  public readonly name = 'InvalidDocumentPathError';
-
-  constructor(message: string) {
-    super(message);
-    Object.setPrototypeOf(this, InvalidDocumentPathError.prototype);
-  }
-}
-
-/**
- * Error thrown when document is not found.
- */
-export class DocumentNotFoundError extends Error {
-  public readonly name = 'DocumentNotFoundError';
-
-  constructor(public readonly documentId: string) {
-    super(`Document with ID "${documentId}" not found.`);
-    Object.setPrototypeOf(this, DocumentNotFoundError.prototype);
-  }
-}
-
-/**
- * Error thrown when restoring a document but the path is occupied.
- */
-export class DocumentPathConflictError extends Error {
-  public readonly name = 'DocumentPathConflictError';
-
-  constructor(public readonly path: string) {
-    super(`Path "${path}" is occupied by another document.`);
-    Object.setPrototypeOf(this, DocumentPathConflictError.prototype);
-  }
 }
 
 // =============================================================================

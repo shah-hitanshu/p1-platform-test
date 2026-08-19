@@ -27,10 +27,8 @@ import {
   extractTemplateDelta,
   listMigrationConflicts,
   resolveMigrationConflict,
-  ConflictAlreadyResolvedError,
 } from '../../src/services/migration-service';
-import {
-} from '../../src/services/branch-document-service';
+import { ConflictAlreadyResolvedError } from '../../src/services/errors';
 
 const CONNECTION_STRING = 'postgresql://cssuser:csspass@localhost:5432/cssdb';
 const TEST_USER_ID = '99999999-9999-9999-9999-999999999999';

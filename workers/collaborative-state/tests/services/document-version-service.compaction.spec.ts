@@ -291,8 +291,9 @@ describe('Version compaction', () => {
 
   describe('reconstructVersionSnapshot', () => {
     it('throws when the chain reaches a row holding neither snapshot nor patch', async () => {
-      const { reconstructVersionSnapshot, VersionReconstructionError } =
+      const { reconstructVersionSnapshot } =
         await import('../../src/services/document-version-service');
+      const { VersionReconstructionError } = await import('../../src/services/errors');
       const db = await import('../../src/db');
 
       const target = versionRow({ id: 'version-4', version_number: 4, snapshot: null, patch: null });

@@ -14,82 +14,50 @@ import { makePrincipal } from '../helpers/principal';
 import { readJson } from '../helpers/http';
 import type { DocumentRouteContext } from '../../src/routes/document-api';
 
-vi.mock('../../src/services', () => ({
-  getBranch: vi.fn(),
-  getMainBranch: vi.fn(),
-  getLocalizationEdgeBySource: vi.fn(),
-  getAuthorityOverrides: vi.fn(),
-  resolveSlotAuthorityDefaults: vi.fn(),
-  authorityOverridesToJson: (
-    overrides: Map<string, Map<string, string>>,
-  ): Record<string, Record<string, string>> =>
-    Object.fromEntries([...overrides].map(([slotId, props]) => [slotId, Object.fromEntries(props)])),
-  setAuthorityOverride: vi.fn(),
-  clearAuthorityOverride: vi.fn(),
-  buildChangeSummary: vi.fn(),
-  createTranslation: vi.fn(),
-  listLocaleVariants: vi.fn(),
-  createDocument: vi.fn(),
-  getDocument: vi.fn(),
-  getDocumentByPath: vi.fn(),
-  updateDocumentPath: vi.fn(),
-  archiveDocument: vi.fn(),
-  restoreDocument: vi.fn(),
-  listDocuments: vi.fn(),
-  listDocumentsOnBranch: vi.fn(),
-  createDocumentOnBranch: vi.fn(),
-  documentExistsOnBranch: vi.fn(),
-  deleteDocumentOnBranch: vi.fn(),
-  getLatestDocumentVersion: vi.fn(),
-  getLatestDocumentVersionWithFallback: vi.fn(),
-  getDocumentVersion: vi.fn(),
-  listDocumentVersions: vi.fn(),
-  createDocumentVersion: vi.fn(),
-  reconstructVersionSnapshot: vi.fn(),
-  publishDocument: vi.fn(),
-  buildDocumentSkeletonFromTemplate: vi.fn(),
-  PageConflictError: class PageConflictError extends Error {
-    override name = 'PageConflictError';
-  },
-  RestoreVersionNotFoundError: class RestoreVersionNotFoundError extends Error {
-    override name = 'RestoreVersionNotFoundError';
-  },
-  SiteNotFoundError: class SiteNotFoundError extends Error {
-    override name = 'SiteNotFoundError';
-  },
-  DuplicateDocumentPathError: class DuplicateDocumentPathError extends Error {
-    override name = 'DuplicateDocumentPathError';
-  },
-  InvalidDocumentPathError: class InvalidDocumentPathError extends Error {
-    override name = 'InvalidDocumentPathError';
-  },
-  DocumentNotFoundError: class DocumentNotFoundError extends Error {
-    override name = 'DocumentNotFoundError';
-  },
-  DocumentPathConflictError: class DocumentPathConflictError extends Error {
-    override name = 'DocumentPathConflictError';
-  },
-  InvalidDocumentVersionParamsError: class InvalidDocumentVersionParamsError extends Error {
-    override name = 'InvalidDocumentVersionParamsError';
-  },
-  TranslationAlreadyExistsError: class TranslationAlreadyExistsError extends Error {
-    override name = 'TranslationAlreadyExistsError';
-  },
-  InvalidLocaleError: class InvalidLocaleError extends Error {
-    override name = 'InvalidLocaleError';
-  },
-  CanonicalVersionNotFoundError: class CanonicalVersionNotFoundError extends Error {
-    override name = 'CanonicalVersionNotFoundError';
-  },
-}));
+vi.mock('../../src/services', async () => {
+  const actual = await vi.importActual('../../src/services');
+  return {
+    ...actual,
+    getBranch: vi.fn(),
+    getMainBranch: vi.fn(),
+    getLocalizationEdgeBySource: vi.fn(),
+    getAuthorityOverrides: vi.fn(),
+    resolveSlotAuthorityDefaults: vi.fn(),
+    setAuthorityOverride: vi.fn(),
+    clearAuthorityOverride: vi.fn(),
+    buildChangeSummary: vi.fn(),
+    createTranslation: vi.fn(),
+    listLocaleVariants: vi.fn(),
+    createDocument: vi.fn(),
+    getDocument: vi.fn(),
+    getDocumentByPath: vi.fn(),
+    updateDocumentPath: vi.fn(),
+    archiveDocument: vi.fn(),
+    restoreDocument: vi.fn(),
+    listDocuments: vi.fn(),
+    listDocumentsOnBranch: vi.fn(),
+    createDocumentOnBranch: vi.fn(),
+    documentExistsOnBranch: vi.fn(),
+    deleteDocumentOnBranch: vi.fn(),
+    getLatestDocumentVersion: vi.fn(),
+    getLatestDocumentVersionWithFallback: vi.fn(),
+    getDocumentVersion: vi.fn(),
+    listDocumentVersions: vi.fn(),
+    createDocumentVersion: vi.fn(),
+    reconstructVersionSnapshot: vi.fn(),
+    publishDocument: vi.fn(),
+    buildDocumentSkeletonFromTemplate: vi.fn(),
+  };
+});
 
-vi.mock('../../src/auth/authorization', () => ({
-  assertPermission: vi.fn(),
-  getEffectiveRole: vi.fn(),
-  AuthorizationError: class AuthorizationError extends Error {
-    override name = 'AuthorizationError';
-  },
-}));
+vi.mock('../../src/auth/authorization', async () => {
+  const actual = await vi.importActual('../../src/auth/authorization');
+  return {
+    ...actual,
+    assertPermission: vi.fn(),
+    getEffectiveRole: vi.fn(),
+  };
+});
 
 vi.mock('./template-api', () => ({
   templateMetadata: vi.fn().mockReturnValue({}),
@@ -348,13 +316,13 @@ describe('PUT authority-overrides (set)', () => {
   it('answers a write refused by the map ceiling with 400 naming the limit', async () => {
     const { handleDocumentRoutes } = await import('../../src/routes/document-api');
     const services = await import('../../src/services');
-    const { AuthorityOverrideLimitError } = await import('../../src/services/relations-service');
+    const { AuthorityOverrideLimitError, MAX_OVERRIDE_ENTRIES } = await import('../../src/services');
 
     vi.mocked(services.getBranch).mockResolvedValueOnce(featureBranch);
     vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(true);
     vi.mocked(services.getLocalizationEdgeBySource).mockResolvedValueOnce(localizationEdge);
     vi.mocked(services.setAuthorityOverride).mockRejectedValueOnce(
-      new AuthorityOverrideLimitError(TRANSLATION_ID),
+      new AuthorityOverrideLimitError(TRANSLATION_ID, MAX_OVERRIDE_ENTRIES),
     );
 
     const response = await handleDocumentRoutes(

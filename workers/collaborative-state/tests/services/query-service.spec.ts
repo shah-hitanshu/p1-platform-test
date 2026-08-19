@@ -605,7 +605,8 @@ describe('query-service', () => {
     });
 
     it('should throw QueryNotFoundError when query does not exist', async () => {
-      const { executeQuery, QueryNotFoundError } = await import('../../src/services/query-service');
+      const { executeQuery } = await import('../../src/services/query-service');
+      const { QueryNotFoundError } = await import('../../src/services/errors');
       const docService = await import('../../src/services/document-service');
 
       vi.mocked(docService.getDocumentByPath).mockResolvedValueOnce(null);
@@ -620,9 +621,8 @@ describe('query-service', () => {
     });
 
     it('should throw DatasourceNotFoundError when datasource does not exist', async () => {
-      const { executeQuery, DatasourceNotFoundError } = await import(
-        '../../src/services/query-service'
-      );
+      const { executeQuery } = await import('../../src/services/query-service');
+      const { DatasourceNotFoundError } = await import('../../src/services/errors');
       const docService = await import('../../src/services/document-service');
       const versionService = await import('../../src/services/document-version-service');
       const datasourceService = await import('../../src/services/datasource-service');

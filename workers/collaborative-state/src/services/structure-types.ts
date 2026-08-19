@@ -6,6 +6,7 @@
  */
 
 import type { StructureNode, StructureType, NodeType } from '../types';
+import { InvalidSlugError } from './errors';
 
 // =============================================================================
 // Parameter & Result Types
@@ -138,103 +139,6 @@ export function normalizeSlug(slug: string): string {
   }
 
   return normalized;
-}
-
-// =============================================================================
-// Error Classes
-// =============================================================================
-
-/**
- * Error thrown when a slug format is invalid.
- */
-export class InvalidSlugError extends Error {
-  public readonly name = 'InvalidSlugError';
-
-  constructor(message: string) {
-    super(message);
-    Object.setPrototypeOf(this, InvalidSlugError.prototype);
-  }
-}
-
-/**
- * Error thrown when a site is not found.
- */
-export class SiteNotFoundError extends Error {
-  public readonly name = 'SiteNotFoundError';
-
-  constructor(public readonly siteId: string) {
-    super(`Site "${siteId}" not found.`);
-    Object.setPrototypeOf(this, SiteNotFoundError.prototype);
-  }
-}
-
-/**
- * Error thrown when a structure is not found.
- */
-export class StructureNotFoundError extends Error {
-  public readonly name = 'StructureNotFoundError';
-
-  constructor(public readonly structureId: string) {
-    super(`Structure "${structureId}" not found.`);
-    Object.setPrototypeOf(this, StructureNotFoundError.prototype);
-  }
-}
-
-/**
- * Error thrown when a node is not found.
- */
-export class NodeNotFoundError extends Error {
-  public readonly name = 'NodeNotFoundError';
-
-  constructor(public readonly nodeId: string) {
-    super(`Node "${nodeId}" not found.`);
-    Object.setPrototypeOf(this, NodeNotFoundError.prototype);
-  }
-}
-
-/**
- * Error thrown when a structure slug already exists.
- */
-export class DuplicateStructureSlugError extends Error {
-  public readonly name = 'DuplicateStructureSlugError';
-
-  constructor(
-    public readonly siteId: string,
-    public readonly slug: string,
-  ) {
-    super(`Structure with slug "${slug}" already exists in site "${siteId}".`);
-    Object.setPrototypeOf(this, DuplicateStructureSlugError.prototype);
-  }
-}
-
-/**
- * Error thrown when a node slug already exists in the same parent.
- */
-export class DuplicateNodeSlugError extends Error {
-  public readonly name = 'DuplicateNodeSlugError';
-
-  constructor(
-    public readonly structureId: string,
-    public readonly slug: string,
-  ) {
-    super(`Node with slug "${slug}" already exists in structure "${structureId}".`);
-    Object.setPrototypeOf(this, DuplicateNodeSlugError.prototype);
-  }
-}
-
-/**
- * Error thrown when moving a node would create a circular reference.
- */
-export class CircularReferenceError extends Error {
-  public readonly name = 'CircularReferenceError';
-
-  constructor(
-    public readonly nodeId: string,
-    public readonly targetParentId: string,
-  ) {
-    super(`Moving node "${nodeId}" to parent "${targetParentId}" would create a circular reference.`);
-    Object.setPrototypeOf(this, CircularReferenceError.prototype);
-  }
 }
 
 // =============================================================================

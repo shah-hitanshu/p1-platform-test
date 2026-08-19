@@ -21,9 +21,10 @@ import {
   BranchStructureStateNotFoundError,
   DocumentMetadataNotFoundError,
   SchemaValidationError,
+  HttpError,
 } from '../services';
 import { validateJsonSize, SIZE_LIMITS } from './validation';
-import { assertPermission, AuthorizationError } from '../auth/authorization';
+import { assertPermission } from '../auth/authorization';
 
 /**
  * Request context for metadata routes
@@ -311,9 +312,6 @@ export async function handleMetadataRoutes(
     return errorResponse('Invalid route', 400);
   } catch (error) {
     // Handle known errors
-    if (error instanceof AuthorizationError) {
-      return errorResponse(error.message, 403);
-    }
     if (error instanceof StructureNotFoundError) {
       return errorResponse('Structure not found', 404);
     }
@@ -328,6 +326,10 @@ export async function handleMetadataRoutes(
         documentId: error.documentId,
         errors: error.validationErrors,
       });
+    }
+
+    if (error instanceof HttpError) {
+      return errorResponse(error.message, error.status);
     }
 
     // Log and return generic error for unknown errors

@@ -17,8 +17,9 @@ import {
   getDocumentByPath,
   updateDocumentPath,
   DuplicateDocumentPathError,
+  HttpError,
 } from '../services';
-import { assertPermission, AuthorizationError } from '../auth/authorization';
+import { assertPermission } from '../auth/authorization';
 import { jsonResponse, errorResponse } from '../utils/http-helpers';
 
 function stripTrailingSlashes(path: string): string {
@@ -415,14 +416,14 @@ export async function handleRedirectRoutes(
         return errorResponse('Method not allowed', 405);
     }
   } catch (error) {
-    if (error instanceof AuthorizationError) {
-      return errorResponse(error.message, 403);
-    }
     if (error instanceof DuplicateDocumentPathError) {
       return errorResponse('A redirect already exists for this fromPath', 409);
     }
     if (error instanceof SyntaxError) {
       return errorResponse('Invalid JSON in request body', 400);
+    }
+    if (error instanceof HttpError) {
+      return errorResponse(error.message, error.status);
     }
     console.error('Redirect API error:', error);
     return errorResponse('Internal server error', 500);

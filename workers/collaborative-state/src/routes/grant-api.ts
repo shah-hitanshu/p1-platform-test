@@ -14,8 +14,9 @@ import {
   GrantNotFoundError,
   DuplicateGrantError,
   BranchNotFoundError,
+  HttpError,
 } from '../services';
-import { assertPermission, AuthorizationError } from '../auth/authorization';
+import { assertPermission } from '../auth/authorization';
 
 /**
  * Request context for grant routes
@@ -202,9 +203,6 @@ export async function handleGrantRoutes(
     }
   } catch (error) {
     // Handle known errors
-    if (error instanceof AuthorizationError) {
-      return errorResponse(error.message, 403);
-    }
     if (error instanceof GrantNotFoundError) {
       return errorResponse('Grant not found', 404);
     }
@@ -213,6 +211,9 @@ export async function handleGrantRoutes(
     }
     if (error instanceof BranchNotFoundError) {
       return errorResponse('Branch not found', 404);
+    }
+    if (error instanceof HttpError) {
+      return errorResponse(error.message, error.status);
     }
 
     // Re-throw unknown errors

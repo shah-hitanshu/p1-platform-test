@@ -136,7 +136,8 @@ describe('Phase 3.1: Site Service', () => {
     });
 
     it('should throw DuplicatePantheonSiteIdError for duplicate pantheonSiteId', async () => {
-      const { createSite, DuplicatePantheonSiteIdError } = await import('../../src/services/site-service');
+      const { createSite } = await import('../../src/services/site-service');
+      const { DuplicatePantheonSiteIdError } = await import('../../src/services/errors');
       const db = await import('../../src/db');
 
       // Simulate unique constraint violation
@@ -187,7 +188,8 @@ describe('Phase 3.1: Site Service', () => {
     });
 
     it('should validate required name field', async () => {
-      const { createSite, InvalidSiteParamsError } = await import('../../src/services/site-service');
+      const { createSite } = await import('../../src/services/site-service');
+      const { InvalidSiteParamsError } = await import('../../src/services/errors');
 
       await expect(
         createSite({
@@ -561,9 +563,8 @@ describe('Phase 3.1: Site Service', () => {
     });
 
     it('should throw DuplicatePantheonSiteIdError when the new id is taken', async () => {
-      const { updateSite, DuplicatePantheonSiteIdError } = await import(
-        '../../src/services/site-service'
-      );
+      const { updateSite } = await import('../../src/services/site-service');
+      const { DuplicatePantheonSiteIdError } = await import('../../src/services/errors');
       const db = await import('../../src/db');
 
       const error = new Error('duplicate key value violates unique constraint');
@@ -1073,7 +1074,7 @@ describe('Phase 3.1: Site Service', () => {
 
   describe('Error Classes', () => {
     it('DuplicatePantheonSiteIdError should be an instance of Error', async () => {
-      const { DuplicatePantheonSiteIdError } = await import('../../src/services/site-service');
+      const { DuplicatePantheonSiteIdError } = await import('../../src/services/errors');
 
       const error = new DuplicatePantheonSiteIdError('pantheon-123');
 
@@ -1083,7 +1084,7 @@ describe('Phase 3.1: Site Service', () => {
     });
 
     it('InvalidSiteParamsError should be an instance of Error', async () => {
-      const { InvalidSiteParamsError } = await import('../../src/services/site-service');
+      const { InvalidSiteParamsError } = await import('../../src/services/errors');
 
       const error = new InvalidSiteParamsError('name is required');
 
@@ -1133,7 +1134,8 @@ describe('Phase 3.1: Site Service', () => {
     });
 
     it('should reject createSite when url is malformed', async () => {
-      const { createSite, InvalidSiteParamsError } = await import('../../src/services/site-service');
+      const { createSite } = await import('../../src/services/site-service');
+      const { InvalidSiteParamsError } = await import('../../src/services/errors');
 
       await expect(
         createSite({
@@ -1167,7 +1169,8 @@ describe('Phase 3.1: Site Service', () => {
     });
 
     it('should reject updateSite when url is malformed', async () => {
-      const { updateSite, InvalidSiteParamsError } = await import('../../src/services/site-service');
+      const { updateSite } = await import('../../src/services/site-service');
+      const { InvalidSiteParamsError } = await import('../../src/services/errors');
 
       await expect(
         updateSite('site-123', { url: 'also not a url' }),

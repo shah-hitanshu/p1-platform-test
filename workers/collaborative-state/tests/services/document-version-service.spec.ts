@@ -104,7 +104,8 @@ describe('Phase 3.3: Document Version Service', () => {
     });
 
     it('should throw DocumentNotFoundError when document does not exist', async () => {
-      const { createDocumentVersion, DocumentNotFoundError } = await import('../../src/services/document-version-service');
+      const { createDocumentVersion } = await import('../../src/services/document-version-service');
+      const { DocumentNotFoundError } = await import('../../src/services/errors');
       const db = await import('../../src/db');
 
       const error = new Error('violates foreign key constraint');
@@ -133,7 +134,8 @@ describe('Phase 3.3: Document Version Service', () => {
     // Note: snapshot validation is enforced by TypeScript at compile time
 
     it('should throw InvalidDocumentVersionParamsError when documentId is empty', async () => {
-      const { createDocumentVersion, InvalidDocumentVersionParamsError } = await import('../../src/services/document-version-service');
+      const { createDocumentVersion } = await import('../../src/services/document-version-service');
+      const { InvalidDocumentVersionParamsError } = await import('../../src/services/errors');
 
       await expect(
         createDocumentVersion({
@@ -148,7 +150,8 @@ describe('Phase 3.3: Document Version Service', () => {
     });
 
     it('should throw InvalidDocumentVersionParamsError when branchId is empty', async () => {
-      const { createDocumentVersion, InvalidDocumentVersionParamsError } = await import('../../src/services/document-version-service');
+      const { createDocumentVersion } = await import('../../src/services/document-version-service');
+      const { InvalidDocumentVersionParamsError } = await import('../../src/services/errors');
 
       await expect(
         createDocumentVersion({

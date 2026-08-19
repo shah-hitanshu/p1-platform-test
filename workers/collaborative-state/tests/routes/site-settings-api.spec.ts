@@ -3,26 +3,30 @@ import type { AuthenticatedPrincipal } from '../../src/types';
 import { readJson } from '../helpers/http';
 import { makeBranch } from '../helpers/branch';
 
-vi.mock('../../src/services/site-settings-service', () => ({
-  getSiteSettings: vi.fn(),
-  updateSiteSettings: vi.fn(),
-  InvalidSettingsError: class InvalidSettingsError extends Error {
-    public readonly name = 'InvalidSettingsError';
-    constructor(message: string) {
-      super(message);
-      Object.setPrototypeOf(this, InvalidSettingsError.prototype);
-    }
-  },
-}));
+vi.mock('../../src/services/site-settings-service', async () => {
+  const actual = await vi.importActual('../../src/services/site-settings-service');
+  return {
+    ...actual,
+    getSiteSettings: vi.fn(),
+    updateSiteSettings: vi.fn(),
+  };
+});
 
-vi.mock('../../src/services', () => ({
-  getMainBranch: vi.fn(),
-}));
+vi.mock('../../src/services', async () => {
+  const actual = await vi.importActual('../../src/services');
+  return {
+    ...actual,
+    getMainBranch: vi.fn(),
+  };
+});
 
-vi.mock('../../src/auth/authorization', () => ({
-  assertPermission: vi.fn(),
-  AuthorizationError: class AuthorizationError extends Error {},
-}));
+vi.mock('../../src/auth/authorization', async () => {
+  const actual = await vi.importActual('../../src/auth/authorization');
+  return {
+    ...actual,
+    assertPermission: vi.fn(),
+  };
+});
 
 const mockPrincipal: AuthenticatedPrincipal = {
   id: 'user-alice',
@@ -228,7 +232,7 @@ describe('Site Settings API Routes', () => {
         updatedAt: new Date().toISOString(),
       }));
 
-      const { InvalidSettingsError } = await import('../../src/services/site-settings-service');
+      const { InvalidSettingsError } = await import('../../src/services');
       vi.mocked(settingsService.updateSiteSettings).mockRejectedValue(
         new InvalidSettingsError('cacheTtlMain must be a positive integer'),
       );

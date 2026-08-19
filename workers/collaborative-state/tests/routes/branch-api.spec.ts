@@ -11,61 +11,32 @@ import { makePrincipal } from '../helpers/principal';
 import { makeBranch } from '../helpers/branch';
 
 // Mock the services
-vi.mock('../../src/services', () => ({
-  createBranch: vi.fn(),
-  getBranch: vi.fn(),
-  getMainBranch: vi.fn(),
-  listBranches: vi.fn(),
-  updateBranch: vi.fn(),
-  updateBranchStatus: vi.fn(),
-  deleteBranch: vi.fn(),
-  archiveBranch: vi.fn(),
-  restoreBranch: vi.fn(),
-  getLatestCheckpoint: vi.fn(),
-  createCheckpoint: vi.fn(),
-  MainBranchProtectionError: class MainBranchProtectionError extends Error {
-    name = 'MainBranchProtectionError';
-    constructor(public operation: string) {
-      super(`Cannot ${operation} the main branch`);
-    }
-  },
-  BranchNotFoundError: class BranchNotFoundError extends Error {
-    name = 'BranchNotFoundError';
-    constructor(public branchId: string) {
-      super(`Branch not found: ${branchId}`);
-    }
-  },
-  SiteNotFoundError: class SiteNotFoundError extends Error {
-    name = 'SiteNotFoundError';
-    constructor(public siteId: string) {
-      super(`Site not found: ${siteId}`);
-    }
-  },
-  DuplicateBranchNameError: class DuplicateBranchNameError extends Error {
-    name = 'DuplicateBranchNameError';
-    constructor(
-      public siteId: string,
-      public name: string,
-    ) {
-      super(`Branch name already exists: ${name}`);
-    }
-  },
-}));
+vi.mock('../../src/services', async () => {
+  const actual = await vi.importActual('../../src/services');
+  return {
+    ...actual,
+    createBranch: vi.fn(),
+    getBranch: vi.fn(),
+    getMainBranch: vi.fn(),
+    listBranches: vi.fn(),
+    updateBranch: vi.fn(),
+    updateBranchStatus: vi.fn(),
+    deleteBranch: vi.fn(),
+    archiveBranch: vi.fn(),
+    restoreBranch: vi.fn(),
+    getLatestCheckpoint: vi.fn(),
+    createCheckpoint: vi.fn(),
+  };
+});
 
 // Mock authorization
-vi.mock('../../src/auth/authorization', () => ({
-  assertPermission: vi.fn(),
-  AuthorizationError: class AuthorizationError extends Error {
-    override name = 'AuthorizationError';
-    constructor(
-      message: string,
-      public requiredPermission: string,
-      public roleName: string,
-    ) {
-      super(message);
-    }
-  },
-}));
+vi.mock('../../src/auth/authorization', async () => {
+  const actual = await vi.importActual('../../src/auth/authorization');
+  return {
+    ...actual,
+    assertPermission: vi.fn(),
+  };
+});
 
 describe('Phase 7.1a: Branch API Routes', () => {
   beforeEach(() => {

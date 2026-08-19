@@ -16,13 +16,15 @@ import type {
   NodeRow,
 } from './structure-types';
 import {
+  mapNodeRow,
+  normalizeSlug,
+} from './structure-types';
+import {
   StructureNotFoundError,
   NodeNotFoundError,
   DuplicateNodeSlugError,
   CircularReferenceError,
-  mapNodeRow,
-  normalizeSlug,
-} from './structure-types';
+} from './errors';
 
 // =============================================================================
 // Node CRUD

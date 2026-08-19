@@ -13,21 +13,11 @@ import type { Site } from '../../src/types/domain';
 import { readJson } from '../helpers/http';
 import { makePrincipal } from '../helpers/principal';
 import { makeBranch } from '../helpers/branch';
+import { DocumentNotFoundError, SyncError } from '../../src/services/errors';
 
 // Mock CRDT sync service
 vi.mock('../../src/services/crdt-sync-service', () => ({
   syncCrdtToPostgres: vi.fn(),
-  DocumentNotFoundError: class DocumentNotFoundError extends Error {
-    name = 'DocumentNotFoundError';
-    documentId: string;
-    constructor(path: string) {
-      super(`Document at path "${path}" not found.`);
-      this.documentId = path;
-    }
-  },
-  SyncError: class SyncError extends Error {
-    override name = 'SyncError';
-  },
 }));
 
 // Mock site service
@@ -288,7 +278,7 @@ describe('Phase 1.2: Internal API Routes', () => {
       const crdtSyncService = await import('../../src/services/crdt-sync-service');
 
       vi.mocked(crdtSyncService.syncCrdtToPostgres).mockRejectedValue(
-        new crdtSyncService.DocumentNotFoundError('pages/missing'),
+        new DocumentNotFoundError('pages/missing'),
       );
 
       const request = new Request('http://localhost/internal/crdt-sync', {
@@ -314,7 +304,7 @@ describe('Phase 1.2: Internal API Routes', () => {
       const crdtSyncService = await import('../../src/services/crdt-sync-service');
 
       vi.mocked(crdtSyncService.syncCrdtToPostgres).mockRejectedValue(
-        new crdtSyncService.SyncError('Database connection failed'),
+        new SyncError('Database connection failed'),
       );
 
       const request = new Request('http://localhost/internal/crdt-sync', {

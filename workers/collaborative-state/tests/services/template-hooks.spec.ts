@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { DuplicateDocumentPathError } from '../../src/services/document-types';
+import { DuplicateDocumentPathError } from '../../src/services/errors';
 
 vi.mock('../../src/services/datasource-service', () => ({
   createLocalDatasource: vi.fn(),

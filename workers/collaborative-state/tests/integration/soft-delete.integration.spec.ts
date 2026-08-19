@@ -29,8 +29,8 @@ import {
   listBranches,
   createBranch,
   getMainBranch,
-  MainBranchProtectionError,
 } from '../../src/services/branch-service';
+import { MainBranchProtectionError } from '../../src/services/errors';
 import type { Branch } from '../../src/types';
 
 import { createDocument } from '../../src/services/document-service';

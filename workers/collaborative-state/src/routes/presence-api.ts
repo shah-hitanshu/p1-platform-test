@@ -20,11 +20,9 @@ import {
   getSitePresence,
   getAgentPresence,
   queryDocumentPresence,
-  BranchNotFoundError,
-  SiteNotFoundError,
-  AgentNotFoundError,
 } from '../services/presence-rollup-service';
 import { getBranch, getBranchByName, getMainBranch } from '../services/branch-service';
+import { HttpError, BranchNotFoundError, SiteNotFoundError, AgentNotFoundError } from '../services/errors';
 import { hasPermission } from '../auth/authorization';
 import { UUID_RE } from '../utils/branch-ref';
 import type { Branch } from '../types';
@@ -73,12 +71,8 @@ export interface PresenceRouteContext {
 /**
  * Error thrown when authorization fails
  */
-class PresenceAuthorizationError extends Error {
-  public readonly name = 'PresenceAuthorizationError';
-  constructor(message: string) {
-    super(message);
-    Object.setPrototypeOf(this, PresenceAuthorizationError.prototype);
-  }
+class PresenceAuthorizationError extends HttpError {
+  readonly status = 403;
 }
 
 // =============================================================================
@@ -359,11 +353,6 @@ export async function handlePresenceRoutes(
     // No valid endpoint found
     return errorResponse('Invalid presence endpoint', 400);
   } catch (error) {
-    // Handle authorization errors
-    if (error instanceof PresenceAuthorizationError) {
-      return errorResponse(error.message, 403);
-    }
-
     // Handle known errors
     if (error instanceof BranchNotFoundError) {
       return errorResponse(`Branch "${error.branchId}" not found`, 404);
@@ -373,6 +362,9 @@ export async function handlePresenceRoutes(
     }
     if (error instanceof AgentNotFoundError) {
       return errorResponse(`Agent "${error.agentId}" not found`, 404);
+    }
+    if (error instanceof HttpError) {
+      return errorResponse(error.message, error.status);
     }
 
     // Log and return generic error for unknown errors

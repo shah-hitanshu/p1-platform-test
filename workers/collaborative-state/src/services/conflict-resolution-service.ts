@@ -13,6 +13,7 @@ import {
   getDocumentVersion,
   createDocumentVersion,
 } from './document-version-service';
+import { VersionNotFoundError, ManualResolutionError } from './errors';
 
 // =============================================================================
 // Types
@@ -98,46 +99,6 @@ export interface DeletedConflictResolutionResult {
   action: 'deleted' | 'kept' | 'restored' | 'kept-deleted';
   documentId: string;
   resultVersionId?: string;
-}
-
-// =============================================================================
-// Error Classes
-// =============================================================================
-
-/**
- * Error thrown when the specified version does not exist.
- */
-export class VersionNotFoundError extends Error {
-  public readonly name = 'VersionNotFoundError';
-
-  constructor(public readonly versionId: string) {
-    super(`Document version with ID "${versionId}" not found.`);
-    Object.setPrototypeOf(this, VersionNotFoundError.prototype);
-  }
-}
-
-/**
- * Error thrown when an unsupported resolution strategy is used.
- */
-export class UnsupportedStrategyError extends Error {
-  public readonly name = 'UnsupportedStrategyError';
-
-  constructor(public readonly strategy: string) {
-    super(`Conflict resolution strategy "${strategy}" is not supported by this service.`);
-    Object.setPrototypeOf(this, UnsupportedStrategyError.prototype);
-  }
-}
-
-/**
- * Error thrown when manual resolution is requested without a resolvedSnapshot.
- */
-export class ManualResolutionError extends Error {
-  public readonly name = 'ManualResolutionError';
-
-  constructor() {
-    super('Manual resolution strategy requires a resolvedSnapshot.');
-    Object.setPrototypeOf(this, ManualResolutionError.prototype);
-  }
 }
 
 // =============================================================================

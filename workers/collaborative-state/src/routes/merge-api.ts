@@ -22,15 +22,13 @@ import {
   SourceBranchNotFoundError,
   TargetBranchNotFoundError,
   TargetBranchNotMainError,
-  InvalidMergeRequestParamsError,
-  InvalidMergeRequestStatusTransitionError,
-  CannotDeleteMergedRequestError,
   MergeConflictsError,
   MergeNotAllowedError,
   MergeExecutionError,
   NoMergeBaseError,
+  HttpError,
 } from '../services';
-import { assertPermission, AuthorizationError } from '../auth/authorization';
+import { assertPermission } from '../auth/authorization';
 import { writeBranchInvalidation } from '../services/branch-invalidation-service';
 
 /**
@@ -589,9 +587,6 @@ export async function handleMergeRoutes(
     return errorResponse('Invalid route', 400);
   } catch (error) {
     // Handle known errors
-    if (error instanceof AuthorizationError) {
-      return errorResponse(error.message, 403);
-    }
     if (error instanceof MergeRequestNotFoundError) {
       return errorResponse('Merge request not found', 404);
     }
@@ -603,15 +598,6 @@ export async function handleMergeRoutes(
     }
     if (error instanceof TargetBranchNotMainError) {
       return errorResponse('Target branch must be the main branch', 400);
-    }
-    if (error instanceof InvalidMergeRequestParamsError) {
-      return errorResponse(error.message, 400);
-    }
-    if (error instanceof InvalidMergeRequestStatusTransitionError) {
-      return errorResponse(error.message, 400);
-    }
-    if (error instanceof CannotDeleteMergedRequestError) {
-      return errorResponse(error.message, 409);
     }
     if (error instanceof NoMergeBaseError) {
       return errorResponse('No common merge base found between branches', 422);
@@ -632,6 +618,9 @@ export async function handleMergeRoutes(
       return errorResponse(error.message, 500, {
         mergeRequestId: error.mergeRequestId,
       });
+    }
+    if (error instanceof HttpError) {
+      return errorResponse(error.message, error.status);
     }
     // Re-throw unknown errors
     throw error;

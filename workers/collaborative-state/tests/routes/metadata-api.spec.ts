@@ -11,67 +11,31 @@ import { makePrincipal } from '../helpers/principal';
 import { makeBranch } from '../helpers/branch';
 
 // Mock the services
-vi.mock('../../src/services', () => ({
-  getBranch: vi.fn().mockResolvedValue({ id: 'branch-1', siteId: 'site-1', name: 'main', isMain: true }),
-  getBranchStructureState: vi.fn(),
-  updateBranchStructureState: vi.fn(),
-  getDocumentMetadata: vi.fn(),
-  setDocumentMetadata: vi.fn(),
-  deleteDocumentMetadata: vi.fn(),
-  listDocumentMetadata: vi.fn(),
-  validateAllDocuments: vi.fn(),
-  getSchemaValidationSummary: vi.fn(),
-  getBranchStructure: vi.fn(),
-  StructureNotFoundError: class StructureNotFoundError extends Error {
-    override name = 'StructureNotFoundError';
-    constructor(public structureId: string) {
-      super(`Structure not found: ${structureId}`);
-    }
-  },
-  BranchStructureStateNotFoundError: class BranchStructureStateNotFoundError extends Error {
-    override name = 'BranchStructureStateNotFoundError';
-    constructor(
-      public branchId: string,
-      public structureId: string,
-    ) {
-      super('Structure state not found for branch');
-    }
-  },
-  DocumentMetadataNotFoundError: class DocumentMetadataNotFoundError extends Error {
-    override name = 'DocumentMetadataNotFoundError';
-    constructor(
-      public branchId: string,
-      public structureId: string,
-      public documentId: string,
-    ) {
-      super('Document metadata not found');
-    }
-  },
-  SchemaValidationError: class SchemaValidationError extends Error {
-    override name = 'SchemaValidationError';
-    constructor(
-      public documentId: string,
-      public validationErrors: { field: string; message: string }[],
-    ) {
-      super('Schema validation failed');
-    }
-  },
-}));
+vi.mock('../../src/services', async () => {
+  const actual = await vi.importActual('../../src/services');
+  return {
+    ...actual,
+    getBranch: vi.fn().mockResolvedValue({ id: 'branch-1', siteId: 'site-1', name: 'main', isMain: true }),
+    getBranchStructureState: vi.fn(),
+    updateBranchStructureState: vi.fn(),
+    getDocumentMetadata: vi.fn(),
+    setDocumentMetadata: vi.fn(),
+    deleteDocumentMetadata: vi.fn(),
+    listDocumentMetadata: vi.fn(),
+    validateAllDocuments: vi.fn(),
+    getSchemaValidationSummary: vi.fn(),
+    getBranchStructure: vi.fn(),
+  };
+});
 
 // Mock authorization
-vi.mock('../../src/auth/authorization', () => ({
-  assertPermission: vi.fn(),
-  AuthorizationError: class AuthorizationError extends Error {
-    override name = 'AuthorizationError';
-    constructor(
-      message: string,
-      public requiredPermission: string,
-      public roleName: string,
-    ) {
-      super(message);
-    }
-  },
-}));
+vi.mock('../../src/auth/authorization', async () => {
+  const actual = await vi.importActual('../../src/auth/authorization');
+  return {
+    ...actual,
+    assertPermission: vi.fn(),
+  };
+});
 
 describe('Phase 7.1.1b: Metadata API Routes', () => {
   beforeEach(() => {

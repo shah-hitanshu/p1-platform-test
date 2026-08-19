@@ -23,13 +23,12 @@ import { getDocument } from '../../src/services/document-service';
 import {
   createTranslation,
   listLocaleVariants,
-  TranslationAlreadyExistsError,
 } from '../../src/services/create-translation-service';
 import {
   getLocalizationEdgeBySource,
   listLocalizationEdgesByTarget,
 } from '../../src/services/relations-service';
-import { DocumentNotFoundError } from '../../src/services/document-types';
+import { TranslationAlreadyExistsError, DocumentNotFoundError } from '../../src/services/errors';
 import { extractComponentIds } from '../../src/services/component-identity';
 
 const TEST_USER_ID = '77777777-7777-7777-7777-777777777777';

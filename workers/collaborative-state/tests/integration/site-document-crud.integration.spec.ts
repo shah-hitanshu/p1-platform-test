@@ -22,8 +22,6 @@ import {
   updateSite,
   deleteSite,
   listSites,
-  DuplicatePantheonSiteIdError,
-  InvalidSiteParamsError,
 } from '../../src/services/site-service';
 
 import {
@@ -34,9 +32,9 @@ import {
   deleteDocument,
   listDocuments,
   documentExists,
-  SiteNotFoundError,
   DuplicateDocumentPathError,
 } from '../../src/services/document-service';
+import { DuplicatePantheonSiteIdError, InvalidSiteParamsError, SiteNotFoundError } from '../../src/services/errors';
 
 // Test configuration
 const CONNECTION_STRING = 'postgresql://cssuser:csspass@localhost:5432/cssdb';

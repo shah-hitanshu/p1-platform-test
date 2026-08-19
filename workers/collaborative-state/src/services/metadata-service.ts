@@ -9,6 +9,7 @@
 
 import Ajv from 'ajv';
 import { query } from '../db';
+import { BranchStructureStateNotFoundError, DocumentMetadataNotFoundError, SchemaValidationError } from './errors';
 import type { SchemaEnforcementMode } from '../types';
 
 // =============================================================================
@@ -158,62 +159,6 @@ export interface SchemaValidationSummary {
   totalDocuments: number;
   conformingDocuments: number;
   nonConformingCount: number;
-}
-
-// =============================================================================
-// Error Classes
-// =============================================================================
-
-/**
- * Error thrown when branch structure state is not found.
- */
-export class BranchStructureStateNotFoundError extends Error {
-  public readonly name = 'BranchStructureStateNotFoundError';
-
-  constructor(
-    public readonly branchId: string,
-    public readonly structureId: string,
-  ) {
-    super(
-      `Branch structure state not found for branch "${branchId}" and structure "${structureId}"`,
-    );
-    Object.setPrototypeOf(this, BranchStructureStateNotFoundError.prototype);
-  }
-}
-
-/**
- * Error thrown when document metadata is not found.
- */
-export class DocumentMetadataNotFoundError extends Error {
-  public readonly name = 'DocumentMetadataNotFoundError';
-
-  constructor(
-    public readonly branchId: string,
-    public readonly structureId: string,
-    public readonly documentId: string,
-  ) {
-    super(
-      `Document metadata not found for document "${documentId}" in branch "${branchId}" and structure "${structureId}"`,
-    );
-    Object.setPrototypeOf(this, DocumentMetadataNotFoundError.prototype);
-  }
-}
-
-/**
- * Error thrown when metadata fails schema validation in strict mode.
- */
-export class SchemaValidationError extends Error {
-  public readonly name = 'SchemaValidationError';
-
-  constructor(
-    public readonly documentId: string,
-    public readonly validationErrors: ValidationError[],
-  ) {
-    super(
-      `Metadata for document "${documentId}" does not conform to schema: ${validationErrors.map((e) => e.message).join(', ')}`,
-    );
-    Object.setPrototypeOf(this, SchemaValidationError.prototype);
-  }
 }
 
 // =============================================================================

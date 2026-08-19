@@ -11,59 +11,30 @@ import { makePrincipal } from '../helpers/principal';
 import { makeBranch } from '../helpers/branch';
 
 // Mock the services
-vi.mock('../../src/services', () => ({
-  createStructure: vi.fn(),
-  getBranch: vi.fn().mockResolvedValue({ id: 'branch-1', siteId: 'site-1', name: 'main', isMain: true }),
-  getBranchStructure: vi.fn(),
-  getBranchStructureBySlug: vi.fn(),
-  listBranchStructures: vi.fn(),
-  updateBranchStructure: vi.fn(),
-  deleteBranchStructure: vi.fn(),
-  getStructureAtCheckpoint: vi.fn(),
-  getCheckpoint: vi.fn(),
-  BranchNotFoundError: class BranchNotFoundError extends Error {
-    override name = 'BranchNotFoundError';
-    constructor(public branchId: string) {
-      super(`Branch not found: ${branchId}`);
-    }
-  },
-  StructureNotFoundError: class StructureNotFoundError extends Error {
-    override name = 'StructureNotFoundError';
-    constructor(public structureId: string) {
-      super(`Structure not found: ${structureId}`);
-    }
-  },
-  DuplicateStructureSlugError: class DuplicateStructureSlugError extends Error {
-    override name = 'DuplicateStructureSlugError';
-    constructor(public slug: string) {
-      super(`Structure with slug "${slug}" already exists`);
-    }
-  },
-  CheckpointNotFoundError: class CheckpointNotFoundError extends Error {
-    override name = 'CheckpointNotFoundError';
-    constructor(public checkpointId: string) {
-      super(`Checkpoint not found: ${checkpointId}`);
-    }
-  },
-  InvalidSlugError: class InvalidSlugError extends Error {
-    override name = 'InvalidSlugError';
-  },
-}));
+vi.mock('../../src/services', async () => {
+  const actual = await vi.importActual('../../src/services');
+  return {
+    ...actual,
+    createStructure: vi.fn(),
+    getBranch: vi.fn().mockResolvedValue({ id: 'branch-1', siteId: 'site-1', name: 'main', isMain: true }),
+    getBranchStructure: vi.fn(),
+    getBranchStructureBySlug: vi.fn(),
+    listBranchStructures: vi.fn(),
+    updateBranchStructure: vi.fn(),
+    deleteBranchStructure: vi.fn(),
+    getStructureAtCheckpoint: vi.fn(),
+    getCheckpoint: vi.fn(),
+  };
+});
 
 // Mock authorization
-vi.mock('../../src/auth/authorization', () => ({
-  assertPermission: vi.fn(),
-  AuthorizationError: class AuthorizationError extends Error {
-    override name = 'AuthorizationError';
-    constructor(
-      message: string,
-      public requiredPermission: string,
-      public roleName: string,
-    ) {
-      super(message);
-    }
-  },
-}));
+vi.mock('../../src/auth/authorization', async () => {
+  const actual = await vi.importActual('../../src/auth/authorization');
+  return {
+    ...actual,
+    assertPermission: vi.fn(),
+  };
+});
 
 describe('Phase 7.1.1b: Structure API Routes', () => {
   beforeEach(() => {

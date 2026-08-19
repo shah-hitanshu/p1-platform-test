@@ -18,7 +18,6 @@ import {
   getMergeRequest,
   updateMergeRequestStatus,
   updateMergeRequestConflicts,
-  MergeRequestNotFoundError,
 } from './merge-request-service';
 import { computeDocumentDiffs } from './document-diff-service';
 import type { DocumentDiff } from './document-diff-service';
@@ -37,6 +36,12 @@ import {
   triggerMigration,
   processMigration,
 } from './migration-service';
+import {
+  MergeNotAllowedError,
+  MergeConflictsError,
+  MergeExecutionError,
+  MergeRequestNotFoundError,
+} from './errors';
 
 // =============================================================================
 // System-managed path exclusion
@@ -204,58 +209,6 @@ export interface MergePreview {
    * Only included when options.includeContent is true.
    */
   documentDiffs?: DocumentDiff[];
-}
-
-// =============================================================================
-// Error Classes
-// =============================================================================
-
-/**
- * Error thrown when merge is not allowed due to status.
- */
-export class MergeNotAllowedError extends Error {
-  public readonly name = 'MergeNotAllowedError';
-
-  constructor(
-    public readonly mergeRequestId: string,
-    public readonly currentStatus: string,
-    message: string,
-  ) {
-    super(`Merge not allowed for request "${mergeRequestId}": ${message}`);
-    Object.setPrototypeOf(this, MergeNotAllowedError.prototype);
-  }
-}
-
-/**
- * Error thrown when merge cannot proceed due to conflicts.
- */
-export class MergeConflictsError extends Error {
-  public readonly name = 'MergeConflictsError';
-
-  constructor(
-    public readonly mergeRequestId: string,
-    public readonly conflictCount: number,
-  ) {
-    super(
-      `Merge request "${mergeRequestId}" has ${String(conflictCount)} conflict(s) that must be resolved.`,
-    );
-    Object.setPrototypeOf(this, MergeConflictsError.prototype);
-  }
-}
-
-/**
- * Error thrown when merge execution fails.
- */
-export class MergeExecutionError extends Error {
-  public readonly name = 'MergeExecutionError';
-
-  constructor(
-    public readonly mergeRequestId: string,
-    reason: string,
-  ) {
-    super(`Merge execution failed for request "${mergeRequestId}": ${reason}`);
-    Object.setPrototypeOf(this, MergeExecutionError.prototype);
-  }
 }
 
 // =============================================================================

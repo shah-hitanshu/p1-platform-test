@@ -28,12 +28,14 @@ import {
   updateBranch,
   updateBranchStatus,
   deleteBranch,
+} from '../../src/services/branch-service';
+import {
   DuplicateBranchNameError,
   InvalidBranchParamsError,
   SiteNotFoundError,
   MainBranchProtectionError,
   InvalidBranchStatusTransitionError,
-} from '../../src/services/branch-service';
+} from '../../src/services/errors';
 
 // Test configuration
 const CONNECTION_STRING = 'postgresql://cssuser:csspass@localhost:5432/cssdb';

@@ -9,41 +9,21 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { readJson } from '../helpers/http';
 
 // Mock the services
-vi.mock('../../src/services', () => ({
-  createAgent: vi.fn(),
-  getAgentById: vi.fn(),
-  getAgentByName: vi.fn(),
-  updateAgent: vi.fn(),
-  updateAgentStatus: vi.fn(),
-  deleteAgent: vi.fn(),
-  listAgents: vi.fn(),
-  getAgentsByOrganization: vi.fn(),
-  getActiveAgentCount: vi.fn(),
-  InvalidAgentParamsError: class InvalidAgentParamsError extends Error {
-    override name = 'InvalidAgentParamsError';
-  },
-  DuplicateAgentNameError: class DuplicateAgentNameError extends Error {
-    override name = 'DuplicateAgentNameError';
-    constructor(
-      public organizationId: string,
-      public agentName: string,
-    ) {
-      super(`Agent "${agentName}" already exists in organization "${organizationId}".`);
-    }
-  },
-  AgentOrganizationNotFoundError: class AgentOrganizationNotFoundError extends Error {
-    override name = 'OrganizationNotFoundError';
-    constructor(public organizationId: string) {
-      super(`Organization "${organizationId}" not found.`);
-    }
-  },
-  AgentNotFoundError: class AgentNotFoundError extends Error {
-    override name = 'AgentNotFoundError';
-    constructor(public agentId: string) {
-      super(`Agent "${agentId}" not found.`);
-    }
-  },
-}));
+vi.mock('../../src/services', async () => {
+  const actual = await vi.importActual('../../src/services');
+  return {
+    ...actual,
+    createAgent: vi.fn(),
+    getAgentById: vi.fn(),
+    getAgentByName: vi.fn(),
+    updateAgent: vi.fn(),
+    updateAgentStatus: vi.fn(),
+    deleteAgent: vi.fn(),
+    listAgents: vi.fn(),
+    getAgentsByOrganization: vi.fn(),
+    getActiveAgentCount: vi.fn(),
+  };
+});
 
 describe('Agent Politeness Phase 1.5: Agent API Routes', () => {
   beforeEach(() => {
@@ -124,7 +104,7 @@ describe('Agent Politeness Phase 1.5: Agent API Routes', () => {
       const services = await import('../../src/services');
 
       vi.mocked(services.createAgent).mockRejectedValueOnce(
-        new services.AgentOrganizationNotFoundError('non-existent-org'),
+        new services.OrganizationNotFoundError('non-existent-org'),
       );
 
       const request = new Request(

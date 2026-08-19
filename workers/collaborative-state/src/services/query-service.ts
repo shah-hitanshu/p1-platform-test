@@ -15,27 +15,10 @@ import { listDocumentsOnBranch, countDocumentsOnBranch, createDocumentOnBranch, 
 import { getLatestDocumentVersion, getLatestDocumentVersionWithFallback, getLatestVersionsForDocuments } from './document-version-service';
 import { getDatasource } from './datasource-service';
 import { PAGINATION } from '../routes/validation';
+import { QueryNotFoundError, DatasourceNotFoundError } from './errors';
 
 const QUERY_PATH_PREFIX = '_registry/queries/';
 const NAME_PATTERN = /^[a-zA-Z0-9_-]+$/;
-
-export class QueryNotFoundError extends Error {
-  public readonly name = 'QueryNotFoundError';
-
-  constructor(public readonly queryName: string) {
-    super(`Query "${queryName}" not found.`);
-    Object.setPrototypeOf(this, QueryNotFoundError.prototype);
-  }
-}
-
-export class DatasourceNotFoundError extends Error {
-  public readonly name = 'DatasourceNotFoundError';
-
-  constructor(public readonly datasourceName: string) {
-    super(`Datasource "${datasourceName}" not found.`);
-    Object.setPrototypeOf(this, DatasourceNotFoundError.prototype);
-  }
-}
 
 export interface CreateQueryParams {
   siteId: string;

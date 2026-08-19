@@ -9,7 +9,7 @@
 
 import { createLocalDatasource } from './datasource-service';
 import { createQuery } from './query-service';
-import { DuplicateDocumentPathError } from './document-types';
+import { DuplicateDocumentPathError } from './errors';
 
 export interface OnTemplateCreatedParams {
   siteId: string;

@@ -16,6 +16,7 @@ import { grantRole as grantAgentRole } from './agent-site-role-service';
 import { grantRole as grantUserRole } from './user-site-role-service';
 import { getFirstRow } from '../db/helpers';
 import { requestSiteScreenshot, type ScreenshotProducerEnv } from '../queues/screenshot-producer';
+import { DuplicatePantheonSiteIdError, InvalidSiteParamsError } from './errors';
 
 // =============================================================================
 // Types
@@ -88,34 +89,6 @@ interface SiteRow {
   created_at: string;
   updated_at: string;
   archived_at: string | null;
-}
-
-// =============================================================================
-// Error Classes
-// =============================================================================
-
-/**
- * Error thrown when attempting to create a site with a duplicate Pantheon site ID.
- */
-export class DuplicatePantheonSiteIdError extends Error {
-  public readonly name = 'DuplicatePantheonSiteIdError';
-
-  constructor(public readonly pantheonSiteId: string) {
-    super(`A site with Pantheon site ID "${pantheonSiteId}" already exists.`);
-    Object.setPrototypeOf(this, DuplicatePantheonSiteIdError.prototype);
-  }
-}
-
-/**
- * Error thrown when site creation parameters are invalid.
- */
-export class InvalidSiteParamsError extends Error {
-  public readonly name = 'InvalidSiteParamsError';
-
-  constructor(message: string) {
-    super(message);
-    Object.setPrototypeOf(this, InvalidSiteParamsError.prototype);
-  }
 }
 
 // =============================================================================

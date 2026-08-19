@@ -17,6 +17,7 @@ import { query } from '../db';
 import { getFirstRow } from './checkpoint-mappers';
 import { isAuthority } from '@pantheon-systems/p1-content-validator';
 import type { Authority } from '@pantheon-systems/p1-content-validator';
+import { AuthorityOverrideLimitError } from './errors';
 
 /**
  * An edge between two documents in app.document_relations.
@@ -359,16 +360,6 @@ const STORED_SLOT = `(CASE WHEN jsonb_typeof(metadata -> 'authorityOverrides' ->
  */
 export const MAX_OVERRIDE_ENTRIES = 1000;
 
-/** Raised when a translation's authority map is at `MAX_OVERRIDE_ENTRIES`. */
-export class AuthorityOverrideLimitError extends Error {
-  public readonly name = 'AuthorityOverrideLimitError';
-
-  constructor(public readonly sourceDocumentId: string) {
-    super(`A translation holds at most ${String(MAX_OVERRIDE_ENTRIES)} authority overrides.`);
-    Object.setPrototypeOf(this, AuthorityOverrideLimitError.prototype);
-  }
-}
-
 /**
  * Sets the authority override for one (slotId, propName) on a translation,
  * breaking that prop's inheritance from its slot's template default. Overwrites
@@ -417,7 +408,7 @@ export async function setAuthorityOverride(
     return;
   }
   if (getFirstRow(result.rows).stored !== authority) {
-    throw new AuthorityOverrideLimitError(sourceDocumentId);
+    throw new AuthorityOverrideLimitError(sourceDocumentId, MAX_OVERRIDE_ENTRIES);
   }
 }
 

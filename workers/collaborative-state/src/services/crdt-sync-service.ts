@@ -22,6 +22,7 @@ import {
 import { getBranch } from './branch-service';
 import { resolveActor } from './persistence-actor-service';
 import { enforceUniqueSlotIds } from './slot-id-backstop';
+import { DocumentNotFoundError, SyncError } from './errors';
 
 // =============================================================================
 // Types
@@ -77,34 +78,6 @@ export interface SyncCrdtToPostgresParams {
 export interface LoadCrdtStateResult {
   /** The document snapshot */
   snapshot: Record<string, unknown>;
-}
-
-// =============================================================================
-// Error Classes
-// =============================================================================
-
-/**
- * Error thrown when the document is not found for a sync operation.
- */
-export class DocumentNotFoundError extends Error {
-  public readonly name = 'DocumentNotFoundError';
-
-  constructor(public readonly documentId: string) {
-    super(`Document with ID "${documentId}" not found.`);
-    Object.setPrototypeOf(this, DocumentNotFoundError.prototype);
-  }
-}
-
-/**
- * Error thrown when a sync operation fails.
- */
-export class SyncError extends Error {
-  public readonly name = 'SyncError';
-
-  constructor(message: string) {
-    super(message);
-    Object.setPrototypeOf(this, SyncError.prototype);
-  }
 }
 
 // =============================================================================

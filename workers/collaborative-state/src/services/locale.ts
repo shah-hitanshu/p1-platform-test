@@ -4,20 +4,10 @@
  * only labels the language — a source document may name the one it was authored in.
  */
 
+import { InvalidLocaleError } from './errors';
+
 // A permissive BCP-47 shape: a primary language subtag plus optional subtags.
 const LOCALE_PATTERN = /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/;
-
-/**
- * Thrown when the requested locale is not a well-formed language tag.
- */
-export class InvalidLocaleError extends Error {
-  public readonly name = 'InvalidLocaleError';
-
-  constructor(public readonly locale: string) {
-    super(`"${locale}" is not a valid locale.`);
-    Object.setPrototypeOf(this, InvalidLocaleError.prototype);
-  }
-}
 
 /**
  * Rewrites a tag's subtags into the casing BCP-47 prescribes: language lowercase,

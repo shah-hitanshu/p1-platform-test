@@ -16,8 +16,8 @@
 import { query } from '../db';
 import {
   reconstructVersionSnapshot,
-  VersionReconstructionError,
 } from './document-version-service';
+import { VersionReconstructionError } from './errors';
 
 export interface RepairEntry {
   documentId: string;

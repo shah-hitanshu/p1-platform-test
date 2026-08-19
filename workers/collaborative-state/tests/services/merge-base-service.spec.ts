@@ -120,9 +120,8 @@ describe('Phase 5.1b: Merge Base Service', () => {
     });
 
     it('should throw SourceBranchNotFoundError when source branch does not exist', async () => {
-      const { findMergeBase, SourceBranchNotFoundError } = await import(
-        '../../src/services/merge-base-service'
-      );
+      const { findMergeBase } = await import('../../src/services/merge-base-service');
+      const { SourceBranchNotFoundError } = await import('../../src/services/errors');
       const db = await import('../../src/db');
 
       // First query for source branch returns empty
@@ -134,9 +133,8 @@ describe('Phase 5.1b: Merge Base Service', () => {
     });
 
     it('should throw TargetBranchNotFoundError when target branch does not exist', async () => {
-      const { findMergeBase, TargetBranchNotFoundError } = await import(
-        '../../src/services/merge-base-service'
-      );
+      const { findMergeBase } = await import('../../src/services/merge-base-service');
+      const { TargetBranchNotFoundError } = await import('../../src/services/errors');
       const db = await import('../../src/db');
 
       // First query returns source branch, second returns empty for target
@@ -776,7 +774,7 @@ describe('Phase 5.1b: Merge Base Service', () => {
 
   describe('Error Classes', () => {
     it('should export SourceBranchNotFoundError with correct properties', async () => {
-      const { SourceBranchNotFoundError } = await import('../../src/services/merge-base-service');
+      const { SourceBranchNotFoundError } = await import('../../src/services/errors');
 
       const error = new SourceBranchNotFoundError('branch-uuid');
 
@@ -785,7 +783,7 @@ describe('Phase 5.1b: Merge Base Service', () => {
     });
 
     it('should export TargetBranchNotFoundError with correct properties', async () => {
-      const { TargetBranchNotFoundError } = await import('../../src/services/merge-base-service');
+      const { TargetBranchNotFoundError } = await import('../../src/services/errors');
 
       const error = new TargetBranchNotFoundError('branch-uuid');
 

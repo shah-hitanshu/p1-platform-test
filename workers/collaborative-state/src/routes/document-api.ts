@@ -7,6 +7,7 @@
 
 import type { AuthenticatedPrincipal } from '../types';
 import {
+  HttpError,
   createDocument,
   getDocument,
   getDocumentByPath,
@@ -33,17 +34,12 @@ import {
   restoreDocumentVersion,
   SiteNotFoundError,
   DuplicateDocumentPathError,
-  InvalidDocumentPathError,
   DocumentNotFoundError,
   DocumentPathConflictError,
-  InvalidDocumentVersionParamsError,
   RestoreVersionNotFoundError,
   publishDocument,
   createTranslation,
   listLocaleVariants,
-  InvalidLocaleError,
-  CanonicalVersionNotFoundError,
-  TranslationAlreadyExistsError,
   buildChangeSummary,
   getLocalizationEdgeBySource,
   getAuthorityOverrides,
@@ -56,7 +52,6 @@ import type { ChangeRelationType } from '../services';
 import { validateBody, validationErrorResponse } from './validation/request-validation';
 import { handleAuthorityOverridesValidation } from './validation/document-api.validation';
 import { isChangeRelationType } from '../services/change-summary-service';
-import { AuthorityOverrideLimitError } from '../services/relations-service';
 import {
   normalizePath,
   isRegistryWritePath,
@@ -65,7 +60,7 @@ import {
 } from '../services/document-types';
 import { buildDocumentSkeletonFromTemplate } from '../services/document-skeleton';
 import { applyTitleToSnapshot } from '../services/document-title';
-import { assertPermission, AuthorizationError, getEffectiveRole } from '../auth/authorization';
+import { assertPermission, getEffectiveRole } from '../auth/authorization';
 import { templateMetadata } from './template-api';
 import { validatePagination } from './validation';
 import { purgeContentCache } from '../cache/purge';
@@ -915,6 +910,9 @@ async function handleRestoreDocumentVersionRoute(
     if (error instanceof RestoreVersionNotFoundError) {
       return errorResponse('Version not found', 404);
     }
+    if (error instanceof HttpError) {
+      return errorResponse(error.message, error.status);
+    }
     throw error;
   }
 }
@@ -1245,17 +1243,11 @@ export async function handleDocumentRoutes(
     if (invalidRequest !== null) {
       return invalidRequest;
     }
-    if (error instanceof AuthorizationError) {
-      return errorResponse(error.message, 403);
-    }
     if (error instanceof SiteNotFoundError) {
       return errorResponse('Site not found', 404);
     }
     if (error instanceof DuplicateDocumentPathError) {
       return errorResponse('Document already exists at this path', 409);
-    }
-    if (error instanceof InvalidDocumentPathError) {
-      return errorResponse(error.message, 400);
     }
     if (error instanceof DocumentNotFoundError) {
       return errorResponse('Document not found or not archived', 404);
@@ -1266,20 +1258,8 @@ export async function handleDocumentRoutes(
     if (error instanceof PageConflictError) {
       return errorResponse('A page already exists at this origin path', 409);
     }
-    if (error instanceof InvalidDocumentVersionParamsError) {
-      return errorResponse(error.message, 400);
-    }
-    if (error instanceof InvalidLocaleError) {
-      return errorResponse(error.message, 400);
-    }
-    if (error instanceof CanonicalVersionNotFoundError) {
-      return errorResponse(error.message, 404);
-    }
-    if (error instanceof TranslationAlreadyExistsError) {
-      return errorResponse(error.message, 409);
-    }
-    if (error instanceof AuthorityOverrideLimitError) {
-      return errorResponse(error.message, 400);
+    if (error instanceof HttpError) {
+      return errorResponse(error.message, error.status);
     }
 
     // Log and return generic error for unknown errors

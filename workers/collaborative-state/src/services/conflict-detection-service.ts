@@ -15,6 +15,7 @@ import {
   type MergeBase,
   type ModifiedDocument,
 } from './merge-base-service';
+import { NoMergeBaseError } from './errors';
 
 // =============================================================================
 // Types
@@ -42,27 +43,6 @@ export interface MergeabilityResult {
     documentsModifiedInSource: string[];
     documentsModifiedInTarget: string[];
   };
-}
-
-// =============================================================================
-// Error Classes
-// =============================================================================
-
-/**
- * Error thrown when no merge base (common ancestor) can be found between branches.
- */
-export class NoMergeBaseError extends Error {
-  public readonly name = 'NoMergeBaseError';
-
-  constructor(
-    public readonly sourceBranchId: string,
-    public readonly targetBranchId: string,
-  ) {
-    super(
-      `No common ancestor found between source branch "${sourceBranchId}" and target branch "${targetBranchId}".`,
-    );
-    Object.setPrototypeOf(this, NoMergeBaseError.prototype);
-  }
 }
 
 // =============================================================================

@@ -92,9 +92,10 @@ describe('Agent Politeness Phase 2.1: Presence Service', () => {
       });
 
       it('should throw MaxPresencesExceededError when limit reached', async () => {
-        const { PresenceManager, MAX_PRESENCES, MaxPresencesExceededError } = await import(
+        const { PresenceManager, MAX_PRESENCES } = await import(
           '../../src/services/presence-service'
         );
+        const { MaxPresencesExceededError } = await import('../../src/services/errors');
         const manager = new PresenceManager();
 
         // Register up to the limit

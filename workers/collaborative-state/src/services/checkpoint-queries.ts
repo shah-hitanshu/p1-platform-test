@@ -16,7 +16,7 @@ import type {
   ListCheckpointsByAgentOptions,
   VersionWithDocumentRow,
 } from './checkpoint-types';
-import { CheckpointNotFoundError } from './checkpoint-types';
+import { CheckpointNotFoundError } from './errors';
 import {
   getFirstRow,
   mapRowToCheckpoint,

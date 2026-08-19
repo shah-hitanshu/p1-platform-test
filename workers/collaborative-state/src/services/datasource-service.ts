@@ -14,6 +14,7 @@ import type { CreateDocumentOnBranchResult } from './document-types';
 import { getDocumentByPath } from './document-service';
 import { listDocumentsOnBranch, createDocumentOnBranch, deleteDocumentOnBranch } from './branch-document-service';
 import { getLatestDocumentVersion, getLatestDocumentVersionWithFallback, getLatestVersionsForDocuments } from './document-version-service';
+import { DatasourceInUseError } from './errors';
 
 const DATASOURCE_PATH_PREFIX = '_registry/datasources/';
 const NAME_PATTERN = /^[a-zA-Z0-9_-]+$/;
@@ -125,20 +126,6 @@ export async function createLocalDatasource(
     createdById: params.createdById,
     createdByType: 'user',
   });
-}
-
-export class DatasourceInUseError extends Error {
-  public readonly name = 'DatasourceInUseError';
-
-  constructor(
-    public readonly datasourceName: string,
-    public readonly referencingQueries: string[],
-  ) {
-    super(
-      `Cannot delete datasource "${datasourceName}": referenced by queries: ${referencingQueries.join(', ')}`,
-    );
-    Object.setPrototypeOf(this, DatasourceInUseError.prototype);
-  }
 }
 
 export async function deleteDatasource(

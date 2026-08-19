@@ -14,61 +14,35 @@ import type {
   LocaleVariantsResult,
 } from '../../src/services/create-translation-service';
 
-vi.mock('../../src/services', () => ({
-  getBranch: vi.fn(),
-  getMainBranch: vi.fn(),
-  createTranslation: vi.fn(),
-  listLocaleVariants: vi.fn(),
-  createDocument: vi.fn(),
-  getDocument: vi.fn(),
-  getDocumentByPath: vi.fn(),
-  updateDocumentPath: vi.fn(),
-  archiveDocument: vi.fn(),
-  restoreDocument: vi.fn(),
-  listDocuments: vi.fn(),
-  listDocumentsOnBranch: vi.fn(),
-  createDocumentOnBranch: vi.fn(),
-  documentExistsOnBranch: vi.fn(),
-  deleteDocumentOnBranch: vi.fn(),
-  getLatestDocumentVersion: vi.fn(),
-  getLatestDocumentVersionWithFallback: vi.fn(),
-  getDocumentVersion: vi.fn(),
-  listDocumentVersions: vi.fn(),
-  createDocumentVersion: vi.fn(),
-  reconstructVersionSnapshot: vi.fn(),
-  publishDocument: vi.fn(),
-  buildDocumentSkeletonFromTemplate: vi.fn(),
-  SiteNotFoundError: class SiteNotFoundError extends Error {
-    override name = 'SiteNotFoundError';
-  },
-  DuplicateDocumentPathError: class DuplicateDocumentPathError extends Error {
-    override name = 'DuplicateDocumentPathError';
-  },
-  InvalidDocumentPathError: class InvalidDocumentPathError extends Error {
-    override name = 'InvalidDocumentPathError';
-  },
-  DocumentNotFoundError: class DocumentNotFoundError extends Error {
-    override name = 'DocumentNotFoundError';
-  },
-  DocumentPathConflictError: class DocumentPathConflictError extends Error {
-    override name = 'DocumentPathConflictError';
-  },
-  PageConflictError: class PageConflictError extends Error {
-    override name = 'PageConflictError';
-  },
-  InvalidDocumentVersionParamsError: class InvalidDocumentVersionParamsError extends Error {
-    override name = 'InvalidDocumentVersionParamsError';
-  },
-  TranslationAlreadyExistsError: class TranslationAlreadyExistsError extends Error {
-    override name = 'TranslationAlreadyExistsError';
-  },
-  InvalidLocaleError: class InvalidLocaleError extends Error {
-    override name = 'InvalidLocaleError';
-  },
-  CanonicalVersionNotFoundError: class CanonicalVersionNotFoundError extends Error {
-    override name = 'CanonicalVersionNotFoundError';
-  },
-}));
+vi.mock('../../src/services', async () => {
+  const actual = await vi.importActual('../../src/services');
+  return {
+    ...actual,
+    getBranch: vi.fn(),
+    getMainBranch: vi.fn(),
+    createTranslation: vi.fn(),
+    listLocaleVariants: vi.fn(),
+    createDocument: vi.fn(),
+    getDocument: vi.fn(),
+    getDocumentByPath: vi.fn(),
+    updateDocumentPath: vi.fn(),
+    archiveDocument: vi.fn(),
+    restoreDocument: vi.fn(),
+    listDocuments: vi.fn(),
+    listDocumentsOnBranch: vi.fn(),
+    createDocumentOnBranch: vi.fn(),
+    documentExistsOnBranch: vi.fn(),
+    deleteDocumentOnBranch: vi.fn(),
+    getLatestDocumentVersion: vi.fn(),
+    getLatestDocumentVersionWithFallback: vi.fn(),
+    getDocumentVersion: vi.fn(),
+    listDocumentVersions: vi.fn(),
+    createDocumentVersion: vi.fn(),
+    reconstructVersionSnapshot: vi.fn(),
+    publishDocument: vi.fn(),
+    buildDocumentSkeletonFromTemplate: vi.fn(),
+  };
+});
 
 vi.mock('../../src/auth/authorization', () => ({
   assertPermission: vi.fn(),

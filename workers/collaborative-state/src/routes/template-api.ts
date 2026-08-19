@@ -20,6 +20,8 @@ import {
   getMainBranch,
   deleteDocumentOnBranch,
   DuplicateDocumentPathError,
+  HttpError,
+  InvalidBodyError,
 } from '../services';
 import { assertPermission, getEffectiveRole, AuthorizationError } from '../auth/authorization';
 import { isManifestShapedSnapshot, convertManifestToContent } from '../services/template-content-backfill';
@@ -32,9 +34,6 @@ import {
   rollbackMigration,
   getMigrationStatus,
   previewMigration,
-  TemplateNotFoundError,
-  InvalidVersionRangeError,
-  MigrationJobNotFoundError,
 } from '../services/migration-service';
 
 const VALID_PRINCIPAL_TYPES = new Set(['user', 'agent', 'system', 'service']);
@@ -212,10 +211,6 @@ async function parseJsonBody<T>(request: Request): Promise<T> {
     throw new InvalidBodyError();
   }
   return json as T;
-}
-
-class InvalidBodyError extends Error {
-  constructor() { super('Request body must be a JSON object'); }
 }
 
 /**
@@ -865,27 +860,16 @@ export async function handleTemplateRequest(
     }
   } catch (error) {
     // Handle known errors
-    if (error instanceof InvalidBodyError) {
-      return errorResponse(error.message, 400);
-    }
-    if (error instanceof AuthorizationError) {
-      return errorResponse(error.message, 403);
-    }
-    if (error instanceof InvalidVersionRangeError) {
-      return errorResponse(error.message, 400);
-    }
-    if (error instanceof TemplateNotFoundError) {
-      return errorResponse(error.message, 404);
-    }
-    if (error instanceof MigrationJobNotFoundError) {
-      return errorResponse(error.message, 404);
-    }
     if (error instanceof DuplicateDocumentPathError) {
       return errorResponse('Template already exists at this path', 409);
     }
 
     if (error instanceof SyntaxError) {
       return errorResponse('Invalid JSON in request body', 400);
+    }
+
+    if (error instanceof HttpError) {
+      return errorResponse(error.message, error.status);
     }
 
     // Log and return generic error for unknown errors

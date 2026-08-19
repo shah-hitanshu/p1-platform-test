@@ -213,58 +213,6 @@ export interface CheckpointStructureRow {
 }
 
 // =============================================================================
-// Error Classes
-// =============================================================================
-
-/**
- * Error thrown when the referenced branch does not exist.
- */
-export class BranchNotFoundError extends Error {
-  public readonly name = 'BranchNotFoundError';
-
-  constructor(public readonly branchId: string) {
-    super(`Branch with ID "${branchId}" not found.`);
-    Object.setPrototypeOf(this, BranchNotFoundError.prototype);
-  }
-}
-
-/**
- * Error thrown when the referenced checkpoint does not exist.
- */
-export class CheckpointNotFoundError extends Error {
-  public readonly name = 'CheckpointNotFoundError';
-
-  constructor(public readonly checkpointId: string) {
-    super(`Checkpoint with ID "${checkpointId}" not found.`);
-    Object.setPrototypeOf(this, CheckpointNotFoundError.prototype);
-  }
-}
-
-/**
- * Error thrown when checkpoint creation parameters are invalid.
- */
-export class InvalidCheckpointParamsError extends Error {
-  public readonly name = 'InvalidCheckpointParamsError';
-
-  constructor(message: string) {
-    super(message);
-    Object.setPrototypeOf(this, InvalidCheckpointParamsError.prototype);
-  }
-}
-
-/**
- * Error thrown when an unexpected database error occurs.
- */
-export class DatabaseError extends Error {
-  public readonly name = 'DatabaseError';
-
-  constructor(message: string, public readonly operation: string) {
-    super(message);
-    Object.setPrototypeOf(this, DatabaseError.prototype);
-  }
-}
-
-// =============================================================================
 // Validation Constants
 // =============================================================================
 

@@ -17,9 +17,6 @@ import type {
   RevertToCheckpointResult,
 } from './checkpoint-types';
 import {
-  BranchNotFoundError,
-  DatabaseError,
-  InvalidCheckpointParamsError,
   MAX_NAME_LENGTH,
   MAX_MESSAGE_LENGTH,
   MAX_DESCRIPTION_LENGTH,
@@ -27,6 +24,7 @@ import {
   MAX_AFFECTED_REGIONS,
   MAX_REGION_PATH_LENGTH,
 } from './checkpoint-types';
+import { BranchNotFoundError, DatabaseError, InvalidCheckpointParamsError } from './errors';
 import { getFirstRow, isForeignKeyViolation, mapRowToCheckpoint } from './checkpoint-mappers';
 import { getCheckpoint, getDocumentsAtCheckpoint, getStructuresAtCheckpoint } from './checkpoint-queries';
 import { escapeLikePattern } from './document-types';
@@ -49,7 +47,7 @@ export {
   CheckpointNotFoundError,
   InvalidCheckpointParamsError,
   DatabaseError,
-} from './checkpoint-types';
+} from './errors';
 export {
   getCheckpoint,
   listCheckpoints,
@@ -320,7 +318,7 @@ export async function revertToCheckpoint(
   // Get the checkpoint (before transaction to avoid holding locks)
   const checkpoint = await getCheckpoint(params.checkpointId);
   if (!checkpoint) {
-    const { CheckpointNotFoundError } = await import('./checkpoint-types');
+    const { CheckpointNotFoundError } = await import('./errors');
     throw new CheckpointNotFoundError(params.checkpointId);
   }
 

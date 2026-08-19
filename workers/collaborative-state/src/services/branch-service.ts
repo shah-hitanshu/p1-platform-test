@@ -9,6 +9,15 @@
 
 import type { Branch, BranchStatus } from '../types';
 import { query } from '../db';
+import {
+  SiteNotFoundError,
+  DuplicateBranchNameError,
+  InvalidBranchParamsError,
+  MainBranchProtectionError,
+  InvalidBranchStatusTransitionError,
+  MainBranchOnlyError,
+  DatabaseError,
+} from './errors';
 
 // =============================================================================
 // Types
@@ -72,116 +81,6 @@ interface BranchRow {
   created_at: string;
   updated_at: string;
   archived_at: string | null;
-}
-
-// =============================================================================
-// Error Classes
-// =============================================================================
-
-/**
- * Error thrown when the referenced site does not exist.
- */
-export class SiteNotFoundError extends Error {
-  public readonly name = 'SiteNotFoundError';
-
-  constructor(public readonly siteId: string) {
-    super(`Site with ID "${siteId}" not found.`);
-    Object.setPrototypeOf(this, SiteNotFoundError.prototype);
-  }
-}
-
-/**
- * Error thrown when the referenced branch does not exist.
- */
-export class BranchNotFoundError extends Error {
-  public readonly name = 'BranchNotFoundError';
-
-  constructor(public readonly branchId: string) {
-    super(`Branch with ID "${branchId}" not found.`);
-    Object.setPrototypeOf(this, BranchNotFoundError.prototype);
-  }
-}
-
-/**
- * Error thrown when attempting to create a branch with a duplicate name in the same site.
- */
-export class DuplicateBranchNameError extends Error {
-  public readonly name = 'DuplicateBranchNameError';
-
-  constructor(
-    public readonly siteId: string,
-    public readonly branchName: string,
-  ) {
-    super(`A branch named "${branchName}" already exists in site "${siteId}".`);
-    Object.setPrototypeOf(this, DuplicateBranchNameError.prototype);
-  }
-}
-
-/**
- * Error thrown when branch creation parameters are invalid.
- */
-export class InvalidBranchParamsError extends Error {
-  public readonly name = 'InvalidBranchParamsError';
-
-  constructor(message: string) {
-    super(message);
-    Object.setPrototypeOf(this, InvalidBranchParamsError.prototype);
-  }
-}
-
-/**
- * Error thrown when attempting to perform a protected operation on the main branch.
- */
-export class MainBranchProtectionError extends Error {
-  public readonly name = 'MainBranchProtectionError';
-
-  constructor(public readonly operation: string) {
-    super(`Cannot ${operation} the main branch.`);
-    Object.setPrototypeOf(this, MainBranchProtectionError.prototype);
-  }
-}
-
-/**
- * Error thrown when attempting an invalid branch status transition.
- */
-export class InvalidBranchStatusTransitionError extends Error {
-  public readonly name = 'InvalidBranchStatusTransitionError';
-
-  constructor(
-    public readonly fromStatus: BranchStatus,
-    public readonly toStatus: BranchStatus,
-  ) {
-    super(`Invalid status transition from "${fromStatus}" to "${toStatus}".`);
-    Object.setPrototypeOf(this, InvalidBranchStatusTransitionError.prototype);
-  }
-}
-
-/**
- * Error thrown when attempting to create a branch from a non-main branch.
- * Branches can only be created from the main branch (copy-on-write model).
- */
-export class MainBranchOnlyError extends Error {
-  public readonly name = 'MainBranchOnlyError';
-
-  constructor(public readonly sourceBranchId: string) {
-    super(
-      `Branches can only be created from the main branch. Source branch "${sourceBranchId}" is not main.`,
-    );
-    Object.setPrototypeOf(this, MainBranchOnlyError.prototype);
-  }
-}
-
-/**
- * Error thrown when an unexpected database error occurs.
- * Wraps raw database errors to prevent leaking internal details.
- */
-export class DatabaseError extends Error {
-  public readonly name = 'DatabaseError';
-
-  constructor(message: string, public readonly operation: string) {
-    super(message);
-    Object.setPrototypeOf(this, DatabaseError.prototype);
-  }
 }
 
 // =============================================================================

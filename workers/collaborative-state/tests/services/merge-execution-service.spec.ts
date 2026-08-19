@@ -191,9 +191,8 @@ describe('Phase 5.3: Merge Execution Service', () => {
     });
 
     it('should fail when merge request is not in approved status', async () => {
-      const { executeMerge, MergeNotAllowedError } = await import(
-        '../../src/services/merge-execution-service'
-      );
+      const { executeMerge } = await import('../../src/services/merge-execution-service');
+      const { MergeNotAllowedError } = await import('../../src/services/errors');
       const mergeRequestService = await import('../../src/services/merge-request-service');
 
       // Mock merge request in wrong status
@@ -221,9 +220,8 @@ describe('Phase 5.3: Merge Execution Service', () => {
     });
 
     it('should fail when conflicts are detected', async () => {
-      const { executeMerge, MergeConflictsError } = await import(
-        '../../src/services/merge-execution-service'
-      );
+      const { executeMerge } = await import('../../src/services/merge-execution-service');
+      const { MergeConflictsError } = await import('../../src/services/errors');
       const conflictDetection = await import('../../src/services/conflict-detection-service');
       const mergeRequestService = await import('../../src/services/merge-request-service');
 
@@ -509,9 +507,7 @@ describe('Phase 5.3: Merge Execution Service', () => {
     it('should throw MergeRequestNotFoundError when merge request does not exist', async () => {
       const { executeMerge } = await import('../../src/services/merge-execution-service');
       const mergeRequestService = await import('../../src/services/merge-request-service');
-      const { MergeRequestNotFoundError } = await import(
-        '../../src/services/merge-request-service'
-      );
+      const { MergeRequestNotFoundError } = await import('../../src/services/errors');
 
       vi.mocked(mergeRequestService.getMergeRequest).mockResolvedValueOnce(null);
 
@@ -1238,7 +1234,7 @@ describe('Phase 5.3: Merge Execution Service', () => {
 
   describe('Error Classes', () => {
     it('should export MergeNotAllowedError with correct properties', async () => {
-      const { MergeNotAllowedError } = await import('../../src/services/merge-execution-service');
+      const { MergeNotAllowedError } = await import('../../src/services/errors');
 
       const error = new MergeNotAllowedError('mr-1', 'open', 'Merge request must be approved');
 
@@ -1249,7 +1245,7 @@ describe('Phase 5.3: Merge Execution Service', () => {
     });
 
     it('should export MergeConflictsError with correct properties', async () => {
-      const { MergeConflictsError } = await import('../../src/services/merge-execution-service');
+      const { MergeConflictsError } = await import('../../src/services/errors');
 
       const error = new MergeConflictsError('mr-1', 2);
 
@@ -1259,7 +1255,7 @@ describe('Phase 5.3: Merge Execution Service', () => {
     });
 
     it('should export MergeExecutionError with correct properties', async () => {
-      const { MergeExecutionError } = await import('../../src/services/merge-execution-service');
+      const { MergeExecutionError } = await import('../../src/services/errors');
 
       const error = new MergeExecutionError('mr-1', 'Failed to copy documents');
 

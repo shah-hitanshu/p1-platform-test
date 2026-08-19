@@ -228,8 +228,8 @@ describe('Phase 6.2: Metadata Service', () => {
     });
 
     it('should throw error when structure state does not exist', async () => {
-      const { updateBranchStructureState, BranchStructureStateNotFoundError } =
-        await import('../../src/services/metadata-service');
+      const { updateBranchStructureState } = await import('../../src/services/metadata-service');
+      const { BranchStructureStateNotFoundError } = await import('../../src/services/errors');
       const db = await import('../../src/db');
 
       vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
@@ -262,8 +262,8 @@ describe('Phase 6.2: Metadata Service', () => {
     });
 
     it('should throw error when structure state does not exist', async () => {
-      const { deleteBranchStructureState, BranchStructureStateNotFoundError } =
-        await import('../../src/services/metadata-service');
+      const { deleteBranchStructureState } = await import('../../src/services/metadata-service');
+      const { BranchStructureStateNotFoundError } = await import('../../src/services/errors');
       const db = await import('../../src/db');
 
       vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
@@ -441,9 +441,8 @@ describe('Phase 6.2: Metadata Service', () => {
     });
 
     it('should throw error for non-conforming metadata in strict mode', async () => {
-      const { setDocumentMetadata, SchemaValidationError } = await import(
-        '../../src/services/metadata-service'
-      );
+      const { setDocumentMetadata } = await import('../../src/services/metadata-service');
+      const { SchemaValidationError } = await import('../../src/services/errors');
       const db = await import('../../src/db');
 
       // First query: get branch structure state for schema
@@ -549,8 +548,8 @@ describe('Phase 6.2: Metadata Service', () => {
     });
 
     it('should throw error when document metadata does not exist', async () => {
-      const { deleteDocumentMetadata, DocumentMetadataNotFoundError } =
-        await import('../../src/services/metadata-service');
+      const { deleteDocumentMetadata } = await import('../../src/services/metadata-service');
+      const { DocumentMetadataNotFoundError } = await import('../../src/services/errors');
       const db = await import('../../src/db');
 
       vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
@@ -783,8 +782,8 @@ describe('Phase 6.2: Metadata Service', () => {
     });
 
     it('should throw error when structure state does not exist', async () => {
-      const { validateAllDocuments, BranchStructureStateNotFoundError } =
-        await import('../../src/services/metadata-service');
+      const { validateAllDocuments } = await import('../../src/services/metadata-service');
+      const { BranchStructureStateNotFoundError } = await import('../../src/services/errors');
       const db = await import('../../src/db');
 
       vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
@@ -825,9 +824,7 @@ describe('Phase 6.2: Metadata Service', () => {
 
   describe('Error Classes', () => {
     it('should have BranchStructureStateNotFoundError', async () => {
-      const { BranchStructureStateNotFoundError } = await import(
-        '../../src/services/metadata-service'
-      );
+      const { BranchStructureStateNotFoundError } = await import('../../src/services/errors');
 
       const error = new BranchStructureStateNotFoundError('branch-1', 'struct-1');
       expect(error.name).toBe('BranchStructureStateNotFoundError');
@@ -836,9 +833,7 @@ describe('Phase 6.2: Metadata Service', () => {
     });
 
     it('should have DocumentMetadataNotFoundError', async () => {
-      const { DocumentMetadataNotFoundError } = await import(
-        '../../src/services/metadata-service'
-      );
+      const { DocumentMetadataNotFoundError } = await import('../../src/services/errors');
 
       const error = new DocumentMetadataNotFoundError(
         'branch-1',
@@ -850,9 +845,7 @@ describe('Phase 6.2: Metadata Service', () => {
     });
 
     it('should have SchemaValidationError', async () => {
-      const { SchemaValidationError } = await import(
-        '../../src/services/metadata-service'
-      );
+      const { SchemaValidationError } = await import('../../src/services/errors');
 
       const errors = [
         { field: 'title', message: 'required' },

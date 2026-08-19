@@ -114,9 +114,8 @@ describe('Agent Politeness Phase 1.4: Agent Registry Service', () => {
     });
 
     it('should throw InvalidAgentParamsError for empty name', async () => {
-      const { createAgent, InvalidAgentParamsError } = await import(
-        '../../src/services/agent-service'
-      );
+      const { createAgent } = await import('../../src/services/agent-service');
+      const { InvalidAgentParamsError } = await import('../../src/services/errors');
 
       await expect(
         createAgent({
@@ -127,9 +126,8 @@ describe('Agent Politeness Phase 1.4: Agent Registry Service', () => {
     });
 
     it('should throw InvalidAgentParamsError for whitespace-only name', async () => {
-      const { createAgent, InvalidAgentParamsError } = await import(
-        '../../src/services/agent-service'
-      );
+      const { createAgent } = await import('../../src/services/agent-service');
+      const { InvalidAgentParamsError } = await import('../../src/services/errors');
 
       await expect(
         createAgent({
@@ -140,9 +138,8 @@ describe('Agent Politeness Phase 1.4: Agent Registry Service', () => {
     });
 
     it('should throw OrganizationNotFoundError when organization does not exist', async () => {
-      const { createAgent, OrganizationNotFoundError } = await import(
-        '../../src/services/agent-service'
-      );
+      const { createAgent } = await import('../../src/services/agent-service');
+      const { OrganizationNotFoundError } = await import('../../src/services/errors');
       const db = await import('../../src/db');
 
       // Simulate foreign key constraint violation
@@ -159,9 +156,8 @@ describe('Agent Politeness Phase 1.4: Agent Registry Service', () => {
     });
 
     it('should throw DuplicateAgentNameError when agent name exists in organization', async () => {
-      const { createAgent, DuplicateAgentNameError } = await import(
-        '../../src/services/agent-service'
-      );
+      const { createAgent } = await import('../../src/services/agent-service');
+      const { DuplicateAgentNameError } = await import('../../src/services/errors');
       const db = await import('../../src/db');
 
       // Simulate unique constraint violation
@@ -323,9 +319,8 @@ describe('Agent Politeness Phase 1.4: Agent Registry Service', () => {
     });
 
     it('should throw InvalidAgentParamsError for empty name', async () => {
-      const { updateAgent, InvalidAgentParamsError } = await import(
-        '../../src/services/agent-service'
-      );
+      const { updateAgent } = await import('../../src/services/agent-service');
+      const { InvalidAgentParamsError } = await import('../../src/services/errors');
 
       await expect(
         updateAgent('agent-uuid-123', {
@@ -335,9 +330,8 @@ describe('Agent Politeness Phase 1.4: Agent Registry Service', () => {
     });
 
     it('should throw DuplicateAgentNameError when name conflicts', async () => {
-      const { updateAgent, DuplicateAgentNameError } = await import(
-        '../../src/services/agent-service'
-      );
+      const { updateAgent } = await import('../../src/services/agent-service');
+      const { DuplicateAgentNameError } = await import('../../src/services/errors');
       const db = await import('../../src/db');
 
       // Simulate unique constraint violation

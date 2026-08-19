@@ -16,9 +16,9 @@ import {
   linkSiteToOrganization,
   unlinkSiteFromOrganization,
   getSitesByOrganization,
-  InvalidOrganizationParamsError,
   OrganizationHasSitesError,
   OrganizationHasActiveSitesError,
+  HttpError,
 } from '../services';
 import { validatePagination } from './validation';
 
@@ -318,14 +318,14 @@ export async function handleOrganizationRoutes(
     }
   } catch (error) {
     // Handle known errors
-    if (error instanceof InvalidOrganizationParamsError) {
-      return errorResponse(error.message, 400);
-    }
     if (error instanceof OrganizationHasSitesError) {
       return errorResponse('Cannot delete organization with linked sites', 409);
     }
     if (error instanceof OrganizationHasActiveSitesError) {
       return errorResponse('Cannot archive organization with active sites', 409);
+    }
+    if (error instanceof HttpError) {
+      return errorResponse(error.message, error.status);
     }
 
     // Log and return generic error for unknown errors

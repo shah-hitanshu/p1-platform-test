@@ -9,6 +9,12 @@
 
 import type { Organization, OrganizationSettings, Site, WorkflowSettings } from '../types';
 import { query } from '../db';
+import {
+  InvalidOrganizationParamsError,
+  OrganizationHasSitesError,
+  OrganizationHasActiveSitesError,
+  OrganizationNotFoundError,
+} from './errors';
 
 // =============================================================================
 // Types
@@ -66,58 +72,6 @@ interface SiteRow {
   created_at: string;
   updated_at: string;
   archived_at: string | null;
-}
-
-// =============================================================================
-// Error Classes
-// =============================================================================
-
-/**
- * Error thrown when organization creation or update parameters are invalid.
- */
-export class InvalidOrganizationParamsError extends Error {
-  public readonly name = 'InvalidOrganizationParamsError';
-
-  constructor(message: string) {
-    super(message);
-    Object.setPrototypeOf(this, InvalidOrganizationParamsError.prototype);
-  }
-}
-
-/**
- * Error thrown when attempting to delete an organization that has linked sites.
- */
-export class OrganizationHasSitesError extends Error {
-  public readonly name = 'OrganizationHasSitesError';
-
-  constructor(public readonly organizationId: string) {
-    super(`Cannot delete organization "${organizationId}" because it has linked sites.`);
-    Object.setPrototypeOf(this, OrganizationHasSitesError.prototype);
-  }
-}
-
-/**
- * Error thrown when attempting to archive an organization that has active (non-archived) sites.
- */
-export class OrganizationHasActiveSitesError extends Error {
-  public readonly name = 'OrganizationHasActiveSitesError';
-
-  constructor(public readonly organizationId: string) {
-    super(`Cannot archive organization "${organizationId}" because it has active sites.`);
-    Object.setPrototypeOf(this, OrganizationHasActiveSitesError.prototype);
-  }
-}
-
-/**
- * Error thrown when attempting to link a site to a non-existent organization.
- */
-export class OrganizationNotFoundError extends Error {
-  public readonly name = 'OrganizationNotFoundError';
-
-  constructor(public readonly organizationId: string) {
-    super(`Organization "${organizationId}" not found.`);
-    Object.setPrototypeOf(this, OrganizationNotFoundError.prototype);
-  }
 }
 
 // =============================================================================

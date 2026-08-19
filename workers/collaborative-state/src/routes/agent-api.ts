@@ -13,9 +13,9 @@ import {
   updateAgentStatus,
   deleteAgent,
   getAgentsByOrganization,
-  InvalidAgentParamsError,
   DuplicateAgentNameError,
-  AgentOrganizationNotFoundError,
+  OrganizationNotFoundError,
+  HttpError,
 } from '../services';
 
 /**
@@ -308,14 +308,14 @@ export async function handleAgentRoutes(
     }
   } catch (error) {
     // Handle known errors
-    if (error instanceof InvalidAgentParamsError) {
-      return errorResponse(error.message, 400);
-    }
     if (error instanceof DuplicateAgentNameError) {
       return errorResponse('An agent with this name already exists in the organization', 409);
     }
-    if (error instanceof AgentOrganizationNotFoundError) {
+    if (error instanceof OrganizationNotFoundError) {
       return errorResponse('Organization not found', 404);
+    }
+    if (error instanceof HttpError) {
+      return errorResponse(error.message, error.status);
     }
 
     // Log and return generic error for unknown errors

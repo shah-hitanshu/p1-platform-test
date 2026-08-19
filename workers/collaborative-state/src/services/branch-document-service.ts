@@ -33,10 +33,12 @@ import {
   isUniqueConstraintViolation,
   isForeignKeyViolation,
   isRegistryWritePath,
+} from './document-types';
+import {
   SiteNotFoundError,
   DuplicateDocumentPathError,
   DocumentNotFoundError,
-} from './document-types';
+} from './errors';
 import type { DocumentOnBranch } from './document-types';
 import {
   TEMPLATE_RELATION_JOIN,

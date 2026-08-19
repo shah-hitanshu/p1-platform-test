@@ -9,6 +9,7 @@
  */
 
 import { query } from '../db';
+import { SourceBranchNotFoundError, TargetBranchNotFoundError } from './errors';
 
 // =============================================================================
 // Types
@@ -57,34 +58,6 @@ export interface BranchInLineage {
   sourceBranchId: string | null;
   sourceCheckpointId?: string | null;
   depth: number;
-}
-
-// =============================================================================
-// Error Classes
-// =============================================================================
-
-/**
- * Error thrown when the source branch does not exist.
- */
-export class SourceBranchNotFoundError extends Error {
-  public readonly name = 'SourceBranchNotFoundError';
-
-  constructor(public readonly branchId: string) {
-    super(`Source branch with ID "${branchId}" not found.`);
-    Object.setPrototypeOf(this, SourceBranchNotFoundError.prototype);
-  }
-}
-
-/**
- * Error thrown when the target branch does not exist.
- */
-export class TargetBranchNotFoundError extends Error {
-  public readonly name = 'TargetBranchNotFoundError';
-
-  constructor(public readonly branchId: string) {
-    super(`Target branch with ID "${branchId}" not found.`);
-    Object.setPrototypeOf(this, TargetBranchNotFoundError.prototype);
-  }
 }
 
 // =============================================================================

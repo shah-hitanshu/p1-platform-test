@@ -136,7 +136,8 @@ describe('Site Settings Service', () => {
     });
 
     it('should reject negative cacheTtlMain', async () => {
-      const { updateSiteSettings, InvalidSettingsError } = await import('../../src/services/site-settings-service');
+      const { updateSiteSettings } = await import('../../src/services/site-settings-service');
+      const { InvalidSettingsError } = await import('../../src/services/errors');
 
       await expect(
         updateSiteSettings('site-123', { cacheTtlMain: -1 }),
@@ -144,7 +145,8 @@ describe('Site Settings Service', () => {
     });
 
     it('should reject negative cacheTtlBranch', async () => {
-      const { updateSiteSettings, InvalidSettingsError } = await import('../../src/services/site-settings-service');
+      const { updateSiteSettings } = await import('../../src/services/site-settings-service');
+      const { InvalidSettingsError } = await import('../../src/services/errors');
 
       await expect(
         updateSiteSettings('site-123', { cacheTtlBranch: -5 }),
@@ -152,7 +154,8 @@ describe('Site Settings Service', () => {
     });
 
     it('should reject non-integer cacheTtlMain', async () => {
-      const { updateSiteSettings, InvalidSettingsError } = await import('../../src/services/site-settings-service');
+      const { updateSiteSettings } = await import('../../src/services/site-settings-service');
+      const { InvalidSettingsError } = await import('../../src/services/errors');
 
       await expect(
         updateSiteSettings('site-123', { cacheTtlMain: 3.5 }),
@@ -160,7 +163,8 @@ describe('Site Settings Service', () => {
     });
 
     it('should reject non-integer cacheTtlBranch', async () => {
-      const { updateSiteSettings, InvalidSettingsError } = await import('../../src/services/site-settings-service');
+      const { updateSiteSettings } = await import('../../src/services/site-settings-service');
+      const { InvalidSettingsError } = await import('../../src/services/errors');
 
       await expect(
         updateSiteSettings('site-123', { cacheTtlBranch: 2.7 }),
@@ -190,7 +194,8 @@ describe('Site Settings Service', () => {
     });
 
     it('should reject a non-string ogImage', async () => {
-      const { updateSiteSettings, InvalidSettingsError } = await import('../../src/services/site-settings-service');
+      const { updateSiteSettings } = await import('../../src/services/site-settings-service');
+      const { InvalidSettingsError } = await import('../../src/services/errors');
 
       await expect(
         updateSiteSettings('site-123', { ogImage: 42 as unknown as string }),
@@ -198,7 +203,8 @@ describe('Site Settings Service', () => {
     });
 
     it('should reject a blank ogLocale rather than storing it', async () => {
-      const { updateSiteSettings, InvalidSettingsError } = await import('../../src/services/site-settings-service');
+      const { updateSiteSettings } = await import('../../src/services/site-settings-service');
+      const { InvalidSettingsError } = await import('../../src/services/errors');
 
       await expect(
         updateSiteSettings('site-123', { ogLocale: '   ' }),

@@ -200,7 +200,8 @@ describe('Phase 1.1: CRDT Sync Service', () => {
     });
 
     it('should throw DocumentNotFoundError when document does not exist', async () => {
-      const { syncCrdtToPostgres, DocumentNotFoundError } = await import('../../src/services/crdt-sync-service');
+      const { syncCrdtToPostgres } = await import('../../src/services/crdt-sync-service');
+      const { DocumentNotFoundError } = await import('../../src/services/errors');
       const documentService = await import('../../src/services/document-service');
 
       vi.mocked(documentService.getDocument).mockResolvedValue(null);
@@ -830,7 +831,7 @@ describe('Phase 1.1: CRDT Sync Service', () => {
 
   describe('Error classes', () => {
     it('should export DocumentNotFoundError', async () => {
-      const { DocumentNotFoundError } = await import('../../src/services/crdt-sync-service');
+      const { DocumentNotFoundError } = await import('../../src/services/errors');
 
       const error = new DocumentNotFoundError('pages/home');
       expect(error.name).toBe('DocumentNotFoundError');
@@ -839,7 +840,7 @@ describe('Phase 1.1: CRDT Sync Service', () => {
     });
 
     it('should export SyncError for general sync failures', async () => {
-      const { SyncError } = await import('../../src/services/crdt-sync-service');
+      const { SyncError } = await import('../../src/services/errors');
 
       const error = new SyncError('Failed to sync CRDT state');
       expect(error.name).toBe('SyncError');

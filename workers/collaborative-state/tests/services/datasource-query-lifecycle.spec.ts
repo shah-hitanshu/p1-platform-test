@@ -12,7 +12,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { LocalDatasourceSnapshot } from '../../src/types/datasource';
 import type { QuerySnapshot } from '../../src/types/query';
-import { DuplicateDocumentPathError } from '../../src/services/document-types';
+import { DuplicateDocumentPathError } from '../../src/services/errors';
 
 vi.mock('../../src/services/document-service', () => ({
   getDocumentByPath: vi.fn(),

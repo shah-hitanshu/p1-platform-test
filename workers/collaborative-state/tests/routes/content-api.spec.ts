@@ -15,25 +15,24 @@ import type { SeoMetadata } from '../../src/types/page-metadata';
 import { readJson } from '../helpers/http';
 
 // Mock services
-vi.mock('../../src/services', async () => ({
-  VersionReconstructionError: (
-    await vi.importActual<typeof import('../../src/services/document-version-service')>(
-      '../../src/services/document-version-service',
-    )
-  ).VersionReconstructionError,
-  getMainBranch: vi.fn(),
-  getBranch: vi.fn(),
-  getBranchByName: vi.fn(),
-  getDocumentByPath: vi.fn(),
-  getLatestDocumentVersion: vi.fn(),
-  getLatestPublishedDocumentVersion: vi.fn(),
-  getLatestDocumentVersionWithFallback: vi.fn(),
-  hasTombstoneAfterVersion: vi.fn(),
-  listDocumentsOnBranch: vi.fn(),
-  reconstructVersionSnapshot: vi.fn(),
-  buildPageMetadata: vi.fn(),
-  getSite: vi.fn(),
-}));
+vi.mock('../../src/services', async () => {
+  const actual = await vi.importActual('../../src/services');
+  return {
+    ...actual,
+    getMainBranch: vi.fn(),
+    getBranch: vi.fn(),
+    getBranchByName: vi.fn(),
+    getDocumentByPath: vi.fn(),
+    getLatestDocumentVersion: vi.fn(),
+    getLatestPublishedDocumentVersion: vi.fn(),
+    getLatestDocumentVersionWithFallback: vi.fn(),
+    hasTombstoneAfterVersion: vi.fn(),
+    listDocumentsOnBranch: vi.fn(),
+    reconstructVersionSnapshot: vi.fn(),
+    buildPageMetadata: vi.fn(),
+    getSite: vi.fn(),
+  };
+});
 
 vi.mock('../../src/services/site-settings-service', () => ({
   getSiteSettings: vi.fn(),

@@ -10,50 +10,30 @@ import { makePrincipal } from '../helpers/principal';
 import { makeBranch } from '../helpers/branch';
 
 // Mock the services
-vi.mock('../../src/services', () => ({
-  createCheckpoint: vi.fn(),
-  getCheckpoint: vi.fn(),
-  listCheckpoints: vi.fn(),
-  getDocumentsAtCheckpoint: vi.fn(),
-  getDocumentAtCheckpoint: vi.fn(),
-  revertToCheckpoint: vi.fn(),
-  deleteCheckpoint: vi.fn(),
-  getLatestCheckpoint: vi.fn(),
-  getBranch: vi.fn().mockResolvedValue({ id: 'branch-1', siteId: 'site-1', name: 'main', isMain: true }),
-  CheckpointNotFoundError: class CheckpointNotFoundError extends Error {
-    name = 'CheckpointNotFoundError';
-    constructor(public checkpointId: string) {
-      super(`Checkpoint not found: ${checkpointId}`);
-    }
-  },
-  BranchNotFoundError: class BranchNotFoundError extends Error {
-    name = 'BranchNotFoundError';
-    constructor(public branchId: string) {
-      super(`Branch not found: ${branchId}`);
-    }
-  },
-  DocumentNotFoundError: class DocumentNotFoundError extends Error {
-    name = 'DocumentNotFoundError';
-    constructor(public documentId: string) {
-      super(`Document not found: ${documentId}`);
-    }
-  },
-}));
+vi.mock('../../src/services', async () => {
+  const actual = await vi.importActual('../../src/services');
+  return {
+    ...actual,
+    createCheckpoint: vi.fn(),
+    getCheckpoint: vi.fn(),
+    listCheckpoints: vi.fn(),
+    getDocumentsAtCheckpoint: vi.fn(),
+    getDocumentAtCheckpoint: vi.fn(),
+    revertToCheckpoint: vi.fn(),
+    deleteCheckpoint: vi.fn(),
+    getLatestCheckpoint: vi.fn(),
+    getBranch: vi.fn().mockResolvedValue({ id: 'branch-1', siteId: 'site-1', name: 'main', isMain: true }),
+  };
+});
 
 // Mock authorization
-vi.mock('../../src/auth/authorization', () => ({
-  assertPermission: vi.fn(),
-  AuthorizationError: class AuthorizationError extends Error {
-    override name = 'AuthorizationError';
-    constructor(
-      message: string,
-      public requiredPermission: string,
-      public roleName: string,
-    ) {
-      super(message);
-    }
-  },
-}));
+vi.mock('../../src/auth/authorization', async () => {
+  const actual = await vi.importActual('../../src/auth/authorization');
+  return {
+    ...actual,
+    assertPermission: vi.fn(),
+  };
+});
 
 describe('Phase 7.1b: Checkpoint API Routes', () => {
   beforeEach(() => {

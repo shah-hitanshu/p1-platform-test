@@ -9,76 +9,47 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { makePrincipal } from '../helpers/principal';
 import type { DocumentRouteContext } from '../../src/routes/document-api';
 
-vi.mock('../../src/services', () => ({
-  getBranch: vi.fn(),
-  getMainBranch: vi.fn(),
-  listLocaleVariants: vi.fn(),
-  createTranslation: vi.fn(),
-  documentExistsOnBranch: vi.fn(),
-  getLocalizationEdgeBySource: vi.fn(),
-  getAuthorityOverrides: vi.fn(),
-  resolveSlotAuthorityDefaults: vi.fn(),
-  authorityOverridesToJson: vi.fn(),
-  setAuthorityOverride: vi.fn(),
-  clearAuthorityOverride: vi.fn(),
-  buildChangeSummary: vi.fn(),
-  createDocument: vi.fn(),
-  getDocument: vi.fn(),
-  getDocumentByPath: vi.fn(),
-  updateDocumentPath: vi.fn(),
-  updateDocumentFields: vi.fn(),
-  archiveDocument: vi.fn(),
-  restoreDocument: vi.fn(),
-  listDocuments: vi.fn(),
-  listDocumentsOnBranch: vi.fn(),
-  createDocumentOnBranch: vi.fn(),
-  deleteDocumentOnBranch: vi.fn(),
-  getLatestDocumentVersion: vi.fn(),
-  getLatestDocumentVersionWithFallback: vi.fn(),
-  getDocumentVersion: vi.fn(),
-  listDocumentVersions: vi.fn(),
-  createDocumentVersion: vi.fn(),
-  reconstructVersionSnapshot: vi.fn(),
-  publishDocument: vi.fn(),
-  buildDocumentSkeletonFromTemplate: vi.fn(),
-  documentExists: vi.fn(),
-  deleteDocumentWithRedirect: vi.fn(),
-  restoreDocumentVersion: vi.fn(),
-  checkTranslationPinnedParity: vi.fn(),
-  PageConflictError: class PageConflictError extends Error {
-    override name = 'PageConflictError';
-  },
-  RestoreVersionNotFoundError: class RestoreVersionNotFoundError extends Error {
-    override name = 'RestoreVersionNotFoundError';
-  },
-  SiteNotFoundError: class SiteNotFoundError extends Error {
-    override name = 'SiteNotFoundError';
-  },
-  DuplicateDocumentPathError: class DuplicateDocumentPathError extends Error {
-    override name = 'DuplicateDocumentPathError';
-  },
-  InvalidDocumentPathError: class InvalidDocumentPathError extends Error {
-    override name = 'InvalidDocumentPathError';
-  },
-  DocumentNotFoundError: class DocumentNotFoundError extends Error {
-    override name = 'DocumentNotFoundError';
-  },
-  DocumentPathConflictError: class DocumentPathConflictError extends Error {
-    override name = 'DocumentPathConflictError';
-  },
-  InvalidDocumentVersionParamsError: class InvalidDocumentVersionParamsError extends Error {
-    override name = 'InvalidDocumentVersionParamsError';
-  },
-  TranslationAlreadyExistsError: class TranslationAlreadyExistsError extends Error {
-    override name = 'TranslationAlreadyExistsError';
-  },
-  InvalidLocaleError: class InvalidLocaleError extends Error {
-    override name = 'InvalidLocaleError';
-  },
-  CanonicalVersionNotFoundError: class CanonicalVersionNotFoundError extends Error {
-    override name = 'CanonicalVersionNotFoundError';
-  },
-}));
+vi.mock('../../src/services', async () => {
+  const actual = await vi.importActual('../../src/services');
+  return {
+    ...actual,
+    getBranch: vi.fn(),
+    getMainBranch: vi.fn(),
+    listLocaleVariants: vi.fn(),
+    createTranslation: vi.fn(),
+    documentExistsOnBranch: vi.fn(),
+    getLocalizationEdgeBySource: vi.fn(),
+    getAuthorityOverrides: vi.fn(),
+    resolveSlotAuthorityDefaults: vi.fn(),
+    authorityOverridesToJson: vi.fn(),
+    setAuthorityOverride: vi.fn(),
+    clearAuthorityOverride: vi.fn(),
+    buildChangeSummary: vi.fn(),
+    createDocument: vi.fn(),
+    getDocument: vi.fn(),
+    getDocumentByPath: vi.fn(),
+    updateDocumentPath: vi.fn(),
+    updateDocumentFields: vi.fn(),
+    archiveDocument: vi.fn(),
+    restoreDocument: vi.fn(),
+    listDocuments: vi.fn(),
+    listDocumentsOnBranch: vi.fn(),
+    createDocumentOnBranch: vi.fn(),
+    deleteDocumentOnBranch: vi.fn(),
+    getLatestDocumentVersion: vi.fn(),
+    getLatestDocumentVersionWithFallback: vi.fn(),
+    getDocumentVersion: vi.fn(),
+    listDocumentVersions: vi.fn(),
+    createDocumentVersion: vi.fn(),
+    reconstructVersionSnapshot: vi.fn(),
+    publishDocument: vi.fn(),
+    buildDocumentSkeletonFromTemplate: vi.fn(),
+    documentExists: vi.fn(),
+    deleteDocumentWithRedirect: vi.fn(),
+    restoreDocumentVersion: vi.fn(),
+    checkTranslationPinnedParity: vi.fn(),
+  };
+});
 
 vi.mock('../../src/auth/authorization', () => ({
   assertPermission: vi.fn(),

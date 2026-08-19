@@ -253,7 +253,8 @@ describe('Phase 5: Migration Service', () => {
     });
 
     it('should throw MigrationJobNotFoundError when job does not exist', async () => {
-      const { getMigrationJob, MigrationJobNotFoundError } = await import('../../src/services/migration-service');
+      const { getMigrationJob } = await import('../../src/services/migration-service');
+      const { MigrationJobNotFoundError } = await import('../../src/services/errors');
       const db = await import('../../src/db');
 
       vi.mocked(db.query).mockResolvedValueOnce({
@@ -501,7 +502,8 @@ describe('Phase 5: Migration Service', () => {
 
   describe('triggerMigration', () => {
     it('should validate fromVersion < toVersion', async () => {
-      const { triggerMigration, InvalidVersionRangeError } = await import('../../src/services/migration-service');
+      const { triggerMigration } = await import('../../src/services/migration-service');
+      const { InvalidVersionRangeError } = await import('../../src/services/errors');
 
       await expect(
         triggerMigration(
@@ -516,7 +518,8 @@ describe('Phase 5: Migration Service', () => {
     });
 
     it('should throw InvalidVersionRangeError when fromVersion equals toVersion', async () => {
-      const { triggerMigration, InvalidVersionRangeError } = await import('../../src/services/migration-service');
+      const { triggerMigration } = await import('../../src/services/migration-service');
+      const { InvalidVersionRangeError } = await import('../../src/services/errors');
 
       await expect(
         triggerMigration(
@@ -531,7 +534,8 @@ describe('Phase 5: Migration Service', () => {
     });
 
     it('should verify template exists and throw TemplateNotFoundError if missing', async () => {
-      const { triggerMigration, TemplateNotFoundError } = await import('../../src/services/migration-service');
+      const { triggerMigration } = await import('../../src/services/migration-service');
+      const { TemplateNotFoundError } = await import('../../src/services/errors');
       const db = await import('../../src/db');
 
       // Template lookup returns no rows
@@ -1202,7 +1206,8 @@ describe('Phase 5: Migration Service', () => {
     });
 
     it('should throw MigrationJobNotFoundError when job does not exist', async () => {
-      const { rollbackMigration, MigrationJobNotFoundError } = await import('../../src/services/migration-service');
+      const { rollbackMigration } = await import('../../src/services/migration-service');
+      const { MigrationJobNotFoundError } = await import('../../src/services/errors');
       const db = await import('../../src/db');
 
       vi.mocked(db.query).mockResolvedValueOnce({
@@ -1639,7 +1644,8 @@ describe('Phase 5: Migration Service', () => {
     });
 
     it('should throw TemplateNotFoundError when template does not exist', async () => {
-      const { getMigrationStatus, TemplateNotFoundError } = await import('../../src/services/migration-service');
+      const { getMigrationStatus } = await import('../../src/services/migration-service');
+      const { TemplateNotFoundError } = await import('../../src/services/errors');
       const db = await import('../../src/db');
 
       // Template version lookup returns no rows
@@ -2042,7 +2048,8 @@ describe('Phase 5: Migration Service', () => {
     });
 
     it('should throw TemplateNotFoundError when template not found', async () => {
-      const { previewMigration, TemplateNotFoundError } = await import('../../src/services/migration-service');
+      const { previewMigration } = await import('../../src/services/migration-service');
+      const { TemplateNotFoundError } = await import('../../src/services/errors');
       const db = await import('../../src/db');
 
       // Template does not exist
@@ -2064,7 +2071,8 @@ describe('Phase 5: Migration Service', () => {
     });
 
     it('should throw InvalidVersionRangeError for invalid version range', async () => {
-      const { previewMigration, InvalidVersionRangeError } = await import('../../src/services/migration-service');
+      const { previewMigration } = await import('../../src/services/migration-service');
+      const { InvalidVersionRangeError } = await import('../../src/services/errors');
 
       // fromVersion > toVersion
       await expect(
@@ -2098,7 +2106,8 @@ describe('Phase 5: Migration Service', () => {
 
   describe('Error Handling', () => {
     it('should throw TemplateNotFoundError when template does not exist in triggerMigration', async () => {
-      const { triggerMigration, TemplateNotFoundError } = await import('../../src/services/migration-service');
+      const { triggerMigration } = await import('../../src/services/migration-service');
+      const { TemplateNotFoundError } = await import('../../src/services/errors');
       const db = await import('../../src/db');
 
       // Template lookup returns empty
@@ -2135,7 +2144,8 @@ describe('Phase 5: Migration Service', () => {
     });
 
     it('should throw InvalidVersionRangeError for invalid version range (from >= to)', async () => {
-      const { triggerMigration, InvalidVersionRangeError } = await import('../../src/services/migration-service');
+      const { triggerMigration } = await import('../../src/services/migration-service');
+      const { InvalidVersionRangeError } = await import('../../src/services/errors');
 
       // from > to
       await expect(
@@ -2155,7 +2165,8 @@ describe('Phase 5: Migration Service', () => {
     });
 
     it('should throw MigrationJobNotFoundError in getMigrationJob when job missing', async () => {
-      const { getMigrationJob, MigrationJobNotFoundError } = await import('../../src/services/migration-service');
+      const { getMigrationJob } = await import('../../src/services/migration-service');
+      const { MigrationJobNotFoundError } = await import('../../src/services/errors');
       const db = await import('../../src/db');
 
       vi.mocked(db.query).mockResolvedValueOnce({ rows: [], rowCount: 0 });

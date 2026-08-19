@@ -14,6 +14,13 @@ import { classifyChange } from './action-classification';
 import type { PuckAction } from './action-classification';
 import { createActorResolver } from './persistence-actor-service';
 import { enforceUniqueSlotIds } from './slot-id-backstop';
+import {
+  DocumentNotFoundError,
+  InvalidDocumentVersionParamsError,
+  RestoreVersionNotFoundError,
+  VersionReconstructionError,
+  DatabaseError,
+} from './errors';
 
 // =============================================================================
 // Types
@@ -91,81 +98,6 @@ interface DocumentVersionRow {
   patch: import('fast-json-patch').Operation[] | null;
   action_type: string | null;
   action_metadata: Record<string, unknown> | null;
-}
-
-// =============================================================================
-// Error Classes
-// =============================================================================
-
-/**
- * Error thrown when the referenced document does not exist.
- */
-export class DocumentNotFoundError extends Error {
-  public readonly name = 'DocumentNotFoundError';
-
-  constructor(public readonly documentId: string) {
-    super(`Document with ID "${documentId}" not found.`);
-    Object.setPrototypeOf(this, DocumentNotFoundError.prototype);
-  }
-}
-
-/**
- * Error thrown when document version creation parameters are invalid.
- */
-export class InvalidDocumentVersionParamsError extends Error {
-  public readonly name = 'InvalidDocumentVersionParamsError';
-
-  constructor(message: string) {
-    super(message);
-    Object.setPrototypeOf(this, InvalidDocumentVersionParamsError.prototype);
-  }
-}
-
-/**
- * Error thrown when a document version cannot be found.
- */
-export class RestoreVersionNotFoundError extends Error {
-  public readonly name = 'RestoreVersionNotFoundError';
-
-  constructor(public readonly versionId: string) {
-    super(`Version with ID "${versionId}" not found.`);
-    Object.setPrototypeOf(this, RestoreVersionNotFoundError.prototype);
-  }
-}
-
-/**
- * Error thrown when a version cannot be rebuilt because the patch chain
- * reaches a row holding neither a snapshot nor a patch.
- */
-export class VersionReconstructionError extends Error {
-  public readonly name = 'VersionReconstructionError';
-
-  constructor(
-    public readonly documentId: string,
-    public readonly branchId: string,
-    public readonly requestedVersion: number,
-    public readonly brokenVersion: number,
-    reason = 'holds neither a snapshot nor a patch',
-  ) {
-    super(
-      `Cannot reconstruct version ${String(requestedVersion)} of document `
-      + `"${documentId}" on branch "${branchId}": version ${String(brokenVersion)} `
-      + `${reason}.`,
-    );
-    Object.setPrototypeOf(this, VersionReconstructionError.prototype);
-  }
-}
-
-/**
- * Error thrown when an unexpected database error occurs.
- */
-export class DatabaseError extends Error {
-  public readonly name = 'DatabaseError';
-
-  constructor(message: string, public readonly operation: string) {
-    super(message);
-    Object.setPrototypeOf(this, DatabaseError.prototype);
-  }
 }
 
 // =============================================================================

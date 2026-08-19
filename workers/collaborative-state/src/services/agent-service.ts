@@ -9,6 +9,12 @@
 
 import type { RegisteredAgent, AgentSettings, AgentStatus } from '../types';
 import { query } from '../db';
+import {
+  InvalidAgentParamsError,
+  DuplicateAgentNameError,
+  OrganizationNotFoundError,
+  DuplicateAgentIdError,
+} from './errors';
 
 // =============================================================================
 // Types
@@ -66,73 +72,6 @@ interface AgentRow {
   settings: AgentSettings | string;
   created_at: string;
   updated_at: string;
-}
-
-// =============================================================================
-// Error Classes
-// =============================================================================
-
-/**
- * Error thrown when agent creation or update parameters are invalid.
- */
-export class InvalidAgentParamsError extends Error {
-  public readonly name = 'InvalidAgentParamsError';
-
-  constructor(message: string) {
-    super(message);
-    Object.setPrototypeOf(this, InvalidAgentParamsError.prototype);
-  }
-}
-
-/**
- * Error thrown when attempting to create an agent with a name that already exists.
- */
-export class DuplicateAgentNameError extends Error {
-  public readonly name = 'DuplicateAgentNameError';
-
-  constructor(
-    public readonly organizationId: string,
-    public readonly agentName: string,
-  ) {
-    super(`Agent "${agentName}" already exists in organization "${organizationId}".`);
-    Object.setPrototypeOf(this, DuplicateAgentNameError.prototype);
-  }
-}
-
-/**
- * Error thrown when attempting to create an agent in a non-existent organization.
- */
-export class OrganizationNotFoundError extends Error {
-  public readonly name = 'OrganizationNotFoundError';
-
-  constructor(public readonly organizationId: string) {
-    super(`Organization "${organizationId}" not found.`);
-    Object.setPrototypeOf(this, OrganizationNotFoundError.prototype);
-  }
-}
-
-/**
- * Error thrown when an agent is not found.
- */
-export class AgentNotFoundError extends Error {
-  public readonly name = 'AgentNotFoundError';
-
-  constructor(public readonly agentId: string) {
-    super(`Agent "${agentId}" not found.`);
-    Object.setPrototypeOf(this, AgentNotFoundError.prototype);
-  }
-}
-
-/**
- * Error thrown when attempting to create an agent with an ID that already exists.
- */
-export class DuplicateAgentIdError extends Error {
-  public readonly name = 'DuplicateAgentIdError';
-
-  constructor(public readonly agentId: string) {
-    super(`Agent with ID "${agentId}" already exists.`);
-    Object.setPrototypeOf(this, DuplicateAgentIdError.prototype);
-  }
 }
 
 // =============================================================================

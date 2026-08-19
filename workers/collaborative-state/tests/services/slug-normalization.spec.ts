@@ -3,10 +3,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import {
-  normalizeSlug,
-  InvalidSlugError,
-} from '../../src/services/structure-types';
+import { normalizeSlug } from '../../src/services/structure-types';
+import { InvalidSlugError } from '../../src/services/errors';
 
 describe('normalizeSlug', () => {
   it('should convert slug to lowercase', () => {

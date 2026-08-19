@@ -19,7 +19,7 @@ import { createRealDatabaseConnection, deleteSiteCascade } from '../helpers/data
 import { createSite } from '../../src/services/site-service';
 import { createDocumentOnBranch } from '../../src/services/branch-document-service';
 import { updateDocumentFields } from '../../src/services/document-service';
-import { InvalidLocaleError } from '../../src/services/locale';
+import { InvalidLocaleError } from '../../src/services/errors';
 import {
   createTranslation,
   listLocaleVariants,

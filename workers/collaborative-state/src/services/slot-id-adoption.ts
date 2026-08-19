@@ -21,8 +21,8 @@ import {
   getLatestDocumentVersionWithFallback,
   createDocumentVersion,
   reconstructVersionSnapshot,
-  VersionReconstructionError,
 } from './document-version-service';
+import { VersionReconstructionError } from './errors';
 
 /**
  * System principal recorded on versions the adoption pass writes.

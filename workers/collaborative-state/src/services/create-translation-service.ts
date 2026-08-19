@@ -13,14 +13,16 @@ import type { Document } from '../types';
 import { query, withTransaction } from '../db';
 import { getFirstRow } from './checkpoint-mappers';
 import {
-  DocumentNotFoundError,
-  DuplicateDocumentPathError,
   isUniqueConstraintViolation,
   mapRowToDocument,
   mapRowToDocumentVersion,
   normalizePath,
   validatePath,
 } from './document-types';
+import {
+  DocumentNotFoundError,
+  DuplicateDocumentPathError,
+} from './errors';
 import type {
   DocumentRow,
   DocumentVersion,
@@ -33,6 +35,7 @@ import { getLatestDocumentVersion, reconstructVersionSnapshot } from './document
 import { enforceUniqueSlotIds } from './slot-id-backstop';
 import { createLocalizationEdge, listLocalizationEdgesByTarget } from './relations-service';
 import { validateLocale } from './locale';
+import { CanonicalVersionNotFoundError, TranslationAlreadyExistsError } from './errors';
 
 /**
  * Summary of a localization edge returned alongside a created translation.
@@ -74,37 +77,7 @@ export interface LocaleVariantsResult {
   variants: { document: Document; localization: LocalizationEdgeSummary }[];
 }
 
-export { InvalidLocaleError } from './locale';
-
-/**
- * Thrown when the canonical document has no version on the branch to clone.
- */
-export class CanonicalVersionNotFoundError extends Error {
-  public readonly name = 'CanonicalVersionNotFoundError';
-
-  constructor(
-    public readonly documentId: string,
-    public readonly branchId: string,
-  ) {
-    super(`Document "${documentId}" has no version on branch "${branchId}".`);
-    Object.setPrototypeOf(this, CanonicalVersionNotFoundError.prototype);
-  }
-}
-
-/**
- * Thrown when the canonical already has a translation in the requested locale.
- */
-export class TranslationAlreadyExistsError extends Error {
-  public readonly name = 'TranslationAlreadyExistsError';
-
-  constructor(
-    public readonly canonicalDocumentId: string,
-    public readonly locale: string,
-  ) {
-    super(`A "${locale}" translation of document "${canonicalDocumentId}" already exists.`);
-    Object.setPrototypeOf(this, TranslationAlreadyExistsError.prototype);
-  }
-}
+export { InvalidLocaleError } from './errors';
 
 /**
  * Clones a canonical document's current snapshot into a new locale variant,

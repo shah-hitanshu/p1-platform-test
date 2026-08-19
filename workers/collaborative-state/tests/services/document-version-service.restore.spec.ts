@@ -134,7 +134,8 @@ describe('restoreDocumentVersion', () => {
   });
 
   it('should throw RestoreVersionNotFoundError when the target version does not exist', async () => {
-    const { restoreDocumentVersion, RestoreVersionNotFoundError } = await import('../../src/services/document-version-service');
+    const { restoreDocumentVersion } = await import('../../src/services/document-version-service');
+    const { RestoreVersionNotFoundError } = await import('../../src/services/errors');
     const db = await import('../../src/db');
 
     // getDocumentVersion returns null (empty rows)
@@ -152,7 +153,8 @@ describe('restoreDocumentVersion', () => {
   });
 
   it('should throw RestoreVersionNotFoundError when version belongs to a different document', async () => {
-    const { restoreDocumentVersion, RestoreVersionNotFoundError } = await import('../../src/services/document-version-service');
+    const { restoreDocumentVersion } = await import('../../src/services/document-version-service');
+    const { RestoreVersionNotFoundError } = await import('../../src/services/errors');
     const db = await import('../../src/db');
 
     const wrongDocRow = createMockRow({ document_id: 'DIFFERENT-doc-uuid' });
@@ -170,7 +172,8 @@ describe('restoreDocumentVersion', () => {
   });
 
   it('should throw RestoreVersionNotFoundError when version belongs to a different branch', async () => {
-    const { restoreDocumentVersion, RestoreVersionNotFoundError } = await import('../../src/services/document-version-service');
+    const { restoreDocumentVersion } = await import('../../src/services/document-version-service');
+    const { RestoreVersionNotFoundError } = await import('../../src/services/errors');
     const db = await import('../../src/db');
 
     const wrongBranchRow = createMockRow({ branch_id: 'DIFFERENT-branch-uuid' });
@@ -188,7 +191,8 @@ describe('restoreDocumentVersion', () => {
   });
 
   it('should throw RestoreVersionNotFoundError when the target version is a tombstone', async () => {
-    const { restoreDocumentVersion, RestoreVersionNotFoundError } = await import('../../src/services/document-version-service');
+    const { restoreDocumentVersion } = await import('../../src/services/document-version-service');
+    const { RestoreVersionNotFoundError } = await import('../../src/services/errors');
     const db = await import('../../src/db');
 
     const tombstoneRow = createMockRow({
@@ -215,7 +219,8 @@ describe('restoreDocumentVersion', () => {
     // the INSERT to throw a PG unique-violation error followed by a getLatestDocumentVersion query.
     // That path is covered by createDocumentVersion's own tests; here we verify that any mismatch
     // returned to restoreDocumentVersion is caught and surfaced as a DatabaseError.
-    const { restoreDocumentVersion, DatabaseError } = await import('../../src/services/document-version-service');
+    const { restoreDocumentVersion } = await import('../../src/services/document-version-service');
+    const { DatabaseError } = await import('../../src/services/errors');
     const db = await import('../../src/db');
 
     const targetRow = createMockRow({ id: 'target-version-uuid' });
@@ -242,7 +247,8 @@ describe('restoreDocumentVersion', () => {
   });
 
   it('should throw RestoreVersionNotFoundError when snapshot cannot be reconstructed for a patch-only version', async () => {
-    const { restoreDocumentVersion, RestoreVersionNotFoundError } = await import('../../src/services/document-version-service');
+    const { restoreDocumentVersion } = await import('../../src/services/document-version-service');
+    const { RestoreVersionNotFoundError } = await import('../../src/services/errors');
     const db = await import('../../src/db');
 
     const patchOnlyRow = createMockRow({

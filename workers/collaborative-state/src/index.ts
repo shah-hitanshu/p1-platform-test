@@ -13,6 +13,7 @@ import { resolveConnection } from './db/resolve-connection';
 import { forwardToCachedContent, isCacheableContentRequest } from './routes/cached-content-forward';
 import type { AuthenticatedPrincipal } from './types';
 import { AuthorizationError } from './auth/authorization';
+import { HttpError } from './services/errors';
 import { isServicePrincipalAllowed } from './auth/service-principal';
 import { extractActingUser } from './auth/acting-user';
 import { normalizePrincipalIdForDb } from './auth/principal-id-normalization';
@@ -463,6 +464,9 @@ async function handleRequest(
   } catch (error) {
     if (error instanceof AuthorizationError) {
       return cors(errorResponse(error.message, 403));
+    }
+    if (error instanceof HttpError) {
+      return cors(errorResponse(error.message, error.status));
     }
     console.error('Request handler error:', error);
     return cors(errorResponse('Internal server error', 500));

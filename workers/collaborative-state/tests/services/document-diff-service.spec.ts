@@ -229,9 +229,8 @@ describe('Phase 10.1: Document Diff Service', () => {
     });
 
     it('should throw error when source version not found', async () => {
-      const { computeDocumentDiff, DocumentVersionNotFoundError } = await import(
-        '../../src/services/document-diff-service'
-      );
+      const { computeDocumentDiff } = await import('../../src/services/document-diff-service');
+      const { DocumentVersionNotFoundError } = await import('../../src/services/errors');
       const { getDocumentVersion } = await import('../../src/services/document-version-service');
 
       vi.mocked(getDocumentVersion).mockResolvedValueOnce(null);
@@ -242,9 +241,8 @@ describe('Phase 10.1: Document Diff Service', () => {
     });
 
     it('should throw error when target version not found', async () => {
-      const { computeDocumentDiff, DocumentVersionNotFoundError } = await import(
-        '../../src/services/document-diff-service'
-      );
+      const { computeDocumentDiff } = await import('../../src/services/document-diff-service');
+      const { DocumentVersionNotFoundError } = await import('../../src/services/errors');
       const { getDocumentVersion } = await import('../../src/services/document-version-service');
 
       vi.mocked(getDocumentVersion)

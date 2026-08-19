@@ -25,12 +25,14 @@ import type {
   BranchStructureRow,
 } from './structure-types';
 import {
-  SiteNotFoundError,
-  StructureNotFoundError,
-  DuplicateStructureSlugError,
   mapBranchStructureRow,
   normalizeSlug,
 } from './structure-types';
+import {
+  SiteNotFoundError,
+  StructureNotFoundError,
+  DuplicateStructureSlugError,
+} from './errors';
 
 // =============================================================================
 // Re-exports for backward compatibility
@@ -50,6 +52,12 @@ export type {
 } from './structure-types';
 
 export {
+  normalizeSlug,
+  mapBranchStructureRow,
+  mapNodeRow,
+} from './structure-types';
+
+export {
   SiteNotFoundError,
   StructureNotFoundError,
   NodeNotFoundError,
@@ -57,10 +65,7 @@ export {
   DuplicateNodeSlugError,
   CircularReferenceError,
   InvalidSlugError,
-  normalizeSlug,
-  mapBranchStructureRow,
-  mapNodeRow,
-} from './structure-types';
+} from './errors';
 
 export {
   createNode,
