@@ -9,6 +9,11 @@ export function getTemplatePath() {
   return path.join(__dirname, '..', 'template');
 }
 
+export function getScaffolderVersion() {
+  const pkgPath = path.join(__dirname, '..', 'package.json');
+  return JSON.parse(fs.readFileSync(pkgPath, 'utf-8')).version;
+}
+
 export function copyTemplate(targetDir, projectName) {
   const templatePath = getTemplatePath();
 
@@ -18,7 +23,7 @@ export function copyTemplate(targetDir, projectName) {
 
   copyRecursive(templatePath, targetDir);
 
-  // Update package.json with project name
+  // Stamp the project name and scaffolder version into package.json
   const packageJsonPath = path.join(targetDir, 'package.json');
   let packageJson;
   try {
@@ -27,6 +32,7 @@ export function copyTemplate(targetDir, projectName) {
     throw new Error(`Failed to parse package.json: ${error.message}`);
   }
   packageJson.name = projectName;
+  packageJson.p1 = { ...packageJson.p1, templateVersion: getScaffolderVersion() };
   fs.writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2) + '\n');
 }
 
