@@ -157,6 +157,7 @@ export {
   getDocumentVersion,
   getLatestDocumentVersion,
   getLatestPublishedDocumentVersion,
+  hasTombstoneAfterVersion,
   getLatestVersionsForBranch,
   listDocumentVersions,
   getDocumentVersionByNumber,

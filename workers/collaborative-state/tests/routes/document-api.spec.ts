@@ -1600,6 +1600,13 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
           deletedById: 'user-1',
           deletedByType: 'user',
         });
+        // Deletion takes effect on serving immediately [PCC-3669]; without a
+        // purge the edge keeps the deleted page for TTL + SWR.
+        expect(purgeContentCache).toHaveBeenCalledWith({
+          siteId: 'site-1',
+          branchId: 'branch-1',
+          documentId: 'doc-1',
+        });
       });
 
       it('should return 404 when document does not exist', async () => {
@@ -1866,6 +1873,12 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
           },
         });
         expect(services.deleteDocumentOnBranch).not.toHaveBeenCalled();
+        // Same purge contract as the plain delete [PCC-3669].
+        expect(purgeContentCache).toHaveBeenCalledWith({
+          siteId: 'site-1',
+          branchId: 'branch-1',
+          documentId: 'doc-1',
+        });
       });
 
       it('should return 400 when redirect.fromPath is missing', async () => {

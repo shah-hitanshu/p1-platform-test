@@ -28,6 +28,7 @@ vi.mock('../../src/services', async () => ({
   getLatestDocumentVersion: vi.fn(),
   getLatestPublishedDocumentVersion: vi.fn(),
   getLatestDocumentVersionWithFallback: vi.fn(),
+  hasTombstoneAfterVersion: vi.fn(),
   listDocumentsOnBranch: vi.fn(),
   reconstructVersionSnapshot: vi.fn(),
   buildPageMetadata: vi.fn(),
@@ -206,6 +207,8 @@ describe('Content Delivery API Routes', () => {
     const services = await import('../../src/services');
     vi.mocked(services.buildPageMetadata).mockReturnValue(mockMetadata);
     vi.mocked(services.getSite).mockResolvedValue(mockSite);
+    // Documents are live unless a test tombstones them [PCC-3669].
+    vi.mocked(services.hasTombstoneAfterVersion).mockResolvedValue(false);
   });
 
   // ===========================================================================
@@ -213,6 +216,44 @@ describe('Content Delivery API Routes', () => {
   // ===========================================================================
 
   describe('GET content — main branch (published only)', () => {
+    // The publish pointer survives deletion (nothing can publish a tombstone),
+    // and a deletion supersedes every earlier publish [PCC-3669] — otherwise a
+    // deleted page stays live forever, and a deleted-then-recreated page would
+    // silently resurrect its pre-deletion published content.
+    it('returns 404 when a tombstone postdates the published version', async () => {
+      const { handleContentRoutes } = await import('../../src/routes/content-api');
+      const services = await import('../../src/services');
+      const settingsService = await import('../../src/services/site-settings-service');
+
+      vi.mocked(services.getMainBranch).mockResolvedValue(mockMainBranch);
+      vi.mocked(services.getDocumentByPath).mockResolvedValue(mockDocument);
+      vi.mocked(services.getLatestPublishedDocumentVersion).mockResolvedValue(mockPublishedVersion);
+      vi.mocked(services.hasTombstoneAfterVersion).mockResolvedValue(true);
+      setupSettingsMocks(settingsService, 120);
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-uuid-123/content/home',
+        { method: 'GET' },
+      );
+
+      const response = await handleContentRoutes(request, {
+        siteId: 'site-uuid-123',
+        documentPath: 'home',
+        action: 'content',
+        principal: mockServicePrincipal,
+      });
+
+      expect(response.status).toBe(404);
+      const body = await readJson(response);
+      expect(body.error).toContain('deleted');
+      expect(services.hasTombstoneAfterVersion).toHaveBeenCalledWith(
+        'doc-uuid-abc',
+        'branch-main-uuid',
+        mockPublishedVersion.versionNumber,
+      );
+      expect(services.reconstructVersionSnapshot).not.toHaveBeenCalled();
+    });
+
     it('should use getLatestPublishedDocumentVersion for main branch', async () => {
       const { handleContentRoutes } = await import('../../src/routes/content-api');
       const services = await import('../../src/services');
@@ -1191,6 +1232,44 @@ describe('Content Delivery API Routes', () => {
   // ===========================================================================
 
   describe('GET content-pages — main branch (published only)', () => {
+    // The listing must apply the same supersedes-publish rule as the
+    // single-page route [PCC-3669], or it links to paths that route 404s.
+    it('excludes a document whose publish is superseded by a tombstone', async () => {
+      const { handleContentRoutes } = await import('../../src/routes/content-api');
+      const services = await import('../../src/services');
+      const settingsService = await import('../../src/services/site-settings-service');
+
+      const mockDocuments = [
+        { id: 'doc-live', siteId: 'site-uuid-123', path: 'home', createdAt: '2026-01-05T12:00:00.000Z', inherited: false, isPublished: true },
+        { id: 'doc-deleted', siteId: 'site-uuid-123', path: 'removed', createdAt: '2026-01-06T12:00:00.000Z', inherited: false, isPublished: true },
+      ];
+
+      vi.mocked(services.getMainBranch).mockResolvedValue(mockMainBranch);
+      vi.mocked(services.listDocumentsOnBranch).mockResolvedValue(mockDocuments);
+      vi.mocked(services.getLatestPublishedDocumentVersion)
+        .mockResolvedValueOnce({ ...mockPublishedVersion, documentId: 'doc-live' })
+        .mockResolvedValueOnce({ ...mockPublishedVersion, id: 'version-deleted', documentId: 'doc-deleted' });
+      vi.mocked(services.hasTombstoneAfterVersion).mockImplementation(
+        (documentId) => Promise.resolve(documentId === 'doc-deleted'),
+      );
+      setupSettingsMocks(settingsService);
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-uuid-123/content-pages',
+        { method: 'GET' },
+      );
+
+      const response = await handleContentRoutes(request, {
+        siteId: 'site-uuid-123',
+        action: 'content-pages',
+        principal: mockServicePrincipal,
+      });
+
+      expect(response.status).toBe(200);
+      const body = await readJson<{ pages: { documentId: string }[] }>(response);
+      expect(body.pages.map((p) => p.documentId)).toEqual(['doc-live']);
+    });
+
     it('should only list documents that have published versions', async () => {
       const { handleContentRoutes } = await import('../../src/routes/content-api');
       const services = await import('../../src/services');

@@ -548,6 +548,37 @@ export async function getLatestDocumentVersion(
 }
 
 /**
+ * True when a tombstone version exists after the given version number — the
+ * serving rule "a deletion supersedes every earlier publish" [PCC-3669].
+ * A deleted-then-recreated document therefore stays off the live site until
+ * a fresh publish postdates the deletion, instead of silently resurrecting
+ * the pre-deletion published content. Deliberately a bare EXISTS probe: the
+ * tip row carries the full snapshot, so hot-path callers must not fetch
+ * whole rows to learn this.
+ *
+ * @param documentId - The document ID
+ * @param branchId - The branch ID
+ * @param afterVersionNumber - Typically the published version's number
+ * @returns True when a tombstone with a higher version number exists
+ */
+export async function hasTombstoneAfterVersion(
+  documentId: string,
+  branchId: string,
+  afterVersionNumber: number,
+): Promise<boolean> {
+  const result = await query<{ exists: boolean }>(
+    `SELECT EXISTS(
+       SELECT 1 FROM app.document_versions
+       WHERE document_id = $1 AND branch_id = $2
+         AND is_tombstone = true
+         AND version_number > $3
+     ) AS exists`,
+    [documentId, branchId, afterVersionNumber],
+  );
+  return result.rows[0]?.exists === true;
+}
+
+/**
  * Retrieves the latest *published* version of a document on a branch.
  * A published version is one that has been captured in a checkpoint.
  * Uses the checkpoint_documents join table to find the most recent

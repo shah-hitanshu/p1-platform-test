@@ -577,6 +577,9 @@ async function handleDeleteDocumentOnBranch(
       deletedById: principal.dbUserId ?? principal.id,
       deletedByType: principal.type,
     });
+    // Deletion takes effect on serving immediately (tombstone-aware read,
+    // PCC-3669) — without a purge the edge keeps the page for TTL + SWR.
+    await purgeContentCache({ siteId, branchId, documentId });
     return new Response(null, { status: 204 });
   }
 
@@ -621,6 +624,10 @@ async function handleDeleteDocumentOnBranch(
       parenting,
     },
   });
+
+  // Deletion takes effect on serving immediately (tombstone-aware read,
+  // PCC-3669) — without a purge the edge keeps the page for TTL + SWR.
+  await purgeContentCache({ siteId, branchId, documentId });
 
   return jsonResponse(result.redirect, 200);
 }

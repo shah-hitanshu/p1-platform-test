@@ -27,9 +27,10 @@ import { contentCacheTags, type ContentCacheTagParams } from './content-cache';
  * failure here is indefinitely stale published content — this log is the only
  * signal it happened. The publish itself already succeeded, so it never throws.
  *
- * Known coverage limits: only publish paths purge. Draft-branch version writes
- * and site-settings updates leave their bounded TTL windows (5s + 25s
- * stale-while-revalidate by default for branches) — tracked separately.
+ * Known coverage limits: publish, delete, archive, and restore paths purge.
+ * Draft-branch version writes and site-settings updates leave their bounded
+ * TTL windows (5s + 25s stale-while-revalidate by default for branches) —
+ * tracked separately.
  */
 export async function purgeContentCache(params: ContentCacheTagParams): Promise<void> {
   const logger = getLogger();

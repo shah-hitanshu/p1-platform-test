@@ -21,6 +21,7 @@ const mocks = vi.hoisted(() => ({
   getLatestDocumentVersion: vi.fn(),
   getLatestPublishedDocumentVersion: vi.fn(),
   getLatestDocumentVersionWithFallback: vi.fn(),
+  hasTombstoneAfterVersion: vi.fn(),
   listDocumentsOnBranch: vi.fn(),
   reconstructVersionSnapshot: vi.fn(),
   getSite: vi.fn(),
@@ -36,6 +37,7 @@ vi.mock('../../src/services', () => ({
   getLatestDocumentVersion: mocks.getLatestDocumentVersion,
   getLatestPublishedDocumentVersion: mocks.getLatestPublishedDocumentVersion,
   getLatestDocumentVersionWithFallback: mocks.getLatestDocumentVersionWithFallback,
+  hasTombstoneAfterVersion: mocks.hasTombstoneAfterVersion,
   listDocumentsOnBranch: mocks.listDocumentsOnBranch,
   reconstructVersionSnapshot: mocks.reconstructVersionSnapshot,
   getSite: mocks.getSite,
@@ -93,6 +95,8 @@ describe('content API cache headers', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getMainBranch.mockResolvedValue(mainBranch);
+    // Documents are live unless a test tombstones them [PCC-3669].
+    mocks.hasTombstoneAfterVersion.mockResolvedValue(false);
     mocks.getSiteSettings.mockResolvedValue(null);
     mocks.getSite.mockResolvedValue({ id: SITE_ID, updatedAt: '2026-08-01T00:00:00.000Z' });
     mocks.getEffectiveCacheTtl.mockReturnValue(600);

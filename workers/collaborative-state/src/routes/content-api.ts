@@ -18,6 +18,7 @@ import {
   getLatestDocumentVersion,
   getLatestPublishedDocumentVersion,
   getLatestDocumentVersionWithFallback,
+  hasTombstoneAfterVersion,
   listDocumentsOnBranch,
   reconstructVersionSnapshot,
   VersionReconstructionError,
@@ -157,6 +158,18 @@ async function handleGetContent(
 
   if (branch.isMain) {
     version = await getLatestPublishedDocumentVersion(document.id, branch.id);
+    // A deletion supersedes every earlier publish [PCC-3669]. The publish
+    // pointer survives deletion (nothing can publish a tombstone), so without
+    // this a deleted page stays live forever — and a deleted-then-recreated
+    // page would silently resurrect its pre-deletion published content. The
+    // page returns only via a fresh publish that postdates the deletion.
+    // Deletions arriving on main via merge are covered the same way.
+    if (
+      version != null
+      && await hasTombstoneAfterVersion(document.id, branch.id, version.versionNumber)
+    ) {
+      return notFoundResponse('Document has been deleted', siteId);
+    }
   } else {
     const mainBranch = await getMainBranch(siteId);
     const fallbackResult = mainBranch != null
@@ -298,6 +311,15 @@ async function handleGetContentPages(
       const version = await getVersion(doc.id, branch.id);
       if (version === null) return null;
       if (version.isTombstone === true) return null;
+      // Main only: a deletion supersedes every earlier publish [PCC-3669] —
+      // the same rule the single-page route applies, so this list never
+      // links to a path that route would 404.
+      if (
+        branch.isMain
+        && await hasTombstoneAfterVersion(doc.id, branch.id, version.versionNumber)
+      ) {
+        return null;
+      }
       return {
         path: doc.path,
         documentId: doc.id,
