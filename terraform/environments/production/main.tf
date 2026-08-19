@@ -119,8 +119,6 @@ module "database" {
   cloudsql_authorized_networks = var.cloudsql_authorized_networks
   deletion_protection          = true
   cloudsql_max_connections     = 200 # 2.5x Hyperdrive total (60+20=80)
-  # 30s server-side query cap; see the flag comment in the module.
-  cloudsql_statement_timeout_ms = 30000
 
   # TODO: move to an IAM group role and grant the group instead of
   # listing individuals here.
