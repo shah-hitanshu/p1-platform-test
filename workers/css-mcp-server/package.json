@@ -19,6 +19,7 @@
     "@cloudflare/workers-oauth-provider": "^0.3.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@pantheon-systems/p1-content-validator": "workspace:*",
+    "@pantheon-systems/p1-telemetry": "workspace:*",
     "jose": "^6.2.2",
     "zod": "^3.25.76"
   },

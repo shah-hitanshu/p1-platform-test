@@ -47,6 +47,13 @@
   // Non-secret environment variables
   "vars": {
     "ENVIRONMENT": "local",
+    "LOG_LEVEL": "debug",
+    "APP_VERSION": "dev",
+    // Local ndjson log collector (`pnpm dev:logs`). Deliberately declared only here:
+    // named environments below *replace* `vars` rather than merging, so staging and
+    // production cannot inherit this — the sink is structurally unable to run in a
+    // deployed worker rather than merely unset there.
+    "P1_LOG_SINK": "http://127.0.0.1:8799",
     "CSS_BACKEND_URL": "http://localhost:8787",
     "MCP_SERVER_NAME": "collaborative-state-mcp",
     "MCP_SERVER_VERSION": "0.1.0",
@@ -67,6 +74,8 @@
       "account_id": "69bc76f4866aaaa3400ea7fbbd9d7da2",
       "vars": {
         "ENVIRONMENT": "staging",
+        "LOG_LEVEL": "info",
+        "APP_VERSION": "staging",
         "CSS_BACKEND_URL": "https://collaborative-state-worker-staging.pantheon-content-publisher.workers.dev",
         "MCP_SERVER_NAME": "collaborative-state-mcp",
         "MCP_SERVER_VERSION": "0.1.0",
@@ -101,6 +110,8 @@
       "name": "css-mcp-server-production",
       "vars": {
         "ENVIRONMENT": "production",
+        "LOG_LEVEL": "warn",
+        "APP_VERSION": "production",
         "CSS_BACKEND_URL": "https://collaborative-state-worker-production.pantheon-p1-production.workers.dev",
         "MCP_SERVER_NAME": "collaborative-state-mcp",
         "MCP_SERVER_VERSION": "0.1.0",

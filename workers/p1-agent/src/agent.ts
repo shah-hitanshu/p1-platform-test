@@ -1,5 +1,5 @@
 import { Agent } from 'agents';
-import type { Connection, ConnectionContext, WSMessage } from 'agents';
+import type { AgentContext, Connection, ConnectionContext, WSMessage } from 'agents';
 import type { ChatContext, Env, IncomingMessage, OutgoingMessage, TurnFrame, ValidatedUser } from './types.js';
 import { McpApiClient } from './css-api.js';
 import { CSS_TOOLS, WEB_TOOLS, executeTool } from './tools.js';
@@ -14,6 +14,7 @@ import {
   type CompletionResult,
 } from './model.js';
 import { SYSTEM_PROMPT, buildContextNote } from './prompt.js';
+import { ensureLogger } from './telemetry.js';
 
 // Default model. AGENT_MODEL is "provider/model" (must contain a slash): an `anthropic/`
 // prefix routes to the Anthropic /messages endpoint; everything else — including bare
@@ -75,6 +76,15 @@ export async function resolveFollowsTemplate(
 
 export class ChatAgent extends Agent<Env, AgentState> {
   initialState: AgentState = { conversationHistory: [] };
+
+  constructor(ctx: AgentContext, env: Env) {
+    super(ctx, env);
+    // A Durable Object has its own isolate, so the main worker's `initLogger` is invisible
+    // here — without this, every line the turn emits would come from `getLogger()`'s bare
+    // fallback, stamped `environment: local` at debug level, in production. Constructor
+    // rather than per-entry-point because it runs before any method.
+    ensureLogger(env);
+  }
 
   /**
    * Cache for {@link resolveFollowsTemplate}, keyed by path. Lives as long as the object: a

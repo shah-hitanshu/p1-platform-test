@@ -7,6 +7,12 @@ export interface Env {
   CSS_BACKEND_URL: string;
   MEDIA_WORKER_URL: string;
 
+  // Logger config — see telemetry.ts.
+  LOG_LEVEL?: string;
+  APP_VERSION?: string;
+  /** Local ndjson collector, e.g. `http://127.0.0.1:8799`. Unset in every deployed env. */
+  P1_LOG_SINK?: string;
+
   // AI Gateway REST API — model calls go through
   // api.cloudflare.com/client/v4/accounts/{AI_GATEWAY_ACCOUNT_ID}/ai/v1/{chat/completions|messages}.
   // AI_GATEWAY_ACCOUNT_ID is the Cloudflare account id (used in the URL path);

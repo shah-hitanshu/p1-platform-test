@@ -22,6 +22,8 @@ import { signState, verifyAndParseState, generateNonce } from './auth/state-sign
 import { handleHealthCheck } from './health.js';
 import { logBindingModeOnce } from './binding-mode.js';
 import { checkOauthRateLimit, shouldBypassRateLimit } from './rate-limit.js';
+import { contextFromRequest, withRequestContext } from '@pantheon-systems/p1-telemetry';
+import { ensureLogger } from './telemetry.js';
 
 export { handleHealthCheck };
 
@@ -49,6 +51,20 @@ interface UserProps {
  */
 function getClientIp(request: Request): string {
   return request.headers.get('CF-Connecting-IP') ?? 'unknown';
+}
+
+/**
+ * Collapses a path to a bounded set of route patterns for `http.route`. This server's
+ * paths are all literals, so anything unrecognized is genuinely unrouted.
+ */
+function routePattern(pathname: string): string {
+  // /token, /register and the discovery document are served by OAuthProvider rather than
+  // by a branch in this file; they are still routes this worker answers on.
+  const known = [
+    '/mcp', '/authorize', '/callback', '/token', '/register', '/health',
+    '/.well-known/oauth-authorization-server',
+  ];
+  return known.includes(pathname) ? pathname : 'unmatched';
 }
 
 /**
@@ -453,27 +469,39 @@ export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
 
-    // Autonomous agents authenticate with their own key in X-API-Key. Route them
-    // to the backend pass-through; OAuthProvider only accepts its own issued
-    // tokens and would reject a raw agent key.
-    const agentApiKey = request.headers.get('X-API-Key');
-    if (url.pathname === '/mcp' && agentApiKey != null && agentApiKey !== '') {
-      return handleAgentMcpRequest(request, env);
-    }
+    // The outermost wrapper is the only entry point: OAuthProvider owns the routing for
+    // everything below it, including /mcp, so a context established here covers the whole
+    // request tree.
+    const logger = ensureLogger(env);
+    const telemetry = contextFromRequest(request, { route: routePattern(url.pathname) });
 
-    if (
-      (url.pathname === '/token' || url.pathname === '/register') &&
-      !shouldBypassRateLimit(request.method)
-    ) {
-      const verdict = await checkOauthRateLimit(
-        env.RL_OAUTH,
-        url.pathname,
-        getClientIp(request),
-      );
-      if (!verdict.allowed) {
-        return rateLimited('oauth');
+    return withRequestContext(telemetry, async () => {
+      try {
+        // Autonomous agents authenticate with their own key in X-API-Key. Route them
+        // to the backend pass-through; OAuthProvider only accepts its own issued
+        // tokens and would reject a raw agent key.
+        const agentApiKey = request.headers.get('X-API-Key');
+        if (url.pathname === '/mcp' && agentApiKey != null && agentApiKey !== '') {
+          return await handleAgentMcpRequest(request, env);
+        }
+
+        if (
+          (url.pathname === '/token' || url.pathname === '/register') &&
+          !shouldBypassRateLimit(request.method)
+        ) {
+          const verdict = await checkOauthRateLimit(
+            env.RL_OAUTH,
+            url.pathname,
+            getClientIp(request),
+          );
+          if (!verdict.allowed) {
+            return rateLimited('oauth');
+          }
+        }
+        return await createOAuthProvider(env).fetch(request, env, ctx);
+      } finally {
+        ctx.waitUntil(logger.flush());
       }
-    }
-    return createOAuthProvider(env).fetch(request, env, ctx);
+    });
   },
 } satisfies ExportedHandler<Env>;

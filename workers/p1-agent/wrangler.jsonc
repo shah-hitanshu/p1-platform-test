@@ -16,6 +16,13 @@
   },
   "vars": {
     "ENVIRONMENT": "local",
+    "LOG_LEVEL": "debug",
+    "APP_VERSION": "dev",
+    // Local ndjson log collector (`pnpm dev:logs`). Deliberately declared only here:
+    // named environments below *replace* `vars` rather than merging, so staging cannot
+    // inherit this — the sink is structurally unable to run in a deployed worker rather
+    // than merely unset there.
+    "P1_LOG_SINK": "http://127.0.0.1:8799",
     "CSS_BACKEND_URL": "http://localhost:8787",
     // Model calls go through the AI Gateway REST API at
     // api.cloudflare.com/client/v4/accounts/{AI_GATEWAY_ACCOUNT_ID}/ai/v1/{chat/completions|messages}.
@@ -36,6 +43,8 @@
       "account_id": "69bc76f4866aaaa3400ea7fbbd9d7da2",
       "vars": {
         "ENVIRONMENT": "staging",
+        "LOG_LEVEL": "info",
+        "APP_VERSION": "staging",
         "CSS_BACKEND_URL": "https://collaborative-state-worker-staging.pantheon-content-publisher.workers.dev",
         "AI_GATEWAY_ACCOUNT_ID": "69bc76f4866aaaa3400ea7fbbd9d7da2",
         "AI_GATEWAY_NAME": "p1-chatbot",
