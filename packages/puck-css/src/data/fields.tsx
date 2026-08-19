@@ -25,6 +25,16 @@ const defaultRichtextMenu: RichtextField["renderMenu"] = () => (
 export const richtextField: RichtextFieldWithAi = {
   type: "richtext",
   contentEditable: true,
+  // @puckeditor/core registers the TipTap `textAlign` extension by default, but
+  // our toolbar (`defaultRichtextMenu`) never exposes alignment — so `text-align`
+  // is schema surface that only ever gets populated by paste. That is exactly why
+  // pasting justified content from Word/Google Docs/web rendered justified in the
+  // editor: ProseMirror discards foreign markup it can't represent
+  // (fonts, colors, classes, scripts) for free, but alignment WAS representable
+  // and so survived. Disabling the extension makes alignment unrepresentable, so
+  // the schema drops it natively on every ingest path — paste, drag-and-drop,
+  // AI `onChange`, and collaborative `setContent` alike.
+  options: { textAlign: false },
   ai: {
     instructions:
       "Generate well-structured prose. Use bold or lists sparingly and only when they genuinely aid readability. Do not include heading tags — use the Heading block for headings.",

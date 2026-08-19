@@ -171,6 +171,15 @@ describe('PuckEditorTheme.css', () => {
       );
     });
 
+    it('paints the sticky richtext toolbar so scrolled content does not show through', () => {
+      const css = readThemeCSS();
+      // The toolbar wrapper is position:sticky with no background; without an
+      // opaque fill the ProseMirror text scrolls under it and bleeds through.
+      expect(css).toMatch(
+        /\.puck-editor-theme \[class\*="_RichTextEditor-menu_"\]\s*\{[^}]*background:\s*var\(--puck-color-white\)[^}]*\}/,
+      );
+    });
+
     it('does not use a bare body selector, which would leak into the preview iframe', () => {
       const css = readThemeCSS();
       // The preview iframe renders its own <body>. Because this stylesheet is a

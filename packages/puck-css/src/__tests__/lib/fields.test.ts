@@ -27,6 +27,15 @@ describe('richtextField', () => {
     const { richtextField } = await import('../../data/fields');
     expect(typeof richtextField.renderMenu).toBe('function');
   });
+
+  it('disables the textAlign extension so pasted alignment is unrepresentable', async () => {
+    // The toolbar never exposes alignment, so leaving TipTap's textAlign
+    // extension registered only lets paste smuggle in `text-align` the schema
+    // would otherwise represent. Disabling it makes the schema drop alignment
+    // on every ingest path.
+    const { richtextField } = await import('../../data/fields');
+    expect((richtextField as any).options?.textAlign).toBe(false);
+  });
 });
 
 describe('createRichtextField', () => {
@@ -44,11 +53,23 @@ describe('createRichtextField', () => {
     expect(typeof field.renderMenu).toBe('function');
   });
 
-  it('merges overrides without mutating the base field', async () => {
+  it('merges options overrides while keeping base options and not mutating the base field', async () => {
     const { createRichtextField, richtextField } = await import('../../data/fields');
     const field = createRichtextField({ options: { bold: false } });
     expect((field as any).options?.bold).toBe(false);
-    expect((richtextField as any).options).toBeUndefined();
+    // The base default (textAlign disabled) survives the merge...
+    expect((field as any).options?.textAlign).toBe(false);
+    // ...and the base field is not mutated by the override.
+    expect((richtextField as any).options?.bold).toBeUndefined();
+    expect((richtextField as any).options?.textAlign).toBe(false);
+  });
+
+  it('lets a block re-enable textAlign via an options override', async () => {
+    const { createRichtextField } = await import('../../data/fields');
+    const field = createRichtextField({
+      options: { textAlign: { types: ['paragraph'] } },
+    });
+    expect((field as any).options?.textAlign).toEqual({ types: ['paragraph'] });
   });
 
   it('allows overriding ai instructions', async () => {

@@ -358,3 +358,21 @@
   flex: 1;
   min-height: 0;
 }
+
+/* ── Richtext toolbar: opaque background prevents scroll bleed-through ──
+ *
+ * @puckeditor/core's richtext toolbar wrapper (._RichTextEditor-menu_) is
+ * `position: sticky; top: 0; z-index: 1` but declares no background of its own.
+ * When a richtext field holds more content than its height, the ProseMirror
+ * text scrolls *underneath* the sticky toolbar and shows through it — the
+ * toolbar icons and the field's first line of text visibly overlap (the
+ * artefact reported alongside the paste bug). Painting the sticky wrapper with
+ * the field's own surface colour (the same `--puck-color-white` the editor body
+ * uses, remapped to `--pds-color-bg-default` above) stops the bleed-through.
+ *
+ * Substring selector (not the hashed CSS-module class) so it survives
+ * @puckeditor/core upgrades, and scoped to `.puck-editor-theme` so — like every
+ * rule here — it never matches inside the preview iframe. */
+.puck-editor-theme [class*="_RichTextEditor-menu_"] {
+  background: var(--puck-color-white);
+}
