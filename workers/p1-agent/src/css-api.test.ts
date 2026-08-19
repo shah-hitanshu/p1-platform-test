@@ -205,6 +205,29 @@ describe("McpApiClient template lookups", () => {
     expect(result?.templateId).toBe("tpl-1");
   });
 
+  // A real 404 rather than a stubbed return value: the null has to come from the client itself.
+  it("lookupDocumentByPath returns null when no document exists at the path", async () => {
+    const client = new McpApiClient({
+      ...baseConfig,
+      fetcher: {
+        fetch: async () =>
+          new Response(JSON.stringify({ error: "Document not found at path" }), { status: 404 }),
+      },
+    });
+    await expect(client.lookupDocumentByPath("site-1", "new-page")).resolves.toBeNull();
+  });
+
+  it("lookupDocumentByPath still throws when the lookup is refused", async () => {
+    const client = new McpApiClient({
+      ...baseConfig,
+      fetcher: {
+        fetch: async () =>
+          new Response(JSON.stringify({ error: "Forbidden" }), { status: 403 }),
+      },
+    });
+    await expect(client.lookupDocumentByPath("site-1", "index")).rejects.toThrow("Forbidden");
+  });
+
   it("getTemplate hits the templates endpoint", async () => {
     let capturedUrl = "";
     const client = new McpApiClient({

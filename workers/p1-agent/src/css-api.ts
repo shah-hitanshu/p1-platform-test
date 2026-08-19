@@ -403,7 +403,10 @@ export class McpApiClient {
       method: 'GET',
       headers: this.getHeaders(),
     });
-    return this.handleResponse<DocumentInfoWithTemplate | null>(response);
+    // Absence is this endpoint's ordinary answer and callers branch on the null, so the 404 has
+    // to be taken before handleResponse, which throws on any non-ok.
+    if (response.status === 404) return null;
+    return this.handleResponse<DocumentInfoWithTemplate>(response);
   }
 
   /** List the branch's page templates. Read-only, so a viewer's token is enough. */
