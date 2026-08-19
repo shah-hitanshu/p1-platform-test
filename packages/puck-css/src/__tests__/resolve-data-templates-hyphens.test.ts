@@ -48,12 +48,21 @@ describe("resolveDataTemplates with hyphenated template ids", () => {
     expect(itemsOf(out)).toEqual([{ path: "news/1" }]);
   });
 
-  it("does not start reading hyphens outside the templates namespace as a path", async () => {
-    const out = await resolveDataTemplates(
+  it("reads unspaced hyphens as path segments, not subtraction (PCC-3668)", async () => {
+    // Arithmetic was never supported (evalTemplateExpression has no
+    // BinaryExpression case), so `a-b` is a key lookup, not `a - b`.
+    const withHyphenKey = { ...context, numbers: { ...context.numbers, "a-b": 6 } };
+    const hit = await resolveDataTemplates(
+      pageWith("{{ numbers.a-b }}"),
+      withHyphenKey,
+    );
+    expect(itemsOf(hit)).toBe("6");
+
+    const miss = await resolveDataTemplates(
       pageWith("{{ numbers.a-b }}"),
       context,
     );
-    expect(itemsOf(out)).toBe("");
+    expect(itemsOf(miss)).toBe("");
   });
 
   it("yields nothing for an unknown hyphenated template", async () => {

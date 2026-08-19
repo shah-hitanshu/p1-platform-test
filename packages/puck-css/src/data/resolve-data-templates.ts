@@ -10,7 +10,7 @@ function expandListMarkdownLinks(
   context: RemoteDatasourceContext
 ): string {
   const re =
-    /\{\{\s*([\w]+)\.markdownLinks(?:\s+(["'])([^"']*)\2)?\s*\}\}/g;
+    /\{\{\s*([\w-]+)\.markdownLinks(?:\s+(["'])([^"']*)\2)?\s*\}\}/g;
   return input.replace(re, (_m, sourceName: string, _quote, hrefTemplateRaw: string | undefined) => {
     const raw = context[sourceName];
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
@@ -68,12 +68,11 @@ function resolveSourcePath(
   inner: string,
   context: RemoteDatasourceContext
 ): { resolved: true; value: unknown } | { resolved: false } {
-  // `templates.<css-query-name>` is kebab-case, and jsep would read those hyphens
-  // as subtraction, so the path form has to be recognised here rather than fall
-  // through to expression evaluation. Hyphens stay disallowed elsewhere.
-  const isDottedPath = /^templates\.[a-zA-Z_][\w-]*(\.[\w.]+)?$/.test(inner)
-    || /^[\w.]+$/.test(inner);
-  if (!isDottedPath || inner.endsWith(".")) return { resolved: false };
+  // Datasource ids are kebab-case — `templates.<css-query-name>` and P1's
+  // auto-generated content-type ids like `blog-post` (PCC-3668) — and jsep
+  // would read those hyphens as subtraction, so dotted paths have to be
+  // recognised here rather than fall through to expression evaluation.
+  if (!/^[\w.-]+$/.test(inner) || inner.endsWith(".")) return { resolved: false };
   const segments = inner.split(".");
   let sourceName: string;
   let pathSegments: string[];

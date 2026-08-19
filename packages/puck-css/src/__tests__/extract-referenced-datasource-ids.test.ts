@@ -43,8 +43,10 @@ describe("extractReferencedDatasourceIds", () => {
     expect([...ids]).toEqual(["swapi_list"]);
   });
 
-  it("leaves hyphens outside the templates namespace unmatched, as before", () => {
+  it("extracts hyphenated plain datasource ids (PCC-3668)", () => {
+    // P1 auto-generates content-type datasource ids as kebab-case (`blog-post`),
+    // so plain ids must admit hyphens or those datasources are never fetched.
     const ids = extractReferencedDatasourceIds(pageWith("{{ swapi-list.items }}"));
-    expect([...ids]).toEqual([]);
+    expect([...ids]).toEqual(["swapi-list"]);
   });
 });

@@ -33,6 +33,13 @@ describe("resolveStringTemplates", () => {
     expect(await resolveStringTemplates("{{ swapi.nested.x }}", ctx)).toBe("ok");
   });
 
+  it("supports hyphenated datasource ids (PCC-3668)", async () => {
+    const ctx = { "blog-post": { title: "My First Post" } };
+    expect(await resolveStringTemplates("{{ blog-post.title }}", ctx)).toBe(
+      "My First Post"
+    );
+  });
+
   it("supports urlParams tokens", async () => {
     const ctx = { urlParams: { id: "42", slug: "obi-wan" } };
     expect(await resolveStringTemplates("{{ urlParams.id }}:{{ urlParams.slug }}", ctx)).toBe(
@@ -130,6 +137,23 @@ describe("resolveStringTemplates", () => {
     );
   });
 
+  it("expands markdownLinks for a hyphenated datasource id (PCC-3668)", async () => {
+    const ctx = {
+      "blog-post": {
+        items: [
+          { id: "1", name: "Luke" },
+          { id: "2", name: "Leia" },
+        ],
+      },
+    };
+    expect(
+      await resolveStringTemplates(
+        'People:\n{{ blog-post.markdownLinks "/people/{id}" }}',
+        ctx
+      )
+    ).toBe("People:\n[Luke](/people/1)\n[Leia](/people/2)");
+  });
+
   it("leaves markdownLinks empty when source is missing", async () => {
     expect(
       await resolveStringTemplates('{{ missing_list.markdownLinks "/path/{id}" }}', {})
@@ -205,6 +229,17 @@ describe("templates.* compound datasource IDs", () => {
     expect(
       await resolveStringTemplates("{{ templates.missing.field }}", {})
     ).toBe("");
+  });
+
+  it("resolves {{ templates.blog-post.title }} for a hyphenated compound ID (PCC-3668)", async () => {
+    const ctx = {
+      "templates.blog-post": {
+        title: "Hyphenated Template Title",
+      },
+    };
+    expect(
+      await resolveStringTemplates("{{ templates.blog-post.title }}", ctx)
+    ).toBe("Hyphenated Template Title");
   });
 
   it("resolves bare {{ templates.news }} without a sub-path", async () => {
@@ -291,6 +326,32 @@ describe("extractReferencedDatasourceIds — compound IDs", () => {
     const ids = extractReferencedDatasourceIds(data);
     expect(ids.has("templates.news")).toBe(true);
     expect(ids.has("templates.blog")).toBe(true);
+  });
+
+  it("extracts hyphenated datasource IDs (PCC-3668)", () => {
+    const data = {
+      content: [
+        {
+          type: "Block",
+          props: { id: "b1", title: "{{ blog-post.title }}" },
+        },
+      ],
+    };
+    const ids = extractReferencedDatasourceIds(data);
+    expect(ids.has("blog-post")).toBe(true);
+  });
+
+  it("extracts hyphenated compound IDs under templates. (PCC-3668)", () => {
+    const data = {
+      content: [
+        {
+          type: "Block",
+          props: { id: "b1", title: "{{ templates.blog-post.title }}" },
+        },
+      ],
+    };
+    const ids = extractReferencedDatasourceIds(data);
+    expect(ids.has("templates.blog-post")).toBe(true);
   });
 
   it("still extracts simple IDs alongside compound IDs", () => {
@@ -441,6 +502,20 @@ describe("resolveDataTemplates", () => {
     const children = (out.content?.[0].props as { children: unknown[] })
       .children;
     expect((children[0] as { props: { title: string } }).props.title).toBe("Y");
+  });
+
+  it("resolves a hyphenated datasource id through the full data walk (PCC-3668)", async () => {
+    const data: Partial<Data> = {
+      content: [
+        {
+          type: "HeadingBlock",
+          props: { id: "h1", title: "{{ blog-post.title }}" },
+        },
+      ],
+    };
+    const ctx = { "blog-post": { title: "My First Post" } };
+    const out = await resolveDataTemplates(data, ctx);
+    expect(out.content?.[0].props.title).toBe("My First Post");
   });
 
   it("resolves zones", async () => {
