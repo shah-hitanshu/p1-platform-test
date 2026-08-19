@@ -54,6 +54,6 @@
     "@clack/prompts": "^1.5.1",
     "picocolors": "^1.1.1"
   },
-  "license": "MIT",
+  "license": "UNLICENSED",
   "homepage": "https://github.com/pantheon-systems/p1-platform/tree/main/packages/create-p1-starter-kit"
 }

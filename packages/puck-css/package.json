@@ -137,6 +137,6 @@
   "engines": {
     "node": ">=24.0.0"
   },
-  "license": "MIT",
+  "license": "UNLICENSED",
   "homepage": "https://github.com/pantheon-systems/p1-platform/tree/main/packages/puck-css"
 }

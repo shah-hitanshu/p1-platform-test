@@ -42,6 +42,6 @@
     "registry": "https://registry.npmjs.org/",
     "provenance": false
   },
-  "license": "MIT",
+  "license": "UNLICENSED",
   "homepage": "https://github.com/pantheon-systems/p1-platform/tree/main/packages/p1-content-validator"
 }
