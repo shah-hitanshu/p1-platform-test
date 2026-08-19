@@ -223,10 +223,12 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ steps.secrets.outputs.cf_token }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
 
-  # NOTE: the agent has no production env in wrangler.jsonc; selecting
-  # production for this job fails fast.
+  # Staging only: the agent has no production env in wrangler.jsonc, so a
+  # production run would fail here and take the whole release with it. Drop the
+  # `if:` once a production env exists (and re-check the release step below).
   p1-agent:
     needs: [verify, config]
+    if: needs.config.outputs.environment != 'production'
     runs-on: ubuntu-latest
     environment: ${{ needs.config.outputs.environment }}
     steps:
@@ -353,7 +355,7 @@ jobs:
   #
   # Staging deploys are not released: a release records what is in production.
   release:
-    needs: [config, backend, mcp-server, p1-agent, p1-media]
+    needs: [config, backend, mcp-server, p1-media]
     if: ${{ always() && needs.config.outputs.environment == 'production' && needs.config.outputs.dry_run != 'true' }}
     runs-on: ubuntu-latest
     permissions:
@@ -375,12 +377,6 @@ jobs:
       - name: Release css-mcp-server
         if: needs.mcp-server.result == 'success'
         run: .github/scripts/worker-release.sh css-mcp-server workers/css-mcp-server
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Release p1-chatbot-agent
-        if: needs.p1-agent.result == 'success'
-        run: .github/scripts/worker-release.sh p1-chatbot-agent workers/p1-agent
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

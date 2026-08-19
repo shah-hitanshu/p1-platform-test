@@ -214,7 +214,13 @@ group to `0.9.0`, then four GitHub Releases when it's published.
 ## Releases for things that aren't npm packages
 
 Every independently deployable piece should have its own GitHub Release. For npm packages
-that's what the per-package tags and releases above give you. The workers
-(`workers/collaborative-state`, `workers/css-mcp-server`, `workers/p1-agent`,
-`workers/p1-media`) deploy via **Deploy Workers** and currently leave no release record —
-tracked separately, not part of this workflow.
+that's what the per-package tags and releases above give you. The workers deploy via
+**Deploy Workers**, whose `release` job cuts one GitHub Release per worker that reached
+production (`.github/scripts/worker-release.sh`). Staging deploys are not released — a
+release records what is in production.
+
+`workers/p1-agent` is the exception: it has no `production` environment in its
+`wrangler.jsonc`, so its deploy job is gated to non-production and it gets no release. A
+production dispatch used to fail on that job and mark the whole run red. When the agent is
+ready for production, add the env to `wrangler.jsonc`, drop the `if:` on the `p1-agent` job,
+and restore its step in the `release` job.
