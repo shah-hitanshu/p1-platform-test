@@ -125,6 +125,12 @@ variable "cloudsql_max_connections" {
   default     = 100
 }
 
+variable "cloudsql_statement_timeout_ms" {
+  description = "PostgreSQL statement_timeout database flag in milliseconds. Caps runaway queries server-side so abandoned requests cannot pile up and saturate CPU. 0 disables the cap. Sessions may still raise their own limit (SET statement_timeout) for known-long work such as migrations."
+  type        = number
+  default     = 0
+}
+
 variable "ci_service_account_id" {
   description = "Account ID of the GitHub Actions service account granted IAM database login"
   type        = string
@@ -232,6 +238,20 @@ resource "google_sql_database_instance" "main" {
       # Lets principals log in with short-lived IAM OAuth tokens instead of passwords.
       name  = "cloudsql.iam_authentication"
       value = "on"
+    }
+
+    dynamic "database_flags" {
+      # Server-side cap on query runtime. Postgres only notices a dead client
+      # when it tries to send results, so without this, queries abandoned by
+      # timed-out workers keep burning CPU to completion — the pile-up that
+      # held prod at 100% CPU during the 2026-08-19 scanner-traffic incident.
+      # Sessions with known-long work (migrations, exports) can raise their
+      # own limit with SET statement_timeout.
+      for_each = var.cloudsql_statement_timeout_ms > 0 ? [var.cloudsql_statement_timeout_ms] : []
+      content {
+        name  = "statement_timeout"
+        value = tostring(database_flags.value)
+      }
     }
 
     ip_configuration {

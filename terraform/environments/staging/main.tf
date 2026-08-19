@@ -110,6 +110,9 @@ module "database" {
   cloudsql_backup_enabled      = false
   cloudsql_authorized_networks = var.cloudsql_authorized_networks
   deletion_protection          = false
+  # Match production's 30s query cap so timeout behavior is exercised
+  # in staging before it bites in prod.
+  cloudsql_statement_timeout_ms = 30000
 
   # TODO: move to an IAM group role and grant the group instead of
   # listing individuals here.
