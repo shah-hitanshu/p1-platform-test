@@ -178,9 +178,13 @@ describe('useP1Plugins', () => {
     vi.restoreAllMocks();
   });
 
-  it('returns empty array while loading', () => {
+  // An empty-then-populated array forces Puck to remount the whole canvas.
+  // The array must never be empty, even before async data has loaded.
+  it('returns all three plugins immediately, before any async context has loaded', () => {
     const router = createMockRouter();
-    const mockFetch = vi.fn().mockReturnValue(new Promise(() => {}));
+    const mockFetch = vi.fn().mockReturnValue(new Promise(() => {
+      // Never resolves — simulates the editor-context fetch still in flight.
+    }));
     vi.stubGlobal('fetch', mockFetch);
 
     const mockConfig = { components: {}, root: { render: () => null } };
@@ -189,33 +193,48 @@ describe('useP1Plugins', () => {
       { wrapper: createWrapper(router) },
     );
 
-    expect(result.current).toEqual([]);
-  });
-
-  it('returns three plugins after editor context loads', async () => {
-    const router = createMockRouter();
-    const mockFetch = vi.fn().mockImplementation((url: string) => {
-      if (url.includes('/p1/api/editor-context')) {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve(MOCK_EDITOR_CONTEXT),
-        });
-      }
-      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
-    });
-    vi.stubGlobal('fetch', mockFetch);
-
-    const mockConfig = { components: {}, root: { render: () => null } };
-    const { result } = renderHook(
-      () => useP1Plugins('/test', mockConfig as never),
-      { wrapper: createWrapper(router) },
-    );
-
-    await waitFor(() => expect(result.current.length).toBe(3));
-
+    expect(result.current.length).toBe(3);
     const pluginNames = result.current.map((p) => p.name);
     expect(pluginNames).toContain('preview-resolve');
     expect(pluginNames).toContain('datasource-explorer');
     expect(pluginNames).toContain('field-connect');
+  });
+
+  it('keeps the plugin array identity stable across re-renders with the same path/config', () => {
+    const router = createMockRouter();
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(MOCK_EDITOR_CONTEXT),
+    });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const mockConfig = { components: {}, root: { render: () => null } };
+    const { result, rerender } = renderHook(
+      () => useP1Plugins('/test', mockConfig as never),
+      { wrapper: createWrapper(router) },
+    );
+
+    const first = result.current;
+    rerender();
+    // Referential equality — a new array remounts the canvas + every field.
+    expect(result.current).toBe(first);
+  });
+
+  // useP1Plugins must stay synchronous; each plugin fetches its own live
+  // data once actually rendered inside Puck.
+  it('never fetches on its own — data is only fetched by the plugins once rendered', () => {
+    const router = createMockRouter();
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(MOCK_EDITOR_CONTEXT),
+    });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const mockConfig = { components: {}, root: { render: () => null } };
+    renderHook(() => useP1Plugins('/test', mockConfig as never), {
+      wrapper: createWrapper(router),
+    });
+
+    expect(mockFetch).not.toHaveBeenCalled();
   });
 });

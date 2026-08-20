@@ -1,15 +1,7 @@
 "use client";
 
-import { useP1PuckOptional } from "../../../core/P1PuckContext";
-import type { RouteRow } from "../../../data/page-store";
-import type { RemoteDatasourceDefinition } from "../../../data/remote-datasources/remote-datasource-registry";
 import { useRemoteDatasourceContext } from "./api-hooks";
-import { useEditorContext } from "./useEditorContext";
-
-const EMPTY_REGISTRY: RemoteDatasourceDefinition[] = [];
-const EMPTY_ROUTES: RouteRow[] = [];
-const EMPTY_TEMPLATE_KEYS: string[] = [];
-const EMPTY_PREVIEW_PARAMS: Record<string, string> = {};
+import { useLiveEditorContext } from "./useLiveEditorContext";
 
 /**
  * Live datasource state for components rendered by a Puck plugin.
@@ -26,31 +18,25 @@ const EMPTY_PREVIEW_PARAMS: Record<string, string> = {};
  * current document path stay live without anything crossing the plugin
  * boundary.
  *
- * `fallbackPath` is only used outside a P1PuckProvider (e.g. the standalone
- * `Client`), where there is no context to read the open document from.
+ * This also resolves each registry entry's datasource context (one query per
+ * entry) — only use it where that's actually needed. A component instantiated
+ * once per field should use useLiveEditorContext instead, which skips that.
+ *
+ * `fallbackPath` is only used outside a P1PuckProvider (e.g. the published
+ * `EditorClient`), where there is no context to read the open document from.
  */
 export function useLiveRemoteDatasources(fallbackPath: string) {
-  const p1Puck = useP1PuckOptional();
-  const path = p1Puck?.currentDocument?.path ?? fallbackPath;
-  const branchId = p1Puck?.branchId;
-
-  const { data: editorContext } = useEditorContext(path, branchId);
-  const registry = editorContext?.remoteDatasourceRegistry ?? EMPTY_REGISTRY;
+  const live = useLiveEditorContext(fallbackPath);
   const { context, loadingIds, isLoading } = useRemoteDatasourceContext(
-    path,
-    registry,
-    branchId,
+    live.path,
+    live.registry,
+    live.branchId,
   );
 
   return {
-    path,
-    registry,
+    ...live,
     context,
     loadingIds,
     isLoading,
-    routes: editorContext?.routes ?? EMPTY_ROUTES,
-    routeTemplateKeys: editorContext?.routeTemplateKeys ?? EMPTY_TEMPLATE_KEYS,
-    savedPreviewParams:
-      editorContext?.savedPreviewParams ?? EMPTY_PREVIEW_PARAMS,
   };
 }
