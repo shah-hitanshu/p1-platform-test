@@ -70,7 +70,8 @@ export interface P1StoreConfig {
  * Creates an async PageStore backed by a P1 API client.
  *
  * get/set/delete/has hit the API directly per call.
- * keys() is cached with a short TTL and retried on failure.
+ * keys() is cached with a short TTL; on failure it serves the last successful
+ * result and backs off for a cooldown before querying again.
  */
 function toDocPath(path: string): string {
   if (path === "/") return "/";
@@ -84,6 +85,7 @@ function toStorePath(docPath: string): string {
 const KEYS_CACHE_TTL_MS = 30_000;
 const KEYS_MAX_RETRIES = 3;
 const KEYS_RETRY_DELAY_MS = 500;
+const KEYS_FAILURE_COOLDOWN_MS = 30_000;
 
 async function withRetry<T>(
   fn: () => Promise<T>,
@@ -107,7 +109,13 @@ async function withRetry<T>(
 export function createP1PageStore(config: P1StoreConfig): PageStore {
   const { client, contentClient, siteId, createAuthClient, authenticatedReads } = config;
 
-  let _keysCache: { promise: Promise<string[]>; ts: number } | null = null;
+  let _keysCache: { promise: Promise<string[]>; ts: number; settled: boolean } | null = null;
+  // Stale-while-error state: the last successful keys() result is kept and
+  // served when a refresh fails, and after retries are exhausted no new
+  // documents.list is issued until the cooldown expires. This stops DB
+  // slowness from being amplified into a retry storm by page renders.
+  let _lastGoodKeys: string[] | null = null;
+  let _keysCooldownUntil = 0;
   let _resolvedBranchIdPromise: Promise<string> | null = null;
 
   // Returns the branch ID, resolving it lazily on the first editor request when
@@ -144,8 +152,11 @@ export function createP1PageStore(config: P1StoreConfig): PageStore {
     return authenticatedReads ? requestClient() : client;
   }
 
+  // Called after writes: forces the next keys() to refresh, including during a
+  // failure cooldown (a deliberate user write outranks brownout backoff).
   function invalidateKeysCache(): void {
     _keysCache = null;
+    _keysCooldownUntil = 0;
   }
 
   return {
@@ -238,22 +249,44 @@ export function createP1PageStore(config: P1StoreConfig): PageStore {
 
     async keys(): Promise<string[]> {
       const now = Date.now();
-      if (_keysCache && now - _keysCache.ts < KEYS_CACHE_TTL_MS) {
-        return _keysCache.promise;
+      if (_keysCache) {
+        if (now - _keysCache.ts < KEYS_CACHE_TTL_MS) {
+          return _keysCache.promise;
+        }
+        if (!_keysCache.settled) {
+          // A refresh is still in flight past the TTL (slow DB). Never pile a
+          // second query on top of it — serve stale, or share the in-flight
+          // promise when there's nothing stale to serve.
+          return _lastGoodKeys ?? _keysCache.promise;
+        }
       }
+      if (now < _keysCooldownUntil) {
+        return _lastGoodKeys ?? [];
+      }
+      // With a stale value to fall back on, fail fast (no retries) — the
+      // caller is a page render and each retry re-drives the heaviest query.
+      const retries = _lastGoodKeys ? 0 : KEYS_MAX_RETRIES;
       const promise = getBranchId()
         .then((branchId) => withRetry(
           () => readClient().documents.list(siteId, branchId),
-          KEYS_MAX_RETRIES,
+          retries,
           KEYS_RETRY_DELAY_MS,
         ))
-        .then((docs) => docs.map((d) => toStorePath(d.path)))
+        .then((docs) => {
+          const keys = docs.map((d) => toStorePath(d.path));
+          _lastGoodKeys = keys;
+          return keys;
+        })
         .catch((err) => {
           console.error("[css-store] keys() failed:", (err as Error).message);
-          invalidateKeysCache();
-          return [] as string[];
+          _keysCache = null;
+          _keysCooldownUntil = Date.now() + KEYS_FAILURE_COOLDOWN_MS;
+          return _lastGoodKeys ?? [];
         });
-      _keysCache = { promise, ts: now };
+      const entry = { promise, ts: now, settled: false };
+      // The promise never rejects (the catch above returns a fallback).
+      void promise.then(() => { entry.settled = true; });
+      _keysCache = entry;
       return promise;
     },
 

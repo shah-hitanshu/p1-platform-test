@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // ---------------------------------------------------------------------------
 // Mock P1Client
@@ -323,6 +323,168 @@ describe("createP1PageStore", () => {
       const keys = await store.keys();
       expect(keys.sort()).toEqual(["/", "/about"]);
       expect(mockClient.documents.list).toHaveBeenCalledWith(SITE_ID, BRANCH_ID);
+    });
+
+    it("caches results within the TTL without re-querying", async () => {
+      const docs: MockDocument[] = [
+        { id: "doc-1", path: "/", siteId: SITE_ID, archived: false },
+      ];
+      mockClient = createMockClient({ documents: docs });
+      const store = createP1PageStore(makeConfig(mockClient));
+
+      await store.keys();
+      await store.keys();
+      expect(mockClient.documents.list).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // keys — failure handling (stale-while-error + cooldown)
+  // -----------------------------------------------------------------------
+
+  describe("keys — failure handling", () => {
+    const TTL_MS = 30_000;
+    const COOLDOWN_MS = 30_000;
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    function makeStore(docs: MockDocument[]) {
+      mockClient = createMockClient({ documents: docs });
+      return createP1PageStore(makeConfig(mockClient));
+    }
+
+    it("serves the last successful result when a refresh fails", async () => {
+      const store = makeStore([
+        { id: "doc-1", path: "/", siteId: SITE_ID, archived: false },
+        { id: "doc-2", path: "/about", siteId: SITE_ID, archived: false },
+      ]);
+
+      expect((await store.keys()).sort()).toEqual(["/", "/about"]);
+
+      vi.advanceTimersByTime(TTL_MS + 1);
+      mockClient.documents.list.mockRejectedValue(new Error("DB timeout"));
+
+      expect((await store.keys()).sort()).toEqual(["/", "/about"]);
+    });
+
+    it("does not retry the query when a stale result is available", async () => {
+      const store = makeStore([
+        { id: "doc-1", path: "/", siteId: SITE_ID, archived: false },
+      ]);
+      await store.keys();
+
+      vi.advanceTimersByTime(TTL_MS + 1);
+      mockClient.documents.list.mockRejectedValue(new Error("DB timeout"));
+      mockClient.documents.list.mockClear();
+
+      await store.keys();
+      expect(mockClient.documents.list).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not issue new queries during the failure cooldown", async () => {
+      const store = makeStore([
+        { id: "doc-1", path: "/", siteId: SITE_ID, archived: false },
+      ]);
+      await store.keys();
+
+      vi.advanceTimersByTime(TTL_MS + 1);
+      mockClient.documents.list.mockRejectedValue(new Error("DB timeout"));
+      await store.keys();
+
+      mockClient.documents.list.mockClear();
+      vi.advanceTimersByTime(COOLDOWN_MS / 2);
+      expect((await store.keys())).toEqual(["/"]);
+      expect((await store.keys())).toEqual(["/"]);
+      expect(mockClient.documents.list).not.toHaveBeenCalled();
+    });
+
+    it("refreshes after the cooldown expires", async () => {
+      const store = makeStore([
+        { id: "doc-1", path: "/", siteId: SITE_ID, archived: false },
+      ]);
+      await store.keys();
+
+      vi.advanceTimersByTime(TTL_MS + 1);
+      mockClient.documents.list.mockRejectedValue(new Error("DB timeout"));
+      await store.keys();
+
+      vi.advanceTimersByTime(COOLDOWN_MS + 1);
+      mockClient.documents.list.mockResolvedValue([
+        { id: "doc-1", path: "/", siteId: SITE_ID, archived: false },
+        { id: "doc-3", path: "/new", siteId: SITE_ID, archived: false },
+      ]);
+
+      expect((await store.keys()).sort()).toEqual(["/", "/new"]);
+    });
+
+    it("returns [] and enters cooldown when there is no prior successful result", async () => {
+      const store = makeStore([]);
+      mockClient.documents.list.mockRejectedValue(new Error("DB down"));
+
+      // Cold start retries in full (3 retries with backoff timers to flush).
+      const first = store.keys();
+      await vi.runAllTimersAsync();
+      expect(await first).toEqual([]);
+      expect(mockClient.documents.list).toHaveBeenCalledTimes(4);
+
+      mockClient.documents.list.mockClear();
+      vi.advanceTimersByTime(1000);
+      expect(await store.keys()).toEqual([]);
+      expect(mockClient.documents.list).not.toHaveBeenCalled();
+    });
+
+    it("does not start a second query while a refresh hangs past the TTL", async () => {
+      const store = makeStore([
+        { id: "doc-1", path: "/", siteId: SITE_ID, archived: false },
+      ]);
+      await store.keys();
+
+      vi.advanceTimersByTime(TTL_MS + 1);
+      mockClient.documents.list.mockImplementation(() => new Promise(() => {}));
+      mockClient.documents.list.mockClear();
+
+      void store.keys();
+      vi.advanceTimersByTime(TTL_MS + 1);
+      expect(await store.keys()).toEqual(["/"]);
+      vi.advanceTimersByTime(TTL_MS + 1);
+      expect(await store.keys()).toEqual(["/"]);
+      expect(mockClient.documents.list).toHaveBeenCalledTimes(1);
+    });
+
+    it("shares one in-flight query when a cold-start refresh hangs", async () => {
+      const store = makeStore([]);
+      mockClient.documents.list.mockImplementation(() => new Promise(() => {}));
+
+      void store.keys();
+      await vi.advanceTimersByTimeAsync(TTL_MS + 1);
+      void store.keys();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(mockClient.documents.list).toHaveBeenCalledTimes(1);
+    });
+
+    it("set() clears the cooldown and forces a fresh query", async () => {
+      const store = makeStore([
+        { id: "doc-1", path: "/", siteId: SITE_ID, archived: false },
+      ]);
+      await store.keys();
+
+      vi.advanceTimersByTime(TTL_MS + 1);
+      mockClient.documents.list.mockRejectedValue(new Error("DB timeout"));
+      await store.keys();
+
+      mockClient.documents.list.mockResolvedValue([
+        { id: "doc-1", path: "/", siteId: SITE_ID, archived: false },
+        { id: "doc-new-page-2", path: "page-2", siteId: SITE_ID, archived: false },
+      ]);
+      await store.set("/page-2", { root: { props: {} }, content: [] });
+
+      expect((await store.keys()).sort()).toEqual(["/", "/page-2"]);
     });
   });
 
