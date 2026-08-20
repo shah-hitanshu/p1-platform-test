@@ -1003,6 +1003,11 @@ export class McpApiClient {
       method: 'GET',
       headers: this.getHeaders(),
     });
+    // Absence is this endpoint's ordinary answer, so the 404 has to be taken before
+    // handleResponse, which throws on any non-ok.
+    if (response.status === 404) {
+      return null;
+    }
     type DocumentInfoWithTemplate = DocumentInfo & {
       templateId?: string;
       templateVersion?: number;

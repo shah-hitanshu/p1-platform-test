@@ -319,6 +319,30 @@ describe('McpApiClient', () => {
     });
   });
 
+  describe('lookupDocumentByPath', () => {
+    it('returns null when no document exists at the path', async () => {
+      const { McpApiClient } = await import('../../src/shared/api-client.js');
+      const client = new McpApiClient(defaultConfig);
+
+      mockFetch.mockResolvedValueOnce(
+        new Response(JSON.stringify({ error: 'Document not found at path' }), { status: 404 }),
+      );
+
+      await expect(client.lookupDocumentByPath('site-123', 'new-page')).resolves.toBeNull();
+    });
+
+    it('still throws when the lookup is refused', async () => {
+      const { McpApiClient } = await import('../../src/shared/api-client.js');
+      const client = new McpApiClient(defaultConfig);
+
+      mockFetch.mockResolvedValueOnce(
+        new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403 }),
+      );
+
+      await expect(client.lookupDocumentByPath('site-123', 'index')).rejects.toThrow('Forbidden');
+    });
+  });
+
   // Test 9: canAgentEdit sends POST with agent context
   describe('canAgentEdit', () => {
     it('should send POST with agent context headers and body', async () => {
