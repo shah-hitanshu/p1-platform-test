@@ -41,7 +41,10 @@ async function executePurge(
   fields: Record<string, unknown>,
 ): Promise<void> {
   const logger = getLogger();
-  const logFields = { ...fields, tags: tags.join(','), count: tags.length };
+  // cache_tags, not tags: the field name must be in p1-telemetry's redaction
+  // allowlist or production drops it silently (found live on staging — the
+  // first deploy logged `tags` and shipped `"_dropped": ["tags"]` instead).
+  const logFields = { ...fields, cache_tags: tags.join(','), count: tags.length };
   const startedAt = Date.now();
 
   try {

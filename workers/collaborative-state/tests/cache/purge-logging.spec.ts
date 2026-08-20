@@ -42,7 +42,7 @@ describe('purge logging', () => {
     expect(fields.branch_id).toBe(BRANCH_ID);
     expect(fields.outcome).toBe('success');
     expect(fields.count).toBe(1);
-    expect(fields.tags).toBe(`site:${SITE_ID}`);
+    expect(fields.cache_tags).toBe(`site:${SITE_ID}`);
   });
 
   // Production runs LOG_LEVEL=warn; info-level success made purges
@@ -133,8 +133,44 @@ describe('purgeDeletedDocument', () => {
     const [, fields] = logger.warn.mock.calls[0] as [string, Record<string, unknown>];
     expect(fields.outcome).toBe('success');
     expect(fields.count).toBe(2);
-    expect(fields.tags).toBe(`doc:doc-1,list:${SITE_ID}`);
+    expect(fields.cache_tags).toBe(`doc:doc-1,list:${SITE_ID}`);
     expect(fields.document_id).toBe('doc-1');
+  });
+
+  // These tests mock the logger, which bypasses p1-telemetry's redaction
+  // allowlist — the first staging deploy logged `tags` and production dropped
+  // the field silently (`"_dropped": ["tags"]`). Pin every field the purge
+  // logs to the real allowlist so a rename can't reopen that gap.
+  it('logs only fields that survive the production redaction allowlist', async () => {
+    const { ALLOWED_FIELDS } = await import('@pantheon-systems/p1-telemetry');
+
+    // Success (warn) path for both purge shapes...
+    await purgeContentCache({ siteId: SITE_ID, branchId: BRANCH_ID, documentId: 'doc-1' });
+    await purgeDeletedDocument({ siteId: SITE_ID, branchId: BRANCH_ID, documentId: 'doc-1' });
+    // ...and both error paths (fields ride the logger's THIRD argument there).
+    purgeSpy.mockResolvedValueOnce({
+      success: false,
+      errors: [{ code: 1234, message: 'rejected' }],
+    });
+    await purgeContentCache({ siteId: SITE_ID });
+    purgeSpy.mockRejectedValueOnce(new Error('network down'));
+    await purgeDeletedDocument({ siteId: SITE_ID, documentId: 'doc-1' });
+
+    const allowed = new Set<string>(ALLOWED_FIELDS);
+    const fieldSets = [
+      ...logger.warn.mock.calls.map((c) => c[1] as Record<string, unknown>),
+      ...logger.error.mock.calls.map((c) => c[2] as Record<string, unknown>),
+    ];
+    expect(logger.warn.mock.calls.length).toBeGreaterThan(0);
+    expect(logger.error.mock.calls.length).toBeGreaterThan(0);
+    for (const fields of fieldSets) {
+      for (const key of Object.keys(fields)) {
+        expect(
+          allowed.has(key),
+          `purge log field "${key}" would be dropped in production`,
+        ).toBe(true);
+      }
+    }
   });
 
   it('logs an error when purge reports failure without throwing', async () => {

@@ -46,6 +46,9 @@ const DEFAULT_ALLOWED: readonly string[] = [
   'merge_request_id', 'queue', 'message_id',
   // routing / edge
   'status_class', 'origin', 'cf_ray', 'colo', 'country',
+  // edge cache: the tag list a purge sent (comma-joined) — forensically
+  // load-bearing after the 2026-08-19 incident [PCC-3709]
+  'cache_tags',
   // outcomes
   'outcome', 'reason', 'error_code', 'rate_limited', 'timed_out', 'aborted', 'attempt',
   'retries', 'handled',
