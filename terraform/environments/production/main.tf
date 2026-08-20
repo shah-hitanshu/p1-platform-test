@@ -112,7 +112,7 @@ module "database" {
   gcp_project = var.gcp_project
   gcp_region  = var.gcp_region
 
-  cloudsql_tier                = "db-custom-2-7680"
+  cloudsql_tier                = "db-custom-4-15360"
   cloudsql_disk_size           = 50
   cloudsql_availability_type   = "REGIONAL"
   cloudsql_backup_enabled      = true

@@ -125,6 +125,18 @@ variable "cloudsql_max_connections" {
   default     = 100
 }
 
+variable "cloudsql_query_insights_enabled" {
+  description = "Enable Cloud SQL Query Insights (per-query latency, sampled plans, application tags)"
+  type        = bool
+  default     = true
+}
+
+variable "cloudsql_log_min_duration_statement" {
+  description = "PostgreSQL log_min_duration_statement database flag, in milliseconds. Statements running at least this long are logged; -1 disables slow-query logging."
+  type        = number
+  default     = 1000
+}
+
 variable "ci_service_account_id" {
   description = "Account ID of the GitHub Actions service account granted IAM database login"
   type        = string
@@ -219,6 +231,24 @@ resource "google_sql_database_instance" "main" {
     availability_type = var.cloudsql_availability_type
     disk_autoresize   = true
 
+    insights_config {
+      query_insights_enabled = var.cloudsql_query_insights_enabled
+
+      # 4500 is the longest normalized statement Cloud SQL retains; anything
+      # shorter truncates a query mid-text and stops it being identifiable.
+      query_string_length = 4500
+
+      # Plan capture samples EXPLAIN output on the instance being profiled, so
+      # it competes for the CPU it is meant to explain. 5/minute is the Cloud
+      # SQL default and enough to characterise a hot query.
+      query_plans_per_minute = 5
+
+      # Attribution axes. Application tags require the caller to emit
+      # sqlcommenter comments; until then the axis is present but empty.
+      record_application_tags = true
+      record_client_address   = true
+    }
+
     database_flags {
       # Explicit max_connections prevents cascade connection exhaustion.
       # Rule: this value must be >= 2x the sum of all Hyperdrive origin_connection_limit
@@ -232,6 +262,14 @@ resource "google_sql_database_instance" "main" {
       # Lets principals log in with short-lived IAM OAuth tokens instead of passwords.
       name  = "cloudsql.iam_authentication"
       value = "on"
+    }
+
+    database_flags {
+      # Per-query attribution in the instance log, independent of Query
+      # Insights' sampling: any statement at least this slow is logged with
+      # its duration and text.
+      name  = "log_min_duration_statement"
+      value = tostring(var.cloudsql_log_min_duration_statement)
     }
 
     ip_configuration {
