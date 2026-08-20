@@ -8,6 +8,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { AuthenticatedPrincipal } from '../../src/types';
 import type { AuthorizedRequest, MiddlewareResponse } from '../../src/auth/middleware';
+import { ROLES } from '../../src/auth/roles';
 
 // Mock the authorization module
 vi.mock('../../src/auth/authorization', () => ({
@@ -110,17 +111,7 @@ describe('Phase 2.2: Permission Middleware', () => {
 
       vi.mocked(authorization.getEffectiveRole).mockResolvedValue({
         roleName: 'ADMIN',
-        role: {
-          canView: true,
-          canEdit: true,
-          canCreateBranch: true,
-          canEditDocuments: true,
-          canCreateCheckpoint: true,
-          canProposeMerge: true,
-          canMerge: true,
-          canMergeToMain: true,
-          canManageGrants: true,
-        },
+        role: ROLES.ADMIN,
       });
 
       const req = createMockRequest({ principal });
@@ -145,17 +136,7 @@ describe('Phase 2.2: Permission Middleware', () => {
 
       vi.mocked(authorization.getEffectiveRole).mockResolvedValue({
         roleName: 'EDITOR',
-        role: {
-          canView: true,
-          canEdit: true,
-          canCreateBranch: true,
-          canEditDocuments: true,
-          canCreateCheckpoint: true,
-          canProposeMerge: true,
-          canMerge: true,
-          canMergeToMain: false,
-          canManageGrants: false,
-        },
+        role: ROLES.EDITOR,
       });
 
       const req = createMockRequest({ principal });
@@ -184,17 +165,7 @@ describe('Phase 2.2: Permission Middleware', () => {
 
       vi.mocked(authorization.getEffectiveRole).mockResolvedValue({
         roleName: 'EDITOR',
-        role: {
-          canView: true,
-          canEdit: true,
-          canCreateBranch: true,
-          canEditDocuments: true,
-          canCreateCheckpoint: true,
-          canProposeMerge: true,
-          canMerge: true,
-          canMergeToMain: false,
-          canManageGrants: false,
-        },
+        role: ROLES.EDITOR,
       });
 
       const req = createMockRequest({ principal });
@@ -220,17 +191,7 @@ describe('Phase 2.2: Permission Middleware', () => {
         pantheonSiteRoles: { 'site-1': 'owner' },
       });
 
-      const mockRole = {
-        canView: true,
-        canEdit: true,
-        canCreateBranch: true,
-        canEditDocuments: true,
-        canCreateCheckpoint: true,
-        canProposeMerge: true,
-        canMerge: true,
-        canMergeToMain: true,
-        canManageGrants: true,
-      };
+      const mockRole = ROLES.ADMIN;
 
       vi.mocked(authorization.getEffectiveRole).mockResolvedValue({
         roleName: 'ADMIN',
@@ -256,17 +217,7 @@ describe('Phase 2.2: Permission Middleware', () => {
 
       vi.mocked(authorization.getEffectiveRole).mockResolvedValue({
         roleName: 'ADMIN',
-        role: {
-          canView: true,
-          canEdit: true,
-          canCreateBranch: true,
-          canEditDocuments: true,
-          canCreateCheckpoint: true,
-          canProposeMerge: true,
-          canMerge: true,
-          canMergeToMain: true,
-          canManageGrants: true,
-        },
+        role: ROLES.ADMIN,
       });
 
       const req = createMockRequest({
@@ -463,17 +414,7 @@ describe('Phase 2.2: Permission Middleware', () => {
 
       vi.mocked(authorization.getEffectiveRole).mockResolvedValue({
         roleName: 'EDITOR',
-        role: {
-          canView: true,
-          canEdit: true,
-          canCreateBranch: true,
-          canEditDocuments: true,
-          canCreateCheckpoint: true,
-          canProposeMerge: true,
-          canMerge: true,
-          canMergeToMain: false,
-          canManageGrants: false,
-        },
+        role: ROLES.EDITOR,
       });
 
       const req = createMockRequest({ principal });
@@ -497,17 +438,7 @@ describe('Phase 2.2: Permission Middleware', () => {
 
       vi.mocked(authorization.getEffectiveRole).mockResolvedValue({
         roleName: 'ADMIN',
-        role: {
-          canView: true,
-          canEdit: true,
-          canCreateBranch: true,
-          canEditDocuments: true,
-          canCreateCheckpoint: true,
-          canProposeMerge: true,
-          canMerge: true,
-          canMergeToMain: true,
-          canManageGrants: true,
-        },
+        role: ROLES.ADMIN,
       });
 
       const req = createMockRequest({ principal });
@@ -530,17 +461,7 @@ describe('Phase 2.2: Permission Middleware', () => {
 
       vi.mocked(authorization.getEffectiveRole).mockResolvedValue({
         roleName: 'EDITOR',
-        role: {
-          canView: true,
-          canEdit: true,
-          canCreateBranch: true,
-          canEditDocuments: true,
-          canCreateCheckpoint: true,
-          canProposeMerge: true,
-          canMerge: true,
-          canMergeToMain: false,
-          canManageGrants: false,
-        },
+        role: ROLES.EDITOR,
       });
 
       const req = createMockRequest({ principal });

@@ -31,6 +31,13 @@ export interface RolePermissions {
   canMerge: boolean;
   canMergeToMain: boolean;
   canManageGrants: boolean;
+  /**
+   * Authoring the structures other documents inherit from: template CRUD and
+   * migration, writes to `_registry/templates/*`, and the drift listing that
+   * surfaces them. Distinct from canEditDocuments, which governs editing a
+   * document's own content.
+   */
+  canManageTemplates: boolean;
 }
 
 /**

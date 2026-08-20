@@ -3836,6 +3836,7 @@ components:
         - canMerge
         - canMergeToMain
         - canManageGrants
+        - canManageTemplates
       properties:
         canView: { type: boolean }
         canEdit: { type: boolean }
@@ -3846,6 +3847,12 @@ components:
         canMerge: { type: boolean }
         canMergeToMain: { type: boolean }
         canManageGrants: { type: boolean }
+        canManageTemplates:
+          type: boolean
+          description: >-
+            Authoring the structures other documents inherit from: template CRUD
+            and migration, writes to _registry/templates/*, and the drift
+            listing. ADMIN only.
 
     ViewerRoleResponse:
       type: object

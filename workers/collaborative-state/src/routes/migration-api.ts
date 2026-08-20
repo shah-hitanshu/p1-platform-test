@@ -163,9 +163,9 @@ export async function handleMigrationRoutes(
     if (context.principal.type === 'service') {
       return errorResponse('Migration operations require ADMIN role', 403);
     }
-    const { roleName } = await getEffectiveRole(context.principal, context.siteId, branchId);
-    if (roleName !== 'ADMIN') {
-      throw new AuthorizationError('Migration operations require ADMIN role', 'canEditDocuments', roleName);
+    const { role, roleName } = await getEffectiveRole(context.principal, context.siteId, branchId);
+    if (!role.canManageTemplates) {
+      throw new AuthorizationError('Migration operations require ADMIN role', 'canManageTemplates', roleName);
     }
 
     // Verify job belongs to this site/branch when jobId is present

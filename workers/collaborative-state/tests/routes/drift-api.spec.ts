@@ -24,6 +24,7 @@ import { handleDriftRoutes } from '../../src/routes/drift-api';
 import { listBranchDrift } from '../../src/services';
 import { DEFAULT_DRIFT_LIMIT, MAX_DRIFT_LIMIT } from '../../src/services/branch-drift-service';
 import { getEffectiveRole } from '../../src/auth/authorization';
+import { ROLES } from '../../src/auth/roles';
 import type { AuthenticatedPrincipal } from '../../src/types';
 
 const SITE_ID = 'site-1';
@@ -81,7 +82,7 @@ describe('parseRoute - drift route', () => {
 describe('GET drift', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(getEffectiveRole).mockResolvedValue({ roleName: 'ADMIN' } as never);
+    vi.mocked(getEffectiveRole).mockResolvedValue({ role: ROLES.ADMIN, roleName: 'ADMIN' });
   });
 
   it('returns the drifted translations for the requested relation type', async () => {
@@ -130,7 +131,7 @@ describe('GET drift', () => {
   });
 
   it('returns 403 when the principal is not a site admin', async () => {
-    vi.mocked(getEffectiveRole).mockResolvedValueOnce({ roleName: 'EDITOR' } as never);
+    vi.mocked(getEffectiveRole).mockResolvedValueOnce({ role: ROLES.EDITOR, roleName: 'EDITOR' });
 
     const response = await handleDriftRoutes(driftRequest(), context());
 

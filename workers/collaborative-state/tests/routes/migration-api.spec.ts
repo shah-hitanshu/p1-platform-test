@@ -44,6 +44,7 @@ import {
 } from '../../src/services/migration-service';
 import { getEffectiveRole } from '../../src/auth/authorization';
 import { getBranch, LegacyConflictDeltaError } from '../../src/services';
+import { ROLES } from '../../src/auth/roles';
 import type { AuthenticatedPrincipal } from '../../src/types';
 import { readJson } from '../helpers/http';
 
@@ -70,7 +71,7 @@ describe('handleMigrationRoutes: conflict resolution', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     vi.mocked(getBranch).mockResolvedValue({ id: BRANCH_ID, siteId: SITE_ID } as never);
-    vi.mocked(getEffectiveRole).mockResolvedValue({ roleName: 'ADMIN' } as never);
+    vi.mocked(getEffectiveRole).mockResolvedValue({ role: ROLES.ADMIN, roleName: 'ADMIN' });
     vi.mocked(getMigrationJob).mockResolvedValue({
       id: JOB_ID,
       siteId: SITE_ID,

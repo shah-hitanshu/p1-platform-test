@@ -783,9 +783,9 @@ export async function handleTemplateRequest(
       if (method !== 'POST') {
         return errorResponse('Method not allowed', 405);
       }
-      const { roleName } = await getEffectiveRole(context.principal, context.siteId, branchId);
-      if (roleName !== 'ADMIN') {
-        throw new AuthorizationError('Template migration preview requires ADMIN role', 'canEditDocuments', roleName);
+      const { role, roleName } = await getEffectiveRole(context.principal, context.siteId, branchId);
+      if (!role.canManageTemplates) {
+        throw new AuthorizationError('Template migration preview requires ADMIN role', 'canManageTemplates', roleName);
       }
       return await handleMigratePreview(request, context.siteId, branchId, mainBranchId, context.templateId);
     }
@@ -795,10 +795,9 @@ export async function handleTemplateRequest(
       if (method !== 'POST') {
         return errorResponse('Method not allowed', 405);
       }
-      // Check ADMIN role for migration
-      const { roleName } = await getEffectiveRole(context.principal, context.siteId, branchId);
-      if (roleName !== 'ADMIN') {
-        throw new AuthorizationError('Template migration requires ADMIN role', 'canEditDocuments', roleName);
+      const { role, roleName } = await getEffectiveRole(context.principal, context.siteId, branchId);
+      if (!role.canManageTemplates) {
+        throw new AuthorizationError('Template migration requires ADMIN role', 'canManageTemplates', roleName);
       }
       return await handleMigrateTemplate(
         request, context.siteId, branchId, mainBranchId, context.templateId,
@@ -811,10 +810,9 @@ export async function handleTemplateRequest(
       if (method !== 'POST') {
         return errorResponse('Method not allowed', 405);
       }
-      // Check ADMIN role for rollback
-      const { roleName } = await getEffectiveRole(context.principal, context.siteId, branchId);
-      if (roleName !== 'ADMIN') {
-        throw new AuthorizationError('Template rollback requires ADMIN role', 'canEditDocuments', roleName);
+      const { role, roleName } = await getEffectiveRole(context.principal, context.siteId, branchId);
+      if (!role.canManageTemplates) {
+        throw new AuthorizationError('Template rollback requires ADMIN role', 'canManageTemplates', roleName);
       }
       return await handleRollbackTemplate(
         request, context.siteId, context.templateId, branchId, mainBranchId, context.principal,
@@ -828,9 +826,9 @@ export async function handleTemplateRequest(
       if (context.principal.type === 'service') {
         await assertPermission(context.principal, context.siteId, branchId, 'canEditDocuments');
       } else {
-        const { roleName } = await getEffectiveRole(context.principal, context.siteId, branchId);
-        if (roleName !== 'ADMIN') {
-          throw new AuthorizationError('Template write operations require ADMIN role', 'canEditDocuments', roleName);
+        const { role, roleName } = await getEffectiveRole(context.principal, context.siteId, branchId);
+        if (!role.canManageTemplates) {
+          throw new AuthorizationError('Template write operations require ADMIN role', 'canManageTemplates', roleName);
         }
       }
     }

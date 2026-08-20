@@ -404,8 +404,8 @@ async function handleCreateDocumentOnBranch(
 
   // Prevent non-admins from creating documents at _registry/templates/* via document API
   if (normalizedPath.startsWith('_registry/templates/')) {
-    const { roleName } = await getEffectiveRole(principal, siteId, branchId);
-    if (roleName !== 'ADMIN') {
+    const { role } = await getEffectiveRole(principal, siteId, branchId);
+    if (!role.canManageTemplates) {
       return errorResponse(
         'Templates must be created via template API (admin only)',
         403,
@@ -867,8 +867,8 @@ async function handleCreateDocumentVersion(
 
   // Prevent non-admins from writing versions to template documents via document API
   if (document?.path.startsWith('_registry/templates/') === true) {
-    const { roleName } = await getEffectiveRole(principal, siteId, branchId);
-    if (roleName !== 'ADMIN') {
+    const { role } = await getEffectiveRole(principal, siteId, branchId);
+    if (!role.canManageTemplates) {
       return errorResponse(
         'Template versions must be created via template API (admin only)',
         403,
@@ -1039,8 +1039,8 @@ async function handleBranchScopedDocumentRoutes(
     // Prevent non-admins from publishing template documents via document API
     const document = await getDocument(context.documentId);
     if (document?.path.startsWith('_registry/templates/') === true) {
-      const { roleName } = await getEffectiveRole(context.principal, context.siteId, branchId);
-      if (roleName !== 'ADMIN') {
+      const { role } = await getEffectiveRole(context.principal, context.siteId, branchId);
+      if (!role.canManageTemplates) {
         return errorResponse(
           'Templates must be published via template API (admin only)',
           403,

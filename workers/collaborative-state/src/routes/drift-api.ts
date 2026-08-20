@@ -45,9 +45,9 @@ export async function handleDriftRoutes(
     if (context.principal.type === 'service') {
       return errorResponse('Drift listing requires ADMIN role', 403);
     }
-    const { roleName } = await getEffectiveRole(context.principal, context.siteId, branchId);
-    if (roleName !== 'ADMIN') {
-      throw new AuthorizationError('Drift listing requires ADMIN role', 'canEditDocuments', roleName);
+    const { role, roleName } = await getEffectiveRole(context.principal, context.siteId, branchId);
+    if (!role.canManageTemplates) {
+      throw new AuthorizationError('Drift listing requires ADMIN role', 'canManageTemplates', roleName);
     }
 
     const { relationType, limit, offset } = validateQuery(

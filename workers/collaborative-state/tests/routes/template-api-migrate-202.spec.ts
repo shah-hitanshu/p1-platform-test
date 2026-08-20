@@ -31,11 +31,17 @@ vi.mock('../../src/services', () => ({
   DuplicateDocumentPathError: class extends Error {},
 }));
 
-vi.mock('../../src/auth/authorization', () => ({
-  assertPermission: vi.fn().mockResolvedValue(undefined),
-  getEffectiveRole: vi.fn().mockResolvedValue({ roleName: 'ADMIN', roleLevel: 0 }),
-  AuthorizationError: class extends Error {},
-}));
+vi.mock('../../src/auth/authorization', async () => {
+  // Imported inside the factory because vi.mock is hoisted above the imports.
+  const { ROLES } = await vi.importActual<typeof import('../../src/auth/roles')>(
+    '../../src/auth/roles',
+  );
+  return {
+    assertPermission: vi.fn().mockResolvedValue(undefined),
+    getEffectiveRole: vi.fn().mockResolvedValue({ role: ROLES.ADMIN, roleName: 'ADMIN' }),
+    AuthorizationError: class extends Error {},
+  };
+});
 
 vi.mock('../../src/services/migration-service', () => ({
   triggerMigration: vi.fn(),
@@ -53,6 +59,7 @@ import type { TemplateRouteContext } from '../../src/routes/template-api';
 import { runWithConnection, query } from '../../src/db';
 import { getBranch } from '../../src/services';
 import { assertPermission, getEffectiveRole } from '../../src/auth/authorization';
+import { ROLES } from '../../src/auth/roles';
 import { triggerMigration, processMigration } from '../../src/services/migration-service';
 import { readJson } from '../helpers/http';
 import { makeBranch } from '../helpers/branch';
@@ -91,7 +98,7 @@ describe('handleMigrateTemplate — 202/waitUntil path', () => {
 
     // Re-set authorization mocks after resetAllMocks clears them
     vi.mocked(assertPermission).mockResolvedValue(undefined);
-    vi.mocked(getEffectiveRole).mockResolvedValue({ roleName: 'ADMIN', roleLevel: 0 } as never);
+    vi.mocked(getEffectiveRole).mockResolvedValue({ role: ROLES.ADMIN, roleName: 'ADMIN' });
 
     // runWithConnection defaults to executing the callback
     vi.mocked(runWithConnection).mockImplementation(async (_cs, _opts, fn) => {

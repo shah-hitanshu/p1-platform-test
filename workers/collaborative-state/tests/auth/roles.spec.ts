@@ -35,6 +35,7 @@ describe('Phase 2.2: Role Definitions', () => {
         'canMerge',
         'canMergeToMain',
         'canManageGrants',
+        'canManageTemplates',
       ];
 
       for (const roleName of Object.keys(ROLES) as RoleName[]) {
@@ -61,6 +62,7 @@ describe('Phase 2.2: Role Definitions', () => {
       expect(noAccess.canMerge).toBe(false);
       expect(noAccess.canMergeToMain).toBe(false);
       expect(noAccess.canManageGrants).toBe(false);
+      expect(noAccess.canManageTemplates).toBe(false);
     });
   });
 
@@ -78,6 +80,7 @@ describe('Phase 2.2: Role Definitions', () => {
       expect(viewer.canMerge).toBe(false);
       expect(viewer.canMergeToMain).toBe(false);
       expect(viewer.canManageGrants).toBe(false);
+      expect(viewer.canManageTemplates).toBe(false);
     });
   });
 
@@ -95,6 +98,7 @@ describe('Phase 2.2: Role Definitions', () => {
       expect(editor.canMerge).toBe(true);
       expect(editor.canMergeToMain).toBe(false);
       expect(editor.canManageGrants).toBe(false);
+      expect(editor.canManageTemplates).toBe(false);
     });
   });
 
@@ -112,6 +116,7 @@ describe('Phase 2.2: Role Definitions', () => {
       expect(admin.canMerge).toBe(true);
       expect(admin.canMergeToMain).toBe(true);
       expect(admin.canManageGrants).toBe(true);
+      expect(admin.canManageTemplates).toBe(true);
     });
   });
 

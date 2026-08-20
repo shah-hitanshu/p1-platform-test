@@ -24,6 +24,7 @@ export const ROLES: Record<RoleName, RolePermissions> = {
     canMerge: false,
     canMergeToMain: false,
     canManageGrants: false,
+    canManageTemplates: false,
   },
 
   VIEWER: {
@@ -36,6 +37,7 @@ export const ROLES: Record<RoleName, RolePermissions> = {
     canMerge: false,
     canMergeToMain: false,
     canManageGrants: false,
+    canManageTemplates: false,
   },
 
   EDITOR: {
@@ -48,6 +50,7 @@ export const ROLES: Record<RoleName, RolePermissions> = {
     canMerge: true,
     canMergeToMain: false,
     canManageGrants: false,
+    canManageTemplates: false,
   },
 
   ADMIN: {
@@ -60,6 +63,7 @@ export const ROLES: Record<RoleName, RolePermissions> = {
     canMerge: true,
     canMergeToMain: true,
     canManageGrants: true,
+    canManageTemplates: true,
   },
 } as const;
 
