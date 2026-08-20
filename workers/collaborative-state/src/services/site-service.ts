@@ -9,7 +9,7 @@
 
 import type { Site, WorkflowSettings } from '../types';
 import { query } from '../db';
-import { createMainBranch } from './branch-service';
+import { createMainBranch, clearBranchCache } from './branch-service';
 import { createDocumentOnBranch } from './branch-document-service';
 import { publishDocument } from './checkpoint-publish';
 import { grantRole as grantAgentRole } from './agent-site-role-service';
@@ -283,6 +283,10 @@ export async function createSite(
     });
 
     await query('COMMIT');
+    // createMainBranch cleared the cache before this outer COMMIT; a lookup
+    // in that window could have cached a negative for the new site's main
+    // branch, so clear again now that the row is committed.
+    clearBranchCache();
 
     // Seed a default root page so the site has content immediately.
     // Runs after commit — failure here does not roll back site creation.
@@ -598,6 +602,7 @@ export async function deleteSite(siteId: string): Promise<boolean> {
 
     // Delete branches (branch_grants and guest_links have ON DELETE CASCADE)
     await query('DELETE FROM app.branches WHERE site_id = $1', [siteId]);
+    clearBranchCache();
   }
 
   // Get all structure IDs for this site
@@ -666,6 +671,7 @@ export async function archiveSite(siteId: string): Promise<boolean | 'already_ar
       [archiveTs, siteId],
     );
     await query('COMMIT');
+    clearBranchCache();
     return true;
   } catch (error) {
     await query('ROLLBACK');
@@ -708,6 +714,7 @@ export async function restoreSite(siteId: string): Promise<Site | null> {
       [siteId, archiveTs],
     );
     await query('COMMIT');
+    clearBranchCache();
     const restoredRow = updateResult.rows[0];
     if (!restoredRow) {
       return null;

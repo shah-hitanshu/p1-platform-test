@@ -16,8 +16,12 @@ vi.mock('../../src/db', () => ({
 }));
 
 describe('Phase 3.2: Branch Service', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.resetAllMocks();
+    // Branch resolution is memoized per isolate (PCC-3712); the module-scope
+    // cache must be emptied so tests don't serve each other's rows.
+    const { clearBranchCache } = await import('../../src/services/branch-service');
+    clearBranchCache();
   });
 
   // Mock branch row type (database format)

@@ -174,6 +174,79 @@ function isForeignKeyViolation(error: unknown): boolean {
 }
 
 // =============================================================================
+// Per-isolate branch resolution cache [PCC-3712]
+// =============================================================================
+
+/**
+ * Per-isolate memoization of branch resolution, mirroring the site-API-token
+ * validation cache shipped in PCC-3634 (site-api-token-service.ts).
+ *
+ * Branch metadata is resolved on nearly every content request — main-branch
+ * lookup on the default path, id/name lookup when ?branch= is given — but
+ * changes rarely; in the 2026-08-19 CloudSQL saturation incident these point
+ * lookups were 54% of summed DB query time. Entries are keyed by three shapes
+ * (branch id, siteId+name, main-of-site) and store the in-flight promise, so
+ * concurrent requests coalesce into a single query. Both hits and misses are
+ * cached: junk ?branch= values are part of what this shields against.
+ *
+ * Staleness trade: branch mutations in this isolate clear the cache
+ * immediately (see clearBranchCache callers, including site-service's bulk
+ * branch archive/restore/delete); other isolates serve stale metadata for at
+ * most BRANCH_CACHE_TTL_MS — the same bounded-staleness trade accepted for
+ * token revocation in PCC-3634. Mutation paths validate against uncached
+ * reads, so protection and transition checks never act on stale rows.
+ */
+const BRANCH_CACHE_TTL_MS = 30_000;
+const BRANCH_CACHE_MAX_ENTRIES = 1_000;
+
+interface BranchCacheEntry {
+  promise: Promise<Branch | null>;
+  expiresAt: number;
+}
+
+const branchCache = new Map<string, BranchCacheEntry>();
+
+function memoizedBranchLookup(
+  cacheKey: string,
+  lookup: () => Promise<Branch | null>,
+): Promise<Branch | null> {
+  const cached = branchCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.promise;
+  }
+  branchCache.delete(cacheKey);
+
+  if (branchCache.size >= BRANCH_CACHE_MAX_ENTRIES) {
+    const oldest = branchCache.keys().next().value;
+    if (oldest !== undefined) {
+      branchCache.delete(oldest);
+    }
+  }
+
+  const promise = lookup();
+  branchCache.set(cacheKey, {
+    promise,
+    expiresAt: Date.now() + BRANCH_CACHE_TTL_MS,
+  });
+  // A failed query must not be served for the rest of the TTL.
+  promise.catch(() => {
+    if (branchCache.get(cacheKey)?.promise === promise) {
+      branchCache.delete(cacheKey);
+    }
+  });
+  return promise;
+}
+
+/**
+ * Drops every entry in this isolate's branch cache. Mutations are rare enough
+ * relative to reads that dropping the whole isolate-local cache is the simple
+ * answer — the same call revokeToken makes in site-api-token-service.
+ */
+export function clearBranchCache(): void {
+  branchCache.clear();
+}
+
+// =============================================================================
 // Service Functions
 // =============================================================================
 
@@ -281,12 +354,14 @@ export async function createBranch(params: CreateBranchParams): Promise<Branch> 
         const updatedRow = updatedResult.rows[0];
         if (updatedRow) {
           await query('COMMIT');
+          clearBranchCache();
           return mapRowToBranch(updatedRow);
         }
       }
     }
 
     await query('COMMIT');
+    clearBranchCache();
 
     return branch;
   } catch (error) {
@@ -327,6 +402,7 @@ export async function createMainBranch(params: CreateMainBranchParams): Promise<
       [params.siteId, params.createdById, params.createdByType],
     );
 
+    clearBranchCache();
     return mapRowToBranch(getFirstRow(result.rows));
   } catch (error) {
     console.error('createMainBranch error:', error);
@@ -340,13 +416,8 @@ export async function createMainBranch(params: CreateMainBranchParams): Promise<
   }
 }
 
-/**
- * Retrieves a branch by its ID.
- *
- * @param branchId - The branch ID
- * @returns The branch or null if not found
- */
-export async function getBranch(branchId: string): Promise<Branch | null> {
+/** Uncached lookup by id — used by mutation paths, which must not act on stale rows. */
+async function queryBranchById(branchId: string): Promise<Branch | null> {
   const result = await query<BranchRow>(
     'SELECT * FROM app.branches WHERE id = $1',
     [branchId],
@@ -360,42 +431,62 @@ export async function getBranch(branchId: string): Promise<Branch | null> {
 }
 
 /**
+ * Retrieves a branch by its ID.
+ *
+ * Results are memoized per isolate for a short TTL (see branchCache above).
+ *
+ * @param branchId - The branch ID
+ * @returns The branch or null if not found
+ */
+export function getBranch(branchId: string): Promise<Branch | null> {
+  return memoizedBranchLookup(`id:${branchId}`, () => queryBranchById(branchId));
+}
+
+/**
  * Retrieves a branch by name within a site.
+ *
+ * Results are memoized per isolate for a short TTL (see branchCache above).
  *
  * @param siteId - The site ID
  * @param name - The branch name
  * @returns The branch or null if not found
  */
-export async function getBranchByName(siteId: string, name: string): Promise<Branch | null> {
-  const result = await query<BranchRow>(
-    'SELECT * FROM app.branches WHERE site_id = $1 AND name = $2',
-    [siteId, name],
-  );
+export function getBranchByName(siteId: string, name: string): Promise<Branch | null> {
+  return memoizedBranchLookup(`name:${siteId}:${name}`, async () => {
+    const result = await query<BranchRow>(
+      'SELECT * FROM app.branches WHERE site_id = $1 AND name = $2',
+      [siteId, name],
+    );
 
-  if (result.rows.length === 0) {
-    return null;
-  }
+    if (result.rows.length === 0) {
+      return null;
+    }
 
-  return mapRowToBranch(getFirstRow(result.rows));
+    return mapRowToBranch(getFirstRow(result.rows));
+  });
 }
 
 /**
  * Retrieves the main branch for a site.
  *
+ * Results are memoized per isolate for a short TTL (see branchCache above).
+ *
  * @param siteId - The site ID
  * @returns The main branch or null if not found
  */
-export async function getMainBranch(siteId: string): Promise<Branch | null> {
-  const result = await query<BranchRow>(
-    'SELECT * FROM app.branches WHERE site_id = $1 AND is_main = TRUE',
-    [siteId],
-  );
+export function getMainBranch(siteId: string): Promise<Branch | null> {
+  return memoizedBranchLookup(`main:${siteId}`, async () => {
+    const result = await query<BranchRow>(
+      'SELECT * FROM app.branches WHERE site_id = $1 AND is_main = TRUE',
+      [siteId],
+    );
 
-  if (result.rows.length === 0) {
-    return null;
-  }
+    if (result.rows.length === 0) {
+      return null;
+    }
 
-  return mapRowToBranch(getFirstRow(result.rows));
+    return mapRowToBranch(getFirstRow(result.rows));
+  });
 }
 
 /**
@@ -404,7 +495,7 @@ export async function getMainBranch(siteId: string): Promise<Branch | null> {
  * and throws MainBranchProtectionError for the main branch.
  */
 export async function archiveBranch(branchId: string): Promise<boolean | 'already_archived'> {
-  const branch = await getBranch(branchId);
+  const branch = await queryBranchById(branchId);
   if (branch === null) {
     return false;
   }
@@ -420,6 +511,7 @@ export async function archiveBranch(branchId: string): Promise<boolean | 'alread
       [branchId],
     );
     await query('COMMIT');
+    clearBranchCache();
     return (result.rowCount ?? 0) > 0 ? true : 'already_archived';
   } catch (error) {
     await query('ROLLBACK');
@@ -455,6 +547,7 @@ export async function restoreBranch(branchId: string): Promise<Branch | null> {
       [branchId],
     );
     await query('COMMIT');
+    clearBranchCache();
     const updatedRow = updateResult.rows[0];
     if (!updatedRow) {
       return null;
@@ -544,6 +637,7 @@ export async function updateBranch(
       return null;
     }
 
+    clearBranchCache();
     return mapRowToBranch(getFirstRow(result.rows));
   } catch (error) {
     if (isUniqueConstraintViolation(error)) {
@@ -566,8 +660,9 @@ export async function updateBranchStatus(
   branchId: string,
   newStatus: BranchStatus,
 ): Promise<Branch | null> {
-  // Get current branch state
-  const current = await getBranch(branchId);
+  // Get current branch state (uncached: transition validation must not act on
+  // a stale row)
+  const current = await queryBranchById(branchId);
   if (!current) {
     return null;
   }
@@ -600,6 +695,7 @@ export async function updateBranchStatus(
     return null;
   }
 
+  clearBranchCache();
   return mapRowToBranch(getFirstRow(result.rows));
 }
 
@@ -611,8 +707,9 @@ export async function updateBranchStatus(
  * @throws MainBranchProtectionError if trying to delete the main branch
  */
 export async function deleteBranch(branchId: string): Promise<boolean> {
-  // Check if branch exists and is not main
-  const branch = await getBranch(branchId);
+  // Check if branch exists and is not main (uncached: protection check must
+  // not act on a stale row)
+  const branch = await queryBranchById(branchId);
   if (!branch) {
     return false;
   }
@@ -681,5 +778,6 @@ export async function deleteBranch(branchId: string): Promise<boolean> {
     [branchId],
   );
 
+  clearBranchCache();
   return (result.rowCount ?? 0) > 0;
 }
