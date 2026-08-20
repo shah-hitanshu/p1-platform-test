@@ -87,7 +87,7 @@ export async function listDocumentsOnBranch(
 
   if (branchInheritsFromMain(branchId, mainBranchId)) {
     // Copy-on-write query: include documents from branch + inherited from main
-    // Includes publish state via LEFT JOIN LATERAL on checkpoint_documents
+    // Includes publish state via a batch LEFT JOIN on checkpoint_documents
     let sql = `
       SELECT ${DOCUMENT_WITH_TEMPLATE_COLUMNS},
         false AS inherited,

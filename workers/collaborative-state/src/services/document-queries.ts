@@ -53,21 +53,25 @@ export function latestVersionOnBranchJoin(branchParam: string, columns: string):
 }
 
 /**
- * LEFT JOIN LATERAL binding alias `pub` to the most recent publish checkpoint
- * covering document `d` on the branch at `branchParam`.
+ * LEFT JOIN binding alias `pub` to the most recent publish checkpoint covering
+ * each document on the branch at `branchParam`, computed for all documents at
+ * once with DISTINCT ON rather than a per-document lateral: the lateral's
+ * newest-first scan re-reads the branch's whole publish history for every
+ * document, so its cost grows with total publishes (~18s at 1,000 publishes
+ * where this form takes ~100ms).
  *
  * Expects the documents table to be aliased `d`.
  */
 export function latestPublishOnBranchJoin(branchParam: string): string {
-  return `LEFT JOIN LATERAL (
-        SELECT cd.document_version_id, cp.created_at AS published_at
+  return `LEFT JOIN (
+        SELECT DISTINCT ON (cd.document_id)
+          cd.document_id, cd.document_version_id, cp.created_at AS published_at
         FROM app.checkpoint_documents cd
         INNER JOIN app.checkpoints cp ON cp.id = cd.checkpoint_id
-        WHERE cd.document_id = d.id AND cp.branch_id = ${branchParam}
+        WHERE cp.branch_id = ${branchParam}
           AND cp.checkpoint_type = 'publish'
-        ORDER BY cp.created_at DESC
-        LIMIT 1
-      ) pub ON true`;
+        ORDER BY cd.document_id, cp.created_at DESC
+      ) pub ON pub.document_id = d.id`;
 }
 
 /**
