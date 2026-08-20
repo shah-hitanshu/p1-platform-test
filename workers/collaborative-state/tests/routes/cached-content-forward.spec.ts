@@ -42,7 +42,9 @@ describe('isCacheableContentRequest', () => {
   });
 
   // Only the content handler is URL-determined; everything else reads the
-  // principal and must never be served from a shared cache.
+  // principal and must never be served from a shared cache. (Non-main branch
+  // content stays cacheable here; the per-member gate that protects it runs in
+  // index.ts before the forward — see content-cache-isolation.spec.ts [PCC-3676].)
   it.each(['document', 'site-tokens', 'content-redirects', 'branch'])(
     'rejects the %s handler',
     (handler) => {

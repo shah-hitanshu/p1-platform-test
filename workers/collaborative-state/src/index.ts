@@ -12,7 +12,9 @@ import {
 import { resolveConnection } from './db/resolve-connection';
 import { forwardToCachedContent, isCacheableContentRequest } from './routes/cached-content-forward';
 import type { AuthenticatedPrincipal } from './types';
-import { AuthorizationError } from './auth/authorization';
+import { AuthorizationError, hasPermission } from './auth/authorization';
+import { resolveBranch } from './routes/content-api';
+import type { MASClient } from './services/mas-client';
 import { HttpError } from './services/errors';
 import { isServicePrincipalAllowed } from './auth/service-principal';
 import { extractActingUser } from './auth/acting-user';
@@ -437,13 +439,32 @@ async function handleRequest(
   const masClient = getMASClient(env);
 
   try {
-    // Every gate above has run; past this point the response depends only on
-    // the URL, which is what makes the cached entrypoint safe. The cache layer
-    // must never be a point of failure for content serving [PCC-3666]: a null
-    // forward (loopback binding unavailable) or a throw from the forward both
-    // fall through to the uncached dispatch below. Entrypoint-level failures
-    // return as Response objects and pass through untouched — only transport
-    // failures land in the catch.
+    // PCC-3676: non-main (unpublished) branch content is member-only. Enforce it
+    // here — before the cached-content forward — so the check runs on every
+    // request (handleRequest runs even on a cache hit) and a non-member is
+    // refused before the shared, URL-keyed cache is consulted or populated.
+    // Reuses isCacheableContentRequest so the gated set can never drift from the
+    // cached set. Main/published content carries no ?branch= and is public;
+    // service principals are already scope-checked above (isServicePrincipalAllowed).
+    // Kept inside this try so a resolveBranch/hasPermission failure maps to the
+    // generic 500 below rather than leaking a DB error at the fetch() boundary.
+    if (
+      principal.type !== 'service' &&
+      isCacheableContentRequest(route, request.method) &&
+      route.params.siteId !== undefined
+    ) {
+      const denied = await assertContentBranchAccess(request, route.params.siteId, principal, masClient);
+      if (denied !== null) {
+        return cors(denied);
+      }
+    }
+
+    // Past this point the response depends only on the URL, which is what makes
+    // the cached entrypoint safe. The cache layer must never be a point of
+    // failure for content serving [PCC-3666]: a null forward (loopback binding
+    // unavailable) or a throw from the forward both fall through to the uncached
+    // dispatch below. Entrypoint-level failures return as Response objects and
+    // pass through untouched — only transport failures land in the catch.
     if (isCacheableContentRequest(route, request.method)) {
       try {
         const cached = await forwardToCachedContent(request);
@@ -471,6 +492,49 @@ async function handleRequest(
     console.error('Request handler error:', error);
     return cors(errorResponse('Internal server error', 500));
   }
+}
+
+/**
+ * PCC-3676 branch read gate. Non-main branch content is unpublished
+ * (draft/preview) and visible only to principals with canView on the site.
+ * Returns a Response to block the read, or null to allow it to proceed.
+ *
+ * Only an explicit `?branch=` is considered — the default (main) is published
+ * and public, and skipping resolution there keeps the hot public path free of
+ * an extra branch lookup. resolveBranch is the content handler's own resolver,
+ * so the gate and the serve agree on which branch a ref names.
+ *
+ * A denial returns 404, identical to a nonexistent branch: a 403 here would
+ * turn the status code into a branch-existence oracle (branch names carry
+ * ticket ids and unreleased feature/campaign names) for a caller who is not a
+ * member. The denial is logged at info (a deliberate, served outcome — not
+ * degraded) so rollout blast radius is measurable, and it is returned before
+ * the forward, so it is never cached and can't be served to a member.
+ */
+async function assertContentBranchAccess(
+  request: Request,
+  siteId: string,
+  principal: AuthenticatedPrincipal,
+  masClient: MASClient | undefined,
+): Promise<Response | null> {
+  const branchRef = new URL(request.url).searchParams.get('branch');
+  if (branchRef === null || branchRef === '') {
+    return null;
+  }
+  const branch = await resolveBranch(request, siteId);
+  if (branch === null || branch.isMain) {
+    return null;
+  }
+  const allowed = await hasPermission(principal, siteId, branch.id, 'canView', masClient);
+  if (allowed) {
+    return null;
+  }
+  getLogger().info('non-main branch read denied', {
+    site_id: siteId,
+    branch_id: branch.id,
+    outcome: 'denied',
+  });
+  return errorResponse('Branch not found', 404);
 }
 
 /**

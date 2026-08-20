@@ -315,6 +315,28 @@ describe('Phase 2.2: Branch-Level Authorization', () => {
 
         expect(result.roleName).toBe('EDITOR');
       });
+
+      // PCC-3676: the agent-role lookup must exclude revoked grants, or revoking
+      // an agent's role never removes its authorization.
+      it('excludes revoked rows from the agent site-role lookup', async () => {
+        const { getSiteRole } = await import('../../src/auth/authorization');
+        const db = await import('../../src/db');
+
+        const principal = createPrincipal({
+          id: 'agent-123',
+          type: 'agent',
+          pantheonSiteRoles: {},
+        });
+        vi.mocked(db.query).mockResolvedValue({ rows: [] });
+
+        await getSiteRole(principal, 'site-1');
+
+        const agentQuery = vi.mocked(db.query).mock.calls.find(
+          ([sql]) => typeof sql === 'string' && sql.includes('app.agent_site_roles'),
+        );
+        expect(agentQuery).toBeDefined();
+        expect(agentQuery?.[0]).toMatch(/revoked_at IS NULL/);
+      });
     });
 
     describe('Multiple sites', () => {

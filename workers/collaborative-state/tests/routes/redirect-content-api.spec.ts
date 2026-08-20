@@ -19,6 +19,14 @@ vi.mock('../../src/services', () => ({
   getLatestDocumentVersion: vi.fn(),
 }));
 
+// Real AuthorizationError (the handler does `instanceof`); assertPermission is
+// stubbed so the route test controls allow/deny. The real canView decision
+// (service site-binding, user roles) is covered by authorization.spec.ts.
+vi.mock('../../src/auth/authorization', async (importActual) => {
+  const actual = await importActual<typeof import('../../src/auth/authorization')>();
+  return { ...actual, assertPermission: vi.fn().mockResolvedValue(undefined) };
+});
+
 const testPrincipal = makePrincipal({
   id: 'site-token-1',
   type: 'service',
@@ -436,6 +444,72 @@ describe('Content Redirect Lookup API', () => {
       expect(response.status).toBe(200);
       const body = await readJson(response);
       expect(body.destination).toBe('/documentation/api/v2/endpoints');
+    });
+  });
+
+  // ===========================================================================
+  // Authorization (PCC-3676)
+  // ===========================================================================
+
+  describe('canView gate', () => {
+    it('denies a non-member (403) before resolving any redirect config', async () => {
+      const { handleContentRedirectRoutes } = await import(
+        '../../src/routes/redirect-content-api'
+      );
+      const services = await import('../../src/services');
+      const { assertPermission, AuthorizationError } = await import('../../src/auth/authorization');
+
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce(makeBranch({
+        id: 'main-branch-uuid', siteId: 'site-1', name: 'main', isMain: true,
+        status: 'active', createdAt: '2026-01-01T00:00:00.000Z',
+        createdById: 'system', createdByType: 'system',
+      }));
+      vi.mocked(assertPermission).mockRejectedValueOnce(
+        new AuthorizationError('Missing permission: canView.', 'canView', 'NO_ACCESS'),
+      );
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-1/content-redirects/old-page',
+        { method: 'GET' },
+      );
+      const response = await handleContentRedirectRoutes(request, {
+        siteId: 'site-1',
+        documentPath: 'old-page',
+        principal: makePrincipal({ id: 'outsider', type: 'user' }),
+      });
+
+      expect(response.status).toBe(403);
+      // Draft redirect config (fromPath/destination/parenting) is never read.
+      expect(services.getDocumentByPath).not.toHaveBeenCalled();
+    });
+
+    it('checks canView on the site main branch (the live sat_ path clears it)', async () => {
+      const { handleContentRedirectRoutes } = await import(
+        '../../src/routes/redirect-content-api'
+      );
+      const services = await import('../../src/services');
+      const { assertPermission } = await import('../../src/auth/authorization');
+
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce(makeBranch({
+        id: 'main-branch-uuid', siteId: 'site-1', name: 'main', isMain: true,
+        status: 'active', createdAt: '2026-01-01T00:00:00.000Z',
+        createdById: 'system', createdByType: 'system',
+      }));
+      vi.mocked(services.getDocumentByPath).mockResolvedValueOnce(null);
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-1/content-redirects/old-page',
+        { method: 'GET' },
+      );
+      await handleContentRedirectRoutes(request, {
+        siteId: 'site-1',
+        documentPath: 'old-page',
+        principal: testPrincipal,
+      });
+
+      expect(assertPermission).toHaveBeenCalledWith(
+        testPrincipal, 'site-1', 'main-branch-uuid', 'canView',
+      );
     });
   });
 

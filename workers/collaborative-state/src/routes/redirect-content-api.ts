@@ -6,6 +6,7 @@ import {
   getLatestDocumentVersion,
 } from '../services';
 import { jsonResponse, errorResponse } from '../utils/http-helpers';
+import { assertPermission, AuthorizationError } from '../auth/authorization';
 
 export interface ContentRedirectRouteContext {
   siteId: string;
@@ -66,6 +67,14 @@ export async function handleContentRedirectRoutes(
       return errorResponse('Not found', 404);
     }
 
+    // PCC-3676: redirect config is drawn from the latest SAVED version — there
+    // is no publish step for redirects — so an allowlisted non-member could
+    // otherwise read unreleased URL structure (fromPath/destination/parenting).
+    // Gate on canView, matching the redirects CRUD handler. The live redirect
+    // lookup uses the site's sat_ token, which clears this via the service
+    // site-binding check.
+    await assertPermission(context.principal, context.siteId, mainBranch.id, 'canView');
+
     const lookupPath = context.documentPath ?? '';
     const result = await resolveRedirect(context.siteId, mainBranch.id, lookupPath);
 
@@ -83,6 +92,9 @@ export async function handleContentRedirectRoutes(
       statusCode,
     });
   } catch (error) {
+    if (error instanceof AuthorizationError) {
+      return errorResponse(error.message, 403);
+    }
     console.error('Content redirect API error:', error);
     return errorResponse('Internal server error', 500);
   }

@@ -10,7 +10,9 @@
  */
 
 import type { AuthenticatedPrincipal } from '../types';
-import { grantRole, listRoles, revokeRole } from '../services/agent-site-role-service';
+import { grantRole, listRoles, revokeRole, getAgentSiteRoleById } from '../services/agent-site-role-service';
+import { assertPermission, hasPermission, AuthorizationError } from '../auth/authorization';
+import { getMainBranch } from '../services';
 
 /**
  * Route context for agent role management endpoints
@@ -59,7 +61,7 @@ export async function handleAgentRoleRoutes(
     if (roleId !== undefined && roleId !== '') {
       // Role-specific operations
       if (method === 'DELETE') {
-        return await handleRevokeRole(agentId, roleId);
+        return await handleRevokeRole(agentId, roleId, principal);
       }
       return errorResponse('Method not allowed', 405);
     }
@@ -69,11 +71,14 @@ export async function handleAgentRoleRoutes(
       case 'POST':
         return await handleGrantRole(request, agentId, principal);
       case 'GET':
-        return await handleListRoles(agentId);
+        return await handleListRoles(agentId, principal);
       default:
         return errorResponse('Method not allowed', 405);
     }
   } catch (error) {
+    if (error instanceof AuthorizationError) {
+      return errorResponse(error.message, 403);
+    }
     console.error('Agent Role API error:', error);
     return errorResponse('Internal server error', 500);
   }
@@ -104,6 +109,16 @@ async function handleGrantRole(
     return errorResponse('role must be one of: viewer, editor, admin', 400);
   }
 
+  // Granting an agent a role on a site requires site admin on that site
+  // [PCC-3676]. siteId here comes from the request body, so this is the second
+  // path (besides POST /api/sites/:siteId/agent-roles) by which an allowlisted
+  // user could otherwise grant an agent admin on a site they don't administer.
+  const mainBranch = await getMainBranch(siteId);
+  if (mainBranch === null) {
+    return errorResponse('Site not found', 404);
+  }
+  await assertPermission(principal, siteId, mainBranch.id, 'canManageGrants');
+
   const result = await grantRole({
     agentId,
     siteId,
@@ -114,15 +129,46 @@ async function handleGrantRole(
   return jsonResponse(result, 201);
 }
 
-async function handleListRoles(agentId: string): Promise<Response> {
+async function handleListRoles(
+  agentId: string,
+  principal: AuthenticatedPrincipal,
+): Promise<Response> {
+  // PCC-3676: an agent's roles span sites. Return only those on sites the caller
+  // administers (canManageGrants), so this can't be used to enumerate grants —
+  // and the otherwise well-protected site UUIDs — for sites the caller has no
+  // access to. Mirrors the gate on GET /api/sites/:siteId/agent-roles.
   const roles = await listRoles(agentId);
-  return jsonResponse({ roles });
+  const visible: typeof roles = [];
+  for (const role of roles) {
+    const mainBranch = await getMainBranch(role.siteId);
+    if (
+      mainBranch !== null &&
+      (await hasPermission(principal, role.siteId, mainBranch.id, 'canManageGrants'))
+    ) {
+      visible.push(role);
+    }
+  }
+  return jsonResponse({ roles: visible });
 }
 
 async function handleRevokeRole(
   agentId: string,
   roleId: string,
+  principal: AuthenticatedPrincipal,
 ): Promise<Response> {
+  // Revoking an agent's site role is a grant-management operation on that
+  // role's site: require canManageGrants there [PCC-3676]. The site is only
+  // knowable by reading the row, so resolve it before authorizing.
+  const existing = await getAgentSiteRoleById(roleId, agentId);
+  if (existing === null) {
+    return errorResponse('Role not found', 404);
+  }
+  const mainBranch = await getMainBranch(existing.siteId);
+  if (mainBranch === null) {
+    return errorResponse('Site not found', 404);
+  }
+  await assertPermission(principal, existing.siteId, mainBranch.id, 'canManageGrants');
+
   const revoked = await revokeRole(roleId, agentId);
 
   if (!revoked) {

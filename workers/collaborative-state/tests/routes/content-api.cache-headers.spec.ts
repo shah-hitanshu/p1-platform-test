@@ -214,6 +214,49 @@ describe('content API cache headers', () => {
       );
     });
 
+    // PCC-3676: non-main content is member-only, so it must never carry a
+    // shareable `public` directive — a downstream CDN/ISR keyed on the bare URL
+    // would serve one member's draft to anyone. It goes out private + no-store.
+    it('marks non-main (draft) content private and unstored, never public', async () => {
+      mocks.getBranchByName.mockResolvedValue({
+        id: 'branch-feature', name: 'feature-x', siteId: SITE_ID, isMain: false,
+      });
+      mocks.getLatestDocumentVersionWithFallback.mockResolvedValue({
+        version: {
+          id: 'v9', versionNumber: 2, snapshot: { content: [] },
+          createdAt: '2026-08-01T00:00:00.000Z', isTombstone: false,
+        },
+        inherited: false,
+      });
+      const { handleContentRoutes } = await import('../../src/routes/content-api');
+
+      const req = new Request(
+        `https://api.example.com/api/sites/${SITE_ID}/content/home?branch=feature-x`,
+        { method: 'GET' },
+      );
+      const response = await handleContentRoutes(req, contentContext());
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get('Cache-Control')).toBe('private, no-store');
+    });
+
+    it('marks a non-main page listing private and unstored', async () => {
+      mocks.getBranchByName.mockResolvedValue({
+        id: 'branch-feature', name: 'feature-x', siteId: SITE_ID, isMain: false,
+      });
+      mocks.listDocumentsOnBranch.mockResolvedValue([]);
+      const { handleContentRoutes } = await import('../../src/routes/content-api');
+
+      const req = new Request(
+        `https://api.example.com/api/sites/${SITE_ID}/content-pages?branch=feature-x`,
+        { method: 'GET' },
+      );
+      const response = await handleContentRoutes(req, pagesContext());
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get('Cache-Control')).toBe('private, no-store');
+    });
+
     it('tags the response with site and branch so publish can purge it', async () => {
       const { handleContentRoutes } = await import('../../src/routes/content-api');
 

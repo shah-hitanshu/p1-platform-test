@@ -133,6 +133,27 @@ export async function revokeRole(
 }
 
 /**
+ * Look up a single agent site role by id and agent, including revoked rows.
+ *
+ * Used for authorization before a revoke: the caller must have canManageGrants
+ * on the role's site, and that site id is only knowable by reading the row
+ * first [PCC-3676].
+ */
+export async function getAgentSiteRoleById(
+  roleId: string,
+  agentId: string,
+): Promise<AgentSiteRole | null> {
+  const result = await query<RoleRow>(
+    `SELECT * FROM app.agent_site_roles
+     WHERE id = $1 AND agent_id = $2`,
+    [roleId, agentId],
+  );
+
+  const row = result.rows[0];
+  return row ? mapRowToRole(row) : null;
+}
+
+/**
  * List active (non-revoked) site roles for an agent.
  */
 export async function listRoles(agentId: string): Promise<AgentSiteRole[]> {

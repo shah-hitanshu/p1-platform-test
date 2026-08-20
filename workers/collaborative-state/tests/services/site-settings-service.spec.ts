@@ -171,6 +171,39 @@ describe('Site Settings Service', () => {
       ).rejects.toThrow(InvalidSettingsError);
     });
 
+    // PCC-3676: an unbounded TTL lets stale/draft content persist in caches for
+    // arbitrarily long; cap at one day.
+    it('should reject cacheTtlBranch above the one-day ceiling', async () => {
+      const { updateSiteSettings } = await import('../../src/services/site-settings-service');
+      const { InvalidSettingsError } = await import('../../src/services/errors');
+
+      await expect(
+        updateSiteSettings('site-123', { cacheTtlBranch: 86_401 }),
+      ).rejects.toThrow(InvalidSettingsError);
+    });
+
+    it('should reject cacheTtlMain above the one-day ceiling', async () => {
+      const { updateSiteSettings } = await import('../../src/services/site-settings-service');
+      const { InvalidSettingsError } = await import('../../src/services/errors');
+
+      await expect(
+        updateSiteSettings('site-123', { cacheTtlMain: 100_000 }),
+      ).rejects.toThrow(InvalidSettingsError);
+    });
+
+    it('should accept a TTL exactly at the one-day ceiling', async () => {
+      const db = await import('../../src/db');
+      const { updateSiteSettings } = await import('../../src/services/site-settings-service');
+      vi.mocked(db.query).mockResolvedValue({
+        rows: [{ settings: { cacheTtlBranch: 86_400 } }],
+        rowCount: 1,
+      });
+
+      await expect(
+        updateSiteSettings('site-123', { cacheTtlBranch: 86_400 }),
+      ).resolves.not.toThrow();
+    });
+
     it('should store the social defaults', async () => {
       const db = await import('../../src/db');
       const { updateSiteSettings } = await import('../../src/services/site-settings-service');

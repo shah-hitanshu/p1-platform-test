@@ -2765,6 +2765,14 @@ paths:
         On the main branch, only checkpoint-published versions are served.
         On non-main branches, the latest saved version is served with fallback
         to main's published version. Supports ETag / If-None-Match caching.
+
+        Authorization (PCC-3676): main-branch content is published and public
+        (and shareable-cacheable). A non-main `branch` targets unpublished
+        (draft/preview) content and requires `canView` on that site; a caller
+        without it receives 404 — indistinguishable from a missing branch, so
+        the status code is not a branch-existence oracle — and non-main
+        responses are returned `Cache-Control: private, no-store`. (A 403 here
+        comes only from the service-token scope check.)
       operationId: getDocumentContent
       tags: [Content]
       parameters:
@@ -2789,6 +2797,8 @@ paths:
                 $ref: '#/components/schemas/DocumentContent'
         '304':
           description: Not modified (ETag matched)
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
 
@@ -2803,7 +2813,14 @@ paths:
           format: uuid
     get:
       summary: List published pages
-      description: Returns an index of all documents with available content on the resolved branch.
+      description: |
+        Returns an index of all documents with available content on the resolved branch.
+
+        Authorization (PCC-3676): the main-branch (published) listing is public.
+        A non-main `branch` lists unpublished content and requires `canView` on
+        that site; a caller without it receives 404 (indistinguishable from a
+        missing branch), and non-main responses are `Cache-Control: private,
+        no-store`. (A 403 here comes only from the service-token scope check.)
       operationId: listContentPages
       tags: [Content]
       responses:
@@ -2817,6 +2834,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ContentPagesResponse'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
 
@@ -2853,7 +2872,11 @@ paths:
       - $ref: '#/components/parameters/agentIdParam'
     get:
       summary: List agent API keys
-      description: Returns all active API keys for the agent. Only user principals can call this.
+      description: |
+        Returns all active API keys for the agent. Because a key lets the bearer
+        act as the agent (inheriting all its site roles), the caller must be a
+        user with `canManageGrants` on EVERY site the agent holds a role on
+        [PCC-3676]; otherwise 403.
       operationId: listAgentKeys
       tags: [Agent Keys]
       responses:
@@ -2872,7 +2895,11 @@ paths:
           $ref: '#/components/responses/Forbidden'
     post:
       summary: Generate agent API key
-      description: Creates a new API key for the agent. The raw key value is only returned once. Only user principals can call this.
+      description: |
+        Creates a new API key for the agent. The raw key value is only returned
+        once. Because the key lets the bearer act as the agent (inheriting all
+        its site roles), the caller must be a user with `canManageGrants` on
+        EVERY site the agent holds a role on [PCC-3676]; otherwise 403.
       operationId: generateAgentKey
       tags: [Agent Keys]
       requestBody:
@@ -2904,7 +2931,10 @@ paths:
           format: uuid
     delete:
       summary: Revoke agent API key
-      description: Permanently revokes the key. Only user principals can call this.
+      description: |
+        Permanently revokes the key. Revocation only reduces access, so — unlike
+        mint/list — it requires `canManageGrants` on ANY one of the agent's sites
+        (a user), keeping incident containment fast [PCC-3676]; otherwise 403.
       operationId: revokeAgentKey
       tags: [Agent Keys]
       responses:
@@ -2942,7 +2972,10 @@ paths:
           $ref: '#/components/responses/Forbidden'
     post:
       summary: Grant agent a site role
-      description: Grants the agent a role on a specific site. Only user principals can call this.
+      description: |
+        Grants the agent a role on a specific site (siteId in the body). Requires
+        the caller to be a user with `canManageGrants` (admin) on that site
+        [PCC-3676]; otherwise 403.
       operationId: grantAgentRole
       tags: [Agent Roles]
       requestBody:
@@ -2974,7 +3007,9 @@ paths:
           format: uuid
     delete:
       summary: Revoke agent site role
-      description: Revokes the specified role grant. Only user principals can call this.
+      description: |
+        Revokes the specified role grant. Requires the caller to be a user with
+        `canManageGrants` (admin) on that role's site [PCC-3676]; otherwise 403.
       operationId: revokeAgentRole
       tags: [Agent Roles]
       responses:
@@ -2993,7 +3028,9 @@ paths:
       - $ref: '#/components/parameters/siteIdParam'
     get:
       summary: List agent roles on site
-      description: Returns all agent role grants for the site. Only user principals can call this.
+      description: |
+        Returns all agent role grants for the site. Requires the caller to be a
+        user with `canManageGrants` (admin) on the site [PCC-3676]; otherwise 403.
       operationId: listSiteAgentRoles
       tags: [Agent Roles]
       responses:
@@ -3012,7 +3049,10 @@ paths:
           $ref: '#/components/responses/Forbidden'
     post:
       summary: Grant an agent a role on this site
-      description: Adds a site-scoped role grant for the specified agent. Only user principals can call this.
+      description: |
+        Adds a site-scoped role grant for the specified agent. Requires the
+        caller to be a user with `canManageGrants` (admin) on the site
+        [PCC-3676]; otherwise 403.
       operationId: grantSiteAgentRole
       tags: [Agent Roles]
       requestBody:
@@ -3044,7 +3084,10 @@ paths:
           format: uuid
     delete:
       summary: Revoke agent role on site
-      description: Revokes the specified agent role grant on this site. Only user principals can call this.
+      description: |
+        Revokes the specified agent role grant on this site. Requires the caller
+        to be a user with `canManageGrants` (admin) on the site [PCC-3676];
+        otherwise 403.
       operationId: revokeSiteAgentRole
       tags: [Agent Roles]
       responses:

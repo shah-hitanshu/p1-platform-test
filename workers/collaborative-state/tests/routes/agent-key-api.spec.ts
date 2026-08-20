@@ -16,6 +16,29 @@ vi.mock('../../src/services/agent-api-key-service', () => ({
   revokeKey: vi.fn(),
 }));
 
+// PCC-3676: key management requires canManageGrants on every site the agent
+// holds a role on. Default: the agent has no roles, so there is nothing to
+// check and the operation is allowed — this keeps the pre-existing happy-path
+// tests (which don't set up roles) valid.
+vi.mock('../../src/services/agent-site-role-service', () => ({
+  getRolesForAgent: vi.fn().mockResolvedValue({}),
+}));
+
+vi.mock('../../src/services', () => ({
+  getMainBranch: vi.fn().mockResolvedValue({
+    id: 'branch-main-uuid',
+    siteId: 'site-uuid-100',
+    name: 'main',
+    isMain: true,
+  }),
+}));
+
+// Real AuthorizationError class (handler does `instanceof`); assertPermission stubbed.
+vi.mock('../../src/auth/authorization', async (importActual) => {
+  const actual = await importActual<typeof import('../../src/auth/authorization')>();
+  return { ...actual, assertPermission: vi.fn().mockResolvedValue(undefined) };
+});
+
 describe('Agent API Key Routes', () => {
   beforeEach(() => {
     vi.resetModules();
@@ -277,6 +300,194 @@ describe('Agent API Key Routes', () => {
   // ===========================================================================
   // Edge cases
   // ===========================================================================
+
+  // ===========================================================================
+  // PCC-3676: key management requires admin on all of the agent's sites
+  // ===========================================================================
+
+  describe('authorization (PCC-3676)', () => {
+    it('rejects minting a key when the caller does not administer the agent\'s site (403)', async () => {
+      const { handleAgentKeyRoutes } = await import('../../src/routes/agent-key-api');
+      const keyService = await import('../../src/services/agent-api-key-service');
+      const roleService = await import('../../src/services/agent-site-role-service');
+      const { assertPermission, AuthorizationError } = await import('../../src/auth/authorization');
+
+      // Agent already holds admin on site-uuid-100 (granted by that site's admin).
+      vi.mocked(roleService.getRolesForAgent).mockResolvedValueOnce({ 'site-uuid-100': 'admin' });
+      // Caller is not an admin of that site.
+      vi.mocked(assertPermission).mockRejectedValueOnce(
+        new AuthorizationError('Missing permission: canManageGrants.', 'canManageGrants', 'NO_ACCESS'),
+      );
+
+      const request = new Request('https://api.example.com/api/agents/agent-uuid-456/keys', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'hijack key' }),
+      });
+
+      const response = await handleAgentKeyRoutes(request, {
+        agentId: 'agent-uuid-456',
+        principal: userPrincipal,
+      });
+
+      // This is the mint-and-reuse escalation: minting a key would inherit the
+      // agent's admin on site-uuid-100 without the caller ever having it.
+      expect(response.status).toBe(403);
+      expect(keyService.generateKey).not.toHaveBeenCalled();
+    });
+
+    it('allows minting when the caller administers every site the agent holds a role on (201)', async () => {
+      const { handleAgentKeyRoutes } = await import('../../src/routes/agent-key-api');
+      const keyService = await import('../../src/services/agent-api-key-service');
+      const roleService = await import('../../src/services/agent-site-role-service');
+
+      // getRolesForAgent returns PantheonRole values (admin/developer/...), not
+      // the agent-role vocabulary (viewer/editor/admin).
+      vi.mocked(roleService.getRolesForAgent).mockResolvedValueOnce({ 'site-uuid-100': 'developer' });
+      // assertPermission resolves by default (caller is an admin of site-uuid-100).
+      vi.mocked(keyService.generateKey).mockResolvedValue({
+        key: 'aak_ok',
+        metadata: {
+          id: 'key-1', agentId: 'agent-uuid-456', prefix: 'aak_ok12', name: 'ok',
+          createdBy: 'db-user-uuid-123', createdAt: '2026-08-19T00:00:00.000Z',
+          lastUsedAt: null, revokedAt: null,
+        },
+      });
+
+      const request = new Request('https://api.example.com/api/agents/agent-uuid-456/keys', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'ok' }),
+      });
+
+      const response = await handleAgentKeyRoutes(request, {
+        agentId: 'agent-uuid-456',
+        principal: userPrincipal,
+      });
+
+      expect(response.status).toBe(201);
+      expect(keyService.generateKey).toHaveBeenCalled();
+    });
+
+    it('rejects minting when the caller administers only SOME of the agent\'s sites (403)', async () => {
+      // Distinguishes mint's EVERY-site rule from revoke's ANY-site rule: a
+      // caller who admins one of the agent's two sites must NOT be able to mint
+      // a key that would also inherit the agent's role on the other site.
+      const { handleAgentKeyRoutes } = await import('../../src/routes/agent-key-api');
+      const keyService = await import('../../src/services/agent-api-key-service');
+      const roleService = await import('../../src/services/agent-site-role-service');
+      const { assertPermission, AuthorizationError } = await import('../../src/auth/authorization');
+
+      vi.mocked(roleService.getRolesForAgent).mockResolvedValueOnce({
+        'site-A': 'admin',
+        'site-B': 'admin',
+      });
+      // site-A allowed, site-B denied → mint must fail because it is not ALL.
+      vi.mocked(assertPermission)
+        .mockResolvedValueOnce(undefined)
+        .mockRejectedValueOnce(
+          new AuthorizationError('no', 'canManageGrants', 'NO_ACCESS'),
+        );
+
+      const request = new Request('https://api.example.com/api/agents/agent-uuid-456/keys', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'partial-admin key' }),
+      });
+
+      const response = await handleAgentKeyRoutes(request, {
+        agentId: 'agent-uuid-456',
+        principal: userPrincipal,
+      });
+
+      expect(response.status).toBe(403);
+      expect(keyService.generateKey).not.toHaveBeenCalled();
+    });
+
+    it('rejects listing keys when the caller does not administer the agent\'s site (403)', async () => {
+      const { handleAgentKeyRoutes } = await import('../../src/routes/agent-key-api');
+      const keyService = await import('../../src/services/agent-api-key-service');
+      const roleService = await import('../../src/services/agent-site-role-service');
+      const { assertPermission, AuthorizationError } = await import('../../src/auth/authorization');
+
+      vi.mocked(roleService.getRolesForAgent).mockResolvedValueOnce({ 'site-uuid-100': 'admin' });
+      vi.mocked(assertPermission).mockRejectedValueOnce(
+        new AuthorizationError('Missing permission: canManageGrants.', 'canManageGrants', 'VIEWER'),
+      );
+
+      const request = new Request('https://api.example.com/api/agents/agent-uuid-456/keys', {
+        method: 'GET',
+      });
+
+      const response = await handleAgentKeyRoutes(request, {
+        agentId: 'agent-uuid-456',
+        principal: userPrincipal,
+      });
+
+      expect(response.status).toBe(403);
+      expect(keyService.listKeys).not.toHaveBeenCalled();
+    });
+
+    it('allows revoking a key with admin on ANY one of the agent\'s sites (204)', async () => {
+      const { handleAgentKeyRoutes } = await import('../../src/routes/agent-key-api');
+      const keyService = await import('../../src/services/agent-api-key-service');
+      const roleService = await import('../../src/services/agent-site-role-service');
+      const { assertPermission } = await import('../../src/auth/authorization');
+
+      // Agent has roles on two sites; caller administers only the second.
+      vi.mocked(roleService.getRolesForAgent).mockResolvedValueOnce({
+        'site-A': 'admin',
+        'site-B': 'admin',
+      });
+      const { AuthorizationError } = await import('../../src/auth/authorization');
+      // First site (A) denied, second site (B) allowed → revoke proceeds.
+      vi.mocked(assertPermission).mockRejectedValueOnce(
+        new AuthorizationError('no', 'canManageGrants', 'NO_ACCESS'),
+      );
+      vi.mocked(keyService.revokeKey).mockResolvedValue(true);
+
+      const request = new Request(
+        'https://api.example.com/api/agents/agent-uuid-456/keys/key-uuid-001',
+        { method: 'DELETE' },
+      );
+
+      const response = await handleAgentKeyRoutes(request, {
+        agentId: 'agent-uuid-456',
+        keyId: 'key-uuid-001',
+        principal: userPrincipal,
+      });
+
+      // Containment must not require admin on every site the agent touches.
+      expect(response.status).toBe(204);
+      expect(keyService.revokeKey).toHaveBeenCalledWith('key-uuid-001', 'agent-uuid-456');
+    });
+
+    it('rejects revoking when the caller administers none of the agent\'s sites (403)', async () => {
+      const { handleAgentKeyRoutes } = await import('../../src/routes/agent-key-api');
+      const keyService = await import('../../src/services/agent-api-key-service');
+      const roleService = await import('../../src/services/agent-site-role-service');
+      const { assertPermission, AuthorizationError } = await import('../../src/auth/authorization');
+
+      vi.mocked(roleService.getRolesForAgent).mockResolvedValueOnce({ 'site-A': 'admin' });
+      vi.mocked(assertPermission).mockRejectedValueOnce(
+        new AuthorizationError('no', 'canManageGrants', 'NO_ACCESS'),
+      );
+
+      const request = new Request(
+        'https://api.example.com/api/agents/agent-uuid-456/keys/key-uuid-001',
+        { method: 'DELETE' },
+      );
+
+      const response = await handleAgentKeyRoutes(request, {
+        agentId: 'agent-uuid-456',
+        keyId: 'key-uuid-001',
+        principal: userPrincipal,
+      });
+
+      expect(response.status).toBe(403);
+      expect(keyService.revokeKey).not.toHaveBeenCalled();
+    });
+  });
 
   describe('edge cases', () => {
     it('should return 400 when agentId is missing', async () => {

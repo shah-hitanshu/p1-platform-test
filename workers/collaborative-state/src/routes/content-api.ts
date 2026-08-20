@@ -79,8 +79,12 @@ import type { PageContent } from '../types/page-metadata';
 /**
  * Resolve the branch from query param or default to main branch.
  * Accepts either a branch UUID or a branch name.
+ *
+ * Exported so the per-member branch gate in index.ts (PCC-3676) resolves a
+ * `?branch=` ref exactly as this handler does — one implementation, called on
+ * both the gate and serve sides, so the two never diverge.
  */
-async function resolveBranch(
+export async function resolveBranch(
   request: Request,
   siteId: string,
 ): Promise<{ id: string; name: string; isMain: boolean } | null> {
@@ -98,6 +102,20 @@ async function resolveBranch(
   const mainBranch = await getMainBranch(siteId);
   if (mainBranch === null) return null;
   return { id: mainBranch.id, name: mainBranch.name, isMain: mainBranch.isMain };
+}
+
+/**
+ * Cache-Control for content responses. Non-main content is member-only
+ * [PCC-3676]; it must never be stored by a shared cache in FRONT of this worker
+ * (CDN / ISR / browser) — those are keyed on the bare URL and never see the
+ * per-member gate in index.ts, so a `public` copy would be served to anyone.
+ * Only published main content is shareable. (The worker-internal cached
+ * entrypoint sits behind the gate, so this does not weaken that layer.)
+ */
+function contentCacheControl(isMain: boolean, ttl: number): string {
+  return isMain
+    ? `public, s-maxage=${String(ttl)}, stale-while-revalidate=${String(ttl * 5)}`
+    : 'private, no-store';
 }
 
 /**
@@ -218,7 +236,7 @@ async function handleGetContent(
       status: 304,
       headers: {
         'ETag': etag,
-        'Cache-Control': `public, s-maxage=${String(ttl)}, stale-while-revalidate=${String(ttl * 5)}`,
+        'Cache-Control': contentCacheControl(branch.isMain, ttl),
         'Cache-Tag': cacheTag,
         'Vary': 'Accept-Encoding',
       },
@@ -272,7 +290,7 @@ async function handleGetContent(
     responseBody,
     200,
     {
-      'Cache-Control': `public, s-maxage=${String(ttl)}, stale-while-revalidate=${String(ttl * 5)}`,
+      'Cache-Control': contentCacheControl(branch.isMain, ttl),
       'Cache-Tag': cacheTag,
       'ETag': etag,
       'Vary': 'Accept-Encoding',
@@ -346,7 +364,7 @@ async function handleGetContentPages(
     },
     200,
     {
-      'Cache-Control': `public, s-maxage=${String(listTtl)}, stale-while-revalidate=${String(listTtl * 5)}`,
+      'Cache-Control': contentCacheControl(branch.isMain, listTtl),
       // No doc tag: publishing any document changes this list, so no single
       // document's tag could invalidate it. list:<siteId> is the listing's
       // dedicated invalidation handle (delete-class purges use it narrowly);

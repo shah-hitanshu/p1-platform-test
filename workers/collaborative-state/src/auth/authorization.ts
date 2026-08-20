@@ -77,10 +77,14 @@ export async function getSiteRole(
   masClient?: MASClient,
 ): Promise<RoleName> {
   if (principal.type === 'agent') {
-    // Query agent_site_roles table
+    // Query agent_site_roles table. The revoked_at filter is load-bearing:
+    // without it a revoked grant still authorizes, and since grantRole's
+    // ON CONFLICT is partial (WHERE revoked_at IS NULL), revoked rows can pile
+    // up beside the one active row, making an unfiltered rows[0] order-dependent.
+    // The partial unique index guarantees at most one active row [PCC-3676].
     const result = await query<{ role: AgentSiteRole }>(
       `SELECT role FROM app.agent_site_roles
-       WHERE agent_id = $1 AND site_id = $2`,
+       WHERE agent_id = $1 AND site_id = $2 AND revoked_at IS NULL`,
       [principal.id, siteId],
     );
 

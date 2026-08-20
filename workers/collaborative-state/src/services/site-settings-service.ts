@@ -103,15 +103,24 @@ function mergeWithDefaults(settings: SiteSettings): EffectiveSiteSettings {
 }
 
 /**
- * Validates that a cache TTL value is a positive integer.
+ * Validates that a cache TTL value is a positive integer no greater than one
+ * day. The ceiling bounds how long stale content (and, for a non-main branch,
+ * a draft served before the PCC-3676 gate was in place) can persist in a cache.
  */
+const MAX_CACHE_TTL_SECONDS = 86_400;
+
 function validateTtlField(field: string, value: unknown): void {
   if (value === null || value === undefined) {
     return;
   }
-  if (typeof value !== 'number' || !Number.isInteger(value) || value <= 0) {
+  if (
+    typeof value !== 'number' ||
+    !Number.isInteger(value) ||
+    value <= 0 ||
+    value > MAX_CACHE_TTL_SECONDS
+  ) {
     throw new InvalidSettingsError(
-      `${field} must be a positive integer, got ${String(typeof value === 'number' ? value : typeof value)}`,
+      `${field} must be a positive integer no greater than ${String(MAX_CACHE_TTL_SECONDS)} (one day), got ${String(typeof value === 'number' ? value : typeof value)}`,
     );
   }
 }
