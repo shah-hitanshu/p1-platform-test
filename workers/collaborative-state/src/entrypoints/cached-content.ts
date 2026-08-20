@@ -10,7 +10,7 @@
  * Nothing else may be routed here, and this must never be reachable directly.
  */
 
-import { WorkerEntrypoint } from 'cloudflare:workers';
+import { cache, WorkerEntrypoint } from 'cloudflare:workers';
 import type { Env } from '../env';
 import type { AuthenticatedPrincipal } from '../types';
 import { runWithConnection } from '../db';
@@ -37,6 +37,21 @@ function authorizedReader(siteId: string): AuthenticatedPrincipal {
 }
 
 export class CachedContent extends WorkerEntrypoint<Env> {
+  /**
+   * Purges tags from THIS entrypoint's cache. Workers Caching scopes purge()
+   * to the entrypoint that calls it, and every cached content response lives
+   * here — a purge issued from the default entrypoint "succeeds" against its
+   * own cache-disabled (empty) cache and evicts nothing, which is how every
+   * purge this worker shipped before PCC-3715 was a no-op. RPC methods bypass
+   * the cache layer, so this always executes. Logging stays with the caller
+   * (src/cache/purge.ts); this is a thin scope-crossing shim.
+   */
+  purgeTags(
+    tags: string[],
+  ): Promise<{ success: boolean; errors: { code: number; message: string }[] }> {
+    return cache.purge({ tags });
+  }
+
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
     const route = parseRoute(url.pathname);

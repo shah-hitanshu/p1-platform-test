@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { cache } from 'cloudflare:workers';
+import { exports as workerExports } from 'cloudflare:workers';
 import { purgeContentCache, purgeDeletedDocument } from '../../src/cache/purge';
 
 const logger = vi.hoisted(() => ({
@@ -25,10 +25,15 @@ vi.mock('@pantheon-systems/p1-telemetry', async (importOriginal) => {
 const SITE_ID = 'site-123';
 const BRANCH_ID = 'branch-main';
 
-const purgeSpy = vi.spyOn(cache, 'purge');
+// Purges must cross into the CachedContent entrypoint via the ctx.exports
+// loopback [PCC-3715]: Workers Caching scopes purge() to the calling
+// entrypoint, so a module-level cache.purge() here would "succeed" against
+// the default entrypoint's cache-disabled (empty) cache and evict nothing.
+const purgeSpy = vi.fn();
 
 beforeEach(() => {
   vi.clearAllMocks();
+  (workerExports as Record<string, unknown>).CachedContent = { purgeTags: purgeSpy };
   purgeSpy.mockResolvedValue({ success: true, errors: [] });
 });
 
@@ -66,7 +71,22 @@ describe('purge logging', () => {
       documentId: 'doc-1',
     });
 
-    expect(purgeSpy).toHaveBeenCalledWith({ tags: [`site:${SITE_ID}`] });
+    expect(purgeSpy).toHaveBeenCalledWith([`site:${SITE_ID}`]);
+  });
+
+  // A missing loopback binding must degrade like the serve-side forward does:
+  // publishes/deletes keep succeeding, and the error log is the only signal
+  // that edge entries will linger until their TTL.
+  it('fails open with an error log when the CachedContent binding is missing', async () => {
+    delete (workerExports as Record<string, unknown>).CachedContent;
+
+    await expect(purgeContentCache({ siteId: SITE_ID })).resolves.toBeUndefined();
+
+    expect(purgeSpy).not.toHaveBeenCalled();
+    expect(logger.error).toHaveBeenCalledTimes(1);
+    const [msg, , fields] = logger.error.mock.calls[0] as [string, unknown, Record<string, unknown>];
+    expect(msg).toContain('purge skipped');
+    expect(fields.outcome).toBe('fail_open');
   });
 
   // The failure path is silent at the API level, so it must be loud in logs.
@@ -121,9 +141,7 @@ describe('purgeDeletedDocument', () => {
       documentId: 'doc-1',
     });
 
-    expect(purgeSpy).toHaveBeenCalledWith({
-      tags: ['doc:doc-1', `list:${SITE_ID}`],
-    });
+    expect(purgeSpy).toHaveBeenCalledWith(['doc:doc-1', `list:${SITE_ID}`]);
   });
 
   it('logs success at a production-visible level with the tag list', async () => {

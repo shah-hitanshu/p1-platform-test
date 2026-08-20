@@ -27,14 +27,30 @@
  * tracked separately (PCC-3646).
  */
 
-import { cache } from 'cloudflare:workers';
+import { exports as workerExports } from 'cloudflare:workers';
 import { getLogger } from '@pantheon-systems/p1-telemetry';
+import type { CachedContent } from '../entrypoints/cached-content';
 import {
   contentCacheTags,
   docTag,
   listTag,
   type ContentCacheTagParams,
 } from './content-cache';
+
+/**
+ * Workers Caching scopes purge() to the entrypoint that calls it, and every
+ * cached content response belongs to the CachedContent entrypoint — so the
+ * purge must run over there, via this loopback RPC [PCC-3715]. Calling
+ * cache.purge() from here (the default entrypoint, cache-disabled) reports
+ * success while evicting nothing; that no-op shipped and was only caught by
+ * a live staging smoke. Same structural caveat as cached-content-forward.ts:
+ * the exports map is only populated under the enable_ctx_exports
+ * compatibility flag [PCC-3666]. The method type is picked off the real
+ * class (type-only, erased at runtime) so the two sides cannot drift.
+ */
+interface WorkerExports {
+  CachedContent?: Pick<CachedContent, 'purgeTags'>;
+}
 
 async function executePurge(
   tags: string[],
@@ -48,7 +64,21 @@ async function executePurge(
   const startedAt = Date.now();
 
   try {
-    const result = await cache.purge({ tags });
+    const cachedContent = (workerExports as unknown as WorkerExports | undefined)
+      ?.CachedContent;
+    if (cachedContent === undefined) {
+      // Fail open, consistent with cached-content-forward.ts: a missing
+      // binding also means serving is uncached, so skipping the purge strands
+      // only entries cached before the binding was lost, until their TTL.
+      logger.error(
+        'CachedContent loopback binding unavailable (enable_ctx_exports missing?) — purge skipped',
+        undefined,
+        { ...logFields, outcome: 'fail_open' },
+      );
+      return;
+    }
+
+    const result = await cachedContent.purgeTags(tags);
     const duration_ms = Date.now() - startedAt;
 
     if (result.success) {
