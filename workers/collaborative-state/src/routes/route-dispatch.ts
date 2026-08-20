@@ -25,6 +25,7 @@ import { handleRedirectRoutes } from './redirect-api';
 import { handleContentRedirectRoutes } from './redirect-content-api';
 import { handleMigrationRoutes } from './migration-api';
 import { handleDriftRoutes } from './drift-api';
+import { handleViewerRoleRoutes } from './viewer-role-api';
 import { handleMergeRoutes } from './merge-api';
 import { handleGrantRoutes } from './grant-api';
 import { handleCollaboratorRoutes } from './collaborator-api';
@@ -178,6 +179,14 @@ export async function dispatchRoute(
         conflictId: route.params.conflictId,
         action: route.params.action as 'conflicts' | 'resolve' | undefined,
         principal,
+      });
+
+    case 'viewer-role':
+      return await handleViewerRoleRoutes(request, {
+        siteId: route.params.siteId ?? '',
+        branchId: route.params.branchId,
+        principal,
+        masClient,
       });
 
     case 'drift':

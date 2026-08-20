@@ -953,6 +953,67 @@ paths:
                 $ref: '#/components/schemas/Error'
 
   # ===========================================================================
+  # Viewer Role
+  # ===========================================================================
+  /api/sites/{siteId}/branches/{branchId}/auth/role:
+    parameters:
+      - $ref: '#/components/parameters/siteIdParam'
+      - $ref: '#/components/parameters/branchIdParam'
+    get:
+      summary: Get the caller's effective role on a branch
+      description: >-
+        Returns the calling principal's own effective role for this branch —
+        max(site role, branch grant) — together with the permission flags that
+        role carries. Intended for clients deciding which affordances to render;
+        every gated operation is still enforced at its own route, so this
+        endpoint is advisory to the UI and authoritative to nothing. A caller
+        with no access receives 200 with NO_ACCESS rather than 403, so a
+        read-only UI state is distinguishable from a failed request. Service
+        principals receive 403; they authorize per-route by token scope and
+        have no role to report.
+      operationId: getViewerRole
+      tags: [Authentication]
+      responses:
+        '200':
+          description: The caller's effective role and its permissions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ViewerRoleResponse'
+        '400':
+          description: Missing branch id
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: >-
+            Service principals are not authorized for this route; they
+            authorize per-route by token scope and have no role to report.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Branch not found on this site
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Role resolution failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ===========================================================================
   # Branch Drift
   # ===========================================================================
   /api/sites/{siteId}/branches/{branchId}/drift:
@@ -3761,6 +3822,39 @@ components:
     RoleName:
       type: string
       enum: [NO_ACCESS, VIEWER, EDITOR, ADMIN]
+
+    RolePermissions:
+      type: object
+      description: The permission flags a role carries.
+      required:
+        - canView
+        - canEdit
+        - canCreateBranch
+        - canEditDocuments
+        - canCreateCheckpoint
+        - canProposeMerge
+        - canMerge
+        - canMergeToMain
+        - canManageGrants
+      properties:
+        canView: { type: boolean }
+        canEdit: { type: boolean }
+        canCreateBranch: { type: boolean }
+        canEditDocuments: { type: boolean }
+        canCreateCheckpoint: { type: boolean }
+        canProposeMerge: { type: boolean }
+        canMerge: { type: boolean }
+        canMergeToMain: { type: boolean }
+        canManageGrants: { type: boolean }
+
+    ViewerRoleResponse:
+      type: object
+      required: [roleName, permissions]
+      properties:
+        roleName:
+          $ref: '#/components/schemas/RoleName'
+        permissions:
+          $ref: '#/components/schemas/RolePermissions'
 
     BranchStatus:
       type: string

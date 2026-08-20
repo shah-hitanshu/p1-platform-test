@@ -412,6 +412,18 @@ export function parseRoute(path: string): { handler: string; params: RouteParams
     };
   }
 
+  // Viewer role route
+  // /api/sites/{siteId}/branches/{branchId}/auth/role
+  const viewerRoleRe = /^\/api\/sites\/([^/]+)\/branches\/([^/]+)\/auth\/role$/;
+  const viewerRoleMatch = viewerRoleRe.exec(normalizedPath);
+  if (viewerRoleMatch) {
+    const [, siteId, branchId] = viewerRoleMatch;
+    return {
+      handler: 'viewer-role',
+      params: { siteId, branchId },
+    };
+  }
+
   // Branch drift route
   // /api/sites/{siteId}/branches/{branchId}/drift
   const driftRe = /^\/api\/sites\/([^/]+)\/branches\/([^/]+)\/drift$/;
