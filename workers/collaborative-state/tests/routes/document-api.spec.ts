@@ -41,7 +41,8 @@ vi.mock('../../src/services', async () => {
 });
 
 const purgeContentCache = vi.hoisted(() => vi.fn());
-vi.mock('../../src/cache/purge', () => ({ purgeContentCache }));
+const purgeDeletedDocument = vi.hoisted(() => vi.fn());
+vi.mock('../../src/cache/purge', () => ({ purgeContentCache, purgeDeletedDocument }));
 
 // Mock authorization
 vi.mock('../../src/auth/authorization', async () => {
@@ -733,10 +734,13 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         },
       );
 
-      expect(purgeContentCache).toHaveBeenCalledWith({
+      // Narrow purge: archiving creates a 404, it reveals nothing, so only
+      // the doc + listing tags need to go [PCC-3709].
+      expect(purgeDeletedDocument).toHaveBeenCalledWith({
         siteId: 'site-1',
         documentId: 'doc-1',
       });
+      expect(purgeContentCache).not.toHaveBeenCalled();
     });
 
     it('should not purge when the document was not found', async () => {
@@ -769,6 +773,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
       );
 
       expect(purgeContentCache).not.toHaveBeenCalled();
+      expect(purgeDeletedDocument).not.toHaveBeenCalled();
     });
 
     it('should return 404 for non-existent document', async () => {
@@ -847,11 +852,13 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
       expect(response.status).toBe(200);
       const body = await readJson(response);
       expect(body.id).toBe('doc-1');
-      // The archive left a cached 404 at this path.
+      // The archive left a cached 404 at this path; 404s carry only the site
+      // tag, so restore must stay site-wide until miss: tags land [PCC-3709].
       expect(purgeContentCache).toHaveBeenCalledWith({
         siteId: 'site-1',
         documentId: 'doc-1',
       });
+      expect(purgeDeletedDocument).not.toHaveBeenCalled();
     });
 
     it('should return 404 for non-existent or non-archived document', async () => {
@@ -1542,12 +1549,14 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
           deletedByType: 'user',
         });
         // Deletion takes effect on serving immediately [PCC-3669]; without a
-        // purge the edge keeps the deleted page for TTL + SWR.
-        expect(purgeContentCache).toHaveBeenCalledWith({
+        // purge the edge keeps the deleted page for TTL + SWR. Narrow purge:
+        // deleting must not evict the rest of the site [PCC-3709].
+        expect(purgeDeletedDocument).toHaveBeenCalledWith({
           siteId: 'site-1',
           branchId: 'branch-1',
           documentId: 'doc-1',
         });
+        expect(purgeContentCache).not.toHaveBeenCalled();
       });
 
       it('should return 404 when document does not exist', async () => {
@@ -1814,12 +1823,15 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
           },
         });
         expect(services.deleteDocumentOnBranch).not.toHaveBeenCalled();
-        // Same purge contract as the plain delete [PCC-3669].
-        expect(purgeContentCache).toHaveBeenCalledWith({
+        // Same purge contract as the plain delete [PCC-3669], narrow per
+        // PCC-3709 — redirect lookups are not edge-cached, so the new
+        // redirect needs no purge of its own.
+        expect(purgeDeletedDocument).toHaveBeenCalledWith({
           siteId: 'site-1',
           branchId: 'branch-1',
           documentId: 'doc-1',
         });
+        expect(purgeContentCache).not.toHaveBeenCalled();
       });
 
       it('should return 400 when redirect.fromPath is missing', async () => {

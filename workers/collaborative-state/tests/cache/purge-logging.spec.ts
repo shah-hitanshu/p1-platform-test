@@ -8,7 +8,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { cache } from 'cloudflare:workers';
-import { purgeContentCache } from '../../src/cache/purge';
+import { purgeContentCache, purgeDeletedDocument } from '../../src/cache/purge';
 
 const logger = vi.hoisted(() => ({
   info: vi.fn(),
@@ -36,17 +36,29 @@ describe('purge logging', () => {
   it('records the site and branch it purged', async () => {
     await purgeContentCache({ siteId: SITE_ID, branchId: BRANCH_ID });
 
-    expect(logger.info).toHaveBeenCalledTimes(1);
-    const [, fields] = logger.info.mock.calls[0] as [string, Record<string, unknown>];
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+    const [, fields] = logger.warn.mock.calls[0] as [string, Record<string, unknown>];
     expect(fields.site_id).toBe(SITE_ID);
     expect(fields.branch_id).toBe(BRANCH_ID);
     expect(fields.outcome).toBe('success');
     expect(fields.count).toBe(1);
+    expect(fields.tags).toBe(`site:${SITE_ID}`);
   });
 
-  // Site-wide by design: page lists on inheriting branches and cached 404s
-  // carry no doc tag, so a narrower purge would leave them stale. branchId and
-  // documentId are log context, not purge scope.
+  // Production runs LOG_LEVEL=warn; info-level success made purges
+  // forensically invisible during the 2026-08-19 incident investigation, so
+  // success must log at warn or the visibility regresses [PCC-3709].
+  it('logs success at a level visible in production, not info', async () => {
+    await purgeContentCache({ siteId: SITE_ID });
+
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+    expect(logger.info).not.toHaveBeenCalled();
+  });
+
+  // Site-wide by design: cached 404s carry no doc tag, so for reveal-class
+  // events (publish, merge, restore) a narrower purge would leave a freshly
+  // revealed path 404ing for its full TTL. branchId and documentId are log
+  // context, not purge scope. Delete-class events use purgeDeletedDocument.
   it('purges the site tag alone even when a branch and document are named', async () => {
     await purgeContentCache({
       siteId: SITE_ID,
@@ -93,6 +105,62 @@ describe('purge logging', () => {
 
   it('does not purge when there is nothing to name', async () => {
     await purgeContentCache({ siteId: '' });
+
+    expect(purgeSpy).not.toHaveBeenCalled();
+  });
+});
+
+// Deletion creates 404s, it does not reveal any, so the delete-class purge
+// can be narrow. This is what stops one delete from evicting the whole
+// site's edge cache [PCC-3709].
+describe('purgeDeletedDocument', () => {
+  it('purges exactly the document and the listings — never the site tag', async () => {
+    await purgeDeletedDocument({
+      siteId: SITE_ID,
+      branchId: BRANCH_ID,
+      documentId: 'doc-1',
+    });
+
+    expect(purgeSpy).toHaveBeenCalledWith({
+      tags: ['doc:doc-1', `list:${SITE_ID}`],
+    });
+  });
+
+  it('logs success at a production-visible level with the tag list', async () => {
+    await purgeDeletedDocument({ siteId: SITE_ID, documentId: 'doc-1' });
+
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+    const [, fields] = logger.warn.mock.calls[0] as [string, Record<string, unknown>];
+    expect(fields.outcome).toBe('success');
+    expect(fields.count).toBe(2);
+    expect(fields.tags).toBe(`doc:doc-1,list:${SITE_ID}`);
+    expect(fields.document_id).toBe('doc-1');
+  });
+
+  it('logs an error when purge reports failure without throwing', async () => {
+    purgeSpy.mockResolvedValue({
+      success: false,
+      errors: [{ code: 1234, message: 'tag limit exceeded' }],
+    });
+
+    await purgeDeletedDocument({ siteId: SITE_ID, documentId: 'doc-1' });
+
+    expect(logger.error).toHaveBeenCalledTimes(1);
+  });
+
+  // A failed purge must not fail the delete that already committed.
+  it('never throws', async () => {
+    purgeSpy.mockRejectedValue(new Error('network down'));
+
+    await expect(
+      purgeDeletedDocument({ siteId: SITE_ID, documentId: 'doc-1' }),
+    ).resolves.toBeUndefined();
+  });
+
+  // Without both ids the tags would go to the edge malformed ("doc:"/"list:").
+  it('does not purge when the site or document is unnamed', async () => {
+    await purgeDeletedDocument({ siteId: '', documentId: 'doc-1' });
+    await purgeDeletedDocument({ siteId: SITE_ID, documentId: '' });
 
     expect(purgeSpy).not.toHaveBeenCalled();
   });

@@ -63,7 +63,7 @@ import { applyTitleToSnapshot } from '../services/document-title';
 import { assertPermission, getEffectiveRole } from '../auth/authorization';
 import { templateMetadata } from './template-api';
 import { validatePagination } from './validation';
-import { purgeContentCache } from '../cache/purge';
+import { purgeContentCache, purgeDeletedDocument } from '../cache/purge';
 
 /** The operation a document route path names beyond the document itself. */
 export type DocumentRouteAction =
@@ -316,8 +316,9 @@ async function handleDeleteDocument(context: DocumentRouteContext): Promise<Resp
 
   // Archiving hides the document from content delivery immediately, so without
   // this the edge keeps serving the taken-down page for the full TTL plus its
-  // stale-while-revalidate window.
-  await purgeContentCache({
+  // stale-while-revalidate window. Narrow purge: archiving creates 404s, it
+  // does not reveal any, so the doc + listing tags suffice [PCC-3709].
+  await purgeDeletedDocument({
     siteId: context.siteId,
     documentId: context.documentId,
   });
@@ -335,7 +336,9 @@ async function handleRestoreDocument(context: DocumentRouteContext): Promise<Res
 
   const document = await restoreDocument(context.documentId);
 
-  // The archive cached a 404 at this path; restoring has to clear it.
+  // The archive cached a 404 at this path; restoring has to clear it. Cached
+  // 404s carry only the site tag, so this must stay site-wide until
+  // miss:<siteId>:<path> tags land [PCC-3709 / PCC-3705].
   await purgeContentCache({
     siteId: context.siteId,
     documentId: context.documentId,
@@ -574,7 +577,8 @@ async function handleDeleteDocumentOnBranch(
     });
     // Deletion takes effect on serving immediately (tombstone-aware read,
     // PCC-3669) — without a purge the edge keeps the page for TTL + SWR.
-    await purgeContentCache({ siteId, branchId, documentId });
+    // Narrow purge: deletion creates 404s, it does not reveal any [PCC-3709].
+    await purgeDeletedDocument({ siteId, branchId, documentId });
     return new Response(null, { status: 204 });
   }
 
@@ -622,7 +626,13 @@ async function handleDeleteDocumentOnBranch(
 
   // Deletion takes effect on serving immediately (tombstone-aware read,
   // PCC-3669) — without a purge the edge keeps the page for TTL + SWR.
-  await purgeContentCache({ siteId, branchId, documentId });
+  // Narrow purge: deletion creates 404s, it does not reveal any, and redirect
+  // lookups are not edge-cached, so the new redirect needs no purge [PCC-3709].
+  // Known micro-reveal: the redirect document created at _redirects/<fromPath>
+  // can flip a cached 404 at that internal path to a 200 on this branch; the
+  // 404 TTL (60s, no SWR) bounds it and no real consumer fetches _redirects/
+  // via /content/, so it is deliberately not purged.
+  await purgeDeletedDocument({ siteId, branchId, documentId });
 
   return jsonResponse(result.redirect, 200);
 }

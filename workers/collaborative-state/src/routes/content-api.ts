@@ -29,7 +29,7 @@ import {
   getSiteSettings,
   getEffectiveCacheTtl,
 } from '../services/site-settings-service';
-import { contentCacheTags, notFoundCacheControl } from '../cache/content-cache';
+import { contentCacheTags, listingCacheTags, notFoundCacheControl } from '../cache/content-cache';
 import { getLogger } from '@pantheon-systems/p1-telemetry';
 
 /**
@@ -348,9 +348,10 @@ async function handleGetContentPages(
     {
       'Cache-Control': `public, s-maxage=${String(listTtl)}, stale-while-revalidate=${String(listTtl * 5)}`,
       // No doc tag: publishing any document changes this list, so no single
-      // document's tag could invalidate it. The site-wide publish purge is
-      // what clears this.
-      'Cache-Tag': contentCacheTags({ siteId, branchId: branch.id }).join(','),
+      // document's tag could invalidate it. list:<siteId> is the listing's
+      // dedicated invalidation handle (delete-class purges use it narrowly);
+      // the publish purge is still site-wide, which also reaches this.
+      'Cache-Tag': listingCacheTags({ siteId, branchId: branch.id }).join(','),
       'Vary': 'Accept-Encoding',
     },
   );

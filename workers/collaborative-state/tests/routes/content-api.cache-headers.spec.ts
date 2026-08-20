@@ -224,6 +224,21 @@ describe('content API cache headers', () => {
       expect(tags).toContain(`branch:${BRANCH_ID}`);
       expect(tags).toContain(`doc:${DOCUMENT_ID}`);
     });
+
+    // list:<siteId> is the listings' invalidation handle; if document pages
+    // carried it too, every delete's listing purge would evict every page on
+    // the site — the exact site-wide wave PCC-3709 removes.
+    it('does not tag a document page with the listings tag', async () => {
+      const { handleContentRoutes } = await import('../../src/routes/content-api');
+
+      const response = await handleContentRoutes(contentRequest(), contentContext());
+
+      // A 404 here would also lack the list tag — pin the 200 so this cannot
+      // pass vacuously when the setup breaks.
+      expect(response.status).toBe(200);
+      const tags = (response.headers.get('Cache-Tag') ?? '').split(',').map((t) => t.trim());
+      expect(tags).not.toContain(`list:${SITE_ID}`);
+    });
   });
 
   // The page list is cached for up to 300s and every publish changes it, so it
@@ -243,8 +258,11 @@ describe('content API cache headers', () => {
     });
 
     // Without a branch tag, publishing a new page leaves it missing from the
-    // list for the full TTL with no way to invalidate it.
-    it('tags the list with the branch that publish purges', async () => {
+    // list for the full TTL with no way to invalidate it. The list tag is the
+    // delete-class purge's handle for the same problem: deleting a page must
+    // remove it from the cached listing without evicting the whole site
+    // [PCC-3709].
+    it('tags the list with the branch, site, and listings tags', async () => {
       mocks.listDocumentsOnBranch.mockResolvedValue([{ id: DOCUMENT_ID, path: 'home' }]);
       mocks.getLatestPublishedDocumentVersion.mockResolvedValue({
         id: 'v1',
@@ -260,6 +278,7 @@ describe('content API cache headers', () => {
       const tags = (response.headers.get('Cache-Tag') ?? '').split(',').map((t) => t.trim());
       expect(tags).toContain(`site:${SITE_ID}`);
       expect(tags).toContain(`branch:${BRANCH_ID}`);
+      expect(tags).toContain(`list:${SITE_ID}`);
     });
   });
 });
