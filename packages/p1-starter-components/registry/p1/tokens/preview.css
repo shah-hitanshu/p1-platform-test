@@ -31,3 +31,7 @@
 @import "../blocks/feature-media/feature-media.css";
 @import "../blocks/steps/steps.css";
 @import "../blocks/timeline/timeline.css";
+@import "../blocks/logos/logos.css";
+@import "../blocks/testimonial/testimonial.css";
+@import "../blocks/stats/stats.css";
+@import "../blocks/team-grid/team-grid.css";
