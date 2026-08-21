@@ -27,6 +27,7 @@
   /* Dark surface — near-black with slight blue cast (the "dark" tone) */
   --p1-surface-dark: oklch(0.17 0.01 270);
 
+
   /* Accent — the tone every "branded" block variant resolves to. Replaces the
      hard-coded indigo/purple the blocks used, which is why `tone: "indigo"`
      becomes `tone: "accent"` in this phase. */
@@ -70,6 +71,7 @@
 
   /* Code inline surface */
   --p1-surface-code: oklch(0 0 0 / 0.05);
+
 
   /* Spacing */
   --p1-space-xs: 0.25rem;
