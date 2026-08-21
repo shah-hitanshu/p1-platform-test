@@ -7,7 +7,6 @@ import * as lib from './index';
  * conversion task lands; never add one back.
  */
 const PENDING = new Set<string>([
-  'HeaderBlock', 'FooterBlock',
 ]);
 
 const PLAIN_PROSE_TYPES = new Set(['text', 'textarea']);

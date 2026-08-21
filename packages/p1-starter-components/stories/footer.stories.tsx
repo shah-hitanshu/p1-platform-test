@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { FooterBlock, type FooterProps } from "@/registry/p1/blocks/footer/footer";
+import { FooterBlock, type FooterProps } from "@/registry/p1/blocks/footer/footer.block";
 
 const FooterWrapper = (props: FooterProps) => {
   const Component = FooterBlock.render as React.FC<FooterProps>;

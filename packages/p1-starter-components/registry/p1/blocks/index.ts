@@ -6,8 +6,8 @@
 import type { Config } from "@puckeditor/core";
 
 // ── Global chrome ──────────────────────────────────────────
-import { HeaderBlock } from "./header/header";
-import { FooterBlock } from "./footer/footer";
+import { HeaderBlock } from "./header/header.block";
+import { FooterBlock } from "./footer/footer.block";
 // ── Attention ──────────────────────────────────────────────
 import { HeroBlock } from "./hero/hero.block";
 import { AnnouncementBlock } from "./announcement/announcement.block";
