@@ -556,6 +556,29 @@ describe("createP1PageStore", () => {
     });
   });
 
+  describe("set — deleted document", () => {
+    it("refuses to create over a deleted document (status 410)", async () => {
+      const deletedError = Object.assign(new Error("Gone"), { status: 410 });
+      mockClient = createMockClient({});
+      vi.mocked(mockClient.documents.getByPath).mockRejectedValue(deletedError);
+      const store = createP1PageStore(makeConfig(mockClient));
+
+      await expect(store.set("/gone", { content: [] })).rejects.toThrow("Gone");
+      expect(mockClient.documents.create).not.toHaveBeenCalled();
+    });
+
+    it("still creates a new document for a genuinely unknown path", async () => {
+      mockClient = createMockClient({});
+      const notFoundError = new Error("Document not found at path: pages/new");
+      vi.mocked(mockClient.documents.getByPath).mockRejectedValue(notFoundError);
+      const store = createP1PageStore(makeConfig(mockClient));
+
+      await store.set("/new", { content: [] });
+
+      expect(mockClient.documents.create).toHaveBeenCalled();
+    });
+  });
+
   // -----------------------------------------------------------------------
   // delete
   // -----------------------------------------------------------------------

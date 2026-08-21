@@ -11,7 +11,7 @@ import {
   HttpError,
   createDocument,
   getDocument,
-  getDocumentByPath,
+  resolveDocumentByPath,
   updateDocumentFields,
   archiveDocument,
   restoreDocument,
@@ -272,13 +272,20 @@ async function handleGetDocumentByPath(
     branchId = resolved.branchId;
   }
 
-  const document = await getDocumentByPath(context.siteId, context.documentPath, branchId);
+  const resolution = await resolveDocumentByPath(context.siteId, context.documentPath, branchId);
 
-  if (document === null) {
-    return errorResponse('Document not found at path', 404);
+  switch (resolution.status) {
+    case 'not_found':
+      return errorResponse('Document not found at path', 404);
+    case 'deleted':
+      return errorResponse('Document was deleted', 410);
+    case 'found':
+      return jsonResponse(resolution.document);
+    default: {
+      const _exhaustive: never = resolution;
+      throw new Error(`Unhandled document resolution status: ${JSON.stringify(_exhaustive)}`);
+    }
   }
-
-  return jsonResponse(document);
 }
 
 /**
@@ -383,6 +390,7 @@ async function handleListDocumentsOnBranch(
 ): Promise<Response> {
   const url = new URL(request.url);
   const pathPrefix = url.searchParams.get('pathPrefix');
+  const includeTombstoned = url.searchParams.get('includeTombstoned') === 'true';
 
   // For non-main branches, pass mainBranchId to enable copy-on-write fallback
   const branch = await getBranch(branchId);
@@ -391,6 +399,7 @@ async function handleListDocumentsOnBranch(
   const documents = await listDocumentsOnBranch(branchId, {
     pathPrefix: pathPrefix ?? undefined,
     mainBranchId: mainBranch?.id,
+    includeTombstoned,
   });
 
   return jsonResponse({ documents });

@@ -414,6 +414,87 @@ describe('Phase 3.1: Document Service', () => {
     });
   });
 
+  describe('resolveDocumentByPath', () => {
+    it('returns not_found when no document exists at the path', async () => {
+      const { resolveDocumentByPath } = await import('../../src/services/document-service');
+      const db = await import('../../src/db');
+
+      // getDocumentByPath with a branchId runs two queries:
+      // 1. branch_document_paths override check → empty
+      // 2. global path fallback → empty
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [] });
+
+      const result = await resolveDocumentByPath('site-1', 'pages/missing', 'branch-1');
+
+      expect(result).toEqual({ status: 'not_found' });
+    });
+
+    it('returns found when the document exists and is not tombstoned on the branch', async () => {
+      const { resolveDocumentByPath } = await import('../../src/services/document-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [createMockDocumentRow({ path: 'pages/home' })] })
+        .mockResolvedValueOnce({ rows: [{ tombstoned: false }] });
+
+      const result = await resolveDocumentByPath('site-uuid-456', 'pages/home', 'branch-1');
+
+      expect(result.status).toBe('found');
+      if (result.status === 'found') {
+        expect(result.document.id).toBe('doc-uuid-123');
+      }
+    });
+
+    it('returns found for a CoW-inherited document with no local branch versions', async () => {
+      // CoW-inherited: getDocumentByPath finds the document via the global path, but
+      // isTombstonedOnBranch returns false because no version exists on the branch
+      // (MAX returns NULL → EXISTS is false). Must NOT be treated as deleted.
+      const { resolveDocumentByPath } = await import('../../src/services/document-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [createMockDocumentRow({ path: 'pages/inherited' })] })
+        .mockResolvedValueOnce({ rows: [{ tombstoned: false }] });
+
+      const result = await resolveDocumentByPath('site-uuid-456', 'pages/inherited', 'branch-1');
+
+      expect(result.status).toBe('found');
+      if (result.status === 'found') {
+        expect(result.document.id).toBe('doc-uuid-123');
+      }
+    });
+
+    it('returns deleted when the document exists but is tombstoned on the branch', async () => {
+      const { resolveDocumentByPath } = await import('../../src/services/document-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [createMockDocumentRow({ path: 'pages/gone' })] })
+        .mockResolvedValueOnce({ rows: [{ tombstoned: true }] });
+
+      const result = await resolveDocumentByPath('site-uuid-456', 'pages/gone', 'branch-1');
+
+      expect(result.status).toBe('deleted');
+      if (result.status === 'deleted') {
+        expect(result.document.id).toBe('doc-uuid-123');
+      }
+    });
+
+    it('returns found without a tombstone check when branchId is omitted', async () => {
+      const { resolveDocumentByPath } = await import('../../src/services/document-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [createMockDocumentRow({ path: 'pages/home' })] });
+
+      const result = await resolveDocumentByPath('site-uuid-456', 'pages/home');
+
+      expect(result.status).toBe('found');
+      expect(db.query).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('updateDocumentPath', () => {
     it('should update document path', async () => {
       const { updateDocumentPath } = await import('../../src/services/document-service');

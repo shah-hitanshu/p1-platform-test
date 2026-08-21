@@ -28,7 +28,7 @@ import type { DocumentWithArchive, MoveResult } from './document-types';
 import { TEMPLATE_RELATION_JOIN, DOCUMENT_WITH_TEMPLATE_COLUMNS } from './document-queries';
 import { validateLocale } from './locale';
 import { getMainBranch } from './branch-service';
-import { planMove, assertPathFreeOnBranch } from './branch-document-service';
+import { planMove, assertPathFreeOnBranch, isTombstonedOnBranch } from './branch-document-service';
 
 // =============================================================================
 // Re-exports for backward compatibility
@@ -77,6 +77,7 @@ export {
   listTemplatesOnBranch,
   createDocumentOnBranch,
   documentExistsOnBranch,
+  isTombstonedOnBranch,
   deleteDocumentOnBranch,
   deleteDocumentWithRedirect,
 } from './branch-document-service';
@@ -235,6 +236,45 @@ export async function getDocumentByPath(
   }
 
   return { ...mapRowToDocument(row), path: normalizedPath };
+}
+
+/**
+ * The result of resolving a document by path, distinguishing a path that
+ * never existed from one that existed and was deleted (tombstoned) on the
+ * given branch. Extensible: a future status (e.g. `archived`) is a new
+ * union member plus a new case at each caller's exhaustive switch — never
+ * a change to the existing branches.
+ */
+export type DocumentResolution =
+  | { status: 'found'; document: DocumentWithArchive }
+  | { status: 'not_found' }
+  | { status: 'deleted'; document: DocumentWithArchive };
+
+/**
+ * Resolves a document by path with explicit tombstone awareness. Callers
+ * that must not resurrect a deleted document (or must tell a visitor
+ * "this page was deleted" instead of "this page never existed") should use
+ * this instead of calling getDocumentByPath directly.
+ *
+ * Tombstone status is only meaningful relative to a branch — when branchId
+ * is omitted, a found document is always reported as `found`.
+ */
+export async function resolveDocumentByPath(
+  siteId: string,
+  path: string,
+  branchId?: string,
+): Promise<DocumentResolution> {
+  const document = await getDocumentByPath(siteId, path, branchId);
+  if (document === null) {
+    return { status: 'not_found' };
+  }
+  if (branchId !== undefined) {
+    const tombstoned = await isTombstonedOnBranch(document.id, branchId);
+    if (tombstoned) {
+      return { status: 'deleted', document };
+    }
+  }
+  return { status: 'found', document };
 }
 
 /**

@@ -10,14 +10,16 @@ import { readJson } from '../helpers/http';
 import { makePrincipal } from '../helpers/principal';
 import { makeBranch } from '../helpers/branch';
 
-// Mock the services
+// Mock the services — spread the real module so HttpError and all error
+// subclasses keep their prototype chains (instanceof checks in route handlers
+// rely on them), then override only the functions that need test control.
 vi.mock('../../src/services', async () => {
-  const actual = await vi.importActual('../../src/services');
+  const actual = await vi.importActual<typeof import('../../src/services')>('../../src/services');
   return {
     ...actual,
     createDocument: vi.fn(),
     getDocument: vi.fn(),
-    getDocumentByPath: vi.fn(),
+    resolveDocumentByPath: vi.fn(),
     updateDocumentFields: vi.fn(),
     archiveDocument: vi.fn(),
     restoreDocument: vi.fn(),
@@ -31,12 +33,27 @@ vi.mock('../../src/services', async () => {
     getBranch: vi.fn(),
     // Document version operations
     getLatestDocumentVersion: vi.fn(),
+    getLatestDocumentVersionWithFallback: vi.fn(),
     getDocumentVersion: vi.fn(),
     listDocumentVersions: vi.fn(),
     createDocumentVersion: vi.fn(),
     reconstructVersionSnapshot: vi.fn(),
     restoreDocumentVersion: vi.fn(),
     getMainBranch: vi.fn(),
+    // Move operations
+    moveDocumentOnBranch: vi.fn(),
+    moveDocumentGlobally: vi.fn(),
+    // Localization
+    publishDocument: vi.fn(),
+    createTranslation: vi.fn(),
+    listLocaleVariants: vi.fn(),
+    buildChangeSummary: vi.fn(),
+    getLocalizationEdgeBySource: vi.fn(),
+    getAuthorityOverrides: vi.fn(),
+    authorityOverridesToJson: vi.fn(),
+    setAuthorityOverride: vi.fn(),
+    clearAuthorityOverride: vi.fn(),
+    resolveSlotAuthorityDefaults: vi.fn(),
   };
 });
 
@@ -480,11 +497,14 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         createdById: 'user-1',
         createdByType: 'user',
       }));
-      vi.mocked(services.getDocumentByPath).mockResolvedValueOnce({
-        id: 'doc-1',
-        siteId: 'site-1',
-        path: 'pages/about-us',
-        createdAt: '2026-01-24T10:00:00.000Z',
+      vi.mocked(services.resolveDocumentByPath).mockResolvedValueOnce({
+        status: 'found',
+        document: {
+          id: 'doc-1',
+          siteId: 'site-1',
+          path: 'pages/about-us',
+          createdAt: '2026-01-24T10:00:00.000Z',
+        },
       });
 
       const request = new Request(
@@ -519,7 +539,7 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         createdById: 'user-1',
         createdByType: 'user',
       }));
-      vi.mocked(services.getDocumentByPath).mockResolvedValueOnce(null);
+      vi.mocked(services.resolveDocumentByPath).mockResolvedValueOnce({ status: 'not_found' });
 
       const request = new Request(
         'https://api.example.com/api/sites/site-1/documents/by-path/nonexistent',
@@ -533,6 +553,46 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
       });
 
       expect(response.status).toBe(404);
+    });
+
+    it('should return 410 for a deleted (tombstoned) path', async () => {
+      const { handleDocumentRoutes } = await import(
+        '../../src/routes/document-api'
+      );
+      const services = await import('../../src/services');
+
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce(makeBranch({
+        id: 'main-branch-id',
+        siteId: 'site-1',
+        name: 'main',
+        isMain: true,
+        status: 'active',
+        createdAt: '2026-01-24T10:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+      }));
+      vi.mocked(services.resolveDocumentByPath).mockResolvedValueOnce({
+        status: 'deleted',
+        document: {
+          id: 'doc-1',
+          siteId: 'site-1',
+          path: 'pages/gone',
+          createdAt: '2026-01-24T10:00:00.000Z',
+        },
+      });
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-1/documents/by-path/pages%2Fgone',
+        { method: 'GET' },
+      );
+
+      const response = await handleDocumentRoutes(request, {
+        siteId: 'site-1',
+        documentPath: 'pages/gone',
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
+      });
+
+      expect(response.status).toBe(410);
     });
   });
 

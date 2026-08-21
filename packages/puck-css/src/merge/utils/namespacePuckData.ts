@@ -8,15 +8,22 @@ import type { PuckData } from '@pantheon-systems/css-client';
  * inheritance would otherwise have their props bleed from one panel to another.
  */
 export function namespacePuckData(data: PuckData, prefix: string): PuckData {
+  if (!data || !Array.isArray((data as { content?: unknown }).content)) {
+    return data;
+  }
   const nsItem = (item: { type: string; props: Record<string, unknown> }) => ({
     ...item,
     props: { ...item.props, id: `${prefix}${item.props.id as string}` },
   });
+  const safeZones = data.zones && typeof data.zones === 'object' ? data.zones : {};
   return {
     ...data,
     content: data.content.map(nsItem),
     zones: Object.fromEntries(
-      Object.entries(data.zones ?? {}).map(([k, zone]) => [k, (zone as typeof data.content).map(nsItem)]),
+      Object.entries(safeZones).map(([k, zone]) => [
+        k,
+        (Array.isArray(zone) ? zone : []).map(nsItem),
+      ]),
     ),
   };
 }

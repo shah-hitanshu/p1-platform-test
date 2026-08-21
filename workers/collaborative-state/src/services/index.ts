@@ -117,6 +117,7 @@ export {
   createDocument,
   getDocument,
   getDocumentByPath,
+  resolveDocumentByPath,
   updateDocumentPath,
   updateDocumentFields,
   deleteDocument,
@@ -129,6 +130,7 @@ export {
   listTemplatesOnBranch,
   createDocumentOnBranch,
   documentExistsOnBranch,
+  isTombstonedOnBranch,
   deleteDocumentOnBranch,
   deleteDocumentWithRedirect,
 } from './document-service';
@@ -137,6 +139,7 @@ export type {
   CreateDocumentParams,
   ListDocumentsOptions,
   DocumentWithArchive,
+  DocumentResolution,
   DocumentOnBranch,
   // Branch-scoped document types
   ListDocumentsOnBranchOptions,

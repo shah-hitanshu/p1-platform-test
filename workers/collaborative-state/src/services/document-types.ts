@@ -53,6 +53,7 @@ export interface DocumentOnBranchRow extends DocumentRow {
   branch_path: string | null;
   published_version_id: string | null;
   published_at: string | null;
+  is_tombstone: boolean | null;
   snapshot_title: string | null;
   latest_version_at: string | null;
   last_modified_by_id: string | null;
@@ -74,6 +75,7 @@ export interface DocumentOnBranch extends DocumentWithArchive {
   isPublished: boolean;
   publishedVersionId?: string;
   publishedAt?: string;
+  isDeleted?: boolean;
   snapshotTitle?: string;
   updatedAt?: string;
   lastModifiedById?: string;
@@ -93,6 +95,10 @@ export interface ListDocumentsOnBranchOptions {
     field: 'path' | 'createdAt';
     direction: 'asc' | 'desc';
   };
+  /** When true, includes documents whose latest version on this branch is a
+   * tombstone (deleted). Default false — every existing caller (public
+   * rendering, editor listing before this ticket) must keep excluding them. */
+  includeTombstoned?: boolean;
 }
 
 /**
@@ -238,6 +244,9 @@ export function mapRowToDocumentOnBranch(row: DocumentOnBranchRow): DocumentOnBr
   }
   if (row.published_at !== null) {
     doc.publishedAt = row.published_at;
+  }
+  if (row.is_tombstone === true) {
+    doc.isDeleted = true;
   }
   if (row.snapshot_title !== null) {
     doc.snapshotTitle = row.snapshot_title;

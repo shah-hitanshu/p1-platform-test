@@ -84,7 +84,8 @@ export async function listDocumentsOnBranch(
   branchId: string,
   options: ListDocumentsOnBranchOptions = {},
 ): Promise<DocumentOnBranch[]> {
-  const { pathPrefix, mainBranchId, templateId, limit, offset, orderBy } = options;
+  const { pathPrefix, mainBranchId, templateId, limit, offset, orderBy, includeTombstoned = false } = options;
+  const tombstoneFilter = includeTombstoned ? '' : ' AND top.is_tombstone = false';
   const orderDir = orderBy?.direction === 'desc' ? 'DESC' : 'ASC';
   const outerOrder =
     orderBy?.field === 'createdAt'
@@ -100,6 +101,7 @@ export async function listDocumentsOnBranch(
         false AS inherited,
         pub.document_version_id AS published_version_id,
         pub.published_at,
+        top.is_tombstone,
         top.snapshot_title,
         top.latest_version_at,
         top.last_modified_by_id,
@@ -111,8 +113,7 @@ export async function listDocumentsOnBranch(
       ${latestVersionOnBranchJoin('$1', LATEST_VERSION_LISTING_COLUMNS)}
       ${latestPublishOnBranchJoin('$2')}
       WHERE d.archived_at IS NULL
-        AND ${documentInBranchSitePredicate('$1')}
-        AND top.is_tombstone = false`;
+        AND ${documentInBranchSitePredicate('$1')}${tombstoneFilter}`;
 
     const params: unknown[] = [branchId, mainBranchId];
 
@@ -143,6 +144,7 @@ export async function listDocumentsOnBranch(
         true AS inherited,
         pub.document_version_id AS published_version_id,
         pub.published_at,
+        top.is_tombstone,
         top.snapshot_title,
         top.latest_version_at,
         top.last_modified_by_id,
@@ -154,8 +156,7 @@ export async function listDocumentsOnBranch(
       ${latestVersionOnBranchJoin('$2', LATEST_VERSION_LISTING_COLUMNS)}
       ${latestPublishOnBranchJoin('$2')}
       WHERE d.archived_at IS NULL
-        AND ${documentInBranchSitePredicate('$1')}
-        AND top.is_tombstone = false
+        AND ${documentInBranchSitePredicate('$1')}${tombstoneFilter}
         AND ${publishedOnBranchPredicate('$2')}
         AND NOT EXISTS (
           SELECT 1 FROM app.document_versions dv_branch
@@ -187,6 +188,7 @@ export async function listDocumentsOnBranch(
       false AS inherited,
       pub.document_version_id AS published_version_id,
       pub.published_at,
+      top.is_tombstone,
       top.snapshot_title,
       top.latest_version_at,
       top.last_modified_by_id,
@@ -198,8 +200,7 @@ export async function listDocumentsOnBranch(
     ${latestVersionOnBranchJoin('$1', LATEST_VERSION_LISTING_COLUMNS)}
     ${latestPublishOnBranchJoin('$1')}
     WHERE d.archived_at IS NULL
-      AND ${documentInBranchSitePredicate('$1')}
-      AND top.is_tombstone = false`;
+      AND ${documentInBranchSitePredicate('$1')}${tombstoneFilter}`;
 
   const params: unknown[] = [branchId];
 
@@ -227,9 +228,9 @@ export async function listDocumentsOnBranch(
  */
 export async function countDocumentsOnBranch(
   branchId: string,
-  options: Pick<ListDocumentsOnBranchOptions, 'pathPrefix' | 'mainBranchId' | 'templateId'> = {},
+  options: Pick<ListDocumentsOnBranchOptions, 'pathPrefix' | 'mainBranchId' | 'templateId' | 'includeTombstoned'> = {},
 ): Promise<number> {
-  const { pathPrefix, mainBranchId, templateId } = options;
+  const { pathPrefix, mainBranchId, templateId, includeTombstoned = false } = options;
 
   if (branchInheritsFromMain(branchId, mainBranchId)) {
     let sql = `
@@ -241,7 +242,7 @@ export async function countDocumentsOnBranch(
         LEFT JOIN app.branch_document_paths bdp
           ON bdp.branch_id = $1 AND bdp.document_id = d.id
         WHERE dv.branch_id = $1
-          AND d.archived_at IS NULL
+          AND d.archived_at IS NULL${includeTombstoned ? '' : `
           AND NOT EXISTS (
             SELECT 1 FROM app.document_versions dv2
             WHERE dv2.document_id = d.id AND dv2.branch_id = $1
@@ -251,7 +252,7 @@ export async function countDocumentsOnBranch(
                 FROM app.document_versions dv3
                 WHERE dv3.document_id = d.id AND dv3.branch_id = $1
               )
-          )`;
+          )`}`;
 
     const params: unknown[] = [branchId, mainBranchId];
 
@@ -288,7 +289,7 @@ export async function countDocumentsOnBranch(
           AND NOT EXISTS (
             SELECT 1 FROM app.document_versions dv_branch
             WHERE dv_branch.document_id = d.id AND dv_branch.branch_id = $1
-          )
+          )${includeTombstoned ? '' : `
           AND NOT EXISTS (
             SELECT 1 FROM app.document_versions dv_tomb
             WHERE dv_tomb.document_id = d.id AND dv_tomb.branch_id = $2
@@ -298,7 +299,7 @@ export async function countDocumentsOnBranch(
                 FROM app.document_versions dv_latest
                 WHERE dv_latest.document_id = d.id AND dv_latest.branch_id = $2
               )
-          )`;
+          )`}`;
 
     if (pathPrefix !== undefined && pathPrefix !== '') {
       sql += ` AND ${effectivePathPrefixPredicate(`$${String(params.length)}`)}`;
@@ -324,7 +325,7 @@ export async function countDocumentsOnBranch(
       LEFT JOIN app.branch_document_paths bdp
         ON bdp.branch_id = $1 AND bdp.document_id = d.id
       WHERE dv.branch_id = $1
-        AND d.archived_at IS NULL
+        AND d.archived_at IS NULL${includeTombstoned ? '' : `
         AND NOT EXISTS (
           SELECT 1 FROM app.document_versions dv2
           WHERE dv2.document_id = d.id AND dv2.branch_id = $1
@@ -334,7 +335,7 @@ export async function countDocumentsOnBranch(
               FROM app.document_versions dv3
               WHERE dv3.document_id = d.id AND dv3.branch_id = $1
             )
-        )`;
+        )`}`;
 
   const params: unknown[] = [branchId];
 
@@ -881,6 +882,43 @@ export async function documentExistsOnBranch(
   );
 
   return result.rows[0]?.exists ?? false;
+}
+
+/**
+ * Returns true only when the document's latest version on the branch is a
+ * tombstone. Returns false for two other cases that must not be treated as
+ * deleted:
+ *   - CoW-inherited documents with no local version on the branch at all
+ *     (MAX returns NULL → EXISTS evaluates to false)
+ *   - Documents with a non-tombstone latest version
+ *
+ * Use this instead of `!documentExistsOnBranch` whenever "no local version"
+ * must be treated as "still alive" (i.e. inherited from main via CoW).
+ *
+ * @param documentId - The document ID
+ * @param branchId - The branch ID
+ * @returns True only if the document is explicitly tombstoned on this branch
+ */
+export async function isTombstonedOnBranch(
+  documentId: string,
+  branchId: string,
+): Promise<boolean> {
+  const result = await query<{ tombstoned: boolean }>(
+    `SELECT EXISTS(
+       SELECT 1 FROM app.document_versions dv
+       WHERE dv.document_id = $1
+         AND dv.branch_id = $2
+         AND dv.version_number = (
+           SELECT MAX(dv2.version_number)
+           FROM app.document_versions dv2
+           WHERE dv2.document_id = $1 AND dv2.branch_id = $2
+         )
+         AND dv.is_tombstone = true
+     ) AS tombstoned`,
+    [documentId, branchId],
+  );
+
+  return result.rows[0]?.tombstoned ?? false;
 }
 
 /**

@@ -246,9 +246,14 @@ export function DocumentResolutionDetail({
   const isDeletedOnDraft = doc.changeType === 'deleted-on-draft';
 
   const deleteMessage = isConflicting ? getDeleteMessage(doc.conflictType) : null;
-  const hasBothSnapshots = !!doc.sourceSnapshot && !!doc.targetSnapshot;
-  const hasSourceOnly = !!doc.sourceSnapshot && !doc.targetSnapshot;
-  const hasNeitherSnapshot = !doc.sourceSnapshot && !doc.targetSnapshot;
+  // Tombstone snapshots ({ _deleted: true }) have no Puck content — treat them
+  // as absent so the single-panel "Deleted in Draft/Live" view fires correctly.
+  const hasPuckContent = (s: unknown): boolean =>
+    !!s && typeof s === 'object' && Array.isArray((s as { content?: unknown }).content);
+  const hasBothSnapshots = hasPuckContent(doc.sourceSnapshot) && hasPuckContent(doc.targetSnapshot);
+  const hasSourceOnly = hasPuckContent(doc.sourceSnapshot) && !hasPuckContent(doc.targetSnapshot);
+  const hasTargetOnly = !hasPuckContent(doc.sourceSnapshot) && hasPuckContent(doc.targetSnapshot);
+  const hasNeitherSnapshot = !hasPuckContent(doc.sourceSnapshot) && !hasPuckContent(doc.targetSnapshot);
 
   // Show ViewModeSelector for comparisons (conflicts and non-conflicting changes with both snapshots)
   const showViewModeSelector = hasBothSnapshots && (isConflicting || isDraftChanged);
@@ -353,7 +358,7 @@ export function DocumentResolutionDetail({
           )}
 
           {/* Single snapshot views for delete conflicts */}
-          {!doc.sourceSnapshot && doc.targetSnapshot && hasConfig && (
+          {hasTargetOnly && hasConfig && (
             <div className={`${baseClass}__single-panel`} style={singlePanelContainerStyle}>
               <div className={`${baseClass}__single-panel-label`} style={singlePanelLabelStyle}>
                 {targetBranchName}

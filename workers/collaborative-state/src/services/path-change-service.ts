@@ -55,3 +55,4 @@ export async function getPathChangesSince(
     baseDocumentPath: row.base_document_path,
   }));
 }
+

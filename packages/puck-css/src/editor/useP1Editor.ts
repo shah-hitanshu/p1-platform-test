@@ -17,6 +17,7 @@ import { useP1Puck } from '../core/P1PuckContext.js';
 import { useVersions } from '../versioning/useVersions.js';
 import { useP1Auth } from '../auth/index.js';
 import type { P1PuckContextValue } from '../core/types.js';
+import { isDocumentGoneError } from '../data/utils.js';
 import { useP1Plugin } from './useP1Plugin.js';
 import { useP1Overrides } from './useP1Overrides.js';
 import { useComponentRegistry } from './useComponentRegistry.js';
@@ -225,6 +226,13 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
         if (cancelled) return;
 
         const loadErr = err instanceof Error ? err : new Error(String(err));
+
+        if (isDocumentGoneError(loadErr)) {
+          // The document was deliberately deleted — never treat this as
+          // "not found" (which would trigger auto-create below).
+          setNeedsRedirect(true);
+          return;
+        }
 
         // Give the consumer a chance to handle the error (e.g. auto-create)
         if (onDocumentNotFoundRef.current) {

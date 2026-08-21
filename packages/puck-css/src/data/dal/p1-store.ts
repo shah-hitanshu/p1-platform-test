@@ -6,6 +6,7 @@
  */
 
 import type { SeoMetadata } from "@pantheon-systems/css-client";
+import { isDocumentGoneError } from "../utils";
 import type { PageStore, PageSetOptions, DocumentMeta } from "./types";
 import { getRequestAuthToken } from "./request-auth";
 
@@ -216,7 +217,12 @@ export function createP1PageStore(config: P1StoreConfig): PageStore {
       try {
         const existing = await readClient().documents.getByPath(siteId, dp, branchId);
         docId = existing.id;
-      } catch {
+      } catch (err) {
+        if (isDocumentGoneError(err)) {
+          // The document at this path was deliberately deleted (tombstoned).
+          // Never resurrect it as a side effect of a save.
+          throw err;
+        }
         const createParams: { siteId: string; branchId: string; path: string; templateId?: string; templateVersion?: number } = {
           siteId, branchId, path: dp,
         };
