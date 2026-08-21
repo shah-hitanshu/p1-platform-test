@@ -21,3 +21,6 @@
 @import "../blocks/container/container.css";
 @import "../blocks/tabs/tabs.css";
 @import "../blocks/accordion/accordion.css";
+@import "../blocks/card-grid/card-grid.css";
+@import "../blocks/image/image.css";
+@import "../blocks/gallery/gallery.css";

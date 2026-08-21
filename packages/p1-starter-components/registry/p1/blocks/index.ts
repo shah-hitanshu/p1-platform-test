@@ -22,9 +22,9 @@ import { FeatureMediaBlock } from "./feature-media/feature-media";
 import { StepsBlock } from "./steps/steps";
 import { TimelineBlock } from "./timeline/timeline";
 // ── Showcase ───────────────────────────────────────────────
-import { CardGridBlock } from "./card-grid/card-grid";
-import { ImageBlock } from "./image/image";
-import { GalleryBlock } from "./gallery/gallery";
+import { CardGridBlock } from "./card-grid/card-grid.block";
+import { ImageBlock } from "./image/image.block";
+import { GalleryBlock } from "./gallery/gallery.block";
 // ── Convert ────────────────────────────────────────────────
 import { PricingBlock } from "./pricing/pricing";
 import { FaqBlock } from "./faq/faq";

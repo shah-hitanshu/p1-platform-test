@@ -11,7 +11,6 @@ const PENDING = new Set<string>([
   'HeroBlock', 'AnnouncementBlock',
   'LogoCloudBlock', 'TestimonialBlock', 'StatsBlock', 'TeamGridBlock',
   'FeatureCardsBlock', 'FeatureMediaBlock', 'StepsBlock', 'TimelineBlock',
-  'CardGridBlock', 'ImageBlock', 'GalleryBlock',
   'PricingBlock', 'FaqBlock', 'LeadCaptureBlock', 'CtaBannerBlock', 'ComparisonTableBlock',
   'ArticleHeaderBlock', 'RichTextBlock', 'FigureBlock', 'PullQuoteBlock', 'EmbedBlock', 'CalloutBlock',
 ]);
