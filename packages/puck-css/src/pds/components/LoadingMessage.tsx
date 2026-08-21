@@ -8,6 +8,7 @@
  */
 
 import React from 'react';
+import { Spinner } from '@pantheon-systems/pds-toolkit-react';
 import styles from './LoadingMessage.module.css';
 
 export interface LoadingMessageProps {
@@ -22,7 +23,7 @@ export function LoadingMessage({
 }: LoadingMessageProps): React.ReactElement {
   return (
     <div className={styles.panel} role="status" aria-live="polite" data-testid={dataTestId}>
-      <span className={styles.spinner} aria-hidden="true" />
+      <Spinner size={'5xl'} />
       <p className={styles.message}>{message}</p>
     </div>
   );

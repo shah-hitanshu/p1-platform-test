@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import { P1Client } from '@pantheon-systems/css-client';
+import { LoadingMessage } from '../pds/components/LoadingMessage.js';
 import { P1AuthProvider, useP1Auth, P1LoginPage } from '../auth/index.js';
 import { useP1Puck } from '../core/P1PuckContext.js';
 import { useOptionalPresenceContext } from '../core/PresenceContext.js';
@@ -27,7 +28,7 @@ function AuthGate({
   const { isAuthenticated, isLoading, user, token } = useP1Auth();
 
   if (isLoading) {
-    return <>{loadingFallback ?? <div style={{ textAlign: 'center', padding: '2rem' }}>Authenticating...</div>}</>;
+    return <>{loadingFallback ?? <LoadingMessage message="Authenticating..." data-testid="auth-loading" />}</>;
   }
 
   if (!isAuthenticated) {
@@ -38,7 +39,7 @@ function AuthGate({
   }
 
   if (!user || !token) {
-    return <>{loadingFallback ?? <div style={{ textAlign: 'center', padding: '2rem' }}>Initializing...</div>}</>;
+    return <>{loadingFallback ?? <LoadingMessage message="Initializing..." data-testid="auth-initializing" />}</>;
   }
 
   return (

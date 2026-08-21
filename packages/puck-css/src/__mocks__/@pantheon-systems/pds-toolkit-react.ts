@@ -90,6 +90,14 @@ export const Switch = (props: Record<string, unknown>) => {
 };
 
 export const Icon = () => null;
+// Spinner stub: mirrors the real component's aria-hidden wrapper so a11y assertions hold
+export const Spinner = (props: Record<string, unknown>) => {
+  return React.createElement('span', {
+    'aria-hidden': 'true',
+    className: 'pds-spinner',
+    'data-testid': props['data-testid'],
+  });
+};
 export const PantheonLogo = (props: Record<string, unknown>) => {
   return React.createElement('span', { 'data-testid': props['data-testid'], className: 'pds-pantheon-logo' });
 };
