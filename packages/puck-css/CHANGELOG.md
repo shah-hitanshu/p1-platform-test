@@ -1,5 +1,68 @@
 # @pantheon-systems/puck-css
 
+## 0.12.0
+
+### Minor Changes
+
+- 5c8b489: Add `author` as a `ContentRole`, with permissions identical to `editor`. Part of the custom user roles MVP.
+
+### Patch Changes
+
+- 93f4976: **[Fix]** Page route resolution no longer drops to an empty page list — or hammers the backend with retries — when the document-list API has an outage.
+
+  ### What Changed
+  - When refreshing its route key cache fails, the page store now keeps serving the last successful result instead of returning an empty list, so collection-template routes keep resolving during a backend brownout.
+  - After a failed refresh, no new document-list queries are issued for a 30-second cooldown, preventing render traffic from amplifying backend slowness into a sustained overload.
+  - Happy-path behavior is unchanged (same 30-second cache TTL and values).
+
+- b99acfb: Report editor boot failures instead of hanging on "Loading document". `useP1Editor` never starts a document load until a branch resolves, and `P1PuckProvider` dropped both ways that can fail: a refused `GET /api/sites/{siteId}/branches`, and a list that resolves without a usable branch (which is what the API returns for a site id that doesn't exist). The provider now exposes `branchResolutionError`, naming the request and its HTTP status, and the editor reports it as a fatal load error. A refused document list is also no longer reported as "No documents found on this branch" — the provider exposes `documentsError` and the real failure is shown instead.
+- 716771a: Stop the editor from requesting a templates URL with an empty branch segment.
+
+  `useTemplateList` no longer fetches until a branch is resolved, matching `useDocuments`,
+  so the editor waits for `P1PuckProvider` to resolve the site's main branch rather than
+  calling through with an empty branch id. css-client rejects a blank or missing path
+  parameter with a `MissingParameterError` naming it — a `P1ApiError` carrying status 400,
+  so existing bad-request handling and retry predicates treat it correctly — instead of
+  emitting a URL the API misparses (`/branches//templates`, which something upstream
+  collapses into `/branches/templates`, reported back as `Branch not found: "templates"`).
+
+  The single-resource getters (`branches.get`, `sites.get`, `queries.get`,
+  `checkpoints.get`, `merge.getRequest`, `agentRegistry.get`) carry the same check, because
+  a blank _trailing_ parameter leaves one slash the API strips — so `branches.get(siteId,
+'')` used to return the branch _list_ typed as a single `Branch`, with no error anywhere.
+
+  A blank or whitespace `CSS_BRANCH_ID` / `NEXT_PUBLIC_CSS_BRANCH_ID` now reads as unset on
+  every path that consumes it, including the content client, where it previously reached
+  `?branch=` and 404'd every published page.
+
+- c9e31fb: **[Fix]** The Puck canvas no longer remounts when editor-context data resolves, so selection, scroll position, and in-progress field edits survive initial load and branch switches.
+
+  ### What Changed
+  - `useP1Plugins` now returns its plugin array synchronously instead of returning `[]` until the editor-context fetch resolved. The array's identity was changing mid-load, and Puck treats its plugin list as identity-sensitive config, so every load remounted the whole canvas.
+  - The field-connect ("Bind") modal now reads live routes and remote datasources itself rather than the values captured when the plugin was created, so its route/datasource list stays current after a branch switch instead of showing whatever was available at plugin-creation time.
+  - **[Deprecation]** `createFieldConnectPlugin`'s `routes` and `remoteDatasourceRegistry` options are deprecated. They are now only a fallback used until live data loads.
+
+  ### Migration / Action Required
+
+  Nothing is required — the deprecated options still work.
+
+  If you render the published `EditorClient` outside a `P1PuckProvider`, its Bind modal now fetches `/p1/api/editor-context` itself and prefers that result over the `routes`/`remoteDatasourceRegistry` you pass in. Make sure your host app serves that route; if it doesn't, the modal still falls back to your props, but each mount will retry the request first.
+
+  Drop the two options once you are on this version:
+
+  ```diff
+    createFieldConnectPlugin({
+      config,
+      editorPath,
+  -   routes,
+  -   remoteDatasourceRegistry,
+    })
+  ```
+
+- Updated dependencies [b99acfb]
+- Updated dependencies [716771a]
+  - @pantheon-systems/css-client@0.12.0
+
 ## 0.11.1
 
 ### Patch Changes

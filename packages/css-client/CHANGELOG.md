@@ -1,5 +1,29 @@
 # @pantheon-systems/css-client
 
+## 0.12.0
+
+### Patch Changes
+
+- b99acfb: Carry the HTTP status on `AuthenticationError` for 401 responses, so callers reporting "request X failed (status)" can name the status for a rejected session the same way they can for other API errors. Stays optional: the error is also thrown when no token could be obtained locally, where there is no response and no status.
+- 716771a: Stop the editor from requesting a templates URL with an empty branch segment.
+
+  `useTemplateList` no longer fetches until a branch is resolved, matching `useDocuments`,
+  so the editor waits for `P1PuckProvider` to resolve the site's main branch rather than
+  calling through with an empty branch id. css-client rejects a blank or missing path
+  parameter with a `MissingParameterError` naming it — a `P1ApiError` carrying status 400,
+  so existing bad-request handling and retry predicates treat it correctly — instead of
+  emitting a URL the API misparses (`/branches//templates`, which something upstream
+  collapses into `/branches/templates`, reported back as `Branch not found: "templates"`).
+
+  The single-resource getters (`branches.get`, `sites.get`, `queries.get`,
+  `checkpoints.get`, `merge.getRequest`, `agentRegistry.get`) carry the same check, because
+  a blank _trailing_ parameter leaves one slash the API strips — so `branches.get(siteId,
+'')` used to return the branch _list_ typed as a single `Branch`, with no error anywhere.
+
+  A blank or whitespace `CSS_BRANCH_ID` / `NEXT_PUBLIC_CSS_BRANCH_ID` now reads as unset on
+  every path that consumes it, including the content client, where it previously reached
+  `?branch=` and 404'd every published page.
+
 ## 0.11.1
 
 ### Patch Changes

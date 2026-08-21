@@ -1,6 +1,6 @@
 {
   "name": "@pantheon-systems/p1-next-sdk",
-  "version": "0.11.1",
+  "version": "0.12.0",
   "license": "UNLICENSED",
   "description": "Next.js SDK for P1 editor integration",
   "publishConfig": {

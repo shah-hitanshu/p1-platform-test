@@ -1,5 +1,12 @@
 # @pantheon-systems/create-p1-starter-kit
 
+## 0.12.0
+
+### Patch Changes
+
+- 59d8607: Fix the Tailwind `@source` path in the starter template so scaffolded projects pick up puck-css component styles. The path was monorepo-relative and did not exist in a scaffold, so every Tailwind utility used inside puck-css (data-list built-in components, editor chrome) rendered unstyled. It now points at `node_modules/@pantheon-systems/puck-css/dist`, which resolves in both the monorepo and a scaffolded project.
+- 9bbb083: Stamp `p1.templateVersion` into a scaffolded project's `package.json`, recording the version of `create-p1-starter-kit` that generated it. Previously a scaffold carried no record of its origin, so the only way to infer its generation was reading the pinned dependency versions. The field is the anchor future migration tooling needs to know a project's starting point.
+
 ## 0.11.1
 
 ### Patch Changes
