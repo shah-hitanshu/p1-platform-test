@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { FigureBlock, type FigureProps } from "../src/blocks/figure";
+import { FigureBlock, type FigureProps } from "@/registry/p1/blocks/figure/figure";
 
 const FigureWrapper = (props: FigureProps) => {
   const Component = FigureBlock.render as React.FC<FigureProps>;

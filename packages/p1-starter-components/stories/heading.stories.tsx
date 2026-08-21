@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { HeadingBlock, type HeadingProps } from "../src/blocks/heading";
+import { HeadingBlock, type HeadingProps } from "@/registry/p1/blocks/heading/heading";
 
 const HeadingWrapper = (props: HeadingProps) => {
   const Component = HeadingBlock.render as React.FC<HeadingProps>;

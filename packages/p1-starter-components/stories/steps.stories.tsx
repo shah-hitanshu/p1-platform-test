@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { StepsBlock, type StepsProps } from "../src/blocks/steps";
+import { StepsBlock, type StepsProps } from "@/registry/p1/blocks/steps/steps";
 
 const StepsWrapper = (props: StepsProps) => {
   const Component = StepsBlock.render as React.FC<StepsProps>;

@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { EmbedBlock, type EmbedProps } from "../src/blocks/embed";
+import { EmbedBlock, type EmbedProps } from "@/registry/p1/blocks/embed/embed";
 
 const EmbedWrapper = (props: EmbedProps) => {
   const Component = EmbedBlock.render as React.FC<EmbedProps>;

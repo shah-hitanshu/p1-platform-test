@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { FeatureCardsBlock, type FeatureCardsProps } from "../src/blocks/features";
+import { FeatureCardsBlock, type FeatureCardsProps } from "@/registry/p1/blocks/features/features";
 
 const FeatureCardsWrapper = (props: FeatureCardsProps) => {
   const Component = FeatureCardsBlock.render as React.FC<FeatureCardsProps>;

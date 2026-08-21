@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { ListBlock, type ListProps } from "../src/blocks/list";
+import { ListBlock, type ListProps } from "@/registry/p1/blocks/list/list";
 
 const ListWrapper = (props: ListProps) => {
   const Component = ListBlock.render as React.FC<ListProps>;

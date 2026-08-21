@@ -103,3 +103,6 @@ eslint-report.json
 
 # Storybook static build (packages/p1-starter-components)
 storybook-static/
+
+# Generated code-registry JSON (built by shadcn build — PCC-3580)
+apps/p1-registry/public/r/

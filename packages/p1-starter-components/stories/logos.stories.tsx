@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { LogoCloudBlock, type LogoCloudProps } from "../src/blocks/logos";
+import { LogoCloudBlock, type LogoCloudProps } from "@/registry/p1/blocks/logos/logos";
 
 const LogoCloudWrapper = (props: LogoCloudProps) => {
   const Component = LogoCloudBlock.render as React.FC<LogoCloudProps>;

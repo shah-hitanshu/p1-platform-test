@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { ContainerBlock, type ContainerProps } from "../src/blocks/container";
+import { ContainerBlock, type ContainerProps } from "@/registry/p1/blocks/container/container";
 
 const ContainerWrapper = (props: ContainerProps) => {
   const Component = ContainerBlock.render as unknown as React.FC<ContainerProps>;

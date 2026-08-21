@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { PullQuoteBlock, type PullQuoteProps } from "../src/blocks/pull-quote";
+import { PullQuoteBlock, type PullQuoteProps } from "@/registry/p1/blocks/pull-quote/pull-quote";
 
 const PullQuoteWrapper = (props: PullQuoteProps) => {
   const Component = PullQuoteBlock.render as React.FC<PullQuoteProps>;

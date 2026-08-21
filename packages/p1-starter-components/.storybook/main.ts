@@ -1,4 +1,8 @@
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { StorybookConfig } from '@storybook/react-vite';
+
+const dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const config: StorybookConfig = {
   stories: ['../stories/**/*.mdx', '../stories/**/*.stories.@(js|jsx|mjs|ts|tsx)'],
@@ -10,8 +14,11 @@ const config: StorybookConfig = {
   ],
   framework: '@storybook/react-vite',
   viteFinal: async (viteConfig) => {
-    // Private Enterprise Pages serves from the root path, not the repo name.
-    viteConfig.base = '/';
+    viteConfig.resolve ??= {};
+    viteConfig.resolve.alias = {
+      ...viteConfig.resolve.alias,
+      '@/registry': path.join(dirname, '..', 'registry'),
+    };
     return viteConfig;
   },
 };

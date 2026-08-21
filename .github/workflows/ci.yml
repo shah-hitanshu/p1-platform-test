@@ -171,8 +171,8 @@ jobs:
           path: playwright-report/
           retention-days: 7
 
-  storybook:
-    name: storybook (build + story render tests)
+  starter-components:
+    name: starter-components (storybook + registry build)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -189,8 +189,10 @@ jobs:
         run: pnpm --filter @pantheon-systems/p1-starter-components test:storybook
       - name: Build the static Storybook
         run: pnpm --filter @pantheon-systems/p1-starter-components build-storybook
+      - name: Build the code registry
+        run: pnpm --filter @pantheon-systems/p1-starter-components registry:build
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: storybook-static
+          name: starter-components-storybook
           path: packages/p1-starter-components/storybook-static/
           retention-days: 7

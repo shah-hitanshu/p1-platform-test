@@ -3,8 +3,12 @@
   "compilerOptions": {
     "jsx": "react-jsx",
     "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/registry/*": ["./registry/*"]
+    },
     "types": ["vitest/globals"]
   },
-  "include": ["src/**/*", "stories/**/*", ".storybook/**/*"],
+  "include": ["registry/**/*", "stories/**/*", ".storybook/**/*"],
   "exclude": ["node_modules", "storybook-static"]
 }

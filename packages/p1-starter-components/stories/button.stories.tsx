@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { ButtonBlock, type ButtonProps } from "../src/blocks/button";
+import { ButtonBlock, type ButtonProps } from "@/registry/p1/blocks/button/button";
 
 const ButtonWrapper = (props: ButtonProps) => {
   const Component = ButtonBlock.render as React.FC<ButtonProps>;

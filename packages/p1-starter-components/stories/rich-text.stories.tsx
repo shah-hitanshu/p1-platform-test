@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { RichTextBlock, type RichTextProps } from "../src/blocks/rich-text";
+import { RichTextBlock, type RichTextProps } from "@/registry/p1/blocks/rich-text/rich-text";
 
 const RichTextWrapper = (props: RichTextProps) => {
   const Component = RichTextBlock.render as React.FC<RichTextProps>;

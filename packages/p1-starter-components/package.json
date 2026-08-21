@@ -11,17 +11,19 @@
   },
   "scripts": {
     "clean": "rm -rf storybook-static *.tsbuildinfo node_modules/.vite",
-    "lint": "eslint src stories .storybook",
-    "lint:fix": "eslint src stories .storybook --fix",
+    "lint": "eslint registry stories .storybook",
+    "lint:fix": "eslint registry stories .storybook --fix",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
     "test": "vitest run --project=unit",
     "test:storybook": "vitest run --project=storybook",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "registry:build": "shadcn build --output ../../apps/p1-registry/public/r"
   },
   "devDependencies": {
     "@chromatic-com/storybook": "^5.1.2",
     "@pantheon-systems/eslint-config": "workspace:*",
+    "@puckeditor/core": "^0.21.1",
     "@storybook/addon-a11y": "^10.3.5",
     "@storybook/addon-docs": "^10.3.5",
     "@storybook/addon-vitest": "^10.3.5",
@@ -41,12 +43,8 @@
     "storybook": "^10.3.5",
     "tailwindcss": "^4.2.2",
     "typescript": "^5.9.3",
+    "shadcn": "^4.18.0",
     "vitest": "^4.1.5"
-  },
-  "peerDependencies": {
-    "@puckeditor/core": ">=0.21.1",
-    "react": ">=19.0.0",
-    "react-dom": ">=19.0.0"
   },
   "engines": {
     "node": ">=24.0.0"

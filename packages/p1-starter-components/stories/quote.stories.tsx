@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { QuoteBlock, type QuoteProps } from "../src/blocks/quote";
+import { QuoteBlock, type QuoteProps } from "@/registry/p1/blocks/quote/quote";
 
 const QuoteWrapper = (props: QuoteProps) => {
   const Component = QuoteBlock.render as React.FC<QuoteProps>;

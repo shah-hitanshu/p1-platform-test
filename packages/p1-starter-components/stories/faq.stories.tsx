@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { FaqBlock, type FaqProps } from "../src/blocks/faq";
+import { FaqBlock, type FaqProps } from "@/registry/p1/blocks/faq/faq";
 
 const FaqWrapper = (props: FaqProps) => {
   const Component = FaqBlock.render as React.FC<FaqProps>;

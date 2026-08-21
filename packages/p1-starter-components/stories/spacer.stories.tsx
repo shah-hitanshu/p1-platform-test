@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { SpacerBlock, type SpacerProps } from "../src/blocks/spacer";
+import { SpacerBlock, type SpacerProps } from "@/registry/p1/blocks/spacer/spacer";
 
 const SpacerWrapper = (props: SpacerProps) => {
   const Component = SpacerBlock.render as React.FC<SpacerProps>;

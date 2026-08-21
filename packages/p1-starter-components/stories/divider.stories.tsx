@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { DividerBlock, type DividerProps } from "../src/blocks/divider";
+import { DividerBlock, type DividerProps } from "@/registry/p1/blocks/divider/divider";
 
 const DividerWrapper = (props: DividerProps) => {
   const Component = DividerBlock.render as React.FC<DividerProps>;

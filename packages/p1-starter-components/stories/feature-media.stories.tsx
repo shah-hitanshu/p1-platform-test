@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { FeatureMediaBlock, type FeatureMediaProps } from "../src/blocks/feature-media";
+import { FeatureMediaBlock, type FeatureMediaProps } from "@/registry/p1/blocks/feature-media/feature-media";
 
 const FeatureMediaWrapper = (props: FeatureMediaProps) => {
   const Component = FeatureMediaBlock.render as React.FC<FeatureMediaProps>;

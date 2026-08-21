@@ -13,10 +13,13 @@ export default defineConfig({
     projects: [
       {
         plugins: [react()],
+        resolve: {
+          alias: { '@/registry': path.join(dirname, 'registry') },
+        },
         test: {
           name: 'unit',
           environment: 'node',
-          include: ['src/**/*.test.{ts,tsx}'],
+          include: ['registry/**/*.test.{ts,tsx}'],
         },
       },
       {

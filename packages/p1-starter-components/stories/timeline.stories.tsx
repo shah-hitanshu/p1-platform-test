@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { TimelineBlock, type TimelineProps } from "../src/blocks/timeline";
+import { TimelineBlock, type TimelineProps } from "@/registry/p1/blocks/timeline/timeline";
 
 const TimelineWrapper = (props: TimelineProps) => {
   const Component = TimelineBlock.render as React.FC<TimelineProps>;

@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { ComparisonTableBlock, type ComparisonTableProps } from "../src/blocks/comparison-table";
+import { ComparisonTableBlock, type ComparisonTableProps } from "@/registry/p1/blocks/comparison-table/comparison-table";
 
 const ComparisonTableWrapper = (props: ComparisonTableProps) => {
   const Component = ComparisonTableBlock.render as React.FC<ComparisonTableProps>;

@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { TeamGridBlock, type TeamGridProps } from "../src/blocks/team-grid";
+import { TeamGridBlock, type TeamGridProps } from "@/registry/p1/blocks/team-grid/team-grid";
 
 const TeamGridWrapper = (props: TeamGridProps) => {
   const Component = TeamGridBlock.render as React.FC<TeamGridProps>;

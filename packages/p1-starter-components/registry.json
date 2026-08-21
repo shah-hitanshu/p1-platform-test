@@ -1,0 +1,6 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry.json",
+  "name": "p1",
+  "homepage": "https://P1_REGISTRY_HOST_TBD",
+  "include": ["registry/p1/blocks/registry.json"]
+}
