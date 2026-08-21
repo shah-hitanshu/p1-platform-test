@@ -13165,6 +13165,8 @@ snapshots:
 
   opener@1.5.2: {}
 
+  opener@1.5.2: {}
+
   optimism@0.18.1:
     dependencies:
       '@wry/caches': 1.0.1
