@@ -1,0 +1,12 @@
+/* Dev aggregate: everything, for Storybook and the catalog app.
+ *
+ * NOT a distributed file. An installed block imports its own CSS, and tokens
+ * arrive in the user's project via `shadcn add @p1/tokens`. This file exists so
+ * our own preview surfaces can load the lot in one import.
+ *
+ * Block imports are appended here as each block is converted (PCC-3580 phase 2).
+ */
+@import "./p1-tokens.css";
+@import "./base.css";
+@import "../internal/btn.css";
+@import "../internal/rich.css";

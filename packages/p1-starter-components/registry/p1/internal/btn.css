@@ -1,0 +1,43 @@
+.p1-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  border-radius: var(--p1-radius-pill);
+  padding-inline: 1.5rem;
+  padding-block: 0.75rem;
+  font-size: var(--p1-text-sm);
+  font-weight: var(--p1-weight-bold);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .p1-btn {
+    transition: opacity 200ms ease;
+  }
+}
+
+.p1-btn:hover {
+  opacity: 0.9;
+}
+
+.p1-btn[data-variant="primary"] {
+  background: var(--p1-surface-inverse);
+  color: var(--p1-fg-inverse);
+}
+
+.p1-btn[data-variant="secondary"] {
+  border: 1px solid var(--p1-border);
+  background: var(--p1-surface-default);
+  color: var(--p1-fg-default);
+}
+
+.p1-btn[data-variant="yellow"] {
+  background: var(--p1-warning);
+  color: var(--p1-fg-default);
+}
+
+.p1-btn[data-variant="purple"] {
+  background: var(--p1-accent);
+  color: var(--p1-fg-inverse);
+}

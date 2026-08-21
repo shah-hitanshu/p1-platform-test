@@ -1,3 +1,3 @@
 @import "tailwindcss";
-@import '../registry/p1/tokens/variables.css';
 @import '../registry/p1/tokens/theme.css';
+@import '../registry/p1/tokens/preview.css';
