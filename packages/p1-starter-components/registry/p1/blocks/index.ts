@@ -26,11 +26,11 @@ import { CardGridBlock } from "./card-grid/card-grid.block";
 import { ImageBlock } from "./image/image.block";
 import { GalleryBlock } from "./gallery/gallery.block";
 // ── Convert ────────────────────────────────────────────────
-import { PricingBlock } from "./pricing/pricing";
-import { FaqBlock } from "./faq/faq";
-import { LeadCaptureBlock } from "./lead-capture/lead-capture";
-import { CtaBannerBlock } from "./cta/cta";
-import { ComparisonTableBlock } from "./comparison-table/comparison-table";
+import { PricingBlock } from "./pricing/pricing.block";
+import { FaqBlock } from "./faq/faq.block";
+import { LeadCaptureBlock } from "./lead-capture/lead-capture.block";
+import { CtaBannerBlock } from "./cta/cta.block";
+import { ComparisonTableBlock } from "./comparison-table/comparison-table.block";
 // ── Editorial ──────────────────────────────────────────────
 import { ArticleHeaderBlock } from "./article-header/article-header.block";
 import { RichTextBlock } from "./rich-text/rich-text.block";

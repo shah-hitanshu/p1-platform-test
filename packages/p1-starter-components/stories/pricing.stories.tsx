@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { PricingBlock, type PricingProps } from "@/registry/p1/blocks/pricing/pricing";
+import { PricingBlock, type PricingProps } from "@/registry/p1/blocks/pricing/pricing.block";
 
 const PricingWrapper = (props: PricingProps) => {
   const Component = PricingBlock.render as React.FC<PricingProps>;

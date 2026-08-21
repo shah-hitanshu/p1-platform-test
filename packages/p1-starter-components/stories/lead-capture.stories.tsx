@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { LeadCaptureBlock, type LeadCaptureProps } from "@/registry/p1/blocks/lead-capture/lead-capture";
+import { LeadCaptureBlock, type LeadCaptureProps } from "@/registry/p1/blocks/lead-capture/lead-capture.block";
 
 const LeadCaptureWrapper = (props: LeadCaptureProps) => {
   const Component = LeadCaptureBlock.render as React.FC<LeadCaptureProps>;

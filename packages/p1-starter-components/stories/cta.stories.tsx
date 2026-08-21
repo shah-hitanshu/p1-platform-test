@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { CtaBannerBlock, type CtaBannerProps } from "@/registry/p1/blocks/cta/cta";
+import { CtaBannerBlock, type CtaBannerProps } from "@/registry/p1/blocks/cta/cta.block";
 
 const CtaBannerWrapper = (props: CtaBannerProps) => {
   const Component = CtaBannerBlock.render as React.FC<CtaBannerProps>;

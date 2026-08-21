@@ -9,7 +9,6 @@ import * as lib from './index';
 const PENDING = new Set<string>([
   'HeaderBlock', 'FooterBlock',
   'HeroBlock', 'AnnouncementBlock',
-  'PricingBlock', 'FaqBlock', 'LeadCaptureBlock', 'CtaBannerBlock', 'ComparisonTableBlock',
 ]);
 
 const PLAIN_PROSE_TYPES = new Set(['text', 'textarea']);

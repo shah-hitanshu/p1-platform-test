@@ -38,3 +38,8 @@
 @import "../blocks/testimonial/testimonial.css";
 @import "../blocks/stats/stats.css";
 @import "../blocks/team-grid/team-grid.css";
+@import "../blocks/pricing/pricing.css";
+@import "../blocks/faq/faq.css";
+@import "../blocks/lead-capture/lead-capture.css";
+@import "../blocks/cta/cta.css";
+@import "../blocks/comparison-table/comparison-table.css";
