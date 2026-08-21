@@ -1,28 +1,9 @@
-import type { ComponentConfig } from "@puckeditor/core";
+import "./spacer.css";
 
 export interface SpacerProps {
-  size: "small" | "medium" | "large" | "x-large";
+  size: "xs" | "sm" | "md" | "lg" | "xl";
 }
 
-const HEIGHT: Record<SpacerProps["size"], number> = {
-  small: 24,
-  medium: 48,
-  large: 80,
-  "x-large": 128,
-};
-
-export const SpacerBlock: ComponentConfig<SpacerProps> = {
-  fields: {
-    size: {
-      type: "select",
-      options: [
-        { label: "Small", value: "small" },
-        { label: "Medium", value: "medium" },
-        { label: "Large", value: "large" },
-        { label: "X-Large", value: "x-large" },
-      ],
-    },
-  },
-  defaultProps: { size: "medium" },
-  render: ({ size }) => <div style={{ height: HEIGHT[size] }} />,
-};
+export function Spacer({ size }: SpacerProps) {
+  return <div className="p1-spacer" data-size={size} aria-hidden="true" />;
+}

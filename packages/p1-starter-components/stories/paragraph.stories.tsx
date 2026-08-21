@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { ParagraphBlock, type ParagraphProps } from "@/registry/p1/blocks/paragraph/paragraph";
+import { ParagraphBlock, type ParagraphProps } from "@/registry/p1/blocks/paragraph/paragraph.block";
 
 const ParagraphWrapper = (props: ParagraphProps) => {
   const Component = ParagraphBlock.render as React.FC<ParagraphProps>;

@@ -44,13 +44,13 @@ import { ContainerBlock } from "./container/container";
 import { TabsBlock } from "./tabs/tabs";
 import { AccordionBlock } from "./accordion/accordion";
 // ── Content ────────────────────────────────────────────────
-import { HeadingBlock } from "./heading/heading";
-import { ParagraphBlock } from "./paragraph/paragraph";
-import { QuoteBlock } from "./quote/quote";
-import { ListBlock } from "./list/list";
-import { ButtonBlock } from "./button/button";
-import { DividerBlock } from "./divider/divider";
-import { SpacerBlock } from "./spacer/spacer";
+import { HeadingBlock } from "./heading/heading.block";
+import { ParagraphBlock } from "./paragraph/paragraph.block";
+import { QuoteBlock } from "./quote/quote.block";
+import { ListBlock } from "./list/list.block";
+import { ButtonBlock } from "./button/button.block";
+import { DividerBlock } from "./divider/divider.block";
+import { SpacerBlock } from "./spacer/spacer.block";
 
 // Re-export every component config
 export {

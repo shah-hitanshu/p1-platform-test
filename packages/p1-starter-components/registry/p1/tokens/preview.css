@@ -10,3 +10,10 @@
 @import "./base.css";
 @import "../internal/btn.css";
 @import "../internal/rich.css";
+@import "../blocks/divider/divider.css";
+@import "../blocks/heading/heading.css";
+@import "../blocks/paragraph/paragraph.css";
+@import "../blocks/quote/quote.css";
+@import "../blocks/list/list.css";
+@import "../blocks/button/button.css";
+@import "../blocks/spacer/spacer.css";

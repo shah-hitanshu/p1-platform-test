@@ -1,0 +1,65 @@
+.p1-list__items {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--p1-space-sm);
+  max-inline-size: 65ch;
+}
+
+.p1-list__item {
+  display: flex;
+  align-items: baseline;
+  gap: var(--p1-space-sm);
+  font-size: var(--p1-text-base);
+  color: var(--p1-fg-muted);
+  line-height: var(--p1-leading-normal);
+}
+
+.p1-list__text {
+  flex: 1;
+}
+
+/* Bullet marker */
+.p1-list[data-style="bullet"] .p1-list__marker {
+  flex-shrink: 0;
+  inline-size: 0.375rem;
+  block-size: 0.375rem;
+  border-radius: var(--p1-radius-pill);
+  background: var(--p1-accent);
+  margin-block-start: 0.45em;
+}
+
+/* Numbered marker — CSS counter */
+.p1-list[data-style="numbered"] .p1-list__items {
+  counter-reset: list-counter;
+}
+
+.p1-list[data-style="numbered"] .p1-list__item {
+  counter-increment: list-counter;
+}
+
+.p1-list[data-style="numbered"] .p1-list__marker {
+  flex-shrink: 0;
+  min-inline-size: 1.25rem;
+  font-size: var(--p1-text-sm);
+  font-weight: var(--p1-weight-bold);
+  color: var(--p1-accent);
+  line-height: 1;
+}
+
+.p1-list[data-style="numbered"] .p1-list__marker::before {
+  content: counter(list-counter) ".";
+}
+
+/* Check marker */
+.p1-list[data-style="check"] .p1-list__marker {
+  flex-shrink: 0;
+  inline-size: 1rem;
+  block-size: 1rem;
+  background: var(--p1-accent);
+  border-radius: 2px;
+  clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
+  margin-block-start: 0.15em;
+}
