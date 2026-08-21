@@ -14,8 +14,10 @@ export interface AccordionProps {
 }
 
 const AccordionView: React.FC<AccordionProps> = ({ heading, align, items }) => {
-  const [open, setOpen] = React.useState<Record<number, boolean>>({ 0: true });
   const list = items || [];
+  const [open, setOpen] = React.useState<Record<string, boolean>>(
+    list[0] ? { [list[0].title]: true } : {},
+  );
   return (
     <div className="mx-auto max-w-3xl px-p1-lg py-p1-xl">
       {heading && (
@@ -29,12 +31,13 @@ const AccordionView: React.FC<AccordionProps> = ({ heading, align, items }) => {
       )}
       <div className="border-t border-p1-border">
         {list.map((it, ii) => {
-          const isOpen = !!open[ii];
+          const key = it.title || String(ii);
+          const isOpen = !!open[key];
           return (
-            <div key={ii} className="border-b border-p1-border">
+            <div key={key} className="border-b border-p1-border">
               <button
                 type="button"
-                onClick={() => setOpen((o) => ({ ...o, [ii]: !o[ii] }))}
+                onClick={() => setOpen((o) => ({ ...o, [key]: !o[key] }))}
                 className="flex w-full items-center justify-between gap-p1-md py-p1-md text-left"
               >
                 <span className="text-lg font-bold leading-snug text-p1-text">

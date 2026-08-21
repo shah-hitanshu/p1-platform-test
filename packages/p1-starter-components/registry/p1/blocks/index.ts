@@ -1,8 +1,7 @@
 /**
  * Dev-only barrel. Storybook, the catalog app and the invariant tests enumerate
  * blocks through here. It is NOT part of any registry item and never reaches a
- * user's project — the code registry distributes each block's files directly
- * (PCC-3580, D1). Phase 3 asserts this barrel and registry.json agree.
+ * user's project — the code registry distributes each block's files directly.
  */
 import type { Config } from "@puckeditor/core";
 

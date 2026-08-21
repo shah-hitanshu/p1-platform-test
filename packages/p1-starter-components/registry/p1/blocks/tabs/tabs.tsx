@@ -13,9 +13,11 @@ export interface TabsProps {
 }
 
 const TabsView: React.FC<TabsProps> = ({ heading, align, tabs }) => {
-  const [active, setActive] = React.useState(0);
   const list = tabs || [];
-  const i = Math.min(active, Math.max(0, list.length - 1));
+  const [active, setActive] = React.useState(list[0]?.label ?? "");
+  // Clamp to a valid tab if the active label no longer exists after a reorder or delete.
+  const activeLabel = list.some((t) => t.label === active) ? active : (list[0]?.label ?? "");
+  const i = list.findIndex((t) => t.label === activeLabel);
   const center = align === "center";
   return (
     <div className="mx-auto max-w-4xl px-p1-lg py-p1-xl">
@@ -34,12 +36,12 @@ const TabsView: React.FC<TabsProps> = ({ heading, align, tabs }) => {
         }`}
       >
         {list.map((tb, ti) => {
-          const on = ti === i;
+          const on = tb.label === activeLabel;
           return (
             <button
-              key={ti}
+              key={tb.label || ti}
               type="button"
-              onClick={() => setActive(ti)}
+              onClick={() => setActive(tb.label)}
               className={`-mb-px border-b-2 px-p1-md py-p1-sm font-bold transition-colors ${
                 on
                   ? "border-p1-primary text-p1-text"

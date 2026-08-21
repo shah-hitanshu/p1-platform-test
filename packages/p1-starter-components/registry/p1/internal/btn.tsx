@@ -22,11 +22,15 @@ export interface BtnProps {
   className?: string;
 }
 
+function safeHref(h: string): string {
+  return /^(https?:\/\/|\/|#)/.test(h) ? h : "#";
+}
+
 export function Btn({ variant = "primary", href, children, className = "" }: BtnProps) {
   const cls = `inline-flex items-center gap-2 rounded-full px-6 py-3 text-sm font-bold no-underline transition-opacity hover:opacity-90 ${VARIANT[variant]} ${className}`;
   if (href) {
     return (
-      <a href={href} className={cls}>
+      <a href={safeHref(href)} className={cls}>
         {children}
       </a>
     );

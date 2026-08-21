@@ -1,6 +1,10 @@
 import type { ComponentConfig } from "@puckeditor/core";
 import { Icon } from "@/registry/p1/internal/icons";
 
+function safeHref(h: string): string {
+  return /^(https?:\/\/|\/|#)/.test(h) ? h : "#";
+}
+
 export interface HeaderLink {
   label: string;
   href: string;
@@ -111,7 +115,7 @@ export const HeaderBlock: ComponentConfig<HeaderProps> = {
     const nav = (
       <nav className="hidden items-center gap-7 md:flex">
         {list.map((l, i) => (
-          <a key={i} href={l.href} className={`whitespace-nowrap text-sm font-medium ${t.link} hover:text-current`}>
+          <a key={i} href={safeHref(l.href)} className={`whitespace-nowrap text-sm font-medium ${t.link} hover:text-current`}>
             {l.label}
           </a>
         ))}

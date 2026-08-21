@@ -1,20 +1,14 @@
 import * as React from "react";
+import { sanitizeRichtextHtml } from "@/registry/p1/internal/sanitize-richtext";
 
 /**
  * Renders the value of a Puck `richtext` field.
  *
  * A `richtext` field's value reaches `render` in one of two shapes:
- *   1. A stored **HTML string** (e.g. "<p>Hello <strong>world</strong></p>")
- *      — when the page is published or the block first mounts.
- *   2. A live **ReactNode** — while the field is being edited inline on the
- *      canvas, Puck hands over its own managed editable node.
+ *   1. A stored **HTML string** — when the page is published or first mounts.
+ *   2. A live **ReactNode** — while being edited inline on the Puck canvas.
  *
- * We render (1) via dangerouslySetInnerHTML and pass (2) straight through, so
- * the same component works both in the editor and on the published page.
- *
- * `className` carries the typographic styling. Because the inner markup is
- * arbitrary HTML, callers style nested elements with Tailwind arbitrary
- * variants (e.g. `[&_h2]:text-3xl`).
+ * Strings are sanitized before rendering; ReactNodes pass through unchanged.
  */
 export interface RichValueProps {
   value: unknown;
@@ -24,7 +18,7 @@ export interface RichValueProps {
 export function RichValue({ value, className }: RichValueProps) {
   if (value == null || value === "") return null;
   if (typeof value === "string") {
-    return <div className={className} dangerouslySetInnerHTML={{ __html: value }} />;
+    return <div className={className} dangerouslySetInnerHTML={{ __html: sanitizeRichtextHtml(value) }} />;
   }
   return <div className={className}>{value as React.ReactNode}</div>;
 }
