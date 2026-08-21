@@ -13,6 +13,7 @@
 import type { AuthenticatedPrincipal } from '../types';
 import { grantRole, listRolesBySite, revokeRoleBySite } from '../services/agent-site-role-service';
 import { assertPermission, AuthorizationError } from '../auth/authorization';
+import { GRANTABLE_AGENT_ROLES } from '../auth/role-catalog';
 import { getMainBranch } from '../services';
 
 /**
@@ -35,7 +36,7 @@ function errorResponse(error: string, status: number): Response {
   return jsonResponse({ error }, status);
 }
 
-const VALID_ROLES = ['viewer', 'editor', 'admin'];
+const VALID_ROLES: readonly string[] = GRANTABLE_AGENT_ROLES;
 
 /**
  * Main route handler for site-scoped agent role operations

@@ -27,6 +27,7 @@ export interface ComponentPermissions {
  *
  * - admin: Full access - can create/edit templates, full structural control
  * - editor: Pinned components locked (cannot move/delete), can add/remove non-pinned
+ * - author: Same component permissions as editor
  * - junior-editor: View/edit props only, no structural changes
  */
 export function getPermissionsForRole(role: ContentRole): ComponentPermissions {
@@ -40,6 +41,7 @@ export function getPermissionsForRole(role: ContentRole): ComponentPermissions {
         canOverrideUrl: true,
       };
     case 'editor':
+    case 'author':
       return {
         canAddComponents: true,
         canRemoveComponents: true,

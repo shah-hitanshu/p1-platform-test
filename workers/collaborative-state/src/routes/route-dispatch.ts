@@ -29,6 +29,7 @@ import { handleViewerRoleRoutes } from './viewer-role-api';
 import { handleMergeRoutes } from './merge-api';
 import { handleGrantRoutes } from './grant-api';
 import { handleCollaboratorRoutes } from './collaborator-api';
+import { handleRolesRoutes } from './roles-api';
 import { handleUsersRoutes } from './users-api';
 import { handleStructureRoutes } from './structure-api';
 import { handleNodeRoutes } from './node-api';
@@ -269,6 +270,12 @@ export async function dispatchRoute(
         userId: route.params.userId,
         principal,
         masClient,
+      });
+
+    case 'site-roles':
+      return handleRolesRoutes(request, {
+        siteId: route.params.siteId ?? '',
+        principal,
       });
 
     case 'structures':

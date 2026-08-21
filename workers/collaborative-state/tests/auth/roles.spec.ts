@@ -182,6 +182,16 @@ describe('Phase 2.2: Role Definitions', () => {
       expect(mapPantheonRole('team_member')).toBe('EDITOR');
     });
 
+    it('should map the custom author role to EDITOR', async () => {
+      const { mapPantheonRole } = await import('../../src/auth/roles');
+      expect(mapPantheonRole('author')).toBe('EDITOR');
+    });
+
+    it('should map the custom editor role to EDITOR', async () => {
+      const { mapPantheonRole } = await import('../../src/auth/roles');
+      expect(mapPantheonRole('editor')).toBe('EDITOR');
+    });
+
     it('should map undefined to NO_ACCESS', async () => {
       const { mapPantheonRole } = await import('../../src/auth/roles');
       expect(mapPantheonRole(undefined)).toBe('NO_ACCESS');

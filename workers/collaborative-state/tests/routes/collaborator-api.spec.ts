@@ -104,6 +104,54 @@ describe('Collaborator API Routes', () => {
       expect(body.source).toBe('local');
     });
 
+    it.each(['author', 'editor'])('should grant site access with custom role %s', async (role) => {
+      const { handleCollaboratorRoutes } = await import('../../src/routes/collaborator-api');
+      const db = await import('../../src/db');
+      const services = await import('../../src/services');
+
+      vi.mocked(services.getMainBranch).mockResolvedValue(makeBranch({
+        id: 'branch-main',
+        siteId: 'site-1',
+        name: 'main',
+        isMain: true,
+        status: 'active',
+        createdById: 'user-1',
+        createdByType: 'user',
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z',
+      }));
+
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [{
+          id: 'role-1',
+          user_id: 'user-2',
+          site_id: 'site-1',
+          role,
+          source: 'local',
+          created_at: '2026-01-01T00:00:00Z',
+          updated_at: '2026-01-01T00:00:00Z',
+        }],
+      });
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-1/collaborators',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: 'user-2', role }),
+        },
+      );
+
+      const response = await handleCollaboratorRoutes(request, {
+        siteId: 'site-1',
+        principal: adminPrincipal,
+      });
+
+      expect(response.status).toBe(201);
+      const body = await readJson(response);
+      expect(body.role).toBe(role);
+    });
+
     it('should return 400 when userId is missing', async () => {
       const { handleCollaboratorRoutes } = await import('../../src/routes/collaborator-api');
       const services = await import('../../src/services');

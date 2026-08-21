@@ -397,7 +397,8 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
     [css, refreshVersions],
   );
 
-  const canRevert = css.userRole === 'admin' || css.userRole === 'editor';
+  const canRevert =
+    css.userRole === 'admin' || css.userRole === 'editor' || css.userRole === 'author';
 
   // Pushes freshly loaded documents into the live Puck instance, replacing
   // the remount-on-document-switch behavior the old document-scoped puckKey

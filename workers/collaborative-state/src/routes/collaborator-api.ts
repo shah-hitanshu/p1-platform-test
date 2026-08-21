@@ -8,6 +8,7 @@
 import type { AuthenticatedPrincipal, PantheonRole } from '../types';
 import { query } from '../db';
 import { assertPermission, AuthorizationError } from '../auth/authorization';
+import { GRANTABLE_USER_ROLES } from '../auth/role-catalog';
 import { getMainBranch } from '../services';
 import type { MASClient } from '../services/mas-client';
 
@@ -79,15 +80,9 @@ async function handleGrantAccess(
     return errorResponse('role is required', 400);
   }
 
-  const validRoles: PantheonRole[] = [
-    'owner',
-    'admin',
-    'developer',
-    'team_member',
-  ];
-  if (!validRoles.includes(body.role)) {
+  if (!GRANTABLE_USER_ROLES.includes(body.role)) {
     return errorResponse(
-      `Invalid role. Must be one of: ${validRoles.join(', ')}`,
+      `Invalid role. Must be one of: ${GRANTABLE_USER_ROLES.join(', ')}`,
       400,
     );
   }

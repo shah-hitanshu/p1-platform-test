@@ -32,6 +32,10 @@ describe('getPermissionsForRole', () => {
     expect(perms.canOverrideUrl).toBe(true);
   });
 
+  it('grants author permissions identical to editor', () => {
+    expect(getPermissionsForRole('author')).toEqual(getPermissionsForRole('editor'));
+  });
+
   it('restricts junior-editor to prop editing only', () => {
     const perms = getPermissionsForRole('junior-editor');
     expect(perms.canAddComponents).toBe(false);

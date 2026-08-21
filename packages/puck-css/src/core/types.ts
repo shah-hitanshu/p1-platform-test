@@ -15,7 +15,7 @@ import type {
 import type { ConflictNotification } from '../merge/components/conflict-notifications/index.js';
 import type { UseAgentEditReturn } from '../agent/useAgentEdit.js';
 import type { UseAgentTriggerReturn } from '../agent/useAgentTrigger.js';
-import type { Template, TemplateSummary } from '../features/content-type-templates/types.js';
+import type { ContentRole, Template, TemplateSummary } from '../features/content-type-templates/types.js';
 import type { P1FeatureConfig } from './featureConfig.js';
 
 /**
@@ -175,11 +175,11 @@ export interface P1PuckConfig {
    * User's content role for template permission enforcement.
    * Consumers should resolve this via `useResolveContentRole` or their own auth layer.
    * - admin: Full access, can create/edit templates
-   * - editor: Pinned components locked, can add/remove non-pinned
+   * - editor, author: Pinned components locked, can add/remove non-pinned
    * - junior-editor: Props only, no structural changes
    * @default 'editor'
    */
-  userRole?: 'admin' | 'editor' | 'junior-editor';
+  userRole?: ContentRole;
 }
 
 /**
@@ -632,7 +632,7 @@ export interface P1PuckContextValue {
    * Current user's content role for permission enforcement.
    * Defaults to 'editor' if not specified.
    */
-  userRole: 'admin' | 'editor' | 'junior-editor';
+  userRole: ContentRole;
 
   /**
    * Available templates on the current branch (metadata summaries).

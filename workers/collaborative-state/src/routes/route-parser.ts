@@ -845,6 +845,18 @@ export function parseRoute(path: string): { handler: string; params: RouteParams
     };
   }
 
+  // Allowed roles route
+  // /api/sites/{siteId}/roles
+  const siteRolesMatch = /^\/api\/sites\/([^/]+)\/roles$/.exec(normalizedPath);
+  if (siteRolesMatch) {
+    return {
+      handler: 'site-roles',
+      params: {
+        siteId: siteRolesMatch[1],
+      },
+    };
+  }
+
   // Collaborator routes
   // /api/sites/{siteId}/collaborators/{userId}?
   const collaboratorMatch = /^\/api\/sites\/([^/]+)\/collaborators(?:\/([^/]+))?$/.exec(normalizedPath);
