@@ -144,4 +144,28 @@ describe('useTemplateList', () => {
 
     expect(templates.list).toHaveBeenCalledTimes(2);
   });
+
+  it('does not fetch while no branch is resolved', async () => {
+    const templates = mockClient.templates;
+    if (!templates) throw new Error('templates endpoint not available');
+    vi.mocked(templates.list).mockResolvedValue(mockTemplates);
+
+    const { result, rerender } = renderHook(
+      ({ branchId }) => useTemplateList(mockClient, 'site-1', branchId),
+      { initialProps: { branchId: '' } },
+    );
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+    expect(templates.list).not.toHaveBeenCalled();
+    expect(result.current.templates).toEqual([]);
+
+    rerender({ branchId: 'branch-1' });
+
+    await waitFor(() => {
+      expect(templates.list).toHaveBeenCalledWith('site-1', 'branch-1');
+    });
+  });
+
 });

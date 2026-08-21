@@ -10,6 +10,7 @@ import type {
   CreateCheckpointParams,
   PaginationOptions,
 } from '../types.js';
+import { requirePathParams } from '../utils.js';
 import type { BaseEndpoint } from './base.js';
 
 export class CheckpointsEndpoint {
@@ -19,6 +20,8 @@ export class CheckpointsEndpoint {
    * Get a checkpoint by ID.
    */
   async get(siteId: string, checkpointId: string): Promise<Checkpoint> {
+    requirePathParams({ siteId, checkpointId }, 'checkpoints.get');
+
     return this.base.request<Checkpoint>(`/api/sites/${siteId}/checkpoints/${checkpointId}`, {
       method: 'GET',
     });

@@ -15,6 +15,7 @@ import type {
   ListMergeRequestsOptions,
   ExecuteMergeRequestOptions,
 } from '../types.js';
+import { requirePathParams } from '../utils.js';
 import type { BaseEndpoint } from './base.js';
 
 export class MergeEndpoint {
@@ -99,6 +100,8 @@ export class MergeEndpoint {
     siteId: string,
     requestId: string
   ): Promise<MergeRequest> {
+    requirePathParams({ siteId, requestId }, 'merge.getRequest');
+
     return this.base.request<MergeRequest>(
       `/api/sites/${siteId}/merge-requests/${requestId}`,
       {

@@ -87,6 +87,16 @@ const KEYS_MAX_RETRIES = 3;
 const KEYS_RETRY_DELAY_MS = 500;
 const KEYS_FAILURE_COOLDOWN_MS = 30_000;
 
+/** A bad request will fail identically on every attempt — retrying only adds latency. */
+function isBadRequest(err: unknown): boolean {
+  return (
+    typeof err === 'object' &&
+    err !== null &&
+    'status' in err &&
+    (err as { status?: unknown }).status === 400
+  );
+}
+
 async function withRetry<T>(
   fn: () => Promise<T>,
   retries: number,
@@ -98,6 +108,7 @@ async function withRetry<T>(
       return await fn();
     } catch (err) {
       lastErr = err;
+      if (isBadRequest(err)) break;
       if (i < retries) {
         await new Promise((r) => setTimeout(r, delayMs * (i + 1)));
       }

@@ -7,6 +7,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { TemplatesEndpoint } from '../../src/endpoints/templates.js';
 import type { BaseEndpoint } from '../../src/endpoints/base.js';
+import { MissingParameterError, P1ApiError } from '../../src/errors.js';
 import type {
   Template,
   TemplateSummary,
@@ -278,4 +279,45 @@ describe('TemplatesEndpoint', () => {
       expect(result.documents?.[0].path).toBe('/blog/hello');
     });
   });
+
+  describe('required path parameters', () => {
+    it('rejects an empty branchId instead of building a malformed URL', async () => {
+      await expect(endpoint.list('site-1', '')).rejects.toThrow(MissingParameterError);
+      await expect(endpoint.list('site-1', '')).rejects.toThrow(
+        'Missing required parameter "branchId" for templates.list',
+      );
+      expect(mockRequest).not.toHaveBeenCalled();
+    });
+
+    it('rejects an undefined branchId', async () => {
+      await expect(
+        endpoint.list('site-1', undefined as unknown as string),
+      ).rejects.toThrow('Missing required parameter "branchId" for templates.list');
+      expect(mockRequest).not.toHaveBeenCalled();
+    });
+
+    it('names the missing parameter on the error', async () => {
+      await expect(endpoint.get('site-1', '', 'tmpl-1')).rejects.toMatchObject({
+        name: 'MissingParameterError',
+        parameter: 'branchId',
+      });
+    });
+
+    // Retry wrappers bail on a 400 and retry anything else; a missing argument can
+    // never resolve itself between attempts.
+    it('carries a 400 status and its own code so callers do not retry it', async () => {
+      await expect(endpoint.list('site-1', '')).rejects.toMatchObject({
+        status: 400,
+        code: 'MISSING_PARAMETER',
+      });
+      await expect(endpoint.list('site-1', '')).rejects.toBeInstanceOf(P1ApiError);
+    });
+
+    it('rejects a blank siteId and templateId too', async () => {
+      await expect(endpoint.list('', 'branch-1')).rejects.toThrow('"siteId"');
+      await expect(endpoint.get('site-1', 'branch-1', '  ')).rejects.toThrow('"templateId"');
+      expect(mockRequest).not.toHaveBeenCalled();
+    });
+  });
+
 });

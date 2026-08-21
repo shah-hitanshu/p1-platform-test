@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { sleep, trimTrailingSlash } from '../src/utils.js';
+import { sleep, trimTrailingSlash, requirePathParams } from '../src/utils.js';
 
 describe('sleep', () => {
   afterEach(() => {
@@ -59,5 +59,28 @@ describe('trimTrailingSlash', () => {
 
   it('handles a bare slash', () => {
     expect(trimTrailingSlash('/')).toBe('');
+  });
+});
+
+describe('requirePathParams', () => {
+  it('passes through non-empty values', () => {
+    expect(() => requirePathParams({ siteId: 'site-1' }, 'x.y')).not.toThrow();
+  });
+
+  it('rejects undefined, empty and whitespace values by name', () => {
+    expect(() => requirePathParams({ a: undefined }, 'x.y')).toThrow('"a"');
+    expect(() => requirePathParams({ b: '' }, 'x.y')).toThrow('"b"');
+    expect(() => requirePathParams({ c: '   ' }, 'x.y')).toThrow('"c"');
+  });
+
+  // `null` is a live shape on this SDK's surface. Testing only for `undefined` let it
+  // reach `.trim()`, raising a TypeError that named nothing.
+  it('rejects null as a named parameter rather than crashing on .trim()', () => {
+    expect(() => requirePathParams({ branchId: null }, 'templates.list')).toThrow(
+      'Missing required parameter "branchId" for templates.list',
+    );
+    expect(() => requirePathParams({ branchId: null }, 'templates.list')).not.toThrow(
+      TypeError,
+    );
   });
 });

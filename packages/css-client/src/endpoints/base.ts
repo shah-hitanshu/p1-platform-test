@@ -15,6 +15,7 @@ import {
   ConflictError,
   ValidationError,
   SessionExpiredError,
+  MissingParameterError,
 } from '../errors.js';
 import {
   correlationHeaders,
@@ -77,6 +78,30 @@ function adoptServerRequestId(response: Response, fallback: string): string {
   return echoed !== null && echoed.trim() !== '' ? echoed.trim() : fallback;
 }
 
+/**
+ * Reject a path with an empty interior segment rather than sending it.
+ *
+ * An undefined or blank interpolated value leaves `/branches//templates`, which edge
+ * proxies collapse to `/branches/templates` — the API then reads `templates` as the
+ * branch and reports a confusing "Branch not found".
+ *
+ * Interior segments only, and that limit is load-bearing: a trailing empty segment has
+ * to stay legal because `/documents/by-path/` is how the root document is addressed. So
+ * a blank *trailing* parameter still gets through here, and the API strips the slash and
+ * serves the collection route — `branches.get(siteId, '')` would return the branch
+ * *list* as a `Branch`. Only a named `requirePathParams` check catches that shape, which
+ * is why the single-resource getters carry one.
+ */
+function assertNoEmptyInteriorSegment(path: string): void {
+  const [pathname = ''] = path.split('?');
+  if (pathname.includes('//')) {
+    throw new MissingParameterError(
+      undefined,
+      `request path "${path}" — a value interpolated into the URL was empty`,
+    );
+  }
+}
+
 export class BaseEndpoint {
   private readonly baseUrl: string;
   private readonly authProvider?: AuthProvider;
@@ -111,6 +136,7 @@ export class BaseEndpoint {
     // network failure still gives the caller something to quote. If the API responds it
     // echoes the id back, and that value wins.
     const correlation = { requestId: newRequestId() };
+    assertNoEmptyInteriorSegment(path);
     try {
       return await this.send<T>(path, options, correlation);
     } catch (error) {

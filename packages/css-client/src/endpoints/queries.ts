@@ -1,4 +1,5 @@
 import type { Query, QueryResults, QueryResultsParams } from '../types.js';
+import { requirePathParams } from '../utils.js';
 import type { BaseEndpoint } from './base.js';
 
 export class QueriesEndpoint {
@@ -13,6 +14,8 @@ export class QueriesEndpoint {
   }
 
   async get(siteId: string, branchId: string, name: string): Promise<Query> {
+    requirePathParams({ siteId, branchId, name }, 'queries.get');
+
     return this.base.request<Query>(
       `/api/sites/${siteId}/branches/${branchId}/queries/${name}`,
       { method: 'GET' }

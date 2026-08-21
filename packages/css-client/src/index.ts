@@ -139,6 +139,7 @@ export {
   ConflictError,
   ValidationError,
   SessionExpiredError,
+  MissingParameterError,
 } from './errors.js';
 
 // Content delivery (read-only)

@@ -5,6 +5,7 @@
  */
 
 import type { Site, PaginationOptions } from '../types.js';
+import { requirePathParams } from '../utils.js';
 import type { BaseEndpoint } from './base.js';
 
 export class SitesEndpoint {
@@ -14,6 +15,8 @@ export class SitesEndpoint {
    * Get a site by ID.
    */
   async get(siteId: string): Promise<Site> {
+    requirePathParams({ siteId }, 'sites.get');
+
     return this.base.request<Site>(`/api/sites/${siteId}`, {
       method: 'GET',
     });

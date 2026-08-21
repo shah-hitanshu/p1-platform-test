@@ -112,6 +112,41 @@ export class SessionExpiredError extends Error {
 }
 
 /**
+ * Thrown before a request leaves the client when a value destined for a URL path
+ * segment is missing or empty.
+ *
+ * Interpolating an empty segment produces a URL the API misparses — a blank branch id
+ * collapses `/branches//templates` into `/branches/templates`, and the server reports
+ * "Branch not found: templates". Failing here names the parameter instead.
+ *
+ * The 400 is what the request would have earned, not a status the server returned: no
+ * request was sent, so there is also no `requestId` to correlate against a server-side
+ * log. It carries a status because callers act on one — retry wrappers in particular
+ * treat a status-less error as transient and would retry a missing argument that can
+ * never resolve itself.
+ */
+export class MissingParameterError extends P1ApiError {
+  override name = 'MissingParameterError';
+  /**
+   * The offending argument's name, when the caller knew it. The URL backstop only sees an
+   * assembled path, so it leaves this unset rather than inventing a name to report.
+   */
+  public readonly parameter?: string;
+
+  constructor(parameter: string | undefined, context: string) {
+    super(
+      parameter !== undefined
+        ? `Missing required parameter "${parameter}" for ${context}`
+        : `Missing required value in ${context}`,
+      400,
+      'MISSING_PARAMETER',
+    );
+    this.parameter = parameter;
+    Object.setPrototypeOf(this, MissingParameterError.prototype);
+  }
+}
+
+/**
  * Stamp the correlation id onto an error and surface it in the message.
  *
  * The message is appended to on purpose: the id is only useful if a human sees it, and

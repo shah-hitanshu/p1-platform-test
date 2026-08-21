@@ -11,6 +11,7 @@ import type {
   ListAgentsOptions,
   AgentStatus,
 } from '../types.js';
+import { requirePathParams } from '../utils.js';
 import type { BaseEndpoint } from './base.js';
 
 /**
@@ -48,6 +49,8 @@ export class AgentRegistryEndpoint {
    * @param agentId - Agent ID
    */
   async get(orgId: string, agentId: string): Promise<RegisteredAgent> {
+    requirePathParams({ orgId, agentId }, 'agentRegistry.get');
+
     return this.base.request<RegisteredAgent>(
       `/api/organizations/${orgId}/agents/${agentId}`,
       { method: 'GET' }

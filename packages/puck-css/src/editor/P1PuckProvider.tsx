@@ -756,15 +756,34 @@ function P1PuckProviderInner({
         }
       }
 
-      persistBranchId(effectiveBranchId);
-      setBranchId(effectiveBranchId);
+      // Persisting an empty id would poison the next visit and build requests with a
+      // blank branch segment; keep whatever is already selected instead.
+      if (effectiveBranchId) {
+        persistBranchId(effectiveBranchId);
+        setBranchId(effectiveBranchId);
+      }
       setCurrentBranch(branchList.find((b) => b.id === effectiveBranchId) ?? null);
     } catch (error) {
       console.error('Failed to load branches:', error);
+      // Without a branch nothing else can load: useDocuments' fetch is branch-guarded, so
+      // documentsLoading stays true forever and the editor sits blank. Say so rather than
+      // leaving the user with an unexplained empty screen.
+      if (showErrorNotifications && notificationContext?.addError) {
+        const message = error instanceof Error ? error.message : String(error);
+        notificationContext.addError(
+          `Failed to load branches: ${message}`,
+          () => void refreshBranchesRef.current?.(),
+        );
+      }
     } finally {
       setBranchesLoading(false);
     }
-  }, [userClient, siteId, getPersistedBranchId, persistBranchId]);
+  }, [userClient, siteId, getPersistedBranchId, persistBranchId, showErrorNotifications, notificationContext]);
+
+  // Lets the failure notification offer a retry without refreshBranches depending on
+  // itself, the same ref idiom the template callbacks above use.
+  const refreshBranchesRef = useRef(refreshBranches);
+  refreshBranchesRef.current = refreshBranches;
 
   const createBranch = useCallback(
     async (name: string) => {

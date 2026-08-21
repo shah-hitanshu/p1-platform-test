@@ -59,4 +59,28 @@ describe('DocumentsEndpoint', () => {
       expect(JSON.parse(init.body)).toEqual({ path: 'page-2' });
     });
   });
+
+  // The DAL wraps documents.list in withRetry, so a blank branch id here would
+  // otherwise be retried with backoff before surfacing.
+  describe('required path parameters', () => {
+    it('rejects a blank branchId by name instead of building a malformed URL', async () => {
+      await expect(endpoint.list('site-1', '')).rejects.toMatchObject({
+        name: 'MissingParameterError',
+        parameter: 'branchId',
+        status: 400,
+      });
+      expect(mockRequest).not.toHaveBeenCalled();
+    });
+
+    it('rejects a blank branchId on create, delete, exists and publish', async () => {
+      await expect(
+        endpoint.create({ siteId: 'site-1', branchId: '', path: 'p' }),
+      ).rejects.toThrow('"branchId"');
+      await expect(endpoint.delete('site-1', '', 'doc-1')).rejects.toThrow('"branchId"');
+      await expect(endpoint.exists('site-1', '', 'doc-1')).rejects.toThrow('"branchId"');
+      await expect(endpoint.publish('site-1', '', 'doc-1')).rejects.toThrow('"branchId"');
+      expect(mockRequest).not.toHaveBeenCalled();
+    });
+  });
+
 });

@@ -63,6 +63,33 @@ describe('createNextConfig', () => {
     expect(() => createNextConfig()).toThrow('Missing required config: CSS_SITE_ID');
   });
 
+  // Left undefined on purpose: the provider owns branch precedence (deep link →
+  // explicit config → the branch the user switched to → the site's main branch), and a
+  // config-level default would outrank the user's own selection.
+  it('leaves branchId unset when NEXT_PUBLIC_CSS_BRANCH_ID is not set', () => {
+    process.env.NEXT_PUBLIC_CSS_SITE_ID = 'site-123';
+    delete process.env.NEXT_PUBLIC_CSS_BRANCH_ID;
+
+    const config = createNextConfig();
+    expect(config.branchId).toBeUndefined();
+  });
+
+  it('treats a blank NEXT_PUBLIC_CSS_BRANCH_ID as unset', () => {
+    process.env.NEXT_PUBLIC_CSS_SITE_ID = 'site-123';
+    process.env.NEXT_PUBLIC_CSS_BRANCH_ID = '   ';
+
+    const config = createNextConfig();
+    expect(config.branchId).toBeUndefined();
+  });
+
+  it('keeps an explicit NEXT_PUBLIC_CSS_BRANCH_ID over the main default', () => {
+    process.env.NEXT_PUBLIC_CSS_SITE_ID = 'site-123';
+    process.env.NEXT_PUBLIC_CSS_BRANCH_ID = 'feature-x';
+
+    const config = createNextConfig();
+    expect(config.branchId).toBe('feature-x');
+  });
+
   it('uses production base URL when NEXT_PUBLIC_CSS_BASE_URL is not set', () => {
     process.env.NEXT_PUBLIC_CSS_SITE_ID = 'site-123';
 
@@ -144,6 +171,46 @@ describe('createNextConfig', () => {
   });
 });
 
+describe('createNextContentClient branch normalization', () => {
+  const originalEnv = process.env;
+
+  beforeEach(() => {
+    process.env = { ...originalEnv };
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    process.env = originalEnv;
+  });
+
+  // A whitespace value is truthy, so it reaches `?branch=` and 404s every published page.
+  it('treats a whitespace NEXT_PUBLIC_CSS_BRANCH_ID as unset', async () => {
+    process.env.NEXT_PUBLIC_CSS_SITE_ID = 'site-123';
+    process.env.CSS_API_KEY = 'key';
+    process.env.NEXT_PUBLIC_CSS_BRANCH_ID = '   ';
+
+    const { P1ContentClient } = vi.mocked(await import('@pantheon-systems/css-client'));
+    createNextContentClient();
+
+    expect(P1ContentClient).toHaveBeenCalledWith(
+      expect.objectContaining({ branchId: undefined }),
+    );
+  });
+
+  it('still passes an explicitly configured branch through', async () => {
+    process.env.NEXT_PUBLIC_CSS_SITE_ID = 'site-123';
+    process.env.CSS_API_KEY = 'key';
+    process.env.NEXT_PUBLIC_CSS_BRANCH_ID = 'branch-456';
+
+    const { P1ContentClient } = vi.mocked(await import('@pantheon-systems/css-client'));
+    createNextContentClient();
+
+    expect(P1ContentClient).toHaveBeenCalledWith(
+      expect.objectContaining({ branchId: 'branch-456' }),
+    );
+  });
+});
+
 describe('createP1Config', () => {
   it('derives ws:// wsBaseUrl from http:// baseUrl', () => {
     const config = createP1Config(
@@ -171,6 +238,31 @@ describe('createP1Config', () => {
       },
     );
     expect(config.wsBaseUrl).toBe('wss://css.example.com');
+  });
+
+  it('leaves branchId unset when no branch is configured', () => {
+    const config = createP1Config(
+      {},
+      {
+        overrides: {
+          baseUrl: 'https://css.example.com',
+          siteId: 'site-123',
+          authMode: 'mock',
+        },
+      },
+    );
+    expect(config.branchId).toBeUndefined();
+  });
+
+  it('prefers the prefixed CSS_BRANCH_ID env var over the main default', () => {
+    const config = createP1Config(
+      {
+        VITE_CSS_SITE_ID: 'site-123',
+        VITE_CSS_BRANCH_ID: 'branch-789',
+      },
+      { prefix: 'VITE_' },
+    );
+    expect(config.branchId).toBe('branch-789');
   });
 
   it('defaults authMode to broker when not provided via env or overrides', () => {

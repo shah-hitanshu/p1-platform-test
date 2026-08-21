@@ -739,4 +739,32 @@ describe("createP1PageStore", () => {
       await expect(store.delete("/nope")).resolves.toBeUndefined();
     });
   });
+
+  // The local withRetry here inspects no status, so before this it retried a bad request
+  // four times over ~3s before swallowing it — a missing argument cannot fix itself.
+  describe("retry on a bad request", () => {
+    it("stops after the first attempt instead of retrying a 400", async () => {
+      mockClient = createMockClient();
+      const badRequest = Object.assign(new Error('Missing required parameter "branchId"'), {
+        status: 400,
+      });
+      mockClient.documents.list = vi.fn().mockRejectedValue(badRequest);
+
+      const store = createP1PageStore(makeConfig(mockClient));
+      await store.keys();
+
+      expect(mockClient.documents.list).toHaveBeenCalledTimes(1);
+    });
+
+    it("still retries a transient failure", async () => {
+      mockClient = createMockClient();
+      mockClient.documents.list = vi.fn().mockRejectedValue(new Error("network down"));
+
+      const store = createP1PageStore(makeConfig(mockClient));
+      await store.keys();
+
+      expect(mockClient.documents.list.mock.calls.length).toBeGreaterThan(1);
+    });
+  });
+
 });

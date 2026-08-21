@@ -5,6 +5,7 @@
  */
 
 import type { Document, CreateDocumentParams, ListDocumentsOptions, PublishDocumentResult } from '../types.js';
+import { requirePathParams } from '../utils.js';
 import type { BaseEndpoint } from './base.js';
 
 export class DocumentsEndpoint {
@@ -36,6 +37,8 @@ export class DocumentsEndpoint {
    * List documents on a branch.
    */
   async list(siteId: string, branchId: string, options?: ListDocumentsOptions): Promise<Document[]> {
+    requirePathParams({ siteId, branchId }, 'documents.list');
+
     const params = new URLSearchParams();
     if (options?.limit !== undefined) {
       params.set('limit', String(options.limit));
@@ -63,6 +66,11 @@ export class DocumentsEndpoint {
    * Create a new document on a branch.
    */
   async create(params: CreateDocumentParams): Promise<Document> {
+    requirePathParams(
+      { siteId: params.siteId, branchId: params.branchId },
+      'documents.create',
+    );
+
     const body: {
       path: string;
       templateId?: string;
@@ -101,6 +109,8 @@ export class DocumentsEndpoint {
    * Delete a document from a branch.
    */
   async delete(siteId: string, branchId: string, documentId: string): Promise<void> {
+    requirePathParams({ siteId, branchId, documentId }, 'documents.delete');
+
     await this.base.request<void>(
       `/api/sites/${siteId}/branches/${branchId}/documents/${documentId}`,
       {
@@ -113,6 +123,8 @@ export class DocumentsEndpoint {
    * Check if a document exists on a branch.
    */
   async exists(siteId: string, branchId: string, documentId: string): Promise<boolean> {
+    requirePathParams({ siteId, branchId, documentId }, 'documents.exists');
+
     try {
       await this.base.request<Document>(
         `/api/sites/${siteId}/branches/${branchId}/documents/${documentId}`,
@@ -145,6 +157,8 @@ export class DocumentsEndpoint {
    * Creates a checkpoint containing only this document's current version.
    */
   async publish(siteId: string, branchId: string, documentId: string): Promise<PublishDocumentResult> {
+    requirePathParams({ siteId, branchId, documentId }, 'documents.publish');
+
     return this.base.request<PublishDocumentResult>(
       `/api/sites/${siteId}/branches/${branchId}/documents/${documentId}/publish`,
       { method: 'POST' }

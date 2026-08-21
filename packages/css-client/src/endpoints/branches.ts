@@ -5,6 +5,7 @@
  */
 
 import type { Branch, CreateBranchParams, PaginationOptions } from '../types.js';
+import { requirePathParams } from '../utils.js';
 import type { BaseEndpoint } from './base.js';
 
 export class BranchesEndpoint {
@@ -14,6 +15,8 @@ export class BranchesEndpoint {
    * Get a branch by ID.
    */
   async get(siteId: string, branchId: string): Promise<Branch> {
+    requirePathParams({ siteId, branchId }, 'branches.get');
+
     return this.base.request<Branch>(`/api/sites/${siteId}/branches/${branchId}`, {
       method: 'GET',
     });

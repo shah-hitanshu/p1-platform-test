@@ -51,7 +51,9 @@ export function useTemplateList(
   const [error, setError] = useState<Error | null>(null);
 
   const fetchTemplates = useCallback(async (signal?: AbortSignal) => {
-    if (!client.templates) {
+    // No branch resolved yet (the branch list is still in flight, or it failed):
+    // calling through would build a URL with an empty branch segment.
+    if (!client.templates || !branchId) {
       setTemplates([]);
       setLoading(false);
       return;

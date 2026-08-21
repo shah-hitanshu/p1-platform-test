@@ -6,7 +6,7 @@
  * of how many entry points import it.
  */
 
-import { PRODUCTION_BASE_URL } from "../../core/config.js";
+import { PRODUCTION_BASE_URL, nonEmpty } from "../../core/config.js";
 import type { PageStore, EditorMetaStore, RemoteDatasourceDefStore } from "./types";
 import { createP1PageStore, type P1StoreClient, type P1ContentClientInterface } from "./p1-store";
 import { initializeStores } from "./index";
@@ -52,6 +52,11 @@ export function ensureInitialized(dataConfig: P1DataConfig): Promise<void> {
 
 async function doInit(cfg: P1DataConfig): Promise<void> {
   const { p1SiteId } = cfg;
+  // Callers pass `process.env.NEXT_PUBLIC_CSS_BRANCH_ID` (sometimes via `?? "main"`,
+  // which does not fire for ""), so a blank or whitespace value arrives here truthy and
+  // would be sent as a real branch ref. Normalizing once covers every p1BranchId
+  // consumer: the route handler, the pages handler, and published-page.
+  const p1BranchId = nonEmpty(cfg.p1BranchId);
   // Same fallback as createNextConfig/createNextContentClient (PCC-3282):
   // an unset p1BaseUrl (no CSS_BASE_URL / NEXT_PUBLIC_CSS_BASE_URL) should
   // resolve to the production backend rather than leaving init — and every
@@ -92,14 +97,14 @@ async function doInit(cfg: P1DataConfig): Promise<void> {
 
   _sharedClient = client as unknown as P1StoreClient;
   _sharedSiteId = p1SiteId;
-  _sharedBranchId = cfg.p1BranchId ?? null;
+  _sharedBranchId = p1BranchId ?? null;
   _sharedCreateAuthClient = createAuthClient;
 
   const pageStore = createP1PageStore({
     client,
     contentClient,
     siteId: p1SiteId,
-    branchId: cfg.p1BranchId,
+    branchId: p1BranchId,
     // Branch auto-detection deferred to the first editor request so it runs
     // under the user's bearer token. A read:published sat_ token cannot reach
     // the branches endpoint, so detection must not happen at init time.

@@ -21,6 +21,19 @@ export const PRODUCTION_BASE_URL = 'https://ccr.p1.pantheon.io';
 const VALID_AUTH_MODES: AuthMode[] = ['mock', 'broker'];
 const DEFAULT_AUTH_MODE: AuthMode = 'broker';
 
+/**
+ * An env var set to "" or "   " is as good as unset. Whitespace matters: a blank-but-
+ * truthy branch id would slip past the `!branchId` guards downstream, and on the content
+ * path it reaches `?branch=` and 404s every published page.
+ *
+ * Exported for the data layer's own normalization; deliberately not part of the package's
+ * public surface.
+ */
+export function nonEmpty(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed === undefined || trimmed === '' ? undefined : trimmed;
+}
+
 function httpToWs(url: string): string {
   return url.replace(/^https:/, 'wss:').replace(/^http:/, 'ws:');
 }
@@ -67,7 +80,10 @@ export function createP1Config(
     siteId,
     authMode: authModeRaw as AuthMode,
     clientBaseUrl: overrides.clientBaseUrl ?? env('CSS_CLIENT_BASE_URL'),
-    branchId: overrides.branchId ?? env('CSS_BRANCH_ID'),
+    // Deliberately left undefined when unset: P1PuckProvider owns branch precedence
+    // (deep link → this value → the branch the user switched to → the site's main
+    // branch), and a default here would outrank the user's own selection.
+    branchId: nonEmpty(overrides.branchId) ?? nonEmpty(env('CSS_BRANCH_ID')),
     enableRealtime: overrides.enableRealtime ?? envBool('CSS_ENABLE_REALTIME') ?? true,
     wsBaseUrl: overrides.wsBaseUrl ?? env('CSS_WS_BASE_URL') ?? httpToWs(baseUrl),
     enablePresence: overrides.enablePresence ?? envBool('CSS_ENABLE_PRESENCE') ?? true,
@@ -105,7 +121,7 @@ export function createNextContentClient(overrides?: {
   const baseUrl = overrides?.baseUrl ?? process.env.NEXT_PUBLIC_CSS_BASE_URL ?? PRODUCTION_BASE_URL;
   const apiToken = overrides?.apiToken ?? process.env.CSS_API_KEY;
   const siteId = overrides?.siteId ?? process.env.NEXT_PUBLIC_CSS_SITE_ID;
-  const branchId = overrides?.branchId ?? process.env.NEXT_PUBLIC_CSS_BRANCH_ID;
+  const branchId = nonEmpty(overrides?.branchId) ?? nonEmpty(process.env.NEXT_PUBLIC_CSS_BRANCH_ID);
 
   if (!baseUrl || !apiToken || !siteId) return null;
 
