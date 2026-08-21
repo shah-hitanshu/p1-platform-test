@@ -256,11 +256,13 @@ export async function countDocumentsOnBranch(
 
     const params: unknown[] = [branchId, mainBranchId];
 
+    let pathParamIdx: number | undefined;
     if (pathPrefix !== undefined && pathPrefix !== '') {
       const normalizedPrefix = normalizePath(pathPrefix);
       const escapedPrefix = escapeLikePattern(normalizedPrefix) + '%';
       params.push(escapedPrefix);
-      sql += ` AND ${effectivePathPrefixPredicate(`$${String(params.length)}`)}`;
+      pathParamIdx = params.length;
+      sql += ` AND ${effectivePathPrefixPredicate(`$${String(pathParamIdx)}`)}`;
     }
 
     let templateParamIdx: number | undefined;
@@ -301,8 +303,8 @@ export async function countDocumentsOnBranch(
               )
           )`}`;
 
-    if (pathPrefix !== undefined && pathPrefix !== '') {
-      sql += ` AND ${effectivePathPrefixPredicate(`$${String(params.length)}`)}`;
+    if (pathParamIdx !== undefined) {
+      sql += ` AND ${effectivePathPrefixPredicate(`$${String(pathParamIdx)}`)}`;
     }
 
     if (templateId !== undefined && templateParamIdx !== undefined) {
@@ -318,7 +320,7 @@ export async function countDocumentsOnBranch(
 
   let sql = `
     SELECT COUNT(*) AS count FROM (
-      SELECT d.id
+      SELECT DISTINCT d.id
       FROM app.documents d
       ${TEMPLATE_RELATION_JOIN}
       INNER JOIN app.document_versions dv ON dv.document_id = d.id

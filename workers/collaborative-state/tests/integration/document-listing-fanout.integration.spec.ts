@@ -23,6 +23,7 @@ import { createDocumentVersion } from '../../src/services/document-version-servi
 import { publishDocument } from '../../src/services/checkpoint-publish';
 import {
   createDocumentOnBranch,
+  countDocumentsOnBranch,
   deleteDocumentOnBranch,
   listDocumentsOnBranch,
 } from '../../src/services/branch-document-service';
@@ -240,6 +241,62 @@ describe('Document listing row multiplicity - Integration Tests', () => {
       expect(occurrencesOf(documentId, documents)).toBe(1);
       expect(listed?.inherited).toBe(false);
       expect(listed?.snapshotTitle).toBe('edited on feature');
+    });
+  });
+
+  // PCC-3661: the count is the pagination total for the listing, and the two
+  // are computed by different SQL in the same Promise.all — so any divergence
+  // shows up to users as a wrong page count.
+  describe('countDocumentsOnBranch pagination totals (PCC-3661)', () => {
+    it('counts a deep-history document once, agreeing with the listing', async () => {
+      await createWithHistory('pages/count-deep-history', mainBranchId);
+
+      const documents = await listDocumentsOnBranch(mainBranchId);
+      const count = await countDocumentsOnBranch(mainBranchId);
+
+      // VERSION_DEPTH versions must contribute exactly one to the total; the
+      // pre-fix count returned one per version.
+      expect(count).toBe(documents.length);
+    });
+
+    it('keeps inherited pages in the total when a path prefix and template filter are combined', async () => {
+      const { document: template } = await createDocumentOnBranch({
+        siteId,
+        branchId: mainBranchId,
+        path: 'pages/count-template-definition',
+        snapshot: { root: { props: { title: 'template def' } } },
+        createdById: TEST_USER_ID,
+        createdByType: 'user',
+      });
+
+      const pageId = await createWithHistory(
+        'pages/counted/inherited-templated',
+        mainBranchId,
+      );
+      await sql`
+        INSERT INTO app.document_relations (source_document_id, target_document_id, relation_type)
+        VALUES (${pageId}, ${template.id}, 'template')
+      `;
+      await publishDocument({
+        siteId,
+        documentId: pageId,
+        branchId: mainBranchId,
+        createdById: TEST_USER_ID,
+        createdByType: 'user',
+      });
+
+      const options = {
+        mainBranchId,
+        pathPrefix: 'pages/counted/',
+        templateId: template.id,
+      };
+      const documents = await listDocumentsOnBranch(featureBranchId, options);
+      const count = await countDocumentsOnBranch(featureBranchId, options);
+
+      // The listing returns the inherited templated page; the pre-fix count
+      // compared its path against the template ID and dropped it.
+      expect(documents.length).toBeGreaterThan(0);
+      expect(count).toBe(documents.length);
     });
   });
 });
