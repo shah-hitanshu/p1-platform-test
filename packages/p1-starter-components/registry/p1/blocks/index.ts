@@ -17,10 +17,10 @@ import { TestimonialBlock } from "./testimonial/testimonial";
 import { StatsBlock } from "./stats/stats";
 import { TeamGridBlock } from "./team-grid/team-grid";
 // ── Value ──────────────────────────────────────────────────
-import { FeatureCardsBlock } from "./features/features";
-import { FeatureMediaBlock } from "./feature-media/feature-media";
-import { StepsBlock } from "./steps/steps";
-import { TimelineBlock } from "./timeline/timeline";
+import { FeatureCardsBlock } from "./features/features.block";
+import { FeatureMediaBlock } from "./feature-media/feature-media.block";
+import { StepsBlock } from "./steps/steps.block";
+import { TimelineBlock } from "./timeline/timeline.block";
 // ── Showcase ───────────────────────────────────────────────
 import { CardGridBlock } from "./card-grid/card-grid.block";
 import { ImageBlock } from "./image/image.block";

@@ -1,0 +1,76 @@
+.p1-steps[data-tone="light"] { background-color: var(--p1-surface-subtle); }
+.p1-steps[data-tone="dark"] {
+  background-color: var(--p1-surface-inverse);
+  color: var(--p1-fg-inverse);
+}
+
+.p1-steps__inner {
+  margin-inline: auto;
+  max-inline-size: var(--p1-container-wide);
+}
+
+.p1-steps__header {
+  margin-block-end: var(--p1-space-xl);
+  text-align: center;
+}
+.p1-steps__eyebrow {
+  color: var(--p1-accent);
+  font-size: var(--p1-text-lg);
+  font-style: italic;
+  margin-block-end: var(--p1-space-xs);
+}
+.p1-steps[data-tone="dark"] .p1-steps__eyebrow { color: var(--p1-warning); }
+
+.p1-steps__heading {
+  font-size: var(--p1-text-2xl);
+  font-weight: var(--p1-weight-bold);
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+@media (width >= 48rem) {
+  .p1-steps__heading { font-size: var(--p1-text-3xl); }
+}
+
+.p1-steps__grid {
+  display: grid;
+  gap: var(--p1-space-xl);
+  grid-template-columns: 1fr;
+}
+@media (width >= 40rem) {
+  .p1-steps__grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (width < 40rem) {
+  .p1-steps__grid { grid-template-columns: 1fr !important; }
+}
+
+.p1-steps__item { display: flex; flex-direction: column; gap: var(--p1-space-sm); }
+
+.p1-steps__number {
+  align-items: center;
+  background-color: color-mix(in oklch, var(--p1-accent) 8%, transparent);
+  block-size: 3rem;
+  border-radius: var(--p1-radius-pill);
+  color: var(--p1-accent);
+  display: grid;
+  font-size: var(--p1-text-lg);
+  font-weight: 800;
+  inline-size: 3rem;
+  justify-items: center;
+  place-content: center;
+}
+.p1-steps[data-tone="dark"] .p1-steps__number {
+  background-color: color-mix(in oklch, var(--p1-warning) 15%, transparent);
+  color: var(--p1-warning);
+}
+
+.p1-steps__item-title {
+  font-size: var(--p1-text-xl);
+  font-weight: var(--p1-weight-bold);
+  margin-block-start: var(--p1-space-xs);
+}
+.p1-steps__item-body {
+  color: var(--p1-fg-muted);
+  font-size: 0.9375rem;
+  line-height: var(--p1-leading-normal);
+}
+.p1-steps[data-tone="dark"] .p1-steps__item-body { color: oklch(1 0 0 / 0.8); }
