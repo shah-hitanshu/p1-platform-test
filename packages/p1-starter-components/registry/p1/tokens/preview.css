@@ -24,3 +24,9 @@
 @import "../blocks/card-grid/card-grid.css";
 @import "../blocks/image/image.css";
 @import "../blocks/gallery/gallery.css";
+@import "../blocks/article-header/article-header.css";
+@import "../blocks/rich-text/rich-text.css";
+@import "../blocks/figure/figure.css";
+@import "../blocks/pull-quote/pull-quote.css";
+@import "../blocks/embed/embed.css";
+@import "../blocks/callout/callout.css";

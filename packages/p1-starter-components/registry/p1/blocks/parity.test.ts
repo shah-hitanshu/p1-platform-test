@@ -12,7 +12,6 @@ const PENDING = new Set<string>([
   'LogoCloudBlock', 'TestimonialBlock', 'StatsBlock', 'TeamGridBlock',
   'FeatureCardsBlock', 'FeatureMediaBlock', 'StepsBlock', 'TimelineBlock',
   'PricingBlock', 'FaqBlock', 'LeadCaptureBlock', 'CtaBannerBlock', 'ComparisonTableBlock',
-  'ArticleHeaderBlock', 'RichTextBlock', 'FigureBlock', 'PullQuoteBlock', 'EmbedBlock', 'CalloutBlock',
 ]);
 
 const PLAIN_PROSE_TYPES = new Set(['text', 'textarea']);

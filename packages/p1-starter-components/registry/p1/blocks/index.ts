@@ -32,12 +32,12 @@ import { LeadCaptureBlock } from "./lead-capture/lead-capture";
 import { CtaBannerBlock } from "./cta/cta";
 import { ComparisonTableBlock } from "./comparison-table/comparison-table";
 // ── Editorial ──────────────────────────────────────────────
-import { ArticleHeaderBlock } from "./article-header/article-header";
-import { RichTextBlock } from "./rich-text/rich-text";
-import { FigureBlock } from "./figure/figure";
-import { PullQuoteBlock } from "./pull-quote/pull-quote";
-import { EmbedBlock } from "./embed/embed";
-import { CalloutBlock } from "./callout/callout";
+import { ArticleHeaderBlock } from "./article-header/article-header.block";
+import { RichTextBlock } from "./rich-text/rich-text.block";
+import { FigureBlock } from "./figure/figure.block";
+import { PullQuoteBlock } from "./pull-quote/pull-quote.block";
+import { EmbedBlock } from "./embed/embed.block";
+import { CalloutBlock } from "./callout/callout.block";
 // ── Layout ─────────────────────────────────────────────────
 import { ColumnsBlock } from "./columns/columns.block";
 import { ContainerBlock } from "./container/container.block";
