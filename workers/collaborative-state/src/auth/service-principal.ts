@@ -40,17 +40,30 @@ export const SCOPE_RULES: Record<string, ScopeRule[]> = {
       mainBranchOnly: true,
     },
   ],
+  // 'sites' and 'templates' are GET-only here and the editor needs both to
+  // boot (site metadata, then the template list for the open document).
+  // The GET-only methods list is the ONLY thing keeping a service token off
+  // template and site writes: assertPermission ignores its permission
+  // argument for service principals, so template-api's canEditDocuments check
+  // and site-api's canManageGrants check both pass for any bound token. Any
+  // future clause on these handlers has to stay GET-only for the same reason.
+  // 'sites' also cannot reach the site collection or POST /restore — index.ts
+  // rejects service principals on routes without a siteId, and no clause here
+  // grants POST.
+  // read:published is left out on purpose: its mainBranchOnly guard only sees
+  // ?branch=, so it can't constrain a branch named in the path the way the
+  // templates routes do.
   'read:all': [
     {
       methods: ['GET'],
-      allowedHandlers: ['content', 'content-redirects', 'documents', 'branches', 'site-export', 'datasources', 'queries'],
+      allowedHandlers: ['content', 'content-redirects', 'documents', 'branches', 'site-export', 'datasources', 'queries', 'sites', 'templates'],
       mainBranchOnly: false,
     },
   ],
   'read:draft': [
     {
       methods: ['GET'],
-      allowedHandlers: ['content', 'content-redirects', 'documents', 'branches', 'datasources', 'queries'],
+      allowedHandlers: ['content', 'content-redirects', 'documents', 'branches', 'datasources', 'queries', 'sites', 'templates'],
       mainBranchOnly: false,
     },
   ],
@@ -160,6 +173,6 @@ export function isServicePrincipalAllowed(
 
   return {
     allowed: false,
-    reason: 'Insufficient scope for this operation',
+    reason: `Insufficient scope for this operation: ${method} on '${routeHandler}' is not permitted by the scopes on this token (${scopes.length > 0 ? scopes.join(', ') : 'none'})`,
   };
 }

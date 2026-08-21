@@ -51,6 +51,12 @@ export class AuthenticationError extends Error {
   override name = 'AuthenticationError';
   /** See {@link P1ApiError.requestId}. */
   public requestId?: string;
+  /**
+   * HTTP status of the rejecting response. Absent when the failure was local
+   * (no token could be obtained), so callers reporting a status must treat it
+   * as optional.
+   */
+  public status?: number;
 
   constructor(message = 'Authentication failed') {
     super(message);

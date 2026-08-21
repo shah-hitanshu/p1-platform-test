@@ -264,8 +264,11 @@ export class BaseEndpoint {
     switch (response.status) {
       case 400:
         throw new ValidationError(errorMessage, errorData?.details);
-      case 401:
-        throw new AuthenticationError(errorMessage);
+      case 401: {
+        const authError = new AuthenticationError(errorMessage);
+        authError.status = response.status;
+        throw authError;
+      }
       case 404:
         throw new NotFoundError(errorMessage);
       case 409:

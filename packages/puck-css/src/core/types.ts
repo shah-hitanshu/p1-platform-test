@@ -342,6 +342,21 @@ export interface P1PuckContextValue {
   branchesLoading: boolean;
 
   /**
+   * Why no branch could be resolved — either the branch list was refused or it
+   * came back without a usable branch. Nothing can be opened without a branch,
+   * so consumers surface this as a fatal editor error.
+   *
+   * Optional so external consumers constructing this value keep compiling.
+   */
+  branchResolutionError?: Error | null;
+
+  /**
+   * Why the document list could not be loaded, if it failed. Distinguishes a
+   * refused list from a branch that genuinely holds no documents.
+   */
+  documentsError?: Error | null;
+
+  /**
    * Whether auto-save is currently paused.
    */
   autoSavePaused: boolean;

@@ -20,6 +20,7 @@ import { NotificationProvider, useNotifications } from '../core/NotificationCont
 import { PresenceContext } from '../core/PresenceContext.js';
 import type { PresenceContextValue } from '../core/PresenceContext.js';
 import { debounce } from '../core/utils/debounce.js';
+import { describeRequestFailure } from '../core/utils/requestError.js';
 import { withRetry } from '../core/utils/retry.js';
 import type { UseAgentEditReturn } from '../agent/useAgentEdit.js';
 import type { UseAgentTriggerReturn } from '../agent/useAgentTrigger.js';
@@ -257,6 +258,7 @@ function P1PuckProviderInner({
     }
   });
   const [branches, setBranches] = useState<Branch[]>([]);
+  const [branchResolutionError, setBranchResolutionError] = useState<Error | null>(null);
   const [currentBranch, setCurrentBranch] = useState<Branch | null>(null);
   const [branchesLoading, setBranchesLoading] = useState(() => {
     if (deepLinkBranchId || initialBranchId) return false;
@@ -614,6 +616,7 @@ function P1PuckProviderInner({
   const {
     documents: branchDocuments,
     loading: documentsLoading,
+    error: documentsError,
     create: createDocumentRaw,
     remove: removeDocumentRaw,
     refresh: refreshDocuments,
@@ -729,6 +732,7 @@ function P1PuckProviderInner({
   const refreshBranches = useCallback(async () => {
     try {
       setBranchesLoading(true);
+      setBranchResolutionError(null);
       const branchList = await userClient.branches.list(siteId);
       setBranches(branchList);
 
@@ -756,6 +760,15 @@ function P1PuckProviderInner({
         }
       }
 
+      // A list that resolves without a usable branch strands the editor exactly
+      // as a refused list does — most often a siteId that doesn't exist, which
+      // this endpoint answers with an empty list rather than a 404.
+      if (!effectiveBranchId) {
+        setBranchResolutionError(new Error(
+          `GET /api/sites/${siteId}/branches returned no usable branch. Check that the site id is correct and that the site has a main branch.`,
+        ));
+      }
+
       // Persisting an empty id would poison the next visit and build requests with a
       // blank branch segment; keep whatever is already selected instead.
       if (effectiveBranchId) {
@@ -764,6 +777,10 @@ function P1PuckProviderInner({
       }
       setCurrentBranch(branchList.find((b) => b.id === effectiveBranchId) ?? null);
     } catch (error) {
+      // The editor cannot open a document without a branch, so this has to
+      // reach the UI: swallowed, it leaves the editor on "Loading document"
+      // forever with no indication of what was refused.
+      setBranchResolutionError(describeRequestFailure(`GET /api/sites/${siteId}/branches`, error));
       console.error('Failed to load branches:', error);
       // Without a branch nothing else can load: useDocuments' fetch is branch-guarded, so
       // documentsLoading stays true forever and the editor sits blank. Say so rather than
@@ -2252,6 +2269,8 @@ function P1PuckProviderInner({
       refreshBranches,
       createBranch,
       branchesLoading,
+      branchResolutionError,
+      documentsError,
       autoSavePaused,
       pauseAutoSave: stablePauseAutoSave,
       resumeAutoSave: stableResumeAutoSave,
@@ -2337,6 +2356,8 @@ function P1PuckProviderInner({
       currentBranch,
       refreshBranches,
       branchesLoading,
+      branchResolutionError,
+      documentsError,
       autoSavePaused,
       stablePauseAutoSave,
       stableResumeAutoSave,

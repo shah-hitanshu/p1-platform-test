@@ -256,6 +256,11 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
     };
   }, [documentPath, css.branchId, css.loadDocument]);
 
+  // No branch means nothing can be opened, so an unresolved branch is fatal.
+  // Derived rather than copied into state: a retry that clears the failure has
+  // to stop being reported, which a mirrored copy would keep showing.
+  const branchBootError = css.branchId ? null : css.branchResolutionError ?? null;
+
   // Recovery: document not found on this branch — unload the editor and let
   // the preview empty state guide the user to pick a page.
   useEffect(() => {
@@ -263,10 +268,13 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
     if (css.documentsLoading) return;
     setNeedsRedirect(false);
     if (css.documents.length === 0) {
-      setError(new Error('No documents found on this branch'));
+      // An empty list because the request was refused is a different story from
+      // a branch that genuinely holds nothing; saying "no documents" for the
+      // former is how the real failure stays hidden.
+      setError(css.documentsError ?? new Error('No documents found on this branch'));
     }
     setLoading(false);
-  }, [needsRedirect, css.documentsLoading, css.documents.length]);
+  }, [needsRedirect, css.documentsLoading, css.documents.length, css.documentsError]);
 
   // =========================================================================
   // Version Management
@@ -723,8 +731,8 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
   );
 
   return {
-    loading,
-    error,
+    loading: branchBootError === null && loading,
+    error: error ?? branchBootError,
     puckKey,
     puckProps,
     css,

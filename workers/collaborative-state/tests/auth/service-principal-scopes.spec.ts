@@ -402,4 +402,46 @@ describe('Service Principal Scope Enforcement (Phase 3)', () => {
       expect(result.allowed).toBe(false);
     });
   });
+  // =========================================================================
+  // Editor boot: site metadata + templates reads
+  // =========================================================================
+  describe('editor boot reads on templates and site metadata', () => {
+    for (const scope of ['read:all', 'read:draft']) {
+      it(`allows GET on templates handler with ${scope}`, () => {
+        const principal = createServicePrincipal('site-1', [scope]);
+        expect(isServicePrincipalAllowed(principal, 'site-1', 'GET', 'templates', false).allowed).toBe(true);
+      });
+
+      it(`allows GET on sites handler with ${scope}`, () => {
+        const principal = createServicePrincipal('site-1', [scope]);
+        expect(isServicePrincipalAllowed(principal, 'site-1', 'GET', 'sites').allowed).toBe(true);
+      });
+
+      for (const method of ['POST', 'PATCH', 'DELETE']) {
+        it(`denies ${method} on templates handler with ${scope}`, () => {
+          const principal = createServicePrincipal('site-1', [scope]);
+          expect(isServicePrincipalAllowed(principal, 'site-1', method, 'templates').allowed).toBe(false);
+        });
+
+        it(`denies ${method} on sites handler with ${scope}`, () => {
+          const principal = createServicePrincipal('site-1', [scope]);
+          expect(isServicePrincipalAllowed(principal, 'site-1', method, 'sites').allowed).toBe(false);
+        });
+      }
+    }
+
+    it('still denies templates and site metadata for read:published', () => {
+      const principal = createServicePrincipal('site-1', ['read:published']);
+      expect(isServicePrincipalAllowed(principal, 'site-1', 'GET', 'templates').allowed).toBe(false);
+      expect(isServicePrincipalAllowed(principal, 'site-1', 'GET', 'sites').allowed).toBe(false);
+    });
+
+    it('names the method, handler, and token scopes when denying', () => {
+      const principal = createServicePrincipal('site-1', ['read:published']);
+      const result = isServicePrincipalAllowed(principal, 'site-1', 'GET', 'templates');
+      expect(result.reason).toContain('GET');
+      expect(result.reason).toContain('templates');
+      expect(result.reason).toContain('read:published');
+    });
+  });
 });
