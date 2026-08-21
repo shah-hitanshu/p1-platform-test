@@ -29,9 +29,9 @@ type Story = StoryObj<typeof meta>;
  */
 const Card = (title: string, body: string) =>
   (() => (
-    <div className="rounded-p1-lg border border-p1-border bg-p1-bg-default p-p1-lg">
-      <h3 className="mb-p1-sm text-xl font-bold text-p1-text">{title}</h3>
-      <p className="leading-relaxed text-p1-text-muted">{body}</p>
+    <div style={{ borderRadius: "0.75rem", border: "1px solid var(--p1-border)", background: "var(--p1-surface-default)", padding: "1.5rem" }}>
+      <h3 style={{ marginBlockEnd: "0.5rem", fontSize: "1.25rem", fontWeight: 700, color: "var(--p1-fg-default)" }}>{title}</h3>
+      <p style={{ lineHeight: 1.6, color: "var(--p1-fg-muted)" }}>{body}</p>
     </div>
   )) as unknown as ColumnsProps["col1"];
 

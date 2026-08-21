@@ -25,8 +25,8 @@ type Story = StoryObj<typeof meta>;
 
 const Sample = (() => (
   <div>
-    <h2 className="mb-p1-sm text-3xl font-bold tracking-tight text-p1-text">A contained band</h2>
-    <p className="leading-relaxed text-p1-text-muted">
+    <h2 style={{ marginBlockEnd: "0.5rem", fontSize: "2rem", fontWeight: 700, letterSpacing: "-0.02em", color: "var(--p1-fg-default)" }}>A contained band</h2>
+    <p style={{ lineHeight: 1.6, color: "var(--p1-fg-muted)" }}>
       The Container wraps any blocks dropped inside it with a background, padding, and a capped
       content width — useful for boxing a callout, a form, or a short section.
     </p>
