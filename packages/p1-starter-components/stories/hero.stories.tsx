@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { HeroBlock, type HeroProps } from "@/registry/p1/blocks/hero/hero";
+import { HeroBlock, type HeroProps } from "@/registry/p1/blocks/hero/hero.block";
 
 const HeroWrapper = (props: HeroProps) => {
   const Component = HeroBlock.render as React.FC<HeroProps>;

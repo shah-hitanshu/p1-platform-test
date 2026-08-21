@@ -9,8 +9,8 @@ import type { Config } from "@puckeditor/core";
 import { HeaderBlock } from "./header/header";
 import { FooterBlock } from "./footer/footer";
 // ── Attention ──────────────────────────────────────────────
-import { HeroBlock } from "./hero/hero";
-import { AnnouncementBlock } from "./announcement/announcement";
+import { HeroBlock } from "./hero/hero.block";
+import { AnnouncementBlock } from "./announcement/announcement.block";
 // ── Trust ──────────────────────────────────────────────────
 import { LogoCloudBlock } from "./logos/logos.block";
 import { TestimonialBlock } from "./testimonial/testimonial.block";

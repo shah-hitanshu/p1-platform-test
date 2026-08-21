@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { AnnouncementBlock, type AnnouncementProps } from "@/registry/p1/blocks/announcement/announcement";
+import { AnnouncementBlock, type AnnouncementProps } from "@/registry/p1/blocks/announcement/announcement.block";
 
 const AnnouncementWrapper = (props: AnnouncementProps) => {
   const Component = AnnouncementBlock.render as React.FC<AnnouncementProps>;
