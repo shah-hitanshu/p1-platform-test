@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { ColumnsBlock, type ColumnsProps } from "@/registry/p1/blocks/columns/columns";
+import { ColumnsBlock, type ColumnsProps } from "@/registry/p1/blocks/columns/columns.block";
 
 const ColumnsWrapper = (props: ColumnsProps) => {
   const Component = ColumnsBlock.render as unknown as React.FC<ColumnsProps>;

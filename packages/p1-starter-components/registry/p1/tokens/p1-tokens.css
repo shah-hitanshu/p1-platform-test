@@ -66,6 +66,7 @@
   /* Radius */
   --p1-radius-sm: 0.25rem;
   --p1-radius-card: 0.75rem;
+  --p1-radius-xl: 1.5rem;
   --p1-radius-pill: 9999px;
 
   /* Type — PDS uses ff (font-family) naming, not "family" */

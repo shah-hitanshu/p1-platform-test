@@ -39,10 +39,10 @@ import { PullQuoteBlock } from "./pull-quote/pull-quote";
 import { EmbedBlock } from "./embed/embed";
 import { CalloutBlock } from "./callout/callout";
 // ── Layout ─────────────────────────────────────────────────
-import { ColumnsBlock } from "./columns/columns";
-import { ContainerBlock } from "./container/container";
-import { TabsBlock } from "./tabs/tabs";
-import { AccordionBlock } from "./accordion/accordion";
+import { ColumnsBlock } from "./columns/columns.block";
+import { ContainerBlock } from "./container/container.block";
+import { TabsBlock } from "./tabs/tabs.block";
+import { AccordionBlock } from "./accordion/accordion.block";
 // ── Content ────────────────────────────────────────────────
 import { HeadingBlock } from "./heading/heading.block";
 import { ParagraphBlock } from "./paragraph/paragraph.block";

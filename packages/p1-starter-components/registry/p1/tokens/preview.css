@@ -17,3 +17,7 @@
 @import "../blocks/list/list.css";
 @import "../blocks/button/button.css";
 @import "../blocks/spacer/spacer.css";
+@import "../blocks/columns/columns.css";
+@import "../blocks/container/container.css";
+@import "../blocks/tabs/tabs.css";
+@import "../blocks/accordion/accordion.css";
