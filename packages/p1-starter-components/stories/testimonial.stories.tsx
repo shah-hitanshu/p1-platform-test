@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { TestimonialBlock, type TestimonialProps } from "@/registry/p1/blocks/testimonial/testimonial";
+import { TestimonialBlock, type TestimonialProps } from "@/registry/p1/blocks/testimonial/testimonial.block";
 
 const TestimonialWrapper = (props: TestimonialProps) => {
   const Component = TestimonialBlock.render as React.FC<TestimonialProps>;

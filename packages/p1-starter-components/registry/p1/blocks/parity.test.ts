@@ -9,7 +9,6 @@ import * as lib from './index';
 const PENDING = new Set<string>([
   'HeaderBlock', 'FooterBlock',
   'HeroBlock', 'AnnouncementBlock',
-  'LogoCloudBlock', 'TestimonialBlock', 'StatsBlock', 'TeamGridBlock',
   'PricingBlock', 'FaqBlock', 'LeadCaptureBlock', 'CtaBannerBlock', 'ComparisonTableBlock',
 ]);
 

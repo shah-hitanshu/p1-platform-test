@@ -12,10 +12,10 @@ import { FooterBlock } from "./footer/footer";
 import { HeroBlock } from "./hero/hero";
 import { AnnouncementBlock } from "./announcement/announcement";
 // ── Trust ──────────────────────────────────────────────────
-import { LogoCloudBlock } from "./logos/logos";
-import { TestimonialBlock } from "./testimonial/testimonial";
-import { StatsBlock } from "./stats/stats";
-import { TeamGridBlock } from "./team-grid/team-grid";
+import { LogoCloudBlock } from "./logos/logos.block";
+import { TestimonialBlock } from "./testimonial/testimonial.block";
+import { StatsBlock } from "./stats/stats.block";
+import { TeamGridBlock } from "./team-grid/team-grid.block";
 // ── Value ──────────────────────────────────────────────────
 import { FeatureCardsBlock } from "./features/features.block";
 import { FeatureMediaBlock } from "./feature-media/feature-media.block";

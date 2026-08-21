@@ -1,0 +1,76 @@
+.p1-team-grid[data-tone="light"] { background-color: var(--p1-surface-subtle); }
+
+.p1-team-grid__inner {
+  margin-inline: auto;
+  max-inline-size: var(--p1-container-default);
+}
+
+.p1-team-grid__header {
+  margin-block-end: var(--p1-space-xl);
+  text-align: center;
+}
+.p1-team-grid__eyebrow {
+  color: var(--p1-accent);
+  font-size: var(--p1-text-xl);
+  font-style: italic;
+  margin-block-end: var(--p1-space-sm);
+}
+.p1-team-grid__heading {
+  font-size: var(--p1-text-2xl);
+  font-weight: var(--p1-weight-bold);
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+@media (width >= 48rem) {
+  .p1-team-grid__heading { font-size: var(--p1-text-3xl); }
+}
+
+.p1-team-grid__grid {
+  display: grid;
+  gap: var(--p1-space-lg);
+  grid-template-columns: 1fr;
+}
+@media (width >= 40rem) {
+  .p1-team-grid__grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (width >= 64rem) {
+  .p1-team-grid[data-cols="3"] .p1-team-grid__grid { grid-template-columns: repeat(3, 1fr); }
+  .p1-team-grid[data-cols="4"] .p1-team-grid__grid { grid-template-columns: repeat(4, 1fr); }
+}
+
+.p1-team-grid__member {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  text-align: center;
+}
+
+.p1-team-grid__avatar {
+  background-color: color-mix(in oklch, var(--p1-surface-inverse) 15%, transparent);
+  block-size: 8rem;
+  inline-size: 8rem;
+  margin-block-end: var(--p1-space-sm);
+  overflow: hidden;
+}
+.p1-team-grid__avatar[data-shape="circle"] { border-radius: var(--p1-radius-pill); }
+.p1-team-grid__avatar[data-shape="rounded"] { border-radius: var(--p1-radius-card); }
+.p1-team-grid__avatar-img { block-size: 100%; inline-size: 100%; object-fit: cover; }
+
+.p1-team-grid__name {
+  color: var(--p1-fg-default);
+  font-size: var(--p1-text-lg);
+  font-weight: var(--p1-weight-bold);
+}
+.p1-team-grid__role {
+  color: var(--p1-accent);
+  font-size: var(--p1-text-sm);
+  font-weight: var(--p1-weight-medium);
+}
+.p1-team-grid__bio {
+  color: var(--p1-fg-muted);
+  font-size: var(--p1-text-sm);
+  line-height: var(--p1-leading-normal);
+  margin-block-start: var(--p1-space-sm);
+  max-inline-size: 16rem;
+}
