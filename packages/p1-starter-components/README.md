@@ -23,3 +23,16 @@ Private and unpublished. Tailwind removal and npm publishing are planned for lat
 The `registry.json` currently registers only the `divider` block as a proof-of-concept
 for the shadcn distribution pipeline — full population of all 37 blocks is a separate
 follow-on commit.
+
+## Visual regression gate (PCC-3580 phase 2)
+
+Baselines are machine-specific and gitignored. Before converting a block:
+
+```bash
+pnpm --filter @pantheon-systems/p1-starter-components build-storybook
+pnpm --filter @pantheon-systems/p1-starter-components test:visual:update
+```
+
+After converting it, the same two commands with `test:visual`. A diff means the rewrite changed
+rendering — open `visual/report/index.html` for the side-by-side. Do **not** re-run
+`test:visual:update` to make a diff go away unless the change is intended and reviewed.

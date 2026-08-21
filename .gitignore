@@ -106,3 +106,8 @@ storybook-static/
 
 # Generated code-registry JSON (built by shadcn build)
 apps/p1-registry/public/r/
+
+# Phase-2 visual gate (packages/p1-starter-components) — machine-specific
+packages/p1-starter-components/visual/baselines/
+packages/p1-starter-components/visual/results/
+packages/p1-starter-components/visual/report/

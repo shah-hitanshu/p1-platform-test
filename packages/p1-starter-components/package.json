@@ -18,9 +18,16 @@
     "test": "vitest run --project=unit",
     "test:storybook": "vitest run --project=storybook",
     "typecheck": "tsc --noEmit",
-    "registry:build": "shadcn build --output ../../apps/p1-registry/public/r"
+    "registry:build": "shadcn build --output ../../apps/p1-registry/public/r",
+    "test:visual": "playwright test --config visual/playwright.visual.config.ts",
+    "test:visual:update": "playwright test --config visual/playwright.visual.config.ts --update-snapshots"
+  },
+  "dependencies": {
+    "@pantheon-systems/puck-css": "workspace:*"
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.0",
+    "http-server": "^14.1.1",
     "isomorphic-dompurify": "^3.18.0",
     "@pantheon-systems/eslint-config": "workspace:*",
     "@puckeditor/core": "^0.21.1",
