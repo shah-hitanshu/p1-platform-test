@@ -579,7 +579,8 @@ describe('Phase 8: Presence Rollup Service', () => {
       expect(mockEnv.DOCUMENT_STATE.idFromName).toHaveBeenCalledWith(
         `${SITE_ID}:${DOC_UUID}:${BRANCH_ID}`,
       );
-      expect(documentService.getDocumentByPath).toHaveBeenCalledWith(SITE_ID, DOC_PATH);
+      // Branch-scoped so it resolves the same document the WS connect route does.
+      expect(documentService.getDocumentByPath).toHaveBeenCalledWith(SITE_ID, DOC_PATH, BRANCH_ID);
     });
 
     it('should return [] and skip DO when document path is not found', async () => {

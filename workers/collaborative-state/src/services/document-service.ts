@@ -24,9 +24,11 @@ import {
   DocumentNotFoundError,
   DocumentPathConflictError,
 } from './errors';
-import type { DocumentWithArchive } from './document-types';
+import type { DocumentWithArchive, MoveResult } from './document-types';
 import { TEMPLATE_RELATION_JOIN, DOCUMENT_WITH_TEMPLATE_COLUMNS } from './document-queries';
 import { validateLocale } from './locale';
+import { getMainBranch } from './branch-service';
+import { planMove, assertPathFreeOnBranch } from './branch-document-service';
 
 // =============================================================================
 // Re-exports for backward compatibility
@@ -82,6 +84,7 @@ export {
 export type {
   DeleteDocumentWithRedirectParams,
   DeleteDocumentWithRedirectResult,
+  MoveResult,
 } from './document-types';
 
 // =============================================================================
@@ -154,25 +157,76 @@ export async function getDocument(documentId: string): Promise<DocumentWithArchi
 /**
  * Retrieves a document by its path within a site.
  *
+ * With a branchId, resolves against that branch's effective paths
+ *
  * @param siteId - The site ID
  * @param path - The document path (will be normalized)
- * @returns The document or null if not found
+ * @param branchId - Resolve against this branch's path overrides
+ * @returns The document (carrying its effective path) or null if not found
  */
 export async function getDocumentByPath(
   siteId: string,
   path: string,
+  branchId?: string,
 ): Promise<DocumentWithArchive | null> {
   const normalizedPath = normalizePath(path);
 
   // Only return non-archived documents
   // Archived documents with the same path are considered deleted and should not be returned
+  if (branchId === undefined) {
+    const result = await query<DocumentRow>(
+      `SELECT ${DOCUMENT_WITH_TEMPLATE_COLUMNS}
+       FROM app.documents d
+       ${TEMPLATE_RELATION_JOIN}
+       WHERE d.site_id = $1 AND d.path = $2 AND d.archived_at IS NULL
+       LIMIT 1`,
+      [siteId, normalizedPath],
+    );
+
+    const row = result.rows[0];
+    if (!row) {
+      return null;
+    }
+
+    return mapRowToDocument(row);
+  }
+
+  // Two index probes rather than one COALESCE(bdp.path, d.path) = $2 predicate:
+  // that form is unindexable, so it scans the whole site on every lookup and on
+  // every 404. This is the hottest query in the system — keep both paths O(1).
+  const override = await query<DocumentRow>(
+    `SELECT ${DOCUMENT_WITH_TEMPLATE_COLUMNS}
+     FROM app.branch_document_paths bdp
+     JOIN app.documents d ON d.id = bdp.document_id
+     ${TEMPLATE_RELATION_JOIN}
+     WHERE bdp.branch_id = $3
+       AND bdp.path = $2
+       AND d.site_id = $1
+       AND d.archived_at IS NULL
+     LIMIT 1`,
+    [siteId, normalizedPath, branchId],
+  );
+
+  const overrideRow = override.rows[0];
+  if (overrideRow) {
+    return { ...mapRowToDocument(overrideRow), path: normalizedPath };
+  }
+
+  // No override claims this path, so the global path answers — unless the
+  // document moved away from it on this branch, which the NOT EXISTS excludes.
   const result = await query<DocumentRow>(
     `SELECT ${DOCUMENT_WITH_TEMPLATE_COLUMNS}
      FROM app.documents d
      ${TEMPLATE_RELATION_JOIN}
-     WHERE d.site_id = $1 AND d.path = $2 AND d.archived_at IS NULL
+     WHERE d.site_id = $1
+       AND d.path = $2
+       AND d.archived_at IS NULL
+       AND NOT EXISTS (
+         SELECT 1 FROM app.branch_document_paths bdp
+         WHERE bdp.branch_id = $3 AND bdp.document_id = d.id
+       )
      LIMIT 1`,
-    [siteId, normalizedPath],
+    [siteId, normalizedPath, branchId],
   );
 
   const row = result.rows[0];
@@ -180,7 +234,7 @@ export async function getDocumentByPath(
     return null;
   }
 
-  return mapRowToDocument(row);
+  return { ...mapRowToDocument(row), path: normalizedPath };
 }
 
 /**
@@ -429,4 +483,73 @@ export async function restoreDocument(documentId: string): Promise<DocumentWithA
   }
 
   return mapRowToDocument(restoredRow);
+}
+
+/**
+ * Moves a document on the main branch by rewriting global paths, so the move shows
+ * up on every branch that has not overridden the path. Descendants, section content
+ * pages, and locale variants move with it.
+ *
+ * @param documentId - The document to move
+ * @param newPath - The destination path (will be normalized)
+ * @returns The number of documents moved, counting the cascade
+ * @throws DocumentNotFoundError if the document is missing or archived, or its site has no main branch
+ * @throws DuplicateDocumentPathError if any destination path is occupied
+ * @throws InvalidDocumentPathError if the path format is invalid
+ * @throws SelfNestingMoveError if the destination sits inside the document's own subtree
+ * @throws ImmovableDocumentError if the document is at the site root
+ */
+export async function moveDocumentGlobally(
+  documentId: string,
+  newPath: string,
+): Promise<MoveResult> {
+  const normalized = normalizePath(newPath);
+  validatePath(normalized);
+
+  const docRow = await query<{ site_id: string; path: string }>(
+    'SELECT site_id, path FROM app.documents WHERE id = $1 AND archived_at IS NULL',
+    [documentId],
+  );
+  const doc = docRow.rows[0];
+  if (!doc) {
+    throw new DocumentNotFoundError(documentId);
+  }
+
+  const mainBranch = await getMainBranch(doc.site_id);
+  if (!mainBranch) {
+    throw new DocumentNotFoundError(documentId);
+  }
+
+  await query('BEGIN');
+  try {
+    await query('SELECT pg_advisory_xact_lock(hashtext($1))', [mainBranch.id]);
+
+    const planned = await planMove(mainBranch.id, doc.site_id, documentId, doc.path, normalized);
+    await assertPathFreeOnBranch(
+      mainBranch.id,
+      doc.site_id,
+      planned.map((p) => p.documentId),
+      planned.map((p) => p.newPath),
+    );
+
+    await query(
+      `UPDATE app.documents d
+       SET path = m.path
+       FROM unnest($1::uuid[], $2::text[]) AS m(document_id, path)
+       WHERE d.id = m.document_id`,
+      [
+        planned.map((move) => move.documentId),
+        planned.map((move) => normalizePath(move.newPath)),
+      ],
+    );
+
+    await query('COMMIT');
+    return { movedCount: planned.length };
+  } catch (error) {
+    await query('ROLLBACK');
+    if (isUniqueConstraintViolation(error)) {
+      throw new DuplicateDocumentPathError(normalized);
+    }
+    throw error;
+  }
 }

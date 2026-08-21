@@ -7,6 +7,7 @@
  * @see collaborative-state-system-architecture-v2.2.md Section "Documents"
  */
 
+import { getLogger } from '@pantheon-systems/p1-telemetry';
 import type { Document } from '../types';
 import { query, withTransaction } from '../db';
 import type { RedirectSnapshot } from '../types/redirects';
@@ -38,8 +39,10 @@ import {
   SiteNotFoundError,
   DuplicateDocumentPathError,
   DocumentNotFoundError,
+  SelfNestingMoveError,
+  ImmovableDocumentError,
 } from './errors';
-import type { DocumentOnBranch } from './document-types';
+import type { DocumentOnBranch, MoveResult } from './document-types';
 import {
   TEMPLATE_RELATION_JOIN,
   DOCUMENT_WITH_TEMPLATE_COLUMNS,
@@ -48,6 +51,7 @@ import {
   latestPublishOnBranchJoin,
   publishedOnBranchPredicate,
   documentInBranchSitePredicate,
+  effectivePathPrefixPredicate,
   branchInheritsFromMain,
 } from './document-queries';
 import { enforceUniqueSlotIds } from './slot-id-backstop';
@@ -81,15 +85,18 @@ export async function listDocumentsOnBranch(
   options: ListDocumentsOnBranchOptions = {},
 ): Promise<DocumentOnBranch[]> {
   const { pathPrefix, mainBranchId, templateId, limit, offset, orderBy } = options;
-  const orderColumn = orderBy?.field === 'createdAt' ? 'created_at' : 'path';
   const orderDir = orderBy?.direction === 'desc' ? 'DESC' : 'ASC';
-  const orderClause = `ORDER BY ${orderColumn} ${orderDir}`;
+  const outerOrder =
+    orderBy?.field === 'createdAt'
+      ? `u.created_at ${orderDir}`
+      : `COALESCE(u.branch_path, u.path) ${orderDir}`;
 
   if (branchInheritsFromMain(branchId, mainBranchId)) {
     // Copy-on-write query: include documents from branch + inherited from main
     // Includes publish state via a batch LEFT JOIN on checkpoint_documents
     let sql = `
       SELECT ${DOCUMENT_WITH_TEMPLATE_COLUMNS},
+        bdp.path AS branch_path,
         false AS inherited,
         pub.document_version_id AS published_version_id,
         pub.published_at,
@@ -99,6 +106,8 @@ export async function listDocumentsOnBranch(
         top.last_modified_by_type
       FROM app.documents d
       ${TEMPLATE_RELATION_JOIN}
+      LEFT JOIN app.branch_document_paths bdp
+        ON bdp.branch_id = $1 AND bdp.document_id = d.id
       ${latestVersionOnBranchJoin('$1', LATEST_VERSION_LISTING_COLUMNS)}
       ${latestPublishOnBranchJoin('$2')}
       WHERE d.archived_at IS NULL
@@ -109,12 +118,11 @@ export async function listDocumentsOnBranch(
 
     let pathParamIdx: number | undefined;
     if (pathPrefix !== undefined && pathPrefix !== '') {
-      // Normalize prefix to match stored paths, then escape LIKE wildcards
       const normalizedPrefix = normalizePath(pathPrefix);
       const escapedPrefix = escapeLikePattern(normalizedPrefix) + '%';
       params.push(escapedPrefix);
       pathParamIdx = params.length;
-      sql += ` AND d.path LIKE $${String(pathParamIdx)} ESCAPE '\\'`;
+      sql += ` AND ${effectivePathPrefixPredicate(`$${String(pathParamIdx)}`)}`;
     }
 
     let templateParamIdx: number | undefined;
@@ -131,6 +139,7 @@ export async function listDocumentsOnBranch(
       UNION ALL
 
       SELECT ${DOCUMENT_WITH_TEMPLATE_COLUMNS},
+        bdp.path AS branch_path,
         true AS inherited,
         pub.document_version_id AS published_version_id,
         pub.published_at,
@@ -140,6 +149,8 @@ export async function listDocumentsOnBranch(
         top.last_modified_by_type
       FROM app.documents d
       ${TEMPLATE_RELATION_JOIN}
+      LEFT JOIN app.branch_document_paths bdp
+        ON bdp.branch_id = $1 AND bdp.document_id = d.id
       ${latestVersionOnBranchJoin('$2', LATEST_VERSION_LISTING_COLUMNS)}
       ${latestPublishOnBranchJoin('$2')}
       WHERE d.archived_at IS NULL
@@ -153,14 +164,14 @@ export async function listDocumentsOnBranch(
         )`;
 
     if (pathParamIdx !== undefined) {
-      sql += ` AND d.path LIKE $${String(pathParamIdx)} ESCAPE '\\'`;
+      sql += ` AND ${effectivePathPrefixPredicate(`$${String(pathParamIdx)}`)}`;
     }
 
     if (templateParamIdx !== undefined) {
       sql += ` AND dr.target_document_id = $${String(templateParamIdx)}`;
     }
 
-    sql += ` ${orderClause}`;
+    sql = `SELECT * FROM (${sql}) u ORDER BY ${outerOrder}`;
     sql = appendPaginationClauses(sql, params, { limit, offset });
 
     const result = await query<DocumentOnBranchRow>(sql, params);
@@ -172,6 +183,7 @@ export async function listDocumentsOnBranch(
   // When called without mainBranchId, the branchId itself is treated as main
   let sql = `
     SELECT ${DOCUMENT_WITH_TEMPLATE_COLUMNS},
+      bdp.path AS branch_path,
       false AS inherited,
       pub.document_version_id AS published_version_id,
       pub.published_at,
@@ -181,6 +193,8 @@ export async function listDocumentsOnBranch(
       top.last_modified_by_type
     FROM app.documents d
     ${TEMPLATE_RELATION_JOIN}
+    LEFT JOIN app.branch_document_paths bdp
+      ON bdp.branch_id = $1 AND bdp.document_id = d.id
     ${latestVersionOnBranchJoin('$1', LATEST_VERSION_LISTING_COLUMNS)}
     ${latestPublishOnBranchJoin('$1')}
     WHERE d.archived_at IS NULL
@@ -191,7 +205,7 @@ export async function listDocumentsOnBranch(
 
   if (pathPrefix !== undefined && pathPrefix !== '') {
     params.push(escapeLikePattern(pathPrefix) + '%');
-    sql += ` AND d.path LIKE $${String(params.length)} ESCAPE '\\'`;
+    sql += ` AND ${effectivePathPrefixPredicate(`$${String(params.length)}`)}`;
   }
 
   if (templateId !== undefined) {
@@ -199,7 +213,7 @@ export async function listDocumentsOnBranch(
     sql += ` AND dr.target_document_id = $${String(params.length)}`;
   }
 
-  sql += ` ${orderClause}`;
+  sql = `SELECT * FROM (${sql}) u ORDER BY ${outerOrder}`;
   sql = appendPaginationClauses(sql, params, { limit, offset });
 
   const result = await query<DocumentOnBranchRow>(sql, params);
@@ -224,6 +238,8 @@ export async function countDocumentsOnBranch(
         FROM app.documents d
         ${TEMPLATE_RELATION_JOIN}
         INNER JOIN app.document_versions dv ON dv.document_id = d.id
+        LEFT JOIN app.branch_document_paths bdp
+          ON bdp.branch_id = $1 AND bdp.document_id = d.id
         WHERE dv.branch_id = $1
           AND d.archived_at IS NULL
           AND NOT EXISTS (
@@ -243,7 +259,7 @@ export async function countDocumentsOnBranch(
       const normalizedPrefix = normalizePath(pathPrefix);
       const escapedPrefix = escapeLikePattern(normalizedPrefix) + '%';
       params.push(escapedPrefix);
-      sql += ` AND d.path LIKE $${String(params.length)} ESCAPE '\\'`;
+      sql += ` AND ${effectivePathPrefixPredicate(`$${String(params.length)}`)}`;
     }
 
     let templateParamIdx: number | undefined;
@@ -263,6 +279,8 @@ export async function countDocumentsOnBranch(
         INNER JOIN app.document_versions dv ON dv.document_id = d.id
         INNER JOIN app.checkpoint_documents cd ON cd.document_version_id = dv.id
         INNER JOIN app.checkpoints cp ON cp.id = cd.checkpoint_id
+        LEFT JOIN app.branch_document_paths bdp
+          ON bdp.branch_id = $1 AND bdp.document_id = d.id
         WHERE dv.branch_id = $2
           AND cp.branch_id = $2
           AND cp.checkpoint_type = 'publish'
@@ -283,7 +301,7 @@ export async function countDocumentsOnBranch(
           )`;
 
     if (pathPrefix !== undefined && pathPrefix !== '') {
-      sql += ` AND d.path LIKE $${String(params.length)} ESCAPE '\\'`;
+      sql += ` AND ${effectivePathPrefixPredicate(`$${String(params.length)}`)}`;
     }
 
     if (templateId !== undefined && templateParamIdx !== undefined) {
@@ -303,6 +321,8 @@ export async function countDocumentsOnBranch(
       FROM app.documents d
       ${TEMPLATE_RELATION_JOIN}
       INNER JOIN app.document_versions dv ON dv.document_id = d.id
+      LEFT JOIN app.branch_document_paths bdp
+        ON bdp.branch_id = $1 AND bdp.document_id = d.id
       WHERE dv.branch_id = $1
         AND d.archived_at IS NULL
         AND NOT EXISTS (
@@ -320,7 +340,7 @@ export async function countDocumentsOnBranch(
 
   if (pathPrefix !== undefined && pathPrefix !== '') {
     params.push(escapeLikePattern(pathPrefix) + '%');
-    sql += ` AND d.path LIKE $${String(params.length)} ESCAPE '\\'`;
+    sql += ` AND ${effectivePathPrefixPredicate(`$${String(params.length)}`)}`;
   }
 
   if (templateId !== undefined) {
@@ -336,6 +356,232 @@ export async function countDocumentsOnBranch(
 }
 
 const TEMPLATES_PATH_PREFIX = '_registry/templates/';
+
+// Sections live under this prefix in the registry; their content pages live
+// in the top-level namespace at the same slug.
+const SECTIONS_PATH_PREFIX = '_registry/sections/';
+
+export async function assertPathFreeOnBranch(
+  branchId: string,
+  siteId: string,
+  movingDocumentIds: string[],
+  paths: string[],
+): Promise<void> {
+  const result = await query<{ path: string }>(
+    `SELECT COALESCE(bdp.path, d.path) AS path
+     FROM app.documents d
+     LEFT JOIN app.branch_document_paths bdp
+       ON bdp.branch_id = $1 AND bdp.document_id = d.id
+     WHERE d.site_id = $2
+       AND d.archived_at IS NULL
+       AND NOT (d.id = ANY($3::uuid[]))
+       AND COALESCE(bdp.path, d.path) = ANY($4::text[])
+     LIMIT 1`,
+    [branchId, siteId, movingDocumentIds, paths],
+  );
+  const taken = result.rows[0];
+  if (taken) {
+    getLogger().info('move blocked by occupied path', {
+      site_id: siteId,
+      branch_id: branchId,
+      to_path: taken.path,
+      count: paths.length,
+      outcome: 'conflict',
+    });
+    throw new DuplicateDocumentPathError(taken.path, siteId);
+  }
+}
+
+export interface PlannedMove {
+  documentId: string;
+  newPath: string;
+}
+
+export async function upsertBranchDocumentPaths(
+  branchId: string,
+  moves: PlannedMove[],
+): Promise<void> {
+  if (moves.length === 0) return;
+
+  const documentIds: string[] = [];
+  const paths: string[] = [];
+  for (const move of moves) {
+    const normalized = normalizePath(move.newPath);
+    validatePath(normalized);
+    documentIds.push(move.documentId);
+    paths.push(normalized);
+  }
+
+  await query(
+    `INSERT INTO app.branch_document_paths (branch_id, document_id, path)
+     SELECT $1, m.document_id, m.path
+     FROM unnest($2::uuid[], $3::text[]) AS m(document_id, path)
+     ON CONFLICT (branch_id, document_id) DO UPDATE SET path = EXCLUDED.path`,
+    [branchId, documentIds, paths],
+  );
+}
+
+// $4 raw for substring arithmetic, $5 LIKE-escaped for prefix matching.
+// Never share one parameter for both uses: escaping changes string length,
+// which shifts the substring offset and corrupts descendant paths.
+async function planDescendants(
+  branchId: string,
+  siteId: string,
+  oldPath: string,
+  newPath: string,
+): Promise<PlannedMove[]> {
+  const result = await query<{ id: string; new_path: string }>(
+    `SELECT d.id, $3 || substring(COALESCE(bdp.path, d.path) from length($4) + 1) AS new_path
+     FROM app.documents d
+     LEFT JOIN app.branch_document_paths bdp
+       ON bdp.branch_id = $1 AND bdp.document_id = d.id
+     WHERE d.site_id = $2
+       AND d.archived_at IS NULL
+       AND COALESCE(bdp.path, d.path) LIKE $5 || '/%' ESCAPE '\\'`,
+    [branchId, siteId, newPath, oldPath, escapeLikePattern(oldPath)],
+  );
+  return result.rows.map((r) => ({ documentId: r.id, newPath: r.new_path }));
+}
+
+async function planLocaleVariants(
+  branchId: string,
+  siteId: string,
+  canonicalMoves: PlannedMove[],
+): Promise<PlannedMove[]> {
+  if (canonicalMoves.length === 0) return [];
+
+  const newPathByCanonical = new Map(canonicalMoves.map((m) => [m.documentId, m.newPath]));
+  const result = await query<{
+    variant_id: string;
+    canonical_id: string;
+    variant_path: string;
+    canonical_old_path: string;
+  }>(
+    `SELECT dr.source_document_id AS variant_id,
+            dr.target_document_id AS canonical_id,
+            COALESCE(vbdp.path, v.path) AS variant_path,
+            COALESCE(cbdp.path, c.path) AS canonical_old_path
+     FROM app.document_relations dr
+     JOIN app.documents v ON v.id = dr.source_document_id
+     JOIN app.documents c ON c.id = dr.target_document_id
+     LEFT JOIN app.branch_document_paths vbdp
+       ON vbdp.branch_id = $1 AND vbdp.document_id = v.id
+     LEFT JOIN app.branch_document_paths cbdp
+       ON cbdp.branch_id = $1 AND cbdp.document_id = c.id
+     WHERE dr.relation_type = 'localization'
+       AND dr.target_document_id = ANY($3::uuid[])
+       AND v.site_id = $2
+       AND v.archived_at IS NULL`,
+    [branchId, siteId, [...newPathByCanonical.keys()]],
+  );
+
+  const planned: PlannedMove[] = [];
+  for (const row of result.rows) {
+    const canonicalNewPath = newPathByCanonical.get(row.canonical_id);
+    if (canonicalNewPath === undefined) continue;
+    // A customised variant path is a deliberate choice — leave it alone.
+    if (!row.variant_path.startsWith(`${row.canonical_old_path}.`)) continue;
+    const suffix = row.variant_path.slice(row.canonical_old_path.length);
+    planned.push({ documentId: row.variant_id, newPath: `${canonicalNewPath}${suffix}` });
+  }
+  return planned;
+}
+
+export async function planMove(
+  branchId: string,
+  siteId: string,
+  documentId: string,
+  oldPath: string,
+  newPath: string,
+): Promise<PlannedMove[]> {
+  if (oldPath === '/' || oldPath === '') {
+    throw new ImmovableDocumentError(oldPath);
+  }
+  if (newPath === oldPath || newPath.startsWith(`${oldPath}/`)) {
+    throw new SelfNestingMoveError(oldPath, newPath);
+  }
+
+  const planned: PlannedMove[] = [{ documentId, newPath }];
+  planned.push(...(await planDescendants(branchId, siteId, oldPath, newPath)));
+
+  if (oldPath.startsWith(SECTIONS_PATH_PREFIX)) {
+    const oldContent = oldPath.slice(SECTIONS_PATH_PREFIX.length);
+    const newContent = newPath.slice(SECTIONS_PATH_PREFIX.length);
+    const contentRoot = await query<{ id: string }>(
+      `SELECT d.id FROM app.documents d
+       LEFT JOIN app.branch_document_paths bdp
+         ON bdp.branch_id = $1 AND bdp.document_id = d.id
+       WHERE d.site_id = $2 AND d.archived_at IS NULL
+         AND COALESCE(bdp.path, d.path) = $3`,
+      [branchId, siteId, oldContent],
+    );
+    for (const row of contentRoot.rows) {
+      planned.push({ documentId: row.id, newPath: newContent });
+    }
+    planned.push(...(await planDescendants(branchId, siteId, oldContent, newContent)));
+  }
+
+  planned.push(...(await planLocaleVariants(branchId, siteId, planned)));
+
+  const deduped = [...new Map(planned.map((move) => [move.documentId, move])).values()];
+
+  getLogger().debug('move plan built', () => ({
+    site_id: siteId,
+    branch_id: branchId,
+    document_id: documentId,
+    from_path: oldPath,
+    to_path: newPath,
+    count: deduped.length,
+  }));
+
+  return deduped;
+}
+
+export async function moveDocumentOnBranch(
+  branchId: string,
+  documentId: string,
+  newPath: string,
+): Promise<MoveResult> {
+  const normalized = normalizePath(newPath);
+  validatePath(normalized);
+
+  await query('BEGIN');
+  try {
+    await query('SELECT pg_advisory_xact_lock(hashtext($1))', [branchId]);
+
+    const current = await query<{ site_id: string; path: string }>(
+      `SELECT d.site_id, COALESCE(bdp.path, d.path) AS path
+       FROM app.documents d
+       LEFT JOIN app.branch_document_paths bdp
+         ON bdp.branch_id = $1 AND bdp.document_id = d.id
+       WHERE d.id = $2 AND d.archived_at IS NULL`,
+      [branchId, documentId],
+    );
+    const doc = current.rows[0];
+    if (!doc) {
+      throw new DocumentNotFoundError(documentId);
+    }
+
+    const planned = await planMove(branchId, doc.site_id, documentId, doc.path, normalized);
+    await assertPathFreeOnBranch(
+      branchId,
+      doc.site_id,
+      planned.map((p) => p.documentId),
+      planned.map((p) => p.newPath),
+    );
+
+    await upsertBranchDocumentPaths(branchId, planned);
+
+    await query('COMMIT');
+    return { movedCount: planned.length };
+  } catch (error) {
+    await query('ROLLBACK');
+    if (isUniqueConstraintViolation(error)) {
+      throw new DuplicateDocumentPathError(normalized);
+    }
+    throw error;
+  }
+}
 
 /** A template resolved for a branch, carrying the version served there. */
 export interface TemplateOnBranch {

@@ -164,7 +164,7 @@ async function handleGetContent(
   }
 
   // Get document by path
-  const document = await getDocumentByPath(siteId, documentPath ?? '/');
+  const document = await getDocumentByPath(siteId, documentPath ?? '/', branch.id);
   if (document === null) {
     return notFoundResponse('Document not found', siteId);
   }

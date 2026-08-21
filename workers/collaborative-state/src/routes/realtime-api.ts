@@ -503,7 +503,7 @@ export async function handleRealtimeRoutes(
 
   // Look up document by path to get stable document ID
   // This ensures session IDs survive document renames and match presence-rollup-service
-  const document = await getDocumentByPath(params.siteId, params.documentPath);
+  const document = await getDocumentByPath(params.siteId, params.documentPath, branch.id);
   if (document === null) {
     return errorResponse(404, `Document not found: ${params.documentPath}`, origin, patterns);
   }

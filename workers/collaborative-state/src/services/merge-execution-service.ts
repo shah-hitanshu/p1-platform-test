@@ -13,6 +13,8 @@
 
 import { detectConflicts } from './conflict-detection-service';
 import type { ConflictDetectionResult } from './conflict-detection-service';
+import { getPathChangesSince } from './path-change-service';
+import type { PathChange } from './path-change-service';
 import { resolveAllConflicts } from './conflict-resolution-service';
 import {
   getMergeRequest,
@@ -29,6 +31,11 @@ import {
 } from './document-version-service';
 import { createCheckpoint } from './checkpoint-service';
 import { getMainBranch } from './branch-service';
+import {
+  assertPathFreeOnBranch,
+  upsertBranchDocumentPaths,
+  type PlannedMove,
+} from './branch-document-service';
 import { TEMPLATE_RELATION_INNER_JOIN, branchInheritsFromMain } from './document-queries';
 import { publishMergedVersions } from './merge-publish';
 import { query } from '../db';
@@ -205,6 +212,11 @@ export interface MergePreview {
   targetChanges: ConflictDetectionResult['targetChanges'];
   mergeBase: ConflictDetectionResult['mergeBase'];
   /**
+   * Documents whose effective path differs between source and target branches.
+   * Empty when no moves have been made on the source branch.
+   */
+  pathChanges: PathChange[];
+  /**
    * Document diffs with snapshots and operations.
    * Only included when options.includeContent is true.
    */
@@ -267,6 +279,14 @@ export async function executeMerge(
     );
   }
 
+  // 4b. Check path promotions before any write, so an occupied destination
+  // fails the merge cleanly instead of part-way through.
+  const pathPromotion = await planPathOverridePromotion(
+    mergeRequest.sourceBranchId,
+    mergeRequest.targetBranchId,
+    mergeRequest.siteId,
+  );
+
   // 5. Copy source changes to target branch
   const copiedVersions = await copySourceChangesToTarget(
     mergeRequest,
@@ -274,6 +294,9 @@ export async function executeMerge(
     mergedById,
     mergedByType,
   );
+
+  // 5b. Promote source-branch path overrides to the target branch.
+  await applyPathOverridePromotion(pathPromotion);
 
   // 6. Create post-merge checkpoint with only merge-touched documents
   const checkpointResult = await createCheckpoint({
@@ -364,6 +387,14 @@ export async function executeMergeWithResolution(
   );
   // Strip system-managed paths (e.g. _registry/) before any merge logic runs.
   const detectionResult = applySystemManagedExclusions(rawDetectionResult);
+
+  // 3b. Check path promotions before any write, so an occupied destination
+  // fails the merge cleanly instead of part-way through.
+  const pathPromotion = await planPathOverridePromotion(
+    mergeRequest.sourceBranchId,
+    mergeRequest.targetBranchId,
+    mergeRequest.siteId,
+  );
 
   let conflictsResolved = 0;
 
@@ -495,6 +526,9 @@ export async function executeMergeWithResolution(
   );
   mergedDocVersions.push(...copiedVersions);
 
+  // 5b. Promote source-branch path overrides to the target branch.
+  await applyPathOverridePromotion(pathPromotion);
+
   // 6. Create post-merge checkpoint with only merge-touched documents
   const checkpointResult = await createCheckpoint({
     branchId: mergeRequest.targetBranchId,
@@ -558,10 +592,10 @@ export async function previewMerge(
   targetBranchId: string,
   options?: PreviewMergeOptions,
 ): Promise<MergePreview> {
-  const rawDetectionResult = await detectConflicts(
-    sourceBranchId,
-    targetBranchId,
-  );
+  const [rawDetectionResult, rawPathChanges] = await Promise.all([
+    detectConflicts(sourceBranchId, targetBranchId),
+    getPathChangesSince(sourceBranchId, targetBranchId),
+  ]);
   // Always strip system-managed paths (e.g. _registry/) — caller's
   // excludePathPrefixes is layered on top, never instead of this.
   const detectionResult = applySystemManagedExclusions(rawDetectionResult);
@@ -575,11 +609,13 @@ export async function previewMerge(
   let { documentConflicts } = detectionResult.conflicts;
   let sourceChanges = detectionResult.sourceChanges;
   let targetChanges = detectionResult.targetChanges;
+  let pathChanges = rawPathChanges;
 
   if (shouldExclude != null) {
     documentConflicts = documentConflicts.filter((c) => !shouldExclude(c.documentPath));
     sourceChanges = sourceChanges.filter((c) => !shouldExclude(c.documentPath));
     targetChanges = targetChanges.filter((c) => !shouldExclude(c.documentPath));
+    pathChanges = pathChanges.filter((c) => !shouldExclude(c.documentPath));
   }
 
   const filteredConflicts = shouldExclude != null
@@ -593,6 +629,7 @@ export async function previewMerge(
     sourceChanges,
     targetChanges,
     mergeBase: detectionResult.mergeBase,
+    pathChanges,
   };
 
   // Include document diffs if requested
@@ -612,6 +649,81 @@ export async function previewMerge(
 // =============================================================================
 // Helper Functions
 // =============================================================================
+
+/** The source branch's path overrides, checked against the target and ready to write. */
+interface PathOverridePromotion {
+  targetIsMain: boolean;
+  targetBranchId: string;
+  moves: PlannedMove[];
+}
+
+/**
+ * Reads the source branch's path overrides and verifies every destination is
+ * still free on the target.
+ *
+ * A merge is a sequence of writes, not one transaction, so a path taken on the
+ * target while the branch was in flight has to fail here — before anything is
+ * written — rather than tripping the unique constraint after versions are
+ * copied and leaving a half-applied merge behind.
+ *
+ * @throws DuplicateDocumentPathError if a destination path is occupied on the target
+ */
+async function planPathOverridePromotion(
+  sourceBranchId: string,
+  targetBranchId: string,
+  siteId: string,
+): Promise<PathOverridePromotion | null> {
+  const overrides = await query<{ document_id: string; path: string }>(
+    'SELECT document_id, path FROM app.branch_document_paths WHERE branch_id = $1',
+    [sourceBranchId],
+  );
+
+  if (overrides.rows.length === 0) return null;
+
+  const moves: PlannedMove[] = overrides.rows.map((row) => ({
+    documentId: row.document_id,
+    newPath: row.path,
+  }));
+
+  await assertPathFreeOnBranch(
+    targetBranchId,
+    siteId,
+    moves.map((move) => move.documentId),
+    moves.map((move) => move.newPath),
+  );
+
+  const mainBranch = await getMainBranch(siteId);
+
+  return { targetIsMain: targetBranchId === mainBranch?.id, targetBranchId, moves };
+}
+
+/**
+ * Applies the planned path overrides to the target branch.
+ *
+ * When merging into main the override becomes the global path in app.documents.
+ * When merging into a workstream branch the override is upserted for that branch.
+ * Path moves are a separate channel from content changes and are always promoted
+ * regardless of whether the document's content was also modified in this merge.
+ */
+async function applyPathOverridePromotion(
+  promotion: PathOverridePromotion | null,
+): Promise<void> {
+  if (promotion === null) return;
+  const { moves, targetIsMain, targetBranchId } = promotion;
+
+  if (!targetIsMain) {
+    await upsertBranchDocumentPaths(targetBranchId, moves);
+    return;
+  }
+
+  await query(
+    `UPDATE app.documents d
+     SET path = m.path
+     FROM unnest($1::uuid[], $2::text[]) AS m(document_id, path)
+     WHERE d.id = m.document_id`,
+    [moves.map((move) => move.documentId), moves.map((move) => move.newPath)],
+  );
+}
 
 /**
  * A document version created or referenced during a merge.

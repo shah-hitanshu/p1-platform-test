@@ -63,6 +63,10 @@ vi.mock('../../src/services/document-diff-service', () => ({
   computeDocumentDiffs: vi.fn(),
 }));
 
+vi.mock('../../src/services/path-change-service', () => ({
+  getPathChangesSince: vi.fn().mockResolvedValue([]),
+}));
+
 const baseMergeRequest = {
   id: 'mr-1',
   siteId: 'site-1',
@@ -91,8 +95,10 @@ const baseMainBranch = makeBranch({
 });
 
 describe('executeMerge — system-managed path exclusion', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.resetAllMocks();
+    const db = await import('../../src/db');
+    vi.mocked(db.query).mockResolvedValue({ rows: [], rowCount: 0 });
   });
 
   it('excludes documents under _registry/ from merge writes and post_merge checkpoint', async () => {
@@ -338,8 +344,10 @@ describe('executeMerge — system-managed path exclusion', () => {
 });
 
 describe('executeMergeWithResolution — system-managed path exclusion', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.resetAllMocks();
+    const db = await import('../../src/db');
+    vi.mocked(db.query).mockResolvedValue({ rows: [], rowCount: 0 });
   });
 
   it('excludes _registry/ from conflict resolution and the post_merge checkpoint', async () => {
@@ -483,8 +491,10 @@ describe('executeMergeWithResolution — system-managed path exclusion', () => {
 });
 
 describe('previewMerge — system-managed path exclusion', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.resetAllMocks();
+    const pathChangeService = await import('../../src/services/path-change-service');
+    vi.mocked(pathChangeService.getPathChangesSince).mockResolvedValue([]);
   });
 
   it('always excludes _registry/ from preview, even when caller provides no excludePathPrefixes', async () => {

@@ -1130,6 +1130,7 @@ function P1PuckProviderInner({
         const doc = await userClient.documents.getByPath(
           siteId,
           path.startsWith('/') ? path.slice(1) : path,
+          branchId,
         );
 
         // Staleness check: a newer loadDocument call has started

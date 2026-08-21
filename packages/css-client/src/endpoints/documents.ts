@@ -20,13 +20,16 @@ export class DocumentsEndpoint {
   }
 
   /**
-   * Get a document by path on a specific branch.
+   * Get a document by path. Pass branchId to resolve against that branch's
+   * path overrides. If branchId is omitted, the global document path is used.
    */
-  async getByPath(siteId: string, path: string): Promise<Document> {
+  async getByPath(siteId: string, path: string, branchId?: string): Promise<Document> {
     const encodedPath = encodeURIComponent(path);
-    return this.base.request<Document>(`/api/sites/${siteId}/documents/by-path/${encodedPath}`, {
-      method: 'GET',
-    });
+    const query = branchId === undefined ? '' : `?branch=${encodeURIComponent(branchId)}`;
+    return this.base.request<Document>(
+      `/api/sites/${siteId}/documents/by-path/${encodedPath}${query}`,
+      { method: 'GET' },
+    );
   }
 
   /**

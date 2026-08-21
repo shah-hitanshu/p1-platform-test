@@ -69,6 +69,8 @@ export {
   InvalidBranchStatusTransitionError,
   MainBranchOnlyError,
   NoMergeBaseError,
+  SelfNestingMoveError,
+  ImmovableDocumentError,
   MergeNotAllowedError,
   AuthorityOverrideLimitError,
   SchemaValidationError,
@@ -143,6 +145,7 @@ export type {
   DeleteDocumentOnBranchParams,
   DeleteDocumentWithRedirectParams,
   DeleteDocumentWithRedirectResult,
+  MoveResult,
 } from './document-service';
 
 // Document Relations Service
@@ -672,3 +675,11 @@ export type {
 export { onTemplateCreated } from './template-hooks';
 
 export type { OnTemplateCreatedParams, OnTemplateCreatedResult } from './template-hooks';
+
+// Path Change Service
+export { getPathChangesSince } from './path-change-service';
+export type { PathChange } from './path-change-service';
+
+// Move operations
+export { moveDocumentOnBranch } from './branch-document-service';
+export { moveDocumentGlobally } from './document-service';

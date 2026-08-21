@@ -93,8 +93,10 @@ const baseMainBranch = makeBranch({
 });
 
 describe('copySourceChangesToTarget — no-op skip', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.resetAllMocks();
+    const db = await import('../../src/db');
+    vi.mocked(db.query).mockResolvedValue({ rows: [], rowCount: 0 });
   });
 
   it('skips entries where createDocumentVersion returned the pre-existing latest version (no real merge happened)', async () => {

@@ -360,6 +360,58 @@ describe('Phase 3.1: Document Service', () => {
         expect.any(Array),
       );
     });
+
+    // This is the hottest lookup in the system and every 404 runs it, so both
+    // probes must stay index-seekable. COALESCE(bdp.path, d.path) = $2 reads
+    // correctly but cannot use an index — it scans the whole site instead.
+    describe('branch-scoped resolution stays indexed', () => {
+      it('probes the override table by (branch_id, path) first', async () => {
+        const { getDocumentByPath } = await import('../../src/services/document-service');
+        const db = await import('../../src/db');
+
+        const mockRow = createMockDocumentRow({ path: 'aug13' });
+        vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+
+        const result = await getDocumentByPath('site-1', 'august/aug13', 'branch-1');
+
+        expect(db.query).toHaveBeenCalledTimes(1);
+        const [sqlText, params] = vi.mocked(db.query).mock.calls[0];
+        expect(sqlText).toMatch(/bdp\.branch_id = \$3/);
+        expect(sqlText).toMatch(/bdp\.path = \$2/);
+        expect(params).toEqual(['site-1', 'august/aug13', 'branch-1']);
+        // The override path is the effective path, not the stored global one.
+        expect(result?.path).toBe('august/aug13');
+      });
+
+      it('falls back to the global path guarded by NOT EXISTS when no override claims it', async () => {
+        const { getDocumentByPath } = await import('../../src/services/document-service');
+        const db = await import('../../src/db');
+
+        vi.mocked(db.query)
+          .mockResolvedValueOnce({ rows: [] })
+          .mockResolvedValueOnce({ rows: [createMockDocumentRow({ path: 'aug13' })] });
+
+        const result = await getDocumentByPath('site-1', 'aug13', 'branch-1');
+
+        expect(result?.path).toBe('aug13');
+        const [sqlText] = vi.mocked(db.query).mock.calls[1];
+        expect(sqlText).toMatch(/d\.path = \$2/);
+        expect(sqlText).toMatch(/NOT EXISTS/);
+      });
+
+      it('never emits an unindexable COALESCE equality predicate', async () => {
+        const { getDocumentByPath } = await import('../../src/services/document-service');
+        const db = await import('../../src/db');
+
+        vi.mocked(db.query).mockResolvedValue({ rows: [] });
+
+        expect(await getDocumentByPath('site-1', 'aug13', 'branch-1')).toBeNull();
+
+        for (const [sqlText] of vi.mocked(db.query).mock.calls) {
+          expect(sqlText).not.toMatch(/COALESCE\([^)]*\)\s*=/);
+        }
+      });
+    });
   });
 
   describe('updateDocumentPath', () => {

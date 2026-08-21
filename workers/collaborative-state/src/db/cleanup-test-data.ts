@@ -42,6 +42,7 @@ interface CleanupStats {
   checkpointDocumentMetadata: number;
   checkpointStructures: number;
   branchDocumentMetadata: number;
+  branchDocumentPaths: number;
   branchStructureState: number;
   structureNodes: number;
   siteStructures: number;
@@ -91,6 +92,7 @@ async function deleteTestData(
       checkpointDocumentMetadata: 0,
       checkpointStructures: 0,
       branchDocumentMetadata: 0,
+      branchDocumentPaths: 0,
       branchStructureState: 0,
       structureNodes: 0,
       siteStructures: 0,
@@ -111,6 +113,7 @@ async function deleteTestData(
     checkpointDocumentMetadata: 0,
     checkpointStructures: 0,
     branchDocumentMetadata: 0,
+    branchDocumentPaths: 0,
     branchStructureState: 0,
     structureNodes: 0,
     siteStructures: 0,
@@ -308,7 +311,24 @@ async function deleteTestData(
     }
   }
 
-  // 10. Branch structure state (depends on branches)
+  // 10. Branch document path overrides (depends on branches and documents)
+  if (branchIds.length > 0) {
+    if (dryRun) {
+      const count = await sql`
+        SELECT COUNT(*) as count FROM app.branch_document_paths
+        WHERE branch_id = ANY(${branchIds})
+      `;
+      stats.branchDocumentPaths = Number(count[0]?.count ?? 0);
+    } else {
+      const result = await sql`
+        DELETE FROM app.branch_document_paths
+        WHERE branch_id = ANY(${branchIds})
+      `;
+      stats.branchDocumentPaths = result.count;
+    }
+  }
+
+  // 11. Branch structure state (depends on branches)
   if (branchIds.length > 0) {
     if (dryRun) {
       const count = await sql`
@@ -456,6 +476,7 @@ function printStats(stats: CleanupStats, dryRun: boolean): void {
     stats.checkpointDocumentMetadata +
     stats.checkpointStructures +
     stats.branchDocumentMetadata +
+    stats.branchDocumentPaths +
     stats.branchStructureState +
     stats.structureNodes +
     stats.siteStructures;
@@ -474,6 +495,7 @@ function printStats(stats: CleanupStats, dryRun: boolean): void {
   console.log(`  Branch grants:              ${String(stats.branchGrants)}`);
   console.log(`  Guest links:                ${String(stats.guestLinks)}`);
   console.log(`  Branch document metadata:   ${String(stats.branchDocumentMetadata)}`);
+  console.log(`  Branch document paths:      ${String(stats.branchDocumentPaths)}`);
   console.log(`  Branch structure state:     ${String(stats.branchStructureState)}`);
   console.log(`  Structure nodes:            ${String(stats.structureNodes)}`);
   console.log(`  Site structures:            ${String(stats.siteStructures)}`);

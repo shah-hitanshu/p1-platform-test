@@ -380,7 +380,10 @@ describe('Content Delivery API Routes', () => {
       });
 
       expect(response.status).toBe(200);
-      expect(services.getDocumentByPath).toHaveBeenCalledWith('site-uuid-123', '/');
+      // Branch-scoped so branch path overrides resolve on preview requests.
+      expect(services.getDocumentByPath).toHaveBeenCalledWith(
+        'site-uuid-123', '/', mockMainBranch.id,
+      );
       const body = await readJson(response);
       expect(body.path).toBe('/');
       expect(body.data).toEqual(mockPublishedVersion.snapshot);

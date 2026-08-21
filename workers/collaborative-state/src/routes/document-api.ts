@@ -5,6 +5,7 @@
  * Includes soft-delete with archive/restore functionality.
  */
 
+import { getLogger } from '@pantheon-systems/p1-telemetry';
 import type { AuthenticatedPrincipal } from '../types';
 import {
   HttpError,
@@ -36,6 +37,8 @@ import {
   DuplicateDocumentPathError,
   DocumentNotFoundError,
   DocumentPathConflictError,
+  moveDocumentOnBranch,
+  moveDocumentGlobally,
   RestoreVersionNotFoundError,
   publishDocument,
   createTranslation,
@@ -58,6 +61,7 @@ import {
   isRegistryScopedServicePrincipal,
   type DocumentVersion,
 } from '../services/document-types';
+import { resolveBranchRef } from '../utils/branch-ref';
 import { buildDocumentSkeletonFromTemplate } from '../services/document-skeleton';
 import { applyTitleToSnapshot } from '../services/document-title';
 import { assertPermission, getEffectiveRole } from '../auth/authorization';
@@ -246,13 +250,29 @@ async function handleGetDocument(context: DocumentRouteContext): Promise<Respons
 
 /**
  * Handle GET /api/sites/{siteId}/documents/by-path/{documentPath} - Get by Path
+ *
+ * An optional ?branch= ref (UUID or name) resolves the path against that
+ * branch's path overrides; without it the lookup sees global paths only.
  */
-async function handleGetDocumentByPath(context: DocumentRouteContext): Promise<Response> {
+async function handleGetDocumentByPath(
+  request: Request,
+  context: DocumentRouteContext,
+): Promise<Response> {
   if (context.documentPath === undefined) {
     return errorResponse('Document path is required', 400);
   }
 
-  const document = await getDocumentByPath(context.siteId, context.documentPath);
+  const branchRef = new URL(request.url).searchParams.get('branch');
+  let branchId: string | undefined;
+  if (branchRef !== null && branchRef !== '') {
+    const resolved = await resolveBranchRef(context.siteId, branchRef);
+    if (!resolved.resolved) {
+      return errorResponse(resolved.error, 404);
+    }
+    branchId = resolved.branchId;
+  }
+
+  const document = await getDocumentByPath(context.siteId, context.documentPath, branchId);
 
   if (document === null) {
     return errorResponse('Document not found at path', 404);
@@ -834,7 +854,11 @@ async function handleGetDocumentVersionById(
       );
       return jsonResponse({ ...version, snapshot: reconstructed });
     } catch (err) {
-      console.error('reconstructVersionSnapshot failed:', err);
+      getLogger().error('version snapshot reconstruction failed', err, {
+        document_id: documentId,
+        branch_id: branchId,
+        broken_version: version.versionNumber,
+      });
       return errorResponse('Failed to reconstruct version snapshot', 500);
     }
   }
@@ -1007,6 +1031,66 @@ async function handleDocumentVersionRoutes(
 }
 
 /**
+ * Handle PATCH /api/sites/{siteId}/branches/{branchId}/documents/{documentId}
+ *
+ * Moves a document (and its descendants) to a new path. On the main branch the
+ * global path is rewritten directly; on a workstream branch an override row is
+ * written so the global path is unchanged until merge.
+ */
+async function handleMoveDocumentOnBranch(
+  request: Request,
+  documentId: string,
+  branchId: string,
+  siteId: string,
+  isMainBranch: boolean,
+): Promise<Response> {
+  const body = await parseJsonBody<{ path?: string }>(request);
+
+  if (body.path === undefined || body.path.trim() === '') {
+    return errorResponse('path is required', 400);
+  }
+
+  const logFields = {
+    site_id: siteId,
+    branch_id: branchId,
+    document_id: documentId,
+    to_path: body.path,
+  };
+  const startedAt = Date.now();
+
+  try {
+    const result = isMainBranch
+      ? await moveDocumentGlobally(documentId, body.path)
+      : await moveDocumentOnBranch(branchId, documentId, body.path);
+
+    // A main-branch move rewrites live paths: the old path would keep serving
+    // cached content and the new one a cached 404. Site-wide because a cached
+    // 404 carries only the site tag [PCC-3709 / PCC-3705]. Branch moves leave
+    // the global path alone and ride their own short TTL.
+    if (isMainBranch) {
+      await purgeContentCache({ siteId, branchId, documentId });
+    }
+
+    getLogger().info(isMainBranch ? 'document moved globally' : 'document moved on branch', {
+      ...logFields,
+      count: result.movedCount,
+      duration_ms: Date.now() - startedAt,
+      outcome: 'ok',
+    });
+
+    return jsonResponse({ movedCount: result.movedCount });
+  } catch (error) {
+    getLogger().info('document move failed', {
+      ...logFields,
+      duration_ms: Date.now() - startedAt,
+      outcome: 'fail',
+      'error.type': error instanceof Error ? error.name : 'unknown',
+    });
+    throw error;
+  }
+}
+
+/**
  * Handle branch-scoped document routes
  */
 async function handleBranchScopedDocumentRoutes(
@@ -1130,7 +1214,7 @@ async function handleBranchScopedDocumentRoutes(
   // Authorization for branch-scoped document routes
   if (method === 'GET') {
     await assertPermission(context.principal, context.siteId, branchId, 'canView');
-  } else if (method === 'POST' || method === 'DELETE') {
+  } else if (method === 'POST' || method === 'DELETE' || method === 'PATCH') {
     await assertPermission(context.principal, context.siteId, branchId, 'canEditDocuments');
   }
 
@@ -1139,6 +1223,10 @@ async function handleBranchScopedDocumentRoutes(
     switch (method) {
       case 'GET':
         return await handleGetDocumentOnBranch(context.documentId, branchId, context.siteId, branch.isMain);
+      case 'PATCH':
+        return await handleMoveDocumentOnBranch(
+          request, context.documentId, branchId, context.siteId, branch.isMain,
+        );
       case 'DELETE':
         return await handleDeleteDocumentOnBranch(
           request, context.documentId, branchId, context.siteId, context.principal,
@@ -1221,7 +1309,7 @@ export async function handleDocumentRoutes(
       if (method !== 'GET') {
         return errorResponse('Method not allowed', 405);
       }
-      return await handleGetDocumentByPath(context);
+      return await handleGetDocumentByPath(request, context);
     }
 
     // Routes with documentId (single document operations)
@@ -1273,7 +1361,7 @@ export async function handleDocumentRoutes(
     }
 
     // Log and return generic error for unknown errors
-    console.error('Document API error:', error);
+    getLogger().error('document api error', error);
     return errorResponse('Internal server error', 500);
   }
 }

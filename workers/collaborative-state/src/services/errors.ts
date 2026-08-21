@@ -500,6 +500,20 @@ export class NoMergeBaseError extends HttpError {
   }
 }
 
+export class SelfNestingMoveError extends HttpError {
+  readonly status = 422;
+  constructor(oldPath: string, newPath: string) {
+    super(`Cannot move '${oldPath}' into its own subtree at '${newPath}'`);
+  }
+}
+
+export class ImmovableDocumentError extends HttpError {
+  readonly status = 422;
+  constructor(path: string) {
+    super(`Document at '${path}' cannot be moved`);
+  }
+}
+
 export class MergeNotAllowedError extends HttpError {
   readonly status = 400;
   constructor(

@@ -543,6 +543,11 @@ export async function deleteSite(siteId: string): Promise<boolean> {
       [branchIds],
     );
 
+    await query(
+      'DELETE FROM app.branch_document_paths WHERE branch_id = ANY($1::uuid[])',
+      [branchIds],
+    );
+
     // Delete branch document metadata
     await query(
       'DELETE FROM app.branch_document_metadata WHERE branch_id = ANY($1::uuid[])',

@@ -50,6 +50,7 @@ export interface DocumentRow {
  */
 export interface DocumentOnBranchRow extends DocumentRow {
   inherited: boolean;
+  branch_path: string | null;
   published_version_id: string | null;
   published_at: string | null;
   snapshot_title: string | null;
@@ -154,6 +155,10 @@ export interface DeleteDocumentWithRedirectResult {
   };
 }
 
+export interface MoveResult {
+  movedCount: number;
+}
+
 /**
  * Document version type for internal use.
  */
@@ -223,6 +228,9 @@ export function isRegistryScopedServicePrincipal(principal: AuthenticatedPrincip
  */
 export function mapRowToDocumentOnBranch(row: DocumentOnBranchRow): DocumentOnBranch {
   const doc = mapRowToDocument(row) as DocumentOnBranch;
+  if (typeof row.branch_path === 'string') {
+    doc.path = row.branch_path;
+  }
   doc.inherited = row.inherited;
   doc.isPublished = row.published_version_id !== null;
   if (row.published_version_id !== null) {

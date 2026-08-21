@@ -86,6 +86,21 @@ export function documentInBranchSitePredicate(branchParam: string): string {
 }
 
 /**
+ * Prefix filter on a document's effective path — the branch override when one
+ * exists, otherwise the global path.
+ *
+ * Deliberate trade-off: COALESCE cannot use the (site_id, path) index, so this
+ * filters across the site's documents instead of seeking to the prefix. Testing
+ * d.path alone would restore the seek but return the wrong rows — a document
+ * moved off the prefix on this branch would still match.
+ *
+ * Expects documents aliased `d` and the override join aliased `bdp`.
+ */
+export function effectivePathPrefixPredicate(pathParam: string): string {
+  return `COALESCE(bdp.path, d.path) LIKE ${pathParam} ESCAPE '\\'`;
+}
+
+/**
  * EXISTS predicate holding when document `d` has a version on the branch at
  * `branchParam` that a publish checkpoint on that same branch captured.
  *

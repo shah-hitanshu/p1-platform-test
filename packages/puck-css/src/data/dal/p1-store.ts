@@ -17,7 +17,7 @@ import { getRequestAuthToken } from "./request-auth";
 export interface P1StoreClient {
   documents: {
     list(siteId: string, branchId: string): Promise<{ id: string; path: string; templateId?: string | null }[]>;
-    getByPath(siteId: string, path: string): Promise<{ id: string; path: string }>;
+    getByPath(siteId: string, path: string, branchId?: string): Promise<{ id: string; path: string }>;
     create(params: { siteId: string; branchId: string; path: string; templateId?: string; templateVersion?: number }): Promise<{ id: string; path: string }>;
     delete(siteId: string, branchId: string, documentId: string): Promise<void>;
   };
@@ -188,7 +188,7 @@ export function createP1PageStore(config: P1StoreConfig): PageStore {
       try {
         const branchId = await getBranchId();
         const rc = readClient();
-        const doc = await rc.documents.getByPath(siteId, toDocPath(path));
+        const doc = await rc.documents.getByPath(siteId, toDocPath(path), branchId);
         const version = await rc.versions.getLatest(siteId, branchId, doc.id);
         return version.snapshot;
       } catch (err) {
@@ -203,7 +203,7 @@ export function createP1PageStore(config: P1StoreConfig): PageStore {
       const branchId = await getBranchId();
       let docId: string;
       try {
-        const existing = await readClient().documents.getByPath(siteId, dp);
+        const existing = await readClient().documents.getByPath(siteId, dp, branchId);
         docId = existing.id;
       } catch {
         const createParams: { siteId: string; branchId: string; path: string; templateId?: string; templateVersion?: number } = {
@@ -229,7 +229,7 @@ export function createP1PageStore(config: P1StoreConfig): PageStore {
     async delete(path: string): Promise<void> {
       try {
         const branchId = await getBranchId();
-        const doc = await readClient().documents.getByPath(siteId, toDocPath(path));
+        const doc = await readClient().documents.getByPath(siteId, toDocPath(path), branchId);
         await requestClient().documents.delete(siteId, branchId, doc.id);
       } catch (err) {
         console.info("[css-store] delete(%s) — not found or failed:", path, (err as Error).message);
@@ -239,7 +239,7 @@ export function createP1PageStore(config: P1StoreConfig): PageStore {
 
     async has(path: string): Promise<boolean> {
       try {
-        await readClient().documents.getByPath(siteId, toDocPath(path));
+        await readClient().documents.getByPath(siteId, toDocPath(path), await getBranchId());
         return true;
       } catch (err) {
         console.info("[css-store] has(%s) — not found or failed:", path, (err as Error).message);

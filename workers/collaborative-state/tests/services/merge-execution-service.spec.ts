@@ -66,13 +66,21 @@ vi.mock('../../src/services/migration-service', () => ({
   processMigration: vi.fn(),
 }));
 
+vi.mock('../../src/services/path-change-service', () => ({
+  getPathChangesSince: vi.fn().mockResolvedValue([]),
+}));
+
 describe('Phase 5.3: Merge Execution Service', () => {
   beforeEach(async () => {
     vi.resetAllMocks();
+    const db = await import('../../src/db');
+    vi.mocked(db.query).mockResolvedValue({ rows: [], rowCount: 0 });
     // Default: no main branch resolved → auto-publish is skipped for all
     // existing tests (their targets are non-main feature branches).
     const branchService = await import('../../src/services/branch-service');
     vi.mocked(branchService.getMainBranch).mockResolvedValue(null);
+    const pathChangeService = await import('../../src/services/path-change-service');
+    vi.mocked(pathChangeService.getPathChangesSince).mockResolvedValue([]);
   });
 
   describe('executeMerge', () => {
@@ -1406,6 +1414,8 @@ describe('Phase 5.3: Merge Execution Service', () => {
         source: 'merge',
       });
 
+      // promotePathOverrides: SELECT branch_document_paths — no overrides for this test
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [], rowCount: 0 });
       // Stale document count query
       vi.mocked(db.query).mockResolvedValueOnce({
         rows: [{ count: String(staleCount) }],

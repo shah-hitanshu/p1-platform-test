@@ -87,7 +87,9 @@ export function ensureLogger(env: TelemetryEnv): P1Logger {
     sinks: buildSinks(env),
     // Version *numbers* (the allowlist's version_id is the row id): which
     // version a content read asked for and which one broke reconstructing it.
-    allowFields: ['requested_version', 'broken_version'],
+    // from_path/to_path: a move's endpoints. doc_path holds one path, and a move
+    // report is unreadable without both — no worse than doc_path for content.
+    allowFields: ['requested_version', 'broken_version', 'from_path', 'to_path'],
   });
   return logger;
 }

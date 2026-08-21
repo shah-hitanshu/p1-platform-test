@@ -148,7 +148,7 @@ export async function queryDocumentPresence(
 
     // Look up the document UUID so the DO key matches the WebSocket connect route,
     // which also keys by UUID (via realtime-api.ts → getDocumentByPath → document.id).
-    const document = await getDocumentByPath(siteId, documentPath);
+    const document = await getDocumentByPath(siteId, documentPath, branchId);
     if (document === null) {
       console.warn(`queryDocumentPresence: document not found for path "${documentPath}"`);
       return [];

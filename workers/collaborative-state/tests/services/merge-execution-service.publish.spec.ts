@@ -87,8 +87,10 @@ const baseMainBranch = makeBranch({
 });
 
 describe('executeMerge auto-publish (target = main)', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.resetAllMocks();
+    const db = await import('../../src/db');
+    vi.mocked(db.query).mockResolvedValue({ rows: [], rowCount: 0 });
   });
 
   it('calls publishMergedVersions with the merge-created versions when target is main', async () => {
@@ -569,8 +571,10 @@ describe('executeMerge auto-publish (target = main)', () => {
 });
 
 describe('executeMergeWithResolution auto-publish (target = main)', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.resetAllMocks();
+    const db = await import('../../src/db');
+    vi.mocked(db.query).mockResolvedValue({ rows: [], rowCount: 0 });
   });
 
   it('passes sourceVersionId for take-source resolutions', async () => {
