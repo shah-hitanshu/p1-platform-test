@@ -1,11 +1,14 @@
 import { Agent } from 'agents';
 import type { AgentContext, Connection, ConnectionContext, WSMessage } from 'agents';
+import { getLogger } from '@pantheon-systems/p1-telemetry';
+import { attachmentNames, readAttachments } from './types.js';
 import type { ChatContext, Env, IncomingMessage, OutgoingMessage, TurnFrame, ValidatedUser } from './types.js';
 import { McpApiClient } from './css-api.js';
 import { CSS_TOOLS, WEB_TOOLS, executeTool } from './tools.js';
 import { validateCSSToken } from './auth.js';
 import { createdDocumentPath, withCreatedPage } from './scope.js';
-import { appendTurn, sanitizeHistory, trimForHistory, buildRestoredHistory, turnMayCommit, turnHasOutput } from './history.js';
+import type { StoredMessage } from './history.js';
+import { appendTurn, forProvider, sanitizeHistory, trimForHistory, buildRestoredHistory, turnMayCommit, turnHasOutput } from './history.js';
 import {
   createTransport,
   apiErrorStatus,
@@ -15,6 +18,7 @@ import {
 } from './model.js';
 import { SYSTEM_PROMPT, buildContextNote } from './prompt.js';
 import { ensureLogger } from './telemetry.js';
+import { imageParts, modelSeesImages } from './vision.js';
 
 // Default model. AGENT_MODEL is "provider/model" (must contain a slash): an `anthropic/`
 // prefix routes to the Anthropic /messages endpoint; everything else — including bare
@@ -23,7 +27,7 @@ import { ensureLogger } from './telemetry.js';
 const DEFAULT_MODEL = '@cf/moonshotai/kimi-k2.7-code';
 
 interface AgentState {
-  conversationHistory: ChatMessage[];
+  conversationHistory: StoredMessage[];
   // The validated user who owns this conversation, established on the first
   // authenticated chat turn. get_history/clear require the caller's token to
   // resolve to this id — the DO key is built from non-secret, guessable ids, so
@@ -277,11 +281,14 @@ export class ChatAgent extends Agent<Env, AgentState> {
         sendTurn({ type: 'error', error: 'AI Gateway not configured' });
         return;
       }
+      const model = this.env.AGENT_MODEL || DEFAULT_MODEL;
+      // One answer for both the attachment and the prompt, so they cannot disagree.
+      const seesImages = modelSeesImages(this.env, model, DEFAULT_MODEL);
       const transport = createTransport({
         accountId: this.env.AI_GATEWAY_ACCOUNT_ID,
         gatewayId: this.env.AI_GATEWAY_NAME,
         apiToken: this.env.AI_GATEWAY_API_TOKEN,
-        model: this.env.AGENT_MODEL || DEFAULT_MODEL,
+        model,
         tools: [...CSS_TOOLS, ...WEB_TOOLS],
       });
 
@@ -293,6 +300,7 @@ export class ChatAgent extends Agent<Env, AgentState> {
         followsTemplate: context.pendingPage
           ? false
           : await resolveFollowsTemplate(cssApi, context, this.followsTemplateByPath),
+        seesImages,
       });
       const userContent = contextNote ? `${contextNote}\n\n${message}` : message;
 
@@ -309,13 +317,36 @@ export class ChatAgent extends Agent<Env, AgentState> {
 
       // Sanitize on load — drops malformed/legacy entries persisted before the Workers AI
       // migration so old sessions self-heal instead of crashing.
-      const history = sanitizeHistory([...this.state.conversationHistory]);
+      // forProvider drops the attachment names we persist: they are for replaying the
+      // conversation, and a provider rejects properties it did not define.
+      const history: ChatMessage[] = forProvider(sanitizeHistory([...this.state.conversationHistory]));
       // Only this turn's own entries. They are appended to whatever is in state when the
       // turn ends, rather than rewriting a snapshot taken before it began — the model
       // streams for many seconds, and a clear or another tab's turn can commit meanwhile.
-      const newEntries: ChatMessage[] = [];
-      history.push({ role: 'user', content: userContent });
-      newEntries.push({ role: 'user', content: message });
+      const newEntries: StoredMessage[] = [];
+      // Images ride on the model-facing message only — `newEntries` is what gets persisted —
+      // so a screenshot is looked at once rather than re-sent on every later turn.
+      // The turn answers as though a dropped file had never been attached, so both causes are
+      // worth seeing — and apart, since only one of them means something is broken. Counted,
+      // never named: a filename is the user's own text.
+      const { attachments, invalid, overLimit } = readAttachments(context);
+      if (invalid > 0) {
+        getLogger().warn('attachments dropped before the turn', { count: invalid, reason: 'failed validation' });
+      }
+      if (overLimit > 0) {
+        getLogger().warn('attachments dropped before the turn', { count: overLimit, reason: 'over the per-turn limit' });
+      }
+      const images = seesImages ? imageParts(attachments) : [];
+      history.push(images.length > 0
+        ? { role: 'user', content: [{ type: 'text', text: userContent }, ...images] }
+        : { role: 'user', content: userContent });
+      // Names only: enough to show what a reopened turn carried, without keeping the file.
+      const names = attachmentNames(attachments);
+      newEntries.push({
+        role: 'user',
+        content: message,
+        ...(names.length > 0 ? { attachments: names } : {}),
+      });
 
       // Counted in Workers Logs: a fleet still on a client that sends no write set is otherwise
       // invisible, and every such turn silently narrows to the open document.

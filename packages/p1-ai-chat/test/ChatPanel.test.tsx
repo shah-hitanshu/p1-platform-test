@@ -371,6 +371,27 @@ describe('ChatPanel', () => {
     expect(transcript.scrollTop).toBe(500);
   });
 
+  it('reserves as much room in the composer as the buttons overlaying it need', async () => {
+    const observed: { el: Element; fire: () => void }[] = [];
+    vi.stubGlobal('ResizeObserver', class {
+      callback: () => void;
+      constructor(callback: () => void) { this.callback = callback; }
+      observe(el: Element) { observed.push({ el, fire: this.callback }); }
+      disconnect() {}
+    });
+
+    await renderPanel();
+    const actions = screen.getByTestId('composer-actions');
+    // happy-dom has no layout engine, so stand in for the width the row would report.
+    Object.defineProperty(actions, 'offsetWidth', { value: 92, configurable: true });
+
+    const entry = observed.find(o => o.el === actions);
+    expect(entry).toBeDefined();
+    act(() => { entry?.fire(); });
+
+    expect(composer().style.paddingRight).toBe('108px');
+  });
+
   it('refuses to send while no page is open', async () => {
     currentDocument = null;
     // No `getAgentId`, so the conversation id is derived — from the user and site only.

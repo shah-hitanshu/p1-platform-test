@@ -1,7 +1,9 @@
 import type {
+  AttachedFile,
   ChatMessage,
   MessageOrigin,
   MessagePart,
+  PendingAttachment,
   PendingPage,
   ToolCallStatus,
   RestoredMessage,
@@ -57,6 +59,8 @@ export interface ChatSessionState {
    * it; a page the user added themselves, or asked the agent to create, has no such expiry.
    */
   autoWritePath: string | null;
+  /** Files on the composer, waiting to go with the next turn. Emptied when one does. */
+  attachments: PendingAttachment[];
 }
 
 export const EMPTY_STATE: ChatSessionState = {
@@ -71,6 +75,7 @@ export const EMPTY_STATE: ChatSessionState = {
   writeSet: null,
   autoWritePath: null,
   scopeExpanded: false,
+  attachments: [],
 };
 
 /**
@@ -158,6 +163,57 @@ export function makeId(): string {
   return Math.random().toString(36).slice(2, 9);
 }
 
+/** Refusals carry nothing to a turn, so the file cap does not bound them. */
+const MAX_REFUSALS = 4;
+
+function trimRefusals(attachments: PendingAttachment[]): PendingAttachment[] {
+  const refused = attachments.filter(a => a.status === 'error');
+  if (refused.length <= MAX_REFUSALS) return attachments;
+  const stale = new Set(refused.slice(0, refused.length - MAX_REFUSALS).map(a => a.id));
+  return attachments.filter(a => !stale.has(a.id));
+}
+
+export function addAttachment(
+  state: ChatSessionState,
+  attachment: PendingAttachment,
+): ChatSessionState {
+  const attachments = [...state.attachments, attachment];
+  return {
+    ...state,
+    attachments: attachment.status === 'error' ? trimRefusals(attachments) : attachments,
+  };
+}
+
+/** Applied in place by id, so a slow file finishing after a later drop keeps its position. */
+export function resolveAttachment(
+  state: ChatSessionState,
+  id: string,
+  patch: Partial<PendingAttachment>,
+): ChatSessionState {
+  if (!state.attachments.some(a => a.id === id)) return state;
+  return {
+    ...state,
+    attachments: state.attachments.map(a => (a.id === id ? { ...a, ...patch } : a)),
+  };
+}
+
+export function removeAttachment(state: ChatSessionState, id: string): ChatSessionState {
+  if (!state.attachments.some(a => a.id === id)) return state;
+  return { ...state, attachments: state.attachments.filter(a => a.id !== id) };
+}
+
+/**
+ * Drop only the files this send took. A send that carried none — an editor-seeded draft, or a
+ * retry replaying an earlier turn's files — must leave the tray alone, or a staged brief is
+ * destroyed without ever having travelled.
+ */
+export function clearAttachments(state: ChatSessionState, ids: string[]): ChatSessionState {
+  if (ids.length === 0 || state.attachments.length === 0) return state;
+  const taken = new Set(ids);
+  const kept = state.attachments.filter(a => !taken.has(a.id));
+  return kept.length === state.attachments.length ? state : { ...state, attachments: kept };
+}
+
 /** Map a replayed turn into the UI message shape. Restored tool calls already ran, so 'done'. */
 function restoredToChatMessage(m: RestoredMessage): ChatMessage {
   const id = makeId();
@@ -177,9 +233,21 @@ function restoredToChatMessage(m: RestoredMessage): ChatMessage {
               },
         )
       : undefined;
+  // Rebuilt field by field rather than passed through: this crossed the network, and a
+  // `dataUrl` riding along on it would be rendered as the card's image.
+  const attachments: AttachedFile[] = Array.isArray(m.attachments)
+    ? m.attachments
+        .filter(
+          a =>
+            typeof a === 'object' && a !== null &&
+            (a.kind === 'image' || a.kind === 'document') &&
+            typeof a.filename === 'string' && a.filename !== '')
+        .map(a => ({ kind: a.kind, filename: a.filename }))
+    : [];
   return {
     id,
     role: m.role,
+    ...(attachments.length > 0 ? { attachments } : {}),
     content: m.content,
     ...(parts ? { parts } : {}),
     ...(toolCalls ? { toolCalls } : {}),
@@ -252,8 +320,9 @@ export function beginTurn(
   state: ChatSessionState,
   text: string,
   assistantId: string,
-  origin?: MessageOrigin,
+  meta?: { origin?: MessageOrigin; files?: AttachedFile[] },
 ): ChatSessionState {
+  const { origin, files } = meta ?? {};
   return {
     ...state,
     isLoading: true,
@@ -261,7 +330,13 @@ export function beginTurn(
     retry: null,
     messages: [
       ...state.messages,
-      { id: makeId(), role: 'user', content: text, ...(origin ? { origin } : {}) },
+      {
+        id: makeId(),
+        role: 'user',
+        content: text,
+        ...(files?.length ? { attachments: files } : {}),
+        ...(origin ? { origin } : {}),
+      },
       { id: assistantId, role: 'assistant', content: '', isStreaming: true },
     ],
   };

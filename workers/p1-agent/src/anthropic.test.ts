@@ -233,3 +233,48 @@ describe('fromAnthropicResponse', () => {
     });
   });
 });
+
+describe('images through the Anthropic transport', () => {
+  const png = 'data:image/png;base64,iVBORw0KGgo=';
+
+  // Routing user content through coerceText kept only `.text`, so an attached image vanished
+  // between the agent and the provider — no error, and a prompt still saying to look at it.
+  it('carries an attached image across as a base64 block', () => {
+    const messages = toAnthropicMessages([
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: 'what is wrong with this layout?' },
+          { type: 'image_url', image_url: { url: png } },
+        ],
+      },
+    ]);
+
+    expect(messages[0].content).toEqual([
+      { type: 'text', text: 'what is wrong with this layout?' },
+      { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'iVBORw0KGgo=' } },
+    ]);
+  });
+
+  // Anthropic rejects the whole request over one unsupported type, which would lose the
+  // message as well as the image.
+  it('leaves out a media type Anthropic does not take, keeping the message', () => {
+    const messages = toAnthropicMessages([
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: 'and this one?' },
+          { type: 'image_url', image_url: { url: 'data:image/avif;base64,AAAA' } },
+        ],
+      },
+    ]);
+
+    expect(messages[0].content).toEqual([{ type: 'text', text: 'and this one?' }]);
+  });
+
+  it('still handles a plain string turn', () => {
+    const messages = toAnthropicMessages([{ role: 'user', content: 'just text' }]);
+
+    expect(messages[0].content).toEqual([{ type: 'text', text: 'just text' }]);
+  });
+});

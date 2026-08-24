@@ -1,10 +1,26 @@
-import type { ChatContext, SendMessageOptions, ServerMessage } from './types.js';
+import type {
+  ChatContext,
+  PendingAttachment,
+  SendMessageOptions,
+  ServerMessage,
+} from './types.js';
+import {
+  AttachmentError,
+  MAX_ATTACHMENTS,
+  NO_IMAGE_DECODER,
+  checkAttachment,
+  isHtmlFile,
+  truncateBrief,
+} from './attachments.js';
+import { htmlToText } from './htmlBrief.js';
 import {
   EMPTY_STATE,
   makeId,
+  addAttachment,
   addToWriteSet,
   appendToken,
   beginTurn,
+  clearAttachments,
   clearTranscript,
   dropLastExchange,
   completeToolCall,
@@ -15,7 +31,9 @@ import {
   markReady,
   markReconnecting,
   normalizeDocumentPath,
+  removeAttachment,
   removeFromWriteSet,
+  resolveAttachment,
   restoreHistory,
   visitPage,
   setDraft,
@@ -79,6 +97,8 @@ interface ChatSession {
   lastSend: RetryTarget | null;
   /** Set by the currently-attached view. Called when the agent creates a page. */
   onPageCreated: ((path: string) => void) | null;
+  /** Injected by the view, so the conversation store touches no browser imaging API. */
+  prepareImage: ((file: File) => Promise<string>) | null;
 }
 
 const sessions = new Map<string, ChatSession>();
@@ -114,6 +134,7 @@ function getOrCreate(agentId: string, agentUrl: string): ChatSession {
       reconnectAttempts: 0,
       lastSend: null,
       onPageCreated: null,
+      prepareImage: null,
     };
     sessions.set(agentId, session);
   }
@@ -437,6 +458,63 @@ async function connect(session: ChatSession): Promise<WebSocket> {
   }
 }
 
+/**
+ * Take files the user dropped or picked. A refused file gets an entry too: one that vanished on
+ * drop reads as a bug, and the composer will not send while a refusal is on it.
+ */
+function sessionAttachFiles(session: ChatSession, files: File[]): void {
+  for (const file of files) {
+    const id = makeId();
+    const verdict = checkAttachment(file);
+    // Only files that will travel count: counting refusals tells someone looking at three
+    // files that they already have four.
+    const carried = session.state.attachments.filter(a => a.status !== 'error').length;
+    const full = carried >= MAX_ATTACHMENTS;
+    const refusal = full
+      ? `Only ${String(MAX_ATTACHMENTS)} files can be attached at a time.`
+      : verdict.kind === 'rejected' ? verdict.reason : null;
+    const kind = verdict.kind === 'image' ? 'image' : 'document';
+
+    if (refusal !== null) {
+      update(session, addAttachment(session.state, {
+        id, kind, filename: file.name, status: 'error', error: refusal,
+      }));
+      continue;
+    }
+
+    const pending: PendingAttachment = { id, kind, filename: file.name, status: 'pending' };
+    update(session, addAttachment(session.state, pending));
+    // Not awaited as a batch: a slow image must not hold up the brief dropped with it.
+    void settleAttachment(session, id, file, kind);
+  }
+}
+
+async function settleAttachment(
+  session: ChatSession,
+  id: string,
+  file: File,
+  kind: 'document' | 'image',
+): Promise<void> {
+  try {
+    if (kind === 'document') {
+      const raw = await file.text();
+      // Converted before truncating, so the cap counts what the agent reads, not markup.
+      const { text, truncated } = truncateBrief(isHtmlFile(file) ? htmlToText(raw) : raw);
+      if (text.trim() === '') throw new AttachmentError('This file has no text in it.');
+      update(session, resolveAttachment(session.state, id, { status: 'ready', text, truncated }));
+      return;
+    }
+    const prepare = session.prepareImage;
+    if (!prepare) throw new AttachmentError(NO_IMAGE_DECODER);
+    const dataUrl = await prepare(file);
+    update(session, resolveAttachment(session.state, id, { status: 'ready', dataUrl }));
+  } catch (err) {
+    // Only a message we wrote is shown to the user; anything else gets one of ours.
+    const error = err instanceof AttachmentError ? err.message : 'This file could not be attached.';
+    update(session, resolveAttachment(session.state, id, { status: 'error', error }));
+  }
+}
+
 /** A send failure whose message is safe to show the user as-is. */
 class SendFailureError extends Error {}
 
@@ -460,7 +538,17 @@ async function sessionSendMessage(
     : session.state;
   // Set before anything can fail, so failure paths can offer this turn for retry.
   session.lastSend = { text: trimmed, ...(opts ? { opts } : {}) };
-  update(session, beginTurn(withPendingPage, trimmed, assistantId, opts?.origin));
+  const attachments = opts?.attachments ?? [];
+  // Emptied in the same update that sends them; a retry resends from `lastSend`.
+  update(session, clearAttachments(beginTurn(withPendingPage, trimmed, assistantId, {
+    ...(opts?.origin ? { origin: opts.origin } : {}),
+    // The file itself, so the turn can show what it sent. Lives as long as the session: only
+    // the names are persisted, so a replayed turn gets them back without the file.
+    files: attachments.map(a =>
+      a.kind === 'image'
+        ? { kind: a.kind, filename: a.filename, dataUrl: a.dataUrl }
+        : { kind: a.kind, filename: a.filename, text: a.text }),
+  }), opts?.attachmentIds ?? []));
   // Before the awaits, not after the send: neither `connect` nor `getContext` has a timeout.
   touchTurn(session);
 
@@ -483,6 +571,7 @@ async function sessionSendMessage(
       ...baseContext,
       ...(opts?.documentPath != null ? { documentPath: opts.documentPath } : {}),
       ...(opts?.newPage ? { newPage: true } : {}),
+      ...(attachments.length > 0 ? { attachments } : {}),
       ...(session.state.pendingPage ? { pendingPage: session.state.pendingPage } : {}),
       // Absent rather than [] while unseeded: [] reads as "edit nothing" on the first turn.
       ...(session.state.writeSet !== null
@@ -578,6 +667,16 @@ export interface ChatSessionHandle {
   addWritablePage: (path: string) => void;
   /** Take a page back from the agent. */
   removeWritablePage: (path: string) => void;
+  attachFiles: (files: File[]) => void;
+  removeAttachment: (id: string) => void;
+}
+
+/** What the mounted view lends the session: fresh context, and its reach into the editor. */
+export interface ChatSessionHooks {
+  getContext: () => ChatContext | Promise<ChatContext>;
+  /** Called with the path of a page the agent created during a turn. */
+  onPageCreated?: (path: string) => void;
+  prepareImage?: (file: File) => Promise<string>;
 }
 
 /**
@@ -587,8 +686,7 @@ export interface ChatSessionHandle {
 export function acquireChatSession(
   agentId: string,
   agentUrl: string,
-  getContext: () => ChatContext | Promise<ChatContext>,
-  onPageCreated?: (path: string) => void,
+  hooks: ChatSessionHooks,
 ): ChatSessionHandle {
   // Re-resolves through the map rather than closing over the session object, because a handle
   // outlives the session when reaping deletes the entry. Capturing it would send into an
@@ -596,8 +694,9 @@ export function acquireChatSession(
   const resolve = (): ChatSession => {
     const session = getOrCreate(agentId, agentUrl);
     // Repoint at the mounted view's fresh auth/ids, including after a reap recreated this.
-    session.getContext = getContext;
-    session.onPageCreated = onPageCreated ?? null;
+    session.getContext = hooks.getContext;
+    session.onPageCreated = hooks.onPageCreated ?? null;
+    session.prepareImage = hooks.prepareImage ?? null;
     return session;
   };
 
@@ -646,6 +745,11 @@ export function acquireChatSession(
     removeWritablePage: (path: string) => {
       const session = resolve();
       update(session, removeFromWriteSet(session.state, path));
+    },
+    attachFiles: (files: File[]) => sessionAttachFiles(resolve(), files),
+    removeAttachment: (id: string) => {
+      const session = resolve();
+      update(session, removeAttachment(session.state, id));
     },
   };
 }

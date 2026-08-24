@@ -39,6 +39,9 @@
     // -> /chat/completions (automatic prompt caching). Providers bill through the
     // gateway's unified billing — no per-provider key needed.
     "AGENT_MODEL": "@cf/moonshotai/kimi-k2.7-code",
+    // Whether AGENT_MODEL can be shown an image — change it whenever AGENT_MODEL changes.
+    // Set "false" and attachments still arrive by name, with the prompt saying so.
+    "AGENT_MODEL_VISION": "true",
     // Local dev: the media worker now lives in this repo (workers/p1-media, dev port 8788)
     "MEDIA_WORKER_URL": "http://localhost:8788"
   },
@@ -53,6 +56,7 @@
         "AI_GATEWAY_ACCOUNT_ID": "69bc76f4866aaaa3400ea7fbbd9d7da2",
         "AI_GATEWAY_NAME": "p1-chatbot",
         "AGENT_MODEL": "@cf/moonshotai/kimi-k2.7-code",
+        "AGENT_MODEL_VISION": "true",
         "MEDIA_WORKER_URL": "https://p1-media-worker-staging.pantheon-content-publisher.workers.dev"
       },
       "durable_objects": {

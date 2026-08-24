@@ -13,6 +13,51 @@ export interface SelectedBlock {
   itemCount?: number;
 }
 
+/** A file the user attached, in the shape it travels to the agent in. */
+export type Attachment =
+  | {
+      kind: 'document';
+      filename: string;
+      /** The file's text, which the agent reads as the brief for this turn. */
+      text: string;
+    }
+  | {
+      kind: 'image';
+      filename: string;
+      /** Inline rather than a link: the gateway refuses to fetch an image for us. */
+      dataUrl: string;
+    };
+
+/**
+ * A file named on a turn in the transcript. `dataUrl`/`text` are present only for a turn sent
+ * in this session: the agent stores what a turn's files were called and never the files, so a
+ * replayed turn has the name and nothing to open.
+ */
+export interface AttachedFile {
+  kind: Attachment['kind'];
+  filename: string;
+  dataUrl?: string;
+  text?: string;
+}
+
+/**
+ * A file on the composer, from the moment it is dropped until it leaves with a turn. Held in
+ * session state, not the panel's, because reading a file has to survive a Puck remount.
+ */
+export interface PendingAttachment {
+  id: string;
+  kind: Attachment['kind'];
+  filename: string;
+  /** Only 'ready' entries travel with a turn. */
+  status: 'pending' | 'ready' | 'error';
+  text?: string;
+  dataUrl?: string;
+  /** Why the file cannot be used. Shown to the user as written. */
+  error?: string;
+  /** The brief was longer than a turn can carry, so only its first part is here. */
+  truncated?: boolean;
+}
+
 export interface ChatContext {
   siteId: string;
   branchId: string;
@@ -21,6 +66,8 @@ export interface ChatContext {
   token: string;
   /** The block selected in the canvas. Context only: it grants nothing. */
   selectedBlock?: SelectedBlock;
+  /** Files the user attached to this turn. Not carried forward to later ones. */
+  attachments?: Attachment[];
   /**
    * The pages this turn may change; reads are not restricted by it. The Worker enforces it, which
    * is what makes the panel header's "Editing:" list true rather than decorative.
@@ -87,6 +134,8 @@ export interface ChatMessage {
   toolCalls?: ToolCallStatus[];
   error?: string;
   isStreaming?: boolean;
+  /** Files sent with this turn, named so the transcript shows what the agent was given. */
+  attachments?: AttachedFile[];
   /** Set when the editor seeded this turn instead of the user typing it. */
   origin?: MessageOrigin;
   /**
@@ -190,6 +239,11 @@ export interface RestoredToolCall {
 /** Per-turn overrides for a programmatic send. */
 export interface SendMessageOptions {
   /**
+   * Which staged files {@link attachments} came from, so the send empties those and only those.
+   * A resend replays the originals, whose ids no longer match anything staged.
+   */
+  attachmentIds?: string[];
+  /**
    * Override the turn's `documentPath` so the agent edits this page instead of the
    * sidebar's currently-open document. Used to draft into a just-created page.
    */
@@ -210,6 +264,11 @@ export interface SendMessageOptions {
    * the turn it describes.
    */
   origin?: MessageOrigin;
+  /**
+   * Passed explicitly rather than read off state: sending clears the composer, so a retry
+   * resends from here.
+   */
+  attachments?: Attachment[];
 }
 
 /**
@@ -225,6 +284,8 @@ export type RestoredPart =
 export interface RestoredMessage {
   role: 'user' | 'assistant';
   content: string;
+  /** What this turn's files were called. Names only: no file is stored, so none comes back. */
+  attachments?: { kind: Attachment['kind']; filename: string }[];
   /** Ordered parts. Canonical when present; absent from a Worker predating them. */
   parts?: RestoredPart[];
   /** Flat call list, used when `parts` is absent. */

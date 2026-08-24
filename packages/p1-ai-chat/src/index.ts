@@ -5,6 +5,8 @@ import type { AIChatPluginOptions } from './types.js';
 
 export type {
   AIChatPluginOptions,
+  AttachedFile,
+  Attachment,
   ChatMessage,
   MessagePart,
   TextPart,

@@ -1,6 +1,12 @@
 import { useRef, useCallback, useMemo, useSyncExternalStore } from 'react';
-import type { ChatMessage, ChatContext, SendMessageOptions } from './types.js';
+import type {
+  ChatMessage,
+  ChatContext,
+  PendingAttachment,
+  SendMessageOptions,
+} from './types.js';
 import { acquireChatSession } from './chatSession.js';
+import { AttachmentError, NO_IMAGE_DECODER, attachmentBlocker, readyAttachments } from './attachments.js';
 
 export interface UseAgentChatOptions {
   agentUrl: string;
@@ -9,6 +15,8 @@ export interface UseAgentChatOptions {
   getContext: () => ChatContext | Promise<ChatContext>;
   /** Called with the path of a page the agent created during a turn. */
   onPageCreated?: (path: string) => void;
+  /** Decodes an attached image for sending. Without it, images cannot be attached. */
+  prepareImage?: (file: File) => Promise<string>;
 }
 
 export interface UseAgentChatReturn {
@@ -47,6 +55,10 @@ export interface UseAgentChatReturn {
   addWritablePage: (path: string) => void;
   /** Take a page back from the agent. */
   removeWritablePage: (path: string) => void;
+  attachments: PendingAttachment[];
+  attachFiles: (files: File[]) => void;
+  /** Take a file back off the composer, or dismiss one that was refused. */
+  removeAttachment: (id: string) => void;
   clearMessages: () => void;
   /** Stop the turn in flight, keeping whatever it already streamed. */
   stop: () => void;
@@ -64,6 +76,7 @@ export function useAgentChat({
   agentId,
   getContext,
   onPageCreated,
+  prepareImage,
 }: UseAgentChatOptions): UseAgentChatReturn {
   // Auth and ids get a new closure identity every render, but the conversation they
   // describe doesn't — read them through a ref so the session isn't re-acquired.
@@ -71,17 +84,22 @@ export function useAgentChat({
   getContextRef.current = getContext;
   const onPageCreatedRef = useRef(onPageCreated);
   onPageCreatedRef.current = onPageCreated;
+  const prepareImageRef = useRef(prepareImage);
+  prepareImageRef.current = prepareImage;
 
   // One handle per conversation scope. Memoizing it keeps subscribe/getState
   // referentially stable, which is what stops useSyncExternalStore resubscribing
   // (and tearing down the socket) on every render.
   const session = useMemo(
-    () => acquireChatSession(
-      agentId,
-      agentUrl,
-      () => getContextRef.current(),
-      path => onPageCreatedRef.current?.(path),
-    ),
+    () => acquireChatSession(agentId, agentUrl, {
+      getContext: () => getContextRef.current(),
+      onPageCreated: path => onPageCreatedRef.current?.(path),
+      prepareImage: file => {
+        const prepare = prepareImageRef.current;
+        if (!prepare) throw new AttachmentError(NO_IMAGE_DECODER);
+        return prepare(file);
+      },
+    }),
     [agentId, agentUrl],
   );
 
@@ -90,9 +108,17 @@ export function useAgentChat({
   const submit = useCallback(async () => {
     const text = state.draft.trim();
     if (!text || state.isLoading) return;
+    // A file still being read, or one that was refused, holds the turn back here rather than
+    // only in the composer: sending would drop it and read as a message that carried it.
+    if (attachmentBlocker(state.attachments) !== null) return;
+    const attachments = readyAttachments(state.attachments);
+    const attachmentIds = state.attachments.map(a => a.id);
     session.setDraft('');
-    await session.sendMessage(text);
-  }, [state.draft, state.isLoading, session]);
+    await session.sendMessage(
+      text,
+      attachments.length > 0 ? { attachments, attachmentIds } : undefined,
+    );
+  }, [state.draft, state.isLoading, state.attachments, session]);
 
   const clearMessages = useCallback(() => {
     void session.clearMessages();
@@ -120,6 +146,9 @@ export function useAgentChat({
     setScopeExpanded: session.setScopeExpanded,
     addWritablePage: session.addWritablePage,
     removeWritablePage: session.removeWritablePage,
+    attachments: state.attachments,
+    attachFiles: session.attachFiles,
+    removeAttachment: session.removeAttachment,
     clearMessages,
     stop: session.stop,
     retry,

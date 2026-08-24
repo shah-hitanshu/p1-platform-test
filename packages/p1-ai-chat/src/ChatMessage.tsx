@@ -1,7 +1,8 @@
 import React from 'react';
 import { Badge, Icon, UtilityButton } from '@pantheon-systems/pds-toolkit-react';
 import { visuallyHidden } from './a11y.js';
-import type { ChatMessage as ChatMessageType, MessageOrigin } from './types.js';
+import { cardStyle, FileCardFace } from './fileCard.js';
+import type { AttachedFile, ChatMessage as ChatMessageType, MessageOrigin } from './types.js';
 import { messageParts, turnBlocks, isAwaitingModel, type TurnBlock } from './messageParts.js';
 import { ToolGroup, ThinkingLine } from './ToolGroup.js';
 import { MarkdownText } from './MarkdownText.js';
@@ -14,13 +15,15 @@ interface Props {
    * retrying can't fork the conversation from the middle.
    */
   onRetry?: () => void;
+  /** Show a file this turn sent. The panel owns the space to show it in. */
+  onOpenFile?: (file: AttachedFile) => void;
 }
 
 /**
  * One turn of the conversation. Memoized because rendering a turn re-parses its markdown,
  * and the panel re-renders on every streamed token and every keystroke.
  */
-function UnmemoizedChatMessage({ message, onRetry }: Props): React.ReactElement {
+function UnmemoizedChatMessage({ message, onRetry, onOpenFile }: Props): React.ReactElement {
   const isUser = message.role === 'user';
   const blocks = turnBlocks(messageParts(message));
 
@@ -43,6 +46,10 @@ function UnmemoizedChatMessage({ message, onRetry }: Props): React.ReactElement 
       <span style={visuallyHidden}>{isUser ? 'You said' : 'AI said'}</span>
 
       {message.origin && <OriginCaption origin={message.origin} />}
+
+      {message.attachments && message.attachments.length > 0 && (
+        <AttachedFiles files={message.attachments} onOpen={onOpenFile} />
+      )}
 
       {/* Prose and step runs in the order they happened, so a call renders where it was made
           instead of moving once it finishes. */}
@@ -108,6 +115,59 @@ function OriginCaption({ origin }: { origin: MessageOrigin }): React.ReactElemen
       {/* Clipped at the end, not the start: this says where the page lands, so the leading
           segments matter more than the slug. */}
       <div style={oneLine}>{path}</div>
+    </div>
+  );
+}
+
+function AttachedFileCard({
+  file,
+  onOpen,
+}: {
+  file: AttachedFile;
+  onOpen?: (file: AttachedFile) => void;
+}): React.ReactElement {
+  // A turn replayed from history carries names only, so its cards have nothing to open.
+  if (file.dataUrl === undefined && file.text === undefined) {
+    return (
+      <div style={{ ...cardStyle, opacity: 0.75 }} title={`${file.filename} — not kept`}>
+        <FileCardFace kind={file.kind} filename={file.filename} />
+      </div>
+    );
+  }
+  return (
+    <button
+      type="button"
+      style={{ ...cardStyle, padding: 0, cursor: 'pointer' }}
+      aria-label={`Open ${file.filename}`}
+      title={file.filename}
+      onClick={() => onOpen?.(file)}
+    >
+      <FileCardFace kind={file.kind} filename={file.filename} dataUrl={file.dataUrl} />
+    </button>
+  );
+}
+
+/**
+ * The files that went with a turn. A brief's text goes to the model, not into the message, so
+ * without this a turn shows no sign it carried one.
+ */
+function AttachedFiles({
+  files,
+  onOpen,
+}: {
+  files: AttachedFile[];
+  onOpen?: (file: AttachedFile) => void;
+}): React.ReactElement {
+  return (
+    <div style={{
+      display: 'flex',
+      flexWrap: 'wrap',
+      justifyContent: 'flex-end',
+      gap: 6,
+      maxWidth: '100%',
+    }}>
+      {/* Keyed by position: two pasted screenshots can genuinely share a name. */}
+      {files.map((file, i) => <AttachedFileCard key={i} file={file} onOpen={onOpen} />)}
     </div>
   );
 }

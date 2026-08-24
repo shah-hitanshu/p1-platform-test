@@ -1,4 +1,11 @@
-import { pendingPageOf, selectedBlockOf, type ChatContext, type SelectedBlock } from './types.js';
+import {
+  attachmentsOf,
+  pendingPageOf,
+  selectedBlockOf,
+  type Attachment,
+  type ChatContext,
+  type SelectedBlock,
+} from './types.js';
 import { writableDocuments } from './scope.js';
 
 // The agent's system prompt. Kept in its own module (no Workers-runtime imports) so it
@@ -27,6 +34,17 @@ Every context block states the selection, so you are always told and never have 
 The first line names it as the user sees it: the editor's own name for the block, and a little of what it says. That is what you call it too — never its component type, and never the refs on the line below. Those refs are tool arguments; work from the id when you act on it, since paths shift as blocks are added and removed, and confirm it with \`get_document\` first.
 
 A selection is context, not an instruction. It says what the user is looking at, not that they want it changed: a request about the page as a whole is still about the page. Nothing about a selection widens what you may edit — the write set still decides that.
+
+## Files the user attached
+A message can arrive with files, listed at the end of its context block.
+
+A document is the brief for that message. Read it as what the user is asking for, and read anything they typed alongside it as what to do with it — a one-line message next to a long brief is direction, not the whole request.
+
+An image is attached for you to look at — a screenshot of a layout, a design to work from, a photo to describe. Answer from what is actually in it rather than asking the user to describe it back to you.
+
+An attached image is not on the site. It is not in the media library and has no address you can put on a page, so never invent one: if the user wants it on the page, tell them to add it to the media library first. Images that are already on the site are a separate matter, and \`list_media\` finds those.
+
+Files belong to the message they came with and are not repeated on later turns, so work from them while you have them. Attaching a file grants nothing: the write set still decides which pages you may change.
 
 ## Default scope
 Apply requests to the current document in the editor context unless the user names a different page. A page they name is one you may need to read; you can edit it only if it is in your write set.
@@ -174,10 +192,47 @@ function describe(selected: SelectedBlock): string {
   return `${selected.label} — "${selected.preview}"`;
 }
 
+/**
+ * A fence the brief cannot contain, grown a quote at a time like a markdown code fence. A brief
+ * holding `"""` would otherwise close the quotation early and have its remainder read as more of
+ * our own context lines. Grown rather than escaped so the brief still reaches the model verbatim.
+ */
+function fenceFor(text: string): string {
+  let fence = '"""';
+  while (text.includes(fence)) fence += '"';
+  return fence;
+}
+
+/**
+ * The attached files, last in the block so a long brief cannot push the ids and the write set
+ * out of sight. Fenced so a brief reads as the user's words rather than as more of ours.
+ */
+function attachmentLines(attachments: Attachment[], seesImages: boolean): string[] {
+  if (attachments.length === 0) return [];
+  const lines = ['', 'Files attached to this message:'];
+  for (const attachment of attachments) {
+    if (attachment.kind === 'image') {
+      // Follows whether the image is really on the message. The image itself rides there as a
+      // content part, so this only names it.
+      lines.push(seesImages
+        ? `Image "${attachment.filename}", attached to this message for you to look at`
+        : `Image "${attachment.filename}" — the user attached it, but this model cannot be shown images, so you have not seen it. Say so plainly and ask them to describe it or paste the text, rather than guessing what it contains.`);
+    } else {
+      const fence = fenceFor(attachment.text);
+      lines.push(`Document "${attachment.filename}":`, fence, attachment.text, fence);
+    }
+  }
+  return lines;
+}
+
 export function buildContextNote(
   context: ChatContext,
-  options?: { followsTemplate?: boolean },
+  options?: { followsTemplate?: boolean; seesImages?: boolean },
 ): string {
+  // Defaults to the answer that cannot mislead: a caller that says nothing gets a note that
+  // makes no claim about an image having been seen.
+  const seesImages = options?.seesImages ?? false;
+  const attachments = attachmentsOf(context);
   const pendingPage = pendingPageOf(context);
   const lines: string[] = [contextHeader(context, pendingPage !== null)];
   if (context.siteId) lines.push(`Site ID: ${context.siteId}`);
@@ -216,7 +271,7 @@ export function buildContextNote(
         : 'Pass a title drawn from the brief as root_props.title when you create the page.',
       ...WRITE_META_DESCRIPTION,
     );
-    return lines.join('\n');
+    return [...lines, ...attachmentLines(attachments, seesImages)].join('\n');
   }
 
   if (context.newPage) {
@@ -249,5 +304,6 @@ export function buildContextNote(
   if (options?.followsTemplate === true && !context.newPage) {
     lines.push('This page follows a page template.', ...TEMPLATE_FILL_CONTRACT);
   }
+  lines.push(...attachmentLines(attachments, seesImages));
   return lines.length > 1 ? lines.join('\n') : '';
 }

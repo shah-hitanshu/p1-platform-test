@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { parseDataUrl } from './vision.js';
 import { type RawTool } from './tool-defs.js';
 import { restApiBase, fetchOption } from './gateway.js';
 import type {
@@ -38,6 +39,49 @@ function coerceText(content: unknown): string {
   return content == null ? '' : String(content);
 }
 
+/** Narrower than the OpenAI endpoint's list: AVIF is absent. */
+const ANTHROPIC_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'] as const;
+
+function anthropicImageType(value: string): (typeof ANTHROPIC_IMAGE_TYPES)[number] | null {
+  return ANTHROPIC_IMAGE_TYPES.find(type => type === value) ?? null;
+}
+
+/**
+ * A user message's blocks. `coerceText` keeps only `.text`, so routing user content through it
+ * dropped an attached image silently, prompt included.
+ */
+function userBlocks(content: unknown): Anthropic.ContentBlockParam[] {
+  if (!Array.isArray(content)) return [{ type: 'text', text: coerceText(content) }];
+
+  const blocks: Anthropic.ContentBlockParam[] = [];
+  for (const part of content) {
+    if (part === null || typeof part !== 'object') continue;
+    const { type } = part as { type?: unknown };
+    if (type === 'text') {
+      const { text } = part as { text?: unknown };
+      if (typeof text === 'string' && text !== '') blocks.push({ type: 'text', text });
+      continue;
+    }
+    if (type !== 'image_url') continue;
+    const { image_url: imageUrl } = part as { image_url?: { url?: unknown } };
+    if (typeof imageUrl?.url !== 'string') continue;
+    const parsed = parseDataUrl(imageUrl.url);
+    if (parsed === null) continue;
+    // Skipped, not passed through: one unsupported media type fails the whole request, which
+    // would lose the message with the image.
+    const mediaType = anthropicImageType(parsed.mediaType);
+    if (mediaType === null) continue;
+    blocks.push({
+      type: 'image',
+      source: { type: 'base64', media_type: mediaType, data: parsed.data },
+    });
+  }
+
+  // Content we recognised nothing in still travels as its text: Anthropic rejects a message
+  // with no blocks at all, which would lose the turn rather than the part we could not read.
+  return blocks.length > 0 ? blocks : [{ type: 'text', text: coerceText(content) }];
+}
+
 type Intermediate = { role: 'user' | 'assistant'; content: Anthropic.ContentBlockParam[] };
 
 /**
@@ -54,7 +98,7 @@ export function toAnthropicMessages(history: ChatMessage[]): Anthropic.MessagePa
   for (const msg of history) {
     switch (msg.role) {
       case 'user':
-        intermediates.push({ role: 'user', content: [{ type: 'text', text: coerceText(msg.content) }] });
+        intermediates.push({ role: 'user', content: userBlocks(msg.content) });
         break;
       case 'assistant': {
         const blocks: Anthropic.ContentBlockParam[] = [];

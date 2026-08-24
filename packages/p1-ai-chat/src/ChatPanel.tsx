@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useCallback, useMemo } from 'react';
+import React, { useRef, useEffect, useCallback, useMemo, useState } from 'react';
 import { Icon, IconButton, Textarea } from '@pantheon-systems/pds-toolkit-react';
 import { useP1Puck, useP1Auth } from '@pantheon-systems/puck-css';
 import { ChatPanelHeader } from './ChatPanelHeader.js';
@@ -8,9 +8,15 @@ import { useDraftRequest } from './useDraftRequest.js';
 import { useSelectedBlock } from './useSelectedBlock.js';
 import { toolCallLabel } from './toolLabels.js';
 import { activeStep } from './messageParts.js';
+import { AttachmentTray } from './AttachmentTray.js';
+import { AttachButton } from './AttachButton.js';
+import { DropOverlay } from './DropOverlay.js';
+import { AttachmentModal } from './AttachmentModal.js';
+import { attachmentBlocker, clipboardFiles, toAttachedFile } from './attachments.js';
+import { downscaleImage } from './downscaleImage.js';
 import { ChatMessage } from './ChatMessage.js';
 import { visuallyHidden } from './a11y.js';
-import type { AIChatPluginOptions, DraftRequest } from './types.js';
+import type { AIChatPluginOptions, AttachedFile, DraftRequest } from './types.js';
 
 interface Props {
   options: AIChatPluginOptions;
@@ -96,18 +102,22 @@ export function ChatPanel({ options }: Props): React.ReactElement {
     messages, input, setInput, submit, sendMessage, isLoading, ready,
     reconnecting, historyLoaded, canRetry, clearMessages, stop, retry, awaitingNewPage,
     writeSet, visitPage, addWritablePage, removeWritablePage,
-    scopeExpanded, setScopeExpanded,
+    scopeExpanded, setScopeExpanded, attachments, attachFiles, removeAttachment,
   } = useAgentChat({
     agentUrl: options.agentUrl,
     agentId,
     getContext,
     onPageCreated: options.onPageCreated,
+    prepareImage: downscaleImage,
   });
 
   // A turn needs somewhere to write. Usually that is the open document, but a conversation
   // waiting on a page it asked for is about to create one — and the answer it is waiting for
   // ("yes, use that template") has to be typeable with nothing open.
   const canSend = currentDocument !== null || awaitingNewPage;
+  // Sending over a file still arriving, or one refused, delivers a message the user believes
+  // carries their brief.
+  const attachmentHold = attachmentBlocker(attachments);
 
   const currentPath = currentDocument?.path ?? null;
 
@@ -220,12 +230,12 @@ export function ChatPanel({ options }: Props): React.ReactElement {
   // something, your own new message would otherwise land off-screen.
   const submitAndStick = useCallback(() => {
     // `submit()` would bail, leaving the flag latched with no turn to clear it.
-    if (!input.trim() || !canSend) return;
+    if (!input.trim() || !canSend || attachmentHold !== null) return;
     stickToBottomRef.current = true;
     // Only a send typed here earns the focus back when the turn ends (see below).
     awaitingOwnReplyRef.current = true;
     void submit();
-  }, [input, submit, canSend]);
+  }, [input, submit, canSend, attachmentHold]);
 
   // Return focus to the composer when a turn the user started here finishes, so they can
   // keep typing. Gated on having sent from this box: the effect also runs on mount and
@@ -236,6 +246,30 @@ export function ChatPanel({ options }: Props): React.ReactElement {
     awaitingOwnReplyRef.current = false;
     textareaRef.current?.focus();
   }, [isLoading]);
+
+  const { isDragging, dropProps } = useFileDrop(attachFiles);
+  const [openFile, setOpenFile] = useState<AttachedFile | null>(null);
+
+  const actionsRef = useRef<HTMLDivElement>(null);
+  const [actionsWidth, setActionsWidth] = useState(COMPOSER_ACTIONS_WIDTH);
+  useEffect(() => {
+    const row = actionsRef.current;
+    if (!row || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => {
+      // A hidden panel measures 0, which would reserve nothing at all.
+      if (row.offsetWidth > 0) setActionsWidth(row.offsetWidth);
+    });
+    observer.observe(row);
+    return () => observer.disconnect();
+  }, []);
+
+  const handlePaste = useCallback((e: React.ClipboardEvent): void => {
+    const files = clipboardFiles(e.clipboardData);
+    if (files.length === 0) return;
+    // Only once there is a file to take: a paste carrying text as well would otherwise lose it.
+    e.preventDefault();
+    attachFiles(files);
+  }, [attachFiles]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>): void => {
     if (e.key !== 'Enter' || e.shiftKey) return;
@@ -248,15 +282,24 @@ export function ChatPanel({ options }: Props): React.ReactElement {
   };
 
   return (
-    <div style={{
-      display: 'flex',
-      flexDirection: 'column',
-      // minHeight lets the transcript scroll instead of stretching this past the rail.
-      flex: 1,
-      minHeight: 0,
-      // Containing block for the visually-hidden status region below.
-      position: 'relative',
-    }}>
+    <div
+      // The whole panel is the target, not just the composer: a file gets aimed at the rail,
+      // and a miss navigates the editor away to the dropped file.
+      {...dropProps}
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        // minHeight lets the transcript scroll instead of stretching this past the rail.
+        flex: 1,
+        minHeight: 0,
+        // Containing block for the visually-hidden status region below.
+        position: 'relative',
+      }}
+    >
+      {isDragging && <DropOverlay />}
+      {openFile !== null && (
+        <AttachmentModal file={openFile} onClose={() => setOpenFile(null)} />
+      )}
       <ChatPanelHeader
         canClear={messages.length > 0}
         onClear={handleClear}
@@ -297,6 +340,7 @@ export function ChatPanel({ options }: Props): React.ReactElement {
             // Only the newest turn can be retried, so a resend can't fork the
             // conversation from the middle of the transcript.
             onRetry={canRetry && i === messages.length - 1 ? retry : undefined}
+            onOpenFile={setOpenFile}
           />
         ))}
       </div>
@@ -312,11 +356,21 @@ export function ChatPanel({ options }: Props): React.ReactElement {
       </div>
 
       {/* Input */}
-      <div style={{
-        padding: '12px 16px',
-        borderTop: '1px solid var(--pds-color-border-default)',
-        flexShrink: 0,
-      }}>
+      <div
+        style={{
+          padding: '12px 16px',
+          borderTop: '1px solid var(--pds-color-border-default)',
+          flexShrink: 0,
+        }}
+        data-testid="chat-composer"
+        // Paste bubbles here from the textarea, where it is actually made.
+        onPaste={handlePaste}
+      >
+        <AttachmentTray
+          attachments={attachments}
+          onRemove={removeAttachment}
+          onOpen={attachment => setOpenFile(toAttachedFile(attachment))}
+        />
         <div style={{ position: 'relative' }}>
           <Textarea
             id="ai-chat-input"
@@ -327,8 +381,7 @@ export function ChatPanel({ options }: Props): React.ReactElement {
             onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setInput(e.target.value)}
             textareaProps={{
               onKeyDown: handleKeyDown,
-              // Keeps typed text clear of the button overlaying the corner.
-              style: { paddingRight: 44 },
+              style: { paddingRight: actionsWidth + COMPOSER_ACTIONS_INSET * 2 },
             }}
             // Deliberately NOT disabled while streaming: a reply takes tens of seconds, and
             // locking the box means composing the follow-up has to wait for the agent. Only
@@ -337,20 +390,84 @@ export function ChatPanel({ options }: Props): React.ReactElement {
             isResizable
             ref={textareaRef}
           />
-          <div style={{ position: 'absolute', right: 8, bottom: 8 }}>
+          <div
+            ref={actionsRef}
+            data-testid="composer-actions"
+            style={{
+              position: 'absolute',
+              right: COMPOSER_ACTIONS_INSET,
+              bottom: COMPOSER_ACTIONS_INSET,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+            }}
+          >
+            <AttachButton onFiles={attachFiles} />
             <ComposerAction
               isLoading={isLoading}
-              canSubmit={Boolean(input.trim()) && canSend}
+              canSubmit={Boolean(input.trim()) && canSend && attachmentHold === null}
               onSubmit={submitAndStick}
               onStop={stop}
             />
           </div>
         </div>
-        <ComposerHint canSend={canSend} reconnecting={reconnecting} />
+        <ComposerHint canSend={canSend} reconnecting={reconnecting} attachmentHold={attachmentHold} />
       </div>
     </div>
   );
 }
+
+interface FileDropProps {
+  onDragEnter: (e: React.DragEvent) => void;
+  onDragOver: (e: React.DragEvent) => void;
+  onDragLeave: () => void;
+  onDrop: (e: React.DragEvent) => void;
+}
+
+function useFileDrop(onFiles: (files: File[]) => void): { isDragging: boolean; dropProps: FileDropProps } {
+  // Counted, not a flag: dragging over a child fires `dragleave` on the parent, which would
+  // clear the highlight the moment the cursor crossed the textarea.
+  const depthRef = useRef(0);
+  const [isDragging, setIsDragging] = useState(false);
+
+  const onDragEnter = useCallback((e: React.DragEvent): void => {
+    if (!e.dataTransfer.types.includes('Files')) return;
+    depthRef.current += 1;
+    setIsDragging(true);
+  }, []);
+
+  const onDragOver = useCallback((e: React.DragEvent): void => {
+    if (!e.dataTransfer.types.includes('Files')) return;
+    // Without this the browser takes the drop itself and opens the file over the editor.
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+  }, []);
+
+  const onDragLeave = useCallback((): void => {
+    depthRef.current = Math.max(0, depthRef.current - 1);
+    if (depthRef.current === 0) setIsDragging(false);
+  }, []);
+
+  const onDrop = useCallback((e: React.DragEvent): void => {
+    // Cleared before the early return: a drag can advertise `Files` and still arrive with an
+    // empty list, and that drop would otherwise leave the overlay covering the panel.
+    depthRef.current = 0;
+    setIsDragging(false);
+    // Before the early return: `onDragOver` already marked the panel a valid target, so a drag
+    // that promises files and delivers none would otherwise be handed back to the browser.
+    e.preventDefault();
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length === 0) return;
+    onFiles(files);
+  }, [onFiles]);
+
+  return { isDragging, dropProps: { onDragEnter, onDragOver, onDragLeave, onDrop } };
+}
+
+const COMPOSER_ACTIONS_INSET = 8;
+
+/** Two icon buttons and the gap between them, until the row reports its real width. */
+const COMPOSER_ACTIONS_WIDTH = 60;
 
 /** Stop replaces Send while a turn runs: a turn edits the live page, so calling it off matters. */
 function ComposerAction({
@@ -381,18 +498,24 @@ function ComposerAction({
   );
 }
 
+/** Whichever of the composer's conditions is worth a line, in the order they take priority. */
+function hintText(canSend: boolean, attachmentHold: string | null, reconnecting: boolean): string {
+  if (!canSend) return 'Open a page to make changes';
+  if (attachmentHold !== null) return attachmentHold;
+  if (reconnecting) return 'Reconnecting…';
+  return 'Enter to send · Shift+Enter for newline';
+}
+
 function ComposerHint({
   canSend,
   reconnecting,
+  attachmentHold,
 }: {
   canSend: boolean;
   reconnecting: boolean;
+  attachmentHold: string | null;
 }): React.ReactElement {
-  const text = !canSend
-    ? 'Open a page to make changes'
-    : reconnecting
-      ? 'Reconnecting…'
-      : 'Enter to send · Shift+Enter for newline';
+  const text = hintText(canSend, attachmentHold, reconnecting);
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>

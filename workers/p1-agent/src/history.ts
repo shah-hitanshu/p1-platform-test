@@ -1,7 +1,22 @@
 import type OpenAI from 'openai';
-import type { RestoredMessage, RestoredPart, RestoredToolCall } from './types.js';
+import { attachmentNamesOf } from './types.js';
+import type { AttachedFileName, RestoredMessage, RestoredPart, RestoredToolCall } from './types.js';
 
 type Msg = OpenAI.Chat.Completions.ChatCompletionMessageParam;
+
+export type StoredMessage = Msg & { attachments?: AttachedFileName[] };
+
+/**
+ * Strip the properties we added. Stored history goes straight into the next request, and a
+ * strict provider rejects a message carrying anything it did not define.
+ */
+export function forProvider(history: StoredMessage[]): Msg[] {
+  return history.map(m => {
+    if (!('attachments' in m)) return m;
+    const { attachments: _names, ...rest } = m;
+    return rest as Msg;
+  });
+}
 
 // Guard against malformed or legacy (Anthropic-shaped, array-content) entries left
 // in Durable Object state from before the Workers AI migration. Anything that does
@@ -32,7 +47,7 @@ function isValidMessage(m: unknown): m is Msg {
  * Unanswered calls are stripped from the assistant message rather than dropping it, so
  * whatever the agent already said survives.
  */
-export function pairToolCalls(history: Msg[]): Msg[] {
+export function pairToolCalls(history: StoredMessage[]): StoredMessage[] {
   const answered = new Set<string>();
   const announced = new Set<string>();
   for (const m of history) {
@@ -43,7 +58,7 @@ export function pairToolCalls(history: Msg[]): Msg[] {
     }
   }
 
-  const out: Msg[] = [];
+  const out: StoredMessage[] = [];
   for (const m of history) {
     if (m.role === 'tool') {
       // A result whose call is gone is exactly the orphan the model API rejects.
@@ -84,7 +99,7 @@ function toolCallsOf(m: Msg): { id?: string }[] {
 // the history never starts with an orphaned tool result (a tool message with no
 // preceding assistant tool_call) — which the model API rejects. Tool calls are then
 // re-paired, which catches the orphans slicing leaves mid-history.
-export function sanitizeHistory(history: Msg[]): Msg[] {
+export function sanitizeHistory(history: StoredMessage[]): StoredMessage[] {
   const valid = history.filter(isValidMessage);
   const firstUserIdx = valid.findIndex(m => m.role === 'user');
   if (firstUserIdx === -1) return [];
@@ -119,7 +134,7 @@ export function turnMayCommit(storedClearSeq: number | undefined, startClearSeq:
  * Whether a turn produced anything worth storing. One stopped before the model replied holds
  * only the brief, which would come back as a question with no answer.
  */
-export function turnHasOutput(turn: Msg[]): boolean {
+export function turnHasOutput(turn: StoredMessage[]): boolean {
   return turn.some(m => {
     if (m.role === 'tool') return true;
     if (m.role !== 'assistant') return false;
@@ -133,11 +148,11 @@ export function turnHasOutput(turn: Msg[]): boolean {
  * commit in that window, so rewriting a pre-turn snapshot is a lost update.
  */
 export function appendTurn(
-  stored: Msg[],
-  turn: Msg[],
+  stored: StoredMessage[],
+  turn: StoredMessage[],
   maxExchanges: number = MAX_EXCHANGES,
   detailedExchanges: number = DETAILED_EXCHANGES,
-): Msg[] {
+): StoredMessage[] {
   return trimHistory([...sanitizeHistory([...stored]), ...turn], maxExchanges, detailedExchanges);
 }
 
@@ -147,10 +162,10 @@ export function appendTurn(
  * half — and never returns empty while any user message survives.
  */
 export function trimHistory(
-  history: Msg[],
+  history: StoredMessage[],
   maxExchanges: number = MAX_EXCHANGES,
   detailedExchanges: number = DETAILED_EXCHANGES,
-): Msg[] {
+): StoredMessage[] {
   const exchanges = splitExchanges(sanitizeHistory(history));
   // At least one: `slice(-0)` returns the whole array, so a zero budget would keep everything.
   const kept = exchanges.slice(-Math.max(1, maxExchanges));
@@ -161,8 +176,8 @@ export function trimHistory(
 }
 
 /** Split into one group per user message: the brief and everything produced in reply. */
-function splitExchanges(history: Msg[]): Msg[][] {
-  const exchanges: Msg[][] = [];
+function splitExchanges(history: StoredMessage[]): StoredMessage[][] {
+  const exchanges: StoredMessage[][] = [];
   for (const m of history) {
     if (m.role === 'user' || exchanges.length === 0) exchanges.push([m]);
     else exchanges[exchanges.length - 1].push(m);
@@ -171,8 +186,8 @@ function splitExchanges(history: Msg[]): Msg[][] {
 }
 
 /** An exchange with its tool traffic dropped, leaving the brief and the replies. */
-function whatWasSaid(exchange: Msg[]): Msg[] {
-  const out: Msg[] = [];
+function whatWasSaid(exchange: StoredMessage[]): StoredMessage[] {
+  const out: StoredMessage[] = [];
   for (const m of exchange) {
     if (m.role === 'tool') continue;
     if (m.role === 'assistant') {
@@ -192,7 +207,7 @@ type AccumulatingTurn = RestoredMessage & { parts: RestoredPart[]; toolCalls: Re
  * Collapse stored OpenAI-format history into one entry per visible chat bubble: everything
  * between two user messages merges, matching the single bubble streaming shows.
  */
-export function buildRestoredHistory(history: Msg[]): RestoredMessage[] {
+export function buildRestoredHistory(history: StoredMessage[]): RestoredMessage[] {
   // Index tool results by call id so each restored tool call carries its outcome.
   const toolResults = new Map<string, unknown>();
   for (const m of history) {
@@ -209,7 +224,12 @@ export function buildRestoredHistory(history: Msg[]): RestoredMessage[] {
   for (const m of history) {
     if (m.role === 'user') {
       current = null;
-      restored.push({ role: 'user', content: typeof m.content === 'string' ? m.content : '' });
+      const names = attachmentNamesOf(m.attachments);
+      restored.push({
+        role: 'user',
+        content: typeof m.content === 'string' ? m.content : '',
+        ...(names.length > 0 ? { attachments: names } : {}),
+      });
     } else if (m.role === 'assistant') {
       if (!current) {
         current = { role: 'assistant', content: '', parts: [], toolCalls: [] };
@@ -237,7 +257,9 @@ export function buildRestoredHistory(history: Msg[]): RestoredMessage[] {
   return restored
     .filter(m => m.role === 'user' || m.content || (m.toolCalls && m.toolCalls.length > 0))
     .map(m => {
-      if (m.role === 'user') return { role: m.role, content: m.content };
+      if (m.role === 'user') {
+        return { role: m.role, content: m.content, ...(m.attachments ? { attachments: m.attachments } : {}) };
+      }
       const out: RestoredMessage = { role: 'assistant', content: m.content };
       if (m.parts && m.parts.length > 0) out.parts = m.parts;
       if (m.toolCalls && m.toolCalls.length > 0) out.toolCalls = m.toolCalls;
