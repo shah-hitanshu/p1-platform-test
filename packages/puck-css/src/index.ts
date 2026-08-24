@@ -56,7 +56,7 @@ export type { UseP1PluginOptions } from './editor/useP1Plugin.js';
 export { useP1Overrides } from './editor/useP1Overrides.js';
 export type { UseP1OverridesOptions } from './editor/useP1Overrides.js';
 export { useP1Editor } from './editor/useP1Editor.js';
-export type { UseP1EditorOptions, UseP1EditorReturn, PuckProps } from './editor/useP1Editor.js';
+export type { UseP1EditorOptions, UseP1EditorReturn, PuckProps, ReloadKind } from './editor/useP1Editor.js';
 
 // Focus Region Reporting (Proactive Collision Detection)
 export { useFocusRegionReporting } from './collaboration/useFocusRegionReporting.js';
@@ -82,6 +82,8 @@ export type {
 } from './agent/useAgentTrigger.js';
 
 // Components
+export { EditorReloadOverlay } from './editor/components/EditorReloadOverlay.js';
+export type { EditorReloadOverlayProps } from './editor/components/EditorReloadOverlay.js';
 export { SaveIndicator } from './editor/components/SaveIndicator.js';
 export { PublishButton } from './editor/components/PublishButton.js';
 export { BranchSelector } from './editor/components/BranchSelector.js';

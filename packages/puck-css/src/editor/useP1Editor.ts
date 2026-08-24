@@ -119,11 +119,26 @@ export interface PuckProps {
 }
 
 /**
+ * Why a reload is in flight while the previous document is still on screen.
+ * The two reads differently to the user — a workstream switch replaces the
+ * whole site's content, a page switch only swaps the canvas — so the copy that
+ * covers the wait has to be able to tell them apart.
+ */
+export type ReloadKind = 'branch' | 'document';
+
+/**
  * Return value from useP1Editor.
  */
 export interface UseP1EditorReturn {
-  /** Whether the initial document is still loading */
+  /** Whether there is nothing to render yet — the first document has not loaded and has not failed */
   loading: boolean;
+  /**
+   * A reload running behind retained content, and why. Null when nothing is in
+   * flight or when there is no prior content to keep showing (that is `loading`).
+   */
+  reloading: ReloadKind | null;
+  /** Whether a document has ever loaded successfully — i.e. `puckProps` are worth rendering */
+  hasContent: boolean;
   /** Error from document loading, if any */
   error: Error | null;
   /** React key — pass directly as `<Puck key={puckKey} {...puckProps} />` to force a clean remount on role change (document switches sync in place) */
@@ -155,15 +170,21 @@ export interface UseP1EditorReturn {
  * @example
  * ```tsx
  * function Editor() {
- *   const { loading, error, puckProps } = useP1Editor({
+ *   const { loading, reloading, hasContent, error, puckProps } = useP1Editor({
  *     documentPath: '/home',
  *     puckConfig: config,
  *   });
  *
  *   if (loading) return <Loading />;
- *   if (error) return <Error error={error} />;
+ *   if (error && !hasContent) return <Error error={error} />;
  *
- *   return <Puck {...puckProps} />;
+ *   // Reloads keep the previous page on screen under an overlay.
+ *   return (
+ *     <>
+ *       <EditorReloadOverlay reloading={reloading} />
+ *       <Puck {...puckProps} />
+ *     </>
+ *   );
  * }
  * ```
  */
@@ -192,6 +213,12 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
   const [error, setError] = useState<Error | null>(null);
   const [needsRedirect, setNeedsRedirect] = useState(false);
   const loadedPathRef = useRef<string | null>(null);
+  // The branch the loaded document came from. Compared against the current
+  // branch to tell a workstream switch from a page switch — derived rather
+  // than latched when the branch changes, because a switch can re-run the load
+  // effect more than once (the path often changes a render later) and a
+  // one-shot flag reads as a plain page switch on every run after the first.
+  const loadedBranchRef = useRef<string | null>(null);
 
   // Reset loaded path when branch changes so document reloads on the new branch
   const prevBranchRef = useRef(css.branchId);
@@ -218,6 +245,7 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
       .then(() => {
         if (!cancelled) {
           loadedPathRef.current = documentPath;
+          loadedBranchRef.current = css.branchId;
           setNeedsRedirect(false);
           setLoading(false);
         }
@@ -242,6 +270,7 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
               await css.loadDocument(documentPath);
               if (!cancelled) {
                 loadedPathRef.current = documentPath;
+                loadedBranchRef.current = css.branchId;
                 setNeedsRedirect(false);
                 setLoading(false);
                 void css.refreshDocuments();
@@ -738,11 +767,39 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
     [configWithPermissions, css.safeData, onChange, plugins, mergedOverrides, initialSidebarUi, permissions, css.handleAction]
   );
 
+  // =========================================================================
+  // Retained content
+  // =========================================================================
+
+  // A reload empties css.safeData before the new document arrives, so handing
+  // the live props straight to Puck blanks the canvas mid-switch. Keeping the
+  // last props that rendered lets the caller show the outgoing page under a
+  // waiting indicator instead — and spares every caller from re-implementing
+  // the same ref.
+  const inFlight = branchBootError === null && loading;
+  const lastGoodRef = useRef<{ puckKey: string; puckProps: PuckProps } | null>(null);
+  // `loading` only turns on once the load effect fires, a render after the path
+  // or branch already changed. Keying off the path the effect actually finished
+  // is what stops that in-between render from banking an emptied document.
+  const settled =
+    loadedPathRef.current === documentPath && loadedBranchRef.current === css.branchId;
+  if (settled && !inFlight && !error && !branchBootError) {
+    lastGoodRef.current = { puckKey, puckProps };
+  }
+  const retained = lastGoodRef.current;
+  const hasContent = retained !== null;
+  const reloadKind: ReloadKind =
+    loadedBranchRef.current !== null && loadedBranchRef.current !== css.branchId
+      ? 'branch'
+      : 'document';
+
   return {
-    loading: branchBootError === null && loading,
+    loading: inFlight && !hasContent,
+    reloading: inFlight && hasContent ? reloadKind : null,
+    hasContent,
     error: error ?? branchBootError,
-    puckKey,
-    puckProps,
+    puckKey: retained?.puckKey ?? puckKey,
+    puckProps: retained?.puckProps ?? puckProps,
     css,
     /** @deprecated No longer emitted — editor now shows an empty state when a document is not found on the current branch. */
     redirectPath: null as string | null,

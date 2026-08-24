@@ -1,0 +1,28 @@
+/* ============================================================================
+ * LoadingOverlay — CSS Module
+ *
+ * Floating waiting state shown above retained editor content during a
+ * workstream or page switch.
+ * ============================================================================ */
+
+.overlay {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  gap: var(--pds-spacing-s, 0.75rem);
+  padding: var(--pds-spacing-m, 1rem) var(--pds-spacing-l, 2rem);
+  border-radius: var(--pds-border-radius-m, 8px);
+  background: var(--pds-color-background-default-primary, #fff);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 15%);
+  font-family: var(--pds-typography-ff-default, system-ui);
+}
+
+.message {
+  color: var(--pds-color-foreground-default-primary, #333);
+  font-size: var(--pds-typography-size-s, 0.875rem);
+  font-weight: 500;
+}

@@ -14,6 +14,7 @@ import {
   wrapConfigForEditorPreview,
   P1QueryProvider,
   editorPathHref,
+  EditorReloadOverlay,
 } from "@pantheon-systems/puck-css";
 import { DatasourceRegistryProvider, DatasourceDataProvider } from "@pantheon-systems/puck-css/fields";
 import { LoadingMessage } from "@pantheon-systems/puck-css/pds";
@@ -120,7 +121,6 @@ export function EditorClientWrapper() {
   const pathname = usePathname();
   const path = editorPagePathFromUrlPath(pathname);
   const [userRole, setUserRole] = useState<ContentRole>('editor');
-  const lastGoodStateRef = React.useRef<{ puckKey: string; puckProps: any } | null>(null);
 
   if (!p1Config) {
     return (
@@ -145,7 +145,7 @@ export function EditorClientWrapper() {
           loginFallback={<P1SignInPage />}
         >
           <ChatbotFlagProvider>
-            <EditorContent path={path} lastGoodStateRef={lastGoodStateRef} />
+            <EditorContent path={path} />
           </ChatbotFlagProvider>
         </P1App>
         {process.env.NEXT_PUBLIC_ENABLE_ROLE_SWITCHER === 'true' && (
@@ -206,13 +206,7 @@ function RoleSwitcher({
   );
 }
 
-function EditorContent({
-  path,
-  lastGoodStateRef,
-}: {
-  path: string;
-  lastGoodStateRef: React.MutableRefObject<{ puckKey: string; puckProps: any } | null>;
-}) {
+function EditorContent({ path }: { path: string }) {
   const router = useRouter();
   const { getToken } = useP1Auth();
   const { data: editorCtx } = useEditorContext(path);
@@ -280,7 +274,7 @@ function EditorContent({
     [getToken],
   );
 
-  const { loading, error, puckKey, puckProps } = useP1Editor({
+  const { loading, reloading, hasContent, error, puckKey, puckProps } = useP1Editor({
     documentPath: path,
     puckConfig: editorConfig,
     additionalPlugins,
@@ -305,24 +299,17 @@ function EditorContent({
     },
   });
 
-  // Update last good state when loading completes successfully (ref passed from parent)
-  React.useEffect(() => {
-    if (!loading && !error) {
-      lastGoodStateRef.current = { puckKey, puckProps };
-    }
-  }, [loading, error, puckKey, puckProps]);
-
   if (redirecting) {
     return <LoadingMessage message="Redirecting" data-testid="editor-redirecting" />;
   }
 
-  // Show full loading screen only on first load (no previous state)
-  if (loading && !lastGoodStateRef.current) {
+  if (loading) {
     return <LoadingMessage message="Loading document" data-testid="editor-loading" />;
   }
 
-  // Show error only if we have no previous state to fall back to
-  if (error && !lastGoodStateRef.current) {
+  // A failed load with a document already on screen keeps that document; only a
+  // failure with nothing to fall back on takes over the view.
+  if (error && !hasContent) {
     return (
       <div style={{ textAlign: "center", padding: "4rem", fontFamily: "system-ui" }}>
         <h3>Error loading document</h3>
@@ -331,57 +318,13 @@ function EditorContent({
     );
   }
 
-  // Use current state if loaded, otherwise keep showing last good state
-  const displayState = (!loading && !error)
-    ? { puckKey, puckProps }
-    : lastGoodStateRef.current ?? { puckKey, puckProps };
-
   return (
     <div className="puck-editor-theme" style={{ position: "relative" }}>
-      {/* Loading overlay - shown during branch switch */}
-      {loading && lastGoodStateRef.current && (
-        <div
-          style={{
-            position: "fixed",
-            top: "50%",
-            left: "50%",
-            transform: "translate(-50%, -50%)",
-            zIndex: 9999,
-            background: "rgba(255, 255, 255, 0.95)",
-            padding: "1rem 2rem",
-            borderRadius: "8px",
-            boxShadow: "0 4px 12px rgba(0, 0, 0, 0.15)",
-            fontFamily: "system-ui",
-            fontSize: "14px",
-            color: "#333",
-            fontWeight: 500,
-            display: "flex",
-            alignItems: "center",
-            gap: "0.75rem",
-          }}
-        >
-          <div
-            style={{
-              width: "16px",
-              height: "16px",
-              border: "2px solid #e0e0e0",
-              borderTopColor: "#2563eb",
-              borderRadius: "50%",
-              animation: "spin 0.6s linear infinite",
-            }}
-          />
-          Switching workstream...
-          <style>{`
-            @keyframes spin {
-              to { transform: rotate(360deg); }
-            }
-          `}</style>
-        </div>
-      )}
+      <EditorReloadOverlay reloading={reloading} />
       <DatasourceRegistryProvider registry={editorCtx?.remoteDatasourceRegistry ?? []}>
         <DatasourceDataProvider context={remoteDatasourceContext}>
           {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-          <Puck key={`${displayState.puckKey}-${chatbotEnabled ? "ai" : "no-ai"}`} {...displayState.puckProps as any} _experimentalFullScreenCanvas={true} />
+          <Puck key={`${puckKey}-${chatbotEnabled ? "ai" : "no-ai"}`} {...puckProps as any} _experimentalFullScreenCanvas={true} />
         </DatasourceDataProvider>
       </DatasourceRegistryProvider>
     </div>

@@ -55,6 +55,8 @@ export { DocStateBadge } from './components/DocStateBadge.js';
 export { PublishControl } from './components/PublishControl.js';
 export { LoadingMessage } from './components/LoadingMessage.js';
 export type { LoadingMessageProps } from './components/LoadingMessage.js';
+export { LoadingOverlay } from './components/LoadingOverlay.js';
+export type { LoadingOverlayProps } from './components/LoadingOverlay.js';
 
 // ---------------------------------------------------------------------------
 // Utils

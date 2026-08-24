@@ -6,11 +6,15 @@
  * migrate-integration.test.ts.
  */
 
+import { readFileSync } from "node:fs";
+import { resolve, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, it, expect } from "vitest";
 import {
   deepenRelativeImports,
   addNamedImport,
   rewriteWrapperSignature,
+  rewriteLoadingOverlay,
   splitPageFile,
   BailError,
   // @ts-expect-error - hand-written ESM JS codemod, no type declarations
@@ -181,5 +185,38 @@ describe("splitPageFile", () => {
     ].join("\n");
 
     expect(() => splitPageFile(unexported)).toThrow(BailError);
+  });
+});
+
+describe("rewriteLoadingOverlay", () => {
+  const legacy = readFileSync(
+    resolve(dirname(fileURLToPath(import.meta.url)), "fixtures/legacy-editor/editor-client.tsx"),
+    "utf-8",
+  );
+
+  it("swaps the hand-rolled overlay for the SDK component", () => {
+    const out = rewriteLoadingOverlay(legacy);
+
+    expect(out).toContain("<EditorReloadOverlay reloading={reloading} />");
+    expect(out).not.toContain("Switching workstream...");
+    expect(out).not.toContain("lastGoodStateRef");
+  });
+
+  it("imports the component it just started using", () => {
+    expect(rewriteLoadingOverlay(legacy)).toContain(
+      `  editorPathHref,\n  EditorReloadOverlay,\n} from "@pantheon-systems/puck-css";`,
+    );
+  });
+
+  it("leaves an app that already uses the SDK overlay alone", () => {
+    const once = rewriteLoadingOverlay(legacy);
+    expect(rewriteLoadingOverlay(once)).toBe(once);
+  });
+
+  it("bails rather than half-rewriting an app that customized the overlay", () => {
+    // Kept its own overlay markup, but still has the ref the SDK version drops.
+    const partly = legacy.replace("Switching workstream...", "Hang tight, swapping branches");
+
+    expect(() => rewriteLoadingOverlay(partly)).toThrow(BailError);
   });
 });

@@ -258,7 +258,7 @@ describe("useP1Editor write-back guard", () => {
         }),
     );
     rerender({ path: "/b" });
-    await waitFor(() => expect(result.current.loading).toBe(true));
+    await waitFor(() => expect(result.current.reloading).toBe("document"));
 
     act(() => {
       result.current.puckProps.onChange(editData);
@@ -330,7 +330,7 @@ describe("useP1Editor write-back guard", () => {
       mockCssContext.currentDataOrigin = null;
     });
     rerender();
-    await waitFor(() => expect(result.current.loading).toBe(true));
+    await waitFor(() => expect(result.current.reloading).toBe("branch"));
 
     act(() => {
       result.current.puckProps.onChange(editData);
