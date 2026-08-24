@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Validates the DEPLOYED registry the way a customer meets it (PCC-3580, D20).
+# Validates the DEPLOYED registry the way a customer meets it.
 # Usage: verify/public-install.sh https://p1-components.pantheon.io
 set -euo pipefail
 HOST="${1:?usage: public-install.sh <https://host>}"

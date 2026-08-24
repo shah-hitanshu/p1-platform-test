@@ -30,7 +30,7 @@ const blocks = items.filter(({ item }) => item.type === 'registry:block');
 
 /** npm specifiers imported by a file, ignoring relative and @/registry imports. */
 function npmImports(source: string): string[] {
-  const specifiers = [...source.matchAll(/from\s+["']([^"']+)["']/g)].map((m) => m[1]);
+  const specifiers = [...source.matchAll(/from\s+["']([^"']+)["']/g)].map((m) => m[1]!);
   return specifiers
     .filter((s) => !s.startsWith('.') && !s.startsWith('@/'))
     .map((s) => (s.startsWith('@') ? s.split('/').slice(0, 2).join('/') : s.split('/')[0]));
