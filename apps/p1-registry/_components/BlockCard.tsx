@@ -70,7 +70,6 @@ export function BlockCard({ item }: BlockCardProps) {
 
       {/* Full-size preview modal — only rendered for blocks that have a /preview page */}
       {hasPreview && (
-        // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions,jsx-a11y/click-events-have-key-events
         <dialog
           ref={dialogRef}
           className="p1-preview-dialog"
