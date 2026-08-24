@@ -135,3 +135,74 @@ describe('registry catalog', () => {
     }
   });
 });
+
+const byName = new Map(items.map(({ item }) => [item.name, item]));
+
+/** Defined by apps/p1-starter/puck.config.tsx. Kept literal on purpose: the
+ *  point of the assertion is that the two lists agree, so deriving one from the
+ *  other would assert nothing. */
+const STARTER_KIT_COLLISIONS = [
+  'button', 'divider', 'heading', 'image', 'list', 'paragraph', 'quote', 'spacer',
+];
+
+describe('@p1/tokens', () => {
+  const tokens = byName.get('tokens');
+
+  it('exists as a theme item', () => {
+    expect(tokens?.type).toBe('registry:theme');
+  });
+
+  it('installs a real CSS file rather than relying on cssVars.theme', () => {
+    // cssVars.theme emits @theme inline and --color-* aliases, which are
+    // Tailwind-only and inert in a project without it (spec, Theming).
+    const targets = (tokens?.files ?? []).map((f) => f.target);
+    expect(targets).toContain('app/p1-tokens.css');
+  });
+
+  it('wires itself into the project stylesheet with an @import', () => {
+    const css = (tokens as unknown as { css?: Record<string, unknown> })?.css ?? {};
+    expect(Object.keys(css).some((k) => k.includes('@import') && k.includes('p1-tokens.css'))).toBe(true);
+  });
+});
+
+describe('@p1/base', () => {
+  const base = byName.get('base');
+
+  it('exists and does not extend shadcn/ui', () => {
+    expect(base?.type).toBe('registry:base');
+    expect((base as unknown as { extends?: string })?.extends).toBe('none');
+  });
+
+  it('registers the @p1 namespace so later adds need no setup', () => {
+    const config = (base as unknown as { config?: { registries?: Record<string, string> } })?.config;
+    expect(config?.registries?.['@p1'], 'base must register @p1').toMatch(/\{name\}\.json$/);
+  });
+
+  it('bundles the tokens and 29 blocks — the 37 minus the 8 colliders', () => {
+    const deps = (base?.registryDependencies ?? []).map((d) => d.replace('@p1/', ''));
+    expect(deps).toContain('tokens');
+    const blockDeps = deps.filter((d) => blocks.some(({ item }) => item.name === d));
+    expect(blockDeps).toHaveLength(29);
+  });
+
+  // D19: nothing ships agent instructions into a customer's repo. Asserted rather
+  // than assumed, because re-adding it would be a one-line change nobody notices.
+  it('bundles no agent guidance and no dotfile targets', () => {
+    const deps = base?.registryDependencies ?? [];
+    expect(deps.some((d) => /guidance|skills/i.test(d))).toBe(false);
+    for (const { item } of items) {
+      for (const file of item.files ?? []) {
+        expect(file.target ?? '', `${item.name} must not target agent tooling`)
+          .not.toMatch(/AGENTS\.md|\.claude\//);
+      }
+    }
+  });
+
+  it('excludes exactly the eight blocks whose Puck keys collide with the starter kit', () => {
+    const deps = new Set((base?.registryDependencies ?? []).map((d) => d.replace('@p1/', '')));
+    for (const name of STARTER_KIT_COLLISIONS) {
+      expect(deps.has(name), `${name} must not be in @p1/base`).toBe(false);
+      expect(byName.has(name), `${name} must still be its own item`).toBe(true);
+    }
+  });
+});
