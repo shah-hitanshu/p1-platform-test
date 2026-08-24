@@ -49,37 +49,5 @@ If findings from the security review are remediated, be sure to commit the chang
 # User interface language review
 Use the Pantheon Design System UI Writing skill to review major pieces of work progress.
 
-<!-- stackit:start -->
-## Git Workflow: Stacked PRs
-
-This project uses [stackit](https://stackit.dev) for stacked changes.
-AI agents should proactively work in stacks.
-
-### Why Stack?
-Small PRs get reviewed faster. Break features into focused, reviewable units.
-
-### When to Stack
-Stack when your change has 2+ logical phases, exceeds ~400 lines,
-or would benefit from early review of foundational work.
-
-### Workflow
-```bash
-git add -A                        # Stage first
-stackit create -m "feat: ..."     # Create stacked branch
-# ... continue working ...
-stackit submit                    # Submit all PRs
-```
-
-### Key Commands
-| Command | Purpose |
-|---------|---------|
-| `stackit create -m "msg"` | Create stacked branch |
-| `stackit submit` | Push & create/update PRs |
-| `stackit sync` | Pull trunk, cleanup merged |
-| `stackit log` | Visualize branch tree |
-
-Run `/stackit` for the full skill, or `/stack-status` to check current state.
-<!-- stackit:end -->
-
 # Creating a Pull Request
 - When creating a PR, use `.github/pull_request_template.md` as the description structure — follow its HTML-comment instructions and delete sections marked optional that don't apply; never invent your own headings.
