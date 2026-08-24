@@ -4,7 +4,7 @@ import { ThemePanel } from '../../_components/ThemePanel';
 
 export default function ThemePage() {
   const tokensJson = JSON.parse(
-    readFileSync(join(import.meta.dirname, '..', '..', 'public', 'r', 'tokens.json'), 'utf8'),
+    readFileSync(join(process.cwd(), 'public', 'r', 'tokens.json'), 'utf8'),
   ) as { files?: { content: string; target?: string }[] };
 
   const tokensCss =
