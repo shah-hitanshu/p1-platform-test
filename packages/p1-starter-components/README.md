@@ -16,13 +16,36 @@ pnpm --filter @pantheon-systems/p1-starter-components storybook
 - `registry/p1/tokens/variables.css` — design tokens. Override these in a consuming project.
 - `registry/p1/blocks/index.ts` — named exports plus `marketingBlocks` and `secondaryLibraryCategories`.
 
-## Status
+## Code registry
 
-Private and unpublished. npm publishing planned for a later phase.
+The 37 blocks are distributed as a shadcn code registry. Consumers install directly
+into their projects — no npm package required:
 
-The `registry.json` currently registers only the `divider` block as a proof-of-concept
-for the shadcn distribution pipeline — full population of all 37 blocks is a separate
-follow-on commit.
+```bash
+# All 29 non-collider blocks + tokens in one command
+pnpm dlx shadcn@latest add @p1/base
+
+# Or a single block
+pnpm dlx shadcn@latest add @p1/hero
+```
+
+**Live catalog:** `https://P1_REGISTRY_HOST_TBD` (placeholder — updated when the site is deployed)
+
+See [docs/registry.md](../../docs/registry.md) for the full consuming and releasing workflow.
+
+### Build the registry locally
+
+```bash
+pnpm --filter @pantheon-systems/p1-starter-components registry:build
+```
+
+This runs `shadcn build` and writes per-item JSON to `apps/p1-registry/public/r/`.
+
+### Verify before deploy
+
+```bash
+pnpm --filter @pantheon-systems/p1-starter-components verify:registry
+```
 
 ## Visual regression gate
 
