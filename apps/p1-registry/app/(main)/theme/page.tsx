@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { ThemePanel } from '../../_components/ThemePanel';
+import { ThemePanel } from '../../../_components/ThemePanel';
 
 export default function ThemePage() {
   const tokensJson = JSON.parse(

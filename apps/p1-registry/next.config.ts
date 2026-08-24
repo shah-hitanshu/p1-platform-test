@@ -1,10 +1,13 @@
 import type { NextConfig } from 'next';
 
-// Static export. The catalog is content and `shadcn build` already wrote the
-// registry JSON into public/r, so nothing here needs a running process — the
-// version tree aliases by directory copy at build time, not by routing.
-// Dynamic routes (loadRegistryItem for the configurator) would need a server;
-// that is Future work, and spec D21 records the migration path.
-const config: NextConfig = { output: 'export', images: { unoptimized: true } };
+// Static export — catalog is content-only, no server needed.
+// Preview pages render block components via a separate root layout (route group).
+// Turbopack resolves @/registry/* via tsconfig paths to the blocks package source.
+const config: NextConfig = {
+  output: 'export',
+  images: { unoptimized: true },
+  // Process workspace package source so CSS and TSX imports from blocks bundle correctly.
+  transpilePackages: ['@pantheon-systems/p1-starter-components'],
+};
 
 export default config;

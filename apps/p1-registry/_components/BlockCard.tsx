@@ -8,6 +8,15 @@ interface BlockCardProps {
 export function BlockCard({ item }: BlockCardProps) {
   return (
     <article className="p1-block-card">
+      <div className="p1-block-card__preview">
+        <iframe
+          src={`/preview/${item.name}`}
+          title={`Preview of ${item.title ?? item.name}`}
+          scrolling="no"
+          tabIndex={-1}
+          aria-hidden="true"
+        />
+      </div>
       <header className="p1-block-card__header">
         {item.categories?.[0] && (
           <span className="p1-block-card__tag">{item.categories[0]}</span>

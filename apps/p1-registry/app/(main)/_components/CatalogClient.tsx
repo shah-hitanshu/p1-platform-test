@@ -1,8 +1,8 @@
 'use client';
 import * as React from 'react';
-import type { CatalogItem } from '../../lib/registry';
-import { BlockCard } from '../../_components/BlockCard';
-import { CategoryFilter } from '../../_components/CategoryFilter';
+import type { CatalogItem } from '../../../lib/registry';
+import { BlockCard } from '../../../_components/BlockCard';
+import { CategoryFilter } from '../../../_components/CategoryFilter';
 
 interface CatalogClientProps {
   items: CatalogItem[];

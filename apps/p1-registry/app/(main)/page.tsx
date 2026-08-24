@@ -1,4 +1,4 @@
-import { loadCatalog } from '../lib/registry';
+import { loadCatalog } from '../../lib/registry';
 import { CatalogClient } from './_components/CatalogClient';
 
 export default function CatalogPage() {
