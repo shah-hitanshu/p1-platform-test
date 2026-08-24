@@ -40,6 +40,7 @@ beforeAll(async () => {
       const rowCount = resultWithCount.count ?? rows.length;
       return { rows, rowCount };
     },
+    async close(): Promise<void> { /* managed by the postgres client in afterAll */ },
   };
   setDatabaseInstance(connection);
 

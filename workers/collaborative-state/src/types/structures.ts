@@ -133,4 +133,21 @@ export interface ConnectionMeta {
   /** Profile picture URL for presence */
   avatar?: string;
   verified: boolean;
+  /**
+   * Baseline gate verdict for this connection. Absent on sockets that hibernated
+   * before the gate shipped; absent is treated as 'open' so a deploy never
+   * freezes a live editing session.
+   */
+  baselineGate?: 'open' | 'closed';
+  /** Set once the first dropped frame has been logged, to bound the log volume. */
+  baselineDropLogged?: boolean;
+}
+
+/**
+ * Returns true when the connection should be treated as gate-open.
+ * Absent `baselineGate` (pre-deploy hibernated sockets) is treated as open
+ * so a routine deploy never freezes a live editing session.
+ */
+export function isGateOpen(meta: Pick<ConnectionMeta, 'baselineGate'>): boolean {
+  return meta.baselineGate !== 'closed';
 }

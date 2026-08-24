@@ -8,11 +8,18 @@
  */
 
 import * as Y from 'yjs';
+import { getLogger } from '@pantheon-systems/p1-telemetry';
 import type { ConnectionMeta, ActorPresence } from '../types';
 import type {
   WsPresenceErrorMessage,
+  WsSyncBaselineMessage,
 } from '../types/websocket-messages';
 import { isWsPublishRequest, isWsActionMetadata } from '../types/websocket-messages';
+import {
+  decodeStateVectorParam,
+  evaluateBaselineGate,
+  type BaselineGateVerdict,
+} from './baseline-gate';
 import { incrementCounter, setGauge } from '../services/metrics-service';
 import type { PresenceManager } from '../services/presence-service';
 import type {
@@ -155,6 +162,59 @@ export function checkRateLimit(
 // WebSocket connection establishment
 // =============================================================================
 
+/** Base64-encode bytes for transport in a JSON frame or query parameter. */
+function encodeBase64(bytes: Uint8Array): string {
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
+/**
+ * Build the frames a new connection receives. A diverged client gets the full
+ * state — a delta against an unrelated lineage is meaningless — and no
+ * sync_baseline, because the caller closes its socket instead.
+ */
+export function buildHandshakeFrames(
+  deps: WebSocketConnectionDeps,
+  stateVectorParam: string | null,
+): {
+  stateUpdate: Uint8Array;
+  verdict: BaselineGateVerdict;
+  syncBaseline: WsSyncBaselineMessage | null;
+} {
+  const serverStateVector = Y.encodeStateVector(deps.ydoc);
+  const clientStateVector = decodeStateVectorParam(stateVectorParam);
+
+  const verdict = evaluateBaselineGate({
+    serverHasContent: deps.ydoc.getMap('root').size > 0,
+    serverStateVector,
+    clientStateVector,
+  });
+
+  if (verdict.gate === 'closed') {
+    return {
+      stateUpdate: Y.encodeStateAsUpdate(deps.ydoc),
+      verdict,
+      syncBaseline: null,
+    };
+  }
+
+  const stateUpdate = clientStateVector === null
+    ? Y.encodeStateAsUpdate(deps.ydoc)
+    : Y.encodeStateAsUpdate(deps.ydoc, clientStateVector);
+
+  return {
+    stateUpdate,
+    verdict,
+    syncBaseline: {
+      type: 'sync_baseline',
+      gate: 'open',
+      serverStateVector: encodeBase64(serverStateVector),
+      timestamp: Date.now(),
+    },
+  };
+}
+
 /**
  * Handle /connect endpoint for WebSocket connections.
  *
@@ -268,29 +328,38 @@ export function handleWebSocket(
   // Schedule cleanup alarm if not already scheduled
   void deps.scheduleCleanupAlarm();
 
-  // Phase 1.3: Delta encoding — check for client-provided state vector
-  const stateVectorParam = url.searchParams.get('stateVector');
-  let stateUpdate: Uint8Array;
-  if (stateVectorParam !== null && stateVectorParam !== '') {
-    try {
-      // Decode base64 state vector from client
-      const svBinary = atob(stateVectorParam);
-      const clientStateVector = new Uint8Array(svBinary.length);
-      for (let i = 0; i < svBinary.length; i++) {
-        clientStateVector[i] = svBinary.charCodeAt(i);
-      }
-      // Send only the delta since the client's state vector
-      stateUpdate = Y.encodeStateAsUpdate(deps.ydoc, clientStateVector);
-    } catch {
-      // If state vector is invalid, fall back to full state
-      stateUpdate = Y.encodeStateAsUpdate(deps.ydoc);
-    }
-  } else {
-    // No state vector — send full compacted state
-    stateUpdate = Y.encodeStateAsUpdate(deps.ydoc);
+  // Baseline gate: a client whose Yjs history does not descend from this
+  // document's state is on a foreign lineage and must not merge into it.
+  const frames = buildHandshakeFrames(deps, url.searchParams.get('stateVector'));
+
+  meta.baselineGate = frames.verdict.gate;
+  server.serializeAttachment(meta);
+
+  // State first, close second. Applying this frame puts the server's clocks into
+  // the client's state vector, so its reconnect evaluates as a descendant.
+  // Closing first would loop forever.
+  server.send(frames.stateUpdate);
+
+  if (frames.syncBaseline !== null) {
+    server.send(JSON.stringify(frames.syncBaseline));
   }
 
-  server.send(stateUpdate);
+  if (frames.verdict.gate === 'closed') {
+    const { siteId, branchId, documentId } = deps.sessionInfo;
+    getLogger().warn('client baseline diverged', {
+      site_id: siteId,
+      branch_id: branchId,
+      document_id: documentId,
+      principal_id: actorId,
+      principal_type: actorType,
+      outcome: 'rejected',
+      reason: frames.verdict.reason,
+      server_clock_entries: frames.verdict.serverClockEntries,
+      client_clock_entries: frames.verdict.clientClockEntries,
+    });
+    server.close(4002, 'Baseline diverged — reconnect with server state');
+    return new Response(null, { status: 101, webSocket: client });
+  }
 
   // Broadcast presence update to all clients (new connection joined)
   deps.broadcastPresenceUpdate();
@@ -379,13 +448,17 @@ export async function handleWebSocketMessage(
       // Check for publish_request first — it's async (involves flush + HTTP)
       // and must be handled before the sync handlePresenceMessage
       const parsed = deps.tryParseJson(message);
+      // Gate-closed clients must not force a publish or attach stale attribution;
+      // presence heartbeats still route so the DO tracks presence correctly.
       if (parsed !== null && isWsPublishRequest(parsed)) {
+        if (meta.baselineGate === 'closed') return;
         await deps.handleWsPublishRequest(ws, meta, parsed);
         return;
       }
       // Capture action metadata from Puck client — store on syncManager
       // so the next scheduleSync includes it in the sync payload
       if (parsed !== null && isWsActionMetadata(parsed)) {
+        if (meta.baselineGate === 'closed') return;
         // eslint-disable-next-line @typescript-eslint/no-deprecated -- legacy actionType/actionMetadata fallback
         const legacyType = parsed.actionType;
         // eslint-disable-next-line @typescript-eslint/no-deprecated
@@ -427,6 +500,27 @@ export async function handleWebSocketMessage(
     }
 
     const update = new Uint8Array(data);
+
+    // A closed gate means this client's history is not derived from the document's
+    // current state. Its socket is already closing; drop whatever it sent in the
+    // meantime rather than union-merging a foreign lineage.
+    if (meta.baselineGate === 'closed') {
+      if (meta.baselineDropLogged !== true) {
+        const { siteId, branchId, documentId } = deps.sessionInfo;
+        getLogger().warn('dropped update from diverged client', {
+          site_id: siteId,
+          branch_id: branchId,
+          document_id: documentId,
+          principal_id: meta.actorId,
+          principal_type: meta.actorType,
+          outcome: 'rejected',
+          reason: 'baseline_gate_closed',
+          size_bytes: update.byteLength,
+        });
+        ws.serializeAttachment({ ...meta, baselineDropLogged: true });
+      }
+      return;
+    }
 
     // Apply update to local doc
     Y.applyUpdate(deps.ydoc, update);
@@ -524,11 +618,15 @@ export async function handleWebSocketDisconnect(
     // Clear actor's focus regions from activity detector
     deps.activityDetector.clearActorFocus(actorId);
 
-    // Unregister actor from presence manager
-    deps.presenceManager.unregisterByActorId(actorId);
-
-    // Phase 3.2: Push presence leave to PresenceManager DO
-    deps.pushPresenceUpdate('leave', actorId);
+    // A gate-closed connection never fired a presence join, so there is no
+    // presence entry to evict. Skipping unregister/leave prevents silently
+    // removing an unrelated still-active presence entry for the same actorId
+    // (e.g. an agent-politeness edit session on a different socket).
+    const closingMeta = getConnectionMeta(server);
+    if (closingMeta?.baselineGate !== 'closed') {
+      deps.presenceManager.unregisterByActorId(actorId);
+      deps.pushPresenceUpdate('leave', actorId);
+    }
 
     // Phase 4.1: Clean up rate tracking
     deps.messageRates.delete(actorId);

@@ -441,6 +441,7 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
           ? String((contentArr as Y.Array<unknown>).length)
           : 'no-content-key';
         console.log('CRDT restore: SUCCESS from DO storage, content items=' + contentLen);
+        await this.syncManager.restoreBaselineSourceFromStorage();
       } catch (error) {
         console.warn('CRDT restore: FAILED to apply stored update:', error);
       }

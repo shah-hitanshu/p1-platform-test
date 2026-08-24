@@ -28,8 +28,8 @@ class MockReconnectingWebSocket {
   static CLOSED = 3;
 
   readyState: number = MockReconnectingWebSocket.CONNECTING;
-  binaryType: string = 'arraybuffer';
-  retryCount: number = 0;
+  binaryType = 'arraybuffer';
+  retryCount = 0;
 
   // Store resolved URL for assertions
   url: string;
@@ -38,7 +38,7 @@ class MockReconnectingWebSocket {
   protocols: string[];
   options: MockWSOptions;
 
-  private listeners: Map<string, Set<EventListener>> = new Map();
+  private listeners = new Map<string, Set<EventListener>>();
 
   constructor(
     url: string | (() => string | Promise<string>),
@@ -174,7 +174,7 @@ describe('Delta encoding on WebSocket reconnect', () => {
     vi.useRealTimers();
   });
 
-  it('should NOT include stateVector on initial connect', async () => {
+  it('should omit stateVector on the initial connect', async () => {
     const { RealtimeClient } = await import('../src/realtime.js');
 
     const client = new RealtimeClient({
@@ -199,7 +199,8 @@ describe('Delta encoding on WebSocket reconnect', () => {
       resolvedUrl = urlProvider;
     }
 
-    // URL should NOT contain stateVector on initial connect
+    // A fresh tab seeded from REST must not send its SV: the local clientId is
+    // unknown to the server and would look like a diverged stale tab.
     expect(resolvedUrl).not.toContain('stateVector');
 
     client.disconnect();
@@ -344,7 +345,7 @@ describe('Delta encoding on WebSocket reconnect', () => {
     client.disconnect();
   });
 
-  it('should still send local state on reconnect alongside state vector', async () => {
+  it('sends local-only delta after receiving sync_baseline on reconnect', async () => {
     const { RealtimeClient } = await import('../src/realtime.js');
 
     const client = new RealtimeClient({
@@ -359,7 +360,6 @@ describe('Delta encoding on WebSocket reconnect', () => {
       actorType: 'user',
     });
 
-    // Initial connection
     await vi.advanceTimersByTimeAsync(10);
 
     // Make a local edit
@@ -367,19 +367,22 @@ describe('Delta encoding on WebSocket reconnect', () => {
     const root = ydoc.getMap('root');
     root.set('localEdit', 'offline change');
 
-    // Record send count before reconnect
-    const sendCountBefore = mockWSInstances[0].send.mock.calls.length;
+    mockWSInstances[0].send.mockClear();
 
-    // Simulate reconnection (open event fires again)
-    mockWSInstances[0].simulateOpen();
+    // Server sends sync_baseline with an empty state vector (knows nothing)
+    const emptySv = Y.encodeStateVector(new Y.Doc());
+    const svBase64 = btoa(String.fromCharCode(...emptySv));
+    mockWSInstances[0].simulateMessage(JSON.stringify({
+      type: 'sync_baseline',
+      gate: 'open',
+      serverStateVector: svBase64,
+      timestamp: Date.now(),
+    }));
 
-    // Should have sent local state on reconnect
-    expect(mockWSInstances[0].send.mock.calls.length).toBeGreaterThan(sendCountBefore);
+    // Client should have sent the delta containing the local edit
+    expect(mockWSInstances[0].send.mock.calls.length).toBeGreaterThan(0);
 
-    // Verify sent data contains the local edit
-    const lastSendCall =
-      mockWSInstances[0].send.mock.calls[mockWSInstances[0].send.mock.calls.length - 1];
-    const sentData = lastSendCall[0] as Uint8Array;
+    const sentData = mockWSInstances[0].send.mock.calls[0]![0] as Uint8Array;
     const verifyDoc = new Y.Doc();
     Y.applyUpdate(verifyDoc, sentData);
     expect(verifyDoc.getMap('root').get('localEdit')).toBe('offline change');

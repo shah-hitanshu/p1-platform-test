@@ -414,6 +414,13 @@ function P1PuckProviderInner({
     });
   }, [userNameResolver]);
 
+  // Owned by P1PuckProvider so we can increment it only AFTER loadDocument has
+  // updated currentData with fresh REST content, ensuring the new Y.Doc is
+  // seeded with current server state rather than stale in-memory data.
+  const [baselineResetKey, setBaselineResetKey] = useState(0);
+  // Populated after the first render; safe in async callbacks that fire post-mount.
+  const loadDocForResetRef = useRef<((path: string) => Promise<void>) | null>(null);
+
   // Real-time collaboration hook
   const realtime = useRealtime({
     baseUrl: wsBaseUrl ?? '',
@@ -426,8 +433,28 @@ function P1PuckProviderInner({
     actorType: 'user',
     enabled: enableRealtime && !!wsBaseUrl,
     initialData: currentData,
+    resetKey: baselineResetKey,
     onServerReload: () => {
       notificationContext.addInfo('Document is being refreshed by the server. Reconnecting...');
+    },
+    onBaselineReset: () => {
+      notificationContext.addInfo('Your local changes could not be synced after a branch merge. Reconnecting with fresh content...');
+      const docPath = currentDocumentRef.current?.path;
+      if (!docPath) return;
+      // Fetch current server state first, then increment resetKey so the new
+      // Y.Doc seeds from fresh REST data (not stale in-memory currentData).
+      void loadDocForResetRef.current?.(docPath)
+        .then(() => {
+          setBaselineResetKey((k) => k + 1);
+        })
+        .catch(() => {
+          // loadDocument already cleared the document state; still bump resetKey
+          // so the RealtimeClient can reconnect and receive fresh content from the server.
+          setBaselineResetKey((k) => k + 1);
+          notificationContext.addError(
+            'Could not reload content after a branch merge. Reconnecting — you may need to refresh if the editor stays blank.'
+          );
+        });
     },
     // WebSocket presence callbacks - receive instant presence updates
     onPresenceUpdate: (actors) => {
@@ -1279,6 +1306,9 @@ function P1PuckProviderInner({
     },
     [userClient, siteId, branchId, cancelPendingRemoteSync, enableRealtime, debouncedSave, performSave, commitCurrentData]
   );
+  // Keep the reset ref in sync so the onBaselineReset callback always calls the
+  // latest loadDocument (stable deps, no render cycle needed).
+  loadDocForResetRef.current = loadDocument;
 
   // Load a specific version into the editor
   const loadVersion = useCallback(

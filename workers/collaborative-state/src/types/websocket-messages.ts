@@ -188,6 +188,21 @@ export interface WsPublishResultMessage {
 }
 
 /**
+ * Baseline handshake result, sent after the server's initial state frame.
+ * Carries the server's state vector so the client can send back only the
+ * updates the server is missing instead of its whole history.
+ */
+export interface WsSyncBaselineMessage {
+  type: 'sync_baseline';
+  /** 'open' — client may contribute; 'closed' — gate rejected, 4002 follows. */
+  gate: 'open' | 'closed';
+  /** Base64-encoded Y.encodeStateVector of the server document. */
+  serverStateVector: string;
+  /** Server timestamp */
+  timestamp: number;
+}
+
+/**
  * Union of all server-to-client WebSocket messages.
  */
 export type WsServerMessage =
@@ -196,7 +211,8 @@ export type WsServerMessage =
   | WsFocusRegionAckMessage
   | WsPresenceErrorMessage
   | WsDeliveryAckMessage
-  | WsPublishResultMessage;
+  | WsPublishResultMessage
+  | WsSyncBaselineMessage;
 
 // =============================================================================
 // Type Guards

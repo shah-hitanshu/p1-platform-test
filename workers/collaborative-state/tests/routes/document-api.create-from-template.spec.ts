@@ -7,10 +7,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { makePrincipal } from '../helpers/principal';
 import { makeBranch } from '../helpers/branch';
-import type {
-  CreateDocumentOnBranchResult,
-  DocumentVersion,
-} from '../../src/services/document-types';
+import type { CreateDocumentOnBranchResult } from '../../src/services/document-types';
+import type { DocumentVersion } from '../../src/types';
 
 // The real buildDocumentSkeletonFromTemplate runs against the mocked template
 // snapshot; every database-backed service stays a stub.

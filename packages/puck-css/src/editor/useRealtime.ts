@@ -87,6 +87,20 @@ export interface UseRealtimeParams {
    * Called after the local Y.Doc is cleared, before automatic reconnection.
    */
   onServerReload?: () => void;
+
+  /**
+   * Callback when the server closes with code 4002 (client lineage diverged).
+   * Reconnection is halted; caller should reseed from REST and reconnect.
+   */
+  onBaselineReset?: () => void;
+
+  /**
+   * External reset key: incrementing this tears down the current client and
+   * builds a fresh one with a new Y.Doc. Owned by the caller so that the REST
+   * refetch can complete and update `initialData` BEFORE the new client seeds
+   * its Y.Doc — preventing the new client from reseeding stale in-memory data.
+   */
+  resetKey?: number;
 }
 
 /**
@@ -195,6 +209,8 @@ export function useRealtime(params: UseRealtimeParams): UseRealtimeReturn {
     onPresenceUpdate,
     onFocusRegionBroadcast,
     onServerReload,
+    onBaselineReset,
+    resetKey = 0,
   } = params;
 
   const [connected, setConnected] = useState(false);
@@ -214,6 +230,7 @@ export function useRealtime(params: UseRealtimeParams): UseRealtimeReturn {
   const onPresenceUpdateRef = useRef(onPresenceUpdate);
   const onFocusRegionBroadcastRef = useRef(onFocusRegionBroadcast);
   const onServerReloadRef = useRef(onServerReload);
+  const onBaselineResetRef = useRef(onBaselineReset);
   // Keep tokenRefresher in a ref so the RealtimeClient always calls the
   // latest version without needing to be recreated on reference changes.
   const tokenRefresherRef = useRef(tokenRefresher);
@@ -241,6 +258,10 @@ export function useRealtime(params: UseRealtimeParams): UseRealtimeReturn {
     onServerReloadRef.current = onServerReload;
   }, [onServerReload]);
 
+  useEffect(() => {
+    onBaselineResetRef.current = onBaselineReset;
+  }, [onBaselineReset]);
+
   // Eagerly clean up binding and client refs when dependencies change.
   // useLayoutEffect cleanup runs BEFORE regular useEffect callbacks (including
   // children's effects like PuckDataSynchronizer). This prevents a race condition
@@ -255,7 +276,7 @@ export function useRealtime(params: UseRealtimeParams): UseRealtimeReturn {
       clientRef.current?.disconnect();
       clientRef.current = null;
     };
-  }, [baseUrl, apiKey, siteId, branchId, documentPath, actorId, actorType, sessionId, enabled]);
+  }, [baseUrl, apiKey, siteId, branchId, documentPath, actorId, actorType, sessionId, enabled, resetKey]);
 
   // Effect to manage connection lifecycle
   useEffect(() => {
@@ -318,6 +339,13 @@ export function useRealtime(params: UseRealtimeParams): UseRealtimeReturn {
       onServerReload: () => {
         onServerReloadRef.current?.();
       },
+      onBaselineReset: () => {
+        // Guard: ignore callbacks from stale clients (see onConnect comment).
+        if (clientRef.current !== client) return;
+        // The caller owns resetKey — it must refetch from REST and then increment
+        // its key so initialData is fresh before the new Y.Doc seeds itself.
+        onBaselineResetRef.current?.();
+      },
     });
 
     clientRef.current = client;
@@ -362,7 +390,7 @@ export function useRealtime(params: UseRealtimeParams): UseRealtimeReturn {
       setConnected(false);
       setPresenceViaWebSocket(false);
     };
-  }, [baseUrl, apiKey, siteId, branchId, documentPath, actorId, actorType, sessionId, enabled]);
+  }, [baseUrl, apiKey, siteId, branchId, documentPath, actorId, actorType, sessionId, enabled, resetKey]);
 
   // Apply local change function
   const applyLocalChange = useCallback((data: PuckData, puckActions?: { type: string; [key: string]: unknown }[]) => {

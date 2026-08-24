@@ -16,6 +16,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
 import * as Y from 'yjs';
 
+const loggerWarn = vi.fn();
+vi.mock('@pantheon-systems/p1-telemetry', () => ({
+  getLogger: () => ({ warn: loggerWarn, error: vi.fn(), info: vi.fn(), debug: vi.fn() }),
+}));
+
 // ---------------------------------------------------------------------------
 // Import the constant that does not yet exist — this will cause a compile /
 // import failure until the implementation is added, keeping all tests red.
@@ -151,11 +156,11 @@ async function buildManager(
 
 describe('PostgresSyncManager: CoW baseline mismatch detection', () => {
   let ydoc: Y.Doc;
-  let warnSpy: ReturnType<typeof vi.spyOn>;
   const originalFetch = globalThis.fetch;
 
   beforeEach(() => {
     vi.resetAllMocks();
+    loggerWarn.mockClear();
 
     ydoc = new Y.Doc();
 
@@ -163,14 +168,11 @@ describe('PostgresSyncManager: CoW baseline mismatch detection', () => {
     globalThis.fetch = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ found: false }), { status: 200 }),
     );
-
-    warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
   });
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
     ydoc.destroy();
-    warnSpy.mockRestore();
   });
 
   // =========================================================================
@@ -194,14 +196,13 @@ describe('PostgresSyncManager: CoW baseline mismatch detection', () => {
     const manager = await buildManager(env, storage, ydoc);
     await manager.syncToPostgres('actor-1', 'user');
 
-    expect(warnSpy).toHaveBeenCalledWith(
-      'cow_baseline_mismatch detected',
+    expect(loggerWarn).toHaveBeenCalledWith(
+      'cow baseline mismatch',
       expect.objectContaining({
-        documentId: 'doc-abc',
-        branchId: 'branch-xyz',
-        actorId: 'actor-1',
-        baselineCount: 3,
-        currentCount: 2,
+        document_id: 'doc-abc',
+        branch_id: 'branch-xyz',
+        principal_id: 'actor-1',
+        reason: 'cow_baseline_mismatch',
       }),
     );
   });
@@ -228,8 +229,8 @@ describe('PostgresSyncManager: CoW baseline mismatch detection', () => {
     await manager.syncToPostgres('actor-1', 'user');
 
     // Confirm warn was NOT called for the mismatch event
-    const mismatchCalls = warnSpy.mock.calls.filter(
-      (args) => args[0] === 'cow_baseline_mismatch detected',
+    const mismatchCalls = loggerWarn.mock.calls.filter(
+      (args) => args[0] === 'cow baseline mismatch',
     );
     expect(mismatchCalls).toHaveLength(0);
   });
@@ -251,8 +252,8 @@ describe('PostgresSyncManager: CoW baseline mismatch detection', () => {
     const manager = await buildManager(env, storage, ydoc);
     await manager.syncToPostgres('actor-1', 'user');
 
-    const mismatchCalls = warnSpy.mock.calls.filter(
-      (args) => args[0] === 'cow_baseline_mismatch detected',
+    const mismatchCalls = loggerWarn.mock.calls.filter(
+      (args) => args[0] === 'cow baseline mismatch',
     );
     expect(mismatchCalls).toHaveLength(0);
   });
@@ -275,18 +276,18 @@ describe('PostgresSyncManager: CoW baseline mismatch detection', () => {
 
     // First sync — should log warning
     await manager.syncToPostgres('actor-1', 'user');
-    expect(warnSpy).toHaveBeenCalledWith(
-      'cow_baseline_mismatch detected',
+    expect(loggerWarn).toHaveBeenCalledWith(
+      'cow baseline mismatch',
       expect.anything(),
     );
 
     // Clear the spy and run a second sync
-    warnSpy.mockClear();
+    loggerWarn.mockClear();
     await manager.syncToPostgres('actor-1', 'user');
 
     // No mismatch warning on second call
-    const mismatchCalls = warnSpy.mock.calls.filter(
-      (args) => args[0] === 'cow_baseline_mismatch detected',
+    const mismatchCalls = loggerWarn.mock.calls.filter(
+      (args) => args[0] === 'cow baseline mismatch',
     );
     expect(mismatchCalls).toHaveLength(0);
 
@@ -334,14 +335,13 @@ describe('PostgresSyncManager: CoW baseline mismatch detection', () => {
       'user',
     );
 
-    expect(warnSpy).toHaveBeenCalledWith(
-      'cow_baseline_mismatch detected',
+    expect(loggerWarn).toHaveBeenCalledWith(
+      'cow baseline mismatch',
       expect.objectContaining({
-        documentId: 'doc-abc',
-        branchId: 'branch-xyz',
-        actorId: 'actor-1',
-        baselineCount: 3,
-        currentCount: 2,
+        document_id: 'doc-abc',
+        branch_id: 'branch-xyz',
+        principal_id: 'actor-1',
+        reason: 'cow_baseline_mismatch',
       }),
     );
     expect(storage.delete).toHaveBeenCalledWith(COW_BASELINE_IDS_KEY);
@@ -367,14 +367,13 @@ describe('PostgresSyncManager: CoW baseline mismatch detection', () => {
     const manager = await buildManager(env, storage, ydoc);
     await manager.syncToPostgres('actor-1', 'user');
 
-    expect(warnSpy).toHaveBeenCalledWith(
-      'cow_baseline_mismatch detected',
+    expect(loggerWarn).toHaveBeenCalledWith(
+      'cow baseline mismatch',
       expect.objectContaining({
-        documentId: 'doc-abc',
-        branchId: 'branch-xyz',
-        actorId: 'actor-1',
-        baselineCount: 2,
-        currentCount: 1,
+        document_id: 'doc-abc',
+        branch_id: 'branch-xyz',
+        principal_id: 'actor-1',
+        reason: 'cow_baseline_mismatch',
       }),
     );
     expect(storage.delete).toHaveBeenCalledWith(COW_BASELINE_IDS_KEY);

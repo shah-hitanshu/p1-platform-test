@@ -129,6 +129,13 @@ export interface RealtimeClientConfig {
   onServerReload?: () => void;
 
   /**
+   * Called when the server reports this client's Yjs history has diverged from
+   * the document's current state (close code 4002). The caller must discard this
+   * client and build a fresh one; the doc cannot be repaired in place.
+   */
+  onBaselineReset?: () => void;
+
+  /**
    * Optional token refresher for dynamic WebSocket authentication.
    * Called when the WebSocket connection closes unexpectedly (non-intentionally).
    * Should return a fresh token string, or null if the session cannot be refreshed.
@@ -209,6 +216,14 @@ export class RealtimeClient {
   private lastReportedRetryCount = 0;
   private reconnectCheckInterval: ReturnType<typeof setInterval> | null = null;
   private visibilityHandler: (() => void) | null = null;
+  private hasConnectedToServer = false;
+  private syncBaselineTimer: ReturnType<typeof setTimeout> | null = null;
+  // Set when the server sends sync_baseline with gate:'closed' — 4002 is imminent.
+  // Gates Y.applyUpdate so subsequent binary frames don't render corrupted state.
+  private serverGateClosed = false;
+
+  // A Yjs update with no ops encodes to exactly [0, 0] (2 bytes).
+  private static readonly YJS_EMPTY_UPDATE_LENGTH = 2;
 
   // Rate limiting state
   private sendTimestamps: number[] = [];
@@ -288,6 +303,7 @@ export class RealtimeClient {
     this.currentApiKey = this.config.apiKey;
     this.intentionalDisconnect = false;
     this.hasConnectedOnce = false;
+    this.hasConnectedToServer = false;
     this.lastReportedRetryCount = 0;
 
     // Build WebSocket URL
@@ -335,12 +351,14 @@ export class RealtimeClient {
         connectUrl.searchParams.set('apiKey', this.currentApiKey);
       }
 
-      // Include the state vector on every call after the first successful
-      // connection so the server can send a delta rather than full history.
-      if (this.hasConnectedOnce) {
+      // Send the state vector only on reconnects, not on the very first connect.
+      // A fresh tab seeded from REST has a local clientId the server has never
+      // seen; sending it looks identical to a stale pre-merge tab and triggers
+      // a 4002. On reconnects the server already knows the clientId and can use
+      // the SV to compute only the missing delta.
+      if (this.hasConnectedToServer) {
         const sv = Y.encodeStateVector(this.ydoc);
-        const svBase64 = btoa(String.fromCharCode(...sv));
-        connectUrl.searchParams.set('stateVector', svBase64);
+        connectUrl.searchParams.set('stateVector', btoa(String.fromCharCode(...sv)));
       }
 
       return connectUrl.toString();
@@ -364,21 +382,30 @@ export class RealtimeClient {
 
     this.ws.addEventListener('open', () => {
       this.connected = true;
+      this.hasConnectedOnce = true;
+      this.hasConnectedToServer = true;
+      this.lastReportedRetryCount = 0;
+      this.serverGateClosed = false;
+      this.config.onConnect?.();
 
-      // Send local state when doc has content (seeded or from prior session).
-      // On initial connect with seeded data, this ensures bidirectional sync.
-      // On reconnect, this sends any edits made while disconnected.
-      if (this.ws) {
-        const root = this.ydoc.getMap('root');
-        if (root.size > 0) {
-          const localState = Y.encodeStateAsUpdate(this.ydoc);
-          this.ws.send(localState);
-        }
+      // Clear any timer left by a previous open (e.g. tab-refocus triggers reconnect).
+      // An orphaned timer would send full local history — the opposite of this changeset's goal.
+      if (this.syncBaselineTimer !== null) {
+        clearTimeout(this.syncBaselineTimer);
+        this.syncBaselineTimer = null;
       }
 
-      this.hasConnectedOnce = true;
-      this.lastReportedRetryCount = 0;
-      this.config.onConnect?.();
+      // Fallback for servers that don't implement the sync_baseline handshake.
+      // If no baseline frame arrives within 5 s, send whatever delta we hold —
+      // an offline edit is better lost to a merge than lost entirely.
+      this.syncBaselineTimer = setTimeout(() => {
+        this.syncBaselineTimer = null;
+        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+        const delta = Y.encodeStateAsUpdate(this.ydoc); // no sv arg = full state
+        if (delta.length > RealtimeClient.YJS_EMPTY_UPDATE_LENGTH) {
+          this.ws.send(delta);
+        }
+      }, 5000);
     });
 
     this.ws.addEventListener('message', (event) => {
@@ -393,6 +420,13 @@ export class RealtimeClient {
         // Binary frame: Yjs CRDT update
         const data = event.data as ArrayBuffer;
         const update = new Uint8Array(data);
+
+        // Drop binary updates once the server has signalled gate:closed via
+        // sync_baseline. The server sends a stateUpdate before the close, but
+        // applying it produces a union-merged snapshot that briefly renders
+        // the stale foreign content. Later binary frames (if any race the close)
+        // are also dropped.
+        if (this.serverGateClosed) return;
 
         // Apply remote update to local Y.Doc
         Y.applyUpdate(this.ydoc, update, 'remote');
@@ -423,9 +457,25 @@ export class RealtimeClient {
           root.clear();
         });
         this.lastSentSnapshot = null;
+        // Reset so the next reconnect is treated as a fresh connect and doesn't
+        // send the now-stale SV (which would look like a diverged lineage to a
+        // freshly-loaded DO and trigger a 4002).
+        this.hasConnectedToServer = false;
         this.config.onServerReload?.();
-        // PartySocket will reconnect automatically; the open handler
-        // skips sending state when root.size === 0
+        // PartySocket reconnects automatically; the open handler starts the
+        // sync_baseline handshake before any local state is sent.
+      }
+
+      // Server rejected the client's Yjs lineage as diverged — stop reconnecting.
+      if (closeEvent.code === 4002) {
+        this.intentionalDisconnect = true;
+        this.stopReconnectMonitoring();
+        const ws = this.ws;
+        this.ws = null;
+        ws?.close(); // stop PartySocket's internal retry; no-op on a real already-closed WS
+        this.config.onDisconnect?.();
+        this.config.onBaselineReset?.();
+        return;
       }
 
       // Check for authorization failure close codes (4401 Unauthorized, 4403 Forbidden)
@@ -554,6 +604,11 @@ export class RealtimeClient {
     this.intentionalDisconnect = true;
     this.stopReconnectMonitoring();
     this.stopVisibilityMonitoring();
+
+    if (this.syncBaselineTimer !== null) {
+      clearTimeout(this.syncBaselineTimer);
+      this.syncBaselineTimer = null;
+    }
 
     // Clean up rate limiting state
     if (this.flushTimer !== null) {
@@ -867,6 +922,25 @@ export class RealtimeClient {
               checkpoint: message.checkpoint,
               error: message.error,
             });
+          }
+          break;
+        }
+
+        case 'sync_baseline': {
+          // Cancel the old-server fallback timer — the server speaks the protocol.
+          if (this.syncBaselineTimer !== null) {
+            clearTimeout(this.syncBaselineTimer);
+            this.syncBaselineTimer = null;
+          }
+          // Gate closed means 4002 is coming; don't send a delta into a dying socket.
+          if (message.gate !== 'open') {
+            this.serverGateClosed = true;
+            break;
+          }
+          const serverSv = Uint8Array.from(atob(message.serverStateVector), c => c.charCodeAt(0));
+          const delta = Y.encodeStateAsUpdate(this.ydoc, serverSv);
+          if (delta.length > RealtimeClient.YJS_EMPTY_UPDATE_LENGTH) {
+            this.ws?.send(delta);
           }
           break;
         }

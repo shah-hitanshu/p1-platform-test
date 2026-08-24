@@ -7,10 +7,12 @@
  */
 
 import * as Y from 'yjs';
+import { getLogger } from '@pantheon-systems/p1-telemetry';
 import { runWithConnection, query as dbQuery } from '../db';
 import type { DocumentSessionEnv, SessionInfo } from './document-session-types';
 import {
   YDOC_STORAGE_KEY,
+  BASELINE_SOURCE_KEY,
   SYNC_IDLE_TIMEOUT_MS,
   COW_BASELINE_IDS_KEY,
 } from './document-session-types';
@@ -51,6 +53,9 @@ export interface PendingActionMetadata {
   actionMetadata?: Record<string, unknown>;
 }
 
+/** Provenance of the loaded baseline, for gate diagnostics. In-memory only. */
+export type BaselineSource = 'branch' | 'cow' | 'none' | 'restored';
+
 export class PostgresSyncManager {
   /** Promise tracking an in-progress sync to prevent concurrent syncs */
   private syncInProgress: Promise<void> | null = null;
@@ -73,6 +78,9 @@ export class PostgresSyncManager {
    * it would overwrite the stored content with nothing.
    */
   contentLoadFailed = false;
+
+  /** How the session's current Y.Doc content was obtained. Diagnostic only. */
+  baselineSource: BaselineSource = 'restored';
 
   constructor(
     private readonly env: DocumentSessionEnv,
@@ -126,7 +134,7 @@ export class PostgresSyncManager {
    * @returns true if state was loaded
    */
   private async initializeFromHyperdrive(): Promise<boolean> {
-    if (this.env.HYPERDRIVE === undefined) return false;
+    if (this.env.HYPERDRIVE === undefined) { this.baselineSource = 'none'; return false; }
 
     const { documentId, branchId } = this.sessionInfo;
 
@@ -153,11 +161,12 @@ export class PostgresSyncManager {
 
         if (result.rows.length > 0) {
           const row = result.rows[0];
-          if (!row) return false;
+          if (!row) { this.baselineSource = 'none'; return false; }
           const snapshot = row.snapshot ?? await reconstructVersionSnapshot(documentId, branchId, row.version_number);
-          if (snapshot === null) return false;
+          if (snapshot === null) { this.baselineSource = 'none'; return false; }
           const root = this.getYdoc().getMap('root');
           applySnapshotToYMap(root, snapshot);
+          this.baselineSource = 'branch';
           console.log(
             `Initialized doc ${documentId} from Hyperdrive snapshot`,
           );
@@ -175,12 +184,12 @@ export class PostgresSyncManager {
           [branchId],
         );
 
-        if (branchResult.rows.length === 0) return false;
+        if (branchResult.rows.length === 0) { this.baselineSource = 'none'; return false; }
 
         const sourceRow = branchResult.rows[0];
-        if (!sourceRow) return false;
+        if (!sourceRow) { this.baselineSource = 'none'; return false; }
         const sourceBranchId = sourceRow.source_branch_id;
-        if (!sourceBranchId) return false;
+        if (!sourceBranchId) { this.baselineSource = 'none'; return false; }
 
         const cowResult = await dbQuery<VersionRow>(
           `SELECT dv.snapshot, dv.version_number
@@ -196,15 +205,16 @@ export class PostgresSyncManager {
           [documentId, sourceBranchId],
         );
 
-        if (cowResult.rows.length === 0) return false;
+        if (cowResult.rows.length === 0) { this.baselineSource = 'none'; return false; }
 
         const cowRow = cowResult.rows[0];
-        if (!cowRow) return false;
+        if (!cowRow) { this.baselineSource = 'none'; return false; }
         const cowSnapshot = cowRow.snapshot
           ?? await reconstructVersionSnapshot(documentId, sourceBranchId, cowRow.version_number);
-        if (cowSnapshot === null) return false;
+        if (cowSnapshot === null) { this.baselineSource = 'none'; return false; }
         const root = this.getYdoc().getMap('root');
         applySnapshotToYMap(root, cowSnapshot);
+        this.baselineSource = 'cow';
         console.log(
           `Initialized doc ${documentId} from CoW baseline (source branch ${sourceBranchId})`,
         );
@@ -260,7 +270,7 @@ export class PostgresSyncManager {
       snapshot?: Record<string, unknown>;
     };
 
-    if (!data.found) return;
+    if (!data.found) { this.baselineSource = 'none'; return; }
 
     if (
       data.snapshot !== undefined
@@ -268,11 +278,16 @@ export class PostgresSyncManager {
     ) {
       const root = this.getYdoc().getMap('root');
       applySnapshotToYMap(root, data.snapshot);
+      // The internal API response does not distinguish a CoW baseline from a
+      // direct branch match, so this path reports the coarser 'branch'.
+      this.baselineSource = 'branch';
       console.log(
         `Initialized doc ${documentId} from PostgreSQL snapshot`,
       );
       await this.persist();
       this.lastSyncedStateVectorHash = this.computeStateVectorHash();
+    } else {
+      this.baselineSource = 'none';
     }
   }
 
@@ -699,18 +714,25 @@ export class PostgresSyncManager {
       const hasOverlap = currentIds.some((id) => baselineSet.has(id));
 
       if (!hasOverlap) {
-        const { documentId, branchId } = this.sessionInfo;
-        console.warn('cow_baseline_mismatch detected', {
-          documentId,
-          branchId,
-          actorId,
-          baselineCount: baselineIds.length,
-          currentCount: currentIds.length,
-          sampleCurrentIds: currentIds.slice(0, 5),
+        const { siteId, documentId, branchId } = this.sessionInfo;
+        getLogger().warn('cow baseline mismatch', {
+          site_id: siteId,
+          document_id: documentId,
+          branch_id: branchId,
+          principal_id: actorId,
+          outcome: 'accepted',
+          reason: 'cow_baseline_mismatch',
+          baseline_source: this.baselineSource,
+          count: currentIds.length,
+          baseline_count: baselineIds.length,
+          sample_current_ids: currentIds.slice(0, 5),
         });
       }
     } catch (error) {
-      console.error('CoW baseline mismatch detection failed (non-fatal):', error);
+      getLogger().error('cow baseline mismatch detection failed', error, {
+        document_id: this.sessionInfo.documentId,
+        outcome: 'degraded',
+      });
     }
   }
 
@@ -724,6 +746,18 @@ export class PostgresSyncManager {
   private async persist(): Promise<void> {
     const update = Y.encodeStateAsUpdate(this.getYdoc());
     await this.storage.put(YDOC_STORAGE_KEY, update);
+    await this.storage.put(BASELINE_SOURCE_KEY, this.baselineSource);
+  }
+
+  /**
+   * Restore baselineSource from DO storage after a hibernation wake cycle.
+   * Called by DocumentSession.doInitializeCrdt() after applying stored Y.Doc bytes.
+   */
+  async restoreBaselineSourceFromStorage(): Promise<void> {
+    const stored = await this.storage.get<string>(BASELINE_SOURCE_KEY);
+    if (stored != null) {
+      this.baselineSource = stored as typeof this.baselineSource;
+    }
   }
 
   /**

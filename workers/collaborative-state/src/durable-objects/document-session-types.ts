@@ -9,6 +9,12 @@
 export const YDOC_STORAGE_KEY = 'ydoc';
 
 /**
+ * Storage key for persisted baseline source — survives DO hibernation so the
+ * cow_baseline_mismatch log reports the correct origin after a wake cycle.
+ */
+export const BASELINE_SOURCE_KEY = 'baseline_source';
+
+/**
  * Storage key for persisted presence state.
  * Presence is stored in DO storage so it survives DO eviction/re-instantiation.
  */
