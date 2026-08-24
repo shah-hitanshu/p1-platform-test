@@ -21,7 +21,7 @@ export interface Catalog {
 }
 
 export function loadCatalog(registryDir?: string): Catalog {
-  const dir = registryDir ?? join(import.meta.dirname, '..', 'public', 'r');
+  const dir = registryDir ?? join(process.cwd(), 'public', 'r');
   const indexPath = join(dir, 'registry.json');
 
   if (!existsSync(indexPath)) {
