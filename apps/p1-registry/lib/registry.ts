@@ -34,9 +34,11 @@ export function loadCatalog(registryDir?: string): Catalog {
     items: RegistryItem[];
   };
 
-  // Catalog shows installable block/theme/lib items — not the base meta-package.
+  // Catalog shows blocks and theme items only. Internal shared libs (registry:lib)
+  // and the base meta-package are dependencies, not user-installable items.
+  const SHOW_TYPES = new Set(['registry:block', 'registry:theme']);
   const items: CatalogItem[] = index.items
-    .filter((i) => i.name !== 'base' && i.type !== 'registry:base')
+    .filter((i) => SHOW_TYPES.has(i.type))
     .map((i) => ({
       ...i,
       addCommand: `pnpm dlx shadcn@latest add @p1/${i.name}`,
