@@ -1,0 +1,39 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry.json",
+  "items": [
+    {
+      "name": "internal-btn",
+      "type": "registry:lib",
+      "title": "P1 Button primitive",
+      "description": "Shared button element used by the P1 marketing blocks. Tone, size and variant are data attributes.",
+      "files": [
+        { "path": "btn.tsx", "type": "registry:lib" },
+        { "path": "btn.css", "type": "registry:file", "target": "lib/btn.css" }
+      ],
+      "meta": { "version": "0.1.0" }
+    },
+    {
+      "name": "internal-icons",
+      "type": "registry:lib",
+      "title": "P1 inline icons",
+      "description": "Inline SVG icons used by the P1 marketing blocks. Size and colour are inherited from CSS.",
+      "files": [
+        { "path": "icons.tsx", "type": "registry:lib" }
+      ],
+      "meta": { "version": "0.1.0" }
+    },
+    {
+      "name": "internal-rich",
+      "type": "registry:lib",
+      "title": "P1 rich text wrapper",
+      "description": "Prose typography wrapper used by the P1 editorial blocks, replacing Tailwind's prose classes.",
+      "dependencies": ["isomorphic-dompurify"],
+      "files": [
+        { "path": "rich.tsx", "type": "registry:lib" },
+        { "path": "rich.css", "type": "registry:file", "target": "lib/rich.css" },
+        { "path": "sanitize-richtext.ts", "type": "registry:lib" }
+      ],
+      "meta": { "version": "0.1.0" }
+    }
+  ]
+}

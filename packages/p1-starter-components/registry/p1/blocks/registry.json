@@ -2,17 +2,595 @@
   "$schema": "https://ui.shadcn.com/schema/registry.json",
   "items": [
     {
+      "name": "accordion",
+      "type": "registry:block",
+      "title": "Accordion",
+      "description": "Expandable list of title/body items with a section heading; use for collapsible content like FAQs or grouped details.",
+      "categories": ["layout"],
+      "dependencies": ["@puckeditor/core"],
+      "registryDependencies": ["@p1/tokens", "@p1/internal-icons", "@p1/internal-rich"],
+      "meta": { "version": "0.1.0", "atlas": "layout/accordion" },
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { AccordionBlock } from './accordion/accordion.block';\n  export const p1Blocks = { ...p1Blocks, P1Accordion: AccordionBlock };\n\nThen edit components/puck/blocks/accordion/accordion.css to restyle it — the file is yours.",
+      "files": [
+        { "path": "accordion/accordion.tsx", "type": "registry:component", "target": "components/puck/blocks/accordion/accordion.tsx" },
+        { "path": "accordion/accordion.block.tsx", "type": "registry:component", "target": "components/puck/blocks/accordion/accordion.block.tsx" },
+        { "path": "accordion/accordion.css", "type": "registry:file", "target": "components/puck/blocks/accordion/accordion.css" }
+      ]
+    },
+    {
+      "name": "announcement",
+      "type": "registry:block",
+      "title": "Announcement",
+      "description": "Slim banner strip with a text message and optional link label in themed tones (purple/yellow/dark/gradient); use for site-wide notices.",
+      "categories": ["attention"],
+      "dependencies": ["@puckeditor/core"],
+      "registryDependencies": ["@p1/tokens"],
+      "meta": { "version": "0.1.0", "atlas": "attention/announcement" },
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { AnnouncementBlock } from './announcement/announcement.block';\n  export const p1Blocks = { ...p1Blocks, P1Announcement: AnnouncementBlock };\n\nThen edit components/puck/blocks/announcement/announcement.css to restyle it — the file is yours.",
+      "files": [
+        { "path": "announcement/announcement.tsx", "type": "registry:component", "target": "components/puck/blocks/announcement/announcement.tsx" },
+        { "path": "announcement/announcement.block.tsx", "type": "registry:component", "target": "components/puck/blocks/announcement/announcement.block.tsx" },
+        { "path": "announcement/announcement.css", "type": "registry:file", "target": "components/puck/blocks/announcement/announcement.css" }
+      ]
+    },
+    {
+      "name": "article-header",
+      "type": "registry:block",
+      "title": "Article Header",
+      "description": "Blog/article masthead with category, title, standfirst, author avatar, date, and read-time; use at the top of editorial pages.",
+      "categories": ["editorial"],
+      "dependencies": ["@puckeditor/core"],
+      "registryDependencies": ["@p1/tokens"],
+      "meta": { "version": "0.1.0", "atlas": "editorial/article-header" },
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { ArticleHeaderBlock } from './article-header/article-header.block';\n  export const p1Blocks = { ...p1Blocks, P1ArticleHeader: ArticleHeaderBlock };\n\nThen edit components/puck/blocks/article-header/article-header.css to restyle it — the file is yours.",
+      "files": [
+        { "path": "article-header/article-header.tsx", "type": "registry:component", "target": "components/puck/blocks/article-header/article-header.tsx" },
+        { "path": "article-header/article-header.block.tsx", "type": "registry:component", "target": "components/puck/blocks/article-header/article-header.block.tsx" },
+        { "path": "article-header/article-header.css", "type": "registry:file", "target": "components/puck/blocks/article-header/article-header.css" }
+      ]
+    },
+    {
+      "name": "button",
+      "type": "registry:block",
+      "title": "Button",
+      "description": "Single CTA button (primary/secondary/yellow/purple) centered or left-aligned; use to place a standalone call-to-action.",
+      "categories": ["content"],
+      "dependencies": ["@puckeditor/core"],
+      "registryDependencies": ["@p1/tokens", "@p1/internal-btn"],
+      "meta": { "version": "0.1.0", "atlas": "content/button" },
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { ButtonBlock } from './button/button.block';\n  export const p1Blocks = { ...p1Blocks, P1Button: ButtonBlock };\n\nThen edit components/puck/blocks/button/button.css to restyle it — the file is yours.",
+      "files": [
+        { "path": "button/button.tsx", "type": "registry:component", "target": "components/puck/blocks/button/button.tsx" },
+        { "path": "button/button.block.tsx", "type": "registry:component", "target": "components/puck/blocks/button/button.block.tsx" },
+        { "path": "button/button.css", "type": "registry:file", "target": "components/puck/blocks/button/button.css" }
+      ]
+    },
+    {
+      "name": "callout",
+      "type": "registry:block",
+      "title": "Callout",
+      "description": "Highlighted aside box with an icon, title, and body text in note/info/tip/warning variants; use to flag important inline content.",
+      "categories": ["editorial"],
+      "dependencies": ["@puckeditor/core"],
+      "registryDependencies": ["@p1/tokens", "@p1/internal-icons"],
+      "meta": { "version": "0.1.0", "atlas": "editorial/callout" },
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { CalloutBlock } from './callout/callout.block';\n  export const p1Blocks = { ...p1Blocks, P1Callout: CalloutBlock };\n\nThen edit components/puck/blocks/callout/callout.css to restyle it — the file is yours.",
+      "files": [
+        { "path": "callout/callout.tsx", "type": "registry:component", "target": "components/puck/blocks/callout/callout.tsx" },
+        { "path": "callout/callout.block.tsx", "type": "registry:component", "target": "components/puck/blocks/callout/callout.block.tsx" },
+        { "path": "callout/callout.css", "type": "registry:file", "target": "components/puck/blocks/callout/callout.css" }
+      ]
+    },
+    {
+      "name": "card-grid",
+      "type": "registry:block",
+      "title": "Card Grid",
+      "description": "Responsive 2–4 column grid of image+title+subtitle cards with an optional section heading; use for feature or product showcases.",
+      "categories": ["showcase"],
+      "dependencies": ["@puckeditor/core"],
+      "registryDependencies": ["@p1/tokens"],
+      "meta": { "version": "0.1.0", "atlas": "showcase/card-grid" },
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { CardGridBlock } from './card-grid/card-grid.block';\n  export const p1Blocks = { ...p1Blocks, P1CardGrid: CardGridBlock };\n\nThen edit components/puck/blocks/card-grid/card-grid.css to restyle it — the file is yours.",
+      "files": [
+        { "path": "card-grid/card-grid.tsx", "type": "registry:component", "target": "components/puck/blocks/card-grid/card-grid.tsx" },
+        { "path": "card-grid/card-grid.block.tsx", "type": "registry:component", "target": "components/puck/blocks/card-grid/card-grid.block.tsx" },
+        { "path": "card-grid/card-grid.css", "type": "registry:file", "target": "components/puck/blocks/card-grid/card-grid.css" }
+      ]
+    },
+    {
+      "name": "columns",
+      "type": "registry:block",
+      "title": "Columns",
+      "description": "Drag-and-drop layout grid of 2–4 columns with configurable ratio, gap, and vertical alignment; use as a layout wrapper for other blocks.",
+      "categories": ["layout"],
+      "dependencies": ["@puckeditor/core"],
+      "registryDependencies": ["@p1/tokens"],
+      "meta": { "version": "0.1.0", "atlas": "layout/columns" },
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { ColumnsBlock } from './columns/columns.block';\n  export const p1Blocks = { ...p1Blocks, P1Columns: ColumnsBlock };\n\nThen edit components/puck/blocks/columns/columns.css to restyle it — the file is yours.",
+      "files": [
+        { "path": "columns/columns.tsx", "type": "registry:component", "target": "components/puck/blocks/columns/columns.tsx" },
+        { "path": "columns/columns.block.tsx", "type": "registry:component", "target": "components/puck/blocks/columns/columns.block.tsx" },
+        { "path": "columns/columns.css", "type": "registry:file", "target": "components/puck/blocks/columns/columns.css" }
+      ]
+    },
+    {
+      "name": "comparison-table",
+      "type": "registry:block",
+      "title": "Comparison Table",
+      "description": "Feature comparison table with up to 4 named columns and checkmark/text rows; use for pricing or product capability comparisons.",
+      "categories": ["convert"],
+      "dependencies": ["@puckeditor/core"],
+      "registryDependencies": ["@p1/tokens", "@p1/internal-icons"],
+      "meta": { "version": "0.1.0", "atlas": "convert/comparison-table" },
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { ComparisonTableBlock } from './comparison-table/comparison-table.block';\n  export const p1Blocks = { ...p1Blocks, P1ComparisonTable: ComparisonTableBlock };\n\nThen edit components/puck/blocks/comparison-table/comparison-table.css to restyle it — the file is yours.",
+      "files": [
+        { "path": "comparison-table/comparison-table.tsx", "type": "registry:component", "target": "components/puck/blocks/comparison-table/comparison-table.tsx" },
+        { "path": "comparison-table/comparison-table.block.tsx", "type": "registry:component", "target": "components/puck/blocks/comparison-table/comparison-table.block.tsx" },
+        { "path": "comparison-table/comparison-table.css", "type": "registry:file", "target": "components/puck/blocks/comparison-table/comparison-table.css" }
+      ]
+    },
+    {
+      "name": "container",
+      "type": "registry:block",
+      "title": "Container",
+      "description": "Constrained-width wrapper slot with tone, padding, radius, and max-width controls; use to scope and style groups of nested blocks.",
+      "categories": ["layout"],
+      "dependencies": ["@puckeditor/core"],
+      "registryDependencies": ["@p1/tokens"],
+      "meta": { "version": "0.1.0", "atlas": "layout/container" },
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { ContainerBlock } from './container/container.block';\n  export const p1Blocks = { ...p1Blocks, P1Container: ContainerBlock };\n\nThen edit components/puck/blocks/container/container.css to restyle it — the file is yours.",
+      "files": [
+        { "path": "container/container.tsx", "type": "registry:component", "target": "components/puck/blocks/container/container.tsx" },
+        { "path": "container/container.block.tsx", "type": "registry:component", "target": "components/puck/blocks/container/container.block.tsx" },
+        { "path": "container/container.css", "type": "registry:file", "target": "components/puck/blocks/container/container.css" }
+      ]
+    },
+    {
+      "name": "cta",
+      "type": "registry:block",
+      "title": "CTA Banner",
+      "description": "Full-width call-to-action banner with eyebrow, title, subtitle, and up to two buttons in multiple tones and layouts; use for conversion sections.",
+      "categories": ["convert"],
+      "dependencies": ["@puckeditor/core"],
+      "registryDependencies": ["@p1/tokens", "@p1/internal-btn"],
+      "meta": { "version": "0.1.0", "atlas": "convert/cta" },
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { CtaBannerBlock } from './cta/cta.block';\n  export const p1Blocks = { ...p1Blocks, P1CtaBanner: CtaBannerBlock };\n\nThen edit components/puck/blocks/cta/cta.css to restyle it — the file is yours.",
+      "files": [
+        { "path": "cta/cta.tsx", "type": "registry:component", "target": "components/puck/blocks/cta/cta.tsx" },
+        { "path": "cta/cta.block.tsx", "type": "registry:component", "target": "components/puck/blocks/cta/cta.block.tsx" },
+        { "path": "cta/cta.css", "type": "registry:file", "target": "components/puck/blocks/cta/cta.css" }
+      ]
+    },
+    {
       "name": "divider",
       "type": "registry:block",
       "title": "Divider",
-      "description": "A horizontal rule or dot cluster for separating page sections.",
-      "categories": ["layout"],
+      "description": "Horizontal rule in solid, dashed, or dot styles with configurable vertical spacing; use to visually separate page sections.",
+      "categories": ["content"],
+      "dependencies": ["@puckeditor/core"],
+      "registryDependencies": ["@p1/tokens"],
+      "meta": { "version": "0.1.0", "atlas": "content/divider" },
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { DividerBlock } from './divider/divider.block';\n  export const p1Blocks = { ...p1Blocks, P1Divider: DividerBlock };\n\nThen edit components/puck/blocks/divider/divider.css to restyle it — the file is yours.",
       "files": [
-        {
-          "path": "divider/divider.tsx",
-          "type": "registry:component",
-          "target": "components/puck/blocks/divider/divider.tsx"
-        }
+        { "path": "divider/divider.tsx", "type": "registry:component", "target": "components/puck/blocks/divider/divider.tsx" },
+        { "path": "divider/divider.block.tsx", "type": "registry:component", "target": "components/puck/blocks/divider/divider.block.tsx" },
+        { "path": "divider/divider.css", "type": "registry:file", "target": "components/puck/blocks/divider/divider.css" }
+      ]
+    },
+    {
+      "name": "embed",
+      "type": "registry:block",
+      "title": "Embed",
+      "description": "Responsive iframe embed for video (YouTube/Vimeo/Wistia), social posts, maps, or generic URLs with aspect-ratio and caption; use for media embeds.",
+      "categories": ["editorial"],
+      "dependencies": ["@puckeditor/core"],
+      "registryDependencies": ["@p1/tokens", "@p1/internal-icons"],
+      "meta": { "version": "0.1.0", "atlas": "editorial/embed" },
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { EmbedBlock } from './embed/embed.block';\n  export const p1Blocks = { ...p1Blocks, P1Embed: EmbedBlock };\n\nThen edit components/puck/blocks/embed/embed.css to restyle it — the file is yours.",
+      "files": [
+        { "path": "embed/embed.tsx", "type": "registry:component", "target": "components/puck/blocks/embed/embed.tsx" },
+        { "path": "embed/embed.block.tsx", "type": "registry:component", "target": "components/puck/blocks/embed/embed.block.tsx" },
+        { "path": "embed/embed.css", "type": "registry:file", "target": "components/puck/blocks/embed/embed.css" }
+      ]
+    },
+    {
+      "name": "faq",
+      "type": "registry:block",
+      "title": "FAQ",
+      "description": "Vertically stacked question-and-answer list with a section heading and icon-decorated rows; use for support or product FAQ sections.",
+      "categories": ["convert"],
+      "dependencies": ["@puckeditor/core"],
+      "registryDependencies": ["@p1/tokens", "@p1/internal-icons"],
+      "meta": { "version": "0.1.0", "atlas": "convert/faq" },
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { FaqBlock } from './faq/faq.block';\n  export const p1Blocks = { ...p1Blocks, P1Faq: FaqBlock };\n\nThen edit components/puck/blocks/faq/faq.css to restyle it — the file is yours.",
+      "files": [
+        { "path": "faq/faq.tsx", "type": "registry:component", "target": "components/puck/blocks/faq/faq.tsx" },
+        { "path": "faq/faq.block.tsx", "type": "registry:component", "target": "components/puck/blocks/faq/faq.block.tsx" },
+        { "path": "faq/faq.css", "type": "registry:file", "target": "components/puck/blocks/faq/faq.css" }
+      ]
+    },
+    {
+      "name": "feature-media",
+      "type": "registry:block",
+      "title": "Feature Media",
+      "description": "Side-by-side text+image block with eyebrow, title, body, bullet points, and a CTA button; use for product feature highlights.",
+      "categories": ["value"],
+      "dependencies": ["@puckeditor/core"],
+      "registryDependencies": ["@p1/tokens", "@p1/internal-btn", "@p1/internal-icons"],
+      "meta": { "version": "0.1.0", "atlas": "value/feature-media" },
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { FeatureMediaBlock } from './feature-media/feature-media.block';\n  export const p1Blocks = { ...p1Blocks, P1FeatureMedia: FeatureMediaBlock };\n\nThen edit components/puck/blocks/feature-media/feature-media.css to restyle it — the file is yours.",
+      "files": [
+        { "path": "feature-media/feature-media.tsx", "type": "registry:component", "target": "components/puck/blocks/feature-media/feature-media.tsx" },
+        { "path": "feature-media/feature-media.block.tsx", "type": "registry:component", "target": "components/puck/blocks/feature-media/feature-media.block.tsx" },
+        { "path": "feature-media/feature-media.css", "type": "registry:file", "target": "components/puck/blocks/feature-media/feature-media.css" }
+      ]
+    },
+    {
+      "name": "features",
+      "type": "registry:block",
+      "title": "Feature Cards",
+      "description": "Grid of 2–4 feature cards each with eyebrow, title, and body in multiple color schemes and card styles; use for feature lists or benefit grids.",
+      "categories": ["value"],
+      "dependencies": ["@puckeditor/core"],
+      "registryDependencies": ["@p1/tokens"],
+      "meta": { "version": "0.1.0", "atlas": "value/features" },
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { FeatureCardsBlock } from './features/features.block';\n  export const p1Blocks = { ...p1Blocks, P1FeatureCards: FeatureCardsBlock };\n\nThen edit components/puck/blocks/features/features.css to restyle it — the file is yours.",
+      "files": [
+        { "path": "features/features.tsx", "type": "registry:component", "target": "components/puck/blocks/features/features.tsx" },
+        { "path": "features/features.block.tsx", "type": "registry:component", "target": "components/puck/blocks/features/features.block.tsx" },
+        { "path": "features/features.css", "type": "registry:file", "target": "components/puck/blocks/features/features.css" }
+      ]
+    },
+    {
+      "name": "figure",
+      "type": "registry:block",
+      "title": "Figure",
+      "description": "Single image with optional caption and photo credit, supporting aspect ratio, width, radius, and b&w treatment; use for editorial images.",
+      "categories": ["editorial"],
+      "dependencies": ["@puckeditor/core"],
+      "registryDependencies": ["@p1/tokens"],
+      "meta": { "version": "0.1.0", "atlas": "editorial/figure" },
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { FigureBlock } from './figure/figure.block';\n  export const p1Blocks = { ...p1Blocks, P1Figure: FigureBlock };\n\nThen edit components/puck/blocks/figure/figure.css to restyle it — the file is yours.",
+      "files": [
+        { "path": "figure/figure.tsx", "type": "registry:component", "target": "components/puck/blocks/figure/figure.tsx" },
+        { "path": "figure/figure.block.tsx", "type": "registry:component", "target": "components/puck/blocks/figure/figure.block.tsx" },
+        { "path": "figure/figure.css", "type": "registry:file", "target": "components/puck/blocks/figure/figure.css" }
+      ]
+    },
+    {
+      "name": "footer",
+      "type": "registry:block",
+      "title": "Footer",
+      "description": "Site footer with logo, tagline, multi-column link groups, newsletter signup, social icons, and legal/copyright row in dark/indigo/light tones.",
+      "categories": ["global"],
+      "dependencies": ["@puckeditor/core"],
+      "registryDependencies": ["@p1/tokens", "@p1/internal-icons"],
+      "meta": { "version": "0.1.0", "atlas": "global/footer" },
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { FooterBlock } from './footer/footer.block';\n  export const p1Blocks = { ...p1Blocks, P1Footer: FooterBlock };\n\nThen edit components/puck/blocks/footer/footer.css to restyle it — the file is yours.",
+      "files": [
+        { "path": "footer/footer.tsx", "type": "registry:component", "target": "components/puck/blocks/footer/footer.tsx" },
+        { "path": "footer/footer.block.tsx", "type": "registry:component", "target": "components/puck/blocks/footer/footer.block.tsx" },
+        { "path": "footer/footer.css", "type": "registry:file", "target": "components/puck/blocks/footer/footer.css" }
+      ]
+    },
+    {
+      "name": "gallery",
+      "type": "registry:block",
+      "title": "Gallery",
+      "description": "Multi-image display in grid, masonry, filmstrip, or carousel layout with optional captions and configurable columns/gap/ratio; use for photo galleries.",
+      "categories": ["showcase"],
+      "dependencies": ["@puckeditor/core"],
+      "registryDependencies": ["@p1/tokens", "@p1/internal-icons"],
+      "meta": { "version": "0.1.0", "atlas": "showcase/gallery" },
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { GalleryBlock } from './gallery/gallery.block';\n  export const p1Blocks = { ...p1Blocks, P1Gallery: GalleryBlock };\n\nThen edit components/puck/blocks/gallery/gallery.css to restyle it — the file is yours.",
+      "files": [
+        { "path": "gallery/gallery.tsx", "type": "registry:component", "target": "components/puck/blocks/gallery/gallery.tsx" },
+        { "path": "gallery/gallery.block.tsx", "type": "registry:component", "target": "components/puck/blocks/gallery/gallery.block.tsx" },
+        { "path": "gallery/gallery.css", "type": "registry:file", "target": "components/puck/blocks/gallery/gallery.css" }
+      ]
+    },
+    {
+      "name": "header",
+      "type": "registry:block",
+      "title": "Header",
+      "description": "Site navigation bar with logo, nav links, optional search, and a CTA button in white/light/dark tones; use as the page header/navbar.",
+      "categories": ["global"],
+      "dependencies": ["@puckeditor/core"],
+      "registryDependencies": ["@p1/tokens", "@p1/internal-icons"],
+      "meta": { "version": "0.1.0", "atlas": "global/header" },
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { HeaderBlock } from './header/header.block';\n  export const p1Blocks = { ...p1Blocks, P1Header: HeaderBlock };\n\nThen edit components/puck/blocks/header/header.css to restyle it — the file is yours.",
+      "files": [
+        { "path": "header/header.tsx", "type": "registry:component", "target": "components/puck/blocks/header/header.tsx" },
+        { "path": "header/header.block.tsx", "type": "registry:component", "target": "components/puck/blocks/header/header.block.tsx" },
+        { "path": "header/header.css", "type": "registry:file", "target": "components/puck/blocks/header/header.css" }
+      ]
+    },
+    {
+      "name": "heading",
+      "type": "registry:block",
+      "title": "Heading",
+      "description": "Single H1–H4 heading element with left/center alignment; use to add a standalone section title.",
+      "categories": ["content"],
+      "dependencies": ["@puckeditor/core"],
+      "registryDependencies": ["@p1/tokens"],
+      "meta": { "version": "0.1.0", "atlas": "content/heading" },
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { HeadingBlock } from './heading/heading.block';\n  export const p1Blocks = { ...p1Blocks, P1Heading: HeadingBlock };\n\nThen edit components/puck/blocks/heading/heading.css to restyle it — the file is yours.",
+      "files": [
+        { "path": "heading/heading.tsx", "type": "registry:component", "target": "components/puck/blocks/heading/heading.tsx" },
+        { "path": "heading/heading.block.tsx", "type": "registry:component", "target": "components/puck/blocks/heading/heading.block.tsx" },
+        { "path": "heading/heading.css", "type": "registry:file", "target": "components/puck/blocks/heading/heading.css" }
+      ]
+    },
+    {
+      "name": "hero",
+      "type": "registry:block",
+      "title": "Hero",
+      "description": "Large page hero with eyebrow, title, description, two CTA buttons, and an image in split/full-image/text-only layouts with overlay options.",
+      "categories": ["attention"],
+      "dependencies": ["@puckeditor/core"],
+      "registryDependencies": ["@p1/tokens", "@p1/internal-btn"],
+      "meta": { "version": "0.1.0", "atlas": "attention/hero" },
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { HeroBlock } from './hero/hero.block';\n  export const p1Blocks = { ...p1Blocks, P1Hero: HeroBlock };\n\nThen edit components/puck/blocks/hero/hero.css to restyle it — the file is yours.",
+      "files": [
+        { "path": "hero/hero.tsx", "type": "registry:component", "target": "components/puck/blocks/hero/hero.tsx" },
+        { "path": "hero/hero.block.tsx", "type": "registry:component", "target": "components/puck/blocks/hero/hero.block.tsx" },
+        { "path": "hero/hero.css", "type": "registry:file", "target": "components/puck/blocks/hero/hero.css" }
+      ]
+    },
+    {
+      "name": "image",
+      "type": "registry:block",
+      "title": "Image",
+      "description": "Simple full-bleed or contained image block with aspect ratio, fit, position, radius, and b&w treatment controls; use for standalone images.",
+      "categories": ["showcase"],
+      "dependencies": ["@puckeditor/core"],
+      "registryDependencies": ["@p1/tokens"],
+      "meta": { "version": "0.1.0", "atlas": "showcase/image" },
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { ImageBlock } from './image/image.block';\n  export const p1Blocks = { ...p1Blocks, P1Image: ImageBlock };\n\nThen edit components/puck/blocks/image/image.css to restyle it — the file is yours.",
+      "files": [
+        { "path": "image/image.tsx", "type": "registry:component", "target": "components/puck/blocks/image/image.tsx" },
+        { "path": "image/image.block.tsx", "type": "registry:component", "target": "components/puck/blocks/image/image.block.tsx" },
+        { "path": "image/image.css", "type": "registry:file", "target": "components/puck/blocks/image/image.css" }
+      ]
+    },
+    {
+      "name": "lead-capture",
+      "type": "registry:block",
+      "title": "Lead Capture",
+      "description": "Email capture section with heading, subtitle, placeholder text, a submit button, and a note field in inline or stacked layout; use for newsletter/lead forms.",
+      "categories": ["convert"],
+      "dependencies": ["@puckeditor/core"],
+      "registryDependencies": ["@p1/tokens", "@p1/internal-btn"],
+      "meta": { "version": "0.1.0", "atlas": "convert/lead-capture" },
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { LeadCaptureBlock } from './lead-capture/lead-capture.block';\n  export const p1Blocks = { ...p1Blocks, P1LeadCapture: LeadCaptureBlock };\n\nThen edit components/puck/blocks/lead-capture/lead-capture.css to restyle it — the file is yours.",
+      "files": [
+        { "path": "lead-capture/lead-capture.tsx", "type": "registry:component", "target": "components/puck/blocks/lead-capture/lead-capture.tsx" },
+        { "path": "lead-capture/lead-capture.block.tsx", "type": "registry:component", "target": "components/puck/blocks/lead-capture/lead-capture.block.tsx" },
+        { "path": "lead-capture/lead-capture.css", "type": "registry:file", "target": "components/puck/blocks/lead-capture/lead-capture.css" }
+      ]
+    },
+    {
+      "name": "list",
+      "type": "registry:block",
+      "title": "List",
+      "description": "Bullet, numbered, or checkmark list of text items; use for simple inline content lists.",
+      "categories": ["content"],
+      "dependencies": ["@puckeditor/core"],
+      "registryDependencies": ["@p1/tokens"],
+      "meta": { "version": "0.1.0", "atlas": "content/list" },
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { ListBlock } from './list/list.block';\n  export const p1Blocks = { ...p1Blocks, P1List: ListBlock };\n\nThen edit components/puck/blocks/list/list.css to restyle it — the file is yours.",
+      "files": [
+        { "path": "list/list.tsx", "type": "registry:component", "target": "components/puck/blocks/list/list.tsx" },
+        { "path": "list/list.block.tsx", "type": "registry:component", "target": "components/puck/blocks/list/list.block.tsx" },
+        { "path": "list/list.css", "type": "registry:file", "target": "components/puck/blocks/list/list.css" }
+      ]
+    },
+    {
+      "name": "logos",
+      "type": "registry:block",
+      "title": "Logo Cloud",
+      "description": "Logo cloud row/grid of partner or customer logos in mono or color style with optional heading; use for social-proof or partner sections.",
+      "categories": ["trust"],
+      "dependencies": ["@puckeditor/core"],
+      "registryDependencies": ["@p1/tokens"],
+      "meta": { "version": "0.1.0", "atlas": "trust/logos" },
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { LogoCloudBlock } from './logos/logos.block';\n  export const p1Blocks = { ...p1Blocks, P1LogoCloud: LogoCloudBlock };\n\nThen edit components/puck/blocks/logos/logos.css to restyle it — the file is yours.",
+      "files": [
+        { "path": "logos/logos.tsx", "type": "registry:component", "target": "components/puck/blocks/logos/logos.tsx" },
+        { "path": "logos/logos.block.tsx", "type": "registry:component", "target": "components/puck/blocks/logos/logos.block.tsx" },
+        { "path": "logos/logos.css", "type": "registry:file", "target": "components/puck/blocks/logos/logos.css" }
+      ]
+    },
+    {
+      "name": "paragraph",
+      "type": "registry:block",
+      "title": "Paragraph",
+      "description": "Rich-text paragraph in body or lead style with size and alignment controls; use for body copy blocks.",
+      "categories": ["content"],
+      "dependencies": ["@puckeditor/core", "@pantheon-systems/puck-css"],
+      "registryDependencies": ["@p1/tokens", "@p1/internal-rich"],
+      "meta": { "version": "0.1.0", "atlas": "content/paragraph" },
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { ParagraphBlock } from './paragraph/paragraph.block';\n  export const p1Blocks = { ...p1Blocks, P1Paragraph: ParagraphBlock };\n\nThen edit components/puck/blocks/paragraph/paragraph.css to restyle it — the file is yours.",
+      "files": [
+        { "path": "paragraph/paragraph.tsx", "type": "registry:component", "target": "components/puck/blocks/paragraph/paragraph.tsx" },
+        { "path": "paragraph/paragraph.block.tsx", "type": "registry:component", "target": "components/puck/blocks/paragraph/paragraph.block.tsx" },
+        { "path": "paragraph/paragraph.css", "type": "registry:file", "target": "components/puck/blocks/paragraph/paragraph.css" }
+      ]
+    },
+    {
+      "name": "pricing",
+      "type": "registry:block",
+      "title": "Pricing",
+      "description": "Pricing tier cards with name, price, period, feature list, and CTA button, supporting a featured/highlighted tier; use for pricing pages.",
+      "categories": ["convert"],
+      "dependencies": ["@puckeditor/core"],
+      "registryDependencies": ["@p1/tokens", "@p1/internal-btn", "@p1/internal-icons"],
+      "meta": { "version": "0.1.0", "atlas": "convert/pricing" },
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { PricingBlock } from './pricing/pricing.block';\n  export const p1Blocks = { ...p1Blocks, P1Pricing: PricingBlock };\n\nThen edit components/puck/blocks/pricing/pricing.css to restyle it — the file is yours.",
+      "files": [
+        { "path": "pricing/pricing.tsx", "type": "registry:component", "target": "components/puck/blocks/pricing/pricing.tsx" },
+        { "path": "pricing/pricing.block.tsx", "type": "registry:component", "target": "components/puck/blocks/pricing/pricing.block.tsx" },
+        { "path": "pricing/pricing.css", "type": "registry:file", "target": "components/puck/blocks/pricing/pricing.css" }
+      ]
+    },
+    {
+      "name": "pull-quote",
+      "type": "registry:block",
+      "title": "Pull Quote",
+      "description": "Large typographic blockquote with optional yellow rule or quotation mark accent and attribution; use for editorial emphasis quotes.",
+      "categories": ["editorial"],
+      "dependencies": ["@puckeditor/core"],
+      "registryDependencies": ["@p1/tokens", "@p1/internal-rich"],
+      "meta": { "version": "0.1.0", "atlas": "editorial/pull-quote" },
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { PullQuoteBlock } from './pull-quote/pull-quote.block';\n  export const p1Blocks = { ...p1Blocks, P1PullQuote: PullQuoteBlock };\n\nThen edit components/puck/blocks/pull-quote/pull-quote.css to restyle it — the file is yours.",
+      "files": [
+        { "path": "pull-quote/pull-quote.tsx", "type": "registry:component", "target": "components/puck/blocks/pull-quote/pull-quote.tsx" },
+        { "path": "pull-quote/pull-quote.block.tsx", "type": "registry:component", "target": "components/puck/blocks/pull-quote/pull-quote.block.tsx" },
+        { "path": "pull-quote/pull-quote.css", "type": "registry:file", "target": "components/puck/blocks/pull-quote/pull-quote.css" }
+      ]
+    },
+    {
+      "name": "quote",
+      "type": "registry:block",
+      "title": "Quote",
+      "description": "Simple blockquote with rich-text quote and an attribution line in standard or display scale; use for inline quotations.",
+      "categories": ["content"],
+      "dependencies": ["@puckeditor/core", "@pantheon-systems/puck-css"],
+      "registryDependencies": ["@p1/tokens", "@p1/internal-rich"],
+      "meta": { "version": "0.1.0", "atlas": "content/quote" },
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { QuoteBlock } from './quote/quote.block';\n  export const p1Blocks = { ...p1Blocks, P1Quote: QuoteBlock };\n\nThen edit components/puck/blocks/quote/quote.css to restyle it — the file is yours.",
+      "files": [
+        { "path": "quote/quote.tsx", "type": "registry:component", "target": "components/puck/blocks/quote/quote.tsx" },
+        { "path": "quote/quote.block.tsx", "type": "registry:component", "target": "components/puck/blocks/quote/quote.block.tsx" },
+        { "path": "quote/quote.css", "type": "registry:file", "target": "components/puck/blocks/quote/quote.css" }
+      ]
+    },
+    {
+      "name": "rich-text",
+      "type": "registry:block",
+      "title": "Rich Text",
+      "description": "Free-form rich-text editor output with configurable measure, size, and optional drop cap; use for long-form article body content.",
+      "categories": ["editorial"],
+      "dependencies": ["@puckeditor/core"],
+      "registryDependencies": ["@p1/tokens", "@p1/internal-rich"],
+      "meta": { "version": "0.1.0", "atlas": "editorial/rich-text" },
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { RichTextBlock } from './rich-text/rich-text.block';\n  export const p1Blocks = { ...p1Blocks, P1RichText: RichTextBlock };\n\nThen edit components/puck/blocks/rich-text/rich-text.css to restyle it — the file is yours.",
+      "files": [
+        { "path": "rich-text/rich-text.tsx", "type": "registry:component", "target": "components/puck/blocks/rich-text/rich-text.tsx" },
+        { "path": "rich-text/rich-text.block.tsx", "type": "registry:component", "target": "components/puck/blocks/rich-text/rich-text.block.tsx" },
+        { "path": "rich-text/rich-text.css", "type": "registry:file", "target": "components/puck/blocks/rich-text/rich-text.css" }
+      ]
+    },
+    {
+      "name": "spacer",
+      "type": "registry:block",
+      "title": "Spacer",
+      "description": "Invisible vertical whitespace element in xs–xl sizes; use to add breathing room between blocks.",
+      "categories": ["content"],
+      "dependencies": ["@puckeditor/core"],
+      "registryDependencies": ["@p1/tokens"],
+      "meta": { "version": "0.1.0", "atlas": "content/spacer" },
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { SpacerBlock } from './spacer/spacer.block';\n  export const p1Blocks = { ...p1Blocks, P1Spacer: SpacerBlock };\n\nThen edit components/puck/blocks/spacer/spacer.css to restyle it — the file is yours.",
+      "files": [
+        { "path": "spacer/spacer.tsx", "type": "registry:component", "target": "components/puck/blocks/spacer/spacer.tsx" },
+        { "path": "spacer/spacer.block.tsx", "type": "registry:component", "target": "components/puck/blocks/spacer/spacer.block.tsx" },
+        { "path": "spacer/spacer.css", "type": "registry:file", "target": "components/puck/blocks/spacer/spacer.css" }
+      ]
+    },
+    {
+      "name": "stats",
+      "type": "registry:block",
+      "title": "Stats",
+      "description": "Horizontal grid of large value+label stat items in light or dark tone; use for key metrics or social-proof numbers.",
+      "categories": ["trust"],
+      "dependencies": ["@puckeditor/core"],
+      "registryDependencies": ["@p1/tokens"],
+      "meta": { "version": "0.1.0", "atlas": "trust/stats" },
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { StatsBlock } from './stats/stats.block';\n  export const p1Blocks = { ...p1Blocks, P1Stats: StatsBlock };\n\nThen edit components/puck/blocks/stats/stats.css to restyle it — the file is yours.",
+      "files": [
+        { "path": "stats/stats.tsx", "type": "registry:component", "target": "components/puck/blocks/stats/stats.tsx" },
+        { "path": "stats/stats.block.tsx", "type": "registry:component", "target": "components/puck/blocks/stats/stats.block.tsx" },
+        { "path": "stats/stats.css", "type": "registry:file", "target": "components/puck/blocks/stats/stats.css" }
+      ]
+    },
+    {
+      "name": "steps",
+      "type": "registry:block",
+      "title": "Steps",
+      "description": "Numbered sequential steps with eyebrow, heading, and title+body per step in a 1–4 column layout; use for how-it-works or onboarding flows.",
+      "categories": ["value"],
+      "dependencies": ["@puckeditor/core"],
+      "registryDependencies": ["@p1/tokens"],
+      "meta": { "version": "0.1.0", "atlas": "value/steps" },
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { StepsBlock } from './steps/steps.block';\n  export const p1Blocks = { ...p1Blocks, P1Steps: StepsBlock };\n\nThen edit components/puck/blocks/steps/steps.css to restyle it — the file is yours.",
+      "files": [
+        { "path": "steps/steps.tsx", "type": "registry:component", "target": "components/puck/blocks/steps/steps.tsx" },
+        { "path": "steps/steps.block.tsx", "type": "registry:component", "target": "components/puck/blocks/steps/steps.block.tsx" },
+        { "path": "steps/steps.css", "type": "registry:file", "target": "components/puck/blocks/steps/steps.css" }
+      ]
+    },
+    {
+      "name": "tabs",
+      "type": "registry:block",
+      "title": "Tabs",
+      "description": "Tabbed content switcher with a heading and per-tab rich-text body; use to organize related content into switchable panels.",
+      "categories": ["layout"],
+      "dependencies": ["@puckeditor/core"],
+      "registryDependencies": ["@p1/tokens", "@p1/internal-rich"],
+      "meta": { "version": "0.1.0", "atlas": "layout/tabs" },
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { TabsBlock } from './tabs/tabs.block';\n  export const p1Blocks = { ...p1Blocks, P1Tabs: TabsBlock };\n\nThen edit components/puck/blocks/tabs/tabs.css to restyle it — the file is yours.",
+      "files": [
+        { "path": "tabs/tabs.tsx", "type": "registry:component", "target": "components/puck/blocks/tabs/tabs.tsx" },
+        { "path": "tabs/tabs.block.tsx", "type": "registry:component", "target": "components/puck/blocks/tabs/tabs.block.tsx" },
+        { "path": "tabs/tabs.css", "type": "registry:file", "target": "components/puck/blocks/tabs/tabs.css" }
+      ]
+    },
+    {
+      "name": "team-grid",
+      "type": "registry:block",
+      "title": "Team Grid",
+      "description": "Grid of team member cards with avatar, name, role, and bio in circle or rounded photo shape; use for About/Team pages.",
+      "categories": ["trust"],
+      "dependencies": ["@puckeditor/core"],
+      "registryDependencies": ["@p1/tokens"],
+      "meta": { "version": "0.1.0", "atlas": "trust/team-grid" },
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { TeamGridBlock } from './team-grid/team-grid.block';\n  export const p1Blocks = { ...p1Blocks, P1TeamGrid: TeamGridBlock };\n\nThen edit components/puck/blocks/team-grid/team-grid.css to restyle it — the file is yours.",
+      "files": [
+        { "path": "team-grid/team-grid.tsx", "type": "registry:component", "target": "components/puck/blocks/team-grid/team-grid.tsx" },
+        { "path": "team-grid/team-grid.block.tsx", "type": "registry:component", "target": "components/puck/blocks/team-grid/team-grid.block.tsx" },
+        { "path": "team-grid/team-grid.css", "type": "registry:file", "target": "components/puck/blocks/team-grid/team-grid.css" }
+      ]
+    },
+    {
+      "name": "testimonial",
+      "type": "registry:block",
+      "title": "Testimonial",
+      "description": "Customer testimonial with quote text, name, role, and avatar in centered/card/large layouts and multiple tones; use for social proof.",
+      "categories": ["trust"],
+      "dependencies": ["@puckeditor/core"],
+      "registryDependencies": ["@p1/tokens"],
+      "meta": { "version": "0.1.0", "atlas": "trust/testimonial" },
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { TestimonialBlock } from './testimonial/testimonial.block';\n  export const p1Blocks = { ...p1Blocks, P1Testimonial: TestimonialBlock };\n\nThen edit components/puck/blocks/testimonial/testimonial.css to restyle it — the file is yours.",
+      "files": [
+        { "path": "testimonial/testimonial.tsx", "type": "registry:component", "target": "components/puck/blocks/testimonial/testimonial.tsx" },
+        { "path": "testimonial/testimonial.block.tsx", "type": "registry:component", "target": "components/puck/blocks/testimonial/testimonial.block.tsx" },
+        { "path": "testimonial/testimonial.css", "type": "registry:file", "target": "components/puck/blocks/testimonial/testimonial.css" }
+      ]
+    },
+    {
+      "name": "timeline",
+      "type": "registry:block",
+      "title": "Timeline",
+      "description": "Vertical or alternating chronological list of date+title+body events; use for company history, product roadmaps, or process timelines.",
+      "categories": ["value"],
+      "dependencies": ["@puckeditor/core"],
+      "registryDependencies": ["@p1/tokens"],
+      "meta": { "version": "0.1.0", "atlas": "value/timeline" },
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { TimelineBlock } from './timeline/timeline.block';\n  export const p1Blocks = { ...p1Blocks, P1Timeline: TimelineBlock };\n\nThen edit components/puck/blocks/timeline/timeline.css to restyle it — the file is yours.",
+      "files": [
+        { "path": "timeline/timeline.tsx", "type": "registry:component", "target": "components/puck/blocks/timeline/timeline.tsx" },
+        { "path": "timeline/timeline.block.tsx", "type": "registry:component", "target": "components/puck/blocks/timeline/timeline.block.tsx" },
+        { "path": "timeline/timeline.css", "type": "registry:file", "target": "components/puck/blocks/timeline/timeline.css" }
       ]
     }
   ]
