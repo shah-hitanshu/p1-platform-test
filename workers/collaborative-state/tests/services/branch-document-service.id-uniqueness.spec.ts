@@ -51,16 +51,16 @@ function versionRow(overrides: Record<string, unknown> = {}): Record<string, unk
 }
 
 /**
- * Mock the happy-path transaction: BEGIN, SAVEPOINT, INSERT document,
- * RELEASE SAVEPOINT, INSERT version, COMMIT.
+ * Mock the happy-path transaction: BEGIN, INSERT document, SAVEPOINT,
+ * INSERT version, RELEASE SAVEPOINT, COMMIT.
  */
 function mockHappyPathTransaction(queryMock: Mock): void {
   queryMock
     .mockResolvedValueOnce({ rows: [] })
-    .mockResolvedValueOnce({ rows: [] })
     .mockResolvedValueOnce({ rows: [docRow()] })
     .mockResolvedValueOnce({ rows: [] })
     .mockResolvedValueOnce({ rows: [versionRow()] })
+    .mockResolvedValueOnce({ rows: [] })
     .mockResolvedValueOnce({ rows: [] });
 }
 
@@ -175,10 +175,10 @@ describe('createDocumentOnBranch within-document id uniqueness', () => {
     const queryMock = vi.mocked(db.query);
     queryMock
       .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [docRow({ id: 'doc-warned-555' })] })
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [versionRow({ document_id: 'doc-warned-555' })] })
+      .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] });
 
     await createDocumentOnBranch({

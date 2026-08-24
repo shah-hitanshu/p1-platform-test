@@ -16,9 +16,9 @@
  *
  * CSS_REGISTRY_API_KEY must be a sat_ site token scoped to write:registry
  * only — do not reuse a read-scoped token (P1_CSS_API_KEY). Because that
- * token has no read access at all, every run rewrites every component
- * descriptor + the registry index unconditionally (no skip-if-unchanged) —
- * see syncComponentRegistryWriteOnly.
+ * token has no read access at all, every run posts every component
+ * descriptor + the registry index; the backend compares each against stored
+ * content and writes only what changed — see syncComponentRegistryWriteOnly.
  */
 
 import { register } from "node:module";

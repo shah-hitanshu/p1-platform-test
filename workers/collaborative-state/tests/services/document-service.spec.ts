@@ -1038,10 +1038,10 @@ describe('Phase 3.1: Document Service', () => {
 
         vi.mocked(db.query)
           .mockResolvedValueOnce({ rows: [] }) // BEGIN
-          .mockResolvedValueOnce({ rows: [] }) // SAVEPOINT insert_doc
           .mockResolvedValueOnce({ rows: [docRow] }) // INSERT document
-          .mockResolvedValueOnce({ rows: [] }) // RELEASE SAVEPOINT insert_doc
+          .mockResolvedValueOnce({ rows: [] }) // SAVEPOINT insert_version
           .mockResolvedValueOnce({ rows: [versionRow] }) // INSERT version
+          .mockResolvedValueOnce({ rows: [] }) // RELEASE SAVEPOINT insert_version
           .mockResolvedValueOnce({ rows: [] }); // COMMIT
 
         const result = await createDocumentOnBranch({
@@ -1066,10 +1066,10 @@ describe('Phase 3.1: Document Service', () => {
 
         vi.mocked(db.query)
           .mockResolvedValueOnce({ rows: [] }) // BEGIN
-          .mockResolvedValueOnce({ rows: [] }) // SAVEPOINT insert_doc
           .mockResolvedValueOnce({ rows: [docRow] }) // INSERT document
-          .mockResolvedValueOnce({ rows: [] }) // RELEASE SAVEPOINT insert_doc
+          .mockResolvedValueOnce({ rows: [] }) // SAVEPOINT insert_version
           .mockResolvedValueOnce({ rows: [versionRow] }) // INSERT version
+          .mockResolvedValueOnce({ rows: [] }) // RELEASE SAVEPOINT insert_version
           .mockResolvedValueOnce({ rows: [] }); // COMMIT
 
         const result = await createDocumentOnBranch({
@@ -1090,18 +1090,14 @@ describe('Phase 3.1: Document Service', () => {
         const existingDocRow = createMockDocumentRow({ id: 'existing-doc-id', path: 'pages/existing' });
         const versionRow = createMockVersionRow({ document_id: 'existing-doc-id' });
 
-        // Simulate unique constraint violation on document insert, then find existing
-        const uniqueError = new Error('duplicate key');
-        (uniqueError as NodeJS.ErrnoException).code = '23505';
-
         vi.mocked(db.query)
           .mockResolvedValueOnce({ rows: [] }) // BEGIN
-          .mockResolvedValueOnce({ rows: [] }) // SAVEPOINT insert_doc
-          .mockRejectedValueOnce(uniqueError) // INSERT document fails
-          .mockResolvedValueOnce({ rows: [] }) // ROLLBACK TO SAVEPOINT insert_doc
+          .mockResolvedValueOnce({ rows: [] }) // INSERT document (ON CONFLICT DO NOTHING -> no row)
           .mockResolvedValueOnce({ rows: [existingDocRow] }) // SELECT existing doc
           .mockResolvedValueOnce({ rows: [] }) // SELECT latest version on branch (none exists)
+          .mockResolvedValueOnce({ rows: [] }) // SAVEPOINT insert_version
           .mockResolvedValueOnce({ rows: [versionRow] }) // INSERT version
+          .mockResolvedValueOnce({ rows: [] }) // RELEASE SAVEPOINT insert_version
           .mockResolvedValueOnce({ rows: [] }); // COMMIT
 
         const result = await createDocumentOnBranch({
@@ -1125,15 +1121,9 @@ describe('Phase 3.1: Document Service', () => {
           snapshot: { content: 'existing content' },
         });
 
-        // Simulate unique constraint violation on document insert, then find existing
-        const uniqueError = new Error('duplicate key');
-        (uniqueError as NodeJS.ErrnoException).code = '23505';
-
         vi.mocked(db.query)
           .mockResolvedValueOnce({ rows: [] }) // BEGIN
-          .mockResolvedValueOnce({ rows: [] }) // SAVEPOINT insert_doc
-          .mockRejectedValueOnce(uniqueError) // INSERT document fails
-          .mockResolvedValueOnce({ rows: [] }) // ROLLBACK TO SAVEPOINT insert_doc
+          .mockResolvedValueOnce({ rows: [] }) // INSERT document (ON CONFLICT DO NOTHING -> no row)
           .mockResolvedValueOnce({ rows: [existingDocRow] }) // SELECT existing doc
           // SELECT latest version on branch (exists, not tombstoned)
           .mockResolvedValueOnce({ rows: [existingVersionRow] })
@@ -1166,20 +1156,16 @@ describe('Phase 3.1: Document Service', () => {
           source: 'recreate',
         });
 
-        // Simulate unique constraint violation on document insert, then find existing
-        const uniqueError = new Error('duplicate key');
-        (uniqueError as NodeJS.ErrnoException).code = '23505';
-
         vi.mocked(db.query)
           .mockResolvedValueOnce({ rows: [] }) // BEGIN
-          .mockResolvedValueOnce({ rows: [] }) // SAVEPOINT insert_doc
-          .mockRejectedValueOnce(uniqueError) // INSERT document fails
-          .mockResolvedValueOnce({ rows: [] }) // ROLLBACK TO SAVEPOINT insert_doc
+          .mockResolvedValueOnce({ rows: [] }) // INSERT document (ON CONFLICT DO NOTHING -> no row)
           .mockResolvedValueOnce({ rows: [existingDocRow] }) // SELECT existing doc
           .mockResolvedValueOnce({ rows: [tombstonedVersionRow] }) // SELECT latest version (tombstoned)
           .mockResolvedValueOnce({ rows: [] }) // DELETE all versions on branch
           .mockResolvedValueOnce({ rows: [] }) // DELETE stale template edge
+          .mockResolvedValueOnce({ rows: [] }) // SAVEPOINT insert_version
           .mockResolvedValueOnce({ rows: [newVersionRow] }) // INSERT new version (version 1)
+          .mockResolvedValueOnce({ rows: [] }) // RELEASE SAVEPOINT insert_version
           .mockResolvedValueOnce({ rows: [] }); // COMMIT
 
         const result = await createDocumentOnBranch({
@@ -1204,9 +1190,7 @@ describe('Phase 3.1: Document Service', () => {
 
         vi.mocked(db.query)
           .mockResolvedValueOnce({ rows: [] }) // BEGIN
-          .mockResolvedValueOnce({ rows: [] }) // SAVEPOINT insert_doc
           .mockRejectedValueOnce(fkError) // INSERT document fails
-          .mockResolvedValueOnce({ rows: [] }) // ROLLBACK TO SAVEPOINT insert_doc
           .mockResolvedValueOnce({ rows: [] }); // ROLLBACK
 
         await expect(
@@ -1229,10 +1213,10 @@ describe('Phase 3.1: Document Service', () => {
 
         vi.mocked(db.query)
           .mockResolvedValueOnce({ rows: [] }) // BEGIN
-          .mockResolvedValueOnce({ rows: [] }) // SAVEPOINT insert_doc
           .mockResolvedValueOnce({ rows: [mockDocRow] }) // INSERT document (normalized path)
-          .mockResolvedValueOnce({ rows: [] }) // RELEASE SAVEPOINT insert_doc
+          .mockResolvedValueOnce({ rows: [] }) // SAVEPOINT insert_version
           .mockResolvedValueOnce({ rows: [mockVersionRow] }) // INSERT version
+          .mockResolvedValueOnce({ rows: [] }) // RELEASE SAVEPOINT insert_version
           .mockResolvedValueOnce({ rows: [] }); // COMMIT
 
         const result = await createDocumentOnBranch({
@@ -1255,10 +1239,10 @@ describe('Phase 3.1: Document Service', () => {
 
         vi.mocked(db.query)
           .mockResolvedValueOnce({ rows: [] }) // BEGIN
-          .mockResolvedValueOnce({ rows: [] }) // SAVEPOINT insert_doc
           .mockResolvedValueOnce({ rows: [docRow] }) // INSERT document
-          .mockResolvedValueOnce({ rows: [] }) // RELEASE SAVEPOINT insert_doc
+          .mockResolvedValueOnce({ rows: [] }) // SAVEPOINT insert_version
           .mockResolvedValueOnce({ rows: [versionRow] }) // INSERT version
+          .mockResolvedValueOnce({ rows: [] }) // RELEASE SAVEPOINT insert_version
           .mockResolvedValueOnce({ rows: [] }); // COMMIT
 
         const result = await createDocumentOnBranch({

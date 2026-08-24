@@ -34,6 +34,9 @@ import {
   isUniqueConstraintViolation,
   isForeignKeyViolation,
   isRegistryWritePath,
+  registryWriteIsRedundant,
+  registryIndexStampRefresh,
+  REGISTRY_INDEX_PATH,
 } from './document-types';
 import {
   SiteNotFoundError,
@@ -55,6 +58,7 @@ import {
   branchInheritsFromMain,
 } from './document-queries';
 import { enforceUniqueSlotIds } from './slot-id-backstop';
+import type { CreateDocumentVersionParams } from './document-version-service';
 
 function appendPaginationClauses(
   sql: string,
@@ -683,6 +687,95 @@ export async function listTemplatesOnBranch(
  * @throws SiteNotFoundError if site does not exist
  * @throws InvalidDocumentPathError if path format is invalid
  */
+/**
+ * Appends a version at MAX(version_number) + 1, retrying the collision.
+ *
+ * Two writers computing that MAX concurrently pick the same number and one
+ * loses the unique index. The savepoint keeps the surrounding transaction
+ * usable so the loser can recompute against the winner's row instead of
+ * failing the whole write.
+ */
+const VERSION_INSERT_ATTEMPTS = 4;
+
+/**
+ * The slice of a version write this helper needs. Named off
+ * CreateDocumentVersionParams rather than restated, so the field types stay
+ * tied to the service that owns them — that one carries patch, Puck action
+ * metadata and duplicate-snapshot handling this path has no business with.
+ */
+type InsertDocumentVersionParams = Pick<
+  CreateDocumentVersionParams,
+  'documentId' | 'branchId' | 'snapshot' | 'source' | 'createdById' | 'createdByType'
+>;
+
+async function insertNextDocumentVersion(
+  params: InsertDocumentVersionParams,
+): Promise<{ rows: DocumentVersionRow[] }> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < VERSION_INSERT_ATTEMPTS; attempt++) {
+    await query('SAVEPOINT insert_version');
+    try {
+      const result = await query<DocumentVersionRow>(
+        `INSERT INTO app.document_versions (
+          document_id, branch_id, version_number, snapshot,
+          source, created_by_id, created_by_type
+        )
+        SELECT $1, $2,
+          COALESCE(MAX(version_number), 0) + 1,
+          $3, $4, $5, $6
+        FROM app.document_versions
+        WHERE document_id = $1 AND branch_id = $2
+        RETURNING *`,
+        [
+          params.documentId,
+          params.branchId,
+          params.snapshot,
+          params.source,
+          params.createdById,
+          params.createdByType,
+        ],
+      );
+      await query('RELEASE SAVEPOINT insert_version');
+      return result;
+    } catch (error) {
+      await query('ROLLBACK TO SAVEPOINT insert_version');
+      if (!isUniqueConstraintViolation(error)) {
+        throw error;
+      }
+      lastError = error;
+    }
+  }
+  throw lastError;
+}
+
+/**
+ * Answers a registry write whose content the branch already stores.
+ *
+ * Components need nothing done — the stored version is already the answer.
+ * The index additionally carries stamps the editor reads to decide how much
+ * it has to re-verify, so those are refreshed on the stored row rather than
+ * written as a new version: the content is identical, only the confirmation
+ * time moved.
+ */
+async function settleRedundantRegistryWrite(
+  normalizedPath: string,
+  latestVersion: DocumentVersionRow,
+  incoming: Record<string, unknown>,
+): Promise<DocumentVersionRow> {
+  if (normalizedPath !== REGISTRY_INDEX_PATH) {
+    return latestVersion;
+  }
+  const refreshed = registryIndexStampRefresh(incoming, latestVersion.snapshot);
+  const updated = await query<DocumentVersionRow>(
+    `UPDATE app.document_versions
+     SET snapshot = $2
+     WHERE id = $1
+     RETURNING *`,
+    [latestVersion.id, refreshed],
+  );
+  return updated.rows[0] ?? latestVersion;
+}
+
 export async function createDocumentOnBranch(
   params: CreateDocumentOnBranchParams,
 ): Promise<CreateDocumentOnBranchResult> {
@@ -696,83 +789,141 @@ export async function createDocumentOnBranch(
     let isRecreation = false;
     let documentCreated = false;
 
-    // Try to create the document using SAVEPOINT to handle unique constraint violations
-    // PostgreSQL aborts transactions on errors, so we need SAVEPOINT to recover
-    await query('SAVEPOINT insert_doc');
+    // Reusing an existing path is routine here (branch copy-on-write, recreation
+    // after a tombstone, repeated registry syncs), so the insert conflicts on
+    // purpose rather than by accident. DO NOTHING makes that a zero-row result
+    // instead of an error, which keeps Postgres from logging an ERROR line per
+    // attempt and removes the SAVEPOINT round-trips this used to need to
+    // recover from the aborted statement.
+    let insertedRow: DocumentRow | undefined;
     try {
       const docResult = await query<DocumentRow>(
         `INSERT INTO app.documents (site_id, path)
          VALUES ($1, $2)
+         ON CONFLICT (site_id, path) WHERE archived_at IS NULL DO NOTHING
          RETURNING *`,
         [params.siteId, normalizedPath],
       );
-      await query('RELEASE SAVEPOINT insert_doc');
-      const insertedRow = docResult.rows[0];
-      if (!insertedRow) {
-        throw new Error('Failed to insert document');
+      insertedRow = docResult.rows[0];
+    } catch (docError) {
+      if (isForeignKeyViolation(docError)) {
+        throw new SiteNotFoundError(params.siteId);
       }
+      throw docError;
+    }
+
+    if (insertedRow !== undefined) {
       document = mapRowToDocument(insertedRow);
       documentCreated = true;
-    } catch (docError) {
-      // Rollback to savepoint to clear the error state and allow further queries
-      await query('ROLLBACK TO SAVEPOINT insert_doc');
+      getLogger().debug('document insert created a new path', () => ({
+        site_id: params.siteId,
+        branch_id: params.branchId,
+        document_id: document.id,
+        doc_path: normalizedPath,
+        'db.operation.name': 'INSERT',
+        outcome: 'created',
+      }));
+    } else {
+      const existingResult = await query<DocumentRow>(
+        `SELECT ${DOCUMENT_WITH_TEMPLATE_COLUMNS} FROM app.documents d
+         ${TEMPLATE_RELATION_JOIN}
+         WHERE d.site_id = $1 AND d.path = $2 AND d.archived_at IS NULL`,
+        [params.siteId, normalizedPath],
+      );
+      const existingRow = existingResult.rows[0];
+      if (!existingRow) {
+        throw new DuplicateDocumentPathError(normalizedPath, params.siteId);
+      }
+      document = mapRowToDocument(existingRow);
+      // The conflict this PR stops provoking. It used to be visible only as an
+      // ERROR line in the Postgres log, which is both the wrong severity and
+      // the wrong place; debug because it is the routine case, and its whole
+      // problem was volume.
+      getLogger().debug('document path already existed, reusing', () => ({
+        site_id: params.siteId,
+        branch_id: params.branchId,
+        document_id: document.id,
+        doc_path: normalizedPath,
+        'db.operation.name': 'INSERT',
+        outcome: 'reused',
+      }));
 
-      // If document already exists, find it
-      if (isUniqueConstraintViolation(docError)) {
-        const existingResult = await query<DocumentRow>(
-          `SELECT ${DOCUMENT_WITH_TEMPLATE_COLUMNS} FROM app.documents d
-           ${TEMPLATE_RELATION_JOIN}
-           WHERE d.site_id = $1 AND d.path = $2 AND d.archived_at IS NULL`,
-          [params.siteId, normalizedPath],
-        );
-        const existingRow = existingResult.rows[0];
-        if (!existingRow) {
-          await query('ROLLBACK');
+      // Check if the latest version on this branch is a tombstone
+      // If so, this is a recreation - we should start fresh
+      const latestVersionResult = await query<DocumentVersionRow>(
+        `SELECT * FROM app.document_versions
+         WHERE document_id = $1 AND branch_id = $2
+         ORDER BY version_number DESC
+         LIMIT 1`,
+        [document.id, params.branchId],
+      );
+
+      const latestVersion = latestVersionResult.rows[0];
+      if (latestVersion !== undefined) {
+        if (isTombstoneRow(latestVersion)) {
+          // This is a recreation after tombstone - delete all versions on this branch
+          // to start fresh with version 1
+          await query(
+            `DELETE FROM app.document_versions
+             WHERE document_id = $1 AND branch_id = $2`,
+            [document.id, params.branchId],
+          );
+          isRecreation = true;
+          // Info rather than debug: this is the one branch here that discards
+          // state — every version on the branch goes, and numbering restarts.
+          // Rare, and the thing you want to find afterwards.
+          getLogger().info('document recreated after tombstone, branch history reset', {
+            site_id: params.siteId,
+            branch_id: params.branchId,
+            document_id: document.id,
+            doc_path: normalizedPath,
+            outcome: 'recreated',
+          });
+        } else if (isRegistryWritePath(normalizedPath)) {
+          // Registry paths (_registry/components/* and the registry index)
+          // are written by a write:registry-scoped token with no read access
+          // at all, so it has no way to discover an existing document's ID up
+          // front, nor to check whether anything changed. Both checks happen
+          // here instead: an unchanged descriptor is answered with the version
+          // already stored, so a sync run over an unchanged component set
+          // writes no history. Anything genuinely new falls through and
+          // appends a version — every other path keeps the duplicate check
+          // below.
+          const incoming = enforceUniqueSlotIds(document.id, params.snapshot ?? {});
+          if (registryWriteIsRedundant(normalizedPath, incoming, latestVersion.snapshot)) {
+            const settled = await settleRedundantRegistryWrite(
+              normalizedPath,
+              latestVersion,
+              incoming,
+            );
+            // Debug here, info below: a sync run over an unchanged component
+            // set should be silent at info, so a registry version write in
+            // production stands out on its own rather than sitting among the
+            // runs that wrote nothing.
+            getLogger().debug('registry write repeats stored content, no version written', () => ({
+              site_id: params.siteId,
+              branch_id: params.branchId,
+              document_id: document.id,
+              doc_path: normalizedPath,
+              version_id: settled.id,
+              outcome: 'skipped_unchanged',
+            }));
+            await query('COMMIT');
+            return { document, version: mapRowToDocumentVersion(settled) };
+          }
+          getLogger().info('registry content changed, writing a new version', {
+            site_id: params.siteId,
+            branch_id: params.branchId,
+            document_id: document.id,
+            doc_path: normalizedPath,
+            outcome: 'registry_changed',
+          });
+        } else {
+          // Document exists and is not tombstoned - this is a duplicate
           throw new DuplicateDocumentPathError(normalizedPath, params.siteId);
         }
-        document = mapRowToDocument(existingRow);
-
-        // Check if the latest version on this branch is a tombstone
-        // If so, this is a recreation - we should start fresh
-        const latestVersionResult = await query<DocumentVersionRow>(
-          `SELECT * FROM app.document_versions
-           WHERE document_id = $1 AND branch_id = $2
-           ORDER BY version_number DESC
-           LIMIT 1`,
-          [document.id, params.branchId],
-        );
-
-        const latestVersion = latestVersionResult.rows[0];
-        if (latestVersion !== undefined) {
-          if (isTombstoneRow(latestVersion)) {
-            // This is a recreation after tombstone - delete all versions on this branch
-            // to start fresh with version 1
-            await query(
-              `DELETE FROM app.document_versions
-               WHERE document_id = $1 AND branch_id = $2`,
-              [document.id, params.branchId],
-            );
-            isRecreation = true;
-          } else if (isRegistryWritePath(normalizedPath)) {
-            // Registry paths (_registry/components/* and the registry index)
-            // are written by a write:registry-scoped token with no read
-            // access at all, so it has no way to discover an existing
-            // document's ID up front. Fall through and append a new version
-            // instead of erroring — every other path keeps the duplicate
-            // check below.
-          } else {
-            // Document exists and is not tombstoned - this is a duplicate
-            await query('ROLLBACK');
-            throw new DuplicateDocumentPathError(normalizedPath, params.siteId);
-          }
-        }
-        // If no versions exist on this branch, it's fine to create version 1
-      } else if (isForeignKeyViolation(docError)) {
-        await query('ROLLBACK');
-        throw new SiteNotFoundError(params.siteId);
-      } else {
-        throw docError;
       }
+      // If no versions exist on this branch, it's fine to create version 1
     }
 
     // A recreation can inherit a stale edge from a prior incarnation, so upsert
@@ -817,26 +968,14 @@ export async function createDocumentOnBranch(
     // Create the initial version with provided snapshot or empty object
     // After deletion of tombstoned versions, this will be version 1
     const snapshot = enforceUniqueSlotIds(document.id, params.snapshot ?? {});
-    const versionResult = await query<DocumentVersionRow>(
-      `INSERT INTO app.document_versions (
-        document_id, branch_id, version_number, snapshot,
-        source, created_by_id, created_by_type
-      )
-      SELECT $1, $2,
-        COALESCE(MAX(version_number), 0) + 1,
-        $3, $4, $5, $6
-      FROM app.document_versions
-      WHERE document_id = $1 AND branch_id = $2
-      RETURNING *`,
-      [
-        document.id,
-        params.branchId,
-        snapshot,
-        isRecreation ? 'recreate' : 'edit',
-        params.createdById,
-        params.createdByType,
-      ],
-    );
+    const versionResult = await insertNextDocumentVersion({
+      documentId: document.id,
+      branchId: params.branchId,
+      snapshot,
+      source: isRecreation ? 'recreate' : 'edit',
+      createdById: params.createdById,
+      createdByType: params.createdByType,
+    });
 
     await query('COMMIT');
 
@@ -986,38 +1125,48 @@ export async function deleteDocumentWithRedirect(
 
     let redirectDocId: string;
 
-    await query('SAVEPOINT insert_redirect_doc');
+    // A redirect document for this path usually already exists (the same page
+    // gets moved more than once), so conflict is the expected case, not an error.
+    let insertedRedirectRow: DocumentRow | undefined;
     try {
       const docResult = await query<DocumentRow>(
         `INSERT INTO app.documents (site_id, path)
          VALUES ($1, $2)
+         ON CONFLICT (site_id, path) WHERE archived_at IS NULL DO NOTHING
          RETURNING *`,
         [params.siteId, redirectPath],
       );
-      await query('RELEASE SAVEPOINT insert_redirect_doc');
-      const row = docResult.rows[0];
-      if (row === undefined) {
-        throw new Error('Failed to insert redirect document');
-      }
-      redirectDocId = row.id;
+      insertedRedirectRow = docResult.rows[0];
     } catch (docError) {
-      if (isUniqueConstraintViolation(docError)) {
-        await query('ROLLBACK TO SAVEPOINT insert_redirect_doc');
-
-        const existingResult = await query<DocumentRow>(
-          `SELECT * FROM app.documents
-           WHERE site_id = $1 AND path = $2 AND archived_at IS NULL`,
-          [params.siteId, redirectPath],
-        );
-        const existingRow = existingResult.rows[0];
-        if (existingRow === undefined) {
-          throw new DuplicateDocumentPathError(redirectPath, params.siteId);
-        }
-        redirectDocId = existingRow.id;
-      } else {
-        throw docError;
+      if (isForeignKeyViolation(docError)) {
+        throw new SiteNotFoundError(params.siteId);
       }
+      throw docError;
     }
+
+    if (insertedRedirectRow !== undefined) {
+      redirectDocId = insertedRedirectRow.id;
+    } else {
+      const existingResult = await query<DocumentRow>(
+        `SELECT * FROM app.documents
+         WHERE site_id = $1 AND path = $2 AND archived_at IS NULL`,
+        [params.siteId, redirectPath],
+      );
+      const existingRow = existingResult.rows[0];
+      if (existingRow === undefined) {
+        throw new DuplicateDocumentPathError(redirectPath, params.siteId);
+      }
+      redirectDocId = existingRow.id;
+    }
+
+    getLogger().debug('redirect document resolved', () => ({
+      site_id: params.siteId,
+      branch_id: params.branchId,
+      document_id: redirectDocId,
+      doc_path: redirectPath,
+      'db.operation.name': 'INSERT',
+      outcome: insertedRedirectRow !== undefined ? 'created' : 'reused',
+    }));
 
     const snapshot: RedirectSnapshot = {
       fromPath: '/' + params.redirect.fromPath,

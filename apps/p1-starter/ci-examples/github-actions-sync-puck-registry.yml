@@ -37,6 +37,13 @@ on:
         required: false
         default: ''
 
+# A branch pushed several times in quick succession only needs its newest
+# component set synced. Without this, every push starts its own run and they
+# race each other into the same registry documents.
+concurrency:
+  group: sync-puck-registry-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   sync-registry:
     runs-on: ubuntu-latest

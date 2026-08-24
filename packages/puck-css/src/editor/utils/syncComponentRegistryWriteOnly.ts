@@ -4,13 +4,13 @@
  * A write-only variant of syncComponentRegistry for callers holding a
  * write:registry-scoped token, which has no read access at all by design
  * (see collaborative-state-system's §0 write:registry scope). Skips the
- * existence/hash-check reads entirely and always creates-or-versions every
- * descriptor, relying on the backend's upsert-on-conflict behavior for
- * _registry/* paths (a live conflict on these paths creates a new version
- * instead of erroring). Every run rewrites every component + the index,
- * whether or not anything changed — accepted as a low-volume cost (the CI
- * workflow only triggers on pushes touching component code) in exchange for
- * a token that genuinely cannot read anything.
+ * existence/hash-check reads entirely and posts every descriptor on every
+ * run, relying on the backend's upsert-on-conflict behavior for _registry/*
+ * paths. The backend compares the posted content against what the branch
+ * already stores and writes a version only when it differs, so posting
+ * unconditionally costs nothing but the request — the skip-if-unchanged
+ * decision moved to the one side that can read, keeping this token unable
+ * to read anything.
  *
  * The interactive editor keeps using syncComponentRegistry, unmodified,
  * with its skip-if-unchanged behavior — this variant is CI-only.

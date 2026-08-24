@@ -176,6 +176,89 @@ describe('Branch Document Service — Registry Path Upsert-on-Conflict', () => {
     expect(second.version.versionNumber).toBe(2);
   });
 
+  it('writes no new version when a repeat POST carries the same component descriptor', async () => {
+    const first = await createDocumentOnBranch({
+      siteId: testSiteId,
+      branchId: mainBranchId,
+      path: '_registry/components/sidebar',
+      snapshot: {
+        name: 'Sidebar',
+        descriptorHash: 'hash-v1',
+        registeredAt: '2026-08-01T00:00:00.000Z',
+      },
+      createdById: SYSTEM_ACTOR,
+      createdByType: 'system',
+    });
+    expect(first.version.versionNumber).toBe(1);
+
+    const repeat = await createDocumentOnBranch({
+      siteId: testSiteId,
+      branchId: mainBranchId,
+      // Key order differs from the first write (jsonb does not preserve it),
+      // and registeredAt moves on every extraction — the real sync never sends
+      // a byte-identical descriptor twice, so a whole-snapshot compare would
+      // skip nothing at all.
+      path: '_registry/components/sidebar',
+      snapshot: {
+        descriptorHash: 'hash-v1',
+        name: 'Sidebar',
+        registeredAt: '2026-08-21T09:00:00.000Z',
+      },
+      createdById: SYSTEM_ACTOR,
+      createdByType: 'system',
+    });
+
+    expect(repeat.version.id).toBe(first.version.id);
+    expect(repeat.version.versionNumber).toBe(1);
+
+    const versions = await sql<{ count: string }[]>`
+      SELECT COUNT(*)::text AS count FROM app.document_versions
+      WHERE document_id = ${first.document.id} AND branch_id = ${mainBranchId}
+    `;
+    expect(versions[0].count).toBe('1');
+  });
+
+  it('refreshes the index stamps in place when only they changed', async () => {
+    // The index document already carries versions from earlier cases here, so
+    // compare the count either side of the repeat rather than expecting 1.
+    const first = await createDocumentOnBranch({
+      siteId: testSiteId,
+      branchId: mainBranchId,
+      path: '_registry/index',
+      snapshot: {
+        hashes: { sidebar: 'hash-v1' },
+        updatedAt: '2026-08-01T00:00:00.000Z',
+        verifiedAt: '2026-08-01T00:00:00.000Z',
+      },
+      createdById: SYSTEM_ACTOR,
+      createdByType: 'system',
+    });
+
+    const repeat = await createDocumentOnBranch({
+      siteId: testSiteId,
+      branchId: mainBranchId,
+      path: '_registry/index',
+      snapshot: {
+        hashes: { sidebar: 'hash-v1' },
+        updatedAt: '2026-08-21T00:00:00.000Z',
+        verifiedAt: '2026-08-21T00:00:00.000Z',
+      },
+      createdById: SYSTEM_ACTOR,
+      createdByType: 'system',
+    });
+
+    expect(repeat.version.id).toBe(first.version.id);
+    expect(repeat.version.versionNumber).toBe(first.version.versionNumber);
+    expect(repeat.version.snapshot).toMatchObject({ verifiedAt: '2026-08-21T00:00:00.000Z' });
+
+    const latest = await sql<{ version_number: number }[]>`
+      SELECT version_number FROM app.document_versions
+      WHERE document_id = ${first.document.id} AND branch_id = ${mainBranchId}
+      ORDER BY version_number DESC LIMIT 1
+    `;
+    expect(latest[0].version_number).toBe(first.version.versionNumber);
+  });
+
   it('still throws DuplicateDocumentPathError on repeat POST to a non-registry path (unchanged behavior)', async () => {
     await createDocumentOnBranch({
       siteId: testSiteId,

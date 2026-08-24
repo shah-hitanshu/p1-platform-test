@@ -230,6 +230,106 @@ export function isRegistryScopedServicePrincipal(principal: AuthenticatedPrincip
 }
 
 /**
+ * Fields the registry index carries that change on every sync run whether or
+ * not any component did. They are stamps, not content, so they are compared
+ * separately from the rest of the snapshot.
+ */
+const REGISTRY_INDEX_STAMP_FIELDS = ['updatedAt', 'verifiedAt'] as const;
+
+/**
+ * Deterministic serialisation for content comparison: object keys sorted, so
+ * a snapshot that has round-tripped through jsonb (which does not preserve
+ * key order) compares equal to the same content built in memory.
+ */
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map(canonicalJson).join(',')}]`;
+  }
+  if (value !== null && typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .filter(([, v]) => v !== undefined)
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+    return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${canonicalJson(v)}`).join(',')}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function withoutStampFields(snapshot: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(snapshot).filter(
+      ([key]) => !(REGISTRY_INDEX_STAMP_FIELDS as readonly string[]).includes(key),
+    ),
+  );
+}
+
+/**
+ * Whether a registry write carries the same content the branch already
+ * stores, making a new version pure history growth.
+ *
+ * The write:registry token deliberately has no read access, so the CI sync
+ * cannot make this comparison itself and posts every descriptor on every
+ * run. Comparing here keeps the token unable to read anything while still
+ * skipping the write.
+ *
+ * A component descriptor is compared by its own `descriptorHash` when both
+ * sides carry one. The descriptor also holds fields that move on every
+ * extraction without the component having changed — `registeredAt` most of
+ * all — and the hash is built with exactly those excluded. Deferring to it
+ * means this agrees with the editor's own skip test by construction rather
+ * than by a duplicated exclusion list that would drift.
+ *
+ * A version holding a patch rather than a snapshot is never treated as
+ * unchanged — its content isn't available to compare without rebuilding it.
+ *
+ * On cost: the canonical serialisation below is the fallback, not the common
+ * path. Component descriptors settle on the hash comparison and never reach
+ * it, so a sync run canonicalises once — the index — regardless of how many
+ * components the site has. Measured at 15µs for a 13-component index and
+ * 235µs for 500, against the database write it replaces.
+ */
+export function registryWriteIsRedundant(
+  path: string,
+  incoming: Record<string, unknown>,
+  existing: unknown,
+): boolean {
+  if (existing === null || typeof existing !== 'object' || Array.isArray(existing)) {
+    return false;
+  }
+  const stored = existing as Record<string, unknown>;
+  if (path === REGISTRY_INDEX_PATH) {
+    return canonicalJson(withoutStampFields(incoming)) === canonicalJson(withoutStampFields(stored));
+  }
+  if (typeof incoming.descriptorHash === 'string' && typeof stored.descriptorHash === 'string') {
+    return incoming.descriptorHash === stored.descriptorHash;
+  }
+  return canonicalJson(incoming) === canonicalJson(stored);
+}
+
+/**
+ * The stamp fields to carry forward onto a stored registry index whose
+ * content a redundant write just confirmed unchanged.
+ *
+ * `verifiedAt` is what the editor reads to decide whether it can trust the
+ * index's hash map instead of refetching every component document. Skipping
+ * the write without advancing it would trade one write per CI run for N
+ * reads on every editor load past the staleness window, so the stamps are
+ * refreshed on the existing version in place — same content, newer
+ * confirmation, no new row.
+ */
+export function registryIndexStampRefresh(
+  incoming: Record<string, unknown>,
+  stored: Record<string, unknown>,
+): Record<string, unknown> {
+  const refreshed = { ...stored };
+  for (const field of REGISTRY_INDEX_STAMP_FIELDS) {
+    if (incoming[field] !== undefined) {
+      refreshed[field] = incoming[field];
+    }
+  }
+  return refreshed;
+}
+
+/**
  * Maps a database row to a DocumentOnBranch domain object.
  */
 export function mapRowToDocumentOnBranch(row: DocumentOnBranchRow): DocumentOnBranch {

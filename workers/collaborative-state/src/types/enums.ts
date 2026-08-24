@@ -56,8 +56,20 @@ export type CheckpointType = 'manual' | 'auto' | 'pre_merge' | 'post_merge' | 'p
 
 /**
  * Source of a document version creation.
+ *
+ * `recreate` marks version 1 of a document rebuilt at a path whose previous
+ * incarnation was tombstoned. createDocumentOnBranch has always written it —
+ * the column is plain TEXT with no CHECK, so nothing caught its absence here.
  */
-export type DocumentVersionSource = 'edit' | 'merge' | 'revert' | 'checkpoint' | 'realtime' | 'publish' | 'migration';
+export type DocumentVersionSource =
+  | 'edit'
+  | 'merge'
+  | 'revert'
+  | 'checkpoint'
+  | 'realtime'
+  | 'publish'
+  | 'migration'
+  | 'recreate';
 
 /**
  * Merge request workflow states.
