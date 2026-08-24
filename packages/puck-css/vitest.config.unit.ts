@@ -1,5 +1,5 @@
-import { defineConfig } from 'vitest/config';
 import { resolve } from 'path';
+import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   resolve: {
@@ -18,6 +18,6 @@ export default defineConfig({
     include: ['tests/**/*.spec.ts', 'tests/**/*.spec.tsx', 'src/**/*.test.ts', 'src/**/*.test.tsx'],
     environment: 'jsdom',
     globals: false,
-    setupFiles: ['./tests/setup.ts', './src/__tests__/setup.ts'],
+    setupFiles: ['./tests/setup.ts'],
   },
 });

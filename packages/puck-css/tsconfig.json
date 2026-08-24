@@ -1,11 +1,16 @@
 {
+  // The editor config: checks every file in the package, emits nothing.
+  // Editors map a file to a project by walking ancestors for a file named
+  // exactly `tsconfig.json`, so tests must be included HERE — a sibling
+  // config (tsconfig.test.json et al.) is never discovered on its own, and
+  // excluded files fall into an inferred project with no jest-dom types.
+  // Emit and the CI typecheck gate live in tsconfig.build.json.
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "outDir": "./dist",
-    "rootDir": "./src",
     "jsx": "react-jsx",
-    "allowArbitraryExtensions": false
+    "allowArbitraryExtensions": false,
+    "noEmit": true
   },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "tests", "src/__tests__", "src/__mocks__", "src/**/*.test.ts", "src/**/*.test.tsx"]
+  "include": ["src/**/*", "tests/**/*", "tests-puck/**/*", "spike/**/*"],
+  "exclude": ["node_modules", "dist"]
 }
