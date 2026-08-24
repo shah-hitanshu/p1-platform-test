@@ -185,6 +185,8 @@ jobs:
       # Chromium is installed here and not in `verify` so the repo's main
       # gate keeps its current runtime.
       - run: pnpm exec playwright install --with-deps chromium
+      - name: Build starter-components dependencies
+        run: pnpm exec turbo run build --filter='@pantheon-systems/p1-starter-components^...'
       - name: Render every story
         run: pnpm --filter @pantheon-systems/p1-starter-components test:storybook
       - name: Build the static Storybook
