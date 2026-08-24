@@ -1,0 +1,207 @@
+*, *::before, *::after { box-sizing: border-box; }
+
+:root {
+  --fg: #1a1523;
+  --fg-muted: #6e6887;
+  --border: #e8e5f0;
+  --surface: #ffffff;
+  --surface-subtle: #f8f7fb;
+  --accent: oklch(0.55 0.21 280);
+  --radius-card: 0.75rem;
+  --radius-pill: 9999px;
+  --font: Inter, system-ui, sans-serif;
+}
+
+body {
+  background: var(--surface);
+  color: var(--fg);
+  font-family: var(--font);
+  font-size: 1rem;
+  line-height: 1.6;
+  margin: 0;
+}
+
+a { color: var(--accent); }
+
+/* ── Site shell ───────────────────────────── */
+.p1-shell { display: flex; flex-direction: column; min-height: 100dvh; }
+
+.p1-header {
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  gap: 1.5rem;
+  justify-content: space-between;
+  padding: 0.875rem 1.5rem;
+}
+
+.p1-header__brand {
+  font-size: 0.9375rem;
+  font-weight: 700;
+  text-decoration: none;
+  color: var(--fg);
+  letter-spacing: -0.01em;
+}
+
+.p1-header__nav { display: flex; gap: 1rem; }
+.p1-header__nav a {
+  color: var(--fg-muted);
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-decoration: none;
+}
+.p1-header__nav a:hover { color: var(--fg); }
+
+.p1-main { flex: 1; padding: 2rem 1.5rem; max-width: 80rem; margin-inline: auto; width: 100%; }
+
+.p1-footer {
+  border-top: 1px solid var(--border);
+  color: var(--fg-muted);
+  font-size: 0.8125rem;
+  padding: 1.25rem 1.5rem;
+  text-align: center;
+}
+
+/* ── Hero intro ───────────────────────────── */
+.p1-catalog-intro { margin-bottom: 2rem; }
+.p1-catalog-intro h1 { font-size: clamp(1.5rem, 4vw, 2.5rem); font-weight: 800; margin: 0 0 0.5rem; letter-spacing: -0.03em; }
+.p1-catalog-intro p { color: var(--fg-muted); margin: 0 0 1.5rem; max-width: 40rem; }
+
+/* ── Category filter ──────────────────────── */
+.p1-cat-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1.75rem;
+}
+
+.p1-cat-filter__btn {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  padding: 0.375rem 0.875rem;
+  text-transform: capitalize;
+  transition: background 0.1s, border-color 0.1s;
+}
+.p1-cat-filter__btn:hover { border-color: var(--accent); color: var(--accent); }
+.p1-cat-filter__btn[data-active] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+/* ── Block grid ───────────────────────────── */
+.p1-block-grid {
+  display: grid;
+  gap: 1.25rem;
+  grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
+}
+
+/* ── Block card ───────────────────────────── */
+.p1-block-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  display: flex;
+  flex-direction: column;
+  padding: 1.25rem;
+  gap: 1rem;
+}
+.p1-block-card__header { flex: 1; }
+.p1-block-card__tag {
+  background: var(--surface-subtle);
+  border-radius: var(--radius-pill);
+  color: var(--fg-muted);
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 500;
+  margin-bottom: 0.5rem;
+  padding: 0.125rem 0.625rem;
+  text-transform: capitalize;
+}
+.p1-block-card__title { font-size: 0.9375rem; font-weight: 700; margin: 0 0 0.375rem; }
+.p1-block-card__desc { color: var(--fg-muted); font-size: 0.8125rem; line-height: 1.5; margin: 0; }
+.p1-block-card__footer { }
+
+/* ── Add command ──────────────────────────── */
+.p1-add-command { display: flex; flex-direction: column; gap: 0.375rem; }
+
+.p1-add-command__btn {
+  align-items: center;
+  background: var(--surface-subtle);
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  cursor: pointer;
+  display: flex;
+  font-family: inherit;
+  gap: 0.5rem;
+  justify-content: space-between;
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  width: 100%;
+}
+.p1-add-command__btn code {
+  font-size: 0.75rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.p1-add-command__badge {
+  color: var(--fg-muted);
+  flex-shrink: 0;
+  font-size: 0.6875rem;
+  font-weight: 500;
+}
+
+.p1-add-command__agent {
+  background: none;
+  border: none;
+  color: var(--fg-muted);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.75rem;
+  padding: 0;
+  text-align: left;
+  text-decoration: underline;
+}
+.p1-add-command__agent:hover { color: var(--accent); }
+
+/* ── Theme panel ──────────────────────────── */
+.p1-theme-panel { max-width: 56rem; }
+.p1-theme-panel__toolbar {
+  align-items: center;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+.p1-theme-panel__heading { font-size: 1.25rem; font-weight: 700; margin: 0; }
+.p1-theme-panel__copy {
+  background: var(--accent);
+  border: none;
+  border-radius: 0.375rem;
+  color: #fff;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  padding: 0.5rem 1rem;
+}
+.p1-theme-panel__code {
+  background: var(--surface-subtle);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  font-size: 0.75rem;
+  line-height: 1.6;
+  overflow-x: auto;
+  padding: 1.25rem;
+  white-space: pre;
+}
+.p1-theme-panel__hint { color: var(--fg-muted); font-size: 0.875rem; margin-top: 1rem; }
+
+/* ── Catalog client wrapper ───────────────── */
+.p1-catalog-client { }
