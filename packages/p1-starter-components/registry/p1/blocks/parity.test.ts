@@ -52,16 +52,19 @@ describe('create-block convention parity', () => {
     }
   });
 
-  it('uses the puck-css richtext helper rather than a bare textarea for long prose (D11)', () => {
+  it('uses the puck-css richtext helper rather than a bare textarea for long prose', () => {
     // richtextField/inlineTextField produce a custom field with a render fn.
     // A bare `textarea` for body copy means the block was converted without the
     // field migration and will feel inert next to the starter kit's blocks.
+    // Note: arrayFields inside type:"array" fields are not checked here.
+    // footer `links` and pricing `features` use textarea for line-delimited data (not prose).
+    // If a prose-body arrayField appears, extend this check to recurse into arrayFields.
     for (const [name, block] of converted) {
       for (const [fieldName, field] of Object.entries(block.fields ?? {})) {
         const typed = field as { type?: string };
         expect(
           typed.type === 'textarea',
-          `${name}.fields.${fieldName} is a bare textarea — use richtextField (PCC-3580 D11)`,
+          `${name}.fields.${fieldName} is a bare textarea — use richtextField or inlineTextField`,
         ).toBe(false);
       }
     }

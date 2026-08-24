@@ -18,13 +18,13 @@ pnpm --filter @pantheon-systems/p1-starter-components storybook
 
 ## Status
 
-Private and unpublished. Tailwind removal and npm publishing are planned for later phases.
+Private and unpublished. npm publishing planned for a later phase.
 
 The `registry.json` currently registers only the `divider` block as a proof-of-concept
 for the shadcn distribution pipeline — full population of all 37 blocks is a separate
 follow-on commit.
 
-## Visual regression gate (PCC-3580 phase 2)
+## Visual regression gate
 
 Baselines are machine-specific and gitignored. Before converting a block:
 
