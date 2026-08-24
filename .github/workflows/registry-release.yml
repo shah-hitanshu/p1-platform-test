@@ -1,0 +1,97 @@
+name: Registry Release
+
+# Triggered by a published GitHub Release. Builds the code registry and catalog,
+# then opens a PR into registry-deploy for human review before anything goes live.
+# Set REGISTRY_HOST in repo Settings → Variables before cutting the first release.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to build (e.g. v0.1.0)'
+        required: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: registry-release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.tag }}
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Verify the registry before shipping it
+        run: pnpm --filter @pantheon-systems/p1-starter-components verify:registry
+
+      - name: Build registry and catalog
+        run: pnpm --filter @pantheon-systems/p1-registry build
+        env:
+          REGISTRY_HOST: ${{ vars.REGISTRY_HOST }}
+
+      - name: Assemble the deploy tree
+        run: |
+          TAG="${{ github.event.release.tag_name || inputs.tag }}"
+          rm -rf deploy && mkdir -p deploy/registry-builds
+          cp -R apps/p1-registry/out/. deploy/registry-builds/
+          node -e "
+            const fs = require('fs');
+            const tag = process.env.TAG.replace(/^v/, '');
+            const vPath = 'apps/p1-registry/versions.json';
+            const versions = JSON.parse(fs.readFileSync(vPath, 'utf8'));
+            versions.current = tag;
+            versions.versions = [...new Set([tag, ...versions.versions])];
+            fs.writeFileSync('deploy/versions.json', JSON.stringify(versions, null, 2) + '\n');
+          "
+        env:
+          TAG: ${{ github.event.release.tag_name || inputs.tag }}
+
+      - name: Ensure registry-deploy branch exists
+        run: |
+          git config user.name  'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          if ! git ls-remote --exit-code origin registry-deploy; then
+            git checkout --orphan registry-deploy
+            git rm -rf --cached . >/dev/null
+            git commit --allow-empty -m "chore: initialise registry-deploy branch"
+            git push origin registry-deploy
+            git checkout -
+          fi
+
+      - name: Open a PR into registry-deploy
+        run: |
+          TAG="${{ github.event.release.tag_name || inputs.tag }}"
+          git config user.name  'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git fetch origin registry-deploy
+          git checkout -B "deploy/registry-$TAG" origin/registry-deploy
+          rm -rf registry-builds versions.json
+          cp -R deploy/. .
+          rm -rf deploy
+          git add -A
+          git commit -m "deploy: registry $TAG"
+          git push -f origin "deploy/registry-$TAG"
+          gh pr create \
+            --base registry-deploy \
+            --head "deploy/registry-$TAG" \
+            --title "deploy: registry $TAG" \
+            --body "Built from \`$TAG\`. Review the built registry JSON, then merge — merging triggers the live deploy."
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
