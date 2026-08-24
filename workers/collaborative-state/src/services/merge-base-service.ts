@@ -260,6 +260,7 @@ export async function getModifiedDocumentsSince(
         dv.document_id, dv.id AS version_id, dv.version_number, dv.source, dv.snapshot, dv.is_tombstone
       FROM app.document_versions dv
       WHERE dv.branch_id = $1
+        AND dv.superseded_at IS NULL
       ORDER BY dv.document_id, dv.version_number DESC
     )`;
 

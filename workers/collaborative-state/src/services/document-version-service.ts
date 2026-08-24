@@ -559,7 +559,7 @@ export async function getLatestVersionsForBranch(branchId: string): Promise<Docu
   const result = await query<DocumentVersionRow>(
     `SELECT DISTINCT ON (document_id) *
      FROM app.document_versions
-     WHERE branch_id = $1
+     WHERE branch_id = $1 AND superseded_at IS NULL
      ORDER BY document_id, version_number DESC`,
     [branchId],
   );
@@ -575,7 +575,7 @@ export async function getLatestVersionsForDocuments(
   const result = await query<DocumentVersionRow>(
     `SELECT DISTINCT ON (document_id) *
      FROM app.document_versions
-     WHERE document_id = ANY($1) AND branch_id = $2
+     WHERE document_id = ANY($1) AND branch_id = $2 AND superseded_at IS NULL
      ORDER BY document_id, version_number DESC`,
     [documentIds, branchId],
   );

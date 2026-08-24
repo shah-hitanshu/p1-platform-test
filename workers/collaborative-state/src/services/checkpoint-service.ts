@@ -206,40 +206,32 @@ export async function createCheckpoint(
       const registryPathPattern = escapeLikePattern('_registry/') + '%';
       const registryTemplatesPathPattern = escapeLikePattern('_registry/templates/') + '%';
 
-      if (isIncremental && parentCreatedAt != null && parentCreatedAt !== '') {
-        // Incremental: only documents changed since the parent checkpoint.
-        const result = await query<{ document_id: string; document_version_id: string }>(
-          `SELECT document_id, document_version_id FROM (
-            SELECT DISTINCT ON (dv.document_id)
-              dv.document_id, dv.id as document_version_id, dv.is_tombstone
-            FROM app.document_versions dv
-            JOIN app.documents d ON d.id = dv.document_id
-            WHERE dv.branch_id = $1 AND dv.created_at > $2
-              AND (d.path NOT LIKE $3 ESCAPE '\\' OR d.path LIKE $4 ESCAPE '\\')
-            ORDER BY dv.document_id, dv.version_number DESC
-          ) latest
-          WHERE latest.is_tombstone = false`,
-          [params.branchId, parentCreatedAt, registryPathPattern, registryTemplatesPathPattern],
-        );
-        docVersionRows = result.rows;
-      } else {
-        // Full: all latest versions for the branch, excluding _registry/*
-        // (PCC-3430) — see comment above.
-        const result = await query<{ document_id: string; document_version_id: string }>(
-          `SELECT document_id, document_version_id FROM (
-            SELECT DISTINCT ON (dv.document_id)
-              dv.document_id, dv.id as document_version_id, dv.is_tombstone
-            FROM app.document_versions dv
-            JOIN app.documents d ON d.id = dv.document_id
-            WHERE dv.branch_id = $1
-              AND (d.path NOT LIKE $2 ESCAPE '\\' OR d.path LIKE $3 ESCAPE '\\')
-            ORDER BY dv.document_id, dv.version_number DESC
-          ) latest
-          WHERE latest.is_tombstone = false`,
-          [params.branchId, registryPathPattern, registryTemplatesPathPattern],
-        );
-        docVersionRows = result.rows;
-      }
+      // Incremental captures only documents changed since the parent
+      // checkpoint; a full capture takes every document on the branch. The
+      // query is otherwise identical, so it is built once — "what counts as a
+      // capturable version" must never diverge between the two modes.
+      const incremental = isIncremental && parentCreatedAt != null && parentCreatedAt !== '';
+      const captureParams: unknown[] = incremental
+        ? [params.branchId, parentCreatedAt, registryPathPattern, registryTemplatesPathPattern]
+        : [params.branchId, registryPathPattern, registryTemplatesPathPattern];
+      const sinceClause = incremental ? ' AND dv.created_at > $2' : '';
+      const [notLikeParam, likeParam] = incremental ? ['$3', '$4'] : ['$2', '$3'];
+
+      const result = await query<{ document_id: string; document_version_id: string }>(
+        `SELECT document_id, document_version_id FROM (
+          SELECT DISTINCT ON (dv.document_id)
+            dv.document_id, dv.id as document_version_id, dv.is_tombstone
+          FROM app.document_versions dv
+          JOIN app.documents d ON d.id = dv.document_id
+          WHERE dv.branch_id = $1${sinceClause}
+            AND dv.superseded_at IS NULL
+            AND (d.path NOT LIKE ${notLikeParam} ESCAPE '\\' OR d.path LIKE ${likeParam} ESCAPE '\\')
+          ORDER BY dv.document_id, dv.version_number DESC
+        ) latest
+        WHERE latest.is_tombstone = false`,
+        captureParams,
+      );
+      docVersionRows = result.rows;
     }
 
     // Insert checkpoint_documents entries

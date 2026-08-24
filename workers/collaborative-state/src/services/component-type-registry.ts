@@ -58,6 +58,7 @@ export async function loadCanonicalComponentNames(
        FROM app.document_versions dv
        JOIN app.documents d ON d.id = dv.document_id
        WHERE dv.branch_id = $1 AND d.path LIKE $2 ESCAPE '\\'
+         AND dv.superseded_at IS NULL
        ORDER BY dv.document_id, dv.version_number DESC
      ) latest
      WHERE latest.is_tombstone = false`,

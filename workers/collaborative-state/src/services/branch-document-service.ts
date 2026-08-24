@@ -246,6 +246,7 @@ export async function countDocumentsOnBranch(
         LEFT JOIN app.branch_document_paths bdp
           ON bdp.branch_id = $1 AND bdp.document_id = d.id
         WHERE dv.branch_id = $1
+          AND dv.superseded_at IS NULL
           AND d.archived_at IS NULL${includeTombstoned ? '' : `
           AND NOT EXISTS (
             SELECT 1 FROM app.document_versions dv2
@@ -283,6 +284,10 @@ export async function countDocumentsOnBranch(
         SELECT d.id
         FROM app.documents d
         ${TEMPLATE_RELATION_JOIN}
+        -- No superseded_at filter here, unlike the arm above: this arm matches
+        -- the version a publish checkpoint pinned, which is routinely an older
+        -- version than the branch's newest. Filtering it would drop published
+        -- inherited documents out of the count.
         INNER JOIN app.document_versions dv ON dv.document_id = d.id
         INNER JOIN app.checkpoint_documents cd ON cd.document_version_id = dv.id
         INNER JOIN app.checkpoints cp ON cp.id = cd.checkpoint_id
@@ -331,6 +336,7 @@ export async function countDocumentsOnBranch(
       LEFT JOIN app.branch_document_paths bdp
         ON bdp.branch_id = $1 AND bdp.document_id = d.id
       WHERE dv.branch_id = $1
+        AND dv.superseded_at IS NULL
         AND d.archived_at IS NULL${includeTombstoned ? '' : `
         AND NOT EXISTS (
           SELECT 1 FROM app.document_versions dv2
