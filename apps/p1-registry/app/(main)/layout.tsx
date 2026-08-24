@@ -14,7 +14,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <div className="p1-shell">
           <header className="p1-header">
             <Link href="/" className="p1-header__brand">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src="/p1_logo.svg" alt="P1" className="p1-header__logo" />
               <span>Block Registry</span>
             </Link>
