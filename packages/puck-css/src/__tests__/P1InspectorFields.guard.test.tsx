@@ -26,8 +26,9 @@ vi.mock('@puckeditor/core', () => ({
         ui: { itemSelector, rightSideBarVisible: true },
       },
       selectedItem: itemSelector ? { type: 'Block', props: { id: 'block-1' } } : null,
+      dispatch,
+      config: { components: { Block: { label: 'Block' } } },
     }),
-  usePuck: () => ({ dispatch, config: { components: { Block: { label: 'Block' } } } }),
 }));
 
 vi.mock('../core/P1PuckContext', () => ({

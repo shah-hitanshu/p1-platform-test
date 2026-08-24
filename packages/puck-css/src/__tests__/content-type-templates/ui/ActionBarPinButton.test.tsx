@@ -22,7 +22,6 @@ const { puckSelectorMock, mockDispatch, mockCssContext } = vi.hoisted(() => ({
 
 vi.mock('@puckeditor/core', () => ({
   createUsePuck: () => puckSelectorMock,
-  usePuck: () => ({ dispatch: mockDispatch }),
   ActionBar: {
     Action: ({ children, label, onClick, active, disabled }: any) => (
       <button
@@ -73,6 +72,7 @@ function setPuckState(selectedItem: any, pinMap: Record<string, boolean> = {}) {
     selector({
       selectedItem,
       appState: { data: { content: mockContent, root: { props: { _pinMap: pinMap } } } },
+      dispatch: mockDispatch,
     })
   );
 }

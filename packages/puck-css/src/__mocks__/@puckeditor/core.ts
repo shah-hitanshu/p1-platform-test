@@ -1,11 +1,19 @@
 import { vi } from 'vitest';
 
-export const createUsePuck = () => () => ({
+const puckState = () => ({
   appState: { data: { content: [], root: { props: {} }, zones: {} }, ui: {} },
+  config: { components: {} },
   dispatch: vi.fn(),
   refreshPermissions: vi.fn().mockResolvedValue(undefined),
   selectedItem: null,
 });
+
+export const createUsePuck =
+  () =>
+  (selector?: (state: ReturnType<typeof puckState>) => unknown) => {
+    const state = puckState();
+    return selector ? selector(state) : state;
+  };
 
 export const usePuck = () => ({
   dispatch: vi.fn(),

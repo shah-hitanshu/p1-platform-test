@@ -21,12 +21,10 @@ vi.mock('@puckeditor/core', () => ({
           data: { content: [] },
         },
         selectedItem: mockItemSelector ? { type: 'HeadingBlock' } : null,
+        dispatch: vi.fn(),
+        config: { components: {} },
       });
   },
-  usePuck: () => ({
-    dispatch: vi.fn(),
-    config: { components: {} },
-  }),
 }));
 
 vi.mock('@pantheon-systems/pds-toolkit-react', () => ({

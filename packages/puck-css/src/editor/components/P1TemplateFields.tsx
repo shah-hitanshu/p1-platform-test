@@ -1,5 +1,5 @@
 import React from 'react';
-import { createUsePuck, usePuck } from '@puckeditor/core';
+import { createUsePuck } from '@puckeditor/core';
 import { useP1PuckOptional } from '../../core/P1PuckContext.js';
 import { TemplateDetailsPanel } from '../../features/content-type-templates/ui/TemplateDetailsPanel.js';
 import { templateFromRegistryPath } from '../utils/templatePath.js';
@@ -18,7 +18,7 @@ export function P1TemplateFields({ children }: { children: React.ReactNode }): R
     (s) =>
       (s as unknown as { appState?: { ui?: { itemSelector?: unknown } } }).appState?.ui?.itemSelector,
   );
-  const { dispatch } = usePuck();
+  const dispatch = useTemplateFieldsPuck((s) => s.dispatch) as (action: unknown) => void;
   const template = templateFromRegistryPath(css?.currentDocument?.path, css?.templates);
 
   if (template && !itemSelector && css?.updateTemplate) {

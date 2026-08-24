@@ -11,7 +11,7 @@
  */
 
 import React from 'react';
-import { createUsePuck, usePuck } from '@puckeditor/core';
+import { createUsePuck } from '@puckeditor/core';
 import { IconButton } from '@pantheon-systems/pds-toolkit-react';
 import { useP1PuckOptional } from '../../core/P1PuckContext.js';
 import { useSidebarScrollPreservation } from '../useSidebarScrollPreservation.js';
@@ -27,6 +27,8 @@ const useInspectorPuck = createUsePuck();
 const useInspectorSelectedType = createUsePuck();
 const useInspectorContentLength = createUsePuck();
 const useInspectorRightVisible = createUsePuck();
+const useInspectorDispatch = createUsePuck();
+const useInspectorConfig = createUsePuck();
 
 export function P1InspectorFields({
   children,
@@ -56,7 +58,8 @@ export function P1InspectorFields({
         ?.rightSideBarVisible ?? true,
   );
 
-  const { dispatch, config } = usePuck();
+  const dispatch = useInspectorDispatch((s) => s.dispatch) as (action: unknown) => void;
+  const config = useInspectorConfig((s) => s.config);
 
   const selectedBlockLabel = selectedBlockType
     ? ((config.components as Record<string, { label?: string }>)[selectedBlockType]?.label ?? selectedBlockType)

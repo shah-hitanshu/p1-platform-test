@@ -1,5 +1,5 @@
 import React, { useCallback } from 'react';
-import { ActionBar, createUsePuck, usePuck } from '@puckeditor/core';
+import { ActionBar, createUsePuck } from '@puckeditor/core';
 import { Icon } from '@pantheon-systems/pds-toolkit-react';
 import { useP1PuckOptional } from '../../../core/P1PuckContext.js';
 import type { TemplateSummary } from '../types.js';
@@ -38,7 +38,7 @@ export function ActionBarPinButton(): React.ReactElement | null {
     (s) => (s as unknown as { appState: { data: { root: { props: Record<string, unknown> } } } }).appState?.data?.root?.props
   );
 
-  const { dispatch } = usePuck();
+  const dispatch = usePuckState((s) => s.dispatch) as (action: unknown) => void;
 
   const template = css ? resolveTemplate(css) : null;
 

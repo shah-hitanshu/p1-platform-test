@@ -22,7 +22,6 @@ const { puckSelectorMock, mockDispatch, mockCssContext } = vi.hoisted(() => ({
 
 vi.mock('@puckeditor/core', () => ({
   createUsePuck: () => puckSelectorMock,
-  usePuck: () => ({ dispatch: mockDispatch, refreshPermissions: vi.fn() }),
   ActionBar: Object.assign(
     ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
     {
@@ -62,7 +61,11 @@ beforeEach(() => {
   mockCssContext.updateTemplate = vi.fn().mockResolvedValue(undefined);
   // Nothing selected on the canvas (root fields shown).
   puckSelectorMock.mockImplementation((selector: (s: unknown) => unknown) =>
-    selector({ appState: { ui: { itemSelector: null } } }),
+    selector({
+      appState: { ui: { itemSelector: null } },
+      dispatch: mockDispatch,
+      config: { components: {} },
+    }),
   );
 });
 

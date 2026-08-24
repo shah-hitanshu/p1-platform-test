@@ -25,7 +25,7 @@ vi.mock('@puckeditor/core', async () => {
   return {
     Render: (props: unknown) => renderSpy(props),
     Drawer,
-    usePuck: () => ({ dispatch: dispatchSpy }),
+    createUsePuck: () => (selector: (s: unknown) => unknown) => selector({ dispatch: dispatchSpy }),
   };
 });
 

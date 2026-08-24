@@ -15,8 +15,10 @@
 
 import React from 'react';
 import { IconButton } from '@pantheon-systems/pds-toolkit-react';
-import { usePuck } from '@puckeditor/core';
+import { createUsePuck } from '@puckeditor/core';
 import styles from './PanelHeader.module.css';
+
+const usePanelHeaderPuck = createUsePuck();
 
 export interface PanelHeaderProps {
   /** Panel name, rendered as the heading. */
@@ -32,7 +34,7 @@ export function PanelHeader({
   onCollapse,
   actions,
 }: PanelHeaderProps): React.ReactElement {
-  const { dispatch } = usePuck();
+  const dispatch = usePanelHeaderPuck((s) => s.dispatch) as (action: unknown) => void;
 
   return (
     <div className={styles.header}>

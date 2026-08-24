@@ -7,7 +7,7 @@ import React from 'react';
 const { dispatchSpy } = vi.hoisted(() => ({ dispatchSpy: vi.fn() }));
 
 vi.mock('@puckeditor/core', () => ({
-  usePuck: () => ({ dispatch: dispatchSpy }),
+  createUsePuck: () => (selector: (s: unknown) => unknown) => selector({ dispatch: dispatchSpy }),
 }));
 
 vi.mock('@pantheon-systems/pds-toolkit-react', async () => {
