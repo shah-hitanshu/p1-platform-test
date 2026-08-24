@@ -1,13 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { useAgentChat } from '../src/useAgentChat.js';
+import { useAgentChat } from '../src/hooks/useAgentChat.js';
 import {
   EMPTY_STATE,
   addToWriteSet,
   forgetWriteSet,
   removeFromWriteSet,
   visitPage,
-} from '../src/chatState.js';
+} from '../src/lib/session/chatState.js';
 import type { ChatContext } from '../src/types.js';
 import { MockWebSocket, baseContext } from './testSupport.js';
 

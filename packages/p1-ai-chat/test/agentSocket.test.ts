@@ -6,7 +6,7 @@ import {
   connectionErrorLabel,
   parseServerMessage,
   sendToAgent,
-} from '../src/agentSocket.js';
+} from '../src/lib/session/agentSocket.js';
 
 describe('createWebsocketConnectionUrl', () => {
   it('swaps http for the ws scheme', () => {

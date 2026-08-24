@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { useAgentChat } from '../src/useAgentChat.js';
+import { useAgentChat } from '../src/hooks/useAgentChat.js';
 import { MockWebSocket, baseContext } from './testSupport.js';
 
 /**

@@ -28,7 +28,7 @@ vi.mock('@pantheon-systems/puck-css', () => ({
   aiPanelStore: { close: vi.fn(), open: vi.fn(), toggle: vi.fn(), isOpen: () => true, subscribe: () => () => {} },
 }));
 
-const { ChatPanel } = await import('../src/ChatPanel.js');
+const { ChatPanel } = await import('../src/components/panel/ChatPanel.js');
 
 let scopeCounter = 0;
 

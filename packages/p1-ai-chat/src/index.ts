@@ -1,6 +1,6 @@
 import React from 'react';
 import type { Plugin } from '@puckeditor/core';
-import { AIFieldsOverride } from './AIFieldsOverride.js';
+import { AIFieldsOverride } from './components/panel/AIFieldsOverride.js';
 import type { AIChatPluginOptions } from './types.js';
 
 export type {
@@ -20,7 +20,7 @@ export type {
   PendingPage,
   DraftRequestChannel,
 } from './types.js';
-export { createDraftRequestChannel } from './draftRequestChannel.js';
+export { createDraftRequestChannel } from './lib/draftRequestChannel.js';
 
 // Reuse the real Puck plugin type instead of a hand-maintained local copy, so
 // this can never drift from what @puckeditor/core actually consumes (see PCC-3399).

@@ -2,13 +2,14 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, act, screen, fireEvent, waitFor, createEvent } from '@testing-library/react';
 import type { ChatContext, DraftRequest, DraftRequestChannel } from '../src/types.js';
-import { AttachmentError, MAX_BRIEF_CHARS } from '../src/attachments.js';
+import { AttachmentError } from '../src/lib/attachments/attachmentError.js';
+import { MAX_BRIEF_CHARS } from '../src/lib/attachments/fileRules.js';
 import { MockWebSocket, baseContext } from './testSupport.js';
 
 // Canvas decoding is not implemented in happy-dom, and it is not what these tests are
 // about: the panel's own downscaler is covered in downscaleImage.test.ts.
 const prepared = vi.fn(async (file: File) => `data:image/webp;base64,${btoa(file.name)}`);
-vi.mock('../src/downscaleImage.js', () => ({ downscaleImage: (file: File) => prepared(file) }));
+vi.mock('../src/lib/attachments/downscaleImage.js', () => ({ downscaleImage: (file: File) => prepared(file) }));
 
 vi.mock('@puckeditor/core', () => ({
   useGetPuck: () => () => ({ dispatch: vi.fn() }),
@@ -28,7 +29,7 @@ vi.mock('@pantheon-systems/puck-css', () => ({
   aiPanelStore: { close: vi.fn(), open: vi.fn(), toggle: vi.fn(), isOpen: () => true, subscribe: () => () => {} },
 }));
 
-const { ChatPanel } = await import('../src/ChatPanel.js');
+const { ChatPanel } = await import('../src/components/panel/ChatPanel.js');
 
 let scopeCounter = 0;
 

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, cleanup, fireEvent } from '@testing-library/react';
-import { ChatMessage } from '../src/ChatMessage.js';
+import { ChatMessage } from '../src/components/transcript/ChatMessage.js';
 import type { ChatMessage as ChatMessageType, MessagePart } from '../src/types.js';
 
 const assistant = (over: Partial<ChatMessageType> = {}): ChatMessageType => ({

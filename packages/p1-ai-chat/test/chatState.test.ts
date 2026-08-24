@@ -10,7 +10,7 @@ import {
   restoreHistory,
   startToolCall,
   type ChatSessionState,
-} from '../src/chatState.js';
+} from '../src/lib/session/chatState.js';
 import type { ChatMessage } from '../src/types.js';
 
 const withMessages = (...messages: ChatMessage[]): ChatSessionState => ({

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { messageParts, turnBlocks, isAwaitingModel, activeStep } from '../src/messageParts.js';
+import { messageParts, turnBlocks, isAwaitingModel, activeStep } from '../src/lib/transcript/messageParts.js';
 import type { ChatMessage, MessagePart, ToolCallStatus } from '../src/types.js';
 
 const msg = (over: Partial<ChatMessage> = {}): ChatMessage => ({

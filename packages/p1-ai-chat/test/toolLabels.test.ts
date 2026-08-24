@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { toolCallLabel, toolCallOutcome, toolCallNote } from '../src/toolLabels.js';
+import { toolCallLabel, toolCallOutcome, toolCallNote } from '../src/lib/transcript/toolLabels.js';
 import type { ToolCallStatus } from '../src/types.js';
 
 const call = (over: Partial<ToolCallStatus> = {}): ToolCallStatus => ({

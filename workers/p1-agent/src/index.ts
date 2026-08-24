@@ -1,8 +1,8 @@
 import { routeAgentRequest } from 'agents';
 import { contextFromRequest, withRequestContext } from '@pantheon-systems/p1-telemetry';
-import type { Env } from './types.js';
+import type { Env } from './env.js';
 import { ensureLogger } from './telemetry.js';
-export { ChatAgent } from './agent.js';
+export { ChatAgent } from './durable-objects/chat-agent.js';
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {

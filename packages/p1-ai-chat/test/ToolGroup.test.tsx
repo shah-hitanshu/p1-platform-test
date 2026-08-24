@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { ToolGroup, ToolStatusLine } from '../src/ToolGroup.js';
+import { ToolGroup, ToolStatusLine } from '../src/components/transcript/ToolGroup.js';
 import type { ToolCallStatus } from '../src/types.js';
 
 const tool = (over: Partial<ToolCallStatus> = {}): ToolCallStatus => ({

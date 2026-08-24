@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { dataUrlBytes, downscaleImage, fitWithin } from '../src/downscaleImage.js';
-import { AttachmentError } from '../src/attachments.js';
+import { dataUrlBytes, downscaleImage, fitWithin } from '../src/lib/attachments/downscaleImage.js';
+import { AttachmentError } from '../src/lib/attachments/attachmentError.js';
 
 /**
  * happy-dom implements neither `createImageBitmap` nor canvas encoding, so both are stood in

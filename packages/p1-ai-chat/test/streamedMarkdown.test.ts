@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { repairMarkdown } from '../src/streamedMarkdown.js';
+import { repairMarkdown } from '../src/lib/transcript/streamedMarkdown.js';
 
 describe('repairMarkdown', () => {
   it('closes a fence that has not been closed yet', () => {

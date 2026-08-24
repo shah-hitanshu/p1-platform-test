@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { createDraftRequestChannel } from '../src/draftRequestChannel.js';
+import { createDraftRequestChannel } from '../src/lib/draftRequestChannel.js';
 import type { DraftRequest } from '../src/types.js';
 
 const request = (brief: string, documentPath = '/p'): DraftRequest =>

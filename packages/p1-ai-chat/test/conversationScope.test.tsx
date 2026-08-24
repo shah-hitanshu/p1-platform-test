@@ -20,7 +20,7 @@ vi.mock('@puckeditor/core', () => ({
     selector({ selectedItem: null, appState: { ui: { itemSelector: null } } }),
 }));
 
-const { ChatPanel } = await import('../src/ChatPanel.js');
+const { ChatPanel } = await import('../src/components/panel/ChatPanel.js');
 
 beforeEach(() => {
   MockWebSocket.instances = [];

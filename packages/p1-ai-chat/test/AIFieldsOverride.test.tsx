@@ -6,11 +6,11 @@ let panelOpen = false;
 vi.mock('@pantheon-systems/puck-css', () => ({
   useAIPanelOpen: () => panelOpen,
 }));
-vi.mock('../src/ChatPanel.js', () => ({
+vi.mock('../src/components/panel/ChatPanel.js', () => ({
   ChatPanel: () => <div data-testid="chat-panel" />,
 }));
 
-const { AIFieldsOverride } = await import('../src/AIFieldsOverride.js');
+const { AIFieldsOverride } = await import('../src/components/panel/AIFieldsOverride.js');
 
 const options = { agentUrl: 'http://agent.test' };
 

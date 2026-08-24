@@ -14,9 +14,9 @@
  * Required env: AI_GATEWAY_API_TOKEN, AI_GATEWAY_ACCOUNT_ID, AI_GATEWAY_NAME.
  * Optional env: SMOKE_MODEL (default anthropic/claude-haiku-4-5 — cheapest for the probe).
  */
-import { createTransport } from '../src/model.js';
-import { CSS_TOOLS, WEB_TOOLS } from '../src/tool-defs.js';
-import { SYSTEM_PROMPT } from '../src/prompt.js';
+import { createTransport } from '../src/providers/transport.js';
+import { CSS_TOOLS, WEB_TOOLS } from '../src/tools/definitions.js';
+import { SYSTEM_PROMPT } from '../src/prompt/system-prompt.js';
 
 function requireEnv(name: string): string {
   const v = process.env[name];

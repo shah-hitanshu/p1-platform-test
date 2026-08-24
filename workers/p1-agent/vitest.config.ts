@@ -1,12 +1,12 @@
-import { defineConfig } from 'vitest/config';
 import { fileURLToPath } from 'node:url';
+import { defineConfig } from 'vitest/config';
 
 const cloudflareRuntime = fileURLToPath(new URL('./test-stubs/cloudflare-runtime.ts', import.meta.url));
 
 export default defineConfig({
   resolve: {
-    // `agents` and `partyserver` import the Workers built-ins at module load, so agent.ts
-    // can't be imported at all without these.
+    // `agents` and `partyserver` import the Workers built-ins at module load, so
+    // durable-objects/chat-agent.ts can't be imported at all without these.
     alias: {
       'cloudflare:workers': cloudflareRuntime,
       'cloudflare:email': cloudflareRuntime,

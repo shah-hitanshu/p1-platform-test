@@ -1,17 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import {
-  MAX_BRIEF_CHARS,
-  MAX_DOCUMENT_BYTES,
-  MAX_IMAGE_BYTES,
-  ACCEPTED_FILE_TYPES,
-  AttachmentError,
-  attachmentBlocker,
-  checkAttachment,
-  clipboardFiles,
-  isHtmlFile,
-  readyAttachments,
-  truncateBrief,
-} from '../src/attachments.js';
+import { AttachmentError } from '../src/lib/attachments/attachmentError.js';
+import { truncateBrief } from '../src/lib/attachments/briefText.js';
+import { checkAttachment } from '../src/lib/attachments/checkAttachment.js';
+import { clipboardFiles } from '../src/lib/attachments/clipboardFiles.js';
+import { ACCEPTED_FILE_TYPES, MAX_BRIEF_CHARS, MAX_DOCUMENT_BYTES, MAX_IMAGE_BYTES, isHtmlFile } from '../src/lib/attachments/fileRules.js';
+import { attachmentBlocker, readyAttachments } from '../src/lib/attachments/pendingAttachments.js';
 import type { PendingAttachment } from '../src/types.js';
 
 const file = (over: Partial<{ name: string; type: string; size: number }> = {}) => ({
