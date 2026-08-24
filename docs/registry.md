@@ -16,12 +16,13 @@ endpoint. Run once per project:
 pnpm dlx shadcn@latest init
 ```
 
-Then add the registry to `components.json`:
+Then add the registry to `components.json`, replacing `<host>` with the
+registry URL (e.g. `https://p1-registry.yourdomain.io`):
 
 ```json
 {
   "registries": {
-    "@p1": "https://P1_REGISTRY_HOST_TBD/r/{name}.json"
+    "@p1": "https://<host>/r/{name}.json"
   }
 }
 ```
@@ -76,7 +77,20 @@ Replaces the local copy with the upstream version, discarding local changes.
 
 ## Building and deploying the registry
 
-### Build the static output
+### The `REGISTRY_HOST` env var
+
+`REGISTRY_HOST` controls the base URL baked into every registry item's `files`
+and `registryDependencies` URLs. Set it before building:
+
+- **Local dev:** defaults to `http://localhost:3005` (no var needed)
+- **Production:** set `REGISTRY_HOST` in GitHub repo Settings → Variables to
+  the hosting URL (e.g. `https://p1-registry.yourdomain.io`) before cutting
+  the first release.
+
+The patch script (`packages/p1-starter-components/scripts/patch-registry-host.mjs`)
+rewrites the placeholder in `public/r/*.json` immediately after `shadcn build`.
+
+### Build the static output locally
 
 The registry is a static Next.js app in `apps/p1-registry`. Its build step
 runs `shadcn build` in `packages/p1-starter-components` to flatten the
@@ -84,12 +98,19 @@ runs `shadcn build` in `packages/p1-starter-components` to flatten the
 the catalog app to `out/`.
 
 ```bash
+# Default host (localhost:3005)
 pnpm --filter @pantheon-systems/p1-registry build
+
+# Custom host
+REGISTRY_HOST=https://p1-registry.yourdomain.io pnpm --filter @pantheon-systems/p1-registry build
 ```
 
-The output in `out/` is a self-contained static site that can be hosted on any
-CDN. Deploying it is the human-gated step (Tasks 5 & 6 in PCC-3580 phase 3)
-because the hostname and Pantheon site are decided outside this repo.
+The output in `out/` is a self-contained static site that can be served by any
+CDN or static host. Serve it locally to test:
+
+```bash
+npx serve apps/p1-registry/out -l 3005
+```
 
 ### Pre-deploy verification
 
@@ -116,28 +137,51 @@ Once the registry is live, validate it from a clean machine (no registry build
 artifacts, no workspace deps):
 
 ```bash
-pnpm --filter @pantheon-systems/p1-starter-components verify:public https://P1_REGISTRY_HOST_TBD
+pnpm --filter @pantheon-systems/p1-starter-components verify:public https://<host>
 ```
 
 `verify/public-install.sh` checks that every item returns `200` with correct
 cache headers, installs `@p1/base` into a clean project using the public URL,
 and confirms `--diff` works on an edited block.
 
-## Releasing a new block version
+## Release flow (automated via GitHub Actions)
 
-The registry is not an npm package — there is no `changeset` flow. A release
-is a deploy:
+Publishing a GitHub Release triggers `.github/workflows/registry-release.yml`:
+
+1. Checks out the release tag
+2. Runs `verify:registry` — build fails if any block fails to install cleanly
+3. Builds the static catalog with `REGISTRY_HOST` from repo variables
+4. Opens a PR from `deploy/registry-<tag>` into `registry-deploy` for review
+
+Merging that PR triggers `.github/workflows/deploy-registry-live.yml`, which
+pushes the next sequential `pantheon_live_N` tag so Pantheon promotes the build
+to live.
+
+The `registry-deploy` orphan branch is created automatically on the first
+release if it doesn't exist — no manual setup required.
+
+### Steps to ship a new block version
 
 1. Bump `meta.version` in the block's entry in
-   `registry/p1/blocks/registry.json` (currently `"0.1.0"`).
-2. Run `pnpm --filter @pantheon-systems/p1-starter-components registry:build`
-   locally and verify the updated JSON looks right in `apps/p1-registry/public/r/`.
-3. Run `verify:registry` and confirm all checks pass.
+   `packages/p1-starter-components/registry/p1/blocks/registry.json`.
+2. Run `registry:build` locally and confirm the updated JSON looks right in
+   `apps/p1-registry/public/r/`.
+3. Run `verify:registry` — all checks must pass.
 4. Merge to `main`.
-5. The GitHub Actions deploy workflow (human-gated) rebuilds and publishes the
-   static site.
-6. Run `verify:public` against the live URL to confirm the new version is
+5. Publish a GitHub Release (any semver tag, e.g. `v0.2.0`).
+6. Review and merge the deploy PR the workflow opens into `registry-deploy`.
+7. Run `verify:public` against the live URL to confirm the new version is
    served correctly.
 
-There is no rollback mechanism beyond re-deploying the previous commit. Keep
-the deploys small.
+There is no automated rollback — re-deploy the previous tag if needed.
+
+## Catalog app
+
+`apps/p1-registry` is the catalog. It serves:
+
+- `/` — block grid with live iframe previews, category filter, and install commands
+- `/preview/<name>` — bare block render at 1280 px (loaded in the catalog's iframes)
+- `/theme` — full token listing with a one-click copy
+
+The catalog is a static Next.js export (`output: 'export'`). It is rebuilt and
+deployed as part of the same release flow as the registry JSON.
