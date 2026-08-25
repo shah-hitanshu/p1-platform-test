@@ -18,21 +18,21 @@ type PinMapRecord = Record<string, boolean>;
  * `_registry/templates/<name>`). Pinning is a template-authoring capability,
  * so ordinary pages (including template-bound ones) resolve to null.
  */
-function resolveTemplate(css: {
+function resolveTemplate(ccr: {
   currentDocument: { path: string } | null;
   templates: TemplateSummary[];
 }): TemplateSummary | null {
-  const path = css.currentDocument?.path;
+  const path = ccr.currentDocument?.path;
   if (!path) return null;
 
   const match = path.match(/^_registry\/templates\/(.+)$/);
   if (!match) return null;
 
-  return css.templates.find((t) => t.name === match[1]) ?? null;
+  return ccr.templates.find((t) => t.name === match[1]) ?? null;
 }
 
 export function ActionBarPinButton(): React.ReactElement | null {
-  const css = useP1PuckOptional();
+  const ccr = useP1PuckOptional();
   const selectedItem = usePuckState((s) => s.selectedItem) as ContentItem | null;
   const rootProps = usePuckState(
     (s) => (s as unknown as { appState: { data: { root: { props: Record<string, unknown> } } } }).appState?.data?.root?.props
@@ -40,14 +40,14 @@ export function ActionBarPinButton(): React.ReactElement | null {
 
   const dispatch = usePuckState((s) => s.dispatch) as (action: unknown) => void;
 
-  const template = css ? resolveTemplate(css) : null;
+  const template = ccr ? resolveTemplate(ccr) : null;
 
   const pinMap: PinMapRecord = (rootProps?._pinMap as PinMapRecord) ?? {};
 
   // Pin state lives in the document's root props (_pinMap) and persists
   // through the normal document autosave.
   const handleTogglePin = useCallback(() => {
-    if (!css || !template || !selectedItem || css.isViewingHistoricalVersion) return;
+    if (!ccr || !template || !selectedItem || ccr.isViewingHistoricalVersion) return;
 
     const compId = selectedItem.props.id;
     const newPinned = !pinMap[compId];
@@ -66,13 +66,13 @@ export function ActionBarPinButton(): React.ReactElement | null {
         },
       }),
     } as never);
-  }, [css, template, selectedItem, pinMap, dispatch]);
+  }, [ccr, template, selectedItem, pinMap, dispatch]);
 
-  if (!css || !template || !selectedItem) {
+  if (!ccr || !template || !selectedItem) {
     return null;
   }
 
-  const isAdmin = css.userRole === 'admin';
+  const isAdmin = ccr.userRole === 'admin';
   const isPinned = pinMap[selectedItem.props.id] ?? false;
 
   return (
@@ -81,7 +81,7 @@ export function ActionBarPinButton(): React.ReactElement | null {
       onClick={handleTogglePin}
       active={isPinned}
       // Historical versions are read-only; a toggle there would never persist.
-      disabled={!isAdmin || css.isViewingHistoricalVersion}
+      disabled={!isAdmin || ccr.isViewingHistoricalVersion}
     >
       <Icon
         iconName={isPinned ? 'lock' : 'lockOpen'}

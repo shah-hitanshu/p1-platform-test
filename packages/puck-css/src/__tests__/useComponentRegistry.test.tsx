@@ -194,7 +194,7 @@ describe('useComponentRegistry', () => {
     expect(heroCall).toBeDefined();
   });
 
-  it('returns status "error" and non-null error when CSS write fails', async () => {
+  it('returns status "error" and non-null error when CCR write fails', async () => {
     const ctx = makeMockContext();
     const mockClient = ctx.client as unknown as Record<string, Record<string, ReturnType<typeof vi.fn>>>;
 

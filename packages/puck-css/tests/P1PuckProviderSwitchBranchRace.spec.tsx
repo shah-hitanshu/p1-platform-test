@@ -129,7 +129,7 @@ function renderProvider(client: P1Client) {
 }
 
 describe('PCC-3428: switching workstream with unsaved edits persists immediately', () => {
-  const STORAGE_KEY = 'css-branch-site-1';
+  const STORAGE_KEY = 'ccr-branch-site-1';
 
   beforeEach(() => {
     vi.useFakeTimers();

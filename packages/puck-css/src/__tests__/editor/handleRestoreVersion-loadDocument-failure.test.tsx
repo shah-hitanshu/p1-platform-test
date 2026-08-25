@@ -19,7 +19,7 @@ const mockAddNotification = vi.fn();
 const mockResumeAutoSave = vi.fn();
 const mockRefreshVersions = vi.fn().mockResolvedValue(undefined);
 
-const mockCssContext = {
+const mockCcrContext = {
   branchId: 'branch-a',
   loadDocument: mockLoadDocument,
   documents: [] as { id: string; path: string }[],
@@ -113,7 +113,7 @@ const mockCssContext = {
 let capturedOnRestoreVersion: ((v: DocumentVersion) => Promise<void>) | null = null;
 
 vi.mock('../../core/P1PuckContext.js', () => ({
-  useP1Puck: () => mockCssContext,
+  useP1Puck: () => mockCcrContext,
 }));
 
 vi.mock('../../editor/useP1Plugin.js', () => ({
@@ -168,7 +168,7 @@ describe('handleRestoreVersion loadDocument failure', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     capturedOnRestoreVersion = null;
-    mockCssContext.currentDocument = { id: 'doc-1', path: '/pages/home', siteId: 'site-test' };
+    mockCcrContext.currentDocument = { id: 'doc-1', path: '/pages/home', siteId: 'site-test' };
     mockVersionsRestore.mockResolvedValue({ id: 'v-new', source: 'revert' });
     mockLoadDocument.mockResolvedValue(undefined);
     mockRefreshVersions.mockResolvedValue(undefined);

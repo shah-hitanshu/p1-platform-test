@@ -4,9 +4,9 @@ import { getLogger } from '@pantheon-systems/p1-telemetry';
 import { attachmentNames, readAttachments } from '../conversation/context.js';
 import type { Env } from '../env.js';
 import type { ChatContext, IncomingMessage, OutgoingMessage, TurnFrame, ValidatedUser } from '../types.js';
-import { McpApiClient } from '../css/api-client.js';
-import { CSS_TOOLS, WEB_TOOLS, executeTool } from '../tools/execute-tool.js';
-import { validateCSSToken } from '../auth.js';
+import { McpApiClient } from '../ccr/api-client.js';
+import { CCR_TOOLS, WEB_TOOLS, executeTool } from '../tools/execute-tool.js';
+import { validateCCRToken } from '../auth.js';
 import { createdDocumentPath, withCreatedPage } from '../conversation/scope.js';
 import type { StoredMessage } from '../conversation/history.js';
 import { appendTurn, forProvider, sanitizeHistory, trimForHistory, buildRestoredHistory, turnMayCommit, turnHasOutput } from '../conversation/history.js';
@@ -135,10 +135,10 @@ export class ChatAgent extends Agent<Env, AgentState> {
   ): Promise<{ ok: true } | { ok: false; error: string }> {
     let user: ValidatedUser;
     try {
-      user = await validateCSSToken(token, this.env.CSS_BACKEND_URL);
+      user = await validateCCRToken(token, this.env.CCR_BACKEND_URL);
     } catch (err) {
       // The client only sees the generic message, so log the cause.
-      console.error(`[auth] history access denied via ${this.env.CSS_BACKEND_URL}:`, err);
+      console.error(`[auth] history access denied via ${this.env.CCR_BACKEND_URL}:`, err);
       return { ok: false, error: 'Authentication failed' };
     }
     if (this.state.ownerId !== undefined && this.state.ownerId !== user.id) {
@@ -161,7 +161,7 @@ export class ChatAgent extends Agent<Env, AgentState> {
       editSessionId: string;
     }
     let activeEditSession: ActiveEditSession | null = null;
-    let cssApi: McpApiClient | null = null;
+    let ccrApi: McpApiClient | null = null;
     let turnAbort: AbortController | null = null;
     // Stays undefined on the get_history/clear paths, which are not turn-scoped.
     let turnId: string | undefined;
@@ -243,14 +243,14 @@ export class ChatAgent extends Agent<Env, AgentState> {
       this.activeTurn = { connectionId: connection.id, abort };
       let cancelled = false;
 
-      // Validate the user's CSS auth token
+      // Validate the user's CCR auth token
       let user: ValidatedUser;
       try {
-        user = await validateCSSToken(context.token, this.env.CSS_BACKEND_URL);
+        user = await validateCCRToken(context.token, this.env.CCR_BACKEND_URL);
       } catch (err) {
-        // Usually CSS_BACKEND_URL pointing at a different backend than issued the token.
+        // Usually CCR_BACKEND_URL pointing at a different backend than issued the token.
         console.error(
-          `[auth] token validation failed against ${this.env.CSS_BACKEND_URL} ` +
+          `[auth] token validation failed against ${this.env.CCR_BACKEND_URL} ` +
             `(token ${context.token ? 'present' : 'EMPTY'}):`,
           err,
         );
@@ -266,9 +266,9 @@ export class ChatAgent extends Agent<Env, AgentState> {
         return;
       }
 
-      // Build CSS API client acting on behalf of the validated user
-      cssApi = new McpApiClient({
-        baseUrl: this.env.CSS_BACKEND_URL,
+      // Build CCR API client acting on behalf of the validated user
+      ccrApi = new McpApiClient({
+        baseUrl: this.env.CCR_BACKEND_URL,
         agentId: this.env.AGENT_ID,
         agentApiKey: this.env.AGENT_API_KEY,
         actingUser: { id: user.id, email: user.email, name: user.name },
@@ -291,7 +291,7 @@ export class ChatAgent extends Agent<Env, AgentState> {
         gatewayId: this.env.AI_GATEWAY_NAME,
         apiToken: this.env.AI_GATEWAY_API_TOKEN,
         model,
-        tools: [...CSS_TOOLS, ...WEB_TOOLS],
+        tools: [...CCR_TOOLS, ...WEB_TOOLS],
       });
 
       // Inject page context into the user message sent to the model, but persist the raw
@@ -301,7 +301,7 @@ export class ChatAgent extends Agent<Env, AgentState> {
         // pending-page branch carries its own instructions.
         followsTemplate: context.pendingPage
           ? false
-          : await resolveFollowsTemplate(cssApi, context, this.followsTemplateByPath),
+          : await resolveFollowsTemplate(ccrApi, context, this.followsTemplateByPath),
         seesImages,
       });
       const userContent = contextNote ? `${contextNote}\n\n${message}` : message;
@@ -422,7 +422,7 @@ export class ChatAgent extends Agent<Env, AgentState> {
           let input: Record<string, unknown> = {};
           try {
             input = JSON.parse(tc.function.arguments || '{}') as Record<string, unknown>;
-            result = await executeTool(tc.function.name, input, cssApi, user.id, scope, {
+            result = await executeTool(tc.function.name, input, ccrApi, user.id, scope, {
               token: context.token,
               mediaWorkerUrl: this.env.MEDIA_WORKER_URL,
             });
@@ -470,9 +470,9 @@ export class ChatAgent extends Agent<Env, AgentState> {
       // A cancelled turn may have left an edit session open. Closing it matters more here
       // than on the error path: the user is still working in the editor and a stale
       // session blocks their next edit.
-      if (cancelled && activeEditSession && cssApi) {
+      if (cancelled && activeEditSession && ccrApi) {
         try {
-          await cssApi.abortAgentEdit({ ...activeEditSession, reason: 'Cancelled by user' });
+          await ccrApi.abortAgentEdit({ ...activeEditSession, reason: 'Cancelled by user' });
           activeEditSession = null;
         } catch {
           // Ignore cleanup failures — the cancellation itself still stands.
@@ -502,9 +502,9 @@ export class ChatAgent extends Agent<Env, AgentState> {
       sendTurn(cancelled ? { type: 'cancelled' } : { type: 'done' });
     } catch (err) {
       // Best-effort abort any open edit session before reporting the error
-      if (activeEditSession && cssApi) {
+      if (activeEditSession && ccrApi) {
         try {
-          await cssApi.abortAgentEdit({
+          await ccrApi.abortAgentEdit({
             ...activeEditSession,
             reason: `Agent error: ${err instanceof Error ? err.message : String(err)}`,
           });

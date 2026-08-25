@@ -97,8 +97,7 @@ draft isolation and makes propagation a **reviewable changeset**:
    v1→v2 pin edits into a workstream.
 3. Preview, merge → live everywhere. Unmerged → never happened.
 
-**v1 mechanics (grounded in the CCR OpenAPI spec — docs/openapi.yaml in
-collaborative-state-system):** CCR has no content-search endpoint today, so usage
+**v1 mechanics (grounded in the CCR OpenAPI spec — workers/ccr/docs/openapi.yaml):** CCR has no content-search endpoint today, so usage
 discovery is enumerate-and-scan, which the existing API supports end to end:
 
 1. `POST /api/sites/{siteId}/branches` — create the workstream for the changeset
@@ -267,7 +266,7 @@ schemas later is an additive worker feature (a schema-source table + scope-depen
 where an org-level schema would key. What makes a later migration of already-placed
 metadata safe is stamping the schema version into each placement (req. R12).
 
-## Worker API (editor-authenticated via existing CSS_SERVICE flow, except serving)
+## Worker API (editor-authenticated via existing CCR_SERVICE flow, except serving)
 
 | Endpoint                          | Change                                                     |
 |-----------------------------------|------------------------------------------------------------|
@@ -287,22 +286,22 @@ path `assetId`. Load the asset from D1, confirm `assets.site_id === authenticate
 input.
 
 Auth granularity (req. R7): `validateAuth` today returns `true` on *any* 200 from
-`GET /api/sites/{siteId}`, i.e. "can see the site" — it does not distinguish CSS's
+`GET /api/sites/{siteId}`, i.e. "can see the site" — it does not distinguish CCR's
 `VIEWER|EDITOR|ADMIN` roles, so a VIEWER-role bearer token can currently upload/delete,
 and the write endpoints (`PATCH`, `.../versions/finalize`) inherit that. **Re-derived
-against CSS's actual role model (not just the theoretical enum) — the real exposure is
+against CCR's actual role model (not just the theoretical enum) — the real exposure is
 much narrower than "any read-only user":** no Pantheon human ever resolves to VIEWER
 (`owner|admin|developer|team_member` all map to EDITOR or ADMIN — there is no viewer
 option in the ordinary invite/collaborator flow). A real VIEWER bearer token is only
-obtainable via one of two admin-gated paths: (1) a site admin calling CSS's
+obtainable via one of two admin-gated paths: (1) a site admin calling CCR's
 branch-grants API directly (no UI) to grant a human VIEWER on the main branch, or (2) a
-site admin using CSS's UI-exposed Agent Access panel to grant an AI agent's key the
-`viewer` role. Site API tokens are NOT a vector for this specific check — CSS's
+site admin using CCR's UI-exposed Agent Access panel to grant an AI agent's key the
+`viewer` role. Site API tokens are NOT a vector for this specific check — CCR's
 service-principal scope gate has no rule permitting the `sites` route handler for any
 token scope, so a site API token 403s before `canView` is ever evaluated (this
 corrects PCC-3278's description, which lists service tokens as a vector for this
 endpoint without accounting for that separate gate). **Decision: ship without the role
-check, track the CSS-side fix as PCC-3278** — the gap requires a site admin's own
+check, track the CCR-side fix as PCC-3278** — the gap requires a site admin's own
 deliberate action, not an externally reachable exploit, so it isn't a go-live blocker.
 (The workstream boundary is genuinely moot now that the library is site-scoped — but
 that is orthogonal to read-vs-write.)
@@ -448,19 +447,19 @@ pre-existing in the shipped worker and now in scope.
   `INSERT OR IGNORE`, legacy-prefix-only enumeration, run before the consumer flip (R1). A
   small job at current volume. Deterministic keying also enables the optional
   `GET /media?url=` resolver (compat-matrix option b) if we later auto-upgrade placements.
-- **R7 — Write-role granularity.** [inherited, re-derived against CSS's actual role
+- **R7 — Write-role granularity.** [inherited, re-derived against CCR's actual role
   model — narrower than originally stated] `validateAuth` authorizes on "can see the
   site," so a VIEWER-role bearer token can upload/delete today. But no Pantheon human
   user is ever VIEWER (the invite/collaborator flow only ever produces EDITOR/ADMIN); a
-  real VIEWER token requires a site admin to deliberately grant it — via CSS's
+  real VIEWER token requires a site admin to deliberately grant it — via CCR's
   branch-grants API (human, no UI) or the Agent Access UI (AI agent). Site API tokens
-  are not a vector here: CSS's service-principal scope gate blocks the `sites` route
+  are not a vector here: CCR's service-principal scope gate blocks the `sites` route
   handler for every defined scope, so those 403 before `canView` runs at all. →
   **Decision: shipped without the role check; tracked as [PCC-3278](https://getpantheon.atlassian.net/browse/PCC-3278)**,
   not a go-live blocker, since the gap needs a site admin's own deliberate
-  (mis)configuration, not an externally reachable exploit. The CSS-side fix (surface
+  (mis)configuration, not an externally reachable exploit. The CCR-side fix (surface
   the effective role on `GET /api/sites/{siteId}`, or a dedicated permission-check
-  endpoint) is CSS's to build, not this worker's.
+  endpoint) is CCR's to build, not this worker's.
 - **R9 — Bound public image transforms.** [inherited] `GET /image/*` is unauthenticated and
   `num()` caps nothing; `?width=1,2,3,…` mints unlimited distinct (billed, separately cached)
   transforms — a no-credential cost/resource DoS. → Cap width/height/blur/quality ranges

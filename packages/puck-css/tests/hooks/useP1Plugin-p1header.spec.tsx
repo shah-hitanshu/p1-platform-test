@@ -37,7 +37,7 @@ vi.mock('../../src/editor/plugin/P1Plugin.js', () => ({
     capturedOptions = options;
     return {
       name: 'css',
-      label: 'CSS',
+      label: 'CCR',
       icon: null,
       render: vi.fn(),
       overrides: {},
@@ -159,7 +159,7 @@ describe('useP1Plugin — P1 header props forwarding', () => {
 
   it('forwards siteName through the stable proxy', () => {
     const wrapper = createWrapper(client);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     renderHook(() => useP1Plugin({ siteName: 'Acme Corp' } as any), { wrapper });
 
     expect(capturedOptions).not.toBeNull();
@@ -169,7 +169,7 @@ describe('useP1Plugin — P1 header props forwarding', () => {
   // UseP1PluginOptions restates every field by hand, so an option can stop at this boundary.
   it('forwards showAIPanelToggle through the stable proxy', () => {
     const wrapper = createWrapper(client);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     renderHook(() => useP1Plugin({ showAIPanelToggle: true } as any), { wrapper });
 
     expect((capturedOptions as unknown as Record<string, unknown>).showAIPanelToggle).toBe(true);
@@ -178,7 +178,7 @@ describe('useP1Plugin — P1 header props forwarding', () => {
   it('forwards siteMenuItems through the stable proxy', () => {
     const siteMenuItems = [{ label: 'Settings', callback: vi.fn() }];
     const wrapper = createWrapper(client);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     renderHook(() => useP1Plugin({ siteMenuItems } as any), { wrapper });
 
     expect(capturedOptions).not.toBeNull();
@@ -188,7 +188,7 @@ describe('useP1Plugin — P1 header props forwarding', () => {
   it('forwards currentUser through the stable proxy', () => {
     const currentUser = { id: 'user-42', avatar: 'https://example.com/avatar.png' };
     const wrapper = createWrapper(client);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     renderHook(() => useP1Plugin({ currentUser } as any), { wrapper });
 
     expect(capturedOptions).not.toBeNull();
@@ -198,7 +198,7 @@ describe('useP1Plugin — P1 header props forwarding', () => {
   it('forwards onLogout through the stable proxy', () => {
     const onLogout = vi.fn();
     const wrapper = createWrapper(client);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     renderHook(() => useP1Plugin({ onLogout } as any), { wrapper });
 
     expect(capturedOptions).not.toBeNull();
@@ -208,7 +208,7 @@ describe('useP1Plugin — P1 header props forwarding', () => {
   it('forwards onCompareWithLive through the stable proxy', () => {
     const onCompareWithLive = vi.fn();
     const wrapper = createWrapper(client);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     renderHook(() => useP1Plugin({ onCompareWithLive } as any), { wrapper });
 
     expect(capturedOptions).not.toBeNull();
@@ -218,7 +218,7 @@ describe('useP1Plugin — P1 header props forwarding', () => {
   it('forwards onPublish through the stable proxy', () => {
     const onPublish = vi.fn();
     const wrapper = createWrapper(client);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     renderHook(() => useP1Plugin({ onPublish } as any), { wrapper });
 
     expect(capturedOptions).not.toBeNull();
@@ -228,7 +228,7 @@ describe('useP1Plugin — P1 header props forwarding', () => {
   it('forwards onReviewAndPublish through the stable proxy', () => {
     const onReviewAndPublish = vi.fn();
     const wrapper = createWrapper(client);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     renderHook(() => useP1Plugin({ onReviewAndPublish } as any), { wrapper });
 
     expect(capturedOptions).not.toBeNull();
@@ -238,7 +238,7 @@ describe('useP1Plugin — P1 header props forwarding', () => {
   it('forwards onCreateWorkstream through the stable proxy', () => {
     const onCreateWorkstream = vi.fn();
     const wrapper = createWrapper(client);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     renderHook(() => useP1Plugin({ onCreateWorkstream } as any), { wrapper });
 
     expect(capturedOptions).not.toBeNull();
@@ -247,7 +247,7 @@ describe('useP1Plugin — P1 header props forwarding', () => {
 
   it('proxy reflects updated siteName after re-render', () => {
     const wrapper = createWrapper(client);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     const { rerender } = renderHook(({ name }: { name: string }) => useP1Plugin({ siteName: name } as any), {
       wrapper,
       initialProps: { name: 'Acme Corp' },

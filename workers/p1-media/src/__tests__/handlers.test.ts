@@ -88,7 +88,7 @@ function createEnv(bucket: R2Bucket, images?: ImagesBinding): Env {
   return {
     MEDIA_BUCKET: bucket,
     MEDIA_DB: {} as D1Database, // handleImage never touches D1
-    CSS_BASE_URL: 'https://css.example.com',
+    CCR_BASE_URL: 'https://ccr.example.com',
     CDN_BASE_URL: 'https://cdn.example.com/p1',
     R2_ACCESS_KEY_ID: 'test-access-key',
     R2_SECRET_ACCESS_KEY: 'test-secret-key',
@@ -367,7 +367,7 @@ function createStoreEnv(images?: ImagesBinding): Env {
   return {
     MEDIA_BUCKET: {} as R2Bucket, // never reached: the store is mocked
     MEDIA_DB: {} as D1Database,
-    CSS_BASE_URL: 'https://css.example.com',
+    CCR_BASE_URL: 'https://ccr.example.com',
     CDN_BASE_URL: 'https://cdn.example.com/p1',
     R2_ACCESS_KEY_ID: 'test-access-key',
     R2_SECRET_ACCESS_KEY: 'test-secret-key',

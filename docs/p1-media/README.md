@@ -78,13 +78,13 @@ identity (`assetId`); each upload or replacement creates an immutable `versionId
 ### Auth
 
 1. The plugin passes a bearer token (from `getAuthToken()`) with each API request.
-2. The worker verifies the token and site access in one step by calling `GET CSS_BASE_URL/api/sites/{siteId}`. This runs through the full CSS auth pipeline — token validation, DB enrichment, and `assertPermission(canView)` — so any principal type (user, agent, service) and MAS grants are handled correctly with no extra code in this repo.
-3. The CSS service binding is used when available to avoid Cloudflare error 1042 (same-account worker-to-worker requests).
+2. The worker verifies the token and site access in one step by calling `GET CCR_BASE_URL/api/sites/{siteId}`. This runs through the full CCR auth pipeline — token validation, DB enrichment, and `assertPermission(canView)` — so any principal type (user, agent, service) and MAS grants are handled correctly with no extra code in this repo.
+3. The CCR service binding is used when available to avoid Cloudflare error 1042 (same-account worker-to-worker requests).
 4. Image delivery via `/image/*` is public — no auth required (consistent with CDN delivery).
 
 > **Write-role gate (PCC-3278):** today all authenticated endpoints assert only
 > `canView`. Uploading, versioning, patching metadata, and deleting should require an
-> editor role (`canEditDocuments`), but CSS does not yet expose the caller's effective
+> editor role (`canEditDocuments`), but CCR does not yet expose the caller's effective
 > role to the worker. Marked `TODO(PCC-3278)` in `worker/src/index.ts`. The write
 > endpoints must **not** be exposed on a live worker until that check lands — the primary
 > path (Puck editor with a user JWT → EDITOR/ADMIN) is unaffected, but a viewer-role
@@ -106,8 +106,8 @@ duplicated that table — kept in one place now to avoid drift.
 | `MEDIA_BUCKET` | R2 Binding | R2 bucket for this environment (immutable version bytes) |
 | `MEDIA_DB` | D1 Binding | D1 database holding asset + version metadata (`database_id` from the Terraform `d1_database_id` output) |
 | `IMAGES` | Images Binding | Cloudflare Images binding for on-demand transformation |
-| `CSS_SERVICE` | Service Binding | CSS worker (avoids error 1042 for same-account auth calls) |
-| `CSS_BASE_URL` | Var | Public base URL of the CSS auth service |
+| `CCR_SERVICE` | Service Binding | CCR worker (avoids error 1042 for same-account auth calls) |
+| `CCR_BASE_URL` | Var | Public base URL of the CCR auth service |
 | `CDN_BASE_URL` | Var | Base URL returned in upload/list responses (e.g. `https://media.p1.pantheon.io/image`) |
 | `MAX_UPLOAD_BYTES` | Var | Maximum upload size in bytes (default `10485760` = 10 MB) |
 | `RECONCILE_DRY_RUN` | Var | Orphan-reconcile Cron Trigger safety switch — see below. Defaults to dry-run unless literally `"false"` |
@@ -198,7 +198,7 @@ Starts a local Wrangler dev server at `http://localhost:8788` with local R2 and 
 
 **Images binding:** the top-level `wrangler.jsonc` sets `"images": { "binding": "IMAGES", "remote": true }`, connecting to the real Cloudflare account (Pantheon P1 Sandbox) during local dev, so all transformation params — `fit`, `gravity`, filters, etc. — work with plain `wrangler dev`. Upload, list, metadata, and *raw* image serving work without it (dimension capture via `IMAGES.info()` is best-effort and degrades to no dimensions if unavailable).
 
-**Auth in local dev:** `validateAuth` calls `CSS_BASE_URL`, which by default points at `localhost` and has no CSS running. For an end-to-end local run, point `CSS_BASE_URL` at a reachable CSS (e.g. staging) and use a real bearer token — this exercises the real auth path. `wrangler dev --env staging` runs against live staging data. Nothing in local testing depends on PCC-3278: for a normal editor token the `canView` check behaves identically before and after that work.
+**Auth in local dev:** `validateAuth` calls `CCR_BASE_URL`, which by default points at `localhost` and has no CCR running. For an end-to-end local run, point `CCR_BASE_URL` at a reachable CCR (e.g. staging) and use a real bearer token — this exercises the real auth path. `wrangler dev --env staging` runs against live staging data. Nothing in local testing depends on PCC-3278: for a normal editor token the `canView` check behaves identically before and after that work.
 
 To drive the plugin against your local worker, set the plugin's `workerUrl` to `http://localhost:8788`.
 

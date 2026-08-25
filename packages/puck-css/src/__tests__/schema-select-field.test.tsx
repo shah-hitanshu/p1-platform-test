@@ -418,11 +418,11 @@ describe('SchemaSelectField', () => {
     });
 
     it('merges static registry fields with dynamic fields', () => {
-      const CSS_REGISTRY: RemoteDatasourceDefinition[] = [
+      const CCR_REGISTRY: RemoteDatasourceDefinition[] = [
         {
           id: 'templates.news2',
           label: 'News2',
-          description: 'CSS content query',
+          description: 'CCR content query',
           resolution: 'auto-generated',
           fields: [
             { path: 'items', description: 'Array of matching documents' },
@@ -442,7 +442,7 @@ describe('SchemaSelectField', () => {
       };
 
       renderFieldWithData(
-        CSS_REGISTRY,
+        CCR_REGISTRY,
         {
           'templates.news2': {
             items: [

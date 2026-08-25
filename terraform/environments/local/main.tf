@@ -1,4 +1,4 @@
-# Collaborative State System - Local Environment
+# Collaborative Content Repository - Local Environment
 # 
 # This configuration validates infrastructure patterns locally.
 # Actual local services run via Docker Compose (see docker/docker-compose.local.yaml)

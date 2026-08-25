@@ -40,7 +40,7 @@ vi.mock('@puckeditor/core', () => ({
 // Mutable mock context — shared by tests that need P1PuckContext
 const mockRestoreVersion = vi.fn();
 
-const mockCssContext = {
+const mockCcrContext = {
   branchId: 'branch-1',
   siteId: 'site-1',
   currentDocument: { id: 'doc-1', path: '/home', siteId: 'site-1' } as {
@@ -120,7 +120,7 @@ const mockCssContext = {
 };
 
 vi.mock('../src/core/P1PuckContext.js', () => ({
-  useP1Puck: () => mockCssContext,
+  useP1Puck: () => mockCcrContext,
   useP1PuckOptional: () => null,
 }));
 
@@ -344,8 +344,8 @@ describe('useP1Editor: handleRestoreVersion', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     capturedPluginData.options = null;
-    mockCssContext.currentDocument = { id: 'doc-1', path: '/home', siteId: 'site-1' };
-    mockCssContext.loadDocument = vi.fn().mockResolvedValue(undefined);
+    mockCcrContext.currentDocument = { id: 'doc-1', path: '/home', siteId: 'site-1' };
+    mockCcrContext.loadDocument = vi.fn().mockResolvedValue(undefined);
     mockRestoreVersion.mockResolvedValue({ id: 'v-new', versionNumber: 4, source: 'revert' });
   });
 
@@ -387,11 +387,11 @@ describe('useP1Editor: handleRestoreVersion', () => {
     expect(mockRefresh).toHaveBeenCalled();
   });
 
-  // Test 12: calls css.loadDocument() before refreshing versions
+  // Test 12: calls ccr.loadDocument() before refreshing versions
   it('calls loadDocument() then refreshes versions in order', async () => {
     const callOrder: string[] = [];
     mockRefresh.mockImplementation(async () => { callOrder.push('refresh'); });
-    mockCssContext.loadDocument = vi.fn().mockImplementation(async () => { callOrder.push('loadDocument'); });
+    mockCcrContext.loadDocument = vi.fn().mockImplementation(async () => { callOrder.push('loadDocument'); });
 
     const onRestoreVersion = await getHandleRestoreVersion();
     expect(onRestoreVersion).toBeDefined();
@@ -406,7 +406,7 @@ describe('useP1Editor: handleRestoreVersion', () => {
 
   // Test 13: no-ops when currentDocument is null (edge case: doc unloaded mid-view)
   it('does not call versions.restore when currentDocument is null', async () => {
-    mockCssContext.currentDocument = null;
+    mockCcrContext.currentDocument = null;
 
     const onRestoreVersion = await getHandleRestoreVersion();
 

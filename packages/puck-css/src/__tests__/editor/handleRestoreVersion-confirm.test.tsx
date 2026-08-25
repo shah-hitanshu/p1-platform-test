@@ -3,9 +3,9 @@
  * (delivery ack failed in realtime mode), handleRestoreVersion must show a confirm
  * dialog before proceeding. If the user declines, the revert is aborted.
  *
- * Pattern: mock the CSS context, capture the onRestoreVersion callback from
+ * Pattern: mock the CCR context, capture the onRestoreVersion callback from
  * useP1Plugin, call it directly, and assert on window.confirm and
- * css.client.versions.create calls.
+ * ccr.client.versions.create calls.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -22,7 +22,7 @@ const mockPersistCurrentEdits = vi.fn<() => Promise<void>>().mockResolvedValue(u
 const mockLoadDocument = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
 const mockResumeAutoSave = vi.fn();
 
-const mockCssContext = {
+const mockCcrContext = {
   branchId: 'branch-a',
   loadDocument: mockLoadDocument,
   documents: [] as { id: string; path: string }[],
@@ -118,7 +118,7 @@ const mockCssContext = {
 let capturedOnRestoreVersion: ((v: DocumentVersion) => Promise<void>) | null = null;
 
 vi.mock('../../core/P1PuckContext.js', () => ({
-  useP1Puck: () => mockCssContext,
+  useP1Puck: () => mockCcrContext,
 }));
 
 vi.mock('../../editor/useP1Plugin.js', () => ({
@@ -173,7 +173,7 @@ describe('handleRestoreVersion confirm-on-save-failure', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     capturedOnRestoreVersion = null;
-    mockCssContext.currentDocument = { id: 'doc-1', path: '/pages/home', siteId: 'site-test' };
+    mockCcrContext.currentDocument = { id: 'doc-1', path: '/pages/home', siteId: 'site-test' };
     mockLoadDocument.mockResolvedValue(undefined);
     mockPersistCurrentEdits.mockResolvedValue(undefined);
     mockVersionsRestore.mockResolvedValue({ id: 'v-new', source: 'revert' });

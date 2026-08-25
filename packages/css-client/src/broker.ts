@@ -4,10 +4,10 @@
  * Implements the brokered auth flow. Supports two modes:
  *
  * **Proxy mode** (default): calls go to /p1/auth/login and /p1/auth/redeem
- * on the app's own server, which proxies to the CSS backend with the API key.
+ * on the app's own server, which proxies to the CCR backend with the API key.
  *
  * **Direct mode**: when siteApiToken is provided, calls go straight to the
- * CSS backend with a Bearer token. Used for standalone (non-Next.js) apps.
+ * CCR backend with a Bearer token. Used for standalone (non-Next.js) apps.
  *
  * Flow:
  * 1. POST login endpoint → { transactionId, loginUrl }
@@ -42,7 +42,36 @@ export interface BrokerRedeemConfig {
   storageKey?: string;
 }
 
-const PENDING_TX_KEY = 'css_broker_pending_tx';
+const PENDING_TX_KEY = 'ccr_broker_pending_tx';
+const DEFAULT_TOKEN_KEY = 'ccr_broker_token';
+
+// Pre-rename key names (PCC-3216). Migrated on read; drop after a release cycle.
+const LEGACY_PENDING_TX_KEY = 'css_broker_pending_tx';
+const LEGACY_TOKEN_KEY = 'css_broker_token';
+
+function migrateLegacyKey(storage: Storage, legacyKey: string, key: string): void {
+  const legacy = storage.getItem(legacyKey);
+  if (legacy !== null) {
+    if (storage.getItem(key) === null) {
+      storage.setItem(key, legacy);
+    }
+    storage.removeItem(legacyKey);
+  }
+}
+
+function resolveTokenKey(config: { storageKey?: string }): string {
+  const storageKey = config.storageKey ?? DEFAULT_TOKEN_KEY;
+  if (typeof window !== 'undefined' && storageKey === DEFAULT_TOKEN_KEY) {
+    migrateLegacyKey(window.localStorage, LEGACY_TOKEN_KEY, storageKey);
+  }
+  return storageKey;
+}
+
+function migratePendingTxKey(): void {
+  if (typeof window !== 'undefined') {
+    migrateLegacyKey(window.sessionStorage, LEGACY_PENDING_TX_KEY, PENDING_TX_KEY);
+  }
+}
 
 const PROXY_PATH = '/p1/auth';
 
@@ -83,7 +112,7 @@ function buildLoginBody(config: BrokerAuthConfig): Record<string, string> | unde
 }
 
 export function createBrokerAuth(config: BrokerAuthConfig): OAuthSession {
-  const storageKey = config.storageKey ?? 'css_broker_token';
+  const storageKey = resolveTokenKey(config);
   const pollIntervalMs = config.pollIntervalMs ?? 2000;
   const maxPollAttempts = config.maxPollAttempts ?? 150;
   const loginMode = config.loginMode ?? 'popup';
@@ -208,6 +237,7 @@ export function createBrokerAuth(config: BrokerAuthConfig): OAuthSession {
 
 export function hasPendingBrokerLogin(): boolean {
   if (typeof window === 'undefined') return false;
+  migratePendingTxKey();
   return window.sessionStorage.getItem(PENDING_TX_KEY) !== null;
 }
 
@@ -216,6 +246,7 @@ export async function redeemPendingBrokerLogin(
 ): Promise<BrokerRedeemResult | null> {
   if (typeof window === 'undefined') return null;
 
+  migratePendingTxKey();
   const raw = window.sessionStorage.getItem(PENDING_TX_KEY);
   if (!raw) return null;
 
@@ -227,7 +258,7 @@ export async function redeemPendingBrokerLogin(
     return null;
   }
 
-  const storageKey = config.storageKey ?? 'css_broker_token';
+  const storageKey = resolveTokenKey(config);
 
   const endpoint = config.siteApiToken
     ? `${trimTrailingSlash(config.cssBaseUrl)}/broker/redeem`

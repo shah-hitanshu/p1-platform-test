@@ -15,7 +15,7 @@ import { renderHook, waitFor } from '@testing-library/react';
 
 const mockLoadDocument = vi.fn<(...args: unknown[]) => Promise<void>>();
 
-const mockCssContext = {
+const mockCcrContext = {
   branchId: 'branch-a',
   loadDocument: mockLoadDocument,
   documents: [] as {
@@ -99,7 +99,7 @@ const mockCssContext = {
 // ============================================================================
 
 vi.mock('../core/P1PuckContext', () => ({
-  useP1Puck: () => mockCssContext,
+  useP1Puck: () => mockCcrContext,
 }));
 
 vi.mock('../editor/useP1Plugin', () => ({
@@ -149,10 +149,10 @@ function makeDoc(id: string, path: string) {
 }
 
 function resetContext() {
-  mockCssContext.branchId = 'branch-a';
-  mockCssContext.documents = [];
-  mockCssContext.documentsLoading = false;
-  mockCssContext.currentDocument = null;
+  mockCcrContext.branchId = 'branch-a';
+  mockCcrContext.documents = [];
+  mockCcrContext.documentsLoading = false;
+  mockCcrContext.currentDocument = null;
 }
 
 // ============================================================================
@@ -163,11 +163,11 @@ describe('useP1Editor deleted-document handling', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     resetContext();
-    mockCssContext.loadDocument = mockLoadDocument;
+    mockCcrContext.loadDocument = mockLoadDocument;
   });
 
   it('does not call onDocumentNotFound for a 410 error', async () => {
-    mockCssContext.documents = [makeDoc('doc-home', 'home')];
+    mockCcrContext.documents = [makeDoc('doc-home', 'home')];
     const deletedError = Object.assign(new Error('Gone'), { status: 410 });
 
     mockLoadDocument
@@ -184,7 +184,7 @@ describe('useP1Editor deleted-document handling', () => {
 
     await waitFor(() => expect(result.current.loading).toBe(false));
 
-    mockCssContext.branchId = 'branch-b';
+    mockCcrContext.branchId = 'branch-b';
     rerender({ documentPath: '/current' });
 
     await waitFor(() => expect(result.current.loading).toBe(false));

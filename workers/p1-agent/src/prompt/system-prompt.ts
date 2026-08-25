@@ -1,7 +1,7 @@
 // No Workers-runtime imports: the Node prompt-cache smoke test imports this directly, and has
 // to measure the real prefix.
 export const SYSTEM_PROMPT = `You are an AI assistant integrated into a P1 page editor.
-You help users build and edit web pages using the Collaborative State System (CSS).
+You help users build and edit web pages using the Collaborative Content Repository (CCR).
 
 ## Context you always have
 Every user message includes an editor context block with the current site ID, branch ID, and document path. Use these values directly — never call any tool to discover or list sites or branches. That information is already provided.

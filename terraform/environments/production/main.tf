@@ -1,4 +1,4 @@
-# Collaborative State System - Production Environment
+# Collaborative Content Repository - Production Environment
 #
 # This configuration deploys production infrastructure:
 # - CloudSQL PostgreSQL with HA and backups
@@ -255,7 +255,7 @@ output "mcp_worker_name" {
   value       = module.cloudflare_mcp.mcp_worker_name
 }
 
-# CSS OAuth KV output (OAUTH_KV for collaborative-state-worker — inlined auth server)
+# CCR OAuth KV output (OAUTH_KV for collaborative-state-worker — inlined auth server)
 output "oauth_kv_id" {
   description = "OAUTH_KV namespace ID for workers/wrangler.jsonc"
   value       = module.cloudflare.oauth_kv_id

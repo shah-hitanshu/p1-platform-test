@@ -1,7 +1,7 @@
 import type { P1FeaturePlugin } from '../core/plugin-types.js';
 import type { P1FeatureConfig } from '../core/featureConfig.js';
 import { resolveFeatureConfig } from '../core/featureConfig.js';
-import { DEFAULT_CSS_FEATURE_PLUGINS } from './defaultPlugins.js';
+import { DEFAULT_CCR_FEATURE_PLUGINS } from './defaultPlugins.js';
 
 export interface P1Preset {
   plugins: P1FeaturePlugin[];
@@ -29,7 +29,7 @@ export function createDefaultPreset(
   };
 
   return {
-    plugins: [...DEFAULT_CSS_FEATURE_PLUGINS, ...(additionalPlugins ?? [])],
+    plugins: [...DEFAULT_CCR_FEATURE_PLUGINS, ...(additionalPlugins ?? [])],
     config: resolveFeatureConfig(baseConfig),
   };
 }

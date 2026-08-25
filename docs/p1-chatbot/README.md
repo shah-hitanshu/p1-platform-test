@@ -1,6 +1,6 @@
 # p1-chatbot
 
-An AI-powered page-building assistant for Puck editor sites connected to the Collaborative State System (CSS).
+An AI-powered page-building assistant for Puck editor sites connected to the Collaborative Content Repository (CCR).
 
 ## Architecture
 
@@ -10,12 +10,12 @@ Puck Editor (your site)
         │ WebSocket
         ▼
 workers/agent             ← Cloudflare Agent Worker (Durable Object)
-  ├── Validates CSS auth token
+  ├── Validates CCR auth token
   ├── Calls the model via the Cloudflare AI Gateway REST API
-  └── Executes CSS operations (12 tools)
+  └── Executes CCR operations (12 tools)
         │ REST API
         ▼
-CSS Backend               ← collaborative-state-system
+CCR Backend               ← workers/ccr
 ```
 
 The plugin sends user intent to the Agent Worker over WebSocket. The Worker calls the configured model — a native Cloudflare Workers AI model by default, or a partner model such as Claude — with access to 12 tools (create pages, edit content, check presence, manage edit sessions, read media/web pages). The model's responses stream back to the plugin sidebar.
@@ -28,7 +28,7 @@ All model calls go through the **Cloudflare AI Gateway REST API** (`api.cloudfla
 
 - [Cloudflare account](https://dash.cloudflare.com/sign-up) with access to the target account (e.g. the P1 Staging account for staging)
 - [Wrangler CLI](https://developers.cloudflare.com/workers/wrangler/install-and-update/): `npm install -g wrangler`
-- A deployed CSS backend (`collaborative-state-system`) with an agent registered
+- A deployed CCR backend (`workers/ccr`) with an agent registered
 - A **Cloudflare AI Gateway** and a **Cloudflare API token** (`AI_GATEWAY_API_TOKEN`) with AI Gateway + Workers AI permissions — see step 1
 - Node.js 18+
 
@@ -77,16 +77,16 @@ Use a model id that exists in your account's catalog — list them with `GET /ac
 
 ---
 
-## 2. Register an Agent in the CSS system
+## 2. Register an Agent in the CCR system
 
-The Agent Worker authenticates to the CSS backend as a registered agent. Run this against your CSS backend:
+The Agent Worker authenticates to the CCR backend as a registered agent. Run this against your CCR backend:
 
 ```bash
-# Replace with your CSS backend URL and a CSS admin token
-CSS_URL=https://your-css-backend.workers.dev
+# Replace with your CCR backend URL and a CCR admin token
+CCR_URL=https://your-ccr-backend.workers.dev
 ADMIN_TOKEN=your-admin-token
 
-curl -X POST "$CSS_URL/api/agents" \
+curl -X POST "$CCR_URL/api/agents" \
   -H "Authorization: Bearer $ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -142,7 +142,7 @@ AGENT_API_KEY=...
 
 ### Configure environment variables
 
-Each environment's `vars` block in `wrangler.jsonc` already carries `CSS_BACKEND_URL`, `AI_GATEWAY_ACCOUNT_ID`, `AI_GATEWAY_NAME`, `AGENT_MODEL`, and `MEDIA_WORKER_URL`. Update them for your account/backends as needed.
+Each environment's `vars` block in `wrangler.jsonc` already carries `CCR_BACKEND_URL`, `AI_GATEWAY_ACCOUNT_ID`, `AI_GATEWAY_NAME`, `AGENT_MODEL`, and `MEDIA_WORKER_URL`. Update them for your account/backends as needed.
 
 ### Deploy
 
@@ -173,7 +173,7 @@ The plugin declares `@pantheon-systems/puck-css`, `@pantheon-systems/pds-toolkit
 
 ### Wire it up
 
-`createAIChatPlugin({ agentUrl })` returns a Puck plugin. It sources the current site/branch/document and the CSS auth token from the `@pantheon-systems/puck-css` hooks (`useP1Puck`/`useP1Auth`) internally, so the only required option is the Worker URL:
+`createAIChatPlugin({ agentUrl })` returns a Puck plugin. It sources the current site/branch/document and the CCR auth token from the `@pantheon-systems/puck-css` hooks (`useP1Puck`/`useP1Auth`) internally, so the only required option is the Worker URL:
 
 ```tsx
 import { createAIChatPlugin } from '@pantheon-systems/p1-ai-chat';
@@ -209,15 +209,15 @@ When `NEXT_PUBLIC_AGENT_URL` is unset the plugin is simply not added, so the edi
 
 | Variable | Type | Description |
 |---|---|---|
-| `CSS_BACKEND_URL` | var | CSS backend base URL |
+| `CCR_BACKEND_URL` | var | CCR backend base URL |
 | `AI_GATEWAY_ACCOUNT_ID` | var | Cloudflare account ID that hosts the gateway |
 | `AI_GATEWAY_NAME` | var | AI Gateway name (e.g. `p1-chatbot`) |
 | `AGENT_MODEL` | var | Model in `provider/model` notation; provider prefix selects the gateway endpoint (`anthropic/*` → `/messages`, else → `/chat/completions`) |
 | `MEDIA_WORKER_URL` | var | Media worker base URL |
 | `ENVIRONMENT` | var | `local`, `sbx1`, or `staging` |
 | `AI_GATEWAY_API_TOKEN` | secret | Cloudflare API token (Bearer) for the AI Gateway REST API — AI Gateway Read/Edit + Workers AI Read |
-| `AGENT_ID` | secret | CSS registered agent UUID |
-| `AGENT_API_KEY` | secret | CSS agent API key (`sat_...`) |
+| `AGENT_ID` | secret | CCR registered agent UUID |
+| `AGENT_API_KEY` | secret | CCR agent API key (`sat_...`) |
 
 ### Puck plugin (host application env)
 
@@ -235,11 +235,11 @@ The `@pantheon-systems/p1-ai-chat` plugin adds an **AI Builder** panel to Puck's
 
 > "Build me a page about the world's fastest helicopters"
 
-The plugin sends this message to the Agent Worker over WebSocket, along with the current site ID, branch ID, and document path, and the user's CSS auth token.
+The plugin sends this message to the Agent Worker over WebSocket, along with the current site ID, branch ID, and document path, and the user's CCR auth token.
 
 ### Agent Worker
 
-The Worker validates the auth token against the CSS backend (`GET /api/auth/me`), then runs an agentic loop with the model:
+The Worker validates the auth token against the CCR backend (`GET /api/auth/me`), then runs an agentic loop with the model:
 
 1. **The model receives** the user's intent plus the editor context
 2. **The model calls tools** to fulfill the intent:
@@ -252,7 +252,7 @@ The Worker validates the auth token against the CSS backend (`GET /api/auth/me`)
    - `complete_edit_session` → finalize
 3. **The reply streams back** to the plugin as the model explains what it's doing
 
-Tool calls are executed against the CSS backend using the registered agent credentials, with the authenticated user's identity passed via `X-Acting-User-Id` / `X-Acting-User-Email` headers.
+Tool calls are executed against the CCR backend using the registered agent credentials, with the authenticated user's identity passed via `X-Acting-User-Id` / `X-Acting-User-Email` headers.
 
 ### Edit session safety
 
@@ -275,7 +275,7 @@ For the Puck app, set:
 NEXT_PUBLIC_AGENT_URL=http://localhost:8787
 ```
 
-The local Worker connects to whatever `CSS_BACKEND_URL` is set to in `wrangler.jsonc` (defaults to `http://localhost:8787` — update if your CSS backend runs on a different port).
+The local Worker connects to whatever `CCR_BACKEND_URL` is set to in `wrangler.jsonc` (defaults to `http://localhost:8787` — update if your CCR backend runs on a different port).
 
 ### Type checking and tests
 

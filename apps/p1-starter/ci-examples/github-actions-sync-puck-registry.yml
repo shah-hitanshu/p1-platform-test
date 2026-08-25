@@ -1,4 +1,4 @@
-# Optional: syncs this site's Puck component registry to the CSS backend
+# Optional: syncs this site's Puck component registry to the CCR backend
 # headlessly on every push, without anyone needing to open the editor.
 #
 # This file is NOT active until you copy it into .github/workflows/ yourself
@@ -12,10 +12,10 @@
 #   3. Copy this file to .github/workflows/sync-puck-registry.yml.
 #
 # Triggers on push to any branch that touches puck.config.tsx or
-# components/puck/**. The sync script resolves the CSS branch from the pushed
+# components/puck/**. The sync script resolves the CCR branch from the pushed
 # git branch's name: the repo's default branch always targets the site's main
-# CSS branch (whatever the git branch is called), any other ref matches a CSS
-# branch by name. A push on a non-default branch with no matching CSS branch
+# CCR branch (whatever the git branch is called), any other ref matches a CCR
+# branch by name. A push on a non-default branch with no matching CCR branch
 # is not an error: the script logs a skip and exits 0.
 #
 # CSS_DEFAULT_BRANCH defaults to "main" if omitted — repos whose default
@@ -33,7 +33,7 @@ on:
   workflow_dispatch:
     inputs:
       branch_id:
-        description: 'CSS branch ID/name to sync against (blank = match the current git branch, else site main)'
+        description: 'CCR branch ID/name to sync against (blank = match the current git branch, else site main)'
         required: false
         default: ''
 

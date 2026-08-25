@@ -16,7 +16,7 @@ const { defaultDrawer, customDrawer } = vi.hoisted(() => ({
 
 const mockLoadDocument = vi.fn<(...args: unknown[]) => Promise<void>>();
 
-const mockCssContext = {
+const mockCcrContext = {
   branchId: 'branch-a',
   loadDocument: mockLoadDocument,
   documents: [] as { id: string; path: string }[],
@@ -93,7 +93,7 @@ const mockCssContext = {
 };
 
 vi.mock('../../core/P1PuckContext.js', () => ({
-  useP1Puck: () => mockCssContext,
+  useP1Puck: () => mockCcrContext,
 }));
 
 vi.mock('../../editor/useP1Plugin.js', () => ({
@@ -135,7 +135,7 @@ describe('useP1Editor additionalOverrides layering', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockLoadDocument.mockResolvedValue(undefined);
-    mockCssContext.currentDocument = {
+    mockCcrContext.currentDocument = {
       id: 'doc-1',
       path: 'pages/home',
       siteId: 'site-test',

@@ -32,7 +32,7 @@ import type { Template, TemplateSummary } from '../features/content-type-templat
 import { createPuckPermissions } from '../features/content-type-templates/permissions/createPuckPermissions.js';
 import { useTemplateList } from '../features/content-type-templates/hooks/useTemplateList.js';
 import { presenceIdentityKey } from '../collaboration/utils/presenceIdentity.js';
-import { DEFAULT_CSS_FEATURE_PLUGINS } from './defaultPlugins.js';
+import { DEFAULT_CCR_FEATURE_PLUGINS } from './defaultPlugins.js';
 import { resolveActivePlugins, composeProviders } from './composePlugins.js';
 import { snapshotToPuckData } from './utils/snapshotToPuckData.js';
 import { useDocuments } from './useDocuments.js';
@@ -52,7 +52,7 @@ export interface P1PuckProviderProps extends P1PuckConfig {
   /**
    * Feature plugins to compose into the provider tree.
    * Each plugin can provide a React context wrapper, Puck plugins, and overrides.
-   * Defaults to DEFAULT_CSS_FEATURE_PLUGINS when not provided.
+   * Defaults to DEFAULT_CCR_FEATURE_PLUGINS when not provided.
    */
   featurePlugins?: P1FeaturePlugin[];
   /**
@@ -213,15 +213,25 @@ function P1PuckProviderInner({
 
   // Persist selected branch in sessionStorage so it survives provider remounts
   // (e.g. when P1App is rendered per-page instead of in a shared layout).
-  const branchStorageKey = `css-branch-${siteId}`;
+  const branchStorageKey = `ccr-branch-${siteId}`;
+  // Pre-rename key; read-side fallback until it can be dropped.
+  const legacyBranchStorageKey = `css-branch-${siteId}`;
 
   const getPersistedBranchId = useCallback((): string => {
     try {
-      return (typeof window !== 'undefined' && sessionStorage.getItem(branchStorageKey)) || '';
+      if (typeof window === 'undefined') return '';
+      const persisted = sessionStorage.getItem(branchStorageKey);
+      if (persisted !== null) return persisted;
+      const legacy = sessionStorage.getItem(legacyBranchStorageKey);
+      if (legacy !== null) {
+        sessionStorage.setItem(branchStorageKey, legacy);
+        sessionStorage.removeItem(legacyBranchStorageKey);
+      }
+      return legacy || '';
     } catch {
       return '';
     }
-  }, [branchStorageKey]);
+  }, [branchStorageKey, legacyBranchStorageKey]);
 
   const persistBranchId = useCallback((id: string) => {
     try {
@@ -251,22 +261,14 @@ function P1PuckProviderInner({
   const [branchId, setBranchId] = useState(() => {
     if (deepLinkBranchId) return deepLinkBranchId;
     if (initialBranchId) return initialBranchId;
-    try {
-      return (typeof window !== 'undefined' && sessionStorage.getItem(branchStorageKey)) || '';
-    } catch {
-      return '';
-    }
+    return getPersistedBranchId();
   });
   const [branches, setBranches] = useState<Branch[]>([]);
   const [branchResolutionError, setBranchResolutionError] = useState<Error | null>(null);
   const [currentBranch, setCurrentBranch] = useState<Branch | null>(null);
   const [branchesLoading, setBranchesLoading] = useState(() => {
     if (deepLinkBranchId || initialBranchId) return false;
-    try {
-      return !(typeof window !== 'undefined' && sessionStorage.getItem(branchStorageKey));
-    } catch {
-      return true;
-    }
+    return !getPersistedBranchId();
   });
 
   // Persist before stripping: once the param is gone, a remount landing before
@@ -2222,7 +2224,7 @@ function P1PuckProviderInner({
   }, [featureConfig, enableRealtime, presenceEnabled, agentModeEnabled]);
 
   const activePlugins = useMemo(() => {
-    const plugins = featurePlugins ?? DEFAULT_CSS_FEATURE_PLUGINS;
+    const plugins = featurePlugins ?? DEFAULT_CCR_FEATURE_PLUGINS;
     return resolveActivePlugins(plugins, resolvedFeatureConfig);
   }, [featurePlugins, resolvedFeatureConfig]);
 

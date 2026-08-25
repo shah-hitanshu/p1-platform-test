@@ -188,7 +188,7 @@ export function createTestHarness(opts: { bucketPageSize?: number } = {}): TestH
   const env: Env = {
     MEDIA_BUCKET: bucket,
     MEDIA_DB: new D1DatabaseAdapter(db) as unknown as D1Database,
-    CSS_BASE_URL: 'https://css.example.com',
+    CCR_BASE_URL: 'https://ccr.example.com',
     CDN_BASE_URL: 'https://cdn.example.com/p1',
     R2_ACCESS_KEY_ID: 'test-access-key',
     R2_SECRET_ACCESS_KEY: 'test-secret-key',

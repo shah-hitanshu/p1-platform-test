@@ -3,7 +3,7 @@ import type { Data } from "@puckeditor/core";
 import { resolveDataTemplates } from "../data/resolve-data-templates.js";
 
 /**
- * CSS query names are kebab-case and datasource ids are built as
+ * CCR query names are kebab-case and datasource ids are built as
  * `templates.${query.name}`, so the hyphenated form is the normal case for every
  * template datasource — not an edge case.
  */

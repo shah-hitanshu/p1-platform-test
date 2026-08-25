@@ -44,7 +44,7 @@ const newBranchPage = {
   root: { props: {} },
 };
 
-const mockCssContext = {
+const mockCcrContext = {
   branchId: "branch-old",
   loadDocument: mockLoadDocument,
   documents: [] as unknown[],
@@ -118,7 +118,7 @@ const mockCssContext = {
 };
 
 vi.mock("../../core/P1PuckContext", () => ({
-  useP1Puck: () => mockCssContext,
+  useP1Puck: () => mockCcrContext,
 }));
 
 vi.mock("../../editor/useP1Plugin", () => ({
@@ -161,10 +161,10 @@ const pageByBranch: Record<string, unknown> = {
 
 /** A settled load: the payload and the identity it was loaded under, together. */
 function commitLoaded(branchId: string, data: unknown) {
-  mockCssContext.currentDocument = blogDoc;
-  mockCssContext.currentData = data;
-  mockCssContext.safeData = data;
-  mockCssContext.currentDataOrigin = {
+  mockCcrContext.currentDocument = blogDoc;
+  mockCcrContext.currentData = data;
+  mockCcrContext.safeData = data;
+  mockCcrContext.currentDataOrigin = {
     branchId,
     documentId: blogDoc.id,
     documentPath: blogDoc.path,
@@ -189,14 +189,14 @@ beforeEach(() => {
   // A load always yields the page belonging to the branch it was requested for,
   // so a branch change reloads into that branch's document as it does in the app.
   mockLoadDocument.mockImplementation(async () => {
-    commitLoaded(mockCssContext.branchId, pageByBranch[mockCssContext.branchId]);
+    commitLoaded(mockCcrContext.branchId, pageByBranch[mockCcrContext.branchId]);
   });
-  mockCssContext.branchId = "branch-old";
-  mockCssContext.currentDocument = null;
-  mockCssContext.currentData = null;
-  mockCssContext.currentDataOrigin = null;
-  mockCssContext.safeData = oldBranchPage;
-  mockCssContext.isViewingHistoricalVersion = false;
+  mockCcrContext.branchId = "branch-old";
+  mockCcrContext.currentDocument = null;
+  mockCcrContext.currentData = null;
+  mockCcrContext.currentDataOrigin = null;
+  mockCcrContext.safeData = oldBranchPage;
+  mockCcrContext.isViewingHistoricalVersion = false;
 });
 
 describe("document sync across a workstream switch", () => {
@@ -215,8 +215,8 @@ describe("document sync across a workstream switch", () => {
     // The switch commits the branch immediately. The document body is still in
     // flight, so the provider has cleared the origin while safeData continues to
     // hold the outgoing branch's page.
-    mockCssContext.branchId = "branch-new";
-    mockCssContext.currentDataOrigin = null;
+    mockCcrContext.branchId = "branch-new";
+    mockCcrContext.currentDataOrigin = null;
     rerender();
 
     expect(mockSetHistories).not.toHaveBeenCalled();
@@ -244,7 +244,7 @@ describe("document sync across a workstream switch", () => {
     mockSetHistories.mockClear();
 
     act(() => {
-      mockCssContext.branchId = "branch-new";
+      mockCcrContext.branchId = "branch-new";
     });
     rerender();
     await waitFor(() => expect(result.current.loading).toBe(false));
@@ -268,7 +268,7 @@ describe("document sync across a workstream switch", () => {
 
     act(() => {
       commitLoaded("branch-old", newBranchPage);
-      mockCssContext.currentDataOrigin!.historical = true;
+      mockCcrContext.currentDataOrigin!.historical = true;
     });
     rerender();
 

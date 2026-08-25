@@ -12,7 +12,7 @@ import { renderHook, waitFor, act } from '@testing-library/react';
 
 const mockLoadDocument = vi.fn<(...args: unknown[]) => Promise<void>>();
 
-const mockCssContext = {
+const mockCcrContext = {
   branchId: 'branch-a',
   loadDocument: mockLoadDocument,
   documents: [] as {
@@ -92,7 +92,7 @@ const mockCssContext = {
 };
 
 vi.mock('../core/P1PuckContext', () => ({
-  useP1Puck: () => mockCssContext,
+  useP1Puck: () => mockCcrContext,
 }));
 
 vi.mock('../editor/useP1Plugin', () => ({
@@ -159,12 +159,12 @@ function renderEditor(documentPath: string) {
 describe('useP1Editor reload state', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockCssContext.branchId = 'branch-a';
-    mockCssContext.documents = [makeDoc('doc-home', 'home')];
-    mockCssContext.documentsLoading = false;
-    mockCssContext.currentDocument = null;
-    mockCssContext.safeData = { content: [], root: { props: {} }, zones: {} };
-    mockCssContext.loadDocument = mockLoadDocument;
+    mockCcrContext.branchId = 'branch-a';
+    mockCcrContext.documents = [makeDoc('doc-home', 'home')];
+    mockCcrContext.documentsLoading = false;
+    mockCcrContext.currentDocument = null;
+    mockCcrContext.safeData = { content: [], root: { props: {} }, zones: {} };
+    mockCcrContext.loadDocument = mockLoadDocument;
   });
 
   it('reports the first load as loading, with nothing worth rendering yet', async () => {
@@ -207,7 +207,7 @@ describe('useP1Editor reload state', () => {
 
     const second = deferred();
     mockLoadDocument.mockReturnValueOnce(second.promise);
-    mockCssContext.branchId = 'branch-b';
+    mockCcrContext.branchId = 'branch-b';
     rerender({ path: '/home' });
 
     await waitFor(() => expect(result.current.reloading).toBe('branch'));
@@ -228,7 +228,7 @@ describe('useP1Editor reload state', () => {
     const pending = deferred();
     mockLoadDocument.mockReturnValue(pending.promise);
 
-    mockCssContext.branchId = 'branch-b';
+    mockCcrContext.branchId = 'branch-b';
     rerender({ path: '/home' });
     await waitFor(() => expect(result.current.reloading).toBe('branch'));
 
@@ -245,7 +245,7 @@ describe('useP1Editor reload state', () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     mockLoadDocument.mockResolvedValueOnce(undefined);
-    mockCssContext.branchId = 'branch-b';
+    mockCcrContext.branchId = 'branch-b';
     rerender({ path: '/home' });
     await waitFor(() => expect(result.current.reloading).toBeNull());
 
@@ -266,15 +266,15 @@ describe('useP1Editor reload state', () => {
     // The context empties its data mid-switch — the hook must not pass that on.
     const second = deferred();
     mockLoadDocument.mockReturnValueOnce(second.promise);
-    mockCssContext.safeData = { content: [], root: { props: {} }, zones: {} };
-    mockCssContext.branchId = 'branch-b';
+    mockCcrContext.safeData = { content: [], root: { props: {} }, zones: {} };
+    mockCcrContext.branchId = 'branch-b';
     rerender({ path: '/home' });
 
     await waitFor(() => expect(result.current.reloading).toBe('branch'));
     expect(result.current.puckProps).toBe(loaded);
 
     const arrived = { content: [{ type: 'Text' }], root: { props: {} }, zones: {} };
-    mockCssContext.safeData = arrived;
+    mockCcrContext.safeData = arrived;
     await act(async () => { second.resolve(); });
 
     await waitFor(() => expect(result.current.puckProps.data).toBe(arrived));
@@ -288,9 +288,9 @@ describe('useP1Editor reload state', () => {
 
     // No documents on the new branch — the hook surfaces an error, but the
     // caller still has the previous page to fall back on.
-    mockCssContext.documents = [];
+    mockCcrContext.documents = [];
     mockLoadDocument.mockRejectedValueOnce(new Error('not found'));
-    mockCssContext.branchId = 'branch-b';
+    mockCcrContext.branchId = 'branch-b';
     rerender({ path: '/home' });
 
     await waitFor(() => expect(result.current.error).not.toBeNull());

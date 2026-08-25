@@ -67,12 +67,12 @@ export function ChatPanel({ options }: Props): React.ReactElement {
   // focus back here.
   const awaitingOwnReplyRef = useRef(false);
 
-  const css = useP1Puck();
+  const ccr = useP1Puck();
   const { getToken, isAuthenticated } = useP1Auth();
 
   // Stable refs so getAgentId/getContext don't change on every render
-  const cssRef = useRef(css);
-  cssRef.current = css;
+  const ccrRef = useRef(ccr);
+  ccrRef.current = ccr;
   const getTokenRef = useRef(getToken);
   getTokenRef.current = getToken;
   const selectedBlock = useSelectedBlock();
@@ -81,7 +81,7 @@ export function ChatPanel({ options }: Props): React.ReactElement {
 
   // Site-scoped, not per page, so the transcript follows the user around. The turn's own
   // document rides along in `getContext`.
-  const { userId, siteId, currentDocument } = css;
+  const { userId, siteId, currentDocument } = ccr;
   const agentId = useMemo(() => {
     if (options.getAgentId) return options.getAgentId();
     return `${userId}-${siteId}`;
@@ -91,10 +91,10 @@ export function ChatPanel({ options }: Props): React.ReactElement {
   // loads asynchronously on mount, so a state snapshot can still be null the
   // moment a user submits their first message.
   const getContext = useCallback(async () => ({
-    siteId: cssRef.current.siteId,
-    branchId: cssRef.current.branchId,
-    documentPath: cssRef.current.currentDocument?.path ?? '',
-    documentId: cssRef.current.currentDocument?.id ?? '',
+    siteId: ccrRef.current.siteId,
+    branchId: ccrRef.current.branchId,
+    documentPath: ccrRef.current.currentDocument?.path ?? '',
+    documentId: ccrRef.current.currentDocument?.id ?? '',
     token: (await getTokenRef.current()) ?? '',
     ...(selectedBlockRef.current ? { selectedBlock: selectedBlockRef.current } : {}),
   }), []);
@@ -130,11 +130,11 @@ export function ChatPanel({ options }: Props): React.ReactElement {
 
   // `_registry/...` holds component and template definitions: documents to the API, but not pages.
   const sitePages = useMemo(
-    () => css.documents
+    () => ccr.documents
       .filter(doc => !doc.archived && !normalizeDocumentPath(doc.path).startsWith('_registry/'))
       .map(doc => normalizeDocumentPath(doc.path))
       .sort((a, b) => a.localeCompare(b)),
-    [css.documents],
+    [ccr.documents],
   );
 
   // Clear takes effect immediately. It also stops any turn in flight, so it can't leave
@@ -148,11 +148,11 @@ export function ChatPanel({ options }: Props): React.ReactElement {
 
   // Auto-submit a brief handed to us from elsewhere in the editor (Create Page ->
   // "Generate with AI"). Gating on `isAuthenticated` matters: the brief arrives right
-  // after a navigation, and sending before auth re-settles makes the agent's CSS tool
+  // after a navigation, and sending before auth re-settles makes the agent's CCR tool
   // calls 401.
   useDraftRequest(
     options.draftRequests,
-    { documentPath: css.currentDocument?.path, ready: ready && isAuthenticated },
+    { documentPath: ccr.currentDocument?.path, ready: ready && isAuthenticated },
     useCallback(
       (request: DraftRequest) => {
         // No need to open the panel here — the publisher does, and this only mounts once open.

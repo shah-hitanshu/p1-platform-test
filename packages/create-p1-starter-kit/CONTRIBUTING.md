@@ -37,7 +37,7 @@ cannot be excluded, which is why the public README lives at the package root.
 ## CI registry sync (shipped in the template)
 
 Changing a component's prop shape in code (`puck.config.tsx`, `components/puck/**`) doesn't
-update the CSS backend's component registry until someone opens the Puck editor in a browser —
+update the CCR backend's component registry until someone opens the Puck editor in a browser —
 that's the only thing that currently triggers a sync. If a team goes a while between editor
 sessions after a code change, AI-assisted edits and other tooling validate against a stale
 schema in the meantime.
@@ -60,7 +60,7 @@ Run locally with `npm run sync:registry`, or `npm run sync:registry -- --dry-run
 would change without writing.
 
 The sample workflow triggers on pushes touching `puck.config.tsx` / `components/puck/**` and
-resolves the CSS branch by matching the pushed git branch name. A push on a branch with no CSS
+resolves the CCR branch by matching the pushed git branch name. A push on a branch with no CCR
 counterpart is a no-op, not a failure.
 
 ## Platform docs

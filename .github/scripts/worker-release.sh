@@ -5,11 +5,16 @@
 # the tag is dated rather than semver: <worker-name>/<UTC date>-<run number>. The
 # run number keeps same-day deploys distinct and ordered.
 #
-# Usage: worker-release.sh <wrangler-worker-name> <worker-directory>
+# Usage: worker-release.sh <release-name> <worker-directory> [legacy-release-name]
+#
+# The optional legacy name lets a renamed worker keep its release lineage: when
+# no tag exists under the new name yet, the previous release is looked up under
+# the legacy prefix instead (CSS→CCR rename).
 set -euo pipefail
 
 worker="${1:?worker name required}"
 dir="${2:?worker directory required}"
+legacy="${3:-}"
 tag="${worker}/$(date -u +%Y.%m.%d)-${GITHUB_RUN_NUMBER}"
 
 # Re-running a workflow reuses its run number, so the tag can already exist.
@@ -19,6 +24,9 @@ if gh release view "$tag" >/dev/null 2>&1; then
 fi
 
 previous=$(git tag --list "${worker}/*" --sort=-v:refname | head -n 1)
+if [ -z "$previous" ] && [ -n "$legacy" ]; then
+  previous=$(git tag --list "${legacy}/*" --sort=-v:refname | head -n 1)
+fi
 
 if [ -n "$previous" ]; then
   changes=$(git log --no-merges --pretty='- %s (%h)' "${previous}..${GITHUB_SHA}" -- "$dir")

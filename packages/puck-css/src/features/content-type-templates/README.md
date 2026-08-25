@@ -101,7 +101,7 @@ A document conforms when every pinned slot id from the template is present among
 
 ## Permissions
 
-`getPermissionsForRole` / `useContentRole` compute coarse, role-only capabilities (`canAddComponents`, `canRemoveComponents`, `canMoveComponents`, `canEditProps`, `canOverrideUrl`). `junior-editor` is restricted to prop edits; `admin` and `editor` otherwise get the same capabilities. `useResolveContentRole` resolves a user's `ContentRole` from the CSS backend's role for a site/branch.
+`getPermissionsForRole` / `useContentRole` compute coarse, role-only capabilities (`canAddComponents`, `canRemoveComponents`, `canMoveComponents`, `canEditProps`, `canOverrideUrl`). `junior-editor` is restricted to prop edits; `admin` and `editor` otherwise get the same capabilities. `useResolveContentRole` resolves a user's `ContentRole` from the CCR backend's role for a site/branch.
 
 Pin locking is enforced per component, independent of role: the editor resolves Puck's `resolvePermissions` so that pinned components can never be dragged or deleted, and (for `junior-editor`) non-pinned components and blank pages get no structural permissions either. Viewing a historical version disables all structural permissions for every role.
 

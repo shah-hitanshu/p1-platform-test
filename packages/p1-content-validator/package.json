@@ -1,7 +1,7 @@
 {
   "name": "@pantheon-systems/p1-content-validator",
   "version": "2.1.2",
-  "description": "Validates Puck component edit operations against the CSS component registry",
+  "description": "Validates Puck component edit operations against the CCR component registry",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/pantheon-systems/p1-platform.git",

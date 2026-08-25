@@ -112,7 +112,7 @@ function createMockClient(): P1Client {
 // Test Suite
 // =============================================================================
 
-describe('CSS Feature Presets', () => {
+describe('CCR Feature Presets', () => {
   it('should export basic preset', () => {
     expect(P1_PRESETS.basic).toBeDefined();
     expect(P1_PRESETS.basic.enableAutoSave).toBe(true);

@@ -21,7 +21,7 @@ import { ContentUnavailable } from "../../components/content-unavailable";
 import { resolvePageMetadata } from "../../lib/page-seo";
 import { Client } from "./client";
 
-const getCssQueryFetchers = cache(() => createCssQueryFetchers());
+const getCcrQueryFetchers = cache(() => createCssQueryFetchers());
 
 // Document namespaces that live alongside pages but are never routable.
 const INTERNAL_PATH_PREFIXES = ["/_registry", "/_redirects"];
@@ -101,11 +101,11 @@ export default async function Page({
 
   const data = result.data;
 
-  const [routeTemplateKeys, cssQueryFetchers] = await Promise.all([
+  const [routeTemplateKeys, ccrQueryFetchers] = await Promise.all([
     loadRouteTemplateKeys(),
-    getCssQueryFetchers(),
+    getCcrQueryFetchers(),
   ]);
-  const builtinFetchers = [...REMOTE_DATASOURCE_FETCHERS, ...cssQueryFetchers];
+  const builtinFetchers = [...REMOTE_DATASOURCE_FETCHERS, ...ccrQueryFetchers];
 
   const referencedDatasourceIds = extractReferencedDatasourceIds(data);
   const context = await loadRemoteDatasourceContext({

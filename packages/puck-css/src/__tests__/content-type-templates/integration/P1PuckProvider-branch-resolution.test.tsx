@@ -40,7 +40,7 @@ describe('P1PuckProvider - branch resolution on the templates path', () => {
 
   function render(branchId: string) {
     // P1PuckProvider mounts NotificationProvider, so a child hook sees the same state.
-    return renderHook(() => ({ css: useP1Puck(), notes: useNotifications() }), {
+    return renderHook(() => ({ ccr: useP1Puck(), notes: useNotifications() }), {
       wrapper: ({ children }) => (
         <P1PuckProvider
           client={mockClient}
@@ -93,7 +93,7 @@ describe('P1PuckProvider - branch resolution on the templates path', () => {
     const { result } = render('');
 
     await waitFor(() => {
-      expect(result.current.css.branchesLoading).toBe(false);
+      expect(result.current.ccr.branchesLoading).toBe(false);
     });
     expect(listTemplates).not.toHaveBeenCalled();
   });
@@ -107,7 +107,7 @@ describe('P1PuckProvider - branch resolution on the templates path', () => {
     const { result } = render('');
 
     await waitFor(() => {
-      expect(result.current.css.branchesLoading).toBe(false);
+      expect(result.current.ccr.branchesLoading).toBe(false);
     });
     await waitFor(() => {
       expect(
@@ -122,7 +122,7 @@ describe('P1PuckProvider - branch resolution on the templates path', () => {
   // configuration made `initialBranchId` always truthy, so the provider stopped reading
   // the branch the user had switched to and then overwrote it with main.
   it('restores the branch the user switched to when nothing is configured', async () => {
-    sessionStorage.setItem('css-branch-site-1', 'branch-feature-uuid');
+    sessionStorage.setItem('ccr-branch-site-1', 'branch-feature-uuid');
 
     render('');
 
@@ -130,11 +130,23 @@ describe('P1PuckProvider - branch resolution on the templates path', () => {
       expect(listTemplates).toHaveBeenCalledWith('site-1', 'branch-feature-uuid');
     });
     expect(listTemplates).not.toHaveBeenCalledWith('site-1', 'branch-main-uuid');
-    expect(sessionStorage.getItem('css-branch-site-1')).toBe('branch-feature-uuid');
+    expect(sessionStorage.getItem('ccr-branch-site-1')).toBe('branch-feature-uuid');
+  });
+
+  it('migrates a branch persisted under the pre-rename css-branch key', async () => {
+    sessionStorage.setItem('css-branch-site-1', 'branch-feature-uuid');
+
+    render('');
+
+    await waitFor(() => {
+      expect(listTemplates).toHaveBeenCalledWith('site-1', 'branch-feature-uuid');
+    });
+    expect(sessionStorage.getItem('ccr-branch-site-1')).toBe('branch-feature-uuid');
+    expect(sessionStorage.getItem('css-branch-site-1')).toBeNull();
   });
 
   it('lets an explicitly configured branch outrank the persisted one', async () => {
-    sessionStorage.setItem('css-branch-site-1', 'branch-feature-uuid');
+    sessionStorage.setItem('ccr-branch-site-1', 'branch-feature-uuid');
 
     render('main');
 

@@ -30,13 +30,13 @@ export async function validateAuth(
 
   try {
     let response: Response;
-    const url = `${env.CSS_BASE_URL}/api/sites/${encodeURIComponent(siteId)}`;
+    const url = `${env.CCR_BASE_URL}/api/sites/${encodeURIComponent(siteId)}`;
 
-    if (env.CSS_SERVICE) {
+    if (env.CCR_SERVICE) {
       // Use service binding to avoid Cloudflare's same-account
       // Worker-to-Worker fetch restriction (error 1042).
-      // Must use the real CSS URL so the receiving worker gets the correct Host header.
-      response = await env.CSS_SERVICE.fetch(
+      // Must use the real CCR URL so the receiving worker gets the correct Host header.
+      response = await env.CCR_SERVICE.fetch(
         new Request(url, {
           method: 'GET',
           headers: { Authorization: authHeader },
@@ -67,7 +67,7 @@ export async function validateAuth(
     // 401 or anything unexpected — treat as invalid token
     return null;
   } catch (err) {
-    console.error('validateAuth: CSS site check failed', err);
+    console.error('validateAuth: CCR site check failed', err);
     return null;
   }
 }

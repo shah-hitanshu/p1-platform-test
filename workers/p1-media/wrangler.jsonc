@@ -24,7 +24,7 @@
     }
   },
 
-  // Local dev — auth falls back to fetch against CSS_BASE_URL (no service binding)
+  // Local dev — auth falls back to fetch against CCR_BASE_URL (no service binding)
   "r2_buckets": [
     { "binding": "MEDIA_BUCKET", "bucket_name": "p1-media-local" }
   ],
@@ -38,7 +38,7 @@
   ],
 
   "vars": {
-    "CSS_BASE_URL": "http://localhost:8787",
+    "CCR_BASE_URL": "http://localhost:8787",
     // Local dev: serve images via the worker's own /image/* route so uploads work without a live CDN
     "CDN_BASE_URL": "http://localhost:8788/image",
     // Maximum upload size in bytes. Override per environment without a code change.
@@ -80,10 +80,10 @@
       ],
       "images": { "binding": "IMAGES" },
       "services": [
-        { "binding": "CSS_SERVICE", "service": "collaborative-state-worker-staging" }
+        { "binding": "CCR_SERVICE", "service": "collaborative-state-worker-staging" }
       ],
       "vars": {
-        "CSS_BASE_URL": "https://staging.ccr.p1.pantheon.io",
+        "CCR_BASE_URL": "https://staging.ccr.p1.pantheon.io",
         "CDN_BASE_URL": "https://staging.media.p1.pantheon.io/image",
         "MAX_UPLOAD_BYTES": "10485760",
         "R2_ACCOUNT_ID": "69bc76f4866aaaa3400ea7fbbd9d7da2",
@@ -107,10 +107,10 @@
       ],
       "images": { "binding": "IMAGES" },
       "services": [
-        { "binding": "CSS_SERVICE", "service": "collaborative-state-worker-production" }
+        { "binding": "CCR_SERVICE", "service": "collaborative-state-worker-production" }
       ],
       "vars": {
-        "CSS_BASE_URL": "https://ccr.p1.pantheon.io",
+        "CCR_BASE_URL": "https://ccr.p1.pantheon.io",
         "CDN_BASE_URL": "https://media.p1.pantheon.io/image",
         "MAX_UPLOAD_BYTES": "10485760",
         "R2_ACCOUNT_ID": "c7357ecc2566ef9d5d555e40fccb3071",

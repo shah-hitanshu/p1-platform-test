@@ -45,13 +45,13 @@ export async function getDatasourceContext(
   const token = extractBearerToken(request);
   const client = token ? createAuthenticatedClient(token) : null;
 
-  const cssQueryFetchers = await createCssQueryFetchers({
+  const ccrQueryFetchers = await createCssQueryFetchers({
     client,
     branchId,
     filterIds: referencedDatasourceIds,
   });
 
-  const allFetchers = [...(options.builtinFetchers ?? []), ...cssQueryFetchers];
+  const allFetchers = [...(options.builtinFetchers ?? []), ...ccrQueryFetchers];
 
   const context = await loadRemoteDatasourceContext({
     searchParams: Object.fromEntries(url.searchParams.entries()),

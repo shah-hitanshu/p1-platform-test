@@ -60,7 +60,7 @@ describe('PermissionRefresher', () => {
     expect(mockRefreshPermissions).not.toHaveBeenCalled();
   });
 
-  it('should not call refreshPermissions when css context is null', () => {
+  it('should not call refreshPermissions when ccr context is null', () => {
     currentResolvePermissions = null;
 
     const { rerender } = render(<PermissionRefresher />);
@@ -74,7 +74,7 @@ describe('PermissionRefresher', () => {
     // First real resolver — sets the ref but should not call refresh
     // (ref starts as null, now it's set)
     // Actually this IS a change, so it should call refresh
-    // But the initial ref is set to css?.resolvePermissions in useRef,
+    // But the initial ref is set to ccr?.resolvePermissions in useRef,
     // which was null on first render. Now it's mockResolvePermissions.
     // The effect sees a difference and calls refresh.
     expect(mockRefreshPermissions).toHaveBeenCalledTimes(1);

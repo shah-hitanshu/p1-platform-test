@@ -116,7 +116,7 @@ function PresenceFocusBridge({
   userId: string;
   children: React.ReactNode;
 }): React.ReactElement {
-  const css = useP1Puck();
+  const ccr = useP1Puck();
   // Read presence from the dedicated PresenceContext (which updates reactively
   // on presence changes) instead of the main P1Puck context (which now uses
   // a ref-based getter to avoid cascading re-renders through the plugin tree).
@@ -126,8 +126,8 @@ function PresenceFocusBridge({
   const focusMap = useMemo(() => {
     if (!presenceCtx) return new Map<string, FocusHighlight>();
     const otherActors = presenceCtx.actors.filter((a) => a.actorId !== userId);
-    return createFocusRegionMap(css.safeData, otherActors);
-  }, [presenceCtx, css.safeData, userId]);
+    return createFocusRegionMap(ccr.safeData, otherActors);
+  }, [presenceCtx, ccr.safeData, userId]);
 
   // Apply highlights via CSS class/style changes only — no DOM insertions.
   // Badge is rendered via CSS ::after pseudo-element to avoid DOM mutations

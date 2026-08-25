@@ -1,11 +1,11 @@
 /**
  * useResolveContentRole Hook
  *
- * Auto-detects the user's ContentRole by querying the CSS backend's
+ * Auto-detects the user's ContentRole by querying the CCR backend's
  * auth/me endpoint with site context. Falls back to the provided
  * default role if the backend doesn't return role info.
  *
- * CSS backend role mapping:
+ * CCR backend role mapping:
  * - ADMIN → 'admin'
  * - EDITOR → 'editor'
  * - VIEWER → 'junior-editor' (read-only structural access)
@@ -15,10 +15,10 @@
 import { useState, useEffect } from 'react';
 import type { ContentRole } from '../types.js';
 
-type CssRoleName = 'ADMIN' | 'EDITOR' | 'VIEWER' | 'NO_ACCESS';
+type CcrRoleName = 'ADMIN' | 'EDITOR' | 'VIEWER' | 'NO_ACCESS';
 
-function mapCssRoleToContentRole(cssRole: CssRoleName): ContentRole {
-  switch (cssRole) {
+function mapCssRoleToContentRole(ccrRole: CcrRoleName): ContentRole {
+  switch (ccrRole) {
     case 'ADMIN':
       return 'admin';
     case 'EDITOR':
@@ -45,7 +45,7 @@ export interface UseResolveContentRoleReturn {
 }
 
 /**
- * Hook to auto-resolve the user's ContentRole from the CSS backend.
+ * Hook to auto-resolve the user's ContentRole from the CCR backend.
  *
  * Calls GET /api/sites/{siteId}/auth/role (when available) to determine
  * the user's effective role. Falls back to the provided fallbackRole
@@ -84,7 +84,7 @@ export function useResolveContentRole({
         if (cancelled) return;
 
         if (res.ok) {
-          const data = (await res.json()) as { roleName?: CssRoleName };
+          const data = (await res.json()) as { roleName?: CcrRoleName };
           if (data.roleName) {
             setRole(mapCssRoleToContentRole(data.roleName));
             setResolved(true);

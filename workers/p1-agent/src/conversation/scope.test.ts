@@ -42,7 +42,7 @@ function writeAt(path: string): Record<string, unknown> {
   return { site_id: 'site-1', branch_id: 'branch-1', document_path: path };
 }
 
-// Each case is one the CSS backend resolves to the same document, so the write set has to as
+// Each case is one the CCR backend resolves to the same document, so the write set has to as
 // well — otherwise a granted page refuses a write aimed at it under another spelling.
 describe('normalizeDocumentPath', () => {
   it.each([

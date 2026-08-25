@@ -1,6 +1,6 @@
 /* PDS canvas isolation: pds-core.css is loaded via document.adoptedStyleSheets
-   in CSSApp.tsx so it is invisible to Puck's canvas iframe scanner.
-   See CSSApp.tsx for the full explanation. */
+   in P1App.tsx so it is invisible to Puck's canvas iframe scanner.
+   See P1App.tsx for the full explanation. */
 
 /**
  * PDS v2 Theme for Puck Editor
@@ -14,7 +14,7 @@
  * across Puck's native chrome (drag handles, drop-zone highlights, field
  * chrome, selection outlines).
  *
- * Prerequisites: PDSv2 CSS is loaded automatically by CSSApp.tsx via
+ * Prerequisites: PDSv2 CSS is loaded automatically by P1App.tsx via
  *   document.adoptedStyleSheets — no host-app import required.
  */
 
@@ -118,7 +118,7 @@
   border-radius: var(--pds-border-radius-button, 3.5rem);
 }
 
-/* Sidebar + plugin rail backgrounds — scoped to the editor wrapper added by CSSApp.tsx */
+/* Sidebar + plugin rail backgrounds — scoped to the editor wrapper added by P1App.tsx */
 .puck-editor-theme [class*="_PuckLayout-nav_"],
 .puck-editor-theme [class*="_Sidebar"] {
   background: var(--pds-color-surface-default-secondary, oklch(0.9702 0 0));

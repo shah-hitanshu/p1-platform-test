@@ -1,5 +1,5 @@
 /**
- * CSS Client - Documents Publish Tests
+ * CCR Client - Documents Publish Tests
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';

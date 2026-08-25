@@ -27,7 +27,7 @@ export interface TelemetryEnv {
   APP_VERSION?: string;
   /** Local ndjson collector, e.g. `http://127.0.0.1:8799`. Unset in every deployed env. */
   P1_LOG_SINK?: string;
-  CSS_BACKEND_URL?: string;
+  CCR_BACKEND_URL?: string;
 }
 
 /** `ENVIRONMENT` is a bare string in Env; anything unrecognized is treated as production. */
@@ -60,9 +60,9 @@ export function ensureLogger(env: TelemetryEnv): P1Logger {
     version: env.APP_VERSION ?? 'dev',
     runtime: 'worker',
     minLevel: toLevel(env.LOG_LEVEL),
-    // Model calls go to the AI Gateway, but CSS is where customer content comes from —
+    // Model calls go to the AI Gateway, but CCR is where customer content comes from —
     // it is what decides whether this process is handling real content.
-    dataClass: resolveDataClass(env.CSS_BACKEND_URL),
+    dataClass: resolveDataClass(env.CCR_BACKEND_URL),
     sinks: buildSinks(env),
   });
   return logger;

@@ -1,7 +1,7 @@
 # Observability Plan
 
 **Status:** Draft
-**Supersedes:** `docs/css/MONITORING-PLAN.md` (Jan 2026, never approved; its metrics service shipped
+**Supersedes:** `docs/ccr/MONITORING-PLAN.md` (Jan 2026, never approved; its metrics service shipped
 partially — see [Current state](#1-current-state))
 **Scope:** logs, metrics, and traces for the workers, the DB, the published SDK packages, and the
 MCP/AI surface. Destination is Pantheon's Grafana Cloud (`pantheon.grafana.net`).
@@ -27,14 +27,14 @@ MCP/AI surface. Destination is Pantheon's Grafana Cloud (`pantheon.grafana.net`)
 
 | Area | What exists |
 |---|---|
-| Worker logs | Cloudflare Workers Logs on in css, media, mcp-server (`observability.logs`); `p1-agent` has bare `observability.enabled`. Unstructured `console.*` with ad-hoc prefixes (`[cors]`, `[auth]`, `[fetch]`). Short retention, Cloudflare dashboard only. |
-| Worker metrics | `workers/collaborative-state/src/services/metrics-service.ts` — request-scoped buffer, counters/timers/gauges, flush in a `finally`. Instrumented at `index.ts:150-172` (HTTP), `middleware/health.ts`, `durable-objects/websocket-connection-manager.ts`, `durable-objects/alarm-cleanup-manager.ts`. |
+| Worker logs | Cloudflare Workers Logs on in ccr, media, mcp-server (`observability.logs`); `p1-agent` has bare `observability.enabled`. Unstructured `console.*` with ad-hoc prefixes (`[cors]`, `[auth]`, `[fetch]`). Short retention, Cloudflare dashboard only. |
+| Worker metrics | `workers/ccr/src/services/metrics-service.ts` — request-scoped buffer, counters/timers/gauges, flush in a `finally`. Instrumented at `index.ts:150-172` (HTTP), `middleware/health.ts`, `durable-objects/websocket-connection-manager.ts`, `durable-objects/alarm-cleanup-manager.ts`. |
 | …but | `METRICS_ENABLED: "true"` in staging and production (`wrangler.jsonc:152,233`) while `METRICS_PUSH_ENDPOINT` is set nowhere in the repo → `flushMetrics()` clears the buffer and returns (`metrics-service.ts:195-199`). Even wired up, the payload is `{"metrics":[…]}` + Bearer, which is not a protocol Grafana Cloud accepts (no remote-write, no OTLP). **Today: zero metrics leave the worker.** |
 | Traces | None. |
 | DB | `postgres` 3.4.8 via `runSqlUnsafe()` (`db.ts:204`), one connection per request through `runWithConnection()` + `AsyncLocalStorage` (`db.ts:65-76`). Hyperdrive in staging/prod. No query timing, no correlation to the request. |
-| Worker→worker | No context propagation. `p1-agent`'s `CssApiClient` (`css-api.ts:237`) builds fresh `fetch` inits. |
+| Worker→worker | No context propagation. `p1-agent`'s `CcrApiClient` (`css-api.ts:237`) builds fresh `fetch` inits. |
 | SDK packages | `@pantheon-systems/p1-next-sdk`, `css-client`, `p1-ai-chat`, `p1-media` — zero telemetry. Every backend call funnels through one method: `BaseEndpoint.request()` (`packages/css-client/src/endpoints/base.ts:68`). It sends `X-API-Key`/`Authorization`, `X-Principal-Id`, `X-Principal-Type`, `X-Agent-Session-Id`. No request id, no trace context, no SDK version. |
-| MCP / AI | `css-mcp-server` registers every tool through one loop (`mcp-handler.ts:140`). `p1-agent` normalizes both providers behind `ModelTransport` with a `CompletionUsage` shape already carrying cache-token fields (`model.ts:36`, `anthropic.ts:164`). All model calls go through Cloudflare AI Gateway (`cf-aig-gateway-id`, `model.ts:87`). None of it is measured. |
+| MCP / AI | `ccr-mcp-server` registers every tool through one loop (`mcp-handler.ts:140`). `p1-agent` normalizes both providers behind `ModelTransport` with a `CompletionUsage` shape already carrying cache-token fields (`model.ts:36`, `anthropic.ts:164`). All model calls go through Cloudflare AI Gateway (`cf-aig-gateway-id`, `model.ts:87`). None of it is measured. |
 
 ---
 
@@ -163,7 +163,7 @@ them to actually bite, most likely alerting, and most likely in the form of metr
 ### 3.3 Eventual shape
 
 ```
-producers (css, agent, media, mcp — incl. their DOs)
+producers (ccr, agent, media, mcp — incl. their DOs)
       │  console.* → structured JSON
       ▼
 p1-tail-worker            (a Worker with a tail() handler — not a Durable Object)
@@ -207,7 +207,7 @@ context survive the hop.
 
 ### 4.2 Server side: a request context
 
-At the worker edge (`workers/collaborative-state/src/index.ts:67`), before routing:
+At the worker edge (`workers/ccr/src/index.ts:67`), before routing:
 
 1. Parse inbound `traceparent`. If absent or malformed, mint a new trace id.
 2. Parse `x-p1-request-id`; mint if absent.
@@ -232,12 +232,12 @@ without length/charset validation (32 hex, 16 hex).
 `traceparent` must be forwarded on every outbound hop or the chain breaks exactly where it's most
 interesting:
 
-- `p1-agent` → css: `CssApiClient.request()` (`workers/p1-agent/src/css-api.ts:237`) and
-  `validateCSSToken()` (`auth.ts:5`)
+- `p1-agent` → ccr: `CcrApiClient.request()` (`workers/p1-agent/src/css-api.ts:237`) and
+  `validateCCRToken()` (`auth.ts:5`)
 - `p1-agent` → tools' outbound fetches (`tools.ts:477`, `tools.ts:490`)
-- css → media, css → DO fetches, css → queue messages (put the trace context in the message body —
+- ccr → media, ccr → DO fetches, ccr → queue messages (put the trace context in the message body —
   queues don't carry headers)
-- `css-mcp-server` → css via its injected `fetcher` (`mcp-handler.ts` config)
+- `ccr-mcp-server` → ccr via its injected `fetcher` (`mcp-handler.ts` config)
 
 Each hop mints a child span id and passes the same trace id.
 
@@ -253,7 +253,7 @@ passed in as a label by callers over time), whether it went through Hyperdrive, 
 without touching Postgres at all.
 
 Also set `application_name` on the connection (`postgres()` options at `db.ts:146`) to something like
-`css-worker/<env>/<version>`. It shows up in `pg_stat_activity` and Cloud SQL logs, and it's
+`ccr-worker/<env>/<version>`. It shows up in `pg_stat_activity` and Cloud SQL logs, and it's
 low-cardinality and safe.
 
 **Level 2 — sqlcommenter (do this carefully).** The usual trick for joining application traces to
@@ -356,7 +356,7 @@ Tail consumer. Receives `TraceItem[]`, converts to Loki streams, batches, and pu
 `/loki/api/v1/push` with basic auth. Config:
 
 ```jsonc
-// in css, p1-agent, p1-media, css-mcp-server wrangler.jsonc
+// in ccr, p1-agent, p1-media, ccr-mcp-server wrangler.jsonc
 "tail_consumers": [{ "service": "p1-tail-worker" }]
 ```
 
@@ -396,12 +396,12 @@ plan is small.
 | Seam | File | What to add |
 |---|---|---|
 | Every outbound SDK call | `packages/css-client/src/endpoints/base.ts:68` | Correlation headers, timing, `onRequest`/`onError` hooks |
-| Every inbound worker request | `workers/collaborative-state/src/index.ts:67` | Context ingest, structured access log, existing metrics kept |
-| Every DB query | `workers/collaborative-state/src/db.ts:204` | Query span, duration, rowCount, timeout flag |
-| Every worker→css call | `workers/p1-agent/src/css-api.ts:237` | Header forwarding, child span |
+| Every inbound worker request | `workers/ccr/src/index.ts:67` | Context ingest, structured access log, existing metrics kept |
+| Every DB query | `workers/ccr/src/db.ts:204` | Query span, duration, rowCount, timeout flag |
+| Every worker→ccr call | `workers/p1-agent/src/css-api.ts:237` | Header forwarding, child span |
 | Every model call | `workers/p1-agent/src/model.ts` (`ModelTransport`) | GenAI span + token/latency metrics — see §7 |
-| Every MCP tool call | `workers/css-mcp-server/src/mcp-handler.ts:140` | Tool span, outcome, rate-limit denials |
-| WebSocket lifecycle | `workers/collaborative-state/src/durable-objects/websocket-connection-manager.ts` | Already has counters; add connection-scoped span/session id |
+| Every MCP tool call | `workers/ccr-mcp-server/src/mcp-handler.ts:140` | Tool span, outcome, rate-limit denials |
+| WebSocket lifecycle | `workers/ccr/src/durable-objects/websocket-connection-manager.ts` | Already has counters; add connection-scoped span/session id |
 
 WebSockets don't fit request/response tracing. Treat a connection as one long-lived span with events,
 and correlate via the session id we already have rather than trying to trace per-message — per-message
@@ -412,7 +412,7 @@ spans on a collaborative editor would be a volume disaster.
 ## 7. Profiling the MCP / AI surface
 
 This is the part with the least prior art and the most room to get wrong. Three distinct subsystems:
-the MCP server (`workers/css-mcp-server`), the chat agent (`workers/p1-agent`), and the model calls
+the MCP server (`workers/ccr-mcp-server`), the chat agent (`workers/p1-agent`), and the model calls
 themselves through AI Gateway.
 
 ### 7.1 Use the GenAI semantic conventions
@@ -486,9 +486,9 @@ becomes clickable through to our trace.
   content), result size.
 - Counters: invocations by tool, error rate by tool, rate-limit denials by tool. This is the data that
   tells you which tools are actually used, which are dead weight, and which are being hammered.
-- **Propagate through to css.** The MCP handlers call css via the injected `fetcher`
+- **Propagate through to ccr.** The MCP handlers call ccr via the injected `fetcher`
   (`mcp-handler.ts` config → `css-api.ts`). Forward `traceparent` there and one trace spans
-  `MCP tool call → css API → Postgres query`. That single trace is the thing you'll want the first
+  `MCP tool call → ccr API → Postgres query`. That single trace is the thing you'll want the first
   time an agent edit is mysteriously slow.
 - Also record `actingUser` presence (`mcp-handler.ts:120` — human-requested vs autonomous). Knowing
   what fraction of agent edits are human-initiated is a genuinely interesting product metric that
@@ -541,7 +541,7 @@ Write these down once and enforce them in review:
    `[claude]` prefix convention and deleted before commit; back the unsafe call with a
    `no-restricted-syntax` lint rule so it cannot merge.
 6. **Data class comes from the backend host, not `NODE_ENV`.** At logger init, compare the resolved
-   backend host (`CSS_BACKEND_URL` / `baseUrl`) against localhost and stamp every line with
+   backend host (`CCR_BACKEND_URL` / `baseUrl`) against localhost and stamp every line with
    `data_class: 'local' | 'remote'`. A local process pointed at prod is handling customer content and
    `env === 'local'` would say the opposite. The field doubles as a filter: you can tell at a glance
    whether a given log file ever touched real content.
@@ -598,7 +598,7 @@ and free to add:
 
 #### Local ndjson collector — built (workers and Node; browser still deferred)
 
-Motivation: a single editor interaction spans four runtimes (browser, Next server, css worker,
+Motivation: a single editor interaction spans four runtimes (browser, Next server, ccr worker,
 p1-agent), so a shared file with one `trace_id` filter reconstructs the whole causal chain — which is
 what makes agent-driven debugging work. Worker code has no filesystem access, so it has to be an HTTP
 collector rather than a direct file write, and that's also what unifies the runtimes into one
@@ -624,7 +624,7 @@ As built:
 - File lifecycle owned by the collector (not per-process, so hot reloads don't truncate):
   `current.ndjson` truncated on collector start, previous kept, rotate at ~64MB keeping two.
   `.logs/` needs adding to `.gitignore` — the existing `*.local` / `.env.*` patterns don't cover it.
-- Port **8799**. Taken already: 8787 (css), 8788 (media, mcp-server), 8790 (p1-agent `dev:stack`),
+- Port **8799**. Taken already: 8787 (ccr), 8788 (media, mcp-server), 8790 (p1-agent `dev:stack`),
   9229–9231 (inspectors).
 - Config via `P1_LOG_SINK` in each worker's **top-level** `wrangler.jsonc` `vars`. `vars` is
   non-inheritable, and the `staging` / `production` env blocks define their own (`wrangler.jsonc:152`,
@@ -641,7 +641,7 @@ Deliberately *not* a forwarder. Structured JSON to `console` gets indexed by Wor
 correlation and triage work in the Cloudflare dashboard for 7 days at zero infrastructure cost.
 
 - Normalize the `observability` blocks across all four workers (`p1-agent` has a bare
-  `observability.enabled`; `css-mcp-server` has `invocation_logs: false`).
+  `observability.enabled`; `ccr-mcp-server` has `invocation_logs: false`).
 - Sampling and level thresholds tuned against the 5B/day ceiling if the DOs prove chatty.
 - Deliverable: paste a request id into the Cloudflare dashboard, get the whole server-side story.
 
@@ -690,6 +690,6 @@ alerting runs on metrics rather than logs.
    part: does this need a sign-off from whoever owns customer-data policy to be a *stated* rule rather
    than an engineering convention, and is there any circumstance under which sampled content capture
    would be permitted with explicit customer consent? Default answer is no.
-7. **`docs/css/MONITORING-PLAN.md`** — mark superseded and leave, or delete? It has a real code
+7. **`docs/ccr/MONITORING-PLAN.md`** — mark superseded and leave, or delete? It has a real code
    artifact still in the tree, so a "superseded by" header pointing here is probably kinder to the
    next reader.

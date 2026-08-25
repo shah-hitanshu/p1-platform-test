@@ -35,7 +35,7 @@ export function P1InspectorFields({
 }: {
   children: React.ReactNode;
 }): React.ReactElement {
-  const css = useP1PuckOptional();
+  const ccr = useP1PuckOptional();
 
   const itemSelector = useInspectorPuck(
     (s) =>
@@ -65,8 +65,8 @@ export function P1InspectorFields({
     ? ((config.components as Record<string, { label?: string }>)[selectedBlockType]?.label ?? selectedBlockType)
     : null;
 
-  const isReadOnly = css?.isViewingHistoricalVersion ?? false;
-  const versionNumber = css?.viewingVersion?.versionNumber ?? null;
+  const isReadOnly = ccr?.isViewingHistoricalVersion ?? false;
+  const versionNumber = ccr?.viewingVersion?.versionNumber ?? null;
   const activeTab: 'page' | 'block' = itemSelector ? 'block' : 'page';
 
   const handleTabChange = (tab: 'page' | 'block') => {
@@ -107,8 +107,8 @@ export function P1InspectorFields({
     );
   }
 
-  const template = templateFromRegistryPath(css?.currentDocument?.path, css?.templates);
-  if (template && !itemSelector && css?.updateTemplate) {
+  const template = templateFromRegistryPath(ccr?.currentDocument?.path, ccr?.templates);
+  if (template && !itemSelector && ccr?.updateTemplate) {
     // Guarded like the main return — without this, template fields stay editable
     // while viewing a read-only historical version.
     return (
@@ -119,10 +119,10 @@ export function P1InspectorFields({
   }
 
   const templateLabel = !itemSelector
-    ? (css?.currentTemplate as { root?: { props?: { _template?: { label?: string } } } } | null)
+    ? (ccr?.currentTemplate as { root?: { props?: { _template?: { label?: string } } } } | null)
         ?.root?.props?._template?.label
-      ?? (css?.templates as { id: string; label: string }[] | undefined)?.find(
-           (t) => t.id === (css?.currentDocument as { templateId?: string } | undefined)?.templateId,
+      ?? (ccr?.templates as { id: string; label: string }[] | undefined)?.find(
+           (t) => t.id === (ccr?.currentDocument as { templateId?: string } | undefined)?.templateId,
          )?.label
       ?? null
     : null;

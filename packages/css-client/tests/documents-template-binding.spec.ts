@@ -1,5 +1,5 @@
 /**
- * CSS Client - Documents Template Binding Tests
+ * CCR Client - Documents Template Binding Tests
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';

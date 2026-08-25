@@ -1,7 +1,7 @@
 /**
  * P1 Client Types
  *
- * TypeScript types matching the Collaborative State System API.
+ * TypeScript types matching the Collaborative Content Repository API.
  */
 
 // =============================================================================
@@ -20,7 +20,7 @@ export interface WorkflowSettings {
 }
 
 /**
- * A site in the Collaborative State System.
+ * A site in the Collaborative Content Repository.
  */
 export interface Site {
   id: string;

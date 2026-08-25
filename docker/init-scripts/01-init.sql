@@ -1,7 +1,7 @@
 -- PostgreSQL Initialization Script
 -- Executed automatically on first container start
 --
--- This creates the base schema for the collaborative state system.
+-- This creates the base schema for the Collaborative Content Repository.
 -- Application migrations will extend this as needed.
 
 -- Enable required extensions

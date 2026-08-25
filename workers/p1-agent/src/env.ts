@@ -4,7 +4,7 @@ export interface Env {
 
   // Environment vars
   ENVIRONMENT: string;
-  CSS_BACKEND_URL: string;
+  CCR_BACKEND_URL: string;
   MEDIA_WORKER_URL: string;
 
   // Logger config — see telemetry.ts.

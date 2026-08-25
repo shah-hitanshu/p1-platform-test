@@ -1,7 +1,7 @@
 /**
  * End-to-end tests for the p1-starter app.
  *
- * Runs against the Next.js app backed by a mock CSS API server.
+ * Runs against the Next.js app backed by a mock CCR API server.
  * The mock seeds page data from e2e/fixtures/database.json and exposes
  * pages at "/" and "/contact-us".
  */

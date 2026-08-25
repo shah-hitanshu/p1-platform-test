@@ -27,7 +27,7 @@
     // inherit this — the sink is structurally unable to run in a deployed worker rather
     // than merely unset there.
     "P1_LOG_SINK": "http://127.0.0.1:8799",
-    "CSS_BACKEND_URL": "http://localhost:8787",
+    "CCR_BACKEND_URL": "http://localhost:8787",
     // Model calls go through the AI Gateway REST API at
     // api.cloudflare.com/client/v4/accounts/{AI_GATEWAY_ACCOUNT_ID}/ai/v1/{chat/completions|messages}.
     // AI_GATEWAY_ACCOUNT_ID = Cloudflare account id (URL path); AI_GATEWAY_NAME = gateway
@@ -52,7 +52,7 @@
         "ENVIRONMENT": "staging",
         "LOG_LEVEL": "info",
         "APP_VERSION": "staging",
-        "CSS_BACKEND_URL": "https://collaborative-state-worker-staging.pantheon-content-publisher.workers.dev",
+        "CCR_BACKEND_URL": "https://collaborative-state-worker-staging.pantheon-content-publisher.workers.dev",
         "AI_GATEWAY_ACCOUNT_ID": "69bc76f4866aaaa3400ea7fbbd9d7da2",
         "AI_GATEWAY_NAME": "p1-chatbot",
         "AGENT_MODEL": "@cf/moonshotai/kimi-k2.7-code",

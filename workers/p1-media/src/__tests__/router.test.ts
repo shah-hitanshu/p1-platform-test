@@ -32,7 +32,7 @@ function createEnv(): Env {
   return {
     MEDIA_BUCKET: {} as R2Bucket,
     MEDIA_DB: {} as D1Database,
-    CSS_BASE_URL: 'https://css.example.com',
+    CCR_BASE_URL: 'https://ccr.example.com',
     CDN_BASE_URL: 'https://cdn.example.com/p1',
     R2_ACCESS_KEY_ID: 'test-access-key',
     R2_SECRET_ACCESS_KEY: 'test-secret-key',

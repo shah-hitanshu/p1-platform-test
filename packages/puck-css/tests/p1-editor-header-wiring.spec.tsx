@@ -9,6 +9,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, cleanup, waitFor, act } from '@testing-library/react';
 import React from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type { Branch, Document, ActorPresence } from '@pantheon-systems/css-client';
 import { aiPanelStore } from '../src/editor/aiPanelStore.js';
 
 // The header override calls useEditorContext (useQuery) to derive datasources,
@@ -63,7 +64,7 @@ vi.mock('@puckeditor/core', () => ({
   usePuck: () => ({ dispatch: mockDispatch }),
 }));
 
-// Controllable CSS context state
+// Controllable CCR context state
 const mockPublishDocument = vi.fn().mockResolvedValue({});
 
 const mockP1Context = {
@@ -240,7 +241,6 @@ vi.mock('../src/merge/components/merge-resolution/MergeReviewPage.js', () => ({
 // ---------------------------------------------------------------------------
 
 import { createP1Plugin } from '../src/editor/plugin/P1Plugin.js';
-import type { Branch, Document, ActorPresence } from '@pantheon-systems/css-client';
 
 // ---------------------------------------------------------------------------
 // Shared test data
@@ -318,7 +318,7 @@ afterEach(() => {
 });
 
 function renderHeader(plugin: ReturnType<typeof createP1Plugin>) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   const headerFn = (plugin.overrides as any)?.header as (() => React.ReactElement) | undefined;
   if (!headerFn) throw new Error('plugin.overrides.header not defined');
   return render(
@@ -337,7 +337,7 @@ function renderPlugin(plugin: ReturnType<typeof createP1Plugin>) {
 describe('createP1Plugin overrides.header — P1EditorHeader', () => {
   it('plugin exposes an overrides.header function', () => {
     const plugin = createP1Plugin(baseOptions);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     expect(typeof (plugin.overrides as any)?.header).toBe('function');
   });
 
@@ -681,7 +681,7 @@ describe('createP1Plugin render() — P1EditorSubheader portal', () => {
     expect(screen.getByTestId('agent-count').textContent).toBe('0');
   });
 
-  it('wires onPublish to css.publishDocument from context', async () => {
+  it('wires onPublish to ccr.publishDocument from context', async () => {
     const plugin = createP1Plugin(baseOptions);
     renderPlugin(plugin);
     await waitFor(() => {

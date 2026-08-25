@@ -16,7 +16,7 @@ import { renderHook, waitFor } from '@testing-library/react';
 
 const mockLoadDocument = vi.fn<(...args: unknown[]) => Promise<void>>();
 
-const mockCssContext = {
+const mockCcrContext = {
   branchId: 'branch-a',
   loadDocument: mockLoadDocument,
   documents: [] as {
@@ -102,7 +102,7 @@ const mockCssContext = {
 // ============================================================================
 
 vi.mock('../../core/P1PuckContext', () => ({
-  useP1Puck: () => mockCssContext,
+  useP1Puck: () => mockCcrContext,
 }));
 
 vi.mock('../../editor/useP1Plugin', () => ({
@@ -141,12 +141,12 @@ import { useP1Editor } from '../../editor/useP1Editor';
 // ============================================================================
 
 function resetContext() {
-  mockCssContext.branchId = 'branch-a';
-  mockCssContext.documents = [];
-  mockCssContext.documentsLoading = false;
-  mockCssContext.currentDocument = null;
-  mockCssContext.branchResolutionError = null;
-  mockCssContext.documentsError = null;
+  mockCcrContext.branchId = 'branch-a';
+  mockCcrContext.documents = [];
+  mockCcrContext.documentsLoading = false;
+  mockCcrContext.currentDocument = null;
+  mockCcrContext.branchResolutionError = null;
+  mockCcrContext.documentsError = null;
 }
 
 // ============================================================================
@@ -157,12 +157,12 @@ describe('useP1Editor branch resolution failure', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     resetContext();
-    mockCssContext.loadDocument = mockLoadDocument;
+    mockCcrContext.loadDocument = mockLoadDocument;
   });
 
   it('surfaces the failure instead of loading forever', async () => {
-    mockCssContext.branchId = '';
-    mockCssContext.branchResolutionError = new Error(
+    mockCcrContext.branchId = '';
+    mockCcrContext.branchResolutionError = new Error(
       'GET /api/sites/site-test/branches failed (403): Insufficient scope for this operation',
     );
 
@@ -177,8 +177,8 @@ describe('useP1Editor branch resolution failure', () => {
   });
 
   it('stops reporting the failure as soon as the context clears it', async () => {
-    mockCssContext.branchId = '';
-    mockCssContext.branchResolutionError = new Error('GET /api/sites/site-test/branches failed (403): nope');
+    mockCcrContext.branchId = '';
+    mockCcrContext.branchResolutionError = new Error('GET /api/sites/site-test/branches failed (403): nope');
 
     const { result, rerender } = renderHook(() =>
       useP1Editor({ documentPath: '/current', puckConfig: {} }),
@@ -188,7 +188,7 @@ describe('useP1Editor branch resolution failure', () => {
 
     // A retry is in flight: the failure is gone but no branch has resolved yet,
     // so the stale error must not survive.
-    mockCssContext.branchResolutionError = null;
+    mockCcrContext.branchResolutionError = null;
     rerender();
 
     expect(result.current.error).toBeNull();
@@ -196,8 +196,8 @@ describe('useP1Editor branch resolution failure', () => {
   });
 
   it('clears the error once a branch resolves', async () => {
-    mockCssContext.branchId = '';
-    mockCssContext.branchResolutionError = new Error('GET /api/sites/site-test/branches failed (403): nope');
+    mockCcrContext.branchId = '';
+    mockCcrContext.branchResolutionError = new Error('GET /api/sites/site-test/branches failed (403): nope');
     mockLoadDocument.mockResolvedValue(undefined);
 
     const { result, rerender } = renderHook(() =>
@@ -206,8 +206,8 @@ describe('useP1Editor branch resolution failure', () => {
 
     await waitFor(() => expect(result.current.error).not.toBeNull());
 
-    mockCssContext.branchId = 'branch-a';
-    mockCssContext.branchResolutionError = null;
+    mockCcrContext.branchId = 'branch-a';
+    mockCcrContext.branchResolutionError = null;
     rerender();
 
     await waitFor(() => expect(result.current.loading).toBe(false));
@@ -219,11 +219,11 @@ describe('useP1Editor refused document list', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     resetContext();
-    mockCssContext.loadDocument = mockLoadDocument;
+    mockCcrContext.loadDocument = mockLoadDocument;
   });
 
   it('reports the refused request rather than "no documents"', async () => {
-    mockCssContext.documentsError = new Error(
+    mockCcrContext.documentsError = new Error(
       'GET /api/sites/site-test/branches/branch-a/documents failed (403): Insufficient scope for this operation',
     );
     mockLoadDocument.mockRejectedValue(new Error('not found'));

@@ -186,7 +186,7 @@ describe('useP1Plugin auto-wires document create/delete from context', () => {
   it('useP1Plugin uses context createDocument when onDocumentCreate is not explicitly provided', async () => {
     const wrapper = createProviderWrapper(client);
 
-    // Verify that calling css.createDocument (the context function wired into the plugin)
+    // Verify that calling ccr.createDocument (the context function wired into the plugin)
     // reaches client.documents.create — confirming the wire-through works end-to-end.
     const { result } = renderHook(() => useP1Puck(), { wrapper });
 
@@ -206,7 +206,7 @@ describe('useP1Plugin auto-wires document create/delete from context', () => {
   it('useP1Plugin uses context deleteDocument when onDocumentDelete is not explicitly provided', async () => {
     const wrapper = createProviderWrapper(client);
 
-    // Verify that calling css.deleteDocument (the context function wired into the plugin)
+    // Verify that calling ccr.deleteDocument (the context function wired into the plugin)
     // reaches client.documents.delete — confirming the wire-through works end-to-end.
     const { result } = renderHook(() => useP1Puck(), { wrapper });
 

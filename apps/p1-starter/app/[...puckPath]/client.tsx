@@ -148,6 +148,8 @@ export function P1EditWidget({ route }: { route: string }) {
             onClick={() => {
               localStorage.removeItem("p1_logged_in");
               localStorage.removeItem("p1_auth_token");
+              localStorage.removeItem("ccr_broker_token");
+              // Pre-rename key; keep until the css_* fallback is dropped.
               localStorage.removeItem("css_broker_token");
               window.location.reload();
             }}

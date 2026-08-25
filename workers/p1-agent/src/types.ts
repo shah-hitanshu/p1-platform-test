@@ -3,7 +3,7 @@ export interface ChatContext {
   branchId: string;
   documentPath: string;
   documentId?: string;
-  token: string; // CSS auth token
+  token: string; // CCR auth token
   /** Context only: a selection grants nothing. */
   selectedBlock?: SelectedBlock;
   /** Files the user attached to this turn. Context only, and not carried to later turns. */

@@ -117,7 +117,7 @@ const LABELS: Record<string, LabelSpec> = {
     running: 'Checking edit permission',
     done: 'Confirmed edit permission',
     failed: "Couldn't check edit permission",
-    // Returns the CSS response verbatim: a refusal is { canEdit: false, reason } with no
+    // Returns the CCR response verbatim: a refusal is { canEdit: false, reason } with no
     // `error` and no `success: false`, so nothing generic catches it.
     isFailure: r => r.canEdit === false,
   },

@@ -258,7 +258,7 @@ describe('useP1Editor', () => {
     expect(result.current.puckProps.data.root).toBeDefined();
   });
 
-  it('puckProps.plugins should include the CSS plugin', async () => {
+  it('puckProps.plugins should include the CCR plugin', async () => {
     const wrapper = createProviderWrapper(client);
     const { result } = renderHook(
       () => useP1Editor({
@@ -574,7 +574,7 @@ describe('useP1Editor', () => {
 
     // The plugin should be created
     expect(result.current.puckProps.plugins[0].name).toBe('css');
-    // The CSS context should be available
+    // The CCR context should be available
     expect(result.current.css).toBeDefined();
   });
 

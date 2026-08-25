@@ -8,7 +8,7 @@ function createEnv(): Env {
   return {
     MEDIA_BUCKET: {} as R2Bucket,
     MEDIA_DB: {} as D1Database, // auth.ts does not touch D1 — present only to satisfy Env
-    CSS_BASE_URL: 'https://css.example.com',
+    CCR_BASE_URL: 'https://ccr.example.com',
     CDN_BASE_URL: 'https://cdn.example.com/p1',
     R2_ACCESS_KEY_ID: 'test-access-key',
     R2_SECRET_ACCESS_KEY: 'test-secret-key',
@@ -59,7 +59,7 @@ describe('validateAuth', () => {
     expect(result).toBeNull();
   });
 
-  it('returns true when CSS returns 200 for the site', async () => {
+  it('returns true when CCR returns 200 for the site', async () => {
     const env = createEnv();
     const token = 'valid-token-' + Math.random();
 
@@ -68,7 +68,7 @@ describe('validateAuth', () => {
     const result = await validateAuth(createRequest(`Bearer ${token}`), env, TEST_SITE_ID);
     expect(result).toBe(true);
     expect(globalThis.fetch).toHaveBeenCalledWith(
-      `https://css.example.com/api/sites/${TEST_SITE_ID}`,
+      `https://ccr.example.com/api/sites/${TEST_SITE_ID}`,
       expect.objectContaining({
         method: 'GET',
         headers: expect.objectContaining({ Authorization: `Bearer ${token}` }),
@@ -76,18 +76,18 @@ describe('validateAuth', () => {
     );
   });
 
-  it('uses service binding with real CSS_BASE_URL when CSS_SERVICE is available', async () => {
+  it('uses service binding with real CCR_BASE_URL when CCR_SERVICE is available', async () => {
     const mockFetch = vi.fn().mockResolvedValue(siteOkResponse());
     const env: Env = {
       MEDIA_BUCKET: {} as R2Bucket,
       MEDIA_DB: {} as D1Database, // auth.ts does not touch D1 — present only to satisfy Env
-      CSS_BASE_URL: 'https://css.example.com',
+      CCR_BASE_URL: 'https://ccr.example.com',
       CDN_BASE_URL: 'https://cdn.example.com/p1',
     R2_ACCESS_KEY_ID: 'test-access-key',
     R2_SECRET_ACCESS_KEY: 'test-secret-key',
     R2_ACCOUNT_ID: 'test-account',
     R2_BUCKET_NAME: 'test-bucket',
-      CSS_SERVICE: { fetch: mockFetch } as unknown as Fetcher,
+      CCR_SERVICE: { fetch: mockFetch } as unknown as Fetcher,
       IMAGES: {} as ImagesBinding,
     };
     const token = 'service-binding-token-' + Math.random();
@@ -97,12 +97,12 @@ describe('validateAuth', () => {
     expect(mockFetch).toHaveBeenCalledTimes(1);
 
     const calledRequest = mockFetch.mock.calls[0][0] as Request;
-    expect(calledRequest.url).toBe(`https://css.example.com/api/sites/${TEST_SITE_ID}`);
+    expect(calledRequest.url).toBe(`https://ccr.example.com/api/sites/${TEST_SITE_ID}`);
     expect(calledRequest.method).toBe('GET');
     expect(calledRequest.headers.get('Authorization')).toBe(`Bearer ${token}`);
   });
 
-  it('returns false when CSS returns 403 (valid token, no site access)', async () => {
+  it('returns false when CCR returns 403 (valid token, no site access)', async () => {
     const env = createEnv();
     globalThis.fetch = vi.fn().mockResolvedValue(new Response(null, { status: 403 }));
 
@@ -110,7 +110,7 @@ describe('validateAuth', () => {
     expect(result).toBe(false);
   });
 
-  it('returns false when CSS returns 404 (site not found — treated as no access)', async () => {
+  it('returns false when CCR returns 404 (site not found — treated as no access)', async () => {
     const env = createEnv();
     globalThis.fetch = vi.fn().mockResolvedValue(new Response(null, { status: 404 }));
 
@@ -118,7 +118,7 @@ describe('validateAuth', () => {
     expect(result).toBe(false);
   });
 
-  it('returns null when CSS returns 401 (invalid token)', async () => {
+  it('returns null when CCR returns 401 (invalid token)', async () => {
     const env = createEnv();
     globalThis.fetch = vi.fn().mockResolvedValue(new Response(null, { status: 401 }));
 
@@ -126,7 +126,7 @@ describe('validateAuth', () => {
     expect(result).toBeNull();
   });
 
-  it('returns null when CSS fetch throws', async () => {
+  it('returns null when CCR fetch throws', async () => {
     const env = createEnv();
     globalThis.fetch = vi.fn().mockRejectedValue(new Error('Network error'));
 
@@ -134,7 +134,7 @@ describe('validateAuth', () => {
     expect(result).toBeNull();
   });
 
-  it('caches true results so second call does not hit CSS', async () => {
+  it('caches true results so second call does not hit CCR', async () => {
     const env = createEnv();
     const token = 'cached-token-' + Math.random();
     const mockFetch = vi.fn().mockResolvedValue(siteOkResponse());
@@ -158,11 +158,11 @@ describe('validateAuth', () => {
     await validateAuth(createRequest(`Bearer ${token}`), env, 'site-aaa');
     await validateAuth(createRequest(`Bearer ${token}`), env, 'site-bbb');
 
-    // Two CSS calls — one per site
+    // Two CCR calls — one per site
     expect(mockFetch).toHaveBeenCalledTimes(2);
   });
 
-  it('expired cache entries re-validate against CSS', async () => {
+  it('expired cache entries re-validate against CCR', async () => {
     const env = createEnv();
     const token = 'expiring-token-' + Math.random();
     const mockFetch = vi.fn().mockResolvedValue(siteOkResponse());
@@ -181,7 +181,7 @@ describe('validateAuth', () => {
     }
   });
 
-  it('does not cache false results — re-checks CSS on each request', async () => {
+  it('does not cache false results — re-checks CCR on each request', async () => {
     const env = createEnv();
     const token = 'forbidden-token-' + Math.random();
     const mockFetch = vi.fn().mockResolvedValue(new Response(null, { status: 403 }));
@@ -190,7 +190,7 @@ describe('validateAuth', () => {
     await validateAuth(createRequest(`Bearer ${token}`), env, TEST_SITE_ID);
     await validateAuth(createRequest(`Bearer ${token}`), env, TEST_SITE_ID);
 
-    // Two CSS calls — false results are not cached
+    // Two CCR calls — false results are not cached
     expect(mockFetch).toHaveBeenCalledTimes(2);
   });
 });

@@ -7,17 +7,17 @@
  * the inline sidebar button was removed.
  *
  * Pattern: mock useP1Plugin to capture the canRevert option, vary
- * userRole on the CSS context, and assert per role.
+ * userRole on the CCR context, and assert per role.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 
 // ---------------------------------------------------------------------------
-// CSS context mock — tests vary userRole
+// CCR context mock — tests vary userRole
 // ---------------------------------------------------------------------------
 
-const mockCssContext = {
+const mockCcrContext = {
   branchId: 'branch-a',
   loadDocument: vi.fn().mockResolvedValue(undefined),
   documents: [] as { id: string; path: string }[],
@@ -102,7 +102,7 @@ const mockCssContext = {
 let capturedCanRevert: boolean | undefined = undefined;
 
 vi.mock('../../core/P1PuckContext.js', () => ({
-  useP1Puck: () => mockCssContext,
+  useP1Puck: () => mockCcrContext,
 }));
 
 vi.mock('../../editor/useP1Plugin.js', () => ({
@@ -143,7 +143,7 @@ import { useP1Editor } from '../../editor/useP1Editor.js';
 // ---------------------------------------------------------------------------
 
 async function renderEditorWithRole(role: 'admin' | 'editor' | 'junior-editor') {
-  mockCssContext.userRole = role;
+  mockCcrContext.userRole = role;
   capturedCanRevert = undefined;
 
   const { result } = renderHook(() =>
@@ -164,7 +164,7 @@ describe('useP1Editor — canRevert role-based access control', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     capturedCanRevert = undefined;
-    mockCssContext.currentDocument = { id: 'doc-1', path: '/pages/home', siteId: 'site-test' };
+    mockCcrContext.currentDocument = { id: 'doc-1', path: '/pages/home', siteId: 'site-test' };
   });
 
   it('sets canRevert=true for admin role', async () => {

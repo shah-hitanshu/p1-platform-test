@@ -55,33 +55,33 @@ export interface UseP1OverridesOptions {
  * ```
  */
 export function useP1Overrides(options: UseP1OverridesOptions = {}): PuckOverrides {
-  const css = useP1Puck();
+  const ccr = useP1Puck();
 
   // Build the full overrides options from context + consumer options
-  const fc = css.featureConfig;
+  const fc = ccr.featureConfig;
 
   const overridesOptions: P1OverridesOptions = {
     // Use getter-based API for performance (avoids overrides recreation)
-    getSaveStatus: css.getSaveStatus,
-    getLastSaved: css.getLastSaved,
-    getSaveError: css.getSaveError,
-    onRetrySave: css.saveNow,
+    getSaveStatus: ccr.getSaveStatus,
+    getLastSaved: ccr.getLastSaved,
+    getSaveError: ccr.getSaveError,
+    onRetrySave: ccr.saveNow,
     showDefaultPublish: options.showDefaultPublish,
     showSaveIndicator: fc?.enableAutoSave ?? true,
-    isViewingHistoricalVersion: css.isViewingHistoricalVersion,
-    viewingVersion: css.viewingVersion,
-    onReturnToLatest: css.returnToLatest,
+    isViewingHistoricalVersion: ccr.isViewingHistoricalVersion,
+    viewingVersion: ccr.viewingVersion,
+    onReturnToLatest: ccr.returnToLatest,
     // Presence/Agent features — gated by featureConfig flags
     showCollaboratorAvatars: options.showCollaboratorAvatars
-      ?? ((fc?.enableCollaboratorAvatars ?? true) && css.presence !== null),
-    presence: (fc?.enableCollaboratorAvatars ?? true) ? css.presence?.actors : undefined,
+      ?? ((fc?.enableCollaboratorAvatars ?? true) && ccr.presence !== null),
+    presence: (fc?.enableCollaboratorAvatars ?? true) ? ccr.presence?.actors : undefined,
     showAgentActivityBanner: options.showAgentActivityBanner
-      ?? ((fc?.enableAgentBanner ?? true) && css.hasActiveAgents),
+      ?? ((fc?.enableAgentBanner ?? true) && ccr.hasActiveAgents),
     activeAgents: (fc?.enableAgentBanner ?? true)
-      ? css.presence?.agents?.filter(a => a.state === 'editing')
+      ? ccr.presence?.agents?.filter(a => a.state === 'editing')
       : undefined,
-    isAgentEditing: (fc?.enableAgentBanner ?? true) && css.hasActiveAgents,
-    onStopAgent: options.onStopAgent ?? css.stopAgent,
+    isAgentEditing: (fc?.enableAgentBanner ?? true) && ccr.hasActiveAgents,
+    onStopAgent: options.onStopAgent ?? ccr.stopAgent,
     publishedStatus: options.publishedStatus,
   };
 

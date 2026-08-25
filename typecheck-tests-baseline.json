@@ -1,6 +1,6 @@
 {
   "maxErrors": 724,
   "packages": [
-    "workers/collaborative-state"
+    "workers/ccr"
   ]
 }

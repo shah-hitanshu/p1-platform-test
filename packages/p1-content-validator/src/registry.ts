@@ -84,8 +84,8 @@ interface CacheEntry {
 const cache = new Map<string, CacheEntry>();
 const TTL_MS = 5 * 60 * 1000; // 5 minutes
 
-function cacheKey(cssBaseUrl: string, siteId: string, branchId: string): string {
-  return `${cssBaseUrl}:${siteId}:${branchId}`;
+function cacheKey(ccrBaseUrl: string, siteId: string, branchId: string): string {
+  return `${ccrBaseUrl}:${siteId}:${branchId}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -93,28 +93,28 @@ function cacheKey(cssBaseUrl: string, siteId: string, branchId: string): string 
 // ---------------------------------------------------------------------------
 
 /**
- * Fetch and cache all component schemas from the CSS registry.
+ * Fetch and cache all component schemas from the CCR registry.
  *
  * Makes two types of requests:
  *   1. GET /api/sites/{siteId}/branches/{branchId}/documents?pathPrefix=_registry%2Fcomponents%2F
  *   2. GET .../versions/latest  for each component document
  *
- * Results are cached per (cssBaseUrl, siteId, branchId) with a 5-minute TTL.
+ * Results are cached per (ccrBaseUrl, siteId, branchId) with a 5-minute TTL.
  * If the cache is fresh, no network calls are made.
  */
 export async function fetchRegistry(
-  cssBaseUrl: string,
+  ccrBaseUrl: string,
   siteId: string,
   branchId: string,
   opts: FetchRegistryOpts,
 ): Promise<Record<string, ComponentSchema>> {
-  const key = cacheKey(cssBaseUrl, siteId, branchId);
+  const key = cacheKey(ccrBaseUrl, siteId, branchId);
   const cached = cache.get(key);
   if (cached !== undefined && Date.now() - cached.cachedAt < TTL_MS) {
     return cached.schemas;
   }
 
-  const base = cssBaseUrl.replace(/\/$/, '');
+  const base = ccrBaseUrl.replace(/\/$/, '');
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     'X-API-Key': opts.token,
@@ -174,17 +174,17 @@ export async function fetchRegistry(
  * Useful for cache invalidation checks — compare IDs against a local cache
  * to detect which component schemas have been updated without fetching bodies.
  *
- * Note: the CSS list endpoint does not currently expose versionId; the document
+ * Note: the CCR list endpoint does not currently expose versionId; the document
  * id is returned as a stable identifier. Full version-id tracking requires a
  * backend extension (tracked separately).
  */
 export async function listRegistryVersions(
-  cssBaseUrl: string,
+  ccrBaseUrl: string,
   siteId: string,
   branchId: string,
   opts: FetchRegistryOpts,
 ): Promise<{ name: string; versionId: string }[]> {
-  const base = cssBaseUrl.replace(/\/$/, '');
+  const base = ccrBaseUrl.replace(/\/$/, '');
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     'X-API-Key': opts.token,

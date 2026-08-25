@@ -4,7 +4,7 @@
  *
  * Worker code has no filesystem access, so every runtime POSTs batches of ndjson here
  * and this process appends them to one file. That's what puts the browser, the Next
- * server, the css worker, and p1-agent into a single stream where one `trace_id` filter
+ * server, the ccr worker, and p1-agent into a single stream where one `trace_id` filter
  * reconstructs a whole causal chain.
  *
  *   node scripts/log-sink.mjs

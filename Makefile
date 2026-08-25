@@ -1,4 +1,4 @@
-# Collaborative State System - Infrastructure Makefile
+# Collaborative Content Repository - Infrastructure Makefile
 # Following Pantheon service template standards
 # https://github.com/pantheon-systems/service-template
 
@@ -29,14 +29,14 @@ help: ## Display this help
 
 .PHONY: version
 version: ## Show version information for all tools
-	@printf "$(BLUE)Collaborative State System - Tool Versions$(NC)\n"
+	@printf "$(BLUE)Collaborative Content Repository - Tool Versions$(NC)\n"
 	@printf "─────────────────────────────────────────────\n"
 	@echo "Node:      $$(node --version 2>/dev/null || echo 'not installed')"
 	@echo "pnpm:      $$(pnpm --version 2>/dev/null || echo 'not installed')"
 	@echo "Terraform: $$(terraform version -json 2>/dev/null | jq -r '.terraform_version' || echo 'not installed')"
 	@echo "Container: $$($(CONTAINER_ENGINE) --version 2>/dev/null || echo 'not installed')"
 	@echo "Compose:   $$($(COMPOSE_CMD) version 2>/dev/null || echo 'not installed')"
-	@echo "Wrangler:  $$(cd workers/collaborative-state && pnpm exec wrangler --version 2>/dev/null || echo 'not installed')"
+	@echo "Wrangler:  $$(cd workers/ccr && pnpm exec wrangler --version 2>/dev/null || echo 'not installed')"
 
 ##@ Local Development - Full Stack
 
@@ -75,12 +75,12 @@ docker-up: ## Start containers (PostgreSQL)
 	@printf "$(GREEN)Starting containers...$(NC)\n"
 	@$(COMPOSE_CMD) -f docker/docker-compose.local.yaml up -d
 	@printf "$(GREEN)Waiting for services to be healthy...$(NC)\n"
-	@CONTAINER_ENGINE=$(CONTAINER_ENGINE) ./scripts/css/wait-for-services.sh
+	@CONTAINER_ENGINE=$(CONTAINER_ENGINE) ./scripts/ccr/wait-for-services.sh
 
 .PHONY: db-ready
 db-ready: ## Ensure .dev.vars exists and the local DB schema is migrated
-	@[ -f workers/collaborative-state/.dev.vars ] || ./scripts/css/generate-dev-vars.sh
-	@POSTGRES_CONNECTION_STRING=postgresql://cssuser:csspass@localhost:5432/cssdb pnpm --filter collaborative-state-worker db:migrate
+	@[ -f workers/ccr/.dev.vars ] || ./scripts/ccr/generate-dev-vars.sh
+	@POSTGRES_CONNECTION_STRING=postgresql://cssuser:csspass@localhost:5432/cssdb pnpm --filter ccr-worker db:migrate
 
 .PHONY: docker-down
 docker-down: ## Stop containers
@@ -109,34 +109,34 @@ docker-logs-postgres: ## Show PostgreSQL logs
 .PHONY: worker-install
 worker-install: ## Install worker dependencies
 	@printf "$(GREEN)Installing worker dependencies...$(NC)\n"
-	@cd workers/collaborative-state && pnpm install
+	@cd workers/ccr && pnpm install
 
 .PHONY: worker-dev
 worker-dev: ## Start Cloudflare Worker in local mode (Miniflare)
-	@if [ ! -f workers/collaborative-state/.dev.vars ]; then \
+	@if [ ! -f workers/ccr/.dev.vars ]; then \
 		printf "$(YELLOW)No .dev.vars found. Generating...$(NC)\n"; \
 		$(MAKE) worker-generate-secrets; \
 	fi
 	@printf "$(GREEN)Starting Miniflare local development server...$(NC)\n"
 	@printf "$(BLUE)Hotkeys: L=toggle local/edge, X=exit$(NC)\n"
-	@cd workers/collaborative-state && pnpm dev
+	@cd workers/ccr && pnpm dev
 
 .PHONY: worker-generate-secrets
 worker-generate-secrets: ## Generate mock secrets for .dev.vars
 	@printf "$(GREEN)Generating local development secrets...$(NC)\n"
-	@./scripts/css/generate-dev-vars.sh
+	@./scripts/ccr/generate-dev-vars.sh
 
 .PHONY: worker-login
 worker-login: ## Login to Cloudflare (for integration testing)
 	@printf "$(YELLOW)Logging into Cloudflare...$(NC)\n"
 	@printf "$(YELLOW)Note: Sessions expire after ~1 hour$(NC)\n"
-	@cd workers/collaborative-state && pnpm exec wrangler login
+	@cd workers/ccr && pnpm exec wrangler login
 
 .PHONY: metrics-receiver
 metrics-receiver: ## Start local metrics receiver with macOS notifications
 	@printf "$(GREEN)Starting local metrics receiver...$(NC)\n"
 	@printf "$(BLUE)This will send macOS notifications for issues$(NC)\n"
-	@node scripts/css/local-metrics-receiver.mjs
+	@node scripts/ccr/local-metrics-receiver.mjs
 
 ##@ Terraform - Infrastructure Management
 
@@ -185,7 +185,7 @@ tf-output: ## Show Terraform outputs
 .PHONY: tf-sync
 tf-sync: ## Sync Terraform outputs to wrangler.jsonc (ENV=staging|production)
 	@printf "$(GREEN)Syncing Terraform outputs to wrangler.jsonc...$(NC)\n"
-	@./scripts/css/sync-terraform-to-wrangler.sh $(ENV)
+	@./scripts/ccr/sync-terraform-to-wrangler.sh $(ENV)
 
 ##@ Database Utilities
 
@@ -205,8 +205,8 @@ db-reset: ## Reset database (drop and recreate all tables)
 .PHONY: clean
 clean: ## Clean generated files (keeps Docker volumes)
 	@printf "$(YELLOW)Cleaning generated files...$(NC)\n"
-	@rm -rf workers/collaborative-state/node_modules
-	@rm -rf workers/collaborative-state/dist
+	@rm -rf workers/ccr/node_modules
+	@rm -rf workers/ccr/dist
 	@rm -rf terraform/environments/*/.terraform
 	@rm -f terraform/environments/*/tfplan
 	@rm -f terraform/environments/*/.terraform.lock.hcl
@@ -214,7 +214,7 @@ clean: ## Clean generated files (keeps Docker volumes)
 
 .PHONY: clean-all
 clean-all: docker-clean clean ## Clean everything including Docker volumes
-	@rm -f workers/collaborative-state/.dev.vars
+	@rm -f workers/ccr/.dev.vars
 	@printf "$(GREEN)Full clean complete.$(NC)\n"
 
 ##@ CI/CD Targets

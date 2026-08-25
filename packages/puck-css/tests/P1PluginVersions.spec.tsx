@@ -1,13 +1,13 @@
 /**
  * P1Plugin Version History Tests
  *
- * Tests for the version history section of the CSS Plugin.
+ * Tests for the version history section of the CCR Plugin.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { createP1Plugin } from '../src/editor/plugin/index.js';
 import type { Branch, DocumentVersion } from '@pantheon-systems/css-client';
+import { createP1Plugin } from '../src/editor/plugin/index.js';
 
 describe('P1Plugin Version History', () => {
   const mockBranches: Branch[] = [

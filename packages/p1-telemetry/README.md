@@ -70,7 +70,7 @@ const logger = initLogger({
   app: 'css',
   env: env.ENVIRONMENT,
   version: env.APP_VERSION,
-  backendUrl: env.CSS_BACKEND_URL, // derives data_class — see below
+  backendUrl: env.CCR_BACKEND_URL, // derives data_class — see below
 });
 
 export default {

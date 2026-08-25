@@ -1,4 +1,4 @@
-# Collaborative State System - staging Environment
+# Collaborative Content Repository - staging Environment
 #
 # This configuration deploys to the Content Publisher staging Cloudflare account
 # and GCP project.

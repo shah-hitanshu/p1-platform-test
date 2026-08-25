@@ -1,7 +1,7 @@
 /**
  * End-to-end tests for the P1 editor shell.
  *
- * These run signed in (mock auth mode against the mock CSS server) so they can
+ * These run signed in (mock auth mode against the mock CCR server) so they can
  * exercise the editor itself rather than the sign-in gate.
  */
 
@@ -98,8 +98,8 @@ test.describe('P1 Editor - page switching', () => {
 // production. This guards the delete flow itself (button -> confirm ->
 // request -> page removed); the request/response contract that caused the
 // regression is covered by the unit tests in
-// workers/collaborative-state/tests/routes/document-api.spec.ts, not here —
-// the mock CSS server this suite runs against doesn't replicate the real
+// workers/ccr/tests/routes/document-api.spec.ts, not here —
+// the mock CCR server this suite runs against doesn't replicate the real
 // backend's Content-Type validation.
 test.describe('P1 Editor - delete page', () => {
   test('deleting a page removes it from the navigator', async ({ page, request }) => {

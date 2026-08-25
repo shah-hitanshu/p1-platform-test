@@ -27,7 +27,7 @@ info:
     ## Authentication
 
     Authenticated endpoints require `Authorization: Bearer <token>` — the same bearer
-    token issued by CCR/CSS. The worker validates it by calling CCR's own
+    token issued by CCR. The worker validates it by calling CCR's own
     `GET /api/sites/{siteId}` and checking the caller has `canView` on that site;
     `/image/*` and `GET /media/schema` require no auth and are safe to call publicly
     (consistent with normal CDN image delivery).
@@ -433,7 +433,7 @@ components:
     bearerAuth:
       type: http
       scheme: bearer
-      description: CCR/CSS-issued bearer token. Validated server-side against `GET {CSS_BASE_URL}/api/sites/{siteId}` (`canView`).
+      description: CCR-issued bearer token. Validated server-side against `GET {CCR_BASE_URL}/api/sites/{siteId}` (`canView`).
 
   # ---------------------------------------------------------------------------
   # Parameters

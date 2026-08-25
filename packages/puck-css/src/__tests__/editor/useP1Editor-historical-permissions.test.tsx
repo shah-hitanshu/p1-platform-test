@@ -13,7 +13,7 @@ import { renderHook, waitFor } from '@testing-library/react';
 
 const mockLoadDocument = vi.fn<(...args: unknown[]) => Promise<void>>();
 
-const mockCssContext = {
+const mockCcrContext = {
   branchId: 'branch-a',
   loadDocument: mockLoadDocument,
   documents: [] as { id: string; path: string }[],
@@ -90,7 +90,7 @@ const mockCssContext = {
 };
 
 vi.mock('../../core/P1PuckContext.js', () => ({
-  useP1Puck: () => mockCssContext,
+  useP1Puck: () => mockCcrContext,
 }));
 
 vi.mock('../../editor/useP1Plugin.js', () => ({
@@ -127,16 +127,16 @@ describe('useP1Editor historical-version permissions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockLoadDocument.mockResolvedValue(undefined);
-    mockCssContext.currentDocument = {
+    mockCcrContext.currentDocument = {
       id: 'doc-h',
       path: 'pages/home',
       siteId: 'site-test',
     };
-    mockCssContext.isViewingHistoricalVersion = false;
+    mockCcrContext.isViewingHistoricalVersion = false;
   });
 
   it('locks down drag/delete/insert/duplicate while viewing a historical version', async () => {
-    mockCssContext.isViewingHistoricalVersion = true;
+    mockCcrContext.isViewingHistoricalVersion = true;
     const { result } = renderHook(() =>
       useP1Editor({
         documentPath: 'pages/home',
@@ -157,7 +157,7 @@ describe('useP1Editor historical-version permissions', () => {
   });
 
   it('explicitly re-enables permissions (not undefined) when not viewing a historical version', async () => {
-    mockCssContext.isViewingHistoricalVersion = false;
+    mockCcrContext.isViewingHistoricalVersion = false;
     const { result } = renderHook(() =>
       useP1Editor({
         documentPath: 'pages/home',

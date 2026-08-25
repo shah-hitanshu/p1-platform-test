@@ -192,7 +192,7 @@ export function createP1PageStore(config: P1StoreConfig): PageStore {
           }
           return data;
         } catch (err) {
-          console.info("[css-store] get(%s) failed:", path, (err as Error).message);
+          console.info("[ccr-store] get(%s) failed:", path, (err as Error).message);
           return undefined;
         }
       }
@@ -204,7 +204,7 @@ export function createP1PageStore(config: P1StoreConfig): PageStore {
         const version = await rc.versions.getLatest(siteId, branchId, doc.id);
         return version.snapshot;
       } catch (err) {
-        console.info("[css-store] get(%s) failed:", path, (err as Error).message);
+        console.info("[ccr-store] get(%s) failed:", path, (err as Error).message);
         return undefined;
       }
     },
@@ -249,7 +249,7 @@ export function createP1PageStore(config: P1StoreConfig): PageStore {
         const doc = await readClient().documents.getByPath(siteId, toDocPath(path), branchId);
         await requestClient().documents.delete(siteId, branchId, doc.id);
       } catch (err) {
-        console.info("[css-store] delete(%s) — not found or failed:", path, (err as Error).message);
+        console.info("[ccr-store] delete(%s) — not found or failed:", path, (err as Error).message);
       }
       invalidateKeysCache();
     },
@@ -259,7 +259,7 @@ export function createP1PageStore(config: P1StoreConfig): PageStore {
         await readClient().documents.getByPath(siteId, toDocPath(path), await getBranchId());
         return true;
       } catch (err) {
-        console.info("[css-store] has(%s) — not found or failed:", path, (err as Error).message);
+        console.info("[ccr-store] has(%s) — not found or failed:", path, (err as Error).message);
         return false;
       }
     },
@@ -295,7 +295,7 @@ export function createP1PageStore(config: P1StoreConfig): PageStore {
           return keys;
         })
         .catch((err) => {
-          console.error("[css-store] keys() failed:", (err as Error).message);
+          console.error("[ccr-store] keys() failed:", (err as Error).message);
           _keysCache = null;
           _keysCooldownUntil = Date.now() + KEYS_FAILURE_COOLDOWN_MS;
           return _lastGoodKeys ?? [];
@@ -320,7 +320,7 @@ export function createP1PageStore(config: P1StoreConfig): PageStore {
           templateId: d.templateId ?? undefined,
         }));
       } catch (err) {
-        console.error("[css-store] listDocuments failed:", (err as Error).message);
+        console.error("[ccr-store] listDocuments failed:", (err as Error).message);
         return [];
       }
     },

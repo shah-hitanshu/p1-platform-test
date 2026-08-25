@@ -170,8 +170,8 @@ describe('useP1Plugin', () => {
     const { result } = renderHook(
       () => {
         const plugin = useP1Plugin();
-        const css = useP1Puck();
-        return { plugin, css };
+        const ccr = useP1Puck();
+        return { plugin, ccr };
       },
       { wrapper }
     );
@@ -183,7 +183,7 @@ describe('useP1Plugin', () => {
     (client.documents.getByPath as ReturnType<typeof vi.fn>).mockResolvedValue(mockDoc);
 
     await act(async () => {
-      await result.current.css.loadDocument('/pages/home');
+      await result.current.ccr.loadDocument('/pages/home');
     });
 
     const plugin2 = result.current.plugin;

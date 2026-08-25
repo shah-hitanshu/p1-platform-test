@@ -15,7 +15,7 @@
  * Optional env: SMOKE_MODEL (default anthropic/claude-haiku-4-5 — cheapest for the probe).
  */
 import { createTransport } from '../src/providers/transport.js';
-import { CSS_TOOLS, WEB_TOOLS } from '../src/tools/definitions.js';
+import { CCR_TOOLS, WEB_TOOLS } from '../src/tools/definitions.js';
 import { SYSTEM_PROMPT } from '../src/prompt/system-prompt.js';
 
 function requireEnv(name: string): string {
@@ -37,7 +37,7 @@ async function main(): Promise<void> {
     gatewayId: requireEnv('AI_GATEWAY_NAME'),
     apiToken: requireEnv('AI_GATEWAY_API_TOKEN'),
     model,
-    tools: [...CSS_TOOLS, ...WEB_TOOLS],
+    tools: [...CCR_TOOLS, ...WEB_TOOLS],
   });
 
   console.log(`Model: ${model}\n`);

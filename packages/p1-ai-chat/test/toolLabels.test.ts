@@ -171,7 +171,7 @@ describe('toolCallNote', () => {
 
 describe('toolCallOutcome — result shapes that are not obviously failures', () => {
   /**
-   * check_edit_permission returns the CSS response verbatim: a refusal is
+   * check_edit_permission returns the CCR response verbatim: a refusal is
    * { canEdit: false, reason } with no `error` and no `success: false`. Without this the row
    * rendered a green check reading "Confirmed edit permission" for a denial, and the reason
    * was never shown at all.

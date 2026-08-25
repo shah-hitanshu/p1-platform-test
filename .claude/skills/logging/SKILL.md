@@ -39,9 +39,9 @@ stray `console.log` outside `p1-telemetry`. Reviewing for it is the control.
 
 ## Adoption is uneven — check before you assume
 
-`workers/collaborative-state`, `workers/p1-agent`, and `workers/css-mcp-server` each have
+`workers/ccr`, `workers/p1-agent`, and `workers/ccr-mcp-server` each have
 a `src/telemetry.ts` exporting `ensureLogger(env)` — copy the nearest one. The
-collaborative-state and p1-agent versions also cover the Durable Object case (a DO has its
+ccr and p1-agent versions also cover the Durable Object case (a DO has its
 own isolate, so it calls `ensureLogger` in its constructor).
 
 Not yet wired: **`workers/p1-media`** (blocked on a `nodejs_compat` +

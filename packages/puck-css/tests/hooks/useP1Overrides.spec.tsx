@@ -173,8 +173,8 @@ describe('useP1Overrides', () => {
     const { result } = renderHook(
       () => {
         const overrides = useP1Overrides();
-        const css = useP1Puck();
-        return { overrides, css };
+        const ccr = useP1Puck();
+        return { overrides, ccr };
       },
       { wrapper }
     );
@@ -182,7 +182,7 @@ describe('useP1Overrides', () => {
     const overrides1 = result.current.overrides;
 
     await act(async () => {
-      await result.current.css.loadDocument('/pages/home');
+      await result.current.ccr.loadDocument('/pages/home');
     });
 
     const overrides2 = result.current.overrides;

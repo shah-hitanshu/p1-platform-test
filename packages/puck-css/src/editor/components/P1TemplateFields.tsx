@@ -13,16 +13,16 @@ const useTemplateFieldsPuck = createUsePuck();
  * pattern). Otherwise renders Puck's default fields unchanged.
  */
 export function P1TemplateFields({ children }: { children: React.ReactNode }): React.ReactElement {
-  const css = useP1PuckOptional();
+  const ccr = useP1PuckOptional();
   const itemSelector = useTemplateFieldsPuck(
     (s) =>
       (s as unknown as { appState?: { ui?: { itemSelector?: unknown } } }).appState?.ui?.itemSelector,
   );
   const dispatch = useTemplateFieldsPuck((s) => s.dispatch) as (action: unknown) => void;
-  const template = templateFromRegistryPath(css?.currentDocument?.path, css?.templates);
+  const template = templateFromRegistryPath(ccr?.currentDocument?.path, ccr?.templates);
 
-  if (template && !itemSelector && css?.updateTemplate) {
-    const updateTemplate = css.updateTemplate;
+  if (template && !itemSelector && ccr?.updateTemplate) {
+    const updateTemplate = ccr.updateTemplate;
     return (
       <TemplateDetailsPanel
         template={template}

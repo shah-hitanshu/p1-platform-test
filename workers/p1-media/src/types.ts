@@ -1,9 +1,9 @@
 export interface Env {
   MEDIA_BUCKET: R2Bucket;
   MEDIA_DB: D1Database;
-  CSS_BASE_URL: string;
+  CCR_BASE_URL: string;
   CDN_BASE_URL: string;
-  CSS_SERVICE?: Fetcher;
+  CCR_SERVICE?: Fetcher;
   MAX_UPLOAD_BYTES?: string;
   IMAGES: ImagesBinding;
   // R2 S3-compatible API credentials, used to sign presigned PUT URLs for direct

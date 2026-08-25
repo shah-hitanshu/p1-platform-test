@@ -1,6 +1,6 @@
 # Cloudflare Module
 #
-# Creates Cloudflare infrastructure resources for the Collaborative State System:
+# Creates Cloudflare infrastructure resources for the Collaborative Content Repository:
 # - KV Namespaces (config + session storage)
 # - Queues (sync decoupling, screenshot capture)
 # - R2 buckets (site screenshots)

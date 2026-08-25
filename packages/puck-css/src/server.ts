@@ -97,7 +97,7 @@ export type {
   RemoteDatasourceFieldDocInput,
 } from "./data/remote-datasources/user-remote-datasource-types.js";
 
-// --- CSS Query adapters ---
+// --- CCR Query adapters ---
 export { cssQueriesToDatasourceDefinitions, CSS_QUERY_ID_PREFIX } from "./data/css-queries/css-query-registry.js";
 
 export {

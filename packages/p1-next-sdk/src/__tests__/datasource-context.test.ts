@@ -74,7 +74,7 @@ describe("handler-actions exports", () => {
   });
 });
 
-describe("CSS query integration in datasource context", () => {
+describe("CCR query integration in datasource context", () => {
   it("uses createCssQueryFetchers factory", () => {
     const content = readFileSync(
       resolve(srcDir, "routes/datasource-context.ts"),
@@ -92,12 +92,12 @@ describe("CSS query integration in datasource context", () => {
     expect(content).toContain("filterIds");
   });
 
-  it("merges CSS query fetchers with builtin fetchers", () => {
+  it("merges CCR query fetchers with builtin fetchers", () => {
     const content = readFileSync(
       resolve(srcDir, "routes/datasource-context.ts"),
       "utf-8",
     );
-    expect(content).toContain("cssQueryFetchers");
+    expect(content).toContain("ccrQueryFetchers");
     expect(content).toContain("allFetchers");
   });
 });

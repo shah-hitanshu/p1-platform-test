@@ -24,7 +24,7 @@ function createMockClient(opts: {
   const { documents = [], versions = {} } = opts;
 
   // Build a path→document lookup for getByPath
-  // css-store strips leading "/" via toDocPath(), so store both forms
+  // ccr-store strips leading "/" via toDocPath(), so store both forms
   const docsByPath = new Map<string, MockDocument>();
   for (const doc of documents) {
     docsByPath.set(doc.path, doc);

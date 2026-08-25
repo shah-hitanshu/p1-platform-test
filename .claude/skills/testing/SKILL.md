@@ -56,23 +56,23 @@ Prefer the cheapest tier that answers the question; never a cheaper tier that ca
 
 ## Placing and naming
 
-Directories separate tests by what they need to run, not by tier: unit and integration sit together in a workspace's `tests/` or `src/__tests__/`. Only the Postgres-backed ones go in `workers/collaborative-state/tests/{integration,db}/`, and Playwright's in the root `e2e/`. That directory name is about Postgres rather than the tier, so an integration test with a mocked database stays in the workspace's `tests/`. Follow the nearest existing file.
+Directories separate tests by what they need to run, not by tier: unit and integration sit together in a workspace's `tests/` or `src/__tests__/`. Only the Postgres-backed ones go in `workers/ccr/tests/{integration,db}/`, and Playwright's in the root `e2e/`. That directory name is about Postgres rather than the tier, so an integration test with a mocked database stays in the workspace's `tests/`. Follow the nearest existing file.
 
-Read that workspace's vitest `include` glob before adding a file. Extension use is not uniform across the repo: some workspaces name everything `.spec.*` regardless of what it needs, and `workers/collaborative-state` keys on the directory rather than the extension. The glob is what decides whether your file runs at all, so take it from the config rather than inferring it from a neighbour in another workspace.
+Read that workspace's vitest `include` glob before adding a file. Extension use is not uniform across the repo: some workspaces name everything `.spec.*` regardless of what it needs, and `workers/ccr` keys on the directory rather than the extension. The glob is what decides whether your file runs at all, so take it from the config rather than inferring it from a neighbour in another workspace.
 
 ## Running them
 
-Test tasks are npm scripts, so a workspace's `package.json` is the current list. Reach one with `pnpm --filter <pkg> <task>`, where `<pkg>` is the `name` field rather than the directory: `workers/collaborative-state` publishes as `collaborative-state-worker`. These are the tasks worth knowing by name:
+Test tasks are npm scripts, so a workspace's `package.json` is the current list. Reach one with `pnpm --filter <pkg> <task>`, where `<pkg>` is the `name` field rather than the directory: `workers/ccr` publishes as `ccr-worker`. These are the tasks worth knowing by name:
 
 | Task | Runs | Needs |
 |---|---|---|
 | root `test` | every workspace's `test` through turbo: everything that needs no external process | nothing |
 | a workspace's `test` | that workspace alone. Takes a path to narrow to one file while iterating | nothing |
-| `collaborative-state`'s `test:integration` | its `tests/integration/**` | Postgres |
-| `collaborative-state`'s `test:db` | its `tests/db/**`, schema assertions against `information_schema` | Postgres |
-| root `test:e2e` | Playwright over `e2e/`, starting the starter app against a mock CSS server | a Playwright browser installed |
+| `ccr`'s `test:integration` | its `tests/integration/**` | Postgres |
+| `ccr`'s `test:db` | its `tests/db/**`, schema assertions against `information_schema` | Postgres |
+| root `test:e2e` | Playwright over `e2e/`, starting the starter app against a mock CCR server | a Playwright browser installed |
 
-`collaborative-state`'s `test:all` covers its default suite plus `test:integration` and **skips `test:db`**; run that one yourself. Both Postgres tasks pin themselves to a single worker because their files share one schema, so parallelising them is not available as a speedup.
+`ccr`'s `test:all` covers its default suite plus `test:integration` and **skips `test:db`**; run that one yourself. Both Postgres tasks pin themselves to a single worker because their files share one schema, so parallelising them is not available as a speedup.
 
 Postgres runs in a container, reached through the `Makefile`. Run `make` with no target for the current list with descriptions; you want the targets that start the container, migrate the schema, and open a shell. Go through those rather than a host `psql` or a raw `docker exec`: they autodetect docker or podman, and they keep the connection details in one place instead of copied into whatever is being written.
 
@@ -94,8 +94,8 @@ Traps:
 
 ## Reading a result
 
-- **What is accepted as red.** `workers/collaborative-state` carries test-only type errors at a committed ceiling, held by the root `check:typecheck-tests` task ([scripts/typecheck-tests-ratchet.ts](../../../scripts/typecheck-tests-ratchet.ts) names its baseline); the count may fall, never rise. Nothing else is soft-gated: no `known-issues` job, no `continue-on-error`. The red rows in `docs/migration/STATUS.md`'s verification table record parity with each source repo at the SHAs it names, not the state of this tree. Measure before inheriting a known-red claim as an excuse.
+- **What is accepted as red.** `workers/ccr` carries test-only type errors at a committed ceiling, held by the root `check:typecheck-tests` task ([scripts/typecheck-tests-ratchet.ts](../../../scripts/typecheck-tests-ratchet.ts) names its baseline); the count may fall, never rise. Nothing else is soft-gated: no `known-issues` job, no `continue-on-error`. The red rows in `docs/migration/STATUS.md`'s verification table record parity with each source repo at the SHAs it names, not the state of this tree. Measure before inheriting a known-red claim as an excuse.
 
 ## Hard boundaries
 
-**Do not modify or delete an existing test without explicit permission.** Stated in [docs/css/CLAUDE.md](../../../docs/css/CLAUDE.md) and [docs/puck/CLAUDE.md](../../../docs/puck/CLAUDE.md), and absolute. When a test blocks your change, name it and say why it disagrees with you. Loosening an assertion to get green deletes the only thing that would have caught the regression.
+**Do not modify or delete an existing test without explicit permission.** Stated in [docs/ccr/CLAUDE.md](../../../docs/ccr/CLAUDE.md) and [docs/puck/CLAUDE.md](../../../docs/puck/CLAUDE.md), and absolute. When a test blocks your change, name it and say why it disagrees with you. Loosening an assertion to get green deletes the only thing that would have caught the regression.

@@ -19,7 +19,7 @@ import React from 'react';
 // ---------------------------------------------------------------------------
 
 const TEST_SITE_ID = 'site-persistence-test';
-const STORAGE_KEY = `css-branch-${TEST_SITE_ID}`;
+const STORAGE_KEY = `ccr-branch-${TEST_SITE_ID}`;
 
 const mainBranch = {
   id: 'branch-main',

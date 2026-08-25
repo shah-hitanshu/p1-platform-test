@@ -2,14 +2,14 @@
  * Syncs this site's Puck component registry (_registry/components/* and the
  * registry index) headlessly, without opening the editor in a browser.
  * Intended to run from CI on push to main or a branch whose name matches a
- * CSS branch, whenever puck.config.tsx or components/puck/** change.
+ * CCR branch, whenever puck.config.tsx or components/puck/** change.
  *
  * Usage: tsx scripts/sync-puck-registry.ts [--dry-run]
  *
  * Required env vars (see validateEnv below for the full fallback contract):
  *   CSS_BASE_URL, CSS_SITE_ID, CSS_REGISTRY_API_KEY
  * Optional:
- *   CSS_BRANCH_ID — CSS branch to target (in CI: the pushed git ref's name)
+ *   CSS_BRANCH_ID — CCR branch to target (in CI: the pushed git ref's name)
  *   CSS_DEFAULT_BRANCH — the repo's default branch name (defaults to "main");
  *   when CSS_BRANCH_ID equals it, the site's isMain branch is targeted
  *   regardless of naming (see resolveBranchId for the resolution contract)
@@ -43,7 +43,7 @@ export function validateEnv(env: Record<string, string | undefined>): ValidatedE
   const siteId = env.CSS_SITE_ID ?? env.NEXT_PUBLIC_CSS_SITE_ID;
   const apiKey = env.CSS_REGISTRY_API_KEY;
   const branchOverride = env.CSS_BRANCH_ID ?? env.NEXT_PUBLIC_CSS_BRANCH_ID;
-  // Defaults to "main": the CSS main content branch is always literally
+  // Defaults to "main": the CCR main content branch is always literally
   // named "main", so for repos whose default git branch is also "main" this
   // resolves to the same branch it would have matched by name. Repos with a
   // differently-named default branch (master, trunk) must set it explicitly.
@@ -88,9 +88,9 @@ export function resolveConfigModule(mod: unknown): unknown {
 }
 
 /**
- * Thrown by resolveBranchId when no CSS branch matches. Distinguished from
+ * Thrown by resolveBranchId when no CCR branch matches. Distinguished from
  * other errors so callers (main(), a CI trigger firing on every git branch)
- * can treat "this branch has no CSS counterpart" as a benign no-op rather
+ * can treat "this branch has no CCR counterpart" as a benign no-op rather
  * than a real sync failure.
  */
 export class NoBranchMatchError extends Error {}
@@ -133,11 +133,11 @@ export function filterAssetStubbedDescriptors(descriptors: Descriptor[]): {
 
 /**
  * Resolution contract: an override (in CI, always the pushed git ref's name)
- * matches a CSS branch by id or name — EXCEPT when it equals the repo's
- * default branch name, which always resolves the site's isMain branch. CSS
+ * matches a CCR branch by id or name — EXCEPT when it equals the repo's
+ * default branch name, which always resolves the site's isMain branch. CCR
  * main is always literally named "main", so without that rule a repo whose
  * default branch is "master"/"trunk" would silently skip on every push. The
- * default branch means the main registry, even over a coincidental CSS
+ * default branch means the main registry, even over a coincidental CCR
  * branch named e.g. "master".
  */
 export function resolveBranchId(
@@ -211,7 +211,7 @@ const isMainModule = import.meta.url === pathToFileURL(process.argv[1] ?? "").hr
 if (isMainModule) {
   main().catch((err: unknown) => {
     // A CI trigger firing on every git branch push has no way to know ahead
-    // of time which branches have a matching CSS branch — that has to be
+    // of time which branches have a matching CCR branch — that has to be
     // discovered at runtime. Treat "no match" as a benign no-op, not a
     // failure, so unrelated feature-branch pushes don't turn CI red.
     if (err instanceof NoBranchMatchError) {

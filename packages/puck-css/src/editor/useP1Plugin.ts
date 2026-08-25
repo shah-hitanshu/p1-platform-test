@@ -1,7 +1,7 @@
 /**
  * useP1Plugin Hook
  *
- * Creates a referentially stable CSS plugin instance for Puck.
+ * Creates a referentially stable CCR plugin instance for Puck.
  * Internally reads context values and wires them through a Proxy pattern
  * so the plugin object never changes identity, avoiding Puck re-renders.
  */
@@ -102,7 +102,7 @@ export interface UseP1PluginOptions {
 }
 
 /**
- * Creates a referentially stable CSS plugin for Puck.
+ * Creates a referentially stable CCR plugin for Puck.
  *
  * Reads branches, documents, and other state from P1PuckProvider context.
  * The returned plugin object is stable across re-renders — it uses a Proxy
@@ -122,9 +122,9 @@ export interface UseP1PluginOptions {
  * ```
  */
 export function useP1Plugin(options: UseP1PluginOptions = {}): PuckPlugin {
-  const css = useP1Puck();
+  const ccr = useP1Puck();
 
-  const fc = css.featureConfig ?? {
+  const fc = ccr.featureConfig ?? {
     enableBranchSelector: true,
     enableDocumentBrowser: true,
     enableVersionHistory: true,
@@ -142,24 +142,24 @@ export function useP1Plugin(options: UseP1PluginOptions = {}): PuckPlugin {
   // Build the full plugin options from context + consumer options,
   // gating features by the resolved featureConfig flags.
   const pluginOptions: P1PluginOptions = {
-    branches: fc.enableBranchSelector ? css.branches : [],
-    currentBranch: fc.enableBranchSelector ? css.currentBranch : null,
-    onBranchSwitch: fc.enableBranchSelector ? css.switchBranch : () => {},
-    getHasUnsavedChanges: css.getHasUnsavedChanges,
-    documents: fc.enableDocumentBrowser ? css.documents : [],
-    selectedDocumentPath: options.selectedDocumentPath ?? css.currentDocument?.path ?? null,
+    branches: fc.enableBranchSelector ? ccr.branches : [],
+    currentBranch: fc.enableBranchSelector ? ccr.currentBranch : null,
+    onBranchSwitch: fc.enableBranchSelector ? ccr.switchBranch : () => {},
+    getHasUnsavedChanges: ccr.getHasUnsavedChanges,
+    documents: fc.enableDocumentBrowser ? ccr.documents : [],
+    selectedDocumentPath: options.selectedDocumentPath ?? ccr.currentDocument?.path ?? null,
     onDocumentSelect: fc.enableDocumentBrowser
-      ? (options.onDocumentSelect ?? css.loadDocument) : undefined,
+      ? (options.onDocumentSelect ?? ccr.loadDocument) : undefined,
     onDocumentCreate: fc.enableDocumentBrowser
-      ? (options.onDocumentCreate ?? css.createDocument) : undefined,
+      ? (options.onDocumentCreate ?? ccr.createDocument) : undefined,
     onGenerateWithAI: options.onGenerateWithAI,
     showAIPanelToggle: options.showAIPanelToggle,
-    templates: css.templates,
-    templatesLoading: css.templatesLoading,
-    onCreateTemplate: css.createTemplate,
+    templates: ccr.templates,
+    templatesLoading: ccr.templatesLoading,
+    onCreateTemplate: ccr.createTemplate,
     onDocumentDelete: fc.enableDocumentBrowser
-      ? (options.onDocumentDelete ?? css.deleteDocument) : undefined,
-    documentsLoading: css.documentsLoading,
+      ? (options.onDocumentDelete ?? ccr.deleteDocument) : undefined,
+    documentsLoading: ccr.documentsLoading,
     versions: fc.enableVersionHistory ? options.versions : undefined,
     versionsLoading: fc.enableVersionHistory ? options.versionsLoading : false,
     publishedStatus: options.publishedStatus,
@@ -179,15 +179,15 @@ export function useP1Plugin(options: UseP1PluginOptions = {}): PuckPlugin {
     showPresenceIndicator: fc.enableCollaboratorAvatars
       ? options.showPresenceIndicator : false,
     presence: fc.enableCollaboratorAvatars
-      ? (options.presence ?? css.presence?.actors) : undefined,
+      ? (options.presence ?? ccr.presence?.actors) : undefined,
     showAgentActivity: fc.enableAgentBanner ? options.showAgentActivity : false,
     activeAgents: fc.enableAgentBanner
-      ? (options.activeAgents ?? css.presence?.agents?.filter(a => a.state === 'editing'))
+      ? (options.activeAgents ?? ccr.presence?.agents?.filter(a => a.state === 'editing'))
       : undefined,
     showAgentActions: options.showAgentActions,
     availableAgents: options.availableAgents,
     onAgentAction: options.onAgentAction,
-    onStopAgent: css.stopAgent,
+    onStopAgent: ccr.stopAgent,
     showFocusRegions: fc.enableFocusHighlighting ? options.showFocusRegions : false,
     agentEditingRegions: options.agentEditingRegions,
     // P1 Editor Header / Subheader

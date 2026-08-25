@@ -1,7 +1,7 @@
 /**
- * CSS Client
+ * CCR Client
  *
- * Main client class for interacting with the Collaborative State System API.
+ * Main client class for interacting with the Collaborative Content Repository API.
  */
 
 import type { AuthProvider } from './auth.js';
@@ -93,7 +93,7 @@ interface InternalConfig {
 }
 
 /**
- * Client for the Collaborative State System API.
+ * Client for the Collaborative Content Repository API.
  *
  * @example
  * ```typescript

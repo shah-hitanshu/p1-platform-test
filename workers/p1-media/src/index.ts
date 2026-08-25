@@ -51,13 +51,13 @@ function hasBearerToken(request: Request): boolean {
  *
  * TODO(PCC-3278) — R7: this proves canView only, not a write-capable role. Deliberately
  * shipped without that check: no Pantheon human user ever maps to VIEWER (owner/admin/
- * developer/team_member all resolve to EDITOR or ADMIN in CSS), and a site API token
- * (service principal) can't reach this CSS endpoint at all regardless of role — CSS's
+ * developer/team_member all resolve to EDITOR or ADMIN in CCR), and a site API token
+ * (service principal) can't reach this CCR endpoint at all regardless of role — CCR's
  * own scope gate has no rule permitting the `sites` route handler for any token scope,
  * so it 403s before canView is ever evaluated. The real gap is narrower than "any
  * read-only user": it requires a site admin to deliberately grant VIEWER to a human via
- * CSS's branch-grants API (no UI for this) or to an agent via the Agent Access UI. See
- * PCC-3278 for the CSS-side fix (surfacing the effective role on this endpoint) and
+ * CCR's branch-grants API (no UI for this) or to an agent via the Agent Access UI. See
+ * PCC-3278 for the CCR-side fix (surfacing the effective role on this endpoint) and
  * docs/media-metadata-design.md's R7 section for the full analysis.
  */
 async function authenticate(request: Request, env: Env, url: URL): Promise<string | Response> {

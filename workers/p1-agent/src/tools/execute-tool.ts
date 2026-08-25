@@ -1,7 +1,7 @@
 import { validateOps, validateDocumentStructure } from '@pantheon-systems/p1-content-validator';
 import type { ComponentSchema } from '@pantheon-systems/p1-content-validator';
-import type { McpApiClient } from '../css/api-client.js';
-import type { TemplateSummaryInfo } from '../css/types.js';
+import type { McpApiClient } from '../ccr/api-client.js';
+import type { TemplateSummaryInfo } from '../ccr/types.js';
 import type { ChatContext } from '../types.js';
 import { assertDocumentWritable, assertWritable, normalizeDocumentPath } from '../conversation/scope.js';
 import { TEMPLATE_FILL_CONTRACT } from '../prompt/system-prompt.js';
@@ -109,7 +109,7 @@ function scaffoldedComponents(
  * backend wrote them into version 1).
  */
 async function createPageFromTemplate(
-  cssApi: McpApiClient,
+  ccrApi: McpApiClient,
   { siteId, branchId, documentPath, templateId, title }: {
     siteId: string;
     branchId: string;
@@ -120,7 +120,7 @@ async function createPageFromTemplate(
 ): Promise<unknown> {
   // Resolved against the live list first, so an id the model invented fails naming the tool that
   // has the real ones instead of as a 404 from the create call.
-  const { templates } = await cssApi.listTemplates(siteId, branchId);
+  const { templates } = await ccrApi.listTemplates(siteId, branchId);
   const template = templates.find(t => t.id === templateId);
   if (!template) {
     throw new Error(
@@ -133,13 +133,13 @@ async function createPageFromTemplate(
     );
   }
 
-  const createResult = await cssApi.createDocumentFromTemplate(
+  const createResult = await ccrApi.createDocumentFromTemplate(
     siteId, branchId, documentPath, templateId, title,
   );
 
   let components: { type: string; id: string }[] = [];
   try {
-    const version = await cssApi.getDocumentLatestVersion(siteId, branchId, createResult.documentId);
+    const version = await ccrApi.getDocumentLatestVersion(siteId, branchId, createResult.documentId);
     components = scaffoldedComponents(version.snapshot);
   } catch (err) {
     // The page was created either way, and the agent can still read it with get_document.
@@ -158,7 +158,7 @@ async function createPageFromTemplate(
 
 // Re-exported for existing importers; definitions.ts stays free of runtime deps so the Node
 // smoke test can import it.
-export { CSS_TOOLS, WEB_TOOLS, toOpenAiTools, type RawTool } from './definitions.js';
+export { CCR_TOOLS, WEB_TOOLS, toOpenAiTools, type RawTool } from './definitions.js';
 
 // Tool names are validated at runtime in executeTool's switch (with a default).
 type ToolName = string;
@@ -197,11 +197,11 @@ export function validatePublicUrl(raw: string): URL {
   return url;
 }
 
-// Execute a tool call from Claude against the CSS backend or web tools
+// Execute a tool call from Claude against the CCR backend or web tools
 export async function executeTool(
   toolName: string,
   toolInput: Record<string, unknown>,
-  cssApi: McpApiClient,
+  ccrApi: McpApiClient,
   userId: string,
   context: ChatContext,
   webConfig?: { token: string; mediaWorkerUrl: string },
@@ -211,13 +211,13 @@ export async function executeTool(
 
   switch (name) {
     case 'list_sites':
-      return cssApi.listSites();
+      return ccrApi.listSites();
 
     case 'list_branches':
-      return cssApi.listBranches(toolInput.site_id as string);
+      return ccrApi.listBranches(toolInput.site_id as string);
 
     case 'list_documents': {
-      const { documents } = await cssApi.listDocuments(
+      const { documents } = await ccrApi.listDocuments(
         toolInput.site_id as string,
         toolInput.branch_id as string,
       );
@@ -232,7 +232,7 @@ export async function executeTool(
     }
 
     case 'list_components': {
-      const result = await cssApi.listComponents(toolInput.site_id as string, toolInput.branch_id as string);
+      const result = await ccrApi.listComponents(toolInput.site_id as string, toolInput.branch_id as string);
       return (result.components as Record<string, unknown>[]).map(c => ({
         name: c.name,
         defaultProps: c.defaultProps,
@@ -248,7 +248,7 @@ export async function executeTool(
       const documentPath = normalizeDocumentPath(toolInput.document_path as string);
       // Live session state, not `/versions/latest`: version rows come from a debounced
       // sync that a bare deletion never triggers, so they can still show a removed component.
-      const { snapshot } = await cssApi.getDocument(siteId, branchId, documentPath);
+      const { snapshot } = await ccrApi.getDocument(siteId, branchId, documentPath);
       // An unloaded session returns `{}` with a 200 — not the same as an empty page.
       if (!snapshot || !('content' in snapshot)) {
         throw new Error(
@@ -260,7 +260,7 @@ export async function executeTool(
     }
 
     case 'check_edit_permission':
-      return cssApi.canAgentEdit({
+      return ccrApi.canAgentEdit({
         siteId: toolInput.site_id as string,
         branchId: toolInput.branch_id as string,
         documentPath: toolInput.document_path as string,
@@ -271,7 +271,7 @@ export async function executeTool(
       });
 
     case 'start_edit_session':
-      return cssApi.startAgentEdit({
+      return ccrApi.startAgentEdit({
         siteId: toolInput.site_id as string,
         branchId: toolInput.branch_id as string,
         documentPath: toolInput.document_path as string,
@@ -313,11 +313,11 @@ export async function executeTool(
       if (hasContentOp) {
         const prefetch = await Promise.allSettled([
           (async () => {
-            const doc = await cssApi.getDocument(siteId, branchId, documentPath);
+            const doc = await ccrApi.getDocument(siteId, branchId, documentPath);
             snapshot = doc.snapshot;
           })(),
           (async () => {
-            const result = await cssApi.listComponents(siteId, branchId);
+            const result = await ccrApi.listComponents(siteId, branchId);
             registry = buildRegistry(result.components as unknown[]);
           })(),
         ]);
@@ -335,7 +335,7 @@ export async function executeTool(
         }
       }
 
-      // Translate agent vocabulary to the CSS backend's operation set.
+      // Translate agent vocabulary to the CCR backend's operation set.
       // Backend accepts: set | delete | insert | move | replace.
       const backendOps = operations.map(op => {
         switch (op.type) {
@@ -362,7 +362,7 @@ export async function executeTool(
         }
       });
 
-      const applyResult = await cssApi.applyEdits({
+      const applyResult = await ccrApi.applyEdits({
         siteId,
         branchId,
         documentPath,
@@ -376,17 +376,17 @@ export async function executeTool(
       //
       // On failure we surface the error and instruct the agent to call
       // abort_edit_session. Rollback is intentionally agent-driven, not
-      // automatic — this matches every consumer in the ecosystem (CSS
+      // automatic — this matches every consumer in the ecosystem (CCR
       // mcp-server apply_document_edits). The edit session rolls back only when
       // the caller aborts, so the applied-but-invalid edits persist until then.
       let structuralError: string | undefined;
       try {
-        const docInfo = await cssApi.lookupDocumentByPath(siteId, documentPath);
+        const docInfo = await ccrApi.lookupDocumentByPath(siteId, documentPath);
         const templateId = docInfo?.templateId;
         if (templateId) {
           const [updatedDoc, template] = await Promise.all([
-            cssApi.getDocument(siteId, branchId, documentPath),
-            cssApi.getTemplate(siteId, branchId, templateId),
+            ccrApi.getDocument(siteId, branchId, documentPath),
+            ccrApi.getTemplate(siteId, branchId, templateId),
           ]);
           const { errors } = validateDocumentStructure({
             documentSnapshot: updatedDoc.snapshot,
@@ -414,7 +414,7 @@ export async function executeTool(
     }
 
     case 'complete_edit_session':
-      return cssApi.completeAgentEdit({
+      return ccrApi.completeAgentEdit({
         siteId: toolInput.site_id as string,
         branchId: toolInput.branch_id as string,
         documentPath: toolInput.document_path as string,
@@ -422,7 +422,7 @@ export async function executeTool(
       });
 
     case 'abort_edit_session':
-      return cssApi.abortAgentEdit({
+      return ccrApi.abortAgentEdit({
         siteId: toolInput.site_id as string,
         branchId: toolInput.branch_id as string,
         documentPath: toolInput.document_path as string,
@@ -431,17 +431,17 @@ export async function executeTool(
       });
 
     case 'get_branch_presence':
-      return cssApi.getBranchPresence(toolInput.site_id as string, toolInput.branch_id as string);
+      return ccrApi.getBranchPresence(toolInput.site_id as string, toolInput.branch_id as string);
 
     case 'get_document_presence':
-      return cssApi.getDocumentPresence(
+      return ccrApi.getDocumentPresence(
         toolInput.site_id as string,
         toolInput.branch_id as string,
         toolInput.document_path as string,
       );
 
     case 'list_page_templates': {
-      const { templates } = await cssApi.listTemplates(
+      const { templates } = await ccrApi.listTemplates(
         toolInput.site_id as string,
         toolInput.branch_id as string,
       );
@@ -460,7 +460,7 @@ export async function executeTool(
       // Creating at a taken path is not adding a page: on a branch the backend gives a page
       // inherited from main a branch-local version 1, and wipes a tombstoned page's branch history
       // to recreate it. Both change what the route serves, so both need an edit's grant.
-      if (await cssApi.lookupDocumentByPath(toolInput.site_id as string, documentPath) !== null) {
+      if (await ccrApi.lookupDocumentByPath(toolInput.site_id as string, documentPath) !== null) {
         assertDocumentWritable(documentPath, context);
       }
 
@@ -480,7 +480,7 @@ export async function executeTool(
           );
         }
         const rootProps = (toolInput.root_props ?? {}) as Record<string, unknown>;
-        return createPageFromTemplate(cssApi, {
+        return createPageFromTemplate(ccrApi, {
           siteId: toolInput.site_id as string,
           branchId: toolInput.branch_id as string,
           documentPath,
@@ -497,7 +497,7 @@ export async function executeTool(
         props: { ...c.props, id: generateULID() }, // fresh ULID overwrites any agent-provided id
       }));
 
-      const registryComponents = await cssApi.listComponents(
+      const registryComponents = await ccrApi.listComponents(
         toolInput.site_id as string,
         toolInput.branch_id as string,
       );
@@ -519,7 +519,7 @@ export async function executeTool(
       const branchId = toolInput.branch_id as string;
 
       // Step 1: Create the document (CRDT layer starts empty regardless of initial snapshot)
-      const createResult = await cssApi.createDocument(siteId, branchId, documentPath, {
+      const createResult = await ccrApi.createDocument(siteId, branchId, documentPath, {
         content: [], root: { props: toolInput.root_props ?? {} }, zones: {},
       });
 
@@ -528,7 +528,7 @@ export async function executeTool(
       }
 
       // Step 2: Apply components via edit session so the CRDT layer picks them up
-      const editCheck = await cssApi.canAgentEdit({
+      const editCheck = await ccrApi.canAgentEdit({
         siteId, branchId, documentPath,
         intent: 'Populating new page with initial components',
         targetRegions: ['content'],
@@ -539,7 +539,7 @@ export async function executeTool(
         return { ...createResult, warning: `Page created but could not populate components: ${editCheck.reason ?? 'edit not allowed'}` };
       }
 
-      const editSession = await cssApi.startAgentEdit({
+      const editSession = await ccrApi.startAgentEdit({
         siteId, branchId, documentPath,
         intent: 'Populating new page with initial components',
         targetRegions: ['content'],
@@ -550,7 +550,7 @@ export async function executeTool(
       let editsApplied = false;
       try {
         // Add all components via a single replace on content — injectPuckIds handles IDs
-        await cssApi.applyEdits({
+        await ccrApi.applyEdits({
           siteId, branchId, documentPath,
           editSessionId: editSession.editSessionId,
           operations: [{
@@ -562,7 +562,7 @@ export async function executeTool(
 
         // Set root props if provided
         if (toolInput.root_props && Object.keys(toolInput.root_props as object).length > 0) {
-          await cssApi.applyEdits({
+          await ccrApi.applyEdits({
             siteId, branchId, documentPath,
             editSessionId: editSession.editSessionId,
             operations: [{
@@ -574,12 +574,12 @@ export async function executeTool(
         }
 
         editsApplied = true;
-        await cssApi.completeAgentEdit({ siteId, branchId, documentPath, editSessionId: editSession.editSessionId });
+        await ccrApi.completeAgentEdit({ siteId, branchId, documentPath, editSessionId: editSession.editSessionId });
       } catch (err) {
         // Only abort if edits haven't been applied yet — aborting after a successful
         // applyEdits could roll back components already written to the CRDT.
         if (!editsApplied) {
-          await cssApi.abortAgentEdit({ siteId, branchId, documentPath, editSessionId: editSession.editSessionId, reason: String(err) }).catch(() => undefined);
+          await ccrApi.abortAgentEdit({ siteId, branchId, documentPath, editSessionId: editSession.editSessionId, reason: String(err) }).catch(() => undefined);
         }
         throw err;
       }

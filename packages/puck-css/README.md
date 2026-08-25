@@ -1,7 +1,7 @@
 # @pantheon-systems/puck-css
 
 React editor SDK that connects the [Puck](https://puckeditor.com) visual page builder to
-Pantheon's Collaborative State System (CSS) — real-time multiplayer editing, versioning,
+Pantheon's Collaborative Content Repository (CCR) — real-time multiplayer editing, versioning,
 remote datasources, and a Pantheon-styled inspector.
 
 > Part of Pantheon's **P1** platform. It is published publicly so P1 applications can install

@@ -1,5 +1,5 @@
 /**
- * Lightweight mock CSS API server for E2E tests.
+ * Lightweight mock CCR API server for E2E tests.
  *
  * Seeds page data from e2e/fixtures/database.json and exposes the
  * endpoints the p1-starter app hits during initialization and rendering.
@@ -349,8 +349,8 @@ function handleRequest(req: IncomingMessage, res: ServerResponse): void {
   notFound(res);
 }
 
-const port = parseInt(process.env.MOCK_CSS_PORT ?? "4444", 10);
+const port = parseInt(process.env.MOCK_CCR_PORT ?? "4444", 10);
 const server = createServer(handleRequest);
 server.listen(port, () => {
-  console.log(`Mock CSS server listening on http://localhost:${port}`);
+  console.log(`Mock CCR server listening on http://localhost:${port}`);
 });

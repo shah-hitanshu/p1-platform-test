@@ -2,7 +2,7 @@ import type { RemoteDatasourceDefinition } from "../remote-datasources/remote-da
 
 export const CSS_QUERY_ID_PREFIX = "templates.";
 
-interface CssQueryInput {
+interface CcrQueryInput {
   name: string;
   datasource: string;
   includeMetadata: boolean;
@@ -31,13 +31,13 @@ const RESULT_FIELDS: { path: string; description: string }[] = [
 ];
 
 export function cssQueriesToDatasourceDefinitions(
-  queries: CssQueryInput[],
+  queries: CcrQueryInput[],
 ): RemoteDatasourceDefinition[] {
   return queries.map((query) => ({
     id: `${CSS_QUERY_ID_PREFIX}${query.name}`,
     label: kebabToTitleCase(query.datasource),
     description: `Content query for ${query.datasource} pages`,
-    resolution: "CSS content query (auto-generated from content type template)",
+    resolution: "CCR content query (auto-generated from content type template)",
     fields: RESULT_FIELDS,
   }));
 }

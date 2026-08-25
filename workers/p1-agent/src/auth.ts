@@ -1,7 +1,7 @@
 import type { ValidatedUser } from './types.js';
 
-export async function validateCSSToken(token: string, cssBackendUrl: string): Promise<ValidatedUser> {
-  const url = `${cssBackendUrl.replace(/\/$/, '')}/api/auth/me`;
+export async function validateCCRToken(token: string, ccrBackendUrl: string): Promise<ValidatedUser> {
+  const url = `${ccrBackendUrl.replace(/\/$/, '')}/api/auth/me`;
   const response = await fetch(url, {
     method: 'GET',
     headers: {

@@ -16,20 +16,20 @@ export interface UseMergePreviewReturn {
  * Must be used inside a P1PuckProvider.
  */
 export function useMergePreview(): UseMergePreviewReturn {
-  const css = useP1Puck();
+  const ccr = useP1Puck();
 
-  const mainBranch = css.branches.find((b) => b.isMain) ?? null;
-  const isMainBranch = css.currentBranch?.isMain ?? false;
+  const mainBranch = ccr.branches.find((b) => b.isMain) ?? null;
+  const isMainBranch = ccr.currentBranch?.isMain ?? false;
 
   const [documents, setDocuments] = useState<DocumentDiffSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
-  const sourceBranchName = css.currentBranch?.name ?? 'Draft';
+  const sourceBranchName = ccr.currentBranch?.name ?? 'Draft';
   const targetBranchName = mainBranch?.name ?? 'Live';
 
   useEffect(() => {
-    if (css.branchesLoading) return;
+    if (ccr.branchesLoading) return;
 
     if (isMainBranch || !mainBranch) {
       setLoading(false);
@@ -41,8 +41,8 @@ export function useMergePreview(): UseMergePreviewReturn {
     setLoading(true);
     setError(null);
 
-    css.client.merge
-      .preview(css.siteId, css.branchId, mainBranch.id, {
+    ccr.client.merge
+      .preview(ccr.siteId, ccr.branchId, mainBranch.id, {
         includeContent: true,
         excludePathPrefixes: ['_registry/'],
       })
@@ -66,7 +66,7 @@ export function useMergePreview(): UseMergePreviewReturn {
     return () => {
       cancelled = true;
     };
-  }, [css.siteId, css.branchId, mainBranch?.id, css.branchesLoading, isMainBranch]);
+  }, [ccr.siteId, ccr.branchId, mainBranch?.id, ccr.branchesLoading, isMainBranch]);
 
   return { documents, loading, error, sourceBranchName, targetBranchName, isMainBranch };
 }

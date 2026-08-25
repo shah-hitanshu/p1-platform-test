@@ -1,5 +1,5 @@
 /**
- * CSS Client - Versions keepalive Tests
+ * CCR Client - Versions keepalive Tests
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';

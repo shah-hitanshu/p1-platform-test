@@ -18,7 +18,7 @@ import { renderHook, waitFor } from '@testing-library/react';
 
 const mockLoadDocument = vi.fn<(...args: unknown[]) => Promise<void>>();
 
-const mockCssContext = {
+const mockCcrContext = {
   branchId: 'branch-a',
   loadDocument: mockLoadDocument,
   documents: [] as {
@@ -102,7 +102,7 @@ const mockCssContext = {
 // ============================================================================
 
 vi.mock('../core/P1PuckContext', () => ({
-  useP1Puck: () => mockCssContext,
+  useP1Puck: () => mockCcrContext,
 }));
 
 vi.mock('../editor/useP1Plugin', () => ({
@@ -152,10 +152,10 @@ function makeDoc(id: string, path: string) {
 }
 
 function resetContext() {
-  mockCssContext.branchId = 'branch-a';
-  mockCssContext.documents = [];
-  mockCssContext.documentsLoading = false;
-  mockCssContext.currentDocument = null;
+  mockCcrContext.branchId = 'branch-a';
+  mockCcrContext.documents = [];
+  mockCcrContext.documentsLoading = false;
+  mockCcrContext.currentDocument = null;
 }
 
 // ============================================================================
@@ -166,11 +166,11 @@ describe('useP1Editor auto-redirect on document not found', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     resetContext();
-    mockCssContext.loadDocument = mockLoadDocument;
+    mockCcrContext.loadDocument = mockLoadDocument;
   });
 
   it('unloads silently (loading=false, no error) when doc is missing but other docs exist on branch', async () => {
-    mockCssContext.documents = [
+    mockCcrContext.documents = [
       makeDoc('doc-home', 'home'),
       makeDoc('doc-about', 'about'),
     ];
@@ -189,7 +189,7 @@ describe('useP1Editor auto-redirect on document not found', () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     // Branch switch — doc missing, but other docs exist
-    mockCssContext.branchId = 'branch-b';
+    mockCcrContext.branchId = 'branch-b';
     rerender({ documentPath: '/current' });
 
     await waitFor(() => expect(result.current.loading).toBe(false));
@@ -202,7 +202,7 @@ describe('useP1Editor auto-redirect on document not found', () => {
   });
 
   it('redirectPath is always null regardless of load outcome', async () => {
-    mockCssContext.documents = [makeDoc('doc-home', 'home')];
+    mockCcrContext.documents = [makeDoc('doc-home', 'home')];
 
     mockLoadDocument
       .mockResolvedValueOnce(undefined)
@@ -217,7 +217,7 @@ describe('useP1Editor auto-redirect on document not found', () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.redirectPath).toBeNull();
 
-    mockCssContext.branchId = 'branch-b';
+    mockCcrContext.branchId = 'branch-b';
     rerender({ documentPath: '/current' });
 
     await waitFor(() => expect(result.current.loading).toBe(false));
@@ -225,8 +225,8 @@ describe('useP1Editor auto-redirect on document not found', () => {
   });
 
   it('sets error state when no documents exist on the new branch', async () => {
-    mockCssContext.documents = [];
-    mockCssContext.documentsLoading = false;
+    mockCcrContext.documents = [];
+    mockCcrContext.documentsLoading = false;
 
     // Initial load resolves
     mockLoadDocument.mockResolvedValueOnce(undefined);
@@ -240,7 +240,7 @@ describe('useP1Editor auto-redirect on document not found', () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     // Branch switch — load rejects and there are no documents at all
-    mockCssContext.branchId = 'branch-b';
+    mockCcrContext.branchId = 'branch-b';
     mockLoadDocument.mockRejectedValueOnce(new Error('not found'));
 
     rerender({ documentPath: '/current' });
@@ -252,7 +252,7 @@ describe('useP1Editor auto-redirect on document not found', () => {
   });
 
   it('onDocumentNotFound returning true takes priority over auto-redirect', async () => {
-    mockCssContext.documents = [makeDoc('doc-home', 'home')];
+    mockCcrContext.documents = [makeDoc('doc-home', 'home')];
 
     // Initial load resolves; branch-switch rejects; retry (after callback) resolves
     mockLoadDocument
@@ -272,7 +272,7 @@ describe('useP1Editor auto-redirect on document not found', () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     // Branch switch
-    mockCssContext.branchId = 'branch-b';
+    mockCcrContext.branchId = 'branch-b';
     rerender({ documentPath: '/current' });
 
     await waitFor(() => expect(result.current.loading).toBe(false));
@@ -286,7 +286,7 @@ describe('useP1Editor auto-redirect on document not found', () => {
   });
 
   it('unloads silently when doc not found regardless of other docs on branch', async () => {
-    mockCssContext.documents = [makeDoc('doc-home', 'home')];
+    mockCcrContext.documents = [makeDoc('doc-home', 'home')];
 
     mockLoadDocument
       .mockResolvedValueOnce(undefined)
@@ -298,7 +298,7 @@ describe('useP1Editor auto-redirect on document not found', () => {
 
     await waitFor(() => expect(result.current.loading).toBe(false));
 
-    mockCssContext.branchId = 'branch-b';
+    mockCcrContext.branchId = 'branch-b';
     rerender();
 
     await waitFor(() => expect(result.current.loading).toBe(false));
@@ -308,7 +308,7 @@ describe('useP1Editor auto-redirect on document not found', () => {
   });
 
   it('redirectPath remains null after documentPath prop changes following a failed load', async () => {
-    mockCssContext.documents = [makeDoc('doc-home', 'home')];
+    mockCcrContext.documents = [makeDoc('doc-home', 'home')];
 
     mockLoadDocument
       .mockResolvedValueOnce(undefined)
@@ -325,7 +325,7 @@ describe('useP1Editor auto-redirect on document not found', () => {
     expect(result.current.redirectPath).toBeNull();
 
     // Branch switch triggers unload
-    mockCssContext.branchId = 'branch-b';
+    mockCcrContext.branchId = 'branch-b';
     rerender();
 
     await waitFor(() => expect(result.current.loading).toBe(false));

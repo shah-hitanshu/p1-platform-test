@@ -2,7 +2,7 @@
  * useComponentRegistry Hook
  *
  * Runs at editor startup to serialise the Puck config into ComponentDescriptor
- * objects, hash-checks them for changes, and writes updated descriptors to CSS
+ * objects, hash-checks them for changes, and writes updated descriptors to CCR
  * documents under the /_registry/ path prefix.
  *
  * Uses the same P1PuckContext pattern as useVersions, useAutoSave, and useDocuments.

@@ -2,10 +2,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import type { TemplateSummary } from '../../../features/content-type-templates/types.js';
 
-const { puckSelectorMock, mockDispatch, mockCssContext } = vi.hoisted(() => ({
+const { puckSelectorMock, mockDispatch, mockCcrContext } = vi.hoisted(() => ({
   puckSelectorMock: vi.fn(),
   mockDispatch: vi.fn(),
-  mockCssContext: {
+  mockCcrContext: {
     userRole: 'admin' as string,
     currentDocument: null as { path: string } | null,
     templates: [] as TemplateSummary[],
@@ -44,7 +44,7 @@ vi.mock('@pantheon-systems/pds-toolkit-react', () => ({
 }));
 
 vi.mock('../../../core/P1PuckContext.js', () => ({
-  useP1PuckOptional: () => mockCssContext,
+  useP1PuckOptional: () => mockCcrContext,
 }));
 
 import { ActionBarPinButton } from '../../../features/content-type-templates/ui/ActionBarPinButton.js';
@@ -63,8 +63,8 @@ const mockContent = [
 ];
 
 function setTemplateMode() {
-  mockCssContext.currentDocument = { path: '_registry/templates/blog-post' };
-  mockCssContext.templates = [mockTemplateSummary];
+  mockCcrContext.currentDocument = { path: '_registry/templates/blog-post' };
+  mockCcrContext.templates = [mockTemplateSummary];
 }
 
 function setPuckState(selectedItem: any, pinMap: Record<string, boolean> = {}) {
@@ -79,11 +79,11 @@ function setPuckState(selectedItem: any, pinMap: Record<string, boolean> = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mockCssContext.userRole = 'admin';
-  mockCssContext.currentDocument = null;
-  mockCssContext.templates = [];
-  mockCssContext.isViewingHistoricalVersion = false;
-  mockCssContext.client.templates.update = vi.fn().mockResolvedValue({});
+  mockCcrContext.userRole = 'admin';
+  mockCcrContext.currentDocument = null;
+  mockCcrContext.templates = [];
+  mockCcrContext.isViewingHistoricalVersion = false;
+  mockCcrContext.client.templates.update = vi.fn().mockResolvedValue({});
   setPuckState(null);
 });
 
@@ -97,8 +97,8 @@ describe('ActionBarPinButton', () => {
   });
 
   it('should render nothing for a non-template document', () => {
-    mockCssContext.currentDocument = { path: 'some-page' };
-    mockCssContext.templates = [mockTemplateSummary];
+    mockCcrContext.currentDocument = { path: 'some-page' };
+    mockCcrContext.templates = [mockTemplateSummary];
     setPuckState(mockContent[0]);
 
     const { container } = render(<ActionBarPinButton />);
@@ -106,8 +106,8 @@ describe('ActionBarPinButton', () => {
   });
 
   it('should render nothing for non-matching registry path', () => {
-    mockCssContext.currentDocument = { path: '_registry/components/button' };
-    mockCssContext.templates = [mockTemplateSummary];
+    mockCcrContext.currentDocument = { path: '_registry/components/button' };
+    mockCcrContext.templates = [mockTemplateSummary];
     setPuckState(mockContent[0]);
 
     const { container } = render(<ActionBarPinButton />);
@@ -123,7 +123,7 @@ describe('ActionBarPinButton', () => {
   });
 
   it('should show disabled pin for non-admin users', () => {
-    mockCssContext.userRole = 'editor';
+    mockCcrContext.userRole = 'editor';
     setTemplateMode();
     setPuckState(mockContent[0]);
 
@@ -132,7 +132,7 @@ describe('ActionBarPinButton', () => {
   });
 
   it('should show disabled pin for junior-editor role', () => {
-    mockCssContext.userRole = 'junior-editor';
+    mockCcrContext.userRole = 'junior-editor';
     setTemplateMode();
     setPuckState(mockContent[0]);
 
@@ -142,7 +142,7 @@ describe('ActionBarPinButton', () => {
 
   it('should show disabled pin while viewing a historical version', () => {
     setTemplateMode();
-    mockCssContext.isViewingHistoricalVersion = true;
+    mockCcrContext.isViewingHistoricalVersion = true;
     setPuckState(mockContent[0]);
 
     render(<ActionBarPinButton />);
@@ -197,6 +197,6 @@ describe('ActionBarPinButton', () => {
     });
 
     // Pin persistence rides the normal document autosave.
-    expect(mockCssContext.client.templates.update).not.toHaveBeenCalled();
+    expect(mockCcrContext.client.templates.update).not.toHaveBeenCalled();
   });
 });

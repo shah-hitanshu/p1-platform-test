@@ -46,7 +46,7 @@ export interface UseP1EditorOptions {
   documentPath: string;
   /** Puck component configuration */
   puckConfig: unknown;
-  /** Additional plugins to include after the CSS plugin */
+  /** Additional plugins to include after the CCR plugin */
   additionalPlugins?: Plugin[];
   /**
    * Additional overrides to merge with P1 overrides.
@@ -80,7 +80,7 @@ export interface UseP1EditorOptions {
   liveThumbnailDrawer?: boolean | LiveThumbnailDrawerOptions;
   /** Customization options for overrides */
   overrideOptions?: UseP1OverridesOptions;
-  /** Customization options for the CSS plugin (versions are managed internally) */
+  /** Customization options for the CCR plugin (versions are managed internally) */
   pluginOptions?: Omit<UseP1PluginOptions, 'versions' | 'versionsLoading' | 'selectedVersionId' | 'onVersionSelect'>;
   /** Callback when user selection changes */
   onSelectionChange?: (path: string | null, itemId: string | null) => void;
@@ -98,7 +98,7 @@ export interface PuckProps {
   data: PuckData;
   /** onChange handler wired to context saveData (disabled for historical versions) */
   onChange: (data: unknown) => void;
-  /** Plugin array with CSS plugin first */
+  /** Plugin array with CCR plugin first */
   plugins: Plugin[];
   /** Overrides with header actions */
   overrides: PuckOverrides;
@@ -202,7 +202,7 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
     onDocumentNotFound,
   } = options;
 
-  const css = useP1Puck();
+  const ccr = useP1Puck();
   const { user, logout } = useP1Auth();
 
   // =========================================================================
@@ -221,9 +221,9 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
   const loadedBranchRef = useRef<string | null>(null);
 
   // Reset loaded path when branch changes so document reloads on the new branch
-  const prevBranchRef = useRef(css.branchId);
-  if (prevBranchRef.current !== css.branchId) {
-    prevBranchRef.current = css.branchId;
+  const prevBranchRef = useRef(ccr.branchId);
+  if (prevBranchRef.current !== ccr.branchId) {
+    prevBranchRef.current = ccr.branchId;
     loadedPathRef.current = null;
   }
 
@@ -233,7 +233,7 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
 
   useEffect(() => {
     // Wait for branch resolution before loading documents
-    if (!css.branchId) return;
+    if (!ccr.branchId) return;
     // Skip if already loaded this path on this branch
     if (loadedPathRef.current === documentPath) return;
 
@@ -241,11 +241,11 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
     setLoading(true);
     setError(null);
 
-    css.loadDocument(documentPath)
+    ccr.loadDocument(documentPath)
       .then(() => {
         if (!cancelled) {
           loadedPathRef.current = documentPath;
-          loadedBranchRef.current = css.branchId;
+          loadedBranchRef.current = ccr.branchId;
           setNeedsRedirect(false);
           setLoading(false);
         }
@@ -267,13 +267,13 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
           try {
             const shouldRetry = await onDocumentNotFoundRef.current(documentPath, loadErr);
             if (!cancelled && shouldRetry) {
-              await css.loadDocument(documentPath);
+              await ccr.loadDocument(documentPath);
               if (!cancelled) {
                 loadedPathRef.current = documentPath;
-                loadedBranchRef.current = css.branchId;
+                loadedBranchRef.current = ccr.branchId;
                 setNeedsRedirect(false);
                 setLoading(false);
-                void css.refreshDocuments();
+                void ccr.refreshDocuments();
               }
               return;
             }
@@ -291,27 +291,27 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
     return () => {
       cancelled = true;
     };
-  }, [documentPath, css.branchId, css.loadDocument]);
+  }, [documentPath, ccr.branchId, ccr.loadDocument]);
 
   // No branch means nothing can be opened, so an unresolved branch is fatal.
   // Derived rather than copied into state: a retry that clears the failure has
   // to stop being reported, which a mirrored copy would keep showing.
-  const branchBootError = css.branchId ? null : css.branchResolutionError ?? null;
+  const branchBootError = ccr.branchId ? null : ccr.branchResolutionError ?? null;
 
   // Recovery: document not found on this branch — unload the editor and let
   // the preview empty state guide the user to pick a page.
   useEffect(() => {
     if (!needsRedirect) return;
-    if (css.documentsLoading) return;
+    if (ccr.documentsLoading) return;
     setNeedsRedirect(false);
-    if (css.documents.length === 0) {
+    if (ccr.documents.length === 0) {
       // An empty list because the request was refused is a different story from
       // a branch that genuinely holds nothing; saying "no documents" for the
       // former is how the real failure stays hidden.
-      setError(css.documentsError ?? new Error('No documents found on this branch'));
+      setError(ccr.documentsError ?? new Error('No documents found on this branch'));
     }
     setLoading(false);
-  }, [needsRedirect, css.documentsLoading, css.documents.length, css.documentsError]);
+  }, [needsRedirect, ccr.documentsLoading, ccr.documents.length, ccr.documentsError]);
 
   // =========================================================================
   // Version Management
@@ -322,45 +322,45 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
     loading: versionsLoading,
     refresh: refreshVersions,
   } = useVersions({
-    client: css.client,
-    siteId: css.siteId,
-    branchId: css.branchId,
-    documentId: css.currentDocument?.id ?? null,
+    client: ccr.client,
+    siteId: ccr.siteId,
+    branchId: ccr.branchId,
+    documentId: ccr.currentDocument?.id ?? null,
   });
 
   // Refresh versions when document changes; also reset eager-version flag so a
   // stale post-publish signal from the previous document never fires on the new one.
   useEffect(() => {
     needsVersionRef.current = false;
-    if (css.currentDocument?.id) void refreshVersions();
-  }, [css.currentDocument?.id, refreshVersions]);
+    if (ccr.currentDocument?.id) void refreshVersions();
+  }, [ccr.currentDocument?.id, refreshVersions]);
 
   // Refresh versions after a successful save so the publish badge reflects the
   // new unpublished draft (publishedStatus flips 'published' → 'unpublished-changes').
   // Without this the badge would keep reading "Live" after an edit on the Live branch.
   useEffect(() => {
-    if (css.saveStatus === 'saved') void refreshVersions();
-  }, [css.saveStatus, refreshVersions]);
+    if (ccr.saveStatus === 'saved') void refreshVersions();
+  }, [ccr.saveStatus, refreshVersions]);
 
   // Select a version — latest returns to live editing, others load historical
   const handleVersionSelect = useCallback((version: DocumentVersion) => {
     const latestVersion = versions[0];
     if (latestVersion && version.id === latestVersion.id) {
-      void css.returnToLatest();
+      void ccr.returnToLatest();
     } else {
-      void css.loadVersion(version);
+      void ccr.loadVersion(version);
     }
-  }, [versions, css.loadVersion, css.returnToLatest]);
+  }, [versions, ccr.loadVersion, ccr.returnToLatest]);
 
   // Revert to a prior version.
   const handleRestoreVersion = useCallback(
     (version: DocumentVersion) => restoreDocumentVersion(
       version,
-      css,
+      ccr,
       refreshVersions,
       () => {},
     ),
-    [css, refreshVersions],
+    [ccr, refreshVersions],
   );
 
   // =========================================================================
@@ -369,14 +369,14 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
 
   // The backend includes isPublished on each DocumentVersion via an EXISTS
   // subquery against checkpoint_documents. No additional API calls needed.
-  const currentVersionId = css.viewingVersion?.id ?? versions[0]?.id;
+  const currentVersionId = ccr.viewingVersion?.id ?? versions[0]?.id;
   const currentVersionIsPublished = versions.find(v => v.id === currentVersionId)?.isPublished ?? false;
   const hasPublishedVersion = versions.some(v => v.isPublished);
 
   // Look up the current document from the branch document list, which includes
   // inherited and isPublished fields from the branch-level listing endpoint.
-  // css.currentDocument comes from the site-level getByPath endpoint and lacks these.
-  const branchDocument = css.documents.find(d => d.id === css.currentDocument?.id);
+  // ccr.currentDocument comes from the site-level getByPath endpoint and lacks these.
+  const branchDocument = ccr.documents.find(d => d.id === ccr.currentDocument?.id);
   const inheritedAndPublished = branchDocument?.inherited && branchDocument?.isPublished;
 
   const publishedStatus: 'published' | 'unpublished-changes' | 'draft' | undefined =
@@ -405,11 +405,11 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
     (path: string | null, itemId: string | null) => {
       // Report to presence system via WebSocket (instant broadcast to other clients)
       const regions = path ? [path] : [];
-      css.sendFocusRegions(regions);
+      ccr.sendFocusRegions(regions);
       // Forward to consumer callback
       onSelectionChangeRef.current?.(path, itemId);
     },
-    [css.sendFocusRegions],
+    [ccr.sendFocusRegions],
   );
 
   // =========================================================================
@@ -425,8 +425,8 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
   // Set true after a successful publish; the next onChange fires the eager
   // version create and clears this immediately.
   const needsVersionRef = useRef(false);
-  const eagerVersionParamsRef = useRef({ siteId: css.siteId, branchId: css.branchId, documentId: css.currentDocument?.id ?? null });
-  eagerVersionParamsRef.current = { siteId: css.siteId, branchId: css.branchId, documentId: css.currentDocument?.id ?? null };
+  const eagerVersionParamsRef = useRef({ siteId: ccr.siteId, branchId: ccr.branchId, documentId: ccr.currentDocument?.id ?? null });
+  eagerVersionParamsRef.current = { siteId: ccr.siteId, branchId: ccr.branchId, documentId: ccr.currentDocument?.id ?? null };
 
   // Wrap publish to refresh version list and call consumer callback after success.
   const consumerOnPublishSuccessRef = useRef(overrideOptions?.onPublishSuccess);
@@ -434,16 +434,16 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
 
   const handlePublish = useCallback(
     async () => {
-      const checkpoint = await css.publishDocument();
+      const checkpoint = await ccr.publishDocument();
       needsVersionRef.current = true;
       void refreshVersions();
       consumerOnPublishSuccessRef.current?.(checkpoint);
     },
-    [css, refreshVersions],
+    [ccr, refreshVersions],
   );
 
   const canRevert =
-    css.userRole === 'admin' || css.userRole === 'editor' || css.userRole === 'author';
+    ccr.userRole === 'admin' || ccr.userRole === 'editor' || ccr.userRole === 'author';
 
   // Pushes freshly loaded documents into the live Puck instance, replacing
   // the remount-on-document-switch behavior the old document-scoped puckKey
@@ -454,7 +454,7 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
   const p1Plugin = useP1Plugin({
     documentSyncStore,
     onSelectionChange: handleSelectionChange,
-    currentUser: user ? { id: css.userId, name: user.name, email: user.email, avatar: user.picture } : undefined,
+    currentUser: user ? { id: ccr.userId, name: user.name, email: user.email, avatar: user.picture } : undefined,
     onLogout: logout,
     puckConfig,
     ...pluginOptions,
@@ -462,7 +462,7 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
     versions,
     versionsLoading,
     publishedStatus,
-    selectedVersionId: css.viewingVersion?.id ?? undefined,
+    selectedVersionId: ccr.viewingVersion?.id ?? undefined,
     onVersionSelect: handleVersionSelect,
     onRestoreVersion: handleRestoreVersion,
     canRevert,
@@ -525,8 +525,8 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
   // safeData is read directly rather than through a ref: it only advances when
   // the provider loads a document (saveData deliberately never touches
   // currentData), so it cannot re-fire on every keystroke.
-  const currentDocumentId = css.currentDocument?.id;
-  const origin = css.currentDataOrigin;
+  const currentDocumentId = ccr.currentDocument?.id;
+  const origin = ccr.currentDataOrigin;
   useEffect(() => {
     if (loading || error || !origin) return;
     // Historical versions sync through ContextSyncBridge, which does not reset
@@ -534,18 +534,18 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
     if (origin.historical) return;
     // Mid-switch the payload still belongs to the outgoing branch or document.
     // Withholding it keeps the applied key naming what the canvas really shows.
-    if (origin.branchId !== css.branchId) return;
+    if (origin.branchId !== ccr.branchId) return;
     if (origin.documentId !== currentDocumentId) return;
     documentSyncStore.publish({
       syncKey: documentSyncKey(origin.branchId, origin.documentId),
-      data: css.safeData,
+      data: ccr.safeData,
     });
   }, [
     loading,
     error,
     origin,
-    css.safeData,
-    css.branchId,
+    ccr.safeData,
+    ccr.branchId,
     currentDocumentId,
     documentSyncStore,
   ]);
@@ -563,16 +563,16 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
   // document switches)
   // =========================================================================
 
-  const isViewingHistoricalRef = useRef(css.isViewingHistoricalVersion);
-  isViewingHistoricalRef.current = css.isViewingHistoricalVersion;
+  const isViewingHistoricalRef = useRef(ccr.isViewingHistoricalVersion);
+  isViewingHistoricalRef.current = ccr.isViewingHistoricalVersion;
 
   // With Puck surviving document switches, onChange can fire while the canvas
-  // still shows the previous document but css already targets the new one
+  // still shows the previous document but ccr already targets the new one
   // (load in flight, or loaded but not yet pushed by the sync plugin). Saving
   // then would write the old page's content into the new page — drop instead.
   const saveTargetKeyRef = useRef<string | null>(null);
-  saveTargetKeyRef.current = css.currentDocument?.id
-    ? documentSyncKey(css.branchId, css.currentDocument.id)
+  saveTargetKeyRef.current = ccr.currentDocument?.id
+    ? documentSyncKey(ccr.branchId, ccr.currentDocument.id)
     : null;
 
   const eagerVersionHandler = useMemo(
@@ -580,14 +580,14 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
       needsVersionRef,
       () => eagerVersionParamsRef.current,
       {
-        createVersion: (siteId, params) => css.client.versions.create(siteId, params),
+        createVersion: (siteId, params) => ccr.client.versions.create(siteId, params),
         refreshVersions,
       },
     ),
-    [css.client, refreshVersions],
+    [ccr.client, refreshVersions],
   );
 
-  const { saveData } = css;
+  const { saveData } = ccr;
   const onChange = useCallback(
     (data: unknown) => {
       if (isViewingHistoricalRef.current) return;
@@ -612,7 +612,7 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
   // =========================================================================
 
   const permissions = useMemo((): Record<string, boolean> => {
-    if (css.isViewingHistoricalVersion) {
+    if (ccr.isViewingHistoricalVersion) {
       // Omit edit:false so page/root fields are never locked by Puck's own
       // readonly rendering. Interaction is blocked by ReadOnlyFieldsGuard
       // (inert attribute) instead, which also covers root fields without
@@ -620,7 +620,7 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
       return { delete: false, drag: false, duplicate: false, insert: false };
     }
     return { delete: true, drag: true, duplicate: true, edit: true, insert: true };
-  }, [css.isViewingHistoricalVersion]);
+  }, [ccr.isViewingHistoricalVersion]);
 
   // =========================================================================
   // Stable merged overrides
@@ -684,7 +684,7 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
   // cache is only invalidated when component data changes, not when the
   // resolver function changes. Including userRole in the key forces a
   // clean remount with an empty cache when roles switch.
-  const puckKey = `css-${css.userRole}`;
+  const puckKey = `ccr-${ccr.userRole}`;
 
   // Sidebar visibility for the initial mount. puckKey is the dependency on
   // purpose even though it is not read here: a new key remounts Puck, which
@@ -698,16 +698,16 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
   // Inject per-component resolvePermissions into the Puck config.
   // Puck doesn't have a top-level resolvePermissions prop — permissions
   // must be resolved per-component via config[type].resolvePermissions.
-  const resolvePermsRef = useRef(css.resolvePermissions);
-  resolvePermsRef.current = css.resolvePermissions;
+  const resolvePermsRef = useRef(ccr.resolvePermissions);
+  resolvePermsRef.current = ccr.resolvePermissions;
 
   // Template mode: editing a template document (path `_registry/templates/<name>`).
-  const isTemplateMode = /^_registry\/templates\//.test(css.currentDocument?.path ?? '');
+  const isTemplateMode = /^_registry\/templates\//.test(ccr.currentDocument?.path ?? '');
 
   const configWithPermissions = useMemo(() => {
     let cfg = puckConfig as Record<string, unknown>;
 
-    if (css.resolvePermissions) {
+    if (ccr.resolvePermissions) {
       const components = (cfg.components ?? {}) as Record<string, Record<string, unknown>>;
       const wrapped: Record<string, unknown> = {};
       for (const [name, comp] of Object.entries(components)) {
@@ -751,27 +751,27 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
     }
 
     return cfg;
-  }, [puckConfig, !!css.resolvePermissions, isTemplateMode]);
+  }, [puckConfig, !!ccr.resolvePermissions, isTemplateMode]);
 
   const puckProps: PuckProps = useMemo(
     () => ({
       config: configWithPermissions,
-      data: css.safeData,
+      data: ccr.safeData,
       onChange,
       plugins,
       overrides: mergedOverrides,
       ui: initialSidebarUi,
       permissions,
-      onAction: css.handleAction,
+      onAction: ccr.handleAction,
     }),
-    [configWithPermissions, css.safeData, onChange, plugins, mergedOverrides, initialSidebarUi, permissions, css.handleAction]
+    [configWithPermissions, ccr.safeData, onChange, plugins, mergedOverrides, initialSidebarUi, permissions, ccr.handleAction]
   );
 
   // =========================================================================
   // Retained content
   // =========================================================================
 
-  // A reload empties css.safeData before the new document arrives, so handing
+  // A reload empties ccr.safeData before the new document arrives, so handing
   // the live props straight to Puck blanks the canvas mid-switch. Keeping the
   // last props that rendered lets the caller show the outgoing page under a
   // waiting indicator instead — and spares every caller from re-implementing
@@ -782,14 +782,14 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
   // or branch already changed. Keying off the path the effect actually finished
   // is what stops that in-between render from banking an emptied document.
   const settled =
-    loadedPathRef.current === documentPath && loadedBranchRef.current === css.branchId;
+    loadedPathRef.current === documentPath && loadedBranchRef.current === ccr.branchId;
   if (settled && !inFlight && !error && !branchBootError) {
     lastGoodRef.current = { puckKey, puckProps };
   }
   const retained = lastGoodRef.current;
   const hasContent = retained !== null;
   const reloadKind: ReloadKind =
-    loadedBranchRef.current !== null && loadedBranchRef.current !== css.branchId
+    loadedBranchRef.current !== null && loadedBranchRef.current !== ccr.branchId
       ? 'branch'
       : 'document';
 
@@ -800,7 +800,7 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
     error: error ?? branchBootError,
     puckKey: retained?.puckKey ?? puckKey,
     puckProps: retained?.puckProps ?? puckProps,
-    css,
+    css: ccr,
     /** @deprecated No longer emitted — editor now shows an empty state when a document is not found on the current branch. */
     redirectPath: null as string | null,
   };

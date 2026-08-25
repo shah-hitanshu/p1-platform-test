@@ -18,7 +18,7 @@ import { fetchHttpJsonRemoteDatasource } from "./fetch-http-json";
 
 export type RemoteDatasourceContext = Record<string, unknown>;
 
-// Template ids carry a CSS query name and P1 auto-generates content-type
+// Template ids carry a CCR query name and P1 auto-generates content-type
 // datasource ids as kebab-case (e.g. `blog-post`), so both branches admit
 // hyphens (PCC-3668).
 const TEMPLATE_SOURCE_RE = /\{\{\s*(templates\.[a-zA-Z_][\w-]*|[a-zA-Z_][\w-]*)\./g;

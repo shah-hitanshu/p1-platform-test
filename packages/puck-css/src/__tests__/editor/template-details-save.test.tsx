@@ -10,10 +10,10 @@ import { render, screen, fireEvent, act } from '@testing-library/react';
 import React from 'react';
 import type { TemplateSummary } from '../../features/content-type-templates/types.js';
 
-const { puckSelectorMock, mockDispatch, mockCssContext } = vi.hoisted(() => ({
+const { puckSelectorMock, mockDispatch, mockCcrContext } = vi.hoisted(() => ({
   puckSelectorMock: vi.fn(),
   mockDispatch: vi.fn(),
-  mockCssContext: {
+  mockCcrContext: {
     currentDocument: { path: '_registry/templates/blog-post' } as { path: string } | null,
     templates: [] as unknown[],
     updateTemplate: vi.fn(),
@@ -31,8 +31,8 @@ vi.mock('@puckeditor/core', () => ({
 }));
 
 vi.mock('../../core/P1PuckContext.js', () => ({
-  useP1PuckOptional: () => mockCssContext,
-  useP1Puck: () => mockCssContext,
+  useP1PuckOptional: () => mockCcrContext,
+  useP1Puck: () => mockCcrContext,
 }));
 
 import { createP1Overrides } from '../../editor/plugin/createP1Overrides.js';
@@ -56,9 +56,9 @@ function renderFieldsOverride() {
 beforeEach(() => {
   vi.useFakeTimers();
   vi.clearAllMocks();
-  mockCssContext.currentDocument = { path: '_registry/templates/blog-post' };
-  mockCssContext.templates = [templateSummary];
-  mockCssContext.updateTemplate = vi.fn().mockResolvedValue(undefined);
+  mockCcrContext.currentDocument = { path: '_registry/templates/blog-post' };
+  mockCcrContext.templates = [templateSummary];
+  mockCcrContext.updateTemplate = vi.fn().mockResolvedValue(undefined);
   // Nothing selected on the canvas (root fields shown).
   puckSelectorMock.mockImplementation((selector: (s: unknown) => unknown) =>
     selector({
@@ -85,7 +85,7 @@ describe('template details save', () => {
       await vi.advanceTimersByTimeAsync(700);
     });
 
-    expect(mockCssContext.updateTemplate).toHaveBeenCalledWith('template-1', {
+    expect(mockCcrContext.updateTemplate).toHaveBeenCalledWith('template-1', {
       label: 'Renamed Post',
       description: '',
       defaultUrlPattern: '',
@@ -127,7 +127,7 @@ describe('template details save', () => {
   });
 
   it('does not touch the live Puck data when the metadata PATCH fails', async () => {
-    mockCssContext.updateTemplate = vi.fn().mockRejectedValue(new Error('boom'));
+    mockCcrContext.updateTemplate = vi.fn().mockRejectedValue(new Error('boom'));
     renderFieldsOverride();
 
     fireEvent.change(screen.getByTestId('template-details-label'), {
@@ -137,7 +137,7 @@ describe('template details save', () => {
       await vi.advanceTimersByTimeAsync(700);
     });
 
-    expect(mockCssContext.updateTemplate).toHaveBeenCalled();
+    expect(mockCcrContext.updateTemplate).toHaveBeenCalled();
     expect(mockDispatch).not.toHaveBeenCalled();
   });
 });

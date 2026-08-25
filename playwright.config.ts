@@ -37,7 +37,7 @@ export default defineConfig({
       reuseExistingServer: !process.env.CI,
       timeout: 10_000,
       env: {
-        MOCK_CSS_PORT: '4444',
+        MOCK_CCR_PORT: '4444',
       },
     },
     {

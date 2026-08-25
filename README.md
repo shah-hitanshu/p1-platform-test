@@ -1,6 +1,6 @@
 # p1-platform
 
-Monorepo for Pantheon's P1 platform: the collaborative state system (CSS), the Puck/CSS editor SDK, the AI chat agent, and media handling. Merged from four repos — `collaborative-state-system`, `puck-css-integration`, `p1-chatbot`, `p1-media-r2` — with full history (see [docs/migration/STATUS.md](docs/migration/STATUS.md)).
+Monorepo for Pantheon's P1 platform: the Collaborative Content Repository (CCR), the Puck/CCR editor SDK, the AI chat agent, and media handling. Merged from four repos — `collaborative-state-system`, `puck-css-integration`, `p1-chatbot`, `p1-media-r2` — with full history (see [docs/migration/STATUS.md](docs/migration/STATUS.md)).
 
 ## Getting started
 
@@ -10,7 +10,7 @@ Monorepo for Pantheon's P1 platform: the collaborative state system (CSS), the P
 |---|---|---|
 | Node.js | **≥ 24** | enforced via `engines` |
 | pnpm | **11.15.1** | pinned via `packageManager` — run `corepack enable` and the right version is used automatically |
-| Podman or Docker | any recent | local Postgres for the CSS backend (`make docker-up` autodetects which you have) |
+| Podman or Docker | any recent | local Postgres for the CCR backend (`make docker-up` autodetects which you have) |
 | Playwright Chromium | — | only for e2e: `pnpm exec playwright install chromium` (one-time) |
 | Terraform ≥ 1.6 + gcloud | — | only for infra work under `terraform/` |
 
@@ -24,9 +24,9 @@ cp .env.fullstack.example .env.fullstack.local
 pnpm dev:stack
 ```
 
-`pnpm dev:stack` brings up everything for local development in one command: Postgres (via podman/docker, with `.dev.vars` generated and migrations applied automatically), the CSS worker on **:8787**, and the starter app on **:3002**.
+`pnpm dev:stack` brings up everything for local development in one command: Postgres (via podman/docker, with `.dev.vars` generated and migrations applied automatically), the CCR worker on **:8787**, and the starter app on **:3002**.
 
-On a **fresh database**, create a site and an API token via the worker API (see `docs/css/`), then put the site id + token into `.env.fullstack.local` and restart. To develop against staging instead: `cp .env.staging.example .env.staging.local`, fill in the staging site id + `CSS_API_KEY`, and run `pnpm dev:starter:staging`.
+On a **fresh database**, create a site and an API token via the worker API (see `docs/ccr/`), then put the site id + token into `.env.fullstack.local` and restart. To develop against staging instead: `cp .env.staging.example .env.staging.local`, fill in the staging site id + `CSS_API_KEY`, and run `pnpm dev:starter:staging`.
 
 ## Scripts
 
@@ -36,14 +36,14 @@ All run from the repo root.
 
 | Script | What it runs |
 |---|---|
-| `pnpm dev:stack` | Postgres + CSS worker (:8787) + starter app (:3002) — the default day-to-day stack |
+| `pnpm dev:stack` | Postgres + CCR worker (:8787) + starter app (:3002) — the default day-to-day stack |
 | `pnpm dev:stack:full` | everything above **plus** media worker (:8788) and chat agent (:8790); agent chat needs secrets in `workers/p1-agent/.env` |
 | `pnpm dev:starter` | starter app only (:3000), against the local backend profile |
 | `pnpm dev:starter:staging` | starter app against staging (`.env.staging.local` profile) |
 | `pnpm dev:agent` | chat agent worker only |
 | `pnpm dev:media` | media worker only (:8788) |
 | `pnpm dev:mcp` | MCP server (:8788 — clashes with media; not part of `dev:stack:full`) |
-| `make dev` | CSS backend only: Postgres + worker (:8787) |
+| `make dev` | CCR backend only: Postgres + worker (:8787) |
 | `pnpm dev:logs` | local ndjson log collector (:8799) — run in its own terminal; see [Logging](#logging) |
 | `pnpm logs:tail` | live, human-readable view of `.logs/current.ndjson` |
 
@@ -64,7 +64,7 @@ All run from the repo root.
 |---|---|
 | `pnpm changeset` | create a changeset for a package release |
 | `pnpm changeset status --verbose` | what the next release would publish, and which changesets cause it |
-| `POSTGRES_CONNECTION_STRING=... pnpm --filter collaborative-state-worker db:migrate` | local DB migrations (the stack commands run this automatically) |
+| `POSTGRES_CONNECTION_STRING=... pnpm --filter ccr-worker db:migrate` | local DB migrations (the stack commands run this automatically) |
 | `make tf-plan ENV=staging` | Terraform plan (needs local GCP creds) |
 | `pnpm --filter <worker-package> exec wrangler <cmd> --env staging` | raw wrangler against a worker |
 
@@ -94,22 +94,22 @@ Escape hatches: `git commit --no-verify` for one commit, `git config --unset cor
 
 | Path | What it is |
 |---|---|
-| `workers/collaborative-state` | CSS backend Worker — API, Durable Objects, queues, Postgres |
-| `workers/css-mcp-server` | Remote MCP server (OAuth) in front of the CSS backend |
+| `workers/ccr` | CCR backend Worker — API, Durable Objects, queues, Postgres |
+| `workers/ccr-mcp-server` | Remote MCP server (OAuth) in front of the CCR backend |
 | `workers/p1-agent` | AI chat agent Worker (Durable Object, AI Gateway) |
 | `workers/p1-media` | Media upload/CDN Worker (R2) |
 | `apps/p1-starter` | Next.js starter app; source of the `create-p1-starter-kit` template |
 | `packages/*` | Published npm packages (`css-client`, `puck-css`, `p1-next-sdk`, `create-p1-starter-kit`, `p1-ai-chat`, `p1-content-validator`, `p1-media-r2`) + shared `eslint-config` |
 | `e2e/` | Playwright e2e for the starter app (runs against a local mock server) |
-| `terraform/` | CSS infra (GCP + Cloudflare); media infra under `terraform/media` |
+| `terraform/` | CCR infra (GCP + Cloudflare); media infra under `terraform/media` |
 | `docker/` | Local Postgres stack |
-| `docs/` | Per-source-repo docs (`css/`, `puck/`, `p1-chatbot/`, `p1-media/`) and migration notes |
+| `docs/` | Per-source-repo docs (`ccr/`, `puck/`, `p1-chatbot/`, `p1-media/`) and migration notes |
 
 Environments: **local, staging, production** (the sbx1/sandbox lane is retired).
 
 ## Env files
 
-The starter app is driven entirely by the root profiles (`.env.fullstack.local`, `.env.staging.local` — copy from the `.example` templates). The root scripts inject them via `dotenv-cli`, so don't create an `apps/p1-starter/.env.local` — Next would load it as a silent fallback underneath whichever profile is active. Two files stay in their packages because wrangler only reads them from beside its config: `workers/collaborative-state/.dev.vars` (auto-generated by the stack commands) and `workers/p1-agent/.env` (agent secrets).
+The starter app is driven entirely by the root profiles (`.env.fullstack.local`, `.env.staging.local` — copy from the `.example` templates). The root scripts inject them via `dotenv-cli`, so don't create an `apps/p1-starter/.env.local` — Next would load it as a silent fallback underneath whichever profile is active. Two files stay in their packages because wrangler only reads them from beside its config: `workers/ccr/.dev.vars` (auto-generated by the stack commands) and `workers/p1-agent/.env` (agent secrets).
 
 ## Logging
 

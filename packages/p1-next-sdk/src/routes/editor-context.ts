@@ -24,7 +24,7 @@ export interface EditorContextOptions {
   builtinDatasourceRegistry?: RemoteDatasourceDefinition[];
 }
 
-async function fetchCssQueryDefinitions(request: Request, branchOverride?: string | null): Promise<ReturnType<typeof cssQueriesToDatasourceDefinitions>> {
+async function fetchCcrQueryDefinitions(request: Request, branchOverride?: string | null): Promise<ReturnType<typeof cssQueriesToDatasourceDefinitions>> {
   const siteId = getSharedSiteId();
   const branchId = branchOverride || getSharedBranchId();
   const token = extractBearerToken(request);
@@ -39,7 +39,7 @@ async function fetchCssQueryDefinitions(request: Request, branchOverride?: strin
     return cssQueriesToDatasourceDefinitions(queries);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    console.warn("[P1] Editor context: CSS query lookup failed:", message);
+    console.warn("[P1] Editor context: CCR query lookup failed:", message);
     return [];
   }
 }
@@ -82,7 +82,7 @@ async function buildEditorContext(
 
   // Must run after listRoutes() — branch ID is lazily resolved during
   // that call, and getSharedBranchId() returns null until it completes.
-  const cssQueryDefinitions = await fetchCssQueryDefinitions(request, branchId);
+  const ccrQueryDefinitions = await fetchCcrQueryDefinitions(request, branchId);
 
   const remoteDatasourceRegistry = [
     ...buildRemoteDatasourceRegistry(
@@ -90,7 +90,7 @@ async function buildEditorContext(
       userDefs.global,
       userDefs.page,
     ),
-    ...cssQueryDefinitions,
+    ...ccrQueryDefinitions,
   ];
 
   return NextResponse.json({

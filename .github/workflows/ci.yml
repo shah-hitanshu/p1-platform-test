@@ -2,7 +2,7 @@
 # permissions.
 #
 # Every package is linted and type-checked, with no exclusions. Test-only type
-# errors in collaborative-state are held to a committed ceiling by
+# errors in workers/ccr are held to a committed ceiling by
 # `check:typecheck-tests` rather than ignored.
 name: ci
 
@@ -81,7 +81,7 @@ jobs:
           category: eslint
 
   integration-db:
-    name: postgres integration (CSS worker)
+    name: postgres integration (CCR worker)
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -105,16 +105,16 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Build worker dependencies
-        run: pnpm exec turbo run build --filter='collaborative-state-worker^...'
+        run: pnpm exec turbo run build --filter='ccr-worker^...'
       - name: Migrations (fresh schema + duplicate-number guard)
         run: |
-          pnpm --filter collaborative-state-worker db:migrate
-          dupes=$(ls workers/collaborative-state/src/db/migrations/*.sql | sed 's|.*/||; s/_.*//' | sort | uniq -d)
+          pnpm --filter ccr-worker db:migrate
+          dupes=$(ls workers/ccr/src/db/migrations/*.sql | sed 's|.*/||; s/_.*//' | sort | uniq -d)
           if [ -n "$dupes" ]; then echo "Duplicate migration numbers: $dupes"; exit 1; fi
       - name: DB + integration tests
         run: |
-          pnpm --filter collaborative-state-worker test:db
-          pnpm --filter collaborative-state-worker test:integration
+          pnpm --filter ccr-worker test:db
+          pnpm --filter ccr-worker test:integration
 
   e2e:
     name: playwright e2e (starter app vs mock backend)

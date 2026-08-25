@@ -264,7 +264,7 @@ describe('P1PuckProvider backwards compatibility', () => {
   });
 
   it('uses default plugins when featurePlugins is not provided', () => {
-    // DEFAULT_CSS_FEATURE_PLUGINS has collaborationPlugin and agentPlugin
+    // DEFAULT_CCR_FEATURE_PLUGINS has collaborationPlugin and agentPlugin
     // Neither has a provider, so this just tests no crash
     render(
       <P1PuckProvider {...baseProps}>

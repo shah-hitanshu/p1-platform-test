@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import type { McpApiClient } from '../css/api-client.js';
+import type { McpApiClient } from '../ccr/api-client.js';
 import type { ChatContext } from '../types.js';
-import { validatePublicUrl, executeTool, injectPuckIds, WEB_TOOLS, CSS_TOOLS } from './execute-tool.js';
+import { validatePublicUrl, executeTool, injectPuckIds, WEB_TOOLS, CCR_TOOLS } from './execute-tool.js';
 
 // Scoped to the pages these tests use; the write set's own behaviour lives in scope.test.ts.
 const TEST_CONTEXT: ChatContext = {
@@ -103,7 +103,7 @@ describe('WEB_TOOLS', () => {
 // ---------------------------------------------------------------------------
 
 describe('executeTool list_media', () => {
-  const stubCssApi = {} as McpApiClient;
+  const stubCcrApi = {} as McpApiClient;
   const webConfig = { token: 'test-token', mediaWorkerUrl: 'https://media.example.com' };
 
   beforeEach(() => {
@@ -116,7 +116,7 @@ describe('executeTool list_media', () => {
 
   it('throws when webConfig is not provided', async () => {
     await expect(
-      executeTool('list_media', { site_id: 'site-1' }, stubCssApi, 'user-1', TEST_CONTEXT),
+      executeTool('list_media', { site_id: 'site-1' }, stubCcrApi, 'user-1', TEST_CONTEXT),
     ).rejects.toThrow('not available');
   });
 
@@ -128,7 +128,7 @@ describe('executeTool list_media', () => {
     });
     vi.stubGlobal('fetch', mockFetch);
 
-    const result = await executeTool('list_media', { site_id: 'site-1' }, stubCssApi, 'user-1', TEST_CONTEXT, webConfig);
+    const result = await executeTool('list_media', { site_id: 'site-1' }, stubCcrApi, 'user-1', TEST_CONTEXT, webConfig);
 
     expect(mockFetch).toHaveBeenCalledOnce();
     const [calledUrl, calledInit] = mockFetch.mock.calls[0] as [string, RequestInit];
@@ -145,7 +145,7 @@ describe('executeTool list_media', () => {
     });
     vi.stubGlobal('fetch', mockFetch);
 
-    await executeTool('list_media', { site_id: 'site-1', search: 'logo' }, stubCssApi, 'user-1', TEST_CONTEXT, webConfig);
+    await executeTool('list_media', { site_id: 'site-1', search: 'logo' }, stubCcrApi, 'user-1', TEST_CONTEXT, webConfig);
 
     const [calledUrl] = mockFetch.mock.calls[0] as [string, RequestInit];
     expect(calledUrl).toContain('search=logo');
@@ -158,7 +158,7 @@ describe('executeTool list_media', () => {
     });
     vi.stubGlobal('fetch', mockFetch);
 
-    await executeTool('list_media', { site_id: 'site-1' }, stubCssApi, 'user-1', TEST_CONTEXT, webConfig);
+    await executeTool('list_media', { site_id: 'site-1' }, stubCcrApi, 'user-1', TEST_CONTEXT, webConfig);
 
     const [calledUrl] = mockFetch.mock.calls[0] as [string, RequestInit];
     expect(calledUrl).not.toContain('search=');
@@ -173,7 +173,7 @@ describe('executeTool list_media', () => {
     vi.stubGlobal('fetch', mockFetch);
 
     await expect(
-      executeTool('list_media', { site_id: 'site-1' }, stubCssApi, 'user-1', TEST_CONTEXT, webConfig),
+      executeTool('list_media', { site_id: 'site-1' }, stubCcrApi, 'user-1', TEST_CONTEXT, webConfig),
     ).rejects.toThrow('403');
   });
 });
@@ -183,7 +183,7 @@ describe('executeTool list_media', () => {
 // ---------------------------------------------------------------------------
 
 describe('executeTool fetch_page', () => {
-  const stubCssApi = {} as McpApiClient;
+  const stubCcrApi = {} as McpApiClient;
 
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -191,13 +191,13 @@ describe('executeTool fetch_page', () => {
 
   it('throws on a private IP URL', async () => {
     await expect(
-      executeTool('fetch_page', { url: 'http://192.168.0.1' }, stubCssApi, 'user-1', TEST_CONTEXT),
+      executeTool('fetch_page', { url: 'http://192.168.0.1' }, stubCcrApi, 'user-1', TEST_CONTEXT),
     ).rejects.toThrow('private IP');
   });
 
   it('throws on localhost URL', async () => {
     await expect(
-      executeTool('fetch_page', { url: 'http://localhost/admin' }, stubCssApi, 'user-1', TEST_CONTEXT),
+      executeTool('fetch_page', { url: 'http://localhost/admin' }, stubCcrApi, 'user-1', TEST_CONTEXT),
     ).rejects.toThrow('localhost');
   });
 
@@ -207,7 +207,7 @@ describe('executeTool fetch_page', () => {
     vi.stubGlobal('fetch', mockFetch);
 
     await expect(
-      executeTool('fetch_page', { url: 'https://example.com/missing' }, stubCssApi, 'user-1', TEST_CONTEXT),
+      executeTool('fetch_page', { url: 'https://example.com/missing' }, stubCcrApi, 'user-1', TEST_CONTEXT),
     ).rejects.toThrow('404');
   });
 
@@ -264,7 +264,7 @@ describe('executeTool fetch_page', () => {
     const mockFetch = vi.fn().mockResolvedValue({ ok: true, status: 200 });
     vi.stubGlobal('fetch', mockFetch);
 
-    const result = await executeTool('fetch_page', { url: 'https://example.com/' }, stubCssApi, 'user-1', TEST_CONTEXT) as string;
+    const result = await executeTool('fetch_page', { url: 'https://example.com/' }, stubCcrApi, 'user-1', TEST_CONTEXT) as string;
 
     expect(typeof result).toBe('string');
     expect(result).toContain('My Page Title');
@@ -295,7 +295,7 @@ describe('executeTool fetch_page', () => {
     vi.stubGlobal('HTMLRewriter', FakeHTMLRewriter);
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200 }));
 
-    const result = await executeTool('fetch_page', { url: 'https://example.com/' }, stubCssApi, 'user-1', TEST_CONTEXT) as string;
+    const result = await executeTool('fetch_page', { url: 'https://example.com/' }, stubCcrApi, 'user-1', TEST_CONTEXT) as string;
     expect(result.length).toBeLessThanOrEqual(5000);
   });
 });
@@ -306,9 +306,9 @@ describe('executeTool fetch_page', () => {
 
 describe('executeTool unknown tool', () => {
   it('throws on an unrecognised tool name', async () => {
-    const stubCssApi = {} as McpApiClient;
+    const stubCcrApi = {} as McpApiClient;
     await expect(
-      executeTool('nonexistent_tool', {}, stubCssApi, 'user-1', TEST_CONTEXT),
+      executeTool('nonexistent_tool', {}, stubCcrApi, 'user-1', TEST_CONTEXT),
     ).rejects.toThrow('Unknown tool: nonexistent_tool');
   });
 });
@@ -329,12 +329,12 @@ describe('executeTool get_document', () => {
     const getDocumentLatestVersion = vi.fn().mockResolvedValue({
       snapshot: { content: [] }, // the stale projection — must not be what we return
     });
-    const stubCssApi = { getDocument, getDocumentLatestVersion } as unknown as McpApiClient;
+    const stubCcrApi = { getDocument, getDocumentLatestVersion } as unknown as McpApiClient;
 
     const result = await executeTool(
       'get_document',
       { site_id: siteId, branch_id: branchId, document_path: '/about' },
-      stubCssApi,
+      stubCcrApi,
       'user-1', TEST_CONTEXT,
     );
 
@@ -348,12 +348,12 @@ describe('executeTool get_document', () => {
 
   it('resolves the home page document at path "/"', async () => {
     const getDocument = vi.fn().mockResolvedValue({ snapshot: { content: [] } });
-    const stubCssApi = { getDocument } as unknown as McpApiClient;
+    const stubCcrApi = { getDocument } as unknown as McpApiClient;
 
     await executeTool(
       'get_document',
       { site_id: siteId, branch_id: branchId, document_path: '/' },
-      stubCssApi,
+      stubCcrApi,
       'user-1', TEST_CONTEXT,
     );
 
@@ -362,7 +362,7 @@ describe('executeTool get_document', () => {
   });
 
   it('surfaces the backend error when the document is not found', async () => {
-    const stubCssApi = {
+    const stubCcrApi = {
       getDocument: vi.fn().mockRejectedValue(new Error('Document not found: missing')),
     } as unknown as McpApiClient;
 
@@ -370,7 +370,7 @@ describe('executeTool get_document', () => {
       executeTool(
         'get_document',
         { site_id: siteId, branch_id: branchId, document_path: '/missing' },
-        stubCssApi,
+        stubCcrApi,
         'user-1', TEST_CONTEXT,
       ),
     ).rejects.toThrow('Document not found: missing');
@@ -396,7 +396,7 @@ describe('executeTool apply_document_edits key-validation', () => {
     ],
   };
 
-  function makeCssApi(overrides: Partial<McpApiClient> = {}): McpApiClient {
+  function makeCcrApi(overrides: Partial<McpApiClient> = {}): McpApiClient {
     return {
       getDocument: vi.fn().mockResolvedValue({ snapshot: existingSnapshot }),
       lookupDocumentByPath: vi.fn().mockResolvedValue(null),
@@ -421,30 +421,30 @@ describe('executeTool apply_document_edits key-validation', () => {
   };
 
   it('replace with a renamed key throws with a descriptive message', async () => {
-    const cssApi = makeCssApi();
+    const ccrApi = makeCcrApi();
     await expect(
       executeTool('apply_document_edits', {
         ...baseInput,
         operations: [
           { type: 'replace', path: 'content.0.props', content: { id: '550e8400-e29b-41d4-a716-446655440000', label: 'Hello', visible: true } },
         ],
-      }, cssApi, 'user-1', TEST_CONTEXT),
+      }, ccrApi, 'user-1', TEST_CONTEXT),
     ).rejects.toThrow(/Unknown prop "label" on "Hero"/);
   });
 
   it('replace with correct keys passes and forwards to applyEdits', async () => {
-    const cssApi = makeCssApi();
+    const ccrApi = makeCcrApi();
     await executeTool('apply_document_edits', {
       ...baseInput,
       operations: [
         { type: 'replace', path: 'content.0.props', content: { id: '550e8400-e29b-41d4-a716-446655440000', text: 'Updated', visible: false } },
       ],
-    }, cssApi, 'user-1', TEST_CONTEXT);
-    expect(cssApi.applyEdits).toHaveBeenCalledOnce();
+    }, ccrApi, 'user-1', TEST_CONTEXT);
+    expect(ccrApi.applyEdits).toHaveBeenCalledOnce();
   });
 
   it('replace on an array where items have a renamed key throws', async () => {
-    const cssApi = makeCssApi();
+    const ccrApi = makeCcrApi();
     await expect(
       executeTool('apply_document_edits', {
         ...baseInput,
@@ -457,12 +457,12 @@ describe('executeTool apply_document_edits key-validation', () => {
             ],
           },
         ],
-      }, cssApi, 'user-1', TEST_CONTEXT),
+      }, ccrApi, 'user-1', TEST_CONTEXT),
     ).rejects.toThrow(/Unknown prop "label" on "Hero"/);
   });
 
   it('add to an array where the new item has a renamed key throws', async () => {
-    const cssApi = makeCssApi({
+    const ccrApi = makeCcrApi({
       getDocument: vi.fn().mockResolvedValue({
         snapshot: {
           content: [
@@ -477,23 +477,23 @@ describe('executeTool apply_document_edits key-validation', () => {
         operations: [
           { type: 'add', path: 'content.1', content: { type: 'Hero', props: { id: '550e8400-e29b-41d4-a716-446655440000', label: 'Bad', visible: false } } },
         ],
-      }, cssApi, 'user-1', TEST_CONTEXT),
+      }, ccrApi, 'user-1', TEST_CONTEXT),
     ).rejects.toThrow(/Unknown prop "label" on "Hero"/);
   });
 
   it('add to an array with correct keys passes and forwards to applyEdits', async () => {
-    const cssApi = makeCssApi();
+    const ccrApi = makeCcrApi();
     await executeTool('apply_document_edits', {
       ...baseInput,
       operations: [
         { type: 'add', path: 'content.1', content: { type: 'Hero', props: { id: '550e8400-e29b-41d4-a716-446655440000', text: 'New', visible: false } } },
       ],
-    }, cssApi, 'user-1', TEST_CONTEXT);
-    expect(cssApi.applyEdits).toHaveBeenCalledOnce();
+    }, ccrApi, 'user-1', TEST_CONTEXT);
+    expect(ccrApi.applyEdits).toHaveBeenCalledOnce();
   });
 
   it('validation is skipped and edit proceeds when document fetch fails', async () => {
-    const cssApi = makeCssApi({
+    const ccrApi = makeCcrApi({
       getDocument: vi.fn().mockRejectedValue(new Error('Network timeout')),
     });
     await executeTool('apply_document_edits', {
@@ -501,8 +501,8 @@ describe('executeTool apply_document_edits key-validation', () => {
       operations: [
         { type: 'replace', path: 'content.0.props', content: { id: '550e8400-e29b-41d4-a716-446655440000', label: 'Bad key', visible: true } },
       ],
-    }, cssApi, 'user-1', TEST_CONTEXT);
-    expect(cssApi.applyEdits).toHaveBeenCalledOnce();
+    }, ccrApi, 'user-1', TEST_CONTEXT);
+    expect(ccrApi.applyEdits).toHaveBeenCalledOnce();
   });
 
   // Regression: heterogeneous content arrays previously failed snapshot
@@ -514,7 +514,7 @@ describe('executeTool apply_document_edits key-validation', () => {
         { type: 'Footer', props: { id: 'f1', copyright: '©', links: [] } },
       ],
     };
-    const cssApi = makeCssApi({
+    const ccrApi = makeCcrApi({
       getDocument: vi.fn().mockResolvedValue({ snapshot: heteroSnapshot }),
     });
     await executeTool('apply_document_edits', {
@@ -530,8 +530,8 @@ describe('executeTool apply_document_edits key-validation', () => {
           ],
         },
       ],
-    }, cssApi, 'user-1', TEST_CONTEXT);
-    expect(cssApi.applyEdits).toHaveBeenCalledOnce();
+    }, ccrApi, 'user-1', TEST_CONTEXT);
+    expect(ccrApi.applyEdits).toHaveBeenCalledOnce();
   });
 });
 
@@ -554,7 +554,7 @@ describe('executeTool apply_document_edits structure validation', () => {
     root: { props: { _pinMap: { 'tpl-hero': true } } },
   };
 
-  function makeCssApi(overrides: Partial<McpApiClient> = {}): McpApiClient {
+  function makeCcrApi(overrides: Partial<McpApiClient> = {}): McpApiClient {
     return {
       listComponents: vi.fn().mockResolvedValue({
         components: [
@@ -583,30 +583,30 @@ describe('executeTool apply_document_edits structure validation', () => {
   const removeOp = { operations: [{ type: 'remove', path: 'content.0' }] };
 
   it('throws and instructs abort when a pinned component is removed', async () => {
-    const cssApi = makeCssApi({
+    const ccrApi = makeCcrApi({
       getDocument: vi.fn().mockResolvedValue({
         snapshot: { content: [{ type: 'Footer', props: { id: 'f1' } }] },
       }),
     });
     await expect(
-      executeTool('apply_document_edits', { ...baseInput, ...removeOp }, cssApi, 'user-1', TEST_CONTEXT),
+      executeTool('apply_document_edits', { ...baseInput, ...removeOp }, ccrApi, 'user-1', TEST_CONTEXT),
     ).rejects.toThrow(/abort_edit_session/);
-    expect(cssApi.applyEdits).toHaveBeenCalledOnce();
+    expect(ccrApi.applyEdits).toHaveBeenCalledOnce();
   });
 
   it('names the missing pinned component in the error', async () => {
-    const cssApi = makeCssApi({
+    const ccrApi = makeCcrApi({
       getDocument: vi.fn().mockResolvedValue({
         snapshot: { content: [{ type: 'Footer', props: { id: 'f1' } }] },
       }),
     });
     await expect(
-      executeTool('apply_document_edits', { ...baseInput, ...removeOp }, cssApi, 'user-1', TEST_CONTEXT),
+      executeTool('apply_document_edits', { ...baseInput, ...removeOp }, ccrApi, 'user-1', TEST_CONTEXT),
     ).rejects.toThrow(/Hero/);
   });
 
   it('throws when a pinned component ends up out of order', async () => {
-    const cssApi = makeCssApi({
+    const ccrApi = makeCcrApi({
       // Template pins Hero then Footer, in that order.
       getTemplate: vi.fn().mockResolvedValue({
         id: 'tpl-1',
@@ -627,34 +627,34 @@ describe('executeTool apply_document_edits structure validation', () => {
       }),
     });
     await expect(
-      executeTool('apply_document_edits', { ...baseInput, ...removeOp }, cssApi, 'user-1', TEST_CONTEXT),
+      executeTool('apply_document_edits', { ...baseInput, ...removeOp }, ccrApi, 'user-1', TEST_CONTEXT),
     ).rejects.toThrow(/abort_edit_session/);
   });
 
   it('passes when structure still conforms after the edit', async () => {
-    const cssApi = makeCssApi();
-    await executeTool('apply_document_edits', { ...baseInput, ...removeOp }, cssApi, 'user-1', TEST_CONTEXT);
-    expect(cssApi.applyEdits).toHaveBeenCalledOnce();
-    expect(cssApi.getTemplate).toHaveBeenCalledOnce();
+    const ccrApi = makeCcrApi();
+    await executeTool('apply_document_edits', { ...baseInput, ...removeOp }, ccrApi, 'user-1', TEST_CONTEXT);
+    expect(ccrApi.applyEdits).toHaveBeenCalledOnce();
+    expect(ccrApi.getTemplate).toHaveBeenCalledOnce();
   });
 
   it('skips structure validation when the document has no template', async () => {
-    const cssApi = makeCssApi({
+    const ccrApi = makeCcrApi({
       lookupDocumentByPath: vi.fn().mockResolvedValue({ id: 'doc-1', path: 'index', createdAt: '' }),
       // even a non-conforming snapshot must not fail when there's no template
       getDocument: vi.fn().mockResolvedValue({ snapshot: { content: [] } }),
     });
-    await executeTool('apply_document_edits', { ...baseInput, ...removeOp }, cssApi, 'user-1', TEST_CONTEXT);
-    expect(cssApi.applyEdits).toHaveBeenCalledOnce();
-    expect(cssApi.getTemplate).not.toHaveBeenCalled();
+    await executeTool('apply_document_edits', { ...baseInput, ...removeOp }, ccrApi, 'user-1', TEST_CONTEXT);
+    expect(ccrApi.applyEdits).toHaveBeenCalledOnce();
+    expect(ccrApi.getTemplate).not.toHaveBeenCalled();
   });
 
   it('degrades gracefully (no throw) when the template fetch fails', async () => {
-    const cssApi = makeCssApi({
+    const ccrApi = makeCcrApi({
       getTemplate: vi.fn().mockRejectedValue(new Error('Network timeout')),
     });
-    await executeTool('apply_document_edits', { ...baseInput, ...removeOp }, cssApi, 'user-1', TEST_CONTEXT);
-    expect(cssApi.applyEdits).toHaveBeenCalledOnce();
+    await executeTool('apply_document_edits', { ...baseInput, ...removeOp }, ccrApi, 'user-1', TEST_CONTEXT);
+    expect(ccrApi.applyEdits).toHaveBeenCalledOnce();
   });
 });
 
@@ -668,7 +668,7 @@ describe('executeTool apply_document_edits op translation', () => {
     document_path: '/index', edit_session_id: 'session-1',
   };
 
-  function makeCssApi(): McpApiClient {
+  function makeCcrApi(): McpApiClient {
     return {
       getDocument: vi.fn().mockResolvedValue({ snapshot: { content: [] } }),
       lookupDocumentByPath: vi.fn().mockResolvedValue(null),
@@ -680,14 +680,14 @@ describe('executeTool apply_document_edits op translation', () => {
   }
 
   it('translates "add" with numeric path tail to backend "insert" with index + value', async () => {
-    const cssApi = makeCssApi();
+    const ccrApi = makeCcrApi();
     await executeTool('apply_document_edits', {
       ...baseInput,
       operations: [
         { type: 'add', path: 'content.2', content: { type: 'Hero', props: { id: '550e8400-e29b-41d4-a716-446655440000', text: 'hi' } } },
       ],
-    }, cssApi, 'user-1', TEST_CONTEXT);
-    const call = (cssApi.applyEdits as ReturnType<typeof vi.fn>).mock.calls[0][0] as { operations: Record<string, unknown>[] };
+    }, ccrApi, 'user-1', TEST_CONTEXT);
+    const call = (ccrApi.applyEdits as ReturnType<typeof vi.fn>).mock.calls[0][0] as { operations: Record<string, unknown>[] };
     expect(call.operations).toHaveLength(1);
     expect(call.operations[0].type).toBe('insert');
     expect(call.operations[0].path).toBe('content');
@@ -696,62 +696,62 @@ describe('executeTool apply_document_edits op translation', () => {
   });
 
   it('throws when "add" path does not end with a numeric index', async () => {
-    const cssApi = makeCssApi();
+    const ccrApi = makeCcrApi();
     await expect(
       executeTool('apply_document_edits', {
         ...baseInput,
         operations: [
           { type: 'add', path: 'content.0.props.title', content: 'oops' },
         ],
-      }, cssApi, 'user-1', TEST_CONTEXT),
+      }, ccrApi, 'user-1', TEST_CONTEXT),
     ).rejects.toThrow(/numeric index at the end/);
   });
 
   it('translates "remove" to backend "delete" preserving path', async () => {
-    const cssApi = makeCssApi();
+    const ccrApi = makeCcrApi();
     await executeTool('apply_document_edits', {
       ...baseInput,
       operations: [{ type: 'remove', path: 'content.1' }],
-    }, cssApi, 'user-1', TEST_CONTEXT);
-    const call = (cssApi.applyEdits as ReturnType<typeof vi.fn>).mock.calls[0][0] as { operations: Record<string, unknown>[] };
+    }, ccrApi, 'user-1', TEST_CONTEXT);
+    const call = (ccrApi.applyEdits as ReturnType<typeof vi.fn>).mock.calls[0][0] as { operations: Record<string, unknown>[] };
     expect(call.operations[0].type).toBe('delete');
     expect(call.operations[0].path).toBe('content.1');
   });
 
   it('passes "replace" through unchanged with content field', async () => {
-    const cssApi = makeCssApi();
+    const ccrApi = makeCcrApi();
     await executeTool('apply_document_edits', {
       ...baseInput,
       operations: [{ type: 'replace', path: 'content.0.props.text', content: 'New' }],
-    }, cssApi, 'user-1', TEST_CONTEXT);
-    const call = (cssApi.applyEdits as ReturnType<typeof vi.fn>).mock.calls[0][0] as { operations: Record<string, unknown>[] };
+    }, ccrApi, 'user-1', TEST_CONTEXT);
+    const call = (ccrApi.applyEdits as ReturnType<typeof vi.fn>).mock.calls[0][0] as { operations: Record<string, unknown>[] };
     expect(call.operations[0].type).toBe('replace');
     expect(call.operations[0].path).toBe('content.0.props.text');
     expect(call.operations[0].content).toBe('New');
   });
 
   it('passes "move" through with fromIndex and toIndex', async () => {
-    const cssApi = makeCssApi();
+    const ccrApi = makeCcrApi();
     await executeTool('apply_document_edits', {
       ...baseInput,
       operations: [{ type: 'move', path: 'content', fromIndex: 0, toIndex: 3 }],
-    }, cssApi, 'user-1', TEST_CONTEXT);
-    const call = (cssApi.applyEdits as ReturnType<typeof vi.fn>).mock.calls[0][0] as { operations: Record<string, unknown>[] };
+    }, ccrApi, 'user-1', TEST_CONTEXT);
+    const call = (ccrApi.applyEdits as ReturnType<typeof vi.fn>).mock.calls[0][0] as { operations: Record<string, unknown>[] };
     expect(call.operations[0]).toEqual({ type: 'move', path: 'content', fromIndex: 0, toIndex: 3 });
   });
 
   it('throws when "move" is missing fromIndex or toIndex', async () => {
-    const cssApi = makeCssApi();
+    const ccrApi = makeCcrApi();
     await expect(
       executeTool('apply_document_edits', {
         ...baseInput,
         operations: [{ type: 'move', path: 'content', fromIndex: 0 }],
-      }, cssApi, 'user-1', TEST_CONTEXT),
+      }, ccrApi, 'user-1', TEST_CONTEXT),
     ).rejects.toThrow(/fromIndex and toIndex/);
   });
 
   it('translates a mixed batch of ops in order', async () => {
-    const cssApi = makeCssApi();
+    const ccrApi = makeCcrApi();
     await executeTool('apply_document_edits', {
       ...baseInput,
       operations: [
@@ -760,8 +760,8 @@ describe('executeTool apply_document_edits op translation', () => {
         { type: 'move', path: 'content', fromIndex: 0, toIndex: 2 },
         { type: 'remove', path: 'content.3' },
       ],
-    }, cssApi, 'user-1', TEST_CONTEXT);
-    const call = (cssApi.applyEdits as ReturnType<typeof vi.fn>).mock.calls[0][0] as { operations: Record<string, unknown>[] };
+    }, ccrApi, 'user-1', TEST_CONTEXT);
+    const call = (ccrApi.applyEdits as ReturnType<typeof vi.fn>).mock.calls[0][0] as { operations: Record<string, unknown>[] };
     expect(call.operations).toHaveLength(4);
     expect(call.operations[0].type).toBe('insert');
     expect(call.operations[1].type).toBe('replace');
@@ -770,14 +770,14 @@ describe('executeTool apply_document_edits op translation', () => {
   });
 
   it('injects a fresh ULID into an ID-less Puck component routed through "add"', async () => {
-    const cssApi = makeCssApi();
+    const ccrApi = makeCcrApi();
     await executeTool('apply_document_edits', {
       ...baseInput,
       operations: [
         { type: 'add', path: 'content.0', content: { type: 'Hero', props: { text: 'No id provided' } } },
       ],
-    }, cssApi, 'user-1', TEST_CONTEXT);
-    const call = (cssApi.applyEdits as ReturnType<typeof vi.fn>).mock.calls[0][0] as {
+    }, ccrApi, 'user-1', TEST_CONTEXT);
+    const call = (ccrApi.applyEdits as ReturnType<typeof vi.fn>).mock.calls[0][0] as {
       operations: { type: string; value: { props: { id: string } } }[];
     };
     expect(call.operations[0].value.props.id).toMatch(/^[0-9A-Z]{26}$/);
@@ -800,7 +800,7 @@ describe('executeTool apply_document_edits registry-based validation', () => {
     { name: 'Hero', defaultProps: { text: '', visible: true } },
   ];
 
-  function makeCssApiWithRegistry(registry: unknown[]): McpApiClient {
+  function makeCcrApiWithRegistry(registry: unknown[]): McpApiClient {
     return {
       // empty content — snapshot validation would silently pass
       getDocument: vi.fn().mockResolvedValue({ snapshot: { content: [] } }),
@@ -810,7 +810,7 @@ describe('executeTool apply_document_edits registry-based validation', () => {
   }
 
   it('throws when replacing empty content array with a component that has a hallucinated prop', async () => {
-    const cssApi = makeCssApiWithRegistry(heroRegistry);
+    const ccrApi = makeCcrApiWithRegistry(heroRegistry);
     await expect(
       executeTool('apply_document_edits', {
         ...baseInput,
@@ -821,13 +821,13 @@ describe('executeTool apply_document_edits registry-based validation', () => {
             content: [{ type: 'Hero', props: { id: '550e8400-e29b-41d4-a716-446655440000', label: 'Bad', visible: true } }],
           },
         ],
-      }, cssApi, 'user-1', TEST_CONTEXT),
+      }, ccrApi, 'user-1', TEST_CONTEXT),
     ).rejects.toThrow(/Unknown prop "label" on "Hero"/);
-    expect(cssApi.applyEdits).not.toHaveBeenCalled();
+    expect(ccrApi.applyEdits).not.toHaveBeenCalled();
   });
 
   it('throws when adding a component with a hallucinated prop to an empty content array', async () => {
-    const cssApi = makeCssApiWithRegistry(heroRegistry);
+    const ccrApi = makeCcrApiWithRegistry(heroRegistry);
     await expect(
       executeTool('apply_document_edits', {
         ...baseInput,
@@ -838,13 +838,13 @@ describe('executeTool apply_document_edits registry-based validation', () => {
             content: { type: 'Hero', props: { id: '550e8400-e29b-41d4-a716-446655440000', label: 'Bad', visible: true } },
           },
         ],
-      }, cssApi, 'user-1', TEST_CONTEXT),
+      }, ccrApi, 'user-1', TEST_CONTEXT),
     ).rejects.toThrow(/Unknown prop "label" on "Hero"/);
-    expect(cssApi.applyEdits).not.toHaveBeenCalled();
+    expect(ccrApi.applyEdits).not.toHaveBeenCalled();
   });
 
   it('passes and forwards when component props match the registry schema', async () => {
-    const cssApi = makeCssApiWithRegistry(heroRegistry);
+    const ccrApi = makeCcrApiWithRegistry(heroRegistry);
     await executeTool('apply_document_edits', {
       ...baseInput,
       operations: [
@@ -854,13 +854,13 @@ describe('executeTool apply_document_edits registry-based validation', () => {
           content: [{ type: 'Hero', props: { id: '550e8400-e29b-41d4-a716-446655440000', text: 'Hello', visible: true } }],
         },
       ],
-    }, cssApi, 'user-1', TEST_CONTEXT);
-    expect(cssApi.applyEdits).toHaveBeenCalledOnce();
+    }, ccrApi, 'user-1', TEST_CONTEXT);
+    expect(ccrApi.applyEdits).toHaveBeenCalledOnce();
   });
 
   it('proceeds without registry validation when listComponents fails', async () => {
-    const cssApi = makeCssApiWithRegistry(heroRegistry);
-    (cssApi.listComponents as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('Registry unavailable'));
+    const ccrApi = makeCcrApiWithRegistry(heroRegistry);
+    (ccrApi.listComponents as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('Registry unavailable'));
     await executeTool('apply_document_edits', {
       ...baseInput,
       operations: [
@@ -870,35 +870,35 @@ describe('executeTool apply_document_edits registry-based validation', () => {
           content: [{ type: 'Hero', props: { id: '550e8400-e29b-41d4-a716-446655440000', label: 'Bad' } }],
         },
       ],
-    }, cssApi, 'user-1', TEST_CONTEXT);
-    expect(cssApi.applyEdits).toHaveBeenCalledOnce();
+    }, ccrApi, 'user-1', TEST_CONTEXT);
+    expect(ccrApi.applyEdits).toHaveBeenCalledOnce();
   });
 
   it('calls listComponents for prop-level replace ops', async () => {
-    const cssApi = makeCssApiWithRegistry(heroRegistry);
+    const ccrApi = makeCcrApiWithRegistry(heroRegistry);
     await executeTool('apply_document_edits', {
       ...baseInput,
       operations: [
         { type: 'replace', path: 'content.0.props.text', content: 'Updated text' },
       ],
-    }, cssApi, 'user-1', TEST_CONTEXT);
-    expect(cssApi.listComponents).toHaveBeenCalledOnce();
-    expect(cssApi.applyEdits).toHaveBeenCalledOnce();
+    }, ccrApi, 'user-1', TEST_CONTEXT);
+    expect(ccrApi.listComponents).toHaveBeenCalledOnce();
+    expect(ccrApi.applyEdits).toHaveBeenCalledOnce();
   });
 
   it('does not call listComponents for remove ops', async () => {
-    const cssApi = makeCssApiWithRegistry(heroRegistry);
+    const ccrApi = makeCcrApiWithRegistry(heroRegistry);
     await executeTool('apply_document_edits', {
       ...baseInput,
       operations: [
         { type: 'remove', path: 'content.0' },
       ],
-    }, cssApi, 'user-1', TEST_CONTEXT);
-    expect(cssApi.listComponents).not.toHaveBeenCalled();
+    }, ccrApi, 'user-1', TEST_CONTEXT);
+    expect(ccrApi.listComponents).not.toHaveBeenCalled();
   });
 
   it('throws when a component type is not in the registry', async () => {
-    const cssApi = makeCssApiWithRegistry(heroRegistry);
+    const ccrApi = makeCcrApiWithRegistry(heroRegistry);
     await expect(
       executeTool('apply_document_edits', {
         ...baseInput,
@@ -909,9 +909,9 @@ describe('executeTool apply_document_edits registry-based validation', () => {
             content: [{ type: 'Hallucinated', props: { id: '550e8400-e29b-41d4-a716-446655440000', text: 'hi' } }],
           },
         ],
-      }, cssApi, 'user-1', TEST_CONTEXT),
+      }, ccrApi, 'user-1', TEST_CONTEXT),
     ).rejects.toThrow(/Unknown component type "Hallucinated"/);
-    expect(cssApi.applyEdits).not.toHaveBeenCalled();
+    expect(ccrApi.applyEdits).not.toHaveBeenCalled();
   });
 });
 
@@ -920,7 +920,7 @@ describe('executeTool apply_document_edits registry-based validation', () => {
 // ---------------------------------------------------------------------------
 
 describe('executeTool list_components', () => {
-  function makeCssApi(components: unknown[]): McpApiClient {
+  function makeCcrApi(components: unknown[]): McpApiClient {
     return {
       lookupDocumentByPath: vi.fn().mockResolvedValue(null),
       listComponents: vi.fn().mockResolvedValue({ components }),
@@ -928,7 +928,7 @@ describe('executeTool list_components', () => {
   }
 
   it('returns only name, defaultProps, and instructions — drops other metadata', async () => {
-    const cssApi = makeCssApi([
+    const ccrApi = makeCcrApi([
       {
         name: 'Stats',
         label: 'Stats Section',
@@ -943,7 +943,7 @@ describe('executeTool list_components', () => {
     const result = await executeTool(
       'list_components',
       { site_id: 'site-1', branch_id: 'branch-1' },
-      cssApi,
+      ccrApi,
       'user-1', TEST_CONTEXT,
     ) as Record<string, unknown>[];
 
@@ -961,7 +961,7 @@ describe('executeTool list_components', () => {
   });
 
   it('omits instructions when ai.instructions is not present', async () => {
-    const cssApi = makeCssApi([
+    const ccrApi = makeCcrApi([
       {
         name: 'Hero',
         label: 'Hero',
@@ -972,7 +972,7 @@ describe('executeTool list_components', () => {
     const result = await executeTool(
       'list_components',
       { site_id: 'site-1', branch_id: 'branch-1' },
-      cssApi,
+      ccrApi,
       'user-1', TEST_CONTEXT,
     ) as Record<string, unknown>[];
 
@@ -984,7 +984,7 @@ describe('executeTool list_components', () => {
   });
 
   it('omits instructions when ai exists but has no instructions field', async () => {
-    const cssApi = makeCssApi([
+    const ccrApi = makeCcrApi([
       {
         name: 'Hero',
         defaultProps: { title: '' },
@@ -995,7 +995,7 @@ describe('executeTool list_components', () => {
     const result = await executeTool(
       'list_components',
       { site_id: 'site-1', branch_id: 'branch-1' },
-      cssApi,
+      ccrApi,
       'user-1', TEST_CONTEXT,
     ) as Record<string, unknown>[];
 
@@ -1011,7 +1011,7 @@ describe('executeTool create_page prop validation', () => {
   const siteId = 'site-1';
   const branchId = 'branch-1';
 
-  function makeCssApi(components: unknown[]): McpApiClient {
+  function makeCcrApi(components: unknown[]): McpApiClient {
     return {
       lookupDocumentByPath: vi.fn().mockResolvedValue(null),
       listComponents: vi.fn().mockResolvedValue({ components }),
@@ -1037,7 +1037,7 @@ describe('executeTool create_page prop validation', () => {
   ];
 
   it('throws with a descriptive error when a component has a hallucinated prop key', async () => {
-    const cssApi = makeCssApi(baseRegistry);
+    const ccrApi = makeCcrApi(baseRegistry);
     await expect(
       executeTool('create_page', {
         site_id: siteId,
@@ -1050,13 +1050,13 @@ describe('executeTool create_page prop validation', () => {
             props: { items: [{ text: 'Revenue' }], columns: '3', badProp: 'oops' },
           },
         ],
-      }, cssApi, 'user-1', TEST_CONTEXT),
+      }, ccrApi, 'user-1', TEST_CONTEXT),
     ).rejects.toThrow(/Unknown prop "badProp" on "Stats"/);
-    expect(cssApi.createDocument).not.toHaveBeenCalled();
+    expect(ccrApi.createDocument).not.toHaveBeenCalled();
   });
 
   it('throws with descriptive error for a top-level hallucinated key', async () => {
-    const cssApi = makeCssApi(baseRegistry);
+    const ccrApi = makeCcrApi(baseRegistry);
     await expect(
       executeTool('create_page', {
         site_id: siteId,
@@ -1068,13 +1068,13 @@ describe('executeTool create_page prop validation', () => {
             props: { items: [{ text: 'Revenue' }], heading: 'Bad key' },
           },
         ],
-      }, cssApi, 'user-1', TEST_CONTEXT),
+      }, ccrApi, 'user-1', TEST_CONTEXT),
     ).rejects.toThrow(/Unknown prop "heading" on "Stats"/);
-    expect(cssApi.createDocument).not.toHaveBeenCalled();
+    expect(ccrApi.createDocument).not.toHaveBeenCalled();
   });
 
   it('passes when props match defaultProps exactly', async () => {
-    const cssApi = makeCssApi(baseRegistry);
+    const ccrApi = makeCcrApi(baseRegistry);
     await executeTool('create_page', {
       site_id: siteId,
       branch_id: branchId,
@@ -1091,13 +1091,13 @@ describe('executeTool create_page prop validation', () => {
           },
         },
       ],
-    }, cssApi, 'user-1', TEST_CONTEXT);
-    expect(cssApi.createDocument).toHaveBeenCalledOnce();
-    expect(cssApi.applyEdits).toHaveBeenCalled();
+    }, ccrApi, 'user-1', TEST_CONTEXT);
+    expect(ccrApi.createDocument).toHaveBeenCalledOnce();
+    expect(ccrApi.applyEdits).toHaveBeenCalled();
   });
 
   it('passes when props are a subset of defaultProps (optional fields omitted)', async () => {
-    const cssApi = makeCssApi(baseRegistry);
+    const ccrApi = makeCcrApi(baseRegistry);
     await executeTool('create_page', {
       site_id: siteId,
       branch_id: branchId,
@@ -1108,13 +1108,13 @@ describe('executeTool create_page prop validation', () => {
           props: { items: [{ text: 'Revenue' }], columns: '3' },
         },
       ],
-    }, cssApi, 'user-1', TEST_CONTEXT);
-    expect(cssApi.createDocument).toHaveBeenCalledOnce();
-    expect(cssApi.applyEdits).toHaveBeenCalled();
+    }, ccrApi, 'user-1', TEST_CONTEXT);
+    expect(ccrApi.createDocument).toHaveBeenCalledOnce();
+    expect(ccrApi.applyEdits).toHaveBeenCalled();
   });
 
   it('injects a fresh ULID for each component and sends via applyEdits', async () => {
-    const cssApi = makeCssApi(baseRegistry);
+    const ccrApi = makeCcrApi(baseRegistry);
     await executeTool('create_page', {
       site_id: siteId,
       branch_id: branchId,
@@ -1126,9 +1126,9 @@ describe('executeTool create_page prop validation', () => {
           props: { items: [{ text: 'Revenue' }], columns: '3', id: 'agent-provided-id' },
         },
       ],
-    }, cssApi, 'user-1', TEST_CONTEXT);
-    expect(cssApi.applyEdits).toHaveBeenCalled();
-    const applyCall = (cssApi.applyEdits as ReturnType<typeof vi.fn>).mock.calls[0][0] as {
+    }, ccrApi, 'user-1', TEST_CONTEXT);
+    expect(ccrApi.applyEdits).toHaveBeenCalled();
+    const applyCall = (ccrApi.applyEdits as ReturnType<typeof vi.fn>).mock.calls[0][0] as {
       operations: { type: string; path: string; content: { props: { id: string } }[] }[];
     };
     const op = applyCall.operations[0];
@@ -1141,7 +1141,7 @@ describe('executeTool create_page prop validation', () => {
   });
 
   it('still throws on unknown component type', async () => {
-    const cssApi = makeCssApi(baseRegistry);
+    const ccrApi = makeCcrApi(baseRegistry);
     await expect(
       executeTool('create_page', {
         site_id: siteId,
@@ -1150,56 +1150,56 @@ describe('executeTool create_page prop validation', () => {
         components: [
           { type: 'Nonexistent', props: {} },
         ],
-      }, cssApi, 'user-1', TEST_CONTEXT),
+      }, ccrApi, 'user-1', TEST_CONTEXT),
     ).rejects.toThrow(/Unknown component type "Nonexistent"/);
-    expect(cssApi.createDocument).not.toHaveBeenCalled();
+    expect(ccrApi.createDocument).not.toHaveBeenCalled();
   });
 
   it('returns createResult directly when components array is empty', async () => {
-    const cssApi = makeCssApi(baseRegistry);
+    const ccrApi = makeCcrApi(baseRegistry);
     const result = await executeTool('create_page', {
       site_id: siteId,
       branch_id: branchId,
       document_path: '/about',
       components: [],
-    }, cssApi, 'user-1', TEST_CONTEXT) as Record<string, unknown>;
-    expect(cssApi.createDocument).toHaveBeenCalledOnce();
-    expect(cssApi.canAgentEdit).not.toHaveBeenCalled();
+    }, ccrApi, 'user-1', TEST_CONTEXT) as Record<string, unknown>;
+    expect(ccrApi.createDocument).toHaveBeenCalledOnce();
+    expect(ccrApi.canAgentEdit).not.toHaveBeenCalled();
     expect(result.documentId).toBe('doc-1');
     expect(result).not.toHaveProperty('components');
   });
 
   it('returns page with warning when canAgentEdit returns canEdit: false', async () => {
-    const cssApi = {
-      ...makeCssApi(baseRegistry),
+    const ccrApi = {
+      ...makeCcrApi(baseRegistry),
       canAgentEdit: vi.fn().mockResolvedValue({ canEdit: false, reason: 'locked by another user' }),
     } as unknown as McpApiClient;
-    (cssApi.listComponents as ReturnType<typeof vi.fn>).mockResolvedValue({ components: baseRegistry });
-    (cssApi.createDocument as ReturnType<typeof vi.fn>).mockResolvedValue({ documentId: 'doc-1', documentPath: 'about', versionId: 'v-1' });
+    (ccrApi.listComponents as ReturnType<typeof vi.fn>).mockResolvedValue({ components: baseRegistry });
+    (ccrApi.createDocument as ReturnType<typeof vi.fn>).mockResolvedValue({ documentId: 'doc-1', documentPath: 'about', versionId: 'v-1' });
 
     const result = await executeTool('create_page', {
       site_id: siteId,
       branch_id: branchId,
       document_path: '/about',
       components: [{ type: 'Stats', props: { items: [{ text: 'Revenue' }], columns: '3' } }],
-    }, cssApi, 'user-1', TEST_CONTEXT) as Record<string, unknown>;
+    }, ccrApi, 'user-1', TEST_CONTEXT) as Record<string, unknown>;
 
-    expect(cssApi.createDocument).toHaveBeenCalledOnce();
-    expect(cssApi.startAgentEdit).not.toHaveBeenCalled();
+    expect(ccrApi.createDocument).toHaveBeenCalledOnce();
+    expect(ccrApi.startAgentEdit).not.toHaveBeenCalled();
     expect(result.warning).toMatch(/locked by another user/);
   });
 
   it('aborts the edit session and rethrows when applyEdits fails', async () => {
     const abortMock = vi.fn().mockResolvedValue({});
-    const cssApi = {
-      ...makeCssApi(baseRegistry),
+    const ccrApi = {
+      ...makeCcrApi(baseRegistry),
       applyEdits: vi.fn().mockRejectedValue(new Error('CRDT write failed')),
       abortAgentEdit: abortMock,
     } as unknown as McpApiClient;
-    (cssApi.listComponents as ReturnType<typeof vi.fn>).mockResolvedValue({ components: baseRegistry });
-    (cssApi.createDocument as ReturnType<typeof vi.fn>).mockResolvedValue({ documentId: 'doc-1', documentPath: 'about', versionId: 'v-1' });
-    (cssApi.canAgentEdit as ReturnType<typeof vi.fn>).mockResolvedValue({ canEdit: true });
-    (cssApi.startAgentEdit as ReturnType<typeof vi.fn>).mockResolvedValue({ editSessionId: 'session-1', checkpointId: 'ck-1', expiresAt: '', reservedRegions: [] });
+    (ccrApi.listComponents as ReturnType<typeof vi.fn>).mockResolvedValue({ components: baseRegistry });
+    (ccrApi.createDocument as ReturnType<typeof vi.fn>).mockResolvedValue({ documentId: 'doc-1', documentPath: 'about', versionId: 'v-1' });
+    (ccrApi.canAgentEdit as ReturnType<typeof vi.fn>).mockResolvedValue({ canEdit: true });
+    (ccrApi.startAgentEdit as ReturnType<typeof vi.fn>).mockResolvedValue({ editSessionId: 'session-1', checkpointId: 'ck-1', expiresAt: '', reservedRegions: [] });
 
     await expect(
       executeTool('create_page', {
@@ -1207,7 +1207,7 @@ describe('executeTool create_page prop validation', () => {
         branch_id: branchId,
         document_path: '/about',
         components: [{ type: 'Stats', props: { items: [{ text: 'Revenue' }], columns: '3' } }],
-      }, cssApi, 'user-1', TEST_CONTEXT),
+      }, ccrApi, 'user-1', TEST_CONTEXT),
     ).rejects.toThrow('CRDT write failed');
 
     expect(abortMock).toHaveBeenCalledOnce();
@@ -1215,16 +1215,16 @@ describe('executeTool create_page prop validation', () => {
 
   it('does NOT abort when completeAgentEdit fails after edits are already applied', async () => {
     const abortMock = vi.fn().mockResolvedValue({});
-    const cssApi = {
-      ...makeCssApi(baseRegistry),
+    const ccrApi = {
+      ...makeCcrApi(baseRegistry),
       completeAgentEdit: vi.fn().mockRejectedValue(new Error('complete failed')),
       abortAgentEdit: abortMock,
     } as unknown as McpApiClient;
-    (cssApi.listComponents as ReturnType<typeof vi.fn>).mockResolvedValue({ components: baseRegistry });
-    (cssApi.createDocument as ReturnType<typeof vi.fn>).mockResolvedValue({ documentId: 'doc-1', documentPath: 'about', versionId: 'v-1' });
-    (cssApi.canAgentEdit as ReturnType<typeof vi.fn>).mockResolvedValue({ canEdit: true });
-    (cssApi.startAgentEdit as ReturnType<typeof vi.fn>).mockResolvedValue({ editSessionId: 'session-1', checkpointId: 'ck-1', expiresAt: '', reservedRegions: [] });
-    (cssApi.applyEdits as ReturnType<typeof vi.fn>).mockResolvedValue({ success: true });
+    (ccrApi.listComponents as ReturnType<typeof vi.fn>).mockResolvedValue({ components: baseRegistry });
+    (ccrApi.createDocument as ReturnType<typeof vi.fn>).mockResolvedValue({ documentId: 'doc-1', documentPath: 'about', versionId: 'v-1' });
+    (ccrApi.canAgentEdit as ReturnType<typeof vi.fn>).mockResolvedValue({ canEdit: true });
+    (ccrApi.startAgentEdit as ReturnType<typeof vi.fn>).mockResolvedValue({ editSessionId: 'session-1', checkpointId: 'ck-1', expiresAt: '', reservedRegions: [] });
+    (ccrApi.applyEdits as ReturnType<typeof vi.fn>).mockResolvedValue({ success: true });
 
     await expect(
       executeTool('create_page', {
@@ -1232,7 +1232,7 @@ describe('executeTool create_page prop validation', () => {
         branch_id: branchId,
         document_path: '/about',
         components: [{ type: 'Stats', props: { items: [{ text: 'Revenue' }], columns: '3' } }],
-      }, cssApi, 'user-1', TEST_CONTEXT),
+      }, ccrApi, 'user-1', TEST_CONTEXT),
     ).rejects.toThrow('complete failed');
 
     // Must NOT abort — edits are already in the CRDT
@@ -1257,7 +1257,7 @@ describe('executeTool page templates', () => {
     version: 3,
   };
 
-  function makeCssApi(overrides: Partial<Record<keyof McpApiClient, unknown>> = {}): McpApiClient {
+  function makeCcrApi(overrides: Partial<Record<keyof McpApiClient, unknown>> = {}): McpApiClient {
     return {
       lookupDocumentByPath: vi.fn().mockResolvedValue(null),
       listTemplates: vi.fn().mockResolvedValue({ templates: [blogTemplate] }),
@@ -1280,9 +1280,9 @@ describe('executeTool page templates', () => {
   }
 
   it('lists templates with what the choice is made from, and no layout', async () => {
-    const cssApi = makeCssApi();
+    const ccrApi = makeCcrApi();
     const result = await executeTool(
-      'list_page_templates', { site_id: siteId, branch_id: branchId }, cssApi, 'user-1', TEST_CONTEXT,
+      'list_page_templates', { site_id: siteId, branch_id: branchId }, ccrApi, 'user-1', TEST_CONTEXT,
     );
 
     expect(result).toEqual([{
@@ -1297,13 +1297,13 @@ describe('executeTool page templates', () => {
   // A deprecated template still describes itself perfectly well, so the model has no way to
   // know the create call will refuse it.
   it('leaves deprecated templates out of the list', async () => {
-    const cssApi = makeCssApi({
+    const ccrApi = makeCcrApi({
       listTemplates: vi.fn().mockResolvedValue({
         templates: [blogTemplate, { id: 'tpl-old', name: 'old', deprecated: true }],
       }),
     });
     const result = (await executeTool(
-      'list_page_templates', { site_id: siteId, branch_id: branchId }, cssApi, 'user-1', TEST_CONTEXT,
+      'list_page_templates', { site_id: siteId, branch_id: branchId }, ccrApi, 'user-1', TEST_CONTEXT,
     )) as { id: string }[];
 
     expect(result.map(t => t.id)).toEqual(['tpl-blog']);
@@ -1312,31 +1312,31 @@ describe('executeTool page templates', () => {
   // The backend builds version 1 from the template and rejects a request that also carries a
   // snapshot, so the blank-page create path must not run.
   it('creates from the template without sending a snapshot or an edit session', async () => {
-    const cssApi = makeCssApi();
+    const ccrApi = makeCcrApi();
     await executeTool('create_page', {
       site_id: siteId,
       branch_id: branchId,
       document_path: 'blog/hello',
       template_id: 'tpl-blog',
       root_props: { title: 'Hello' },
-    }, cssApi, 'user-1', TEST_CONTEXT);
+    }, ccrApi, 'user-1', TEST_CONTEXT);
 
-    expect(cssApi.createDocumentFromTemplate).toHaveBeenCalledWith(
+    expect(ccrApi.createDocumentFromTemplate).toHaveBeenCalledWith(
       siteId, branchId, 'blog/hello', 'tpl-blog', 'Hello',
     );
-    expect(cssApi.createDocument).not.toHaveBeenCalled();
-    expect(cssApi.canAgentEdit).toBeUndefined();
+    expect(ccrApi.createDocument).not.toHaveBeenCalled();
+    expect(ccrApi.canAgentEdit).toBeUndefined();
   });
 
   // Conformance is checked by component id, so the agent needs the ids that landed.
   it('reports the scaffolded components and what may be done with them', async () => {
-    const cssApi = makeCssApi();
+    const ccrApi = makeCcrApi();
     const result = (await executeTool('create_page', {
       site_id: siteId,
       branch_id: branchId,
       document_path: 'blog/hello',
       template_id: 'tpl-blog',
-    }, cssApi, 'user-1', TEST_CONTEXT)) as Record<string, unknown>;
+    }, ccrApi, 'user-1', TEST_CONTEXT)) as Record<string, unknown>;
 
     expect(result.documentPath).toBe('blog/hello');
     expect(result.components).toEqual([{ type: 'Hero', id: 'Hero-aaaa' }]);
@@ -1345,7 +1345,7 @@ describe('executeTool page templates', () => {
   });
 
   it('creates the page even when reading the scaffold back fails', async () => {
-    const cssApi = makeCssApi({
+    const ccrApi = makeCcrApi({
       getDocumentLatestVersion: vi.fn().mockRejectedValue(new Error('boom')),
     });
     const result = (await executeTool('create_page', {
@@ -1353,7 +1353,7 @@ describe('executeTool page templates', () => {
       branch_id: branchId,
       document_path: 'blog/hello',
       template_id: 'tpl-blog',
-    }, cssApi, 'user-1', TEST_CONTEXT)) as Record<string, unknown>;
+    }, ccrApi, 'user-1', TEST_CONTEXT)) as Record<string, unknown>;
 
     expect(result.documentId).toBe('doc-1');
     expect(result.components).toEqual([]);
@@ -1362,21 +1362,21 @@ describe('executeTool page templates', () => {
   // An id the model invented would otherwise fail as a 404 from the create call, which does not
   // tell it where the real ids are.
   it('rejects a template id that is not on the branch, before creating anything', async () => {
-    const cssApi = makeCssApi();
+    const ccrApi = makeCcrApi();
     await expect(
       executeTool('create_page', {
         site_id: siteId,
         branch_id: branchId,
         document_path: 'blog/hello',
         template_id: 'tpl-invented',
-      }, cssApi, 'user-1', TEST_CONTEXT),
+      }, ccrApi, 'user-1', TEST_CONTEXT),
     ).rejects.toThrow(/list_page_templates/);
 
-    expect(cssApi.createDocumentFromTemplate).not.toHaveBeenCalled();
+    expect(ccrApi.createDocumentFromTemplate).not.toHaveBeenCalled();
   });
 
   it('rejects a deprecated template by name', async () => {
-    const cssApi = makeCssApi({
+    const ccrApi = makeCcrApi({
       listTemplates: vi.fn().mockResolvedValue({
         templates: [{ id: 'tpl-old', name: 'old', label: 'Old layout', deprecated: true }],
       }),
@@ -1387,12 +1387,12 @@ describe('executeTool page templates', () => {
         branch_id: branchId,
         document_path: 'about',
         template_id: 'tpl-old',
-      }, cssApi, 'user-1', TEST_CONTEXT),
+      }, ccrApi, 'user-1', TEST_CONTEXT),
     ).rejects.toThrow(/"Old layout" template is deprecated/);
   });
 
   it('refuses components alongside a template rather than silently dropping them', async () => {
-    const cssApi = makeCssApi();
+    const ccrApi = makeCcrApi();
     await expect(
       executeTool('create_page', {
         site_id: siteId,
@@ -1400,15 +1400,15 @@ describe('executeTool page templates', () => {
         document_path: 'blog/hello',
         template_id: 'tpl-blog',
         components: [{ type: 'Stats', props: {} }],
-      }, cssApi, 'user-1', TEST_CONTEXT),
+      }, ccrApi, 'user-1', TEST_CONTEXT),
     ).rejects.toThrow(/takes its components from the template/);
 
-    expect(cssApi.createDocumentFromTemplate).not.toHaveBeenCalled();
+    expect(ccrApi.createDocumentFromTemplate).not.toHaveBeenCalled();
   });
 
   // The schema no longer requires `components`, so a blank page can arrive without them.
   it('still creates an empty page when neither components nor a template are given', async () => {
-    const cssApi = makeCssApi({
+    const ccrApi = makeCcrApi({
       createDocument: vi.fn().mockResolvedValue({
         documentId: 'doc-2', documentPath: 'about', versionId: 'v-2',
       }),
@@ -1417,20 +1417,20 @@ describe('executeTool page templates', () => {
       site_id: siteId,
       branch_id: branchId,
       document_path: 'about',
-    }, cssApi, 'user-1', TEST_CONTEXT);
+    }, ccrApi, 'user-1', TEST_CONTEXT);
 
-    expect(cssApi.createDocument).toHaveBeenCalledOnce();
+    expect(ccrApi.createDocument).toHaveBeenCalledOnce();
     expect(result).toEqual({ documentId: 'doc-2', documentPath: 'about', versionId: 'v-2' });
   });
 });
 
 // ---------------------------------------------------------------------------
-// CSS_TOOLS still present and unchanged
+// CCR_TOOLS still present and unchanged
 // ---------------------------------------------------------------------------
 
-describe('CSS_TOOLS', () => {
+describe('CCR_TOOLS', () => {
   it('still exports list_components, get_document, apply_document_edits etc.', () => {
-    const names = CSS_TOOLS.map(t => t.name);
+    const names = CCR_TOOLS.map(t => t.name);
     expect(names).toContain('list_components');
     expect(names).toContain('get_document');
     expect(names).toContain('apply_document_edits');
@@ -1440,11 +1440,11 @@ describe('CSS_TOOLS', () => {
   });
 
   it('offers list_documents, so the agent can find a page the user named', () => {
-    expect(CSS_TOOLS.map(t => t.name)).toContain('list_documents');
+    expect(CCR_TOOLS.map(t => t.name)).toContain('list_documents');
   });
 
   it('withholds list_sites and list_branches, which come from the editor context', () => {
-    const names = CSS_TOOLS.map(t => t.name);
+    const names = CCR_TOOLS.map(t => t.name);
     expect(names).not.toContain('list_sites');
     expect(names).not.toContain('list_branches');
   });
@@ -1459,12 +1459,12 @@ describe('list_documents', () => {
         { id: 'd3', path: '/_registry/templates/blog', createdAt: '' },
       ],
     });
-    const cssApi = { listDocuments } as unknown as McpApiClient;
+    const ccrApi = { listDocuments } as unknown as McpApiClient;
 
     const result = await executeTool(
       'list_documents',
       { site_id: 'site-1', branch_id: 'branch-1' },
-      cssApi,
+      ccrApi,
       'user-1', TEST_CONTEXT,
     );
 

@@ -1,6 +1,6 @@
 # @pantheon-systems/css-client
 
-TypeScript API client for Pantheon's Collaborative State System (CSS) — documents, content,
+TypeScript API client for Pantheon's Collaborative Content Repository (CCR) — documents, content,
 authentication, and the realtime collaboration channel.
 
 > Part of Pantheon's **P1** platform. It is published publicly so P1 applications can install

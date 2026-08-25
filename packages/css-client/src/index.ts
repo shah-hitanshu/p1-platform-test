@@ -1,7 +1,7 @@
 /**
  * @pantheon-systems/css-client
  *
- * TypeScript API client for the Collaborative State System.
+ * TypeScript API client for the Collaborative Content Repository.
  */
 
 // Main client

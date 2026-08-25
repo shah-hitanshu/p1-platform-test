@@ -35,8 +35,8 @@ concurrency:
 env:
   # The workers this workflow deploys, plus their dependencies (`...pkg`).
   DEPLOYED: >-
-    --filter=...collaborative-state-worker
-    --filter=...css-mcp-server
+    --filter=...ccr-worker
+    --filter=...ccr-mcp-server
     --filter=...@p1/agent
     --filter=...p1-media-worker
 
@@ -105,7 +105,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build worker dependencies
-        run: pnpm exec turbo run build --filter='collaborative-state-worker^...'
+        run: pnpm exec turbo run build --filter='ccr-worker^...'
 
       - name: Authenticate to GCP
         uses: pantheon-systems/common-gh/auth-wif@0a1dafc525b4ffa9fcfbfcf1c889dc0251c0c4e4 # main @ 2026-06
@@ -141,11 +141,11 @@ jobs:
           IAM_USER="${SA%.gserviceaccount.com}"
           ENC_USER="${IAM_USER//@/%40}" # @ must be percent-encoded in the URI userinfo
           export POSTGRES_CONNECTION_STRING="postgresql://${ENC_USER}@localhost:5432/${{ vars.CLOUDSQL_DB_NAME }}"
-          pnpm --filter collaborative-state-worker db:migrate
+          pnpm --filter ccr-worker db:migrate
 
       - name: Set Wrangler secrets
         if: ${{ needs.config.outputs.dry_run != 'true' }}
-        working-directory: workers/collaborative-state
+        working-directory: workers/ccr
         env:
           CLOUDFLARE_API_TOKEN: ${{ steps.secrets.outputs.cf_token }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
@@ -160,7 +160,7 @@ jobs:
           --env ${{ needs.config.outputs.environment }}
           --var APP_VERSION:${{ github.sha }}
           ${{ needs.config.outputs.dry_run == 'true' && '--dry-run' || '' }}
-        working-directory: workers/collaborative-state
+        working-directory: workers/ccr
         env:
           CLOUDFLARE_API_TOKEN: ${{ steps.secrets.outputs.cf_token }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
@@ -184,7 +184,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build worker dependencies
-        run: pnpm exec turbo run build --filter='css-mcp-server^...'
+        run: pnpm exec turbo run build --filter='ccr-mcp-server^...'
 
       - name: Authenticate to GCP
         uses: pantheon-systems/common-gh/auth-wif@0a1dafc525b4ffa9fcfbfcf1c889dc0251c0c4e4 # main @ 2026-06
@@ -202,7 +202,7 @@ jobs:
 
       - name: Set Wrangler secrets
         if: ${{ needs.config.outputs.dry_run != 'true' }}
-        working-directory: workers/css-mcp-server
+        working-directory: workers/ccr-mcp-server
         env:
           CLOUDFLARE_API_TOKEN: ${{ steps.secrets.outputs.cf_token }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
@@ -218,7 +218,7 @@ jobs:
           pnpm exec wrangler deploy
           --env ${{ needs.config.outputs.environment }}
           ${{ needs.config.outputs.dry_run == 'true' && '--dry-run' || '' }}
-        working-directory: workers/css-mcp-server
+        working-directory: workers/ccr-mcp-server
         env:
           CLOUDFLARE_API_TOKEN: ${{ steps.secrets.outputs.cf_token }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
@@ -368,15 +368,15 @@ jobs:
 
       # Each worker is released only if its own deploy succeeded, so one failed
       # worker doesn't suppress the records for the ones that did ship.
-      - name: Release collaborative-state-worker
+      - name: Release ccr-worker
         if: needs.backend.result == 'success'
-        run: .github/scripts/worker-release.sh collaborative-state-worker workers/collaborative-state
+        run: .github/scripts/worker-release.sh ccr-worker workers/ccr collaborative-state-worker
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Release css-mcp-server
+      - name: Release ccr-mcp-server
         if: needs.mcp-server.result == 'success'
-        run: .github/scripts/worker-release.sh css-mcp-server workers/css-mcp-server
+        run: .github/scripts/worker-release.sh ccr-mcp-server workers/ccr-mcp-server css-mcp-server
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

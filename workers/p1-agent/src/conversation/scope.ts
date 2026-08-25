@@ -1,8 +1,8 @@
-import type { CreateDocumentResult } from '../css/types.js';
+import type { CreateDocumentResult } from '../ccr/types.js';
 import type { ChatContext } from '../types.js';
 
 /**
- * Canonical document path, mirroring the CSS backend's `normalizePath`
+ * Canonical document path, mirroring the CCR backend's `normalizePath`
  * (`services/document-types.ts`). It has to agree with the backend exactly, or a write to a page
  * the user did grant is refused: the backend resolves `About`, `about/` and `//about` all to the
  * granted `about`. Diverges only on the empty path, which the backend maps to the home page `/`

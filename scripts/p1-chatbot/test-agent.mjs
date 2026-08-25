@@ -2,7 +2,7 @@
  * End-to-end test for the ChatAgent Worker.
  *
  * Usage:
- *   CSS_TOKEN=<your-css-token> node scripts/test-agent.mjs
+ *   CCR_TOKEN=<your-ccr-token> node scripts/test-agent.mjs
  *
  * Optional overrides:
  *   AGENT_URL=https://... SITE_ID=... BRANCH_ID=... DOCUMENT_PATH=...
@@ -13,16 +13,16 @@ import { WebSocket } from "ws";
 const AGENT_URL =
   process.env.AGENT_URL ??
   "https://p1-chatbot-agent-sbx1.chris-801.workers.dev";
-const CSS_TOKEN = process.env.CSS_TOKEN;
+const CCR_TOKEN = process.env.CCR_TOKEN;
 const SITE_ID = process.env.SITE_ID ?? "";
 const BRANCH_ID = process.env.BRANCH_ID ?? "";
 const DOCUMENT_PATH = process.env.DOCUMENT_PATH ?? "/test";
 const MESSAGE =
   process.env.MESSAGE ?? "List the branches on the Audi Demo site";
 
-if (!CSS_TOKEN) {
-  console.error("Error: CSS_TOKEN env var is required.");
-  console.error("  CSS_TOKEN=<token> node scripts/test-agent.mjs");
+if (!CCR_TOKEN) {
+  console.error("Error: CCR_TOKEN env var is required.");
+  console.error("  CCR_TOKEN=<token> node scripts/test-agent.mjs");
   process.exit(1);
 }
 
@@ -41,7 +41,7 @@ ws.on("open", () => {
         siteId: SITE_ID,
         branchId: BRANCH_ID,
         documentPath: DOCUMENT_PATH,
-        token: CSS_TOKEN,
+        token: CCR_TOKEN,
       },
     }),
   );

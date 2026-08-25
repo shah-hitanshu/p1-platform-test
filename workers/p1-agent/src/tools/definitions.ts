@@ -15,7 +15,7 @@ export interface RawTool {
   /** JSON Schema for the tool's arguments (Anthropic-native `input_schema` shape). */
   input_schema: Record<string, unknown>;
 }
-const RAW_CSS_TOOLS: RawTool[] = [
+const RAW_CCR_TOOLS: RawTool[] = [
   {
     name: 'list_documents',
     description: 'List the pages on this site. Use it to find a page the user named, or to see what else is on the site before making a change. Being able to read a page does not mean you may edit it — editing is limited to your write set.',
@@ -270,7 +270,7 @@ export function toOpenAiTools(raw: RawTool[]): OpenAI.Chat.Completions.ChatCompl
   }));
 }
 
-/** CSS capability tools, in the provider-neutral {@link RawTool} shape. */
-export const CSS_TOOLS: RawTool[] = RAW_CSS_TOOLS;
+/** CCR capability tools, in the provider-neutral {@link RawTool} shape. */
+export const CCR_TOOLS: RawTool[] = RAW_CCR_TOOLS;
 /** Web/media tools (fetch_page, list_media), in the provider-neutral {@link RawTool} shape. */
 export const WEB_TOOLS: RawTool[] = RAW_WEB_TOOLS;

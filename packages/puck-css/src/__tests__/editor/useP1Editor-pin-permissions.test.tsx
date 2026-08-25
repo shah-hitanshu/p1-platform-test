@@ -10,7 +10,7 @@ import { renderHook, waitFor } from '@testing-library/react';
 
 const mockLoadDocument = vi.fn<(...args: unknown[]) => Promise<void>>();
 
-const mockCssContext = {
+const mockCcrContext = {
   branchId: 'branch-a',
   loadDocument: mockLoadDocument,
   documents: [] as { id: string; path: string }[],
@@ -87,7 +87,7 @@ const mockCssContext = {
 };
 
 vi.mock('../../core/P1PuckContext.js', () => ({
-  useP1Puck: () => mockCssContext,
+  useP1Puck: () => mockCcrContext,
 }));
 
 vi.mock('../../editor/useP1Plugin.js', () => ({
@@ -140,12 +140,12 @@ describe('useP1Editor pin permissions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockLoadDocument.mockResolvedValue(undefined);
-    mockCssContext.currentDocument = {
+    mockCcrContext.currentDocument = {
       id: 'doc-t',
       path: '_registry/templates/blog-post',
       siteId: 'site-test',
     };
-    mockCssContext.resolvePermissions = () => ({ ...ALL_ALLOWED });
+    mockCcrContext.resolvePermissions = () => ({ ...ALL_ALLOWED });
   });
 
   it('locks drag and delete for a snapshot-pinned component when authoring a template', async () => {
@@ -176,7 +176,7 @@ describe('useP1Editor pin permissions', () => {
   });
 
   it('ignores the document snapshot pinMap on a bound page', async () => {
-    mockCssContext.currentDocument = {
+    mockCcrContext.currentDocument = {
       id: 'doc-p',
       path: 'blog/my-post',
       siteId: 'site-test',
@@ -206,10 +206,10 @@ describe('useP1Editor pin permissions', () => {
   it('forwards the component id to the context resolver so slot-id pinning applies', async () => {
     // Slot-id pinning resolves against the bound template inside the context
     // resolver, so the wrapper must hand it the component's own props.id.
-    mockCssContext.resolvePermissions = ((item: { type: string; props?: { id?: string } }) =>
+    mockCcrContext.resolvePermissions = ((item: { type: string; props?: { id?: string } }) =>
       item.props?.id === 'HeadingBlock-slot-1'
         ? { ...ALL_ALLOWED, drag: false, delete: false }
-        : { ...ALL_ALLOWED }) as typeof mockCssContext.resolvePermissions;
+        : { ...ALL_ALLOWED }) as typeof mockCcrContext.resolvePermissions;
 
     const { result } = renderHook(() =>
       useP1Editor({

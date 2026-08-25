@@ -79,7 +79,7 @@ export const EMPTY_STATE: ChatSessionState = {
 };
 
 /**
- * Canonical document path, matching the CSS backend's own normalization. It has to agree with the
+ * Canonical document path, matching the CCR backend's own normalization. It has to agree with the
  * Worker's copy in `scope.ts`, which compares the set it receives against the backend's form: a
  * chip reading `About` would be refused on the `about` it was granted for. The home page's path is
  * literally "/"; an empty path means no document is open.

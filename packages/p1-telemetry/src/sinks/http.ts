@@ -3,7 +3,7 @@
  *
  * Worker code has no filesystem access, so the local ndjson file is written by a
  * collector process (`scripts/log-sink.mjs`) that this sink POSTs to. That indirection
- * is also what unifies the runtimes: the css worker, p1-agent, p1-media, the MCP
+ * is also what unifies the runtimes: the ccr worker, p1-agent, p1-media, the MCP
  * server and the Next server all append to one file, so a single `trace_id` filter
  * reconstructs a whole causal chain.
  *

@@ -6,7 +6,7 @@ import { MockWebSocket, baseContext } from './testSupport.js';
 
 const dispatch = vi.fn();
 
-// The panel is a Puck plugin panel living inside the CSS editor, so both of those have to
+// The panel is a Puck plugin panel living inside the CCR editor, so both of those have to
 // stand in. Mocked at the module boundary rather than threaded through props, because the
 // panel is constructed by Puck and reads them from context.
 let currentDocument: { id: string; path: string } | null = { id: 'doc1', path: '/current' };

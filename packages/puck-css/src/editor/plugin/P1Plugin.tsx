@@ -64,21 +64,21 @@ const usePluginPuckPermissions = createUsePuck();
  * whenever the P1 permission resolver reference changes.
  */
 export function PermissionRefresher(): React.ReactElement | null {
-  const css = useP1PuckOptional();
+  const ccr = useP1PuckOptional();
   const refreshPerms = usePluginPuckPermissions(
     (s) => (s as unknown as { refreshPermissions: () => Promise<void> }).refreshPermissions
   );
 
-  const resolvePermsRef = useRef(css?.resolvePermissions);
+  const resolvePermsRef = useRef(ccr?.resolvePermissions);
 
   useEffect(() => {
-    if (!css?.resolvePermissions || !refreshPerms) return;
+    if (!ccr?.resolvePermissions || !refreshPerms) return;
 
-    if (css.resolvePermissions !== resolvePermsRef.current) {
-      resolvePermsRef.current = css.resolvePermissions;
+    if (ccr.resolvePermissions !== resolvePermsRef.current) {
+      resolvePermsRef.current = ccr.resolvePermissions;
       void refreshPerms();
     }
-  }, [css?.resolvePermissions, refreshPerms]);
+  }, [ccr?.resolvePermissions, refreshPerms]);
 
   return null;
 }
@@ -125,7 +125,7 @@ interface PuckStateWithDispatch {
 }
 
 /**
- * Props for the CSS Plugin panel content
+ * Props for the CCR Plugin panel content
  */
 interface P1PluginPanelProps {
   /** List of versions for the current document */
@@ -464,7 +464,7 @@ function RealtimeDataCaptureBridge(): React.ReactElement | null {
 }
 
 /**
- * Options for creating the CSS Plugin
+ * Options for creating the CCR Plugin
  */
 export interface P1PluginOptions {
   /** List of available branches */
@@ -817,7 +817,7 @@ function createFilteredVersionsStore() {
 }
 
 /**
- * Creates a CSS Plugin for the Puck editor.
+ * Creates a CCR Plugin for the Puck editor.
  *
  * @example
  * ```tsx
@@ -901,7 +901,7 @@ export function createP1Plugin(options: P1PluginOptions): PuckPlugin {
     useEffect(() => {
       showMergeReviewRef.current = () => setShowMergeReview(true);
     }, []);
-    const css = useP1Puck();
+    const ccr = useP1Puck();
     const auth = useOptionalP1Auth();
 
     // Merge avatar from live auth state so the header re-renders when the
@@ -917,16 +917,16 @@ export function createP1Plugin(options: P1PluginOptions): PuckPlugin {
       : baseCurrentUser;
 
     const collaborators = selectHeaderCollaborators(
-      css.presence,
-      css.hasActiveHumans,
-      css.humanPresenceCount,
+      ccr.presence,
+      ccr.hasActiveHumans,
+      ccr.humanPresenceCount,
     );
 
     // Data sources (built-in + user) for the create-page collection builder.
     // Reuses the cached editor-context query, so no extra fetch.
     const { data: editorCtx } = useEditorContext(
       stableOptions.selectedDocumentPath ?? '/',
-      css.branchId,
+      ccr.branchId,
     );
     // MOCK: datasources don't yet declare their required inputs (prototype — the
     // real version derives/declares them, see PROGRESS data-source notes). Attach
@@ -957,7 +957,7 @@ export function createP1Plugin(options: P1PluginOptions): PuckPlugin {
       rawDocs.find((doc) => doc.path === stableOptions.selectedDocumentPath) ?? null;
     const currentDocMapped = currentDoc ? { id: currentDoc.id, path: currentDoc.path, archived: currentDoc.archived ?? false } : null;
 
-    const fc = css.featureConfig ?? {} as Record<string, boolean>;
+    const fc = ccr.featureConfig ?? {} as Record<string, boolean>;
 
     return (
       <>
@@ -965,11 +965,11 @@ export function createP1Plugin(options: P1PluginOptions): PuckPlugin {
           documents={(fc.enableDocumentBrowser ?? true) ? mappedDocs : []}
           currentDocument={(fc.enableDocumentBrowser ?? true) ? currentDocMapped : null}
           selectedDocumentPath={(fc.enableDocumentBrowser ?? true) ? stableOptions.selectedDocumentPath : null}
-          siteName={stableOptions.siteName ?? css.siteName ?? ''}
+          siteName={stableOptions.siteName ?? ccr.siteName ?? ''}
           siteId={stableOptions.siteId}
           dashboardUrl={stableOptions.dashboardUrl}
           logoUrl={stableOptions.logoUrl}
-          onBeforeLogoNavigate={css.saveNow}
+          onBeforeLogoNavigate={ccr.saveNow}
           currentUser={currentUser}
           collaborators={collaborators}
           onSelectDocument={(fc.enableDocumentBrowser ?? true)
@@ -1000,9 +1000,9 @@ export function createP1Plugin(options: P1PluginOptions): PuckPlugin {
               }}
             >
               <MergeResolutionPage
-                client={css.client}
-                siteId={css.siteId}
-                sourceBranchId={css.branchId}
+                client={ccr.client}
+                siteId={ccr.siteId}
+                sourceBranchId={ccr.branchId}
                 targetBranchId={mainBranch.id}
                 sourceBranchName={activeBranch.name}
                 targetBranchName="Live"

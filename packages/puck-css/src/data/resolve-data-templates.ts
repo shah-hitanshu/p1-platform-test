@@ -68,7 +68,7 @@ function resolveSourcePath(
   inner: string,
   context: RemoteDatasourceContext
 ): { resolved: true; value: unknown } | { resolved: false } {
-  // Datasource ids are kebab-case — `templates.<css-query-name>` and P1's
+  // Datasource ids are kebab-case — `templates.<ccr-query-name>` and P1's
   // auto-generated content-type ids like `blog-post` (PCC-3668) — and jsep
   // would read those hyphens as subtraction, so dotted paths have to be
   // recognised here rather than fall through to expression evaluation.

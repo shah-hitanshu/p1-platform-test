@@ -107,9 +107,34 @@ describe('createBrokerAuth', () => {
       name: 'Test User',
       exp: Math.floor(Date.now() / 1000) + 3600,
     });
+    localStorageMock.setItem('ccr_broker_token', jwt);
+    const session = createBrokerAuth(defaultConfig);
+    expect(session.isAuthenticated()).toBe(true);
+  });
+
+  it('migrates a token stored under the pre-rename css_broker_token key', () => {
+    const jwt = createTestJwt({
+      sub: 'user-123',
+      email: 'user@example.com',
+      name: 'Test User',
+      exp: Math.floor(Date.now() / 1000) + 3600,
+    });
     localStorageMock.setItem('css_broker_token', jwt);
     const session = createBrokerAuth(defaultConfig);
     expect(session.isAuthenticated()).toBe(true);
+    expect(localStorageMock.getItem('ccr_broker_token')).toBe(jwt);
+    expect(localStorageMock.getItem('css_broker_token')).toBeNull();
+  });
+
+  it('does not migrate the legacy token when a custom storageKey is configured', () => {
+    const jwt = createTestJwt({
+      sub: 'user-123',
+      exp: Math.floor(Date.now() / 1000) + 3600,
+    });
+    localStorageMock.setItem('css_broker_token', jwt);
+    const session = createBrokerAuth({ ...defaultConfig, storageKey: 'custom_key' });
+    expect(session.isAuthenticated()).toBe(false);
+    expect(localStorageMock.getItem('css_broker_token')).toBe(jwt);
   });
 
   it('restores user info from stored JWT on creation', () => {
@@ -119,7 +144,7 @@ describe('createBrokerAuth', () => {
       name: 'Test User',
       exp: Math.floor(Date.now() / 1000) + 3600,
     });
-    localStorageMock.setItem('css_broker_token', jwt);
+    localStorageMock.setItem('ccr_broker_token', jwt);
     const session = createBrokerAuth(defaultConfig);
     const info = session.getUserInfo();
     expect(info).not.toBeNull();
@@ -143,7 +168,7 @@ describe('createBrokerAuth', () => {
       sub: 'user-1',
       exp: Math.floor(Date.now() / 1000) + 3600,
     });
-    localStorageMock.setItem('css_broker_token', jwt);
+    localStorageMock.setItem('ccr_broker_token', jwt);
     const session = createBrokerAuth(defaultConfig);
     const token = await session.getToken();
     expect(token).toBe(jwt);
@@ -160,7 +185,7 @@ describe('createBrokerAuth', () => {
       sub: 'user-1',
       exp: Math.floor(Date.now() / 1000) - 60,
     });
-    localStorageMock.setItem('css_broker_token', jwt);
+    localStorageMock.setItem('ccr_broker_token', jwt);
     const session = createBrokerAuth(defaultConfig);
     const token = await session.getToken();
     expect(token).toBeNull();
@@ -171,7 +196,7 @@ describe('createBrokerAuth', () => {
       sub: 'user-1',
       exp: Math.floor(Date.now() / 1000) + 120,
     });
-    localStorageMock.setItem('css_broker_token', jwt);
+    localStorageMock.setItem('ccr_broker_token', jwt);
     const session = createBrokerAuth(defaultConfig);
     const token = await session.getToken();
     expect(token).toBeNull();
@@ -183,14 +208,14 @@ describe('createBrokerAuth', () => {
       email: 'user@example.com',
       exp: Math.floor(Date.now() / 1000) + 3600,
     });
-    localStorageMock.setItem('css_broker_token', jwt);
+    localStorageMock.setItem('ccr_broker_token', jwt);
     const session = createBrokerAuth(defaultConfig);
     expect(session.isAuthenticated()).toBe(true);
 
     await session.logout();
     expect(session.isAuthenticated()).toBe(false);
     expect(session.getUserInfo()).toBeNull();
-    expect(localStorageMock.removeItem).toHaveBeenCalledWith('css_broker_token');
+    expect(localStorageMock.removeItem).toHaveBeenCalledWith('ccr_broker_token');
   });
 
   describe('login()', () => {
@@ -344,7 +369,7 @@ describe('createBrokerAuth', () => {
       const session = createBrokerAuth({ ...defaultConfig, pollIntervalMs: 10 });
       await session.login();
 
-      expect(localStorageMock.setItem).toHaveBeenCalledWith('css_broker_token', brokerJwt);
+      expect(localStorageMock.setItem).toHaveBeenCalledWith('ccr_broker_token', brokerJwt);
     });
 
     it('populates user info from the broker JWT after login', async () => {
@@ -601,7 +626,7 @@ describe('createBrokerAuth', () => {
       const session = createBrokerAuth({ ...proxyConfig, pollIntervalMs: 10 });
       await session.login();
 
-      expect(localStorageMock.setItem).toHaveBeenCalledWith('css_broker_token', brokerJwt);
+      expect(localStorageMock.setItem).toHaveBeenCalledWith('ccr_broker_token', brokerJwt);
       const info = session.getUserInfo();
       expect(info!.id).toBe('user-proxy');
     });
@@ -676,7 +701,7 @@ describe('createBrokerAuth', () => {
         'https://auth0.example.com/authorize?tx=redirect-1',
       );
 
-      const stored = JSON.parse(sessionStorageMock.getItem('css_broker_pending_tx')!);
+      const stored = JSON.parse(sessionStorageMock.getItem('ccr_broker_pending_tx')!);
       expect(stored.transactionId).toBe('tx-redirect-1');
     });
 
@@ -724,10 +749,22 @@ describe('createBrokerAuth', () => {
 
     it('returns true when a pending transaction exists in sessionStorage', () => {
       sessionStorageMock.setItem(
-        'css_broker_pending_tx',
+        'ccr_broker_pending_tx',
         JSON.stringify({ transactionId: 'tx-pending' }),
       );
       expect(hasPendingBrokerLogin()).toBe(true);
+    });
+
+    it('migrates a pending transaction stored under the pre-rename key', () => {
+      sessionStorageMock.setItem(
+        'css_broker_pending_tx',
+        JSON.stringify({ transactionId: 'tx-legacy' }),
+      );
+      expect(hasPendingBrokerLogin()).toBe(true);
+      expect(sessionStorageMock.getItem('ccr_broker_pending_tx')).toBe(
+        JSON.stringify({ transactionId: 'tx-legacy' }),
+      );
+      expect(sessionStorageMock.getItem('css_broker_pending_tx')).toBeNull();
     });
   });
 
@@ -749,7 +786,7 @@ describe('createBrokerAuth', () => {
       });
 
       sessionStorageMock.setItem(
-        'css_broker_pending_tx',
+        'ccr_broker_pending_tx',
         JSON.stringify({ transactionId: 'tx-redeem-1' }),
       );
 
@@ -777,7 +814,7 @@ describe('createBrokerAuth', () => {
       });
 
       sessionStorageMock.setItem(
-        'css_broker_pending_tx',
+        'ccr_broker_pending_tx',
         JSON.stringify({ transactionId: 'tx-store-ls' }),
       );
 
@@ -791,7 +828,7 @@ describe('createBrokerAuth', () => {
         siteApiToken: 'sat_test-token-123',
       });
 
-      expect(localStorageMock.setItem).toHaveBeenCalledWith('css_broker_token', brokerJwt);
+      expect(localStorageMock.setItem).toHaveBeenCalledWith('ccr_broker_token', brokerJwt);
     });
 
     it('clears sessionStorage after successful redeem', async () => {
@@ -801,7 +838,7 @@ describe('createBrokerAuth', () => {
       });
 
       sessionStorageMock.setItem(
-        'css_broker_pending_tx',
+        'ccr_broker_pending_tx',
         JSON.stringify({ transactionId: 'tx-clear' }),
       );
 
@@ -815,12 +852,12 @@ describe('createBrokerAuth', () => {
         siteApiToken: 'sat_test-token-123',
       });
 
-      expect(sessionStorageMock.removeItem).toHaveBeenCalledWith('css_broker_pending_tx');
+      expect(sessionStorageMock.removeItem).toHaveBeenCalledWith('ccr_broker_pending_tx');
     });
 
     it('throws on 410 (expired) and clears sessionStorage', async () => {
       sessionStorageMock.setItem(
-        'css_broker_pending_tx',
+        'ccr_broker_pending_tx',
         JSON.stringify({ transactionId: 'tx-expired' }),
       );
 
@@ -837,12 +874,12 @@ describe('createBrokerAuth', () => {
         }),
       ).rejects.toThrow(/expired/i);
 
-      expect(sessionStorageMock.removeItem).toHaveBeenCalledWith('css_broker_pending_tx');
+      expect(sessionStorageMock.removeItem).toHaveBeenCalledWith('ccr_broker_pending_tx');
     });
 
     it('throws on 400 (rejected) and clears sessionStorage', async () => {
       sessionStorageMock.setItem(
-        'css_broker_pending_tx',
+        'ccr_broker_pending_tx',
         JSON.stringify({ transactionId: 'tx-rejected' }),
       );
 
@@ -859,7 +896,7 @@ describe('createBrokerAuth', () => {
         }),
       ).rejects.toThrow(/rejected/i);
 
-      expect(sessionStorageMock.removeItem).toHaveBeenCalledWith('css_broker_pending_tx');
+      expect(sessionStorageMock.removeItem).toHaveBeenCalledWith('ccr_broker_pending_tx');
     });
 
     it('uses proxy mode when siteApiToken is not provided', async () => {
@@ -869,7 +906,7 @@ describe('createBrokerAuth', () => {
       });
 
       sessionStorageMock.setItem(
-        'css_broker_pending_tx',
+        'ccr_broker_pending_tx',
         JSON.stringify({ transactionId: 'tx-proxy-redeem' }),
       );
 
@@ -888,7 +925,7 @@ describe('createBrokerAuth', () => {
 
     it('preserves sessionStorage when redeem returns 500 (transient error)', async () => {
       sessionStorageMock.setItem(
-        'css_broker_pending_tx',
+        'ccr_broker_pending_tx',
         JSON.stringify({ transactionId: 'tx-transient' }),
       );
 
@@ -905,12 +942,12 @@ describe('createBrokerAuth', () => {
         }),
       ).rejects.toThrow(/500/);
 
-      expect(sessionStorageMock.getItem('css_broker_pending_tx')).not.toBeNull();
+      expect(sessionStorageMock.getItem('ccr_broker_pending_tx')).not.toBeNull();
     });
 
     it('clears sessionStorage on terminal 410 error', async () => {
       sessionStorageMock.setItem(
-        'css_broker_pending_tx',
+        'ccr_broker_pending_tx',
         JSON.stringify({ transactionId: 'tx-terminal' }),
       );
 
@@ -927,11 +964,11 @@ describe('createBrokerAuth', () => {
         }),
       ).rejects.toThrow(/expired/i);
 
-      expect(sessionStorageMock.getItem('css_broker_pending_tx')).toBeNull();
+      expect(sessionStorageMock.getItem('ccr_broker_pending_tx')).toBeNull();
     });
 
     it('returns null and clears sessionStorage when pending tx has malformed JSON', async () => {
-      sessionStorageMock.setItem('css_broker_pending_tx', '{corrupt');
+      sessionStorageMock.setItem('ccr_broker_pending_tx', '{corrupt');
 
       const result = await redeemPendingBrokerLogin({
         cssBaseUrl: 'https://css-api.example.com',
@@ -939,7 +976,7 @@ describe('createBrokerAuth', () => {
       });
 
       expect(result).toBeNull();
-      expect(sessionStorageMock.getItem('css_broker_pending_tx')).toBeNull();
+      expect(sessionStorageMock.getItem('ccr_broker_pending_tx')).toBeNull();
     });
 
     it('uses custom storageKey', async () => {
@@ -949,7 +986,7 @@ describe('createBrokerAuth', () => {
       });
 
       sessionStorageMock.setItem(
-        'css_broker_pending_tx',
+        'ccr_broker_pending_tx',
         JSON.stringify({ transactionId: 'tx-custom' }),
       );
 
@@ -974,7 +1011,7 @@ describe('createBrokerAuth', () => {
         sub: 'user-1',
         exp: Math.floor(Date.now() / 1000) + 3600,
       });
-      localStorageMock.setItem('css_broker_token', jwt);
+      localStorageMock.setItem('ccr_broker_token', jwt);
       const session = createBrokerAuth(defaultConfig);
       const authProvider = createOAuthAuthProvider(session);
 
@@ -987,7 +1024,7 @@ describe('createBrokerAuth', () => {
         sub: 'user-1',
         exp: Math.floor(Date.now() / 1000) - 60,
       });
-      localStorageMock.setItem('css_broker_token', jwt);
+      localStorageMock.setItem('ccr_broker_token', jwt);
       const session = createBrokerAuth(defaultConfig);
       const authProvider = createOAuthAuthProvider(session);
 

@@ -1,7 +1,7 @@
 /**
  * syncComponentRegistry
  *
- * Serialises ComponentDescriptor objects to CSS documents under the
+ * Serialises ComponentDescriptor objects to CCR documents under the
  * /_registry/ path prefix, hash-checking to skip unchanged components.
  *
  * Extracted from useComponentRegistry.ts (verbatim, renamed) so it can run

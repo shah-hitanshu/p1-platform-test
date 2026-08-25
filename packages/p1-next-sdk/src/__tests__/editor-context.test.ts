@@ -89,7 +89,7 @@ describe("handler-actions exports", () => {
   });
 });
 
-describe("CSS query integration in editor context", () => {
+describe("CCR query integration in editor context", () => {
   it("imports cssQueriesToDatasourceDefinitions from puck-css/server", () => {
     const content = readFileSync(
       resolve(srcDir, "routes/editor-context.ts"),
@@ -107,11 +107,11 @@ describe("CSS query integration in editor context", () => {
     expect(content).toContain("extractBearerToken");
   });
 
-  it("merges CSS query definitions into the remoteDatasourceRegistry", () => {
+  it("merges CCR query definitions into the remoteDatasourceRegistry", () => {
     const content = readFileSync(
       resolve(srcDir, "routes/editor-context.ts"),
       "utf-8",
     );
-    expect(content).toContain("cssQueryDefinitions");
+    expect(content).toContain("ccrQueryDefinitions");
   });
 });

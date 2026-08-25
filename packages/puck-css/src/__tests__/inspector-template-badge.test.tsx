@@ -2,11 +2,11 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/react';
 import React from 'react';
 
-let mockCssContext: Record<string, unknown> = {};
+let mockCcrContext: Record<string, unknown> = {};
 let mockItemSelector: unknown = null;
 
 vi.mock('../core/P1PuckContext', () => ({
-  useP1PuckOptional: () => mockCssContext,
+  useP1PuckOptional: () => mockCcrContext,
 }));
 
 vi.mock('@puckeditor/core', () => ({
@@ -55,13 +55,13 @@ import { P1InspectorFields } from '../editor/components/P1InspectorFields.js';
 
 afterEach(() => {
   cleanup();
-  mockCssContext = {};
+  mockCcrContext = {};
   mockItemSelector = null;
 });
 
 describe('P1InspectorFields template badge', () => {
   it('renders template name when page has a bound template', () => {
-    mockCssContext = {
+    mockCcrContext = {
       currentDocument: { path: '/my-page' },
       currentTemplate: {
         id: 'tmpl-001',
@@ -86,7 +86,7 @@ describe('P1InspectorFields template badge', () => {
   });
 
   it('does not render template badge when page has no template', () => {
-    mockCssContext = {
+    mockCcrContext = {
       currentDocument: { path: '/my-page' },
       currentTemplate: null,
     };
@@ -102,7 +102,7 @@ describe('P1InspectorFields template badge', () => {
   });
 
   it('does not render template badge when a block is selected', () => {
-    mockCssContext = {
+    mockCcrContext = {
       currentDocument: { path: '/my-page' },
       currentTemplate: {
         id: 'tmpl-001',

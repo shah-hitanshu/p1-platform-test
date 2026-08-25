@@ -1,5 +1,5 @@
 /**
- * CSS Client - documents.create() snapshot passthrough
+ * CCR Client - documents.create() snapshot passthrough
  *
  * The backend's document-create endpoint already accepts an optional
  * `snapshot` in the POST body and writes it as the initial version in the

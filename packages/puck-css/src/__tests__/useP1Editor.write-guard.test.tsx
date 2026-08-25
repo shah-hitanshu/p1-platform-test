@@ -2,7 +2,7 @@
  * Tests for the cross-document write-back guard.
  *
  * With a single Puck instance surviving document switches, onChange can fire
- * while the canvas still shows the previous document but the CSS client
+ * while the canvas still shows the previous document but the CCR client
  * already points at the new one (loadDocument mid-flight, or loaded but not
  * yet pushed into Puck). Saving in that window would write the old page's
  * content into the new page. The guard drops saves whenever the document the
@@ -33,7 +33,7 @@ vi.mock("@puckeditor/core", () => ({
 const mockLoadDocument = vi.fn<(...args: unknown[]) => Promise<void>>();
 const mockSaveData = vi.fn();
 
-const mockCssContext = {
+const mockCcrContext = {
   branchId: "branch-a",
   loadDocument: mockLoadDocument,
   documents: [] as {
@@ -114,7 +114,7 @@ const mockCssContext = {
 };
 
 vi.mock("../core/P1PuckContext", () => ({
-  useP1Puck: () => mockCssContext,
+  useP1Puck: () => mockCcrContext,
 }));
 
 vi.mock("../editor/useP1Plugin", () => ({
@@ -159,9 +159,9 @@ function makeDoc(id: string, path: string) {
  * data never arrived.
  */
 function commitLoaded(id: string, path: string) {
-  mockCssContext.currentDocument = makeDoc(id, path);
-  mockCssContext.currentDataOrigin = {
-    branchId: mockCssContext.branchId,
+  mockCcrContext.currentDocument = makeDoc(id, path);
+  mockCcrContext.currentDataOrigin = {
+    branchId: mockCcrContext.branchId,
     documentId: id,
     documentPath: path,
     versionId: `v-${id}`,
@@ -189,10 +189,10 @@ function mountSyncPlugin(plugins: Plugin[]) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mockCssContext.branchId = "branch-a";
-  mockCssContext.currentDocument = null;
-  mockCssContext.currentDataOrigin = null;
-  mockCssContext.isViewingHistoricalVersion = false;
+  mockCcrContext.branchId = "branch-a";
+  mockCcrContext.currentDocument = null;
+  mockCcrContext.currentDataOrigin = null;
+  mockCcrContext.isViewingHistoricalVersion = false;
 });
 
 describe("useP1Editor write-back guard", () => {
@@ -246,14 +246,14 @@ describe("useP1Editor write-back guard", () => {
     rerender({ path: "/a" });
     mountSyncPlugin(result.current.puckProps.plugins as Plugin[]);
 
-    // Switch begins: css already targets doc-b and the provider has cleared the
+    // Switch begins: ccr already targets doc-b and the provider has cleared the
     // data origin, so no payload is publishable while the fetch is in flight.
     let resolveLoad: () => void = () => undefined;
     mockLoadDocument.mockImplementationOnce(
       () =>
         new Promise<void>((resolve) => {
-          mockCssContext.currentDocument = makeDoc("doc-b", "/b");
-          mockCssContext.currentDataOrigin = null;
+          mockCcrContext.currentDocument = makeDoc("doc-b", "/b");
+          mockCcrContext.currentDataOrigin = null;
           resolveLoad = resolve;
         }),
     );
@@ -279,7 +279,7 @@ describe("useP1Editor write-back guard", () => {
     expect(mockSaveData).toHaveBeenCalledWith(editData);
   });
 
-  it("keeps allowing saves to the old document until css switches away from it", async () => {
+  it("keeps allowing saves to the old document until ccr switches away from it", async () => {
     mockLoadDocument.mockImplementationOnce(async () => {
       commitLoaded("doc-a", "/a");
     });
@@ -317,7 +317,7 @@ describe("useP1Editor write-back guard", () => {
     mountSyncPlugin(result.current.puckProps.plugins as Plugin[]);
 
     // Same page, different workstream: the canvas still holds branch-a's copy
-    // while css targets branch-b's. Saving would cross-write between branches.
+    // while ccr targets branch-b's. Saving would cross-write between branches.
     let resolveLoad: () => void = () => undefined;
     mockLoadDocument.mockImplementationOnce(
       () =>
@@ -326,8 +326,8 @@ describe("useP1Editor write-back guard", () => {
         }),
     );
     act(() => {
-      mockCssContext.branchId = "branch-b";
-      mockCssContext.currentDataOrigin = null;
+      mockCcrContext.branchId = "branch-b";
+      mockCcrContext.currentDataOrigin = null;
     });
     rerender();
     await waitFor(() => expect(result.current.reloading).toBe("branch"));
@@ -362,7 +362,7 @@ describe("useP1Editor write-back guard", () => {
     );
     await waitFor(() => expect(result.current.loading).toBe(false));
 
-    mockCssContext.isViewingHistoricalVersion = true;
+    mockCcrContext.isViewingHistoricalVersion = true;
     rerender();
 
     act(() => {

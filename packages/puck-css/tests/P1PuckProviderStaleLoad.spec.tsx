@@ -11,9 +11,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, waitFor, act } from '@testing-library/react';
 import React from 'react';
+import type { P1Client } from '@pantheon-systems/css-client';
 import { P1PuckProvider } from '../src/editor/P1PuckProvider.js';
 import { useP1Puck } from '../src/core/P1PuckContext.js';
-import type { P1Client } from '@pantheon-systems/css-client';
 
 // Helper: create a deferred promise for controlled resolution
 function createDeferred<T>() {
@@ -35,9 +35,9 @@ class MockWebSocket {
 
   readyState: number = MockWebSocket.CONNECTING;
   url: string;
-  binaryType: string = 'arraybuffer';
+  binaryType = 'arraybuffer';
 
-  private listeners: Map<string, Set<EventListener>> = new Map();
+  private listeners = new Map<string, Set<EventListener>>();
 
   constructor(url: string) {
     this.url = url;
@@ -68,7 +68,7 @@ class MockWebSocket {
 
 const originalWebSocket = globalThis.WebSocket;
 
-// Mock CSS Client
+// Mock CCR Client
 const createMockClient = () => {
   const client = {
     sites: { list: vi.fn(), get: vi.fn() },

@@ -1,6 +1,6 @@
-# Puck CSS Integration
+# Puck CCR Integration
 
-Integration between [Puck Editor](https://puckeditor.com) and the Collaborative State System (CSS) for building visual page editors with version control, branching, and publishing workflows.
+Integration between [Puck Editor](https://puckeditor.com) and the Collaborative Content Repository (CCR) for building visual page editors with version control, branching, and publishing workflows.
 
 ## Features
 
@@ -18,7 +18,7 @@ Integration between [Puck Editor](https://puckeditor.com) and the Collaborative 
 
 | Package | Description |
 |---------|-------------|
-| `@pantheon/css-client` | TypeScript API client for the Collaborative State System |
+| `@pantheon/css-client` | TypeScript API client for the Collaborative Content Repository |
 | `@pantheon/puck-css` | React hooks and components for Puck editor integration |
 
 ## Installation
@@ -155,7 +155,7 @@ Only two environment variables are required:
 
 | Variable | Side | Description |
 |----------|------|-------------|
-| `NEXT_PUBLIC_CSS_BASE_URL` | Client+Server | CSS API base URL (e.g. `https://css.example.com`) |
+| `NEXT_PUBLIC_CSS_BASE_URL` | Client+Server | CCR API base URL (e.g. `https://ccr.example.com`) |
 | `NEXT_PUBLIC_CSS_SITE_ID` | Client+Server | Site identifier (UUID) |
 
 ### Optional
@@ -267,7 +267,7 @@ NEXT_PUBLIC_CSS_ENABLE_PRESENCE=false
 
 ## Merge Review
 
-When working on a Draft branch (any non-main branch), the CSS plugin panel shows a **"Compare with Live"** button below the branch selector. Clicking it opens a built-in full-screen overlay for reviewing and merging changes — no additional route or page is required.
+When working on a Draft branch (any non-main branch), the CCR plugin panel shows a **"Compare with Live"** button below the branch selector. Clicking it opens a built-in full-screen overlay for reviewing and merging changes — no additional route or page is required.
 
 The merge review overlay provides:
 
@@ -336,7 +336,7 @@ Add a step that regenerates thumbnails when your Puck config changes:
 
 Thumbnails are pure SVG rendered inline — no canvas capture, no external images, no async loading. Each component gets a 60×40 viewBox wireframe that encodes its layout semantics (image areas, text columns, navigation bars, etc.) using a small set of SVG primitives. The SVG scales cleanly to any display size and DPR.
 
-The `thumbnails` option slots into the override merge chain between the CSS overrides and any `additionalOverrides`, so a site can still fully replace `drawerItem` if needed.
+The `thumbnails` option slots into the override merge chain between the CCR overrides and any `additionalOverrides`, so a site can still fully replace `drawerItem` if needed.
 
 ### Type
 
@@ -349,7 +349,7 @@ import type { ThumbnailMap } from '@pantheon/puck-css';
 
 ## Advanced: Low-Level API
 
-For apps that need full control over the CSS integration, you can use the provider and hook directly instead of `CSSApp`:
+For apps that need full control over the CCR integration, you can use the provider and hook directly instead of `CSSApp`:
 
 ```tsx
 import { CSSClient } from '@pantheon/css-client';
@@ -459,7 +459,7 @@ puck-css-integration/
 - Ensure `enableRealtime` evaluates to boolean `true`, not the string `"true"`
 
 **WebSocket connection fails**
-- Verify the CSS backend is running and supports WebSocket connections
+- Verify the CCR backend is running and supports WebSocket connections
 - Check that `wsBaseUrl` uses `ws://` for HTTP or `wss://` for HTTPS
 - Ensure CORS is configured on the backend
 - Check browser console for WebSocket errors

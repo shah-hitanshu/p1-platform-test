@@ -16,8 +16,8 @@ squash/rebase would sever them, losing all imported history.
   scripts removed, `terraform/environments/sbx1` deleted, setup/teardown-sandbox scripts deleted,
   Makefile lanes and stale comments updated. Supported lanes: local, staging, production.
   Chatbot's local `MEDIA_WORKER_URL` now points at `http://localhost:8788` (media worker in-repo).
-- **Makefile + scripts/css re-pointed** at monorepo paths (`workers/collaborative-state`,
-  `apps/css-frontend`, `scripts/css/*`); `sync-terraform-to-wrangler.sh` root-resolution fixed.
+- **Makefile + scripts/ccr re-pointed** at monorepo paths (`workers/ccr`,
+  `apps/css-frontend`, `scripts/ccr/*`); `sync-terraform-to-wrangler.sh` root-resolution fixed.
 - **Root README.md and CLAUDE.md** written (frozen-worker-names rule, lanes, parity-pin policy).
 - css-mcp-server's `wrangler-validation.spec.ts` `DEPLOYABLE_ENVS` updated to
   `['staging','production']` — all 226 mcp tests green.
@@ -34,7 +34,7 @@ repos after these SHAs: `git format-patch <sha>..origin/main` in the source repo
 
 | Source repo | Synced through | Now lives at |
 |---|---|---|
-| collaborative-state-system | `1f6f7c7` | workers/collaborative-state, workers/css-mcp-server, packages/p1-content-validator, terraform/, docker/, examples/, scripts/css |
+| collaborative-state-system | `1f6f7c7` | workers/ccr, workers/ccr-mcp-server, packages/p1-content-validator, terraform/, docker/, examples/, scripts/ccr |
 | puck-css-integration | `450846e` | packages/{css-client,puck-css,p1-next-sdk,create-p1-starter-kit,eslint-config}, apps/p1-starter, e2e/, root tooling configs |
 | p1-chatbot | `843acbe` | workers/p1-agent, packages/p1-ai-chat, scripts/p1-chatbot |
 | p1-media-r2 | `3a740ca` | workers/p1-media, packages/p1-media-r2, terraform/media |
@@ -161,7 +161,7 @@ migration regression; not a Phase 3 gate.
 
 ## Wiz secret-scanner note — review during Phase 3 CI authoring
 
-~22 CSS integration specs (now under `workers/collaborative-state/tests/integration/`)
+~22 CSS integration specs (now under `workers/ccr/tests/integration/`)
 each hardcode `postgresql://cssuser:csspass@localhost:5432/cssdb`; Wiz flags every new
 copy as a low "Secrets" finding (e.g. 3 on collaborative-state-system PR #215:
 https://github.com/pantheon-systems/collaborative-state-system/pull/215#issuecomment-5072194132).
