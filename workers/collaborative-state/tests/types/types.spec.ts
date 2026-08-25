@@ -141,8 +141,9 @@ describe('Phase 1.3: Core TypeScript Types', () => {
     });
 
     it('should define MergeRequestStatus union', () => {
-      const values: MergeRequestStatus[] = ['open', 'approved', 'merged', 'closed', 'conflicted'];
-      expect(values).toHaveLength(5);
+      const values: MergeRequestStatus[] =
+        ['open', 'approved', 'merging', 'merged', 'closed', 'conflicted'];
+      expect(values).toHaveLength(6);
     });
 
     it('should define ApprovalRequestStatus union', () => {

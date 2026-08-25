@@ -72,6 +72,7 @@ import {
 // Export Durable Objects for wrangler
 export { DocumentState, PresenceManager, SessionManager, BrokerTransaction } from './durable-objects';
 export { CachedContent } from './entrypoints/cached-content';
+export { MergeWorkflow } from './workflows/merge-workflow';
 
 // Re-export Env from dedicated module (avoids circular dependency)
 export type { Env } from './env';

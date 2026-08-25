@@ -699,7 +699,7 @@ export type ConflictResolutionStrategy = 'take-source' | 'take-target' | 'manual
 /**
  * Merge request workflow states.
  */
-export type MergeRequestStatus = 'open' | 'approved' | 'merged' | 'closed' | 'conflicted';
+export type MergeRequestStatus = 'open' | 'approved' | 'merging' | 'merged' | 'closed' | 'conflicted';
 
 /**
  * Document-level conflict types.
@@ -794,9 +794,59 @@ export interface MergeExecuteParams {
  * Result of executing a merge.
  */
 export interface MergeExecuteResult {
-  success: boolean;
+  success?: boolean;
   checkpointId?: string;
   documentsUpdated?: number;
+  /**
+   * Merge job runner [PCC-3737]: present on every runner response. When the
+   * merge outlives the server's bounded wait the response is the async shape
+   * (202): no `success`, and `status` is not yet terminal — poll the job
+   * (merge.getJob / merge.waitForJob) until it is.
+   */
+  jobId?: string;
+  status?: MergeJobStatus;
+  totalDocuments?: number;
+  processedDocuments?: number;
+  statusUrl?: string;
+  publishCheckpointId?: string;
+  publishError?: string;
+}
+
+/** Merge job lifecycle [PCC-3737]. */
+export type MergeJobStatus =
+  | 'queued'
+  | 'planning'
+  | 'running'
+  | 'finalizing'
+  | 'completed'
+  | 'completed_with_errors'
+  | 'blocked_on_conflicts'
+  | 'failed'
+  | 'cancelled';
+
+export const TERMINAL_MERGE_JOB_STATUSES: readonly MergeJobStatus[] = [
+  'completed',
+  'completed_with_errors',
+  'blocked_on_conflicts',
+  'failed',
+  'cancelled',
+];
+
+/** Status projection of a merge job [PCC-3737]. */
+export interface MergeJob {
+  id: string;
+  mergeRequestId: string | null;
+  siteId: string;
+  status: MergeJobStatus;
+  totalDocuments: number;
+  processedDocuments: number;
+  failedDocuments: number;
+  noopDocuments: number;
+  postMergeCheckpointId: string | null;
+  publishCheckpointId: string | null;
+  publishError: string | null;
+  error: string | null;
+  failedDocumentDetails: { documentId: string; path: string; error: string | null }[];
 }
 
 /**

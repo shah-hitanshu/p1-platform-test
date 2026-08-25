@@ -647,7 +647,16 @@ export function useMergeResolution(
           }
         });
 
-        await client.merge.executeRequest(siteId, mergeRequest.id, { resolutions });
+        const result = await client.merge.executeRequest(siteId, mergeRequest.id, { resolutions });
+
+        // Merge job runner [PCC-3737]: a large merge outlives the server's
+        // bounded wait and returns the async shape — a jobId with no terminal
+        // outcome yet. The merge is running server-side regardless of this
+        // tab; poll it to completion. waitForJob throws on every non-completed
+        // terminal state, which lands in the catch below like any failure.
+        if (result.jobId !== undefined && result.success !== true) {
+          await client.merge.waitForJob(siteId, result.jobId);
+        }
 
         setMergeSuccess(true);
         setMergeRequest((prev) => prev ? { ...prev, status: 'merged' as MergeRequestStatus } : null);

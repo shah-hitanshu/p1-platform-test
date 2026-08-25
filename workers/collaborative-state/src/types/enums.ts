@@ -74,7 +74,7 @@ export type DocumentVersionSource =
 /**
  * Merge request workflow states.
  */
-export type MergeRequestStatus = 'open' | 'approved' | 'merged' | 'closed' | 'conflicted';
+export type MergeRequestStatus = 'open' | 'approved' | 'merging' | 'merged' | 'closed' | 'conflicted';
 
 /**
  * Approval request states.

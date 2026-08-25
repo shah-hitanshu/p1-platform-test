@@ -99,6 +99,17 @@ export function ensureLogger(env: TelemetryEnv): P1Logger {
       'baseline_source',
       'server_clock_entries',
       'client_clock_entries',
+      // Merge job runner [PCC-3737]: the ops story is "find the job from the
+      // logs, watch its counters" — these must survive redaction.
+      'job_id',
+      'job_status',
+      'total_documents',
+      'conflict_count',
+      'chunks_run',
+      'published_count',
+      'migrated_count',
+      'execute_kind',
+      'execute_path',
     ],
   });
   return logger;

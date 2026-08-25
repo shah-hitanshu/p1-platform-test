@@ -107,6 +107,9 @@
     "PRESENCE_TTL_SECONDS": "120",
     // Metrics configuration (disabled by default for local dev)
     "METRICS_ENABLED": "false",
+    // Merge job runner [PCC-3737]: on for local dev; staging/production flip
+    // their own copies when their rollout phase arrives.
+    "MERGE_JOB_RUNNER": "true",
     // Stamped onto every log line as service.version. CI overrides it with the
     // commit sha; the values here are the fallback for a deploy run by hand.
     "APP_VERSION": "dev",
@@ -153,6 +156,15 @@
   ],
 
   // ==========================================================================
+  // Workflows — merge job runner [PCC-3737]. Durable merge execution:
+  // instance id = merge_jobs.id; step naming is append-only (see
+  // src/workflows/merge-workflow.ts header before changing step structure).
+  // ==========================================================================
+  "workflows": [
+    { "binding": "MERGE_WORKFLOW", "name": "css-merge-workflow", "class_name": "MergeWorkflow" }
+  ],
+
+  // ==========================================================================
   // Cron Triggers — daily refresh of stale site screenshots
   // ==========================================================================
   "triggers": {
@@ -190,8 +202,12 @@
         "AUTH0_CLIENT_ID": "OSoPMpeflMnRL20yGgT7cbf8257edQBL",
         "GCP_KMS_KEY_RESOURCE": "projects/pantheon-content-cloud-staging/locations/global/keyRings/p1-auth-broker/cryptoKeys/jwt-mac-signing",
         "CF_ACCOUNT_ID": "69bc76f4866aaaa3400ea7fbbd9d7da2",
-        "R2_ACCOUNT_ID": "69bc76f4866aaaa3400ea7fbbd9d7da2"
+        "R2_ACCOUNT_ID": "69bc76f4866aaaa3400ea7fbbd9d7da2",
+        "MERGE_JOB_RUNNER": "false"
       },
+      "workflows": [
+        { "binding": "MERGE_WORKFLOW", "name": "css-merge-workflow-staging", "class_name": "MergeWorkflow" }
+      ],
       "durable_objects": {
         "bindings": [
           { "name": "DOCUMENT_STATE", "class_name": "DocumentState" },
@@ -265,11 +281,15 @@
         "AUTH0_CLIENT_ID": "yNxUUz4hWpUgUJXvxmNg0tyqfxZrBo5E",
         "GCP_KMS_KEY_RESOURCE": "projects/pantheon-content-cloud/locations/global/keyRings/p1-auth-broker/cryptoKeys/jwt-mac-signing",
         "CF_ACCOUNT_ID": "c7357ecc2566ef9d5d555e40fccb3071",
-        "R2_ACCOUNT_ID": "c7357ecc2566ef9d5d555e40fccb3071"
+        "R2_ACCOUNT_ID": "c7357ecc2566ef9d5d555e40fccb3071",
+        "MERGE_JOB_RUNNER": "false"
         // Genuine secrets (set out-of-band via `wrangler secret put --env production`,
         // see README runbook): INTERNAL_SECRET, AUTH0_CLIENT_SECRET,
         // MAS_GCP_SERVICE_ACCOUNT_KEY, CF_BROWSER_API_TOKEN, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY.
       },
+      "workflows": [
+        { "binding": "MERGE_WORKFLOW", "name": "css-merge-workflow-production", "class_name": "MergeWorkflow" }
+      ],
       "durable_objects": {
         "bindings": [
           { "name": "DOCUMENT_STATE", "class_name": "DocumentState" },

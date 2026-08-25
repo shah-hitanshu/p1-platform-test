@@ -640,6 +640,25 @@ export class McpApiClient {
     return this.handleResponse<Record<string, unknown>>(response);
   }
 
+  async getMergeJob(siteId: string, mergeJobId: string): Promise<Record<string, unknown>> {
+    const url = `${this.baseUrl}/api/sites/${siteId}/merge-jobs/${mergeJobId}`;
+    const response = await this.doFetch(url, {
+      method: 'GET',
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse<Record<string, unknown>>(response);
+  }
+
+  async cancelMergeJob(siteId: string, mergeJobId: string): Promise<Record<string, unknown>> {
+    const url = `${this.baseUrl}/api/sites/${siteId}/merge-jobs/${mergeJobId}/cancel`;
+    const response = await this.doFetch(url, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify({}),
+    });
+    return this.handleResponse<Record<string, unknown>>(response);
+  }
+
   async listStructures(
     siteId: string,
     branchId: string,

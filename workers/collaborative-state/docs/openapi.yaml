@@ -3928,6 +3928,15 @@ components:
 
     MergeRequestStatus:
       type: string
+      # 'merging' is set by merge execution while a merge job runs [PCC-3737];
+      # it is never accepted from clients (use MergeRequestStatusSettable for
+      # request bodies).
+      enum: [open, approved, merging, merged, closed, conflicted]
+
+    MergeRequestStatusSettable:
+      type: string
+      # The statuses a client may PATCH an MR into; 'merging' is
+      # execution-owned in both directions and the server rejects it.
       enum: [open, approved, merged, closed, conflicted]
 
     AgentStatus:
@@ -5191,7 +5200,7 @@ components:
         description:
           type: string
         status:
-          $ref: '#/components/schemas/MergeRequestStatus'
+          $ref: '#/components/schemas/MergeRequestStatusSettable'
 
     MergeRequestListResponse:
       allOf:

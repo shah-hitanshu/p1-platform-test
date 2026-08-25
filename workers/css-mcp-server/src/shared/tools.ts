@@ -67,10 +67,19 @@ function generateULID(): string {
 // Tool Definition Types
 // =============================================================================
 
+/** MCP ToolAnnotations subset we use: behavioral hints for the client. */
+export interface ToolAnnotations {
+  title?: string;
+  readOnlyHint?: boolean;
+  destructiveHint?: boolean;
+  idempotentHint?: boolean;
+}
+
 export interface ToolDefinition {
   name: string;
   description: string;
   inputSchema: z.ZodType<unknown>;
+  annotations?: ToolAnnotations;
 }
 
 export interface ToolResult {
@@ -206,7 +215,10 @@ const CreatePageInputSchema = z.object({
 });
 
 const BranchStatusEnum = z.enum(['active', 'review', 'merged', 'archived']);
-const MergeRequestStatusEnum = z.enum(['open', 'approved', 'conflicted', 'merged', 'closed']);
+const MergeRequestStatusEnum = z.enum(['open', 'approved', 'merging', 'conflicted', 'merged', 'closed']);
+// 'merging' is execution-owned: valid in list filters and status reads, but
+// the server rejects setting it — so the update tool doesn't advertise it.
+const SettableMergeRequestStatusEnum = z.enum(['open', 'approved', 'conflicted', 'merged', 'closed']);
 const ConflictStrategyEnum = z.enum(['take-source', 'take-target', 'manual']);
 
 const ConflictResolutionSchema = z.object({
@@ -288,7 +300,7 @@ const CreateMergeRequestInputSchema = z.object({
 const ListMergeRequestsInputSchema = z.object({
   site_id: z.string().describe('The site ID (UUID from list_sites)'),
   status: MergeRequestStatusEnum.optional().describe(
-    'Filter by status: open, approved, conflicted, merged, or closed.',
+    'Filter by status: open, approved, merging, conflicted, merged, or closed.',
   ),
 });
 
@@ -302,7 +314,7 @@ const UpdateMergeRequestInputSchema = z.object({
   merge_request_id: z.string().describe('The merge request ID (UUID)'),
   title: z.string().min(1).optional().describe('New title.'),
   description: z.string().optional().describe('New description.'),
-  status: MergeRequestStatusEnum.optional().describe(
+  status: SettableMergeRequestStatusEnum.optional().describe(
     'New status. Set to "approved" to clear it for execution.',
   ),
 });
@@ -314,6 +326,24 @@ const ExecuteMergeRequestInputSchema = z.object({
     .array(ConflictResolutionSchema)
     .optional()
     .describe('Per-document conflict resolutions when the request has conflicts.'),
+});
+
+const GetMergeJobInputSchema = z.object({
+  site_id: z.string().describe('The site ID (UUID from list_sites)'),
+  merge_job_id: z.string().describe(
+    'The merge job ID (UUID) from an execute_merge / execute_merge_request response. '
+    + 'Poll every few seconds until status is terminal: completed, completed_with_errors, '
+    + 'blocked_on_conflicts, failed, or cancelled.',
+  ),
+});
+
+const CancelMergeJobInputSchema = z.object({
+  site_id: z.string().describe('The site ID (UUID from list_sites)'),
+  merge_job_id: z.string().describe(
+    'The merge job ID (UUID) to cancel. Cooperative: the job stops at its next chunk '
+    + 'boundary, the merge request returns to its prior status, and already-copied '
+    + 'documents stay unpublished.',
+  ),
 });
 
 const StructureTypeEnum = z.enum(['hierarchy', 'collection']);
@@ -693,8 +723,9 @@ export function getToolDefinitions(): ToolDefinition[] {
     {
       name: 'execute_merge',
       description:
-        'Merge a source branch into a target branch. This publishes the source branch\'s changes into the target and is hard to reverse — confirm with the user before merging into the main branch. If check_merge reported conflicts, supply conflict_resolutions; otherwise the merge proceeds directly.',
+        'Merge a source branch into a target branch. Hard to reverse — confirm with the user before merging into main. Long merges return a jobId to poll with get_merge_job.',
       inputSchema: ExecuteMergeInputSchema,
+      annotations: { destructiveHint: true },
     },
     {
       name: 'create_merge_request',
@@ -705,7 +736,7 @@ export function getToolDefinitions(): ToolDefinition[] {
     {
       name: 'list_merge_requests',
       description:
-        'List a site\'s merge requests, optionally filtered by status (open, approved, conflicted, merged, closed). Use this to find work awaiting review or to check the state of a proposal.',
+        'List a site\'s merge requests, optionally filtered by status (open, approved, merging, conflicted, merged, closed). Use this to find work awaiting review or to check the state of a proposal.',
       inputSchema: ListMergeRequestsInputSchema,
     },
     {
@@ -723,8 +754,21 @@ export function getToolDefinitions(): ToolDefinition[] {
     {
       name: 'execute_merge_request',
       description:
-        'Execute an approved (or conflicted) merge request, merging its source branch into its target. Hard to reverse — confirm with the user first. Supply resolutions when the request has conflicts.',
+        'Execute an approved (or conflicted) merge request. Hard to reverse — confirm with the user first. Long merges return a jobId to poll with get_merge_job.',
       inputSchema: ExecuteMergeRequestInputSchema,
+      annotations: { destructiveHint: true },
+    },
+    {
+      name: 'get_merge_job',
+      description: 'Get a merge job\'s status and progress.',
+      inputSchema: GetMergeJobInputSchema,
+      annotations: { readOnlyHint: true },
+    },
+    {
+      name: 'cancel_merge_job',
+      description: 'Request cancellation of a running merge job.',
+      inputSchema: CancelMergeJobInputSchema,
+      annotations: { idempotentHint: true },
     },
     {
       name: 'list_structures',
@@ -1231,6 +1275,8 @@ type ListMergeRequestsInput = z.infer<typeof ListMergeRequestsInputSchema>;
 type GetMergeRequestInput = z.infer<typeof GetMergeRequestInputSchema>;
 type UpdateMergeRequestInput = z.infer<typeof UpdateMergeRequestInputSchema>;
 type ExecuteMergeRequestInput = z.infer<typeof ExecuteMergeRequestInputSchema>;
+type GetMergeJobInput = z.infer<typeof GetMergeJobInputSchema>;
+type CancelMergeJobInput = z.infer<typeof CancelMergeJobInputSchema>;
 type ListStructuresInput = z.infer<typeof ListStructuresInputSchema>;
 type GetNavigationInput = z.infer<typeof GetNavigationInputSchema>;
 type AddNavigationItemInput = z.infer<typeof AddNavigationItemInputSchema>;
@@ -1283,6 +1329,8 @@ export interface ToolHandlers {
   get_merge_request: (input: GetMergeRequestInput) => Promise<ToolResult>;
   update_merge_request: (input: UpdateMergeRequestInput) => Promise<ToolResult>;
   execute_merge_request: (input: ExecuteMergeRequestInput) => Promise<ToolResult>;
+  get_merge_job: (input: GetMergeJobInput) => Promise<ToolResult>;
+  cancel_merge_job: (input: CancelMergeJobInput) => Promise<ToolResult>;
   list_structures: (input: ListStructuresInput) => Promise<ToolResult>;
   get_navigation: (input: GetNavigationInput) => Promise<ToolResult>;
   add_navigation_item: (input: AddNavigationItemInput) => Promise<ToolResult>;
@@ -2133,6 +2181,28 @@ export function createToolHandlers(
       }
     },
 
+    async get_merge_job(input: GetMergeJobInput): Promise<ToolResult> {
+      try {
+        const result = await apiClient.getMergeJob(input.site_id, input.merge_job_id);
+        return formatResult(result);
+      } catch (error) {
+        return formatError(error);
+      }
+    },
+
+    async cancel_merge_job(input: CancelMergeJobInput): Promise<ToolResult> {
+      try {
+        const result = await apiClient.cancelMergeJob(input.site_id, input.merge_job_id);
+        return formatResult({
+          message:
+            'Cancellation requested. The job stops at its next chunk boundary; poll get_merge_job for the final state.',
+          ...result,
+        });
+      } catch (error) {
+        return formatError(error);
+      }
+    },
+
     async list_structures(input: ListStructuresInput): Promise<ToolResult> {
       try {
         const result = await apiClient.listStructures(
@@ -2565,6 +2635,8 @@ export const schemas = {
   get_merge_request: GetMergeRequestInputSchema,
   update_merge_request: UpdateMergeRequestInputSchema,
   execute_merge_request: ExecuteMergeRequestInputSchema,
+  get_merge_job: GetMergeJobInputSchema,
+  cancel_merge_job: CancelMergeJobInputSchema,
   list_structures: ListStructuresInputSchema,
   get_navigation: GetNavigationInputSchema,
   add_navigation_item: AddNavigationItemInputSchema,

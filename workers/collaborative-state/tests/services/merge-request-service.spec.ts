@@ -564,6 +564,129 @@ describe('Phase 5.1a: Merge Request Service', () => {
         MergeRequestNotFoundError,
       );
     });
+
+    it('should transition from approved to merging when merge execution claims the MR [PCC-3737]', async () => {
+      const { updateMergeRequestStatus } = await import('../../src/services/merge-request-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [{ status: 'approved' }] })
+        .mockResolvedValueOnce({ rows: [createMockMergeRequestRow({ status: 'merging' })] });
+
+      const result = await updateMergeRequestStatus('mr-uuid-123', 'merging');
+
+      expect(result.status).toBe('merging');
+    });
+
+    it('should transition from merging to merged when the job finalizes [PCC-3737]', async () => {
+      const { updateMergeRequestStatus } = await import('../../src/services/merge-request-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [{ status: 'merging' }] })
+        .mockResolvedValueOnce({
+          rows: [
+            createMockMergeRequestRow({
+              status: 'merged',
+              merged_at: '2026-01-24T12:00:00.000Z',
+              merged_by_id: 'admin-uuid',
+              merged_by_type: 'user',
+            }),
+          ],
+        });
+
+      const result = await updateMergeRequestStatus('mr-uuid-123', 'merged', {
+        mergedById: 'admin-uuid',
+        mergedByType: 'user',
+      });
+
+      expect(result.status).toBe('merged');
+    });
+
+    it('gates the merging status to execution-shaped edges [PCC-3737]', async () => {
+      const { isValidStatusTransition } = await import('../../src/services/merge-request-service');
+
+      // A merge job can only claim an MR that is executable.
+      expect(isValidStatusTransition('approved', 'merging')).toBe(true);
+      expect(isValidStatusTransition('conflicted', 'merging')).toBe(true);
+      expect(isValidStatusTransition('open', 'merging')).toBe(false);
+      expect(isValidStatusTransition('closed', 'merging')).toBe(false);
+      expect(isValidStatusTransition('merged', 'merging')).toBe(false);
+
+      // A merge in flight can only finish, surface conflicts found at plan
+      // time, or restore to the job's prior status on failure/cancellation —
+      // never wander to open/closed, which would orphan the running job.
+      expect(isValidStatusTransition('merging', 'merged')).toBe(true);
+      expect(isValidStatusTransition('merging', 'conflicted')).toBe(true);
+      expect(isValidStatusTransition('merging', 'approved')).toBe(true);
+      expect(isValidStatusTransition('merging', 'open')).toBe(false);
+      expect(isValidStatusTransition('merging', 'closed')).toBe(false);
+
+      // The legacy direct edges stay valid while the inline merge path
+      // exists; PCC-3737 Phase 4 removes them — flip these expectations
+      // deliberately then, not as a silent map edit.
+      expect(isValidStatusTransition('approved', 'merged')).toBe(true);
+      expect(isValidStatusTransition('conflicted', 'merged')).toBe(true);
+    });
+  });
+
+  describe('claimMergeRequestForExecution (PCC-3737)', () => {
+    it('claims with plain single-status quals — never the EPQ-racy self-select shape', async () => {
+      const { claimMergeRequestForExecution } = await import('../../src/services/merge-request-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ id: 'mr-uuid-123' }] });
+
+      const prior = await claimMergeRequestForExecution('mr-uuid-123');
+      expect(prior).toBe('approved');
+
+      // The claim MUST be a plain qual on the target table. The previous
+      // UPDATE ... FROM (self-select) shape let BOTH concurrent executes win
+      // under READ COMMITTED: EvalPlanQual re-evaluates a blocked loser's
+      // qual against the STALE subquery row (reproduced on PG 16). A plain
+      // qual re-evaluates against the winner's committed row -> 0 rows.
+      const sql = vi.mocked(db.query).mock.calls[0][0];
+      expect(sql).not.toContain('FROM (');
+      expect(sql).toContain("SET status = 'merging'");
+      expect(sql).toContain('status = $2');
+    });
+
+    it('reports conflicted as the prior status via the second qual', async () => {
+      const { claimMergeRequestForExecution } = await import('../../src/services/merge-request-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [{ id: 'mr-uuid-123' }] });
+
+      expect(await claimMergeRequestForExecution('mr-uuid-123')).toBe('conflicted');
+    });
+
+    it('returns null when the MR is not executable (race lost or wrong state)', async () => {
+      const { claimMergeRequestForExecution } = await import('../../src/services/merge-request-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [] });
+
+      expect(await claimMergeRequestForExecution('mr-uuid-123')).toBeNull();
+    });
+
+    it('restoreMergeRequestClaim only allows map-governed exits from merging', async () => {
+      const { restoreMergeRequestClaim } = await import('../../src/services/merge-request-service');
+      const { InvalidMergeRequestStatusTransitionError } = await import('../../src/services/errors');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValue({ rows: [] });
+      await restoreMergeRequestClaim('mr-uuid-123', 'approved');
+      const sql = vi.mocked(db.query).mock.calls[0][0];
+      expect(sql).toContain("status = 'merging'");
+
+      await expect(restoreMergeRequestClaim('mr-uuid-123', 'open')).rejects.toThrow(
+        InvalidMergeRequestStatusTransitionError,
+      );
+    });
   });
 
   describe('updateMergeRequestConflicts', () => {

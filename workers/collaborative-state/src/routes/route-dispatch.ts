@@ -242,9 +242,15 @@ export async function dispatchRoute(
         mergeRequests: route.params.action === 'requests',
         executeRequest: route.params.action === 'execute-request',
         mergeRequestId: route.params.mergeRequestId,
+        mergeJobId: route.params.mergeJobId,
+        mergeJobCancel: route.params.action === 'job-cancel',
         principal,
         configKV: env.CONFIG_KV,
         documentStateBinding: env.DOCUMENT_STATE,
+        // Merge job runner [PCC-3737]: routes execute through the workflow
+        // when the flag is on and the binding exists.
+        mergeJobRunnerEnabled: env.MERGE_JOB_RUNNER === 'true' && env.MERGE_WORKFLOW !== undefined,
+        mergeWorkflow: env.MERGE_WORKFLOW,
       });
 
     case 'grants':

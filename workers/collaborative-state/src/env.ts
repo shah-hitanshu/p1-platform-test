@@ -80,6 +80,17 @@ export interface Env {
   R2_BUNDLES?: R2Bucket;
   R2_BUNDLES_BUCKET?: string;
 
+  // Merge job runner [PCC-3737]: 'true' routes merge execution through the
+  // MergeWorkflow + job ledger; anything else keeps the legacy inline path.
+  MERGE_JOB_RUNNER?: string;
+  MERGE_WORKFLOW?: Workflow<{ jobId: string }>;
+  // Runner tuning (integers as strings; unset = design defaults). Staging
+  // soak turns these knobs without a code change.
+  MERGE_CHUNK_SIZE?: string;
+  MERGE_CHUNK_WALL_CLOCK_MS?: string;
+  MERGE_PACING_TRIGGER_MS_PER_DOC?: string;
+  MERGE_PACING_SLEEP_SECONDS?: string;
+
   // Durable Object bindings
   DOCUMENT_STATE: DurableObjectNamespace;
   PRESENCE: DurableObjectNamespace;

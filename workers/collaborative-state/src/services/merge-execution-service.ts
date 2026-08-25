@@ -11,6 +11,7 @@
  * Based on collaborative-state-system-architecture-v2.2.md
  */
 
+import { getLogger } from '@pantheon-systems/p1-telemetry';
 import { detectConflicts } from './conflict-detection-service';
 import type { ConflictDetectionResult } from './conflict-detection-service';
 import { getPathChangesSince } from './path-change-service';
@@ -93,7 +94,7 @@ function isSystemManagedPath(path: string): boolean {
  * result; never mutates the input. Applied at the entry of every merge code
  * path so downstream logic can ignore the exclusion entirely.
  */
-function applySystemManagedExclusions(
+export function applySystemManagedExclusions(
   detectionResult: ConflictDetectionResult,
 ): ConflictDetectionResult {
   return {
@@ -651,7 +652,7 @@ export async function previewMerge(
 // =============================================================================
 
 /** The source branch's path overrides, checked against the target and ready to write. */
-interface PathOverridePromotion {
+export interface PathOverridePromotion {
   targetIsMain: boolean;
   targetBranchId: string;
   moves: PlannedMove[];
@@ -668,7 +669,7 @@ interface PathOverridePromotion {
  *
  * @throws DuplicateDocumentPathError if a destination path is occupied on the target
  */
-async function planPathOverridePromotion(
+export async function planPathOverridePromotion(
   sourceBranchId: string,
   targetBranchId: string,
   siteId: string,
@@ -705,7 +706,7 @@ async function planPathOverridePromotion(
  * Path moves are a separate channel from content changes and are always promoted
  * regardless of whether the document's content was also modified in this merge.
  */
-async function applyPathOverridePromotion(
+export async function applyPathOverridePromotion(
   promotion: PathOverridePromotion | null,
 ): Promise<void> {
   if (promotion === null) return;
@@ -797,6 +798,10 @@ async function copySourceChangesToTarget(
       skipDuplicateCheck: true,
       skipCompaction: true,
       isTombstone: sourceVersion.isTombstone,
+      // Insert-time provenance [PCC-3737]: the merge job runner's write-level
+      // idempotency probe reads this; stamping it here too means versions
+      // created by the inline path are equally resumable by a later job.
+      sourceVersionId: change.latestVersionId,
     });
 
     // No-op skip: createDocumentVersion returned the pre-existing target
@@ -942,26 +947,60 @@ async function triggerPostMergeTemplateMigrations(
     return;
   }
 
+  await runPostMergeTemplateMigrations({
+    siteId: mergeRequest.siteId,
+    targetBranchId: mergeRequest.targetBranchId,
+    templateDocumentIds: mergedTemplates.map((c) => c.documentId),
+    mergedById,
+    mergedByType,
+    // Time-box each migration so a large stale set doesn't block the merge
+    // response. If it times out, the job stays 'in_progress' and can be retried.
+    timeoutMs: POST_MERGE_MIGRATION_TIMEOUT_MS,
+  });
+}
+
+/**
+ * Migrate stale pages after template documents landed on the target branch.
+ * Best-effort per template: failures are logged and never thrown.
+ *
+ * Extracted so the merge job runner can drive it from its ledger (template
+ * document ids by path prefix) in a finalize step, where no request deadline
+ * applies — `timeoutMs` undefined means no per-template time-box [PCC-3737].
+ */
+export async function runPostMergeTemplateMigrations(params: {
+  siteId: string;
+  targetBranchId: string;
+  templateDocumentIds: string[];
+  mergedById: string;
+  mergedByType: 'user' | 'agent';
+  timeoutMs?: number;
+}): Promise<void> {
+  const { siteId, targetBranchId, templateDocumentIds, mergedById, mergedByType, timeoutMs } = params;
+
+  if (templateDocumentIds.length === 0) {
+    return;
+  }
+
   // Merging into a non-main branch migrates through that branch's sync override
   // rather than the shared edge; resolve main so the migration can target it.
-  const mainBranch = await getMainBranch(mergeRequest.siteId);
+  const mainBranch = await getMainBranch(siteId);
   const mainBranchId = mainBranch?.id;
-  const inheritsFromMain = branchInheritsFromMain(mergeRequest.targetBranchId, mainBranchId);
+  const inheritsFromMain = branchInheritsFromMain(targetBranchId, mainBranchId);
 
-  for (const templateChange of mergedTemplates) {
+  for (const templateDocumentId of templateDocumentIds) {
     try {
       const latestVersion = await getLatestDocumentVersion(
-        templateChange.documentId,
-        mergeRequest.targetBranchId,
+        templateDocumentId,
+        targetBranchId,
       );
       if (latestVersion === null) {
         continue;
       }
 
       const staleCount = await getStaleTemplateCountByBranch(
-        templateChange.documentId,
+        templateDocumentId,
         latestVersion.versionNumber,
-        mergeRequest.targetBranchId,
+        targetBranchId,
         inheritsFromMain,
       );
       if (staleCount === 0) {
@@ -970,33 +1009,35 @@ async function triggerPostMergeTemplateMigrations(
 
       const fromVersion = Math.max(latestVersion.versionNumber - 1, 0);
       const job = await triggerMigration(
-        mergeRequest.siteId,
-        mergeRequest.targetBranchId,
-        templateChange.documentId,
+        siteId,
+        targetBranchId,
+        templateDocumentId,
         fromVersion,
         latestVersion.versionNumber,
         { id: mergedById, type: mergedByType },
         mainBranchId,
       );
 
-      // Time-box migration so a large stale set doesn't block the merge response.
-      // If it times out, the job stays in 'in_progress' and can be retried.
-      await Promise.race([
-        processMigration(job.id, undefined, mainBranchId),
-        new Promise<never>((_, reject) => {
-          setTimeout(() => { reject(new Error('Post-merge migration timed out')); }, POST_MERGE_MIGRATION_TIMEOUT_MS);
-        }),
-      ]);
+      const migration = processMigration(job.id, undefined, mainBranchId);
+      if (timeoutMs !== undefined) {
+        await Promise.race([
+          migration,
+          new Promise<never>((_, reject) => {
+            setTimeout(() => { reject(new Error('Post-merge migration timed out')); }, timeoutMs);
+          }),
+        ]);
+      } else {
+        await migration;
+      }
 
-      console.log(
-        'Post-merge template migration completed for template ' +
-        templateChange.documentId + ': ' + String(staleCount) + ' documents processed',
-      );
+      getLogger().info('post-merge template migration completed', {
+        template_id: templateDocumentId,
+        migrated_count: staleCount,
+      });
     } catch (error) {
-      console.error(
-        'Post-merge template migration failed for template ' + templateChange.documentId + ':',
-        error,
-      );
+      getLogger().error('post-merge template migration failed', error, {
+        template_id: templateDocumentId,
+      });
     }
   }
 }

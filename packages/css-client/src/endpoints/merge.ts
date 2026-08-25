@@ -9,12 +9,14 @@ import type {
   MergePreview,
   MergeExecuteParams,
   MergeExecuteResult,
+  MergeJob,
   MergeRequest,
   CreateMergeRequestParams,
   UpdateMergeRequestParams,
   ListMergeRequestsOptions,
   ExecuteMergeRequestOptions,
 } from '../types.js';
+import { TERMINAL_MERGE_JOB_STATUSES } from '../types.js';
 import { requirePathParams } from '../utils.js';
 import type { BaseEndpoint } from './base.js';
 
@@ -181,5 +183,55 @@ export class MergeEndpoint {
         body: JSON.stringify(options ?? {}),
       }
     );
+  }
+
+  /**
+   * Get a merge job's status projection [PCC-3737].
+   */
+  async getJob(siteId: string, jobId: string): Promise<MergeJob> {
+    return this.base.request<MergeJob>(
+      `/api/sites/${siteId}/merge-jobs/${jobId}`,
+      { method: 'GET' }
+    );
+  }
+
+  /**
+   * Poll a merge job until it reaches a terminal status [PCC-3737].
+   *
+   * Resolves with the job when it completes; throws when it ends in any
+   * other terminal state (failed, completed_with_errors, blocked_on_conflicts,
+   * cancelled) or when `timeoutMs` elapses. Use after executeRequest returns
+   * the async shape (a jobId with a non-terminal status).
+   */
+  async waitForJob(
+    siteId: string,
+    jobId: string,
+    options: { intervalMs?: number; timeoutMs?: number } = {}
+  ): Promise<MergeJob> {
+    const intervalMs = options.intervalMs ?? 2_000;
+    const timeoutMs = options.timeoutMs ?? 10 * 60_000;
+    const deadline = Date.now() + timeoutMs;
+
+    for (;;) {
+      const job = await this.getJob(siteId, jobId);
+      if (TERMINAL_MERGE_JOB_STATUSES.includes(job.status)) {
+        if (job.status === 'completed') {
+          return job;
+        }
+        const failedPaths = job.failedDocumentDetails.map((d) => d.path).join(', ');
+        throw new Error(
+          `Merge job ${job.status}${job.error !== null ? `: ${job.error}` : ''}` +
+            (failedPaths !== '' ? ` (failed documents: ${failedPaths})` : '')
+        );
+      }
+      if (Date.now() + intervalMs > deadline) {
+        throw new Error(
+          `Timed out waiting for merge job ${jobId} (last status: ${job.status})`
+        );
+      }
+      await new Promise((resolve) => {
+        setTimeout(resolve, intervalMs);
+      });
+    }
   }
 }

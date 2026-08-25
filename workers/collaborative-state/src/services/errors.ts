@@ -52,6 +52,27 @@ export class BranchNotFoundError extends HttpError {
   }
 }
 
+export class MergeJobNotFoundError extends HttpError {
+  readonly status = 404;
+  constructor(public readonly jobId: string) {
+    super(`Merge job with ID "${jobId}" not found.`);
+  }
+}
+
+/**
+ * Another merge job already holds the active slot for this merge request or
+ * branch pair (the partial unique indexes on app.merge_jobs) [PCC-3737].
+ * Carries the active job's id so route handlers can point the caller at it —
+ * which is why this is not an HttpError: its 409 body needs those details,
+ * not just a message.
+ */
+export class ActiveMergeJobExistsError extends Error {
+  constructor(public readonly activeJobId: string | null) {
+    super('An active merge job already exists for this merge request or branch pair');
+    this.name = 'ActiveMergeJobExistsError';
+  }
+}
+
 export class SourceBranchNotFoundError extends HttpError {
   readonly status = 404;
   constructor(public readonly branchId: string) {

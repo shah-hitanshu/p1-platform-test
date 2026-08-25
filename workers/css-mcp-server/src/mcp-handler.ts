@@ -135,11 +135,11 @@ export function createMcpServer(config: McpHandlerConfig): McpServer {
   // registerTool infers a tool's argument type from a static inputSchema;
   // indexing schemas and handlers by name yields unions instead, so the args
   // and handler are cast at the call site.
-  for (const { name, description } of getToolDefinitions()) {
+  for (const { name, description, annotations } of getToolDefinitions()) {
     const toolName = name as keyof ToolHandlers;
     server.registerTool(
       name,
-      { description, inputSchema: schemas[toolName] },
+      { description, inputSchema: schemas[toolName], ...(annotations !== undefined ? { annotations } : {}) },
       async (args: unknown) => {
         const denied = await rateLimitPreCheck(name, config);
         if (denied) {

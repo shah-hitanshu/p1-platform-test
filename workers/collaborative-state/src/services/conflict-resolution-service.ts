@@ -161,6 +161,9 @@ async function resolveWithTakeSource(
     createdById: resolvedById,
     createdByType: resolvedByType,
     isTombstone: sourceVersion.isTombstone,
+    // Insert-time provenance [PCC-3737]: the merge job runner's write-level
+    // idempotency probe keys on this to recognize its own replayed writes.
+    sourceVersionId,
   });
 
   return {

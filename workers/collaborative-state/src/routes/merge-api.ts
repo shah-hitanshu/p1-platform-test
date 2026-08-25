@@ -30,6 +30,16 @@ import {
 } from '../services';
 import { assertPermission } from '../auth/authorization';
 import { writeBranchInvalidation } from '../services/branch-invalidation-service';
+import { ActiveMergeJobExistsError } from '../services/errors';
+import { reloadDocumentSessions } from '../services/document-session-reload';
+import { getLogger } from '@pantheon-systems/p1-telemetry';
+import {
+  handleExecuteMergeRequestViaRunner,
+  handleExecuteMergeViaRunner,
+  handleGetMergeJob,
+  handleCancelMergeJob,
+  activeMergeJobConflictResponse,
+} from './merge-job-api';
 
 /**
  * Request context for merge routes
@@ -40,6 +50,17 @@ export interface MergeRouteContext {
   mergeRequests?: boolean;
   executeRequest?: boolean;
   mergeRequestId?: string;
+  /** Merge job runner [PCC-3737]: /merge-jobs/{id} routes. */
+  mergeJobId?: string;
+  mergeJobCancel?: boolean;
+  /** When true (flag + binding present), execute routes go through the runner. */
+  mergeJobRunnerEnabled?: boolean;
+  mergeWorkflow?: Workflow<{ jobId: string }>;
+  /**
+   * How long the execute routes poll for a terminal job before returning 202.
+   * Overridable for tests; default keeps well inside the 30 s GCLB window.
+   */
+  boundedWaitMs?: number;
   principal: AuthenticatedPrincipal;
   /** KV namespace for writing branch invalidation signals after merge */
   configKV?: KVNamespace;
@@ -79,24 +100,12 @@ async function notifyDocumentStateAfterMerge(
   ) {
     return;
   }
-  const binding = context.documentStateBinding;
-  for (const documentId of publishedDocumentIds) {
-    try {
-      const sessionId = `${context.siteId}:${documentId}:${mainBranchId}`;
-      const stub = binding.get(binding.idFromName(sessionId));
-      await stub.fetch(
-        new Request('http://internal/reload', {
-          method: 'POST',
-          headers: { 'X-Session-Id': sessionId },
-        }),
-      );
-    } catch (error) {
-      console.error(
-        `Failed to reload DO after merge auto-publish (doc ${documentId}):`,
-        error,
-      );
-    }
-  }
+  await reloadDocumentSessions(
+    context.documentStateBinding,
+    context.siteId,
+    mainBranchId,
+    publishedDocumentIds,
+  );
 }
 
 /**
@@ -122,7 +131,7 @@ interface MergePreviewBody {
 /**
  * Request body for merge execute
  */
-interface MergeExecuteBody {
+export interface MergeExecuteBody {
   sourceBranchId?: string;
   targetBranchId?: string;
   message?: string;
@@ -319,6 +328,7 @@ async function handleCreateMergeRequest(
 const VALID_STATUSES: readonly MergeRequestStatus[] = [
   'open',
   'approved',
+  'merging',
   'conflicted',
   'merged',
   'closed',
@@ -390,6 +400,23 @@ async function handleUpdateMergeRequest(
 
   // If status is being updated, use updateMergeRequestStatus
   if (body.status !== undefined) {
+    // 'merging' is owned by merge execution in BOTH directions [PCC-3737]:
+    // clients cannot PATCH into it, and cannot move a mid-job MR out of it —
+    // a mid-flight flip would let the job publish while the 'merged' stamp is
+    // skipped (or strand a terminal 'merged' MR whose job was cancelled).
+    if (body.status === 'merging') {
+      return errorResponse("Status 'merging' is set by merge execution and cannot be set directly", 400);
+    }
+    const current = await getMergeRequest(context.mergeRequestId);
+    if (current === null) {
+      return errorResponse('Merge request not found', 404);
+    }
+    if (current.status === 'merging') {
+      return errorResponse(
+        'Merge request is being executed; wait for the merge job to finish or cancel it first',
+        409,
+      );
+    }
     const mergeRequest = await updateMergeRequestStatus(
       context.mergeRequestId,
       body.status,
@@ -427,7 +454,7 @@ async function handleDeleteMergeRequest(
 /**
  * Request body for executing a merge request
  */
-interface ExecuteMergeRequestBody {
+export interface ExecuteMergeRequestBody {
   resolutions?: {
     documentId: string;
     strategy: ConflictResolutionStrategy;
@@ -516,6 +543,29 @@ async function handleExecuteMergeRequest(
   return jsonResponse(result);
 }
 
+type ExecuteHandler = (request: Request, context: MergeRouteContext) => Promise<Response>;
+
+/**
+ * MERGE_JOB_RUNNER gate: routes merge execution through the workflow-backed
+ * runner when the flag and binding are present, else the legacy inline path.
+ */
+async function executeThroughConfiguredPath(
+  context: MergeRouteContext,
+  kind: 'direct' | 'merge-request',
+  runnerHandler: ExecuteHandler,
+  inlineHandler: ExecuteHandler,
+  request: Request,
+): Promise<Response> {
+  const useRunner = context.mergeJobRunnerEnabled === true;
+  getLogger().debug('merge execute path selected', {
+    execute_kind: kind,
+    execute_path: useRunner ? 'runner' : 'inline',
+  });
+  return useRunner
+    ? await runnerHandler(request, context)
+    : await inlineHandler(request, context);
+}
+
 /**
  * Main route handler for merge operations
  */
@@ -536,7 +586,9 @@ export async function handleMergeRoutes(
         case 'check':
           return await handleCheckMergeability(request, context);
         case 'execute':
-          return await handleExecuteMerge(request, context);
+          return await executeThroughConfiguredPath(
+            context, 'direct', handleExecuteMergeViaRunner, handleExecuteMerge, request,
+          );
         case 'preview':
           return await handlePreviewMerge(request, context);
         default:
@@ -549,7 +601,27 @@ export async function handleMergeRoutes(
       if (method !== 'POST') {
         return errorResponse('Method not allowed', 405);
       }
-      return await handleExecuteMergeRequest(request, context);
+      return await executeThroughConfiguredPath(
+        context, 'merge-request', handleExecuteMergeRequestViaRunner, handleExecuteMergeRequest, request,
+      );
+    }
+
+    // Merge job status/cancel routes [PCC-3737]
+    if (context.mergeJobId !== undefined) {
+      const mainBranch = await getMainBranch(context.siteId);
+      if (mainBranch === null) {
+        return errorResponse('Site not found', 404);
+      }
+      if (context.mergeJobCancel === true) {
+        if (method !== 'POST') {
+          return errorResponse('Method not allowed', 405);
+        }
+        return await handleCancelMergeJob(context, mainBranch.id);
+      }
+      if (method !== 'GET') {
+        return errorResponse('Method not allowed', 405);
+      }
+      return await handleGetMergeJob(context, mainBranch.id);
     }
 
     // Handle merge requests CRUD
@@ -618,6 +690,9 @@ export async function handleMergeRoutes(
       return errorResponse(error.message, 500, {
         mergeRequestId: error.mergeRequestId,
       });
+    }
+    if (error instanceof ActiveMergeJobExistsError) {
+      return await activeMergeJobConflictResponse(context, error);
     }
     if (error instanceof HttpError) {
       return errorResponse(error.message, error.status);

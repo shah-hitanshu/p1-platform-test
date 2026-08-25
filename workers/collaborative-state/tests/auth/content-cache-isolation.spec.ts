@@ -18,6 +18,15 @@ const cachedContent = vi.hoisted(() => ({
 }));
 
 vi.mock('cloudflare:workers', () => ({
+  // MergeWorkflow (imported via src/index) extends this [PCC-3737].
+  WorkflowEntrypoint: class WorkflowEntrypoint {
+    ctx: unknown;
+    env: unknown;
+    constructor(ctx: unknown, env: unknown) {
+      this.ctx = ctx;
+      this.env = env;
+    }
+  },
   WorkerEntrypoint: class WorkerEntrypoint {
     ctx: unknown;
     env: unknown;

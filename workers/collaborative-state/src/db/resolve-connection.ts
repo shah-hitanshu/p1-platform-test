@@ -4,7 +4,16 @@
  * cached pool. Falls back to a direct connection string for local dev.
  */
 
-import type { Env } from '../env';
+/**
+ * Only the bindings the resolver reads — structural so callers outside a
+ * request (Workflows, queue consumers) can pass their env without the full
+ * `Env` shape.
+ */
+export interface ConnectionEnv {
+  HYPERDRIVE?: Hyperdrive;
+  HYPERDRIVE_NOCACHE?: Hyperdrive;
+  POSTGRES_CONNECTION_STRING?: string;
+}
 
 export interface ResolvedConnection {
   connectionString: string;
@@ -18,7 +27,7 @@ export class NoDatabaseConfiguredError extends Error {
   }
 }
 
-export function resolveConnection(env: Env, path: string): ResolvedConnection {
+export function resolveConnection(env: ConnectionEnv, path: string): ResolvedConnection {
   const isAdminRoute = path.startsWith('/api/admin/');
   const hyperdrive = isAdminRoute && env.HYPERDRIVE_NOCACHE
     ? env.HYPERDRIVE_NOCACHE

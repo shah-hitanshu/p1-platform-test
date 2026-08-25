@@ -20,6 +20,7 @@ export interface RouteParams {
   grantId?: string;
   userId?: string;
   mergeRequestId?: string;
+  mergeJobId?: string;
   action?: string;
   versionsPath?: string;
   versionAction?: string;
@@ -901,6 +902,19 @@ export function parseRoute(path: string): { handler: string; params: RouteParams
       params: {
         siteId: mergeOpMatch[1],
         action: mergeOpMatch[2],
+      },
+    };
+  }
+
+  // /api/sites/{siteId}/merge-jobs/{jobId}(/cancel)? — merge job runner [PCC-3737]
+  const mergeJobMatch = /^\/api\/sites\/([^/]+)\/merge-jobs\/([^/]+?)(\/cancel)?$/.exec(normalizedPath);
+  if (mergeJobMatch) {
+    return {
+      handler: 'merge',
+      params: {
+        siteId: mergeJobMatch[1],
+        mergeJobId: mergeJobMatch[2],
+        action: mergeJobMatch[3] !== undefined ? 'job-cancel' : 'job',
       },
     };
   }

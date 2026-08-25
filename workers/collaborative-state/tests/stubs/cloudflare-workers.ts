@@ -24,6 +24,18 @@ export class WorkerEntrypoint<Env = unknown> {
   }
 }
 
+// Params generic mirrors the real signature; the stub never reads it.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export class WorkflowEntrypoint<Env = unknown, _Params = unknown> {
+  ctx: ExecutionContext;
+  env: Env;
+
+  constructor(ctx: ExecutionContext, env: Env) {
+    this.ctx = ctx;
+    this.env = env;
+  }
+}
+
 export const cache = {
   purge: (): Promise<{ success: boolean; errors: never[] }> =>
     Promise.resolve({ success: true, errors: [] }),

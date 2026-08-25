@@ -484,6 +484,15 @@ describe('Phase 7.1c: Merge API Routes', () => {
         id: 'main-id', siteId: 'site-1', name: 'main', isMain: true,
         status: 'active', createdAt: '2026-01-01', createdById: 'u', createdByType: 'user',
       }));
+      // The PATCH handler reads the MR first (merging is execution-owned in
+      // both directions [PCC-3737]); a non-merging status falls through to
+      // the service call.
+      vi.mocked(services.getMergeRequest).mockResolvedValueOnce({
+        id: 'mr-1', siteId: 'site-1', sourceBranchId: 's', targetBranchId: 'main-id',
+        title: 't', status: 'open', hasConflicts: false,
+        createdById: 'u', createdByType: 'user',
+        createdAt: '2026-01-01', updatedAt: '2026-01-01',
+      } as never);
       vi.mocked(services.updateMergeRequestStatus).mockRejectedValueOnce(
         new services.InvalidMergeRequestStatusTransitionError('open', 'merged'),
       );
@@ -505,6 +514,74 @@ describe('Phase 7.1c: Merge API Routes', () => {
       });
 
       expect(response.status).toBe(400);
+    });
+
+    it('should return 400 when a client PATCHes status to merging — that status is owned by merge execution [PCC-3737]', async () => {
+      const { handleMergeRoutes } = await import('../../src/routes/merge-api');
+      const services = await import('../../src/services');
+
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce(makeBranch({
+        id: 'main-id', siteId: 'site-1', name: 'main', isMain: true,
+        status: 'active', createdAt: '2026-01-01', createdById: 'u', createdByType: 'user',
+      }));
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-1/merge-requests/mr-1',
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'merging' }),
+        },
+      );
+
+      const response = await handleMergeRoutes(request, {
+        siteId: 'site-1',
+        mergeRequests: true,
+        mergeRequestId: 'mr-1',
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
+      });
+
+      expect(response.status).toBe(400);
+      // The guard must reject before reaching the service, or a permitted
+      // transition map edge would let clients strand an MR in merging.
+      expect(services.updateMergeRequestStatus).not.toHaveBeenCalled();
+    });
+
+    it('should return 409 when a client PATCHes a mid-job MR out of merging [PCC-3737]', async () => {
+      const { handleMergeRoutes } = await import('../../src/routes/merge-api');
+      const services = await import('../../src/services');
+
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce(makeBranch({
+        id: 'main-id', siteId: 'site-1', name: 'main', isMain: true,
+        status: 'active', createdAt: '2026-01-01', createdById: 'u', createdByType: 'user',
+      }));
+      vi.mocked(services.getMergeRequest).mockResolvedValueOnce({
+        id: 'mr-1', siteId: 'site-1', sourceBranchId: 's', targetBranchId: 'main-id',
+        title: 't', status: 'merging', hasConflicts: false,
+        createdById: 'u', createdByType: 'user',
+        createdAt: '2026-01-01', updatedAt: '2026-01-01',
+      } as never);
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-1/merge-requests/mr-1',
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          // A mid-flight flip out of merging would let the running job
+          // publish while its merged stamp silently no-ops.
+          body: JSON.stringify({ status: 'approved' }),
+        },
+      );
+
+      const response = await handleMergeRoutes(request, {
+        siteId: 'site-1',
+        mergeRequests: true,
+        mergeRequestId: 'mr-1',
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
+      });
+
+      expect(response.status).toBe(409);
+      expect(services.updateMergeRequestStatus).not.toHaveBeenCalled();
     });
 
     it('should return 409 when CannotDeleteMergedRequestError is thrown', async () => {

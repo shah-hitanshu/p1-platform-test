@@ -97,11 +97,86 @@ interface MergeRequestRow {
  */
 const VALID_STATUS_TRANSITIONS: Record<MergeRequestStatus, MergeRequestStatus[]> = {
   open: ['approved', 'closed', 'conflicted'],
-  approved: ['merged', 'closed', 'open', 'conflicted'], // can go back to open, or to conflicted if merge detects conflicts
-  conflicted: ['open', 'closed', 'merged'], // back to open after conflict resolution, or merged after resolution applied
+  // Direct approved/conflicted -> merged stays valid while the inline merge
+  // path exists; the job runner goes through 'merging' instead [PCC-3737].
+  approved: ['merging', 'merged', 'closed', 'open', 'conflicted'], // can go back to open, or to conflicted if merge detects conflicts
+  conflicted: ['merging', 'open', 'closed', 'merged'], // back to open after conflict resolution, or merged after resolution applied
+  // 'merging' is owned by merge execution: forward to merged, back to the
+  // job's prior_mr_status (approved/conflicted) on failure or cancellation,
+  // or to conflicted when planning finds unresolved conflicts.
+  merging: ['merged', 'approved', 'conflicted'],
   merged: [], // terminal state
   closed: ['open'], // can be reopened
 };
+
+// =============================================================================
+// Execution claim primitives [PCC-3737]
+//
+// 'merging' is owned by merge execution, and every edge into/out of it is
+// written HERE, next to the transition map, so the map has one governed
+// writer. Each statement uses a plain qual on the target table: the
+// UPDATE ... FROM (self-select) shape is NOT concurrency-safe under READ
+// COMMITTED — EvalPlanQual re-evaluates a blocked loser's qual against the
+// stale subquery row, letting BOTH racers claim (reproduced on PG 16). A
+// plain qual re-evaluates against the winner's committed row, so the loser
+// gets 0 rows.
+// =============================================================================
+
+/**
+ * Claims a merge request for execution: CAS its status to 'merging'.
+ * Returns the prior status on success, null when the race was lost or the MR
+ * is not executable. Two single-status UPDATEs instead of one IN(...) so the
+ * winning statement itself tells us the prior status atomically.
+ */
+export async function claimMergeRequestForExecution(
+  mergeRequestId: string,
+): Promise<'approved' | 'conflicted' | null> {
+  for (const prior of ['approved', 'conflicted'] as const) {
+    // Edge governed by VALID_STATUS_TRANSITIONS: approved/conflicted -> merging.
+    const result = await query<{ id: string }>(
+      `UPDATE app.merge_requests SET status = 'merging', updated_at = NOW()
+       WHERE id = $1 AND status = $2
+       RETURNING id`,
+      [mergeRequestId, prior],
+    );
+    if (result.rows.length > 0) {
+      return prior;
+    }
+  }
+  return null;
+}
+
+/**
+ * Releases an execution claim: 'merging' back to the prior status. No-op if
+ * the MR moved on (e.g. the job finalized it to 'merged').
+ */
+export async function restoreMergeRequestClaim(
+  mergeRequestId: string,
+  priorStatus: string,
+): Promise<void> {
+  if (!isValidStatusTransition('merging', priorStatus as MergeRequestStatus)) {
+    throw new InvalidMergeRequestStatusTransitionError('merging', priorStatus as MergeRequestStatus);
+  }
+  await query(
+    `UPDATE app.merge_requests SET status = $2, updated_at = NOW()
+     WHERE id = $1 AND status = 'merging'`,
+    [mergeRequestId, priorStatus],
+  );
+}
+
+/**
+ * Plan-time exit: unresolved conflicts move the executing MR to 'conflicted'
+ * so the UI can offer resolution. No-op if the MR is no longer 'merging'.
+ */
+export async function markMergeRequestConflictedFromMerging(
+  mergeRequestId: string,
+): Promise<void> {
+  await query(
+    `UPDATE app.merge_requests SET status = 'conflicted', updated_at = NOW()
+     WHERE id = $1 AND status = 'merging'`,
+    [mergeRequestId],
+  );
+}
 
 /**
  * Check if a status transition is valid.
@@ -403,18 +478,29 @@ export async function updateMergeRequestStatus(
   }
 
   values.push(id);
+  const idParam = paramIndex;
+  paramIndex++;
+  values.push(currentStatus);
 
+  // Qualified on the status this function just validated, so the write is a
+  // real CAS: a concurrent transition between the read above and this UPDATE
+  // quals out (0 rows) instead of blindly overwriting — e.g. a PATCH racing
+  // a merge job's claim can no longer slip an MR out of 'merging' [PCC-3737].
   const sql =
     'UPDATE app.merge_requests SET ' +
     updates.join(', ') +
     ' WHERE id = $' +
+    String(idParam) +
+    ' AND status = $' +
     String(paramIndex) +
     ' RETURNING *';
 
   const result = await query<MergeRequestRow>(sql, values);
   const statusRow = result.rows[0];
   if (!statusRow) {
-    throw new MergeRequestNotFoundError(id);
+    // Row exists (read above) but the status moved underneath us: report the
+    // transition as invalid from the caller's observed state.
+    throw new InvalidMergeRequestStatusTransitionError(currentStatus, newStatus);
   }
   return rowToMergeRequest(statusRow);
 }

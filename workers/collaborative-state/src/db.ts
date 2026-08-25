@@ -21,6 +21,7 @@
 
 import postgres from 'postgres';
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { resolveConnection } from './db/resolve-connection';
 import { getLogger } from '@pantheon-systems/p1-telemetry';
 
 /**
@@ -74,6 +75,19 @@ const connectionStorage = new AsyncLocalStorage<DatabaseConnection>();
  * @param fn - Function to run with the connection
  * @returns Result of the function
  */
+/**
+ * Whether an error is a transport/connection failure (vs. a query/logic
+ * error). One exported classifier so retry policies elsewhere (the merge job
+ * runner's chunk steps, this module's own retry-once) agree on what counts.
+ */
+export function isConnectionError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    (/connection (refused|terminated|reset|ended|closed)/i.test(error.message) ||
+      /ECONNREFUSED|ECONNRESET|ETIMEDOUT|socket hang up|57P01/.test(error.message))
+  );
+}
+
 export async function runWithConnection<T>(
   connectionString: string,
   options: ConnectionOptions,
@@ -83,16 +97,7 @@ export async function runWithConnection<T>(
   try {
     return await connectionStorage.run(connection, fn);
   } catch (error: unknown) {
-    const connErrPattern =
-      /connection (refused|terminated|reset|ended|closed)/i;
-    const sysErrPattern =
-      /ECONNREFUSED|ECONNRESET|ETIMEDOUT|socket hang up|57P01/;
-    const isConnectionError =
-      error instanceof Error &&
-      (connErrPattern.test(error.message) ||
-        sysErrPattern.test(error.message));
-
-    if (!isConnectionError) throw error;
+    if (!isConnectionError(error)) throw error;
 
     // eslint-disable-next-line @typescript-eslint/no-empty-function
     connection.close().catch(() => {});
@@ -115,6 +120,22 @@ export async function runWithConnection<T>(
     // for correctness. For direct connections, the OS cleans up the socket.
     connection.close().catch(() => { /* ignore cleanup errors */ });
   }
+}
+
+/**
+ * Bindings-driven variant of runWithConnection: picks Hyperdrive when bound,
+ * else the direct connection string (local dev). One shared answer to "open a
+ * request-scoped connection from `env`" for code running outside a request —
+ * Workflows, queue consumers, crons [PCC-3737].
+ */
+export function runWithEnvConnection<T>(
+  env: { HYPERDRIVE?: Hyperdrive; HYPERDRIVE_NOCACHE?: Hyperdrive; POSTGRES_CONNECTION_STRING?: string },
+  fn: () => Promise<T>,
+): Promise<T> {
+  // Delegates the binding choice to the same resolver requests use ('' path:
+  // never the admin no-cache config).
+  const { connectionString, isHyperdrive } = resolveConnection(env, '');
+  return runWithConnection(connectionString, { isHyperdrive }, fn);
 }
 
 /**
