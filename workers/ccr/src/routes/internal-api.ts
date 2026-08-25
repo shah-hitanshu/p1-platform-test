@@ -661,6 +661,7 @@ async function handleAgentCheckpointRollback(request: Request): Promise<Response
       rolledBack: true,
       checkpointId: result.checkpoint.id,
       documentsReverted: result.documentsReverted,
+      documentsDeleted: result.documentsDeleted,
       documentsSkipped: result.documentsSkipped,
     });
   } catch (error) {

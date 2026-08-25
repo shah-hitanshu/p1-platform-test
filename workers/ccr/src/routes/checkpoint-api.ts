@@ -9,7 +9,7 @@ import {
   createCheckpoint,
   getCheckpoint,
   listCheckpoints,
-  getDocumentsAtCheckpoint,
+  resolveCheckpointDocuments,
   revertToCheckpoint,
   deleteCheckpoint,
   getBranch,
@@ -146,7 +146,7 @@ async function handleGetDocumentsAtCheckpoint(
     return errorResponse('Checkpoint ID is required', 400);
   }
 
-  const documents = await getDocumentsAtCheckpoint(context.checkpointId);
+  const documents = await resolveCheckpointDocuments(context.checkpointId);
 
   return jsonResponse({ documents });
 }

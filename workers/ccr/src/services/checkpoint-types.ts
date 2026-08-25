@@ -81,6 +81,12 @@ export interface RevertToCheckpointResult {
   checkpoint: Checkpoint;
   documentsReverted: number;
   /**
+   * Documents the checkpoint recorded as deleted and that the revert deleted
+   * again. Counts what the chain described, so a document already deleted is
+   * included without a redundant tombstone being written for it.
+   */
+  documentsDeleted: number;
+  /**
    * _registry/* rows (except _registry/templates/*) found in the checkpoint
    * and excluded from the revert. Non-zero only for checkpoints captured
    * before registry documents were filtered out of capture.
@@ -170,16 +176,15 @@ export interface CheckpointRow {
   rolled_back_at: string | null;
   // Incremental checkpoint support (Phase 6.1)
   parent_checkpoint_id: string | null;
+  is_full_snapshot: boolean;
 }
 
 /**
- * Extended row returned by CTE-based INSERT in createCheckpoint.
- * The CTE embeds parent checkpoint lookup, so RETURNING includes
- * parent_created_at alongside standard checkpoint fields.
+ * Row returned by the CTE-based INSERT in createCheckpoint. The CTE embeds the
+ * parent checkpoint lookup, so parent_checkpoint_id is already populated on the
+ * returned row.
  */
-export interface CheckpointInsertRow extends CheckpointRow {
-  parent_created_at: string | null;
-}
+export type CheckpointInsertRow = CheckpointRow;
 
 /**
  * Database row for document versions with document path (joined).

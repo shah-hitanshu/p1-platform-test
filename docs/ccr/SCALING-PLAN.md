@@ -575,6 +575,38 @@ ORDER BY dv.document_id, dv.version_number DESC
 - Verify revert to incremental checkpoint restores all documents (including unchanged)
 - Verify full checkpoint compaction works correctly
 
+**As shipped (PCC-3730), differing from the plan above:**
+
+The `created_at > $2` boundary sketched in the implementation snippet was not
+what shipped, because a timestamp boundary races the parent checkpoint's own
+transaction — `now()` is transaction start, so a version written while the
+parent commits falls on the wrong side of the comparison and is captured twice
+or not at all. The delta is defined by **version identity** instead: capture the
+branch's latest version per document, keep it when its id differs from what the
+parent chain already records. No boundary, no window.
+
+That also makes deletions representable, which the timestamp form structurally
+could not. An incremental manifest keeps tombstones (a full snapshot does not
+need them — there, absence is the deletion), `resolveCheckpointDocuments`
+filters them out of the live set, and `resolveCheckpointDeletions` returns them
+so revert can re-apply a deletion the checkpoint recorded.
+
+Two consequences worth knowing:
+
+- `app.checkpoints.is_full_snapshot` (migration 063) records what a capture
+  actually did, so a chain walk stops at the nearest full snapshot instead of
+  running to the branch root. Walking past one resurrects documents that
+  snapshot omitted.
+- Merge checkpoints null their parent by design, so they terminate a walk
+  without describing the whole branch. Resolution stays complete anyway — the
+  identity-based delta re-captures what the chain does not record — at the cost
+  of the first session manifest after a merge being branch-sized rather than
+  edit-sized.
+
+Session pre-edit checkpoints capture incrementally as of PCC-3730; the
+`forceFullSnapshot` escape hatch remains for callers that need a full sweep
+(template pre-migration uses it).
+
 ### 6.2 Batch Revert Operations
 
 **Problem:** `revertToCheckpoint()` runs a `for` loop executing one INSERT per document (`checkpoint-service.ts:671-692`). For a 2,000-document branch, this is 2,000 sequential INSERT statements inside a transaction, taking ~10 seconds.

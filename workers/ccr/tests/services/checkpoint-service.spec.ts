@@ -30,6 +30,7 @@ describe('Phase 3.3: Checkpoint Service', () => {
     created_by_id: string;
     created_by_type: 'user' | 'agent' | 'system';
     created_at: string;
+    parent_checkpoint_id?: string | null;
   }
 
   // Mock checkpoint document row (database format)
@@ -132,6 +133,89 @@ describe('Phase 3.3: Checkpoint Service', () => {
       expect(result.checkpoint.message).toBe('First release checkpoint');
       expect(result.checkpoint.checkpointType).toBe('manual');
       expect(result.documentCount).toBe(2);
+    });
+
+    it('records whether the capture was a full snapshot or a delta', async () => {
+      const { createCheckpoint } = await import('../../src/services/checkpoint-service');
+      const db = await import('../../src/db');
+
+      // Forced full sweep despite having a parent — what session pre-edit does.
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [] }) // BEGIN
+        .mockResolvedValueOnce({
+          rows: [createMockCheckpointRow({ parent_checkpoint_id: 'parent-checkpoint' })],
+        })
+        .mockResolvedValueOnce({ rows: [] }) // capture query
+        .mockResolvedValueOnce({ rows: [] }) // structures
+        .mockResolvedValueOnce({ rows: [] }) // metadata
+        .mockResolvedValueOnce({ rows: [] }); // COMMIT
+
+      await createCheckpoint({
+        branchId: 'branch-uuid-789',
+        checkpointType: 'session_pre_edit',
+        createdById: 'user-uuid-001',
+        createdByType: 'user',
+        forceFullSnapshot: true,
+      });
+
+      const insertParams = vi.mocked(db.query).mock.calls[1]?.[1] ?? [];
+      expect(insertParams[12]).toBe(false); // not an explicit document list
+      expect(insertParams[13]).toBe(true); // forced full snapshot
+
+      vi.mocked(db.query).mockReset();
+
+      // An explicit document list is a delta whatever the parent says.
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [createMockCheckpointRow()] })
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [] });
+
+      await createCheckpoint({
+        branchId: 'branch-uuid-789',
+        checkpointType: 'publish',
+        createdById: 'user-uuid-001',
+        createdByType: 'user',
+        documentVersionIds: [{ documentId: 'doc-1', documentVersionId: 'v-1' }],
+      });
+
+      const publishParams = vi.mocked(db.query).mock.calls[1]?.[1] ?? [];
+      expect(publishParams[12]).toBe(true);
+      expect(publishParams[13]).toBe(false);
+    });
+
+    it('chunks the manifest INSERT so a large branch stays under the bind-parameter cap', async () => {
+      const { createCheckpoint } = await import('../../src/services/checkpoint-service');
+      const db = await import('../../src/db');
+
+      const manyDocs = Array.from({ length: 10_001 }, (_, i) =>
+        createMockCheckpointDocRow({ document_id: `doc-${String(i)}`, document_version_id: `v-${String(i)}` }),
+      );
+
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [] }) // BEGIN
+        .mockResolvedValueOnce({ rows: [createMockCheckpointRow()] }) // insert checkpoint
+        .mockResolvedValueOnce({ rows: manyDocs }) // capture query
+        .mockResolvedValue({ rows: [] }); // manifest inserts, structures, metadata, COMMIT
+
+      const result = await createCheckpoint({
+        branchId: 'branch-uuid-789',
+        checkpointType: 'manual',
+        createdById: 'user-uuid-001',
+        createdByType: 'user',
+      });
+
+      const manifestInserts = vi
+        .mocked(db.query)
+        .mock.calls.filter(([sql]) => sql.includes('INSERT INTO app.checkpoint_documents'));
+
+      expect(manifestInserts).toHaveLength(2);
+      for (const [, params] of manifestInserts) {
+        expect((params ?? []).length).toBeLessThan(65_535);
+      }
+      expect(result.documentCount).toBe(10_001);
     });
 
     it('should create a checkpoint with optional name and message', async () => {
@@ -381,7 +465,7 @@ describe('Phase 3.3: Checkpoint Service', () => {
         (call) =>
           typeof call[0] === 'string' &&
           call[0].includes('DISTINCT ON') &&
-          call[0].includes('created_at'),
+          call[0].includes('WITH RECURSIVE chain'),
       );
 
       expect(incrementalCaptureCall).toBeDefined();
@@ -674,6 +758,7 @@ describe('Phase 3.3: Checkpoint Service', () => {
       vi.mocked(db.query)
         .mockResolvedValueOnce({ rows: [mockCheckpointRow] }) // Get checkpoint
         .mockResolvedValueOnce({ rows: mockVersionRows }) // Get documents at checkpoint
+        .mockResolvedValueOnce({ rows: [] }) // Resolve deletions across the chain
         .mockResolvedValueOnce({ rows: [] }) // revertToCheckpoint: BEGIN
         .mockResolvedValueOnce({ rows: [{ id: 'new-version-1' }] }) // Create revert version 1
         .mockResolvedValueOnce({ rows: [{ id: 'new-version-2' }] }) // Create revert version 2
@@ -701,6 +786,67 @@ describe('Phase 3.3: Checkpoint Service', () => {
       expect(result).toBeDefined();
       expect(result.checkpoint.message).toContain('Reverted to checkpoint');
       expect(result.documentsReverted).toBe(2);
+    });
+
+    it('resolves the parent chain rather than one manifest, so an incremental checkpoint restores the full document set', async () => {
+      const { revertToCheckpoint } = await import('../../src/services/checkpoint-service');
+      const db = await import('../../src/db');
+
+      // Three documents takes the batch INSERT path (threshold is 3).
+      const mockCheckpointRow = createMockCheckpointRow({ parent_checkpoint_id: 'parent-checkpoint' });
+      const resolvedRows = [
+        createMockVersionWithDocument({ id: 'version-1', document_id: 'doc-1', document_path: 'pages/about' }),
+        createMockVersionWithDocument({ id: 'version-2', document_id: 'doc-2', document_path: 'pages/contact' }),
+        createMockVersionWithDocument({ id: 'version-3', document_id: 'doc-3', document_path: 'pages/home' }),
+      ];
+
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [mockCheckpointRow] }) // Get checkpoint
+        .mockResolvedValueOnce({ rows: resolvedRows }) // Resolve documents across the chain
+        .mockResolvedValueOnce({ rows: [] }) // Resolve deletions across the chain
+        .mockResolvedValueOnce({ rows: [] }) // BEGIN
+        .mockResolvedValueOnce({ rows: [] }) // Batch revert INSERT
+        .mockResolvedValueOnce({ rows: [] }) // Get structures at checkpoint
+        .mockResolvedValueOnce({ rows: [] }) // Delete current structures
+        .mockResolvedValueOnce({ rows: [] }) // Restore structures
+        .mockResolvedValueOnce({ rows: [] }) // Delete current metadata
+        .mockResolvedValueOnce({ rows: [] }) // Restore metadata
+        .mockResolvedValueOnce({ rows: [] }) // UPDATE checkpoint status
+        .mockResolvedValueOnce({ rows: [] }) // COMMIT
+        .mockResolvedValueOnce({ rows: [] }) // createCheckpoint: BEGIN
+        .mockResolvedValueOnce({ rows: [createMockCheckpointRow({ id: 'revert-checkpoint' })] })
+        .mockResolvedValueOnce({ rows: [] }) // Capture query
+        .mockResolvedValueOnce({ rows: [] }) // Structure capture
+        .mockResolvedValueOnce({ rows: [] }) // Metadata capture
+        .mockResolvedValueOnce({ rows: [] }); // COMMIT
+
+      const result = await revertToCheckpoint({
+        checkpointId: 'checkpoint-uuid-123',
+        createdById: 'user-uuid-001',
+        createdByType: 'user',
+      });
+
+      const calls = vi.mocked(db.query).mock.calls;
+
+      // The document set comes from a chain walk that stops at the nearest
+      // full snapshot, not from this checkpoint's own manifest.
+      const resolveSql = calls[1]?.[0] ?? '';
+      expect(resolveSql).toContain('WITH RECURSIVE chain');
+      expect(resolveSql).toContain('chain.is_full_snapshot = false');
+
+      // The batch INSERT is driven by the resolved ids, so it cannot fall back
+      // to a single manifest's rows.
+      const revertInsert = calls.find(
+        ([sql]) => typeof sql === 'string' && sql.includes('INSERT INTO app.document_versions'),
+      );
+      expect(revertInsert?.[0]).not.toContain('cd.checkpoint_id');
+      expect(revertInsert?.[1]).toEqual(
+        expect.arrayContaining([
+          ['doc-1', 'doc-2', 'doc-3'],
+          ['version-1', 'version-2', 'version-3'],
+        ]),
+      );
+      expect(result.documentsReverted).toBe(3);
     });
 
     it('should throw CheckpointNotFoundError when checkpoint does not exist', async () => {
@@ -731,6 +877,7 @@ describe('Phase 3.3: Checkpoint Service', () => {
       vi.mocked(db.query)
         .mockResolvedValueOnce({ rows: [mockCheckpointRow] }) // Get checkpoint
         .mockResolvedValueOnce({ rows: [] }) // No documents at checkpoint
+        .mockResolvedValueOnce({ rows: [] }) // Resolve deletions across the chain
         .mockResolvedValueOnce({ rows: [] }) // revertToCheckpoint: BEGIN
         .mockResolvedValueOnce({ rows: [] }) // Get structures at checkpoint
         .mockResolvedValueOnce({ rows: [] }) // Delete current structures
@@ -770,6 +917,7 @@ describe('Phase 3.3: Checkpoint Service', () => {
       vi.mocked(db.query)
         .mockResolvedValueOnce({ rows: [mockCheckpointRow] }) // Get checkpoint
         .mockResolvedValueOnce({ rows: [] }) // No documents at checkpoint
+        .mockResolvedValueOnce({ rows: [] }) // Resolve deletions across the chain
         .mockResolvedValueOnce({ rows: [] }) // revertToCheckpoint: BEGIN
         .mockResolvedValueOnce({ rows: [] }) // Get structures at checkpoint
         .mockResolvedValueOnce({ rows: [] }) // Delete current structures

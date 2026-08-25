@@ -86,10 +86,16 @@ export async function listCheckpoints(
 }
 
 /**
- * Gets all document versions captured in a checkpoint.
+ * Gets the document versions this checkpoint's own manifest records.
+ *
+ * This is the raw manifest, not the branch state. An incremental checkpoint
+ * holds only its delta, and that delta includes tombstones, so the result can
+ * both omit live documents and name deleted ones. For "what did the branch look
+ * like here", which is almost always the question, use
+ * resolveCheckpointDocuments.
  *
  * @param checkpointId - The checkpoint ID
- * @returns Array of document versions with paths
+ * @returns Array of document versions with paths, as captured
  */
 export async function getDocumentsAtCheckpoint(
   checkpointId: string,
@@ -108,7 +114,10 @@ export async function getDocumentsAtCheckpoint(
 }
 
 /**
- * Gets a specific document's version at a checkpoint by path.
+ * Gets a specific document's version from a checkpoint's own manifest.
+ *
+ * Manifest-scoped like getDocumentsAtCheckpoint: returns null for a document
+ * an incremental checkpoint did not capture, even when the branch had it.
  *
  * @param checkpointId - The checkpoint ID
  * @param documentPath - The document path
@@ -136,9 +145,39 @@ export async function getDocumentAtCheckpoint(
 }
 
 /**
- * Resolves the complete set of documents for a checkpoint, walking the
- * parent chain for incremental checkpoints. Newer checkpoint entries
- * override older ones for the same document.
+ * The chain a checkpoint resolves over: itself plus its ancestors, stopping at
+ * the nearest full snapshot. That snapshot already holds every live document on
+ * the branch, so anything older is either superseded or no longer live —
+ * without the stop the walk would run to the branch root and resurrect
+ * documents the snapshot omitted.
+ *
+ * `nearest` picks each document's entry from the closest checkpoint that
+ * mentions it, which is what makes a delta override its parent.
+ */
+export const NEAREST_CHECKPOINT_CHAIN_ENTRIES = `WITH RECURSIVE chain AS (
+       SELECT c.id, c.parent_checkpoint_id, c.is_full_snapshot, 0 AS depth
+       FROM app.checkpoints c
+       WHERE c.id = $1
+     UNION ALL
+       SELECT parent.id, parent.parent_checkpoint_id, parent.is_full_snapshot, chain.depth + 1
+       FROM chain
+       JOIN app.checkpoints parent ON parent.id = chain.parent_checkpoint_id
+       WHERE chain.is_full_snapshot = false
+     ),
+     nearest AS (
+       SELECT DISTINCT ON (cd.document_id) cd.document_version_id, cd.document_id
+       FROM chain
+       JOIN app.checkpoint_documents cd ON cd.checkpoint_id = chain.id
+       ORDER BY cd.document_id, chain.depth ASC
+     )`;
+
+/**
+ * Resolves the live document set for a checkpoint, walking the parent chain for
+ * incremental checkpoints. Newer checkpoint entries override older ones for the
+ * same document.
+ *
+ * Documents whose nearest entry is a tombstone were deleted as of this
+ * checkpoint, so they are excluded — see resolveCheckpointDeletions for those.
  *
  * @param checkpointId - The checkpoint ID to resolve
  * @returns Complete array of document versions representing the checkpoint state
@@ -146,32 +185,49 @@ export async function getDocumentAtCheckpoint(
 export async function resolveCheckpointDocuments(
   checkpointId: string,
 ): Promise<CheckpointDocumentVersion[]> {
-  // Collect checkpoint chain from newest to oldest
-  const chain: CheckpointDocumentVersion[][] = [];
-  let currentCheckpointId: string | null = checkpointId;
+  const result = await query<VersionWithDocumentRow>(
+    `${NEAREST_CHECKPOINT_CHAIN_ENTRIES}
+     SELECT dv.*, d.path as document_path
+     FROM nearest
+     JOIN app.document_versions dv ON dv.id = nearest.document_version_id
+     JOIN app.documents d ON d.id = nearest.document_id
+     WHERE dv.is_tombstone = false
+     ORDER BY d.path`,
+    [checkpointId],
+  );
 
-  while (currentCheckpointId !== null) {
-    const checkpoint = await getCheckpoint(currentCheckpointId);
-    if (!checkpoint) break;
+  return result.rows.map(mapRowToCheckpointDocumentVersion);
+}
 
-    const docs = await getDocumentsAtCheckpoint(currentCheckpointId);
-    chain.push(docs);
+/**
+ * Resolves the documents that were deleted as of a checkpoint: those whose
+ * nearest entry in the chain is a tombstone.
+ *
+ * A full snapshot never records tombstones — it captures the live set, so
+ * absence is the deletion — which is why the walk stopping at one is what keeps
+ * this bounded to deletions the chain actually describes.
+ *
+ * @param checkpointId - The checkpoint ID to resolve
+ * @returns Document ids and paths deleted as of the checkpoint
+ */
+export async function resolveCheckpointDeletions(
+  checkpointId: string,
+): Promise<{ documentId: string; documentPath: string }[]> {
+  const result = await query<{ document_id: string; document_path: string }>(
+    `${NEAREST_CHECKPOINT_CHAIN_ENTRIES}
+     SELECT nearest.document_id, d.path as document_path
+     FROM nearest
+     JOIN app.document_versions dv ON dv.id = nearest.document_version_id
+     JOIN app.documents d ON d.id = nearest.document_id
+     WHERE dv.is_tombstone = true
+     ORDER BY d.path`,
+    [checkpointId],
+  );
 
-    currentCheckpointId = checkpoint.parentCheckpointId ?? null;
-  }
-
-  // Merge documents: process from oldest (end) to newest (start)
-  // so newer entries override older ones for the same documentId
-  const documentMap = new Map<string, CheckpointDocumentVersion>();
-  for (let i = chain.length - 1; i >= 0; i--) {
-    const chainEntry = chain[i];
-    if (!chainEntry) continue;
-    for (const doc of chainEntry) {
-      documentMap.set(doc.documentId, doc);
-    }
-  }
-
-  return Array.from(documentMap.values());
+  return result.rows.map((row) => ({
+    documentId: row.document_id,
+    documentPath: row.document_path,
+  }));
 }
 
 /**

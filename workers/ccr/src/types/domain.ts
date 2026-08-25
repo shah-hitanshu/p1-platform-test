@@ -225,6 +225,11 @@ export interface Checkpoint {
   checkpointType: CheckpointType;
   /** ID of the parent checkpoint for incremental checkpoints (Phase 6.1) */
   parentCheckpointId?: string;
+  /**
+   * True when this checkpoint captured every live document on the branch, so a
+   * parent-chain walk can stop here. False for deltas.
+   */
+  isFullSnapshot?: boolean;
 
   // Agent Politeness fields
   /** How this checkpoint was triggered */

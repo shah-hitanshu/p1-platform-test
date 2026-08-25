@@ -25,6 +25,7 @@ export function mapRowToCheckpoint(row: CheckpointRow): Checkpoint {
     message: row.message ?? undefined,
     checkpointType: row.checkpoint_type,
     parentCheckpointId: row.parent_checkpoint_id ?? undefined,
+    isFullSnapshot: row.is_full_snapshot,
     createdById: row.created_by_id,
     createdByType: row.created_by_type,
     createdAt: row.created_at,

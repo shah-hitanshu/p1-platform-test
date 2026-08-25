@@ -225,7 +225,9 @@ describe('Phase 7.1.1a: Checkpoint Structure Capture', () => {
         .mockResolvedValueOnce({
           rows: [{ id: 'checkpoint-1', branch_id: 'branch-1', checkpoint_type: 'manual' }],
         })
-        // getDocumentsAtCheckpoint
+        // resolveCheckpointDocuments
+        .mockResolvedValueOnce({ rows: [] })
+        // resolveCheckpointDeletions
         .mockResolvedValueOnce({ rows: [] })
         // revertToCheckpoint: BEGIN transaction
         .mockResolvedValueOnce({ rows: [] })
@@ -415,7 +417,9 @@ describe('Phase 7.1.1a: Checkpoint Structure Capture', () => {
         .mockResolvedValueOnce({
           rows: [{ id: 'checkpoint-1', branch_id: 'branch-1', checkpoint_type: 'manual' }],
         })
-        // getDocumentsAtCheckpoint
+        // resolveCheckpointDocuments
+        .mockResolvedValueOnce({ rows: [] })
+        // resolveCheckpointDeletions
         .mockResolvedValueOnce({ rows: [] })
         // revertToCheckpoint: BEGIN transaction
         .mockResolvedValueOnce({ rows: [] })

@@ -10,7 +10,6 @@
  * - Parent checkpoint detection is embedded in the INSERT query using a CTE
  *   (WITH parent AS ...) to avoid adding an extra query that would break
  *   existing test mock sequences.
- * - The CTE returns parent_created_at as an extra RETURNING column.
  * - For merge types (pre_merge, post_merge), a CASE expression nullifies
  *   parent_checkpoint_id to force full checkpoints.
  * - Batch revert uses INSERT...SELECT with JOIN LATERAL for per-row version numbers.
@@ -64,13 +63,10 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
   }
 
   /**
-   * Extended row returned by the CTE-based INSERT in createCheckpoint.
-   * The CTE embeds parent checkpoint lookup, so RETURNING includes
-   * parent_created_at as an extra column alongside standard fields.
+   * Row returned by the CTE-based INSERT in createCheckpoint. The CTE embeds
+   * the parent lookup, so parent_checkpoint_id arrives already resolved.
    */
-  interface MockCheckpointInsertRow extends MockCheckpointRow {
-    parent_created_at: string | null;
-  }
+  type MockCheckpointInsertRow = MockCheckpointRow;
 
   interface MockVersionWithDocumentRow {
     id: string;
@@ -111,7 +107,7 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
   }
 
   /**
-   * Creates a mock INSERT row with the extra parent_created_at field
+   * Creates a mock INSERT row for the CTE-based checkpoint insert
    * that the CTE-based INSERT returns via RETURNING.
    */
   function createMockInsertRow(
@@ -119,7 +115,6 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
   ): MockCheckpointInsertRow {
     return {
       ...createMockCheckpointRow(overrides),
-      parent_created_at: overrides.parent_created_at ?? null,
     };
   }
 
@@ -153,12 +148,11 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
 
         const mockInsertRow = createMockInsertRow({
           parent_checkpoint_id: null,
-          parent_created_at: null, // CTE found no parent
         });
 
         // CTE-based INSERT keeps the same query count as before:
         // 1. BEGIN
-        // 2. INSERT checkpoint (CTE: WITH parent AS (...) INSERT ... RETURNING *, parent_created_at)
+        // 2. INSERT checkpoint (CTE: WITH parent AS (...) INSERT ... RETURNING *)
         // 3. Get ALL latest versions (full snapshot, since no parent)
         // 4. INSERT checkpoint_documents
         // 5. INSERT checkpoint structures
@@ -198,13 +192,12 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
         const mockInsertRow = createMockInsertRow({
           id: 'incremental-checkpoint-id',
           parent_checkpoint_id: 'parent-checkpoint-id',
-          parent_created_at: '2026-03-01T09:00:00.000Z', // CTE found parent
         });
 
         // CTE-based INSERT detects parent -> incremental mode:
         // 1. BEGIN
-        // 2. INSERT checkpoint (CTE sets parent_checkpoint_id, returns parent_created_at)
-        // 3. Get CHANGED versions since parent_created_at (time-filtered query)
+        // 2. INSERT checkpoint (CTE sets parent_checkpoint_id)
+        // 3. Get versions whose id differs from what the parent chain records
         // 4. INSERT checkpoint_documents (only changed docs)
         // 5. INSERT checkpoint structures
         // 6. INSERT checkpoint metadata
@@ -232,11 +225,24 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
         expect(result.documentCount).toBe(1);
         expect(result.checkpoint.parentCheckpointId).toBe('parent-checkpoint-id');
 
-        // Verify the version query uses a time filter for incremental mode
+        // The delta is defined against the parent chain's recorded versions,
+        // not against a timestamp — a clock boundary races the parent's own
+        // transaction.
         const queryCalls = vi.mocked(db.query).mock.calls;
         const versionQueryCall = queryCalls[2]; // 3rd call (index 2)
         const versionSql = versionQueryCall[0];
-        expect(versionSql).toContain('created_at >');
+        expect(versionSql).toContain('WITH RECURSIVE chain');
+        expect(versionSql).toContain(
+          'nearest.document_version_id IS DISTINCT FROM latest.document_version_id',
+        );
+        expect(versionSql).not.toContain('created_at >');
+        // Bound to the parent checkpoint, and to the branch being captured.
+        expect(versionQueryCall[1]).toEqual([
+          'parent-checkpoint-id',
+          'branch-uuid-789',
+          '\\_registry/%',
+          '\\_registry/templates/%',
+        ]);
       });
 
       it('should create an incremental checkpoint with zero documents when nothing changed', async () => {
@@ -246,7 +252,6 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
         const mockInsertRow = createMockInsertRow({
           id: 'incremental-checkpoint-id',
           parent_checkpoint_id: 'parent-checkpoint-id',
-          parent_created_at: '2026-03-01T09:00:00.000Z',
         });
 
         // No docs changed: checkpoint_documents INSERT is skipped
@@ -279,7 +284,6 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
           id: 'merge-checkpoint-id',
           checkpoint_type: 'post_merge',
           parent_checkpoint_id: null, // CASE nullified for merge type
-          parent_created_at: '2026-03-01T09:00:00.000Z', // CTE found parent, but irrelevant
         });
 
         vi.mocked(db.query)
@@ -317,7 +321,6 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
           id: 'pre-merge-checkpoint-id',
           checkpoint_type: 'pre_merge',
           parent_checkpoint_id: null,
-          parent_created_at: null,
         });
 
         vi.mocked(db.query)
@@ -347,214 +350,54 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
     });
 
     describe('Checkpoint chain resolution', () => {
-      it('should resolve a full checkpoint (no parent) returning all its documents', async () => {
+      // The chain walk and the nearest-wins merge run inside one recursive
+      // query now, so these cover the statement's shape and row mapping;
+      // the resolution semantics are covered against a real database in
+      // tests/integration/checkpoint-chain-resolution.integration.spec.ts.
+      it('resolves in a single query that walks the parent chain', async () => {
         const { resolveCheckpointDocuments } = await import('../../src/services/checkpoint-service');
         const db = await import('../../src/db');
 
-        const fullCheckpoint = createMockCheckpointRow({
-          id: 'full-checkpoint',
-          parent_checkpoint_id: null,
+        vi.mocked(db.query).mockResolvedValueOnce({
+          rows: [
+            createMockVersionWithDocument({ document_id: 'doc-1', document_path: 'pages/home' }),
+            createMockVersionWithDocument({ document_id: 'doc-2', document_path: 'pages/about' }),
+          ],
         });
-
-        const documents = [
-          createMockVersionWithDocument({
-            document_id: 'doc-1',
-            document_path: 'pages/home',
-          }),
-          createMockVersionWithDocument({
-            document_id: 'doc-2',
-            document_path: 'pages/about',
-          }),
-        ];
-
-        // 1. Get the checkpoint to check for parent
-        // 2. Get documents at this checkpoint
-        vi.mocked(db.query)
-          .mockResolvedValueOnce({ rows: [fullCheckpoint] }) // Get checkpoint
-          .mockResolvedValueOnce({ rows: documents }); // Get documents at checkpoint
-
-        const result = await resolveCheckpointDocuments('full-checkpoint');
-
-        expect(result).toHaveLength(2);
-        expect(result.map((d: { documentId: string }) => d.documentId)).toEqual(['doc-1', 'doc-2']);
-      });
-
-      it('should resolve an incremental checkpoint by walking the chain', async () => {
-        const { resolveCheckpointDocuments } = await import('../../src/services/checkpoint-service');
-        const db = await import('../../src/db');
-
-        // Chain: incremental -> parent (full)
-        const incrementalCheckpoint = createMockCheckpointRow({
-          id: 'incremental-checkpoint',
-          parent_checkpoint_id: 'parent-checkpoint',
-        });
-
-        const parentCheckpoint = createMockCheckpointRow({
-          id: 'parent-checkpoint',
-          parent_checkpoint_id: null, // Full checkpoint (end of chain)
-        });
-
-        // Documents at incremental checkpoint (only changed: doc-1)
-        const incrementalDocs = [
-          createMockVersionWithDocument({
-            id: 'v-1-new',
-            document_id: 'doc-1',
-            document_path: 'pages/home',
-            version_number: 2,
-            snapshot: { title: 'Updated Home Page' },
-          }),
-        ];
-
-        // Documents at parent checkpoint (full: doc-1, doc-2, doc-3)
-        const parentDocs = [
-          createMockVersionWithDocument({
-            id: 'v-1-old',
-            document_id: 'doc-1',
-            document_path: 'pages/home',
-            version_number: 1,
-            snapshot: { title: 'Original Home Page' },
-          }),
-          createMockVersionWithDocument({
-            id: 'v-2',
-            document_id: 'doc-2',
-            document_path: 'pages/about',
-          }),
-          createMockVersionWithDocument({
-            id: 'v-3',
-            document_id: 'doc-3',
-            document_path: 'pages/contact',
-          }),
-        ];
-
-        vi.mocked(db.query)
-          .mockResolvedValueOnce({ rows: [incrementalCheckpoint] }) // Get incremental checkpoint
-          .mockResolvedValueOnce({ rows: incrementalDocs }) // Get docs at incremental
-          .mockResolvedValueOnce({ rows: [parentCheckpoint] }) // Get parent checkpoint
-          .mockResolvedValueOnce({ rows: parentDocs }); // Get docs at parent
 
         const result = await resolveCheckpointDocuments('incremental-checkpoint');
 
-        // Should have 3 documents total
-        expect(result).toHaveLength(3);
+        expect(vi.mocked(db.query)).toHaveBeenCalledTimes(1);
+        expect(result).toHaveLength(2);
+        expect(result.map((d: { documentId: string }) => d.documentId)).toEqual(['doc-1', 'doc-2']);
 
-        // doc-1 should be the incremental version (newer), not the parent version
-        const doc1 = result.find((d) => d.documentId === 'doc-1');
-        expect(doc1?.snapshot).toEqual({ title: 'Updated Home Page' });
-        expect(doc1?.versionNumber).toBe(2);
-
-        // doc-2 and doc-3 should come from the parent checkpoint
-        const doc2 = result.find((d) => d.documentId === 'doc-2');
-        expect(doc2).toBeDefined();
-
-        const doc3 = result.find((d) => d.documentId === 'doc-3');
-        expect(doc3).toBeDefined();
+        const [sql, params] = vi.mocked(db.query).mock.calls[0]!;
+        expect(sql).toContain('WITH RECURSIVE chain');
+        expect(sql).toContain('parent.id = chain.parent_checkpoint_id');
+        expect(params).toEqual(['incremental-checkpoint']);
       });
 
-      it('should handle a multi-level chain (incremental -> incremental -> full)', async () => {
+      it('stops the walk at the nearest full snapshot', async () => {
         const { resolveCheckpointDocuments } = await import('../../src/services/checkpoint-service');
         const db = await import('../../src/db');
 
-        // Chain: latest -> middle -> base (full)
-        const latestCheckpoint = createMockCheckpointRow({
-          id: 'latest-checkpoint',
-          parent_checkpoint_id: 'middle-checkpoint',
-        });
+        vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
 
-        const middleCheckpoint = createMockCheckpointRow({
-          id: 'middle-checkpoint',
-          parent_checkpoint_id: 'base-checkpoint',
-        });
+        await resolveCheckpointDocuments('incremental-checkpoint');
 
-        const baseCheckpoint = createMockCheckpointRow({
-          id: 'base-checkpoint',
-          parent_checkpoint_id: null, // Full checkpoint
-        });
-
-        // Latest: only doc-3 changed
-        const latestDocs = [
-          createMockVersionWithDocument({
-            document_id: 'doc-3',
-            document_path: 'pages/contact',
-            version_number: 3,
-            snapshot: { title: 'Contact v3' },
-          }),
-        ];
-
-        // Middle: doc-1 and doc-2 changed
-        const middleDocs = [
-          createMockVersionWithDocument({
-            document_id: 'doc-1',
-            document_path: 'pages/home',
-            version_number: 2,
-            snapshot: { title: 'Home v2' },
-          }),
-          createMockVersionWithDocument({
-            document_id: 'doc-2',
-            document_path: 'pages/about',
-            version_number: 2,
-            snapshot: { title: 'About v2' },
-          }),
-        ];
-
-        // Base: all docs
-        const baseDocs = [
-          createMockVersionWithDocument({
-            document_id: 'doc-1',
-            document_path: 'pages/home',
-            version_number: 1,
-            snapshot: { title: 'Home v1' },
-          }),
-          createMockVersionWithDocument({
-            document_id: 'doc-2',
-            document_path: 'pages/about',
-            version_number: 1,
-            snapshot: { title: 'About v1' },
-          }),
-          createMockVersionWithDocument({
-            document_id: 'doc-3',
-            document_path: 'pages/contact',
-            version_number: 1,
-            snapshot: { title: 'Contact v1' },
-          }),
-        ];
-
-        vi.mocked(db.query)
-          .mockResolvedValueOnce({ rows: [latestCheckpoint] }) // Get latest checkpoint
-          .mockResolvedValueOnce({ rows: latestDocs }) // Docs at latest
-          .mockResolvedValueOnce({ rows: [middleCheckpoint] }) // Get middle checkpoint
-          .mockResolvedValueOnce({ rows: middleDocs }) // Docs at middle
-          .mockResolvedValueOnce({ rows: [baseCheckpoint] }) // Get base checkpoint
-          .mockResolvedValueOnce({ rows: baseDocs }); // Docs at base
-
-        const result = await resolveCheckpointDocuments('latest-checkpoint');
-
-        expect(result).toHaveLength(3);
-
-        // doc-3 from latest (v3)
-        const doc3 = result.find((d) => d.documentId === 'doc-3');
-        expect(doc3?.snapshot).toEqual({ title: 'Contact v3' });
-
-        // doc-1 from middle (v2), not base (v1)
-        const doc1 = result.find((d) => d.documentId === 'doc-1');
-        expect(doc1?.snapshot).toEqual({ title: 'Home v2' });
-
-        // doc-2 from middle (v2), not base (v1)
-        const doc2 = result.find((d) => d.documentId === 'doc-2');
-        expect(doc2?.snapshot).toEqual({ title: 'About v2' });
+        const [sql] = vi.mocked(db.query).mock.calls[0]!;
+        // Recursion continues only through deltas.
+        expect(sql).toContain('WHERE chain.is_full_snapshot = false');
+        // Nearest checkpoint in the chain wins for a given document.
+        expect(sql).toContain('DISTINCT ON (cd.document_id)');
+        expect(sql).toContain('ORDER BY cd.document_id, chain.depth ASC');
       });
 
       it('should handle resolving a checkpoint that has no documents', async () => {
         const { resolveCheckpointDocuments } = await import('../../src/services/checkpoint-service');
         const db = await import('../../src/db');
 
-        const emptyCheckpoint = createMockCheckpointRow({
-          id: 'empty-checkpoint',
-          parent_checkpoint_id: null,
-        });
-
-        vi.mocked(db.query)
-          .mockResolvedValueOnce({ rows: [emptyCheckpoint] }) // Get checkpoint
-          .mockResolvedValueOnce({ rows: [] }); // No documents
+        vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
 
         const result = await resolveCheckpointDocuments('empty-checkpoint');
 
@@ -653,6 +496,7 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
             createMockVersionWithDocument({ document_id: 'doc-3' }),
           ],
         }) // getDocumentsAtCheckpoint
+        .mockResolvedValueOnce({ rows: [] }) // Resolve deletions across the chain
         .mockResolvedValueOnce({ rows: [] }) // BEGIN
         .mockResolvedValueOnce({ rows: [], rowCount: 3 }) // Bulk INSERT...SELECT for all docs at once
         .mockResolvedValueOnce({ rows: [] }) // Get structures at checkpoint
@@ -690,8 +534,11 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
       expect(typeof bulkInsertCall[0]).toBe('string');
       const bulkInsertSql = bulkInsertCall[0];
       expect(bulkInsertSql).toContain('INSERT INTO app.document_versions');
-      expect(bulkInsertSql).toContain('checkpoint_documents');
       expect(bulkInsertSql).toContain('JOIN LATERAL');
+      // Driven by the resolved document set, so an incremental checkpoint
+      // reverts its whole branch rather than just its own delta.
+      expect(bulkInsertSql).toContain('unnest($4::uuid[], $5::uuid[])');
+      expect(bulkInsertSql).not.toContain('checkpoint_documents');
     });
 
     it('should correctly pass checkpoint ID and branch parameters to the bulk revert query', async () => {
@@ -718,6 +565,7 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
             createMockVersionWithDocument({ document_id: 'doc-3' }),
           ],
         }) // getDocumentsAtCheckpoint
+        .mockResolvedValueOnce({ rows: [] }) // Resolve deletions across the chain
         .mockResolvedValueOnce({ rows: [] }) // BEGIN
         .mockResolvedValueOnce({ rows: [], rowCount: 3 }) // Bulk INSERT...SELECT
         .mockResolvedValueOnce({ rows: [] }) // Get structures
@@ -750,13 +598,17 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
       );
 
       expect(bulkInsertCall).toBeDefined();
-      // Parameters should include branch_id, created_by_id, created_by_type, checkpoint_id
 
       const params = bulkInsertCall![1];
       expect(params).toContain('target-branch'); // branch_id
       expect(params).toContain('user-uuid-001'); // created_by_id
       expect(params).toContain('user'); // created_by_type
-      expect(params).toContain('cp-to-revert'); // checkpoint_id
+      // The resolved document and version ids replace the checkpoint id: the
+      // statement no longer reads a manifest, so it cannot restore a delta.
+      expect(params).toEqual(
+        expect.arrayContaining([['doc-1', 'doc-2', 'doc-3']]),
+      );
+      expect(params).not.toContain('cp-to-revert');
     });
 
     it('should handle revert with zero documents gracefully', async () => {
@@ -775,6 +627,7 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
       vi.mocked(db.query)
         .mockResolvedValueOnce({ rows: [mockCheckpointRow] }) // Get checkpoint
         .mockResolvedValueOnce({ rows: [] }) // No documents at checkpoint
+        .mockResolvedValueOnce({ rows: [] }) // Resolve deletions across the chain
         .mockResolvedValueOnce({ rows: [] }) // BEGIN
         // No bulk INSERT (0 documents -> skipped for backward compatibility)
         .mockResolvedValueOnce({ rows: [] }) // Get structures
@@ -827,6 +680,7 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
             createMockVersionWithDocument({ document_id: 'doc-3' }),
           ],
         })
+        .mockResolvedValueOnce({ rows: [] }) // Resolve deletions across the chain
         .mockResolvedValueOnce({ rows: [] }) // BEGIN
         .mockResolvedValueOnce({ rows: [], rowCount: 3 }) // Bulk INSERT
         .mockResolvedValueOnce({ rows: [] }) // Get structures
@@ -907,7 +761,8 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
       let chain = vi
         .mocked(db.query as ReturnType<typeof vi.fn>)
         .mockResolvedValueOnce({ rows: [createMockCheckpointRow({ id: 'cp-old', parent_checkpoint_id: null })] }) // getCheckpoint
-        .mockResolvedValueOnce({ rows: docs }) // getDocumentsAtCheckpoint
+        .mockResolvedValueOnce({ rows: docs }) // resolveCheckpointDocuments
+        .mockResolvedValueOnce({ rows: [] }) // resolveCheckpointDeletions
         .mockResolvedValueOnce({ rows: [] }); // BEGIN
       for (let i = 0; i < documentInsertCount; i++) {
         chain = chain.mockResolvedValueOnce({ rows: [] }); // document_versions INSERT(s)

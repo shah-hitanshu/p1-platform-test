@@ -535,7 +535,9 @@ describe('Agent Politeness Phase 3: Enhanced Checkpoint Service', () => {
       vi.mocked(query)
         // getCheckpoint
         .mockResolvedValueOnce({ rows: [originalCheckpoint], rowCount: 1 })
-        // getDocumentsAtCheckpoint
+        // resolveCheckpointDocuments
+        .mockResolvedValueOnce({ rows: [], rowCount: 0 })
+        // resolveCheckpointDeletions
         .mockResolvedValueOnce({ rows: [], rowCount: 0 })
         // revertToCheckpoint: BEGIN
         .mockResolvedValueOnce({ rows: [], rowCount: 0 })
@@ -600,7 +602,9 @@ describe('Agent Politeness Phase 3: Enhanced Checkpoint Service', () => {
       vi.mocked(query)
         // getCheckpoint
         .mockResolvedValueOnce({ rows: [originalCheckpoint], rowCount: 1 })
-        // getDocumentsAtCheckpoint
+        // resolveCheckpointDocuments
+        .mockResolvedValueOnce({ rows: [], rowCount: 0 })
+        // resolveCheckpointDeletions
         .mockResolvedValueOnce({ rows: [], rowCount: 0 })
         // revertToCheckpoint: BEGIN
         .mockResolvedValueOnce({ rows: [], rowCount: 0 })
@@ -664,7 +668,9 @@ describe('Agent Politeness Phase 3: Enhanced Checkpoint Service', () => {
       vi.mocked(query)
         // getCheckpoint
         .mockResolvedValueOnce({ rows: [originalCheckpoint], rowCount: 1 })
-        // getDocumentsAtCheckpoint
+        // resolveCheckpointDocuments
+        .mockResolvedValueOnce({ rows: [], rowCount: 0 })
+        // resolveCheckpointDeletions
         .mockResolvedValueOnce({ rows: [], rowCount: 0 })
         // revertToCheckpoint: BEGIN
         .mockResolvedValueOnce({ rows: [], rowCount: 0 })

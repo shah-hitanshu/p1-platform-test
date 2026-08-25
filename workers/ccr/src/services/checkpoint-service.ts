@@ -26,7 +26,13 @@ import {
 } from './checkpoint-types';
 import { BranchNotFoundError, DatabaseError, InvalidCheckpointParamsError } from './errors';
 import { getFirstRow, isForeignKeyViolation, mapRowToCheckpoint } from './checkpoint-mappers';
-import { getCheckpoint, getDocumentsAtCheckpoint, getStructuresAtCheckpoint } from './checkpoint-queries';
+import {
+  NEAREST_CHECKPOINT_CHAIN_ENTRIES,
+  getCheckpoint,
+  getStructuresAtCheckpoint,
+  resolveCheckpointDeletions,
+  resolveCheckpointDocuments,
+} from './checkpoint-queries';
 import { escapeLikePattern } from './document-types';
 
 // Re-export everything from sub-modules for backward compatibility
@@ -54,6 +60,7 @@ export {
   getDocumentsAtCheckpoint,
   getDocumentAtCheckpoint,
   resolveCheckpointDocuments,
+  resolveCheckpointDeletions,
   getStructuresAtCheckpoint,
   getStructureAtCheckpoint,
   getLatestCheckpoint,
@@ -68,6 +75,12 @@ export { publishDocument } from './checkpoint-publish';
 // =============================================================================
 // Core Service Functions
 // =============================================================================
+
+/** Documents per checkpoint_documents INSERT statement (2 binds each). */
+const MANIFEST_INSERT_CHUNK_SIZE = 10_000;
+
+/** Snapshot written with a tombstone version, matching deleteDocumentOnBranch. */
+const TOMBSTONE_SNAPSHOT = { _deleted: true };
 
 /**
  * Creates a checkpoint capturing the current state of a branch.
@@ -145,13 +158,18 @@ export async function createCheckpoint(
         branch_id, name, message, checkpoint_type,
         created_by_id, created_by_type,
         description, trigger, requested_by_id, operation_type, affected_regions, status,
-        parent_checkpoint_id
+        parent_checkpoint_id, is_full_snapshot
       )
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
         CASE WHEN $4::text IN ('pre_merge', 'post_merge') THEN NULL
-             ELSE (SELECT id FROM parent) END
+             ELSE (SELECT id FROM parent) END,
+        CASE WHEN $13::boolean THEN false
+             WHEN $14::boolean THEN true
+             ELSE (CASE WHEN $4::text IN ('pre_merge', 'post_merge') THEN NULL
+                        ELSE (SELECT id FROM parent) END) IS NULL
+        END
       )
-      RETURNING *, (SELECT created_at FROM parent) AS parent_created_at`,
+      RETURNING *`,
       [
         params.branchId,
         params.name ?? null,
@@ -165,6 +183,8 @@ export async function createCheckpoint(
         params.operationType ?? null,
         params.affectedRegions ? JSON.stringify(params.affectedRegions) : '[]',
         'completed',
+        params.documentVersionIds !== undefined,
+        params.forceFullSnapshot === true,
       ],
     );
 
@@ -186,7 +206,7 @@ export async function createCheckpoint(
       // Automatic mode: determine incremental vs full from the CTE result
       // forceFullSnapshot overrides incremental logic (used by agent_pre_edit)
       const isIncremental = insertRow.parent_checkpoint_id != null && params.forceFullSnapshot !== true;
-      const parentCreatedAt = insertRow.parent_created_at;
+      const parentCheckpointId = insertRow.parent_checkpoint_id;
 
       // _registry/* is excluded from checkpoint capture (PCC-3430): those
       // documents are sync-owned metadata written by syncComponentRegistry,
@@ -206,41 +226,86 @@ export async function createCheckpoint(
       const registryPathPattern = escapeLikePattern('_registry/') + '%';
       const registryTemplatesPathPattern = escapeLikePattern('_registry/templates/') + '%';
 
-      // Incremental captures only documents changed since the parent
-      // checkpoint; a full capture takes every document on the branch. The
-      // query is otherwise identical, so it is built once — "what counts as a
-      // capturable version" must never diverge between the two modes.
-      const incremental = isIncremental && parentCreatedAt != null && parentCreatedAt !== '';
-      const captureParams: unknown[] = incremental
-        ? [params.branchId, parentCreatedAt, registryPathPattern, registryTemplatesPathPattern]
-        : [params.branchId, registryPathPattern, registryTemplatesPathPattern];
-      const sinceClause = incremental ? ' AND dv.created_at > $2' : '';
-      const [notLikeParam, likeParam] = incremental ? ['$3', '$4'] : ['$2', '$3'];
+      // What counts as a capturable version, shared by both arms below so the
+      // two modes can never disagree about it. A superseded version is never
+      // the newest one (PCC-3660), so skipping it changes no answer and avoids
+      // reading registry history to find the head.
+      const capturable = (notLike: string, like: string): string =>
+        `dv.superseded_at IS NULL
+             AND (d.path NOT LIKE ${notLike} ESCAPE '\\' OR d.path LIKE ${like} ESCAPE '\\')`;
 
-      const result = await query<{ document_id: string; document_version_id: string }>(
-        `SELECT document_id, document_version_id FROM (
-          SELECT DISTINCT ON (dv.document_id)
-            dv.document_id, dv.id as document_version_id, dv.is_tombstone
-          FROM app.document_versions dv
-          JOIN app.documents d ON d.id = dv.document_id
-          WHERE dv.branch_id = $1${sinceClause}
-            AND dv.superseded_at IS NULL
-            AND (d.path NOT LIKE ${notLikeParam} ESCAPE '\\' OR d.path LIKE ${likeParam} ESCAPE '\\')
-          ORDER BY dv.document_id, dv.version_number DESC
-        ) latest
-        WHERE latest.is_tombstone = false`,
-        captureParams,
-      );
-      docVersionRows = result.rows;
+      if (isIncremental && parentCheckpointId != null) {
+        // Incremental: the documents whose latest version differs from what the
+        // parent chain already records for them.
+        //
+        // The delta is defined by version identity, not by a timestamp. A
+        // `created_at > parent.created_at` boundary races the parent's own
+        // transaction — `now()` is transaction start, so a version written
+        // while the parent was committing lands on the wrong side of the
+        // comparison and is captured twice or not at all. Comparing ids has no
+        // such window, and it costs an index scan the full capture already pays
+        // for (idx_document_versions_branch_document_version).
+        //
+        // It also makes deletions representable, which the timestamp form could
+        // not: a newly-tombstoned document has a version id the parent doesn't
+        // hold, so the tombstone enters the manifest. That matters because
+        // dropping it would leave the parent's live version as the nearest
+        // entry in the chain, and resolving or reverting to this checkpoint
+        // would resurrect the document. This is the one thing the two arms do
+        // differ on, deliberately: a full snapshot needs no tombstones, because
+        // there absence is the deletion.
+        const result = await query<{ document_id: string; document_version_id: string }>(
+          `${NEAREST_CHECKPOINT_CHAIN_ENTRIES},
+           latest AS (
+             SELECT DISTINCT ON (dv.document_id)
+               dv.document_id, dv.id as document_version_id
+             FROM app.document_versions dv
+             JOIN app.documents d ON d.id = dv.document_id
+             WHERE dv.branch_id = $2
+               AND ${capturable('$3', '$4')}
+             ORDER BY dv.document_id, dv.version_number DESC
+           )
+           SELECT latest.document_id, latest.document_version_id
+           FROM latest
+           LEFT JOIN nearest ON nearest.document_id = latest.document_id
+           WHERE nearest.document_version_id IS DISTINCT FROM latest.document_version_id`,
+          [
+            parentCheckpointId,
+            params.branchId,
+            registryPathPattern,
+            registryTemplatesPathPattern,
+          ],
+        );
+        docVersionRows = result.rows;
+      } else {
+        // Full: every live document on the branch.
+        const result = await query<{ document_id: string; document_version_id: string }>(
+          `SELECT document_id, document_version_id FROM (
+            SELECT DISTINCT ON (dv.document_id)
+              dv.document_id, dv.id as document_version_id, dv.is_tombstone
+            FROM app.document_versions dv
+            JOIN app.documents d ON d.id = dv.document_id
+            WHERE dv.branch_id = $1
+              AND ${capturable('$2', '$3')}
+            ORDER BY dv.document_id, dv.version_number DESC
+          ) latest
+          WHERE latest.is_tombstone = false`,
+          [params.branchId, registryPathPattern, registryTemplatesPathPattern],
+        );
+        docVersionRows = result.rows;
+      }
     }
 
-    // Insert checkpoint_documents entries
-    if (docVersionRows.length > 0) {
-      const values = docVersionRows
+    // Insert checkpoint_documents entries. Chunked because the statement binds
+    // 2N+1 parameters and Postgres caps a statement at 65,535 — an unchunked
+    // insert fails outright above ~32,767 documents.
+    for (let start = 0; start < docVersionRows.length; start += MANIFEST_INSERT_CHUNK_SIZE) {
+      const chunk = docVersionRows.slice(start, start + MANIFEST_INSERT_CHUNK_SIZE);
+      const values = chunk
         .map((_, i) => `($1, $${String(i * 2 + 2)}, $${String(i * 2 + 3)})`)
         .join(', ');
       const flatParams: unknown[] = [checkpoint.id];
-      for (const row of docVersionRows) {
+      for (const row of chunk) {
         flatParams.push(row.document_id, row.document_version_id);
       }
 
@@ -314,14 +379,26 @@ export async function revertToCheckpoint(
     throw new CheckpointNotFoundError(params.checkpointId);
   }
 
-  // Get documents at the checkpoint (before transaction, for verification)
-  const documentsAtCheckpoint = await getDocumentsAtCheckpoint(params.checkpointId);
+  // Resolve the full document set, not just this checkpoint's manifest: an
+  // incremental checkpoint holds only what changed since its parent, so
+  // reading one manifest restores a partial branch.
+  const documentsAtCheckpoint = await resolveCheckpointDocuments(params.checkpointId);
+
+  // Documents the chain records as deleted at this checkpoint. Restoring only
+  // the live set would leave anything recreated since the checkpoint in place,
+  // so a revert has to re-apply those deletions too.
+  const deletionsAtCheckpoint = await resolveCheckpointDeletions(params.checkpointId);
 
   // Checkpoints captured before _registry/* was excluded from capture still
   // carry registry rows. Restoring them would desync sync-owned registry
   // documents from the registry index, so the revert applies the same filter
   // capture does: skip _registry/* except user-authored _registry/templates/*.
   const revertableDocuments = documentsAtCheckpoint.filter(
+    (doc) =>
+      !doc.documentPath.startsWith('_registry/') ||
+      doc.documentPath.startsWith('_registry/templates/'),
+  );
+  const revertableDeletions = deletionsAtCheckpoint.filter(
     (doc) =>
       !doc.documentPath.startsWith('_registry/') ||
       doc.documentPath.startsWith('_registry/templates/'),
@@ -350,37 +427,39 @@ export async function revertToCheckpoint(
     const registryTemplatesPathPattern = escapeLikePattern('_registry/templates/') + '%';
 
     if (revertableDocuments.length >= BATCH_REVERT_THRESHOLD) {
-      // Batch INSERT: single query for all documents at once. The path
-      // predicate mirrors the JS filter above so the SQL path stays safe on
-      // its own.
+      // Batch INSERT: single query for all documents at once. Driven by the
+      // resolved document set rather than a single checkpoint's manifest —
+      // reading checkpoint_documents directly would restore only the delta of
+      // an incremental checkpoint. The path predicate mirrors the JS filter
+      // above so the SQL path stays safe on its own.
       await query(
         `INSERT INTO app.document_versions (
           document_id, branch_id, version_number, snapshot,
           source, created_by_id, created_by_type
         )
         SELECT
-          cd.document_id,
+          m.document_id,
           $1,
           lv.max_version + 1,
           dv.snapshot,
           'revert',
           $2,
           $3
-        FROM app.checkpoint_documents cd
-        JOIN app.document_versions dv ON cd.document_version_id = dv.id
-        JOIN app.documents d ON cd.document_id = d.id
+        FROM unnest($4::uuid[], $5::uuid[]) AS m(document_id, document_version_id)
+        JOIN app.document_versions dv ON dv.id = m.document_version_id
+        JOIN app.documents d ON d.id = m.document_id
         JOIN LATERAL (
           SELECT COALESCE(MAX(version_number), 0) as max_version
           FROM app.document_versions
-          WHERE document_id = cd.document_id AND branch_id = $1
+          WHERE document_id = m.document_id AND branch_id = $1
         ) lv ON true
-        WHERE cd.checkpoint_id = $4
-          AND (d.path NOT LIKE $5 ESCAPE '\\' OR d.path LIKE $6 ESCAPE '\\')`,
+        WHERE (d.path NOT LIKE $6 ESCAPE '\\' OR d.path LIKE $7 ESCAPE '\\')`,
         [
           checkpoint.branchId,
           params.createdById,
           params.createdByType,
-          params.checkpointId,
+          revertableDocuments.map((doc) => doc.documentId),
+          revertableDocuments.map((doc) => doc.versionId),
           registryPathPattern,
           registryTemplatesPathPattern,
         ],
@@ -448,6 +527,49 @@ export async function revertToCheckpoint(
       [checkpoint.branchId, params.checkpointId],
     );
 
+    // Re-apply deletions the checkpoint recorded, for documents that are live
+    // again now. The latest-version guard keeps this idempotent: a document
+    // still deleted gets no redundant tombstone, which matters because version
+    // depth is what the serving path pays for. Registry paths are filtered the
+    // same way the restore above filters them.
+    if (revertableDeletions.length > 0) {
+      await query(
+        `INSERT INTO app.document_versions (
+          document_id, branch_id, version_number, snapshot,
+          source, created_by_id, created_by_type, is_tombstone
+        )
+        SELECT
+          m.document_id,
+          $1,
+          latest.version_number + 1,
+          $5,
+          'revert',
+          $2,
+          $3,
+          true
+        FROM unnest($4::uuid[]) AS m(document_id)
+        JOIN app.documents d ON d.id = m.document_id
+        JOIN LATERAL (
+          SELECT version_number, is_tombstone
+          FROM app.document_versions
+          WHERE document_id = m.document_id AND branch_id = $1
+          ORDER BY version_number DESC
+          LIMIT 1
+        ) latest ON true
+        WHERE latest.is_tombstone = false
+          AND (d.path NOT LIKE $6 ESCAPE '\\' OR d.path LIKE $7 ESCAPE '\\')`,
+        [
+          checkpoint.branchId,
+          params.createdById,
+          params.createdByType,
+          revertableDeletions.map((doc) => doc.documentId),
+          TOMBSTONE_SNAPSHOT,
+          registryPathPattern,
+          registryTemplatesPathPattern,
+        ],
+      );
+    }
+
     // Update the original checkpoint status to rolled_back
     await query(
       `UPDATE app.checkpoints
@@ -480,6 +602,7 @@ export async function revertToCheckpoint(
   return {
     checkpoint: newCheckpoint,
     documentsReverted: revertableDocuments.length,
+    documentsDeleted: revertableDeletions.length,
     documentsSkipped,
   };
 }

@@ -121,7 +121,7 @@ describe('pre-edit checkpoint', () => {
     expect(args.trigger).toBe('autonomous');
   });
 
-  it('captures a full snapshot for a person so the rollback is complete', async () => {
+  it('captures a delta, leaving completeness to chain resolution', async () => {
     await createSessionPreEditCheckpoint(
       hyperdriveEnv,
       sessionInfo,
@@ -131,7 +131,9 @@ describe('pre-edit checkpoint', () => {
       ['/content/0'],
     );
 
-    expect(createCheckpointArgs().forceFullSnapshot).toBe(true);
+    // A rollback still restores the whole branch — resolving the parent chain
+    // is what makes that true, so the manifest no longer sweeps every document.
+    expect(createCheckpointArgs().forceFullSnapshot).toBeUndefined();
   });
 
   it('forwards the owner to the internal API when there is no direct connection', async () => {

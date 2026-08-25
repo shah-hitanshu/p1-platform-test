@@ -18,6 +18,7 @@ vi.mock('../../src/services', async () => {
     getCheckpoint: vi.fn(),
     listCheckpoints: vi.fn(),
     getDocumentsAtCheckpoint: vi.fn(),
+    resolveCheckpointDocuments: vi.fn(),
     getDocumentAtCheckpoint: vi.fn(),
     revertToCheckpoint: vi.fn(),
     deleteCheckpoint: vi.fn(),
@@ -337,19 +338,27 @@ describe('Phase 7.1b: Checkpoint API Routes', () => {
       );
       const services = await import('../../src/services');
 
-      vi.mocked(services.getDocumentsAtCheckpoint).mockResolvedValueOnce([
-        {
-          documentId: 'doc-1',
-          documentPath: 'pages/home',
-          versionId: 'version-1',
-          versionNumber: 1,
-        },
-        {
-          documentId: 'doc-2',
-          documentPath: 'pages/about',
-          versionId: 'version-2',
-          versionNumber: 1,
-        },
+      const resolvedDocument = (
+        id: string,
+        documentId: string,
+        documentPath: string,
+      ) => ({
+        id,
+        versionId: id,
+        documentId,
+        documentPath,
+        branchId: 'branch-1',
+        versionNumber: 1,
+        snapshot: {},
+        source: 'edit' as const,
+        createdById: 'user-1',
+        createdByType: 'user' as const,
+        createdAt: '2026-01-24T11:00:00.000Z',
+      });
+
+      vi.mocked(services.resolveCheckpointDocuments).mockResolvedValueOnce([
+        resolvedDocument('version-1', 'doc-1', 'pages/home'),
+        resolvedDocument('version-2', 'doc-2', 'pages/about'),
       ]);
 
       const request = new Request(

@@ -13,6 +13,9 @@ import type {
 /**
  * Create a pre-edit checkpoint for a session owner.
  * Phase 6.3: Tries direct Hyperdrive DB access first, falls back to HTTP.
+ *
+ * Captured incrementally: a rollback target can be a delta because resolving
+ * the parent chain reconstructs the whole branch from it.
  */
 export async function createSessionPreEditCheckpoint(
   env: DocumentSessionEnv,
@@ -37,7 +40,6 @@ export async function createSessionPreEditCheckpoint(
             description: `Pre-edit checkpoint: ${intent}`,
             trigger,
             affectedRegions: targetRegions,
-            forceFullSnapshot: true,
           }),
       );
       console.log(`Created pre-edit checkpoint ${result.checkpoint.id} for ${owner.type} ${owner.id} (direct DB)`);
@@ -69,7 +71,6 @@ export async function createSessionPreEditCheckpoint(
         intent,
         trigger,
         targetRegions,
-        forceFullSnapshot: true,
       }),
     });
 

@@ -242,6 +242,8 @@ export {
   listCheckpoints,
   getDocumentsAtCheckpoint,
   getDocumentAtCheckpoint,
+  resolveCheckpointDocuments,
+  resolveCheckpointDeletions,
   revertToCheckpoint,
   deleteCheckpoint,
   getLatestCheckpoint,
