@@ -1,0 +1,18 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    // The template is generated from apps/p1-starter and packages/eslint-config,
+    // both outside this package, so turbo cannot tell when its inputs changed.
+    "build": {
+      "cache": false,
+      "outputs": ["template/**"]
+    },
+    // Unlike every other package, the tests here read this package's own build
+    // output. The generated template is gitignored and untracked, so without
+    // this the suite runs against a directory that may not exist.
+    "test": {
+      "dependsOn": ["^build", "build"]
+    }
+  }
+}

@@ -14,6 +14,40 @@ export function getScaffolderVersion() {
   return JSON.parse(fs.readFileSync(pkgPath, 'utf-8')).version;
 }
 
+// npm strips files named `.gitignore` from published tarballs, so the template
+// ships it undotted (see scripts/build-template.js) and the name is restored here
+// — before the CLI's initial `git add -A`.
+const GITIGNORE_TEMPLATE_NAME = 'gitignore';
+const PROJECT_NAME_PLACEHOLDER = 'PLACEHOLDER_PROJECT_NAME';
+
+// Acted on directly rather than guarded by an existsSync: a check-then-use pair
+// is a file-system race, and the failure it would catch is exactly what the
+// rename already reports.
+export function restoreGitignore(targetDir) {
+  try {
+    fs.renameSync(
+      path.join(targetDir, GITIGNORE_TEMPLATE_NAME),
+      path.join(targetDir, '.gitignore')
+    );
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+    throw new Error(
+      `Template is missing ${GITIGNORE_TEMPLATE_NAME}; scaffolding without it would commit node_modules.`
+    );
+  }
+}
+
+function stampProjectName(filePath, projectName) {
+  let contents;
+  try {
+    contents = fs.readFileSync(filePath, 'utf-8');
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+    throw new Error(`Template is missing ${path.basename(filePath)}.`);
+  }
+  fs.writeFileSync(filePath, contents.replaceAll(PROJECT_NAME_PLACEHOLDER, projectName));
+}
+
 export function copyTemplate(targetDir, projectName) {
   const templatePath = getTemplatePath();
 
@@ -22,6 +56,9 @@ export function copyTemplate(targetDir, projectName) {
   }
 
   copyRecursive(templatePath, targetDir);
+  restoreGitignore(targetDir);
+
+  stampProjectName(path.join(targetDir, 'README.md'), projectName);
 
   // Stamp the project name and scaffolder version into package.json
   const packageJsonPath = path.join(targetDir, 'package.json');
