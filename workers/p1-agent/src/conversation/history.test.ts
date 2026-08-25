@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type OpenAI from 'openai';
-import { trimHistory, sanitizeHistory, appendTurn, forProvider, trimForHistory, buildRestoredHistory, turnMayCommit, turnHasOutput } from './history.js';
+import { trimHistory, sanitizeHistory, appendTurn, forProvider, trimForHistory, MAX_STORED_PATHS, buildRestoredHistory, turnMayCommit, turnHasOutput } from './history.js';
 import type { StoredMessage } from './history.js';
 
 type Msg = OpenAI.Chat.Completions.ChatCompletionMessageParam;
@@ -348,18 +348,48 @@ describe('trimForHistory', () => {
     expect(trimmed.operationsApplied).toBe(3);
   });
 
-  it('strips field schemas from list_components results', () => {
-    const result = {
-      components: [
-        { name: 'HeroBlock', description: 'A hero', fields: { title: {} } },
-        { name: 'FooterBlock', description: 'A footer', fields: { text: {} } },
-      ],
-    };
-    const trimmed = trimForHistory('list_components', result) as Record<string, unknown>;
-    const components = trimmed.components as Record<string, unknown>[];
-    expect(components[0].fields).toBeUndefined();
-    expect(components[0].name).toBe('HeroBlock');
-    expect(components[0].description).toBe('A hero');
+  // The shapes below are what `executeTool` returns, not a convenient stand-in. An earlier
+  // version of this suite asserted against a `{ components: [...] }` wrapper the tool never
+  // emits, so the trim it guarded was a no-op in production while the test stayed green.
+  it('strips defaultProps from list_components results, which arrive as a bare array', () => {
+    const result = [
+      { name: 'HeroBlock', defaultProps: { title: 'Hi', subtitle: 'There', bg: { url: 'u' } } },
+      { name: 'FooterBlock', defaultProps: { text: 'z' }, instructions: 'Use sparingly' },
+    ];
+    const trimmed = trimForHistory('list_components', result) as Record<string, unknown>[];
+    expect(trimmed).toEqual([{ name: 'HeroBlock' }, { name: 'FooterBlock' }]);
+    expect(JSON.stringify(trimmed)).not.toContain('defaultProps');
+  });
+
+  it('reduces list_page_templates results to id and label', () => {
+    const result = [
+      { id: 't1', name: 'blog-post', label: 'Blog post', description: 'A long description',
+        defaultUrlPattern: '/blog/:slug' },
+      { id: 't2', name: 'landing' },
+    ];
+    expect(trimForHistory('list_page_templates', result)).toEqual([
+      { id: 't1', label: 'Blog post' },
+      { id: 't2', label: 'landing' },
+    ]);
+  });
+
+  it('reduces list_media results to filenames', () => {
+    const result = [
+      { key: 'k1', url: 'https://cdn/1.png', filename: 'hero.png', size: 1024, lastModified: 'x' },
+    ];
+    expect(trimForHistory('list_media', result)).toEqual([{ filename: 'hero.png' }]);
+  });
+
+  it('caps list_documents paths and records how many were dropped', () => {
+    const documents = Array.from({ length: MAX_STORED_PATHS + 7 }, (_, i) => `page-${String(i)}`);
+    const trimmed = trimForHistory('list_documents', { documents }) as Record<string, unknown>;
+    expect((trimmed.documents as string[]).length).toBe(MAX_STORED_PATHS);
+    expect(trimmed.omitted).toBe(7);
+  });
+
+  it('leaves a short list_documents result alone', () => {
+    const result = { documents: ['about', 'pricing'] };
+    expect(trimForHistory('list_documents', result)).toEqual(result);
   });
 
   it('passes through small tool results unchanged', () => {

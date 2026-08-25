@@ -12,9 +12,10 @@ import { isDevBuild } from '../devBuild.js';
 /**
  * What a call amounts to on screen. `partial` is not a shade of `failed`: a tool that did some
  * of the job must not be reported as having done none. `abandoned` isn't either — the result
- * never came back, but the call may well have succeeded.
+ * never came back, but the call may well have succeeded. Nor is `denied`: the answer is that the
+ * caller may not do this, which is not the tool having failed.
  */
-export type ToolCallOutcome = 'running' | 'done' | 'partial' | 'failed' | 'abandoned';
+export type ToolCallOutcome = 'running' | 'done' | 'partial' | 'failed' | 'denied' | 'abandoned';
 
 interface LabelSpec {
   /** Shown while the call is in flight. */
@@ -32,6 +33,13 @@ interface LabelSpec {
   partial?: { when: (result: Record<string, unknown>) => boolean; label: string };
   /** A result meaning *this* tool failed without throwing; {@link isCommonFailure} applies too. */
   isFailure?: (result: Record<string, unknown>) => boolean;
+  /** A result carrying this tool's own way of saying the caller may not do this. */
+  isDenial?: (result: Record<string, unknown>) => boolean;
+  /**
+   * What to call a refusal, for a tool whose {@link failed} text would misdescribe one. Falls
+   * back to `failed`, which for an action tool states the truth: the action did not happen.
+   */
+  denied?: string;
   /** Optional trailing detail, e.g. a page path or a count. */
   detail?: (input: Record<string, unknown>, result: unknown) => string | undefined;
 }
@@ -68,11 +76,23 @@ function readString(source: Record<string, unknown>, key: string): string | unde
 }
 
 /** Format a document path for display — drop the leading slash, fall back to "home". */
-function pagePath(input: Record<string, unknown>): string | undefined {
-  const raw = readString(input, 'document_path') ?? readString(input, 'path');
+function displayPath(raw: string | undefined): string | undefined {
   if (!raw) return undefined;
   const trimmed = raw.replace(/^\/+/, '');
   return trimmed === '' ? 'home' : trimmed;
+}
+
+function pagePath(input: Record<string, unknown>): string | undefined {
+  return displayPath(readString(input, 'document_path') ?? readString(input, 'path'));
+}
+
+/**
+ * The path a create actually landed on, which is not always the one asked for: a page built from
+ * a template is placed under the template's route shape.
+ */
+function createdPath(result: unknown): string | undefined {
+  if (result === null || typeof result !== 'object') return undefined;
+  return displayPath(readString(result as Record<string, unknown>, 'documentPath'));
 }
 
 /** Pluralize a count, e.g. `pluralizeString(3, 'edit')` -> "3 edits". */
@@ -92,6 +112,17 @@ function editCount(input: Record<string, unknown>, result: unknown): number | un
 }
 
 const LABELS: Record<string, LabelSpec> = {
+  list_documents: {
+    running: 'Looking at the pages on this site',
+    done: 'Checked the pages on this site',
+    failed: "Couldn't check the pages on this site",
+    detail: (_input, result) => {
+      const docs = result !== null && typeof result === 'object'
+        ? (result as Record<string, unknown>).documents
+        : undefined;
+      return Array.isArray(docs) ? pluralizeString(docs.length, 'page') : undefined;
+    },
+  },
   get_document: {
     running: 'Reading the page',
     done: 'Read the page',
@@ -117,9 +148,11 @@ const LABELS: Record<string, LabelSpec> = {
     running: 'Checking edit permission',
     done: 'Confirmed edit permission',
     failed: "Couldn't check edit permission",
-    // Returns the CCR response verbatim: a refusal is { canEdit: false, reason } with no
-    // `error` and no `success: false`, so nothing generic catches it.
-    isFailure: r => r.canEdit === false,
+    // The one tool whose action *is* the checking, so "couldn't check" would deny an answer it
+    // has. Two refusals reach here: the CCR response { canEdit: false, reason }, which carries
+    // no `error` and no `success: false` for anything generic to catch, and the write-set refusal.
+    denied: "Can't edit this page",
+    isDenial: r => r.canEdit === false,
   },
   start_edit_session: {
     running: 'Reserving the page for editing',
@@ -152,8 +185,8 @@ const LABELS: Record<string, LabelSpec> = {
     // The page exists but its components were not populated. Reporting that as a failure
     // told the user the page had not been created, which it had.
     partial: { when: r => r.warning !== undefined, label: 'Created the page, without its components' },
-    // document_path is required by the schema, so this is effectively always present.
-    detail: input => pagePath(input),
+    // document_path is required by the schema, so the fallback is effectively always present.
+    detail: (input, result) => createdPath(result) ?? pagePath(input),
   },
   list_media: {
     running: 'Browsing the media library',
@@ -208,6 +241,9 @@ export function toolCallOutcome(call: ToolCallStatus): ToolCallOutcome {
 
   const result = call.result as Record<string, unknown>;
   const spec = LABELS[call.name];
+  // Ahead of the failure tests, which a refusal would otherwise answer first: the Worker records
+  // it as an `error` as well, since to the model it is one.
+  if (result.denied === true || spec?.isDenial?.(result) === true) return 'denied';
   // A hard failure wins: a result carrying both an error and a warning did not half-succeed.
   if (isCommonFailure(result) || spec?.isFailure?.(result) === true) return 'failed';
   if (spec?.partial?.when(result) === true) return 'partial';
@@ -234,23 +270,27 @@ export function toolCallLabel(call: ToolCallStatus): string {
       return spec.failed;
     case 'partial':
       return spec.partial?.label ?? spec.done;
+    // The page it was refused for, never the tool's own detail: "· 3 edits" would describe work
+    // this call did not do. Every deniable tool names its page in `document_path`.
+    case 'denied':
+      return withDetail(spec.denied ?? spec.failed, input => pagePath(input), call);
     // Present tense plus a note: the past tense would assert a completion we never observed.
     case 'abandoned':
       return `${spec.running} — didn't finish`;
     case 'running':
-      return withDetail(spec.running, spec, call);
+      return withDetail(spec.running, spec.detail, call);
     case 'done':
-      return withDetail(spec.done, spec, call);
+      return withDetail(spec.done, spec.detail, call);
   }
 }
 
-function withDetail(base: string, spec: LabelSpec, call: ToolCallStatus): string {
+function withDetail(base: string, of: LabelSpec['detail'], call: ToolCallStatus): string {
   const input =
     call.input !== null && typeof call.input === 'object' ? (call.input as Record<string, unknown>) : {};
 
   let detail: string | undefined;
   try {
-    detail = spec.detail?.(input, call.result);
+    detail = of?.(input, call.result);
   } catch {
     // A malformed argument payload must never break the transcript.
     detail = undefined;

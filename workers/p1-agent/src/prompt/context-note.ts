@@ -1,7 +1,6 @@
 import { attachmentsOf, pendingPageOf, selectedBlockOf } from '../conversation/context.js';
 import type { Attachment, ChatContext, SelectedBlock } from '../types.js';
 import { writableDocuments } from '../conversation/scope.js';
-import { TEMPLATE_FILL_CONTRACT } from './system-prompt.js';
 
 /**
  * Nothing else in the create flow can write the SEO description, so the agent does.
@@ -31,16 +30,6 @@ function contextHeader(context: ChatContext, hasPendingPage: boolean): string {
   return '[Current editor context]';
 }
 
-/**
- * The context block prepended to the user's message for the model only.
- *
- * Kept out of what gets persisted and displayed (see the `userContent` / `message` split
- * at the call site): these are instructions to the model, and showing them in the
- * transcript makes the user's own brief read as if they wrote our prompt.
- *
- * `followsTemplate` comes from the backend rather than the context, because the context is
- * assembled in the browser and this decides an instruction the agent is told to obey.
- */
 function selectedBlockLines(selected: SelectedBlock | null): string[] {
   if (selected === null) return ['Selected block: none'];
   return [
@@ -70,6 +59,20 @@ function fenceFor(text: string): string {
 }
 
 /**
+ * Scoped to the pinned ids, because that is the editor's own rule: `createPuckPermissions` in
+ * puck-css denies delete and drag for exactly these and allows both for every other component.
+ */
+function pinnedSlotLines(pinnedSlots: string[]): string[] {
+  return [
+    `Its pinned components must stay, in this relative order: ${pinnedSlots.join(', ')}.`,
+    'Fill those in by editing their props; do not delete, reorder or re-create them.',
+    'Conformance is checked by component id, so a replacement fails even when its type matches.',
+    'Every other component on the page is ordinary content: edit, reorder, add or remove it as',
+    'the user asks, the same as on a page with no template.',
+  ];
+}
+
+/**
  * The attached files, last in the block so a long brief cannot push the ids and the write set
  * out of sight. Fenced so a brief reads as the user's words rather than as more of ours.
  */
@@ -91,9 +94,16 @@ function attachmentLines(attachments: Attachment[], seesImages: boolean): string
   return lines;
 }
 
+/**
+ * The context block prepended to the user's message for the model only.
+ *
+ * Kept out of what gets persisted and displayed (see the `userContent` / `message` split
+ * at the call site): these are instructions to the model, and showing them in the
+ * transcript makes the user's own brief read as if they wrote our prompt.
+ */
 export function buildContextNote(
   context: ChatContext,
-  options?: { followsTemplate?: boolean; seesImages?: boolean },
+  options?: { pinnedSlots?: string[]; seesImages?: boolean },
 ): string {
   // Defaults to the answer that cannot mislead: a caller that says nothing gets a note that
   // makes no claim about an image having been seen.
@@ -122,7 +132,10 @@ export function buildContextNote(
       `Page to create: ${pendingPage.path}`,
       ...(pendingPage.title ? [`Title: ${pendingPage.title}`] : []),
       'This page does not exist yet — the user asked for it from the Create Page dialog. Create it',
-      'at that path once they have settled which template it starts from.',
+      'once they have settled which template it starts from.',
+      // The dialog collects the slug before the template is chosen, so this is not a final path.
+      'The path above is the slug they typed. If the template they choose has a route shape, the',
+      'page belongs at that shape with this slug in it — tell them the path you are using.',
       'Do not ask which page to use, and do not build this brief into some other page.',
       'If they ask for something else entirely, do that instead — this page can wait.',
       '',
@@ -164,11 +177,14 @@ export function buildContextNote(
   // first edit to a template page is spent discovering it has one: `apply_document_edits`
   // validates after applying and returns an error telling the agent to abort the session.
   //
+  // Silent when a template pins nothing: the editor locks nothing there either.
+  //
   // Not added to the `newPage` branch, which would then call the same page both empty and
   // pre-filled. Only a client old enough to still send `newPage` can reach that branch, and it
   // only ever creates blank pages, so the combination does not occur.
-  if (options?.followsTemplate === true && !context.newPage) {
-    lines.push('This page follows a page template.', ...TEMPLATE_FILL_CONTRACT);
+  const pinnedSlots = options?.pinnedSlots ?? [];
+  if (pinnedSlots.length > 0 && !context.newPage) {
+    lines.push('This page follows a page template.', ...pinnedSlotLines(pinnedSlots));
   }
   lines.push(...attachmentLines(attachments, seesImages));
   return lines.length > 1 ? lines.join('\n') : '';

@@ -4,7 +4,7 @@ import OpenAI from 'openai';
 import { toOpenAiTools } from '../tools/definitions.js';
 import { restApiBase, fetchOption } from './gateway.js';
 import type {
-  ChatMessage,
+  StopReason,
   CompletionRequest,
   CompletionResult,
   CompletionUsage,
@@ -63,6 +63,17 @@ function callId(slot: { id: string }, index: number): string {
   return slot.id || `call_${index}`;
 }
 
+function mapOpenAiStopReason(reason: string | null | undefined): StopReason | undefined {
+  switch (reason) {
+    case 'stop': return 'stop';
+    case 'length': return 'length';
+    case 'tool_calls': return 'tool_calls';
+    // Absent, not unrecognized: a provider that reports nothing must not read as truncated.
+    case null: case undefined: return undefined;
+    default: return 'other';
+  }
+}
+
 function mapOpenAiUsage(usage: OpenAI.CompletionUsage | undefined): CompletionUsage | undefined {
   if (!usage) return undefined;
   return {
@@ -89,20 +100,19 @@ export class OpenAITransport implements ModelTransport {
     this.tools = toOpenAiTools(cfg.tools);
   }
 
-  /** The request body both `complete` and `stream` send, less the streaming flags. */
-  private requestBody(req: CompletionRequest): {
-    model: string;
-    max_tokens: number;
-    messages: ChatMessage[];
-    tools: OpenAI.Chat.Completions.ChatCompletionFunctionTool[];
-    tool_choice: 'auto';
-  } {
+  /**
+   * The request body both `complete` and `stream` send, less the streaming flags. The SDK's own
+   * params type, so an unknown field fails to compile — but it tracks OpenAI's API, not the
+   * gateway's other providers, so `max_tokens` stays despite being deprecated there.
+   */
+  private requestBody(req: CompletionRequest): OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming {
     return {
       model: this.model,
       max_tokens: req.maxTokens,
       messages: [{ role: 'system', content: req.system }, ...req.messages],
       tools: this.tools,
       tool_choice: 'auto',
+      ...(req.temperature !== undefined ? { temperature: req.temperature } : {}),
     };
   }
 
@@ -120,6 +130,7 @@ export class OpenAITransport implements ModelTransport {
       content: choice.content ?? '',
       toolCalls,
       usage: mapOpenAiUsage(completion.usage),
+      stopReason: mapOpenAiStopReason(completion.choices[0]?.finish_reason),
     };
   }
 
@@ -138,10 +149,14 @@ export class OpenAITransport implements ModelTransport {
 
     let content = '';
     let usage: OpenAI.CompletionUsage | undefined;
+    let finishReason: string | null | undefined;
     const toolCalls = new ToolCallAccumulator();
 
     for await (const chunk of stream) {
       if (chunk.usage) usage = chunk.usage;
+      // Arrives on the final chunk for the choice, after which `delta` is empty — read it
+      // before the guard below skips the chunk.
+      if (chunk.choices[0]?.finish_reason) finishReason = chunk.choices[0].finish_reason;
       const delta = chunk.choices[0]?.delta;
       if (!delta) continue;
 
@@ -156,6 +171,11 @@ export class OpenAITransport implements ModelTransport {
       }
     }
 
-    return { content, toolCalls: toolCalls.finish(), usage: mapOpenAiUsage(usage) };
+    return {
+      content,
+      toolCalls: toolCalls.finish(),
+      usage: mapOpenAiUsage(usage),
+      stopReason: mapOpenAiStopReason(finishReason),
+    };
   }
 }

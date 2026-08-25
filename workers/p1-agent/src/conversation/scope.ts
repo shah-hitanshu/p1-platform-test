@@ -71,6 +71,27 @@ export function writableDocuments(context: ChatContext): string[] {
   return [...new Set(normalized)];
 }
 
+/**
+ * Reads need holding to the session as much as writes do: the ids reach the backend as the model
+ * wrote them, and the model reads them out of page content and fetched pages. One it picked up
+ * there would otherwise reach another of the user's sites through their own token.
+ *
+ * Absent ids pass — `list_media` names only a site and `fetch_page` names neither. A write that
+ * omits one is refused by `assertWritable` below, which requires them.
+ */
+export function assertInScope(toolInput: Record<string, unknown>, context: ChatContext): void {
+  if (toolInput.site_id !== undefined && toolInput.site_id !== context.siteId) {
+    throw new Error(
+      `Not your site. This conversation works in site ${context.siteId}; use that site_id.`,
+    );
+  }
+  if (toolInput.branch_id !== undefined && toolInput.branch_id !== context.branchId) {
+    throw new Error(
+      `Not your branch. This conversation works in branch ${context.branchId}; use that branch_id.`,
+    );
+  }
+}
+
 export function assertWritable(
   toolName: string,
   toolInput: Record<string, unknown>,
@@ -100,12 +121,28 @@ export function assertWritable(
   );
 }
 
+/**
+ * A page the user has not granted. A type rather than a plain `Error` so {@link toolErrorResult}
+ * can tell it from a tool that ran and failed, and narrower than the other refusals here: a
+ * wrong `site_id` or a stale `branch_id` is a malformed call, not something the user can grant.
+ */
+export class PageNotGrantedError extends Error {}
+
+/**
+ * What the tool loop records when a tool throws. `denied` travels to the client because an error
+ * message is prose: matching on it there would break the moment this one is reworded.
+ */
+export function toolErrorResult(err: unknown): { error: string; denied?: true } {
+  const error = err instanceof Error ? err.message : String(err);
+  return err instanceof PageNotGrantedError ? { error, denied: true } : { error };
+}
+
 /** Also shown in the transcript, where the panel truncates the note past 200 characters. */
 export function assertDocumentWritable(rawPath: string, context: ChatContext): void {
   const path = normalizeDocumentPath(rawPath);
   const writable = writableDocuments(context);
   if (!writable.includes(path)) {
-    throw new Error(
+    throw new PageNotGrantedError(
       `"${path}" is not in your write set. `
       + `You may edit: ${writable.length > 0 ? writable.join(', ') : 'nothing on this site'}. `
       + 'Ask the user to add the page with "+ Add page" in the panel header; do not retry.',

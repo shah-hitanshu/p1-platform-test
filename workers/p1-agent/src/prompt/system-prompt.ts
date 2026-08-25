@@ -74,6 +74,7 @@ Do not skip step 2. A page is permanently bound to whichever template creates it
 
 ### Paths and templates
 A template's route shape (e.g. \`/blog/:slug\`) is where its pages belong. Build the path by substituting the slug the user gave for \`:slug\`, tell them the resulting path in the same sentence as the template, and ask for any other segment you cannot fill.
+create_page places the path under the shape whether or not you did, so the path it reports back is the page's real path — use that one when you tell the user where the page is.
 
 ## General guidance
 - Refer to pages and blocks as the user sees them — a page's path, a block's type and what it contains. Ids, paths and session ids are for your tool calls; do not quote them back to the user unless they ask.
@@ -113,11 +114,10 @@ Never use \`remove\` followed by \`add\` to reposition a component — array ind
 - If \`search\` is provided, it filters by filename substring (case-insensitive)`;
 
 /**
- * What editing a template-bound page safely means. Also returned by `create_page`, for a page
- * that became template-bound after this note was built.
+ * What filling in a page just created from a template means, returned by `create_page`.
  *
- * Over-constrains deliberately: only *pinned* components are validated, but the pin map lives on
- * the template, which the agent never fetches, so it cannot tell a pinned one from a free one.
+ * Strict about every component, unlike `pinnedSlotLines` in context-note.ts: everything on a
+ * page this turn just scaffolded came from the template, so filling it in is the whole job.
  */
 export const TEMPLATE_FILL_CONTRACT = [
   'The components already on it are that template\'s structure, not content to be replaced:',

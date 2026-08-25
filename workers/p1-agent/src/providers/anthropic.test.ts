@@ -278,3 +278,28 @@ describe('images through the Anthropic transport', () => {
     expect(messages[0].content).toEqual([{ type: 'text', text: 'just text' }]);
   });
 });
+
+describe('Anthropic stop_reason mapping', () => {
+  const withStop = (stop: Anthropic.Message['stop_reason']): Anthropic.Message =>
+    ({
+      id: 'msg_1', type: 'message', role: 'assistant', model: 'claude-x',
+      content: [{ type: 'text', text: 'hi', citations: null }],
+      stop_reason: stop, stop_sequence: null,
+      usage: { input_tokens: 1, output_tokens: 1, cache_creation_input_tokens: null, cache_read_input_tokens: null },
+    }) as Anthropic.Message;
+
+  it('maps max_tokens to length, so the loop can tell a cut reply from a finished one', () => {
+    expect(fromAnthropicResponse(withStop('max_tokens')).stopReason).toBe('length');
+  });
+
+  it('maps end_turn and stop_sequence to stop, and tool_use to tool_calls', () => {
+    expect(fromAnthropicResponse(withStop('end_turn')).stopReason).toBe('stop');
+    expect(fromAnthropicResponse(withStop('stop_sequence')).stopReason).toBe('stop');
+    expect(fromAnthropicResponse(withStop('tool_use')).stopReason).toBe('tool_calls');
+  });
+
+  it('collapses reasons the loop does not act on, and leaves an absent one unset', () => {
+    expect(fromAnthropicResponse(withStop('refusal')).stopReason).toBe('other');
+    expect(fromAnthropicResponse(withStop(null)).stopReason).toBeUndefined();
+  });
+});

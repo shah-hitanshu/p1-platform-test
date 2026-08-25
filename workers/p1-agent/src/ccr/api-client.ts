@@ -18,14 +18,19 @@ import type {
   DocumentPresenceResponse,
   DocumentSnapshot,
   DocumentVersionLatest,
-  ListBranchesResponse,
   ListDocumentsResponse,
-  ListSitesResponse,
   ListTemplatesResponse,
   StartAgentEditRequest,
   StartAgentEditResponse,
   TemplateDetail,
 } from './types.js';
+
+/**
+ * Ceiling on one CCR backend call. The turn is held open for its whole duration, so an upstream
+ * that never answers strands the user behind a spinner until the platform kills the object.
+ */
+export const CCR_REQUEST_TIMEOUT_MS = 30_000;
+
 export interface McpApiClientConfig {
   baseUrl: string;
   agentId: string;
@@ -54,8 +59,9 @@ export class McpApiClient {
   }
 
   private doFetch(url: string, init: RequestInit): Promise<Response> {
-    if (this.fetcher) return this.fetcher.fetch(url, init);
-    return fetch(url, init);
+    const bounded: RequestInit = { ...init, signal: AbortSignal.timeout(CCR_REQUEST_TIMEOUT_MS) };
+    if (this.fetcher) return this.fetcher.fetch(url, bounded);
+    return fetch(url, bounded);
   }
 
   private getHeaders(): Record<string, string> {
@@ -108,22 +114,6 @@ export class McpApiClient {
       throw new Error(errorData.error || `API error: ${response.status}`);
     }
     return data as T;
-  }
-
-  async listSites(): Promise<ListSitesResponse> {
-    const response = await this.doFetch(`${this.baseUrl}/api/sites`, {
-      method: 'GET',
-      headers: this.getHeaders(),
-    });
-    return this.handleResponse<ListSitesResponse>(response);
-  }
-
-  async listBranches(siteId: string): Promise<ListBranchesResponse> {
-    const response = await this.doFetch(`${this.baseUrl}/api/sites/${siteId}/branches`, {
-      method: 'GET',
-      headers: this.getHeaders(),
-    });
-    return this.handleResponse<ListBranchesResponse>(response);
   }
 
   async listDocuments(siteId: string, branchId: string, options?: { pathPrefix?: string }): Promise<ListDocumentsResponse> {

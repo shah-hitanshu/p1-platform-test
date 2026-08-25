@@ -91,6 +91,30 @@ describe('ToolGroup', () => {
     expect(screen.getByText('x'.repeat(120))).toBeTruthy();
   });
 
+  it('shows a refusal without the weight of a failure, and keeps its reason', () => {
+    const denied = tool({
+      name: 'check_edit_permission',
+      result: { error: '"contact-us" is not in your write set.', denied: true },
+    });
+    render(<ToolGroup tools={[tool(), denied]} />);
+
+    const row = screen.getByText("Can't edit this page").closest('button');
+    // A page the user simply has not added yet is not an error to alarm them with.
+    expect(row?.style.fontWeight).not.toBe('600');
+    expect(row?.style.color).not.toContain('critical');
+
+    fireEvent.click(screen.getByTestId('tool-note-toggle'));
+    expect(screen.getByText('"contact-us" is not in your write set.')).toBeTruthy();
+  });
+
+  it('still gives a genuine failure its weight', () => {
+    render(<ToolGroup tools={[tool({ name: 'apply_document_edits', result: { error: 'nope' } })]} />);
+
+    const row = screen.getByText("Couldn't apply changes").closest('button');
+    expect(row?.style.fontWeight).toBe('600');
+    expect(row?.style.color).toContain('critical');
+  });
+
   it('renders nothing for an empty run', () => {
     const { container } = render(<ToolGroup tools={[]} />);
     expect(container.innerHTML).toBe('');

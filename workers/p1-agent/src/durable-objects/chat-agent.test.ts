@@ -1,48 +1,83 @@
 import { describe, it, expect, vi } from 'vitest';
 import type { Connection, ConnectionContext } from 'agents';
-import { ChatAgent, resolveFollowsTemplate } from './chat-agent.js';
+import { ChatAgent, resolvePinnedSlots } from './chat-agent.js';
 
-describe('resolveFollowsTemplate', () => {
-  const context = { siteId: 's1', documentPath: 'blog/hello' };
+describe('resolvePinnedSlots', () => {
+  const context = { siteId: 's1', branchId: 'b1', documentPath: 'blog/hello' };
+  const pinnedTemplate = { content: [{ type: 'HeadingBlock', props: { id: 'hero' } }], root: { props: { _pinMap: { hero: true } } } };
 
-  it('reports the backend’s answer, not the browser’s', async () => {
-    const api = { lookupDocumentByPath: vi.fn().mockResolvedValue({ templateId: 'tpl-1' }) };
-
-    expect(await resolveFollowsTemplate(api, context, new Map())).toBe(true);
+  const lookup = (templateId: string | undefined, template: unknown = pinnedTemplate) => ({
+    lookupDocumentByPath: vi.fn().mockResolvedValue(templateId === undefined ? { id: 'd1' } : { templateId }),
+    getTemplate: vi.fn().mockResolvedValue(template),
   });
 
-  it('reports false for a document with no template', async () => {
-    const api = { lookupDocumentByPath: vi.fn().mockResolvedValue({ id: 'd1' }) };
-
-    expect(await resolveFollowsTemplate(api, context, new Map())).toBe(false);
+  it('reports the slots the template pins', async () => {
+    expect(await resolvePinnedSlots(lookup('tpl-1'), context, new Map())).toEqual(['hero']);
   });
 
-  // `templateId` is only accepted when a document is created, so neither answer goes stale.
-  it('asks once per path', async () => {
-    const api = { lookupDocumentByPath: vi.fn().mockResolvedValue({ templateId: 'tpl-1' }) };
-    const cache = new Map<string, boolean>();
+  it('reports none for a document with no template', async () => {
+    const api = lookup(undefined);
 
-    await resolveFollowsTemplate(api, context, cache);
-    await resolveFollowsTemplate(api, context, cache);
-    await resolveFollowsTemplate(api, { ...context, documentPath: 'about' }, cache);
+    expect(await resolvePinnedSlots(api, context, new Map())).toEqual([]);
+    expect(api.getTemplate).not.toHaveBeenCalled();
+  });
+
+  it('reports none for a template that pins nothing', async () => {
+    const api = lookup('tpl-1', { content: [{ type: 'HeadingBlock', props: { id: 'hero' } }], root: { props: { _pinMap: { hero: false } } } });
+
+    expect(await resolvePinnedSlots(api, context, new Map())).toEqual([]);
+  });
+
+  // `templateId` is only accepted when a document is created, so the linkage cannot go stale.
+  it('looks the document up once per path', async () => {
+    const api = lookup('tpl-1');
+    const cache = new Map<string, string | null>();
+
+    await resolvePinnedSlots(api, context, cache);
+    await resolvePinnedSlots(api, context, cache);
+    await resolvePinnedSlots(api, { ...context, documentPath: 'about' }, cache);
 
     expect(api.lookupDocumentByPath).toHaveBeenCalledTimes(2);
   });
 
-  // Losing the note beats failing the turn — but a failure must not mute the note for the rest
-  // of the conversation.
-  it('degrades to false on a lookup failure, and does not cache it', async () => {
-    const api = { lookupDocumentByPath: vi.fn().mockRejectedValue(new Error('offline')) };
-    const cache = new Map<string, boolean>();
+  // A slot can be pinned or unpinned from the editor while the conversation is open, so the
+  // answer the note depends on is read again every turn.
+  it('re-reads the template on every turn', async () => {
+    const api = lookup('tpl-1');
+    const cache = new Map<string, string | null>();
 
-    expect(await resolveFollowsTemplate(api, context, cache)).toBe(false);
+    await resolvePinnedSlots(api, context, cache);
+    await resolvePinnedSlots(api, context, cache);
+
+    expect(api.getTemplate).toHaveBeenCalledTimes(2);
+  });
+
+  // Losing the note beats failing the turn — and a page whose template cannot be read is one
+  // the editor leaves unlocked too.
+  it('degrades to none when the template cannot be read', async () => {
+    const api = {
+      lookupDocumentByPath: vi.fn().mockResolvedValue({ templateId: 'tpl-1' }),
+      getTemplate: vi.fn().mockRejectedValue(new Error('offline')),
+    };
+
+    expect(await resolvePinnedSlots(api, context, new Map())).toEqual([]);
+  });
+
+  it('degrades to none on a lookup failure, and does not cache it', async () => {
+    const api = {
+      lookupDocumentByPath: vi.fn().mockRejectedValue(new Error('offline')),
+      getTemplate: vi.fn(),
+    };
+    const cache = new Map<string, string | null>();
+
+    expect(await resolvePinnedSlots(api, context, cache)).toEqual([]);
     expect(cache.size).toBe(0);
   });
 
   it('does not call the backend without a document to look up', async () => {
-    const api = { lookupDocumentByPath: vi.fn() };
+    const api = lookup('tpl-1');
 
-    expect(await resolveFollowsTemplate(api, { siteId: 's1', documentPath: '' }, new Map())).toBe(false);
+    expect(await resolvePinnedSlots(api, { ...context, documentPath: '' }, new Map())).toEqual([]);
     expect(api.lookupDocumentByPath).not.toHaveBeenCalled();
   });
 });

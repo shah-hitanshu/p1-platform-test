@@ -62,8 +62,8 @@ function StepSpinner(): React.ReactElement {
 }
 
 /**
- * One finished call. Only an outright failure takes colour and weight; a partial or abandoned
- * step reads as ordinary and says so in its label.
+ * One finished call. Only an outright failure takes colour and weight: a partial or abandoned step
+ * says so in its label, and a refusal states a permission rather than a fault.
  *
  * The row is itself the disclosure for any note, and the label stays visible either way, since
  * a collapsed panel isn't announced to assistive tech.
@@ -71,7 +71,10 @@ function StepSpinner(): React.ReactElement {
 function ToolRow({ tool }: { tool: ToolCallStatus }): React.ReactElement {
   const [showDetail, setShowDetail] = useState(false);
   const outcome = toolCallOutcome(tool);
-  const note = outcome === 'failed' || outcome === 'partial' ? toolCallNote(tool) : undefined;
+  // A refusal's note carries the reason and the fix, which its label deliberately doesn't.
+  const note = outcome === 'failed' || outcome === 'partial' || outcome === 'denied'
+    ? toolCallNote(tool)
+    : undefined;
   const emphasis = outcome === 'failed' ? { color: CRITICAL, fontWeight: 600 } : undefined;
 
   const label = (

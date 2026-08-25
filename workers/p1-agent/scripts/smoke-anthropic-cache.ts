@@ -17,6 +17,7 @@
 import { createTransport } from '../src/providers/transport.js';
 import { CCR_TOOLS, WEB_TOOLS } from '../src/tools/definitions.js';
 import { SYSTEM_PROMPT } from '../src/prompt/system-prompt.js';
+import { reportGatewayFailure } from './smoke-failure.js';
 
 function requireEnv(name: string): string {
   const v = process.env[name];
@@ -31,7 +32,13 @@ function requireEnv(name: string): string {
 }
 
 async function main(): Promise<void> {
+  // Anthropic-only by design: `cache_creation_input_tokens` is what this measures, and the
+  // OpenAI-compatible endpoint reports no such counter. A Workers AI id here proves nothing.
   const model = process.env.SMOKE_MODEL || 'anthropic/claude-haiku-4-5';
+  if (!model.startsWith('anthropic/')) {
+    console.error(`This probe measures Anthropic prompt caching; "${model}" cannot report it.`);
+    process.exit(1);
+  }
   const transport = createTransport({
     accountId: requireEnv('AI_GATEWAY_ACCOUNT_ID'),
     gatewayId: requireEnv('AI_GATEWAY_NAME'),
@@ -83,13 +90,6 @@ async function main(): Promise<void> {
   console.log(`\n✅ PASS — created ${created} tokens on call 1, read ${read} tokens on call 2.`);
 }
 
-main().catch(err => {
-  console.error('\n❌ Smoke test errored:', err instanceof Error ? err.message : err);
-  // Both SDK error types expose status/url; the body often names the exact cause.
-  const e = err as { status?: number; url?: string; error?: unknown };
-  if (e.status !== undefined) console.error('  status:', e.status);
-  if (e.url) console.error('  url:', e.url);
-  if (e.error) console.error('  body:', JSON.stringify(e.error));
-  console.error('If this is a 404, check the REST URL join or model id; 401 -> token/auth; 400 -> model id or message shape.');
-  process.exit(1);
+main().catch((err: unknown) => {
+  reportGatewayFailure(err, process.env.SMOKE_MODEL || 'anthropic/claude-haiku-4-5');
 });

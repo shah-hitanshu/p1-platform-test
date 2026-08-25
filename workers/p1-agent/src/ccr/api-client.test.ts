@@ -11,6 +11,25 @@ const EDIT_REQUEST = {
   targetRegions: ["/content"],
 };
 
+describe("McpApiClient request bounds", () => {
+  it("gives every request a timeout signal", async () => {
+    let capturedInit: RequestInit | undefined;
+    const client = new McpApiClient({
+      baseUrl: "https://css.example.com",
+      agentId: "agent-abc",
+      agentApiKey: "key-xyz",
+      fetcher: {
+        fetch: async (_input, init) => {
+          capturedInit = init;
+          return new Response(JSON.stringify({ allowed: true }), { status: 200 });
+        },
+      },
+    });
+    await client.canAgentEdit(EDIT_REQUEST);
+    expect(capturedInit?.signal).toBeInstanceOf(AbortSignal);
+  });
+});
+
 describe("McpApiClient headers", () => {
   const baseConfig = {
     baseUrl: "https://ccr.example.com",

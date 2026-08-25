@@ -289,16 +289,25 @@ describe('buildContextNote', () => {
   });
 
   describe('a page bound to a template', () => {
-    it('states what may and may not be done to the template’s components', () => {
-      const note = buildContextNote({ ...base, documentId: 'd1' }, { followsTemplate: true });
+    it('names the pinned components, and frees the rest', () => {
+      const note = buildContextNote({ ...base, documentId: 'd1' }, { pinnedSlots: ['hero', 'footer'] });
 
       expect(note).toContain('This page follows a page template.');
-      expect(note).toContain('do not delete, reorder, or re-create them');
+      expect(note).toContain('pinned components must stay, in this relative order: hero, footer');
+      expect(note).toContain('do not delete, reorder or re-create them');
       expect(note).toContain('Conformance is checked by component id');
+      expect(note).toContain('Every other component on the page is ordinary content');
+    });
+
+    // A template that pins nothing locks nothing, so there is nothing to tell the agent.
+    it('says nothing for a template that pins nothing', () => {
+      const note = buildContextNote({ ...base, documentId: 'd1' }, { pinnedSlots: [] });
+
+      expect(note).not.toContain('page template');
     });
 
     it('says nothing about templates for a page that has none', () => {
-      const note = buildContextNote({ ...base, documentId: 'd1' }, { followsTemplate: false });
+      const note = buildContextNote({ ...base, documentId: 'd1' });
 
       expect(note).not.toContain('page template');
     });
@@ -308,7 +317,7 @@ describe('buildContextNote', () => {
     it('does not call the same page empty and pre-filled', () => {
       const note = buildContextNote(
         { ...base, documentId: 'd1', newPage: true },
-        { followsTemplate: true },
+        { pinnedSlots: ['hero'] },
       );
 
       expect(note).toContain('is empty');

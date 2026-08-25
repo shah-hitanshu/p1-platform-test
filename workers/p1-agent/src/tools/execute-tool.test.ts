@@ -47,6 +47,25 @@ describe('validatePublicUrl', () => {
     expect(() => validatePublicUrl('http://127.1.2.3')).toThrow('private IP');
   });
 
+  it('throws on the cloud metadata address', () => {
+    expect(() => validatePublicUrl('http://169.254.169.254/latest/meta-data/')).toThrow('private IP');
+  });
+
+  it('throws on 0.0.0.0, which routes to this host', () => {
+    expect(() => validatePublicUrl('http://0.0.0.0')).toThrow('private IP');
+  });
+
+  it.each(['http://[fc00::1]/', 'http://[fd12:3456::1]/', 'http://[fe80::1]/'])(
+    'throws on the IPv6 private literal %s',
+    raw => {
+      expect(() => validatePublicUrl(raw)).toThrow('private IP');
+    },
+  );
+
+  it('still accepts a public IPv6 literal', () => {
+    expect(() => validatePublicUrl('http://[2606:4700::1111]/')).not.toThrow();
+  });
+
   it('throws on 10.x.x.x', () => {
     expect(() => validatePublicUrl('http://10.0.0.1/secret')).toThrow('private IP');
   });
@@ -99,6 +118,32 @@ describe('WEB_TOOLS', () => {
 });
 
 // ---------------------------------------------------------------------------
+// executeTool — session scope
+// ---------------------------------------------------------------------------
+
+describe('executeTool holds every tool to the session', () => {
+  it('refuses a read aimed at another site before it reaches the backend', async () => {
+    const ccrApi = { getDocument: vi.fn() } as unknown as McpApiClient;
+    await expect(executeTool(
+      'get_document',
+      { site_id: 'site-2', branch_id: 'branch-1', document_path: 'about' },
+      ccrApi, 'user-1', TEST_CONTEXT,
+    )).rejects.toThrow('Not your site');
+    expect((ccrApi as unknown as { getDocument: ReturnType<typeof vi.fn> }).getDocument)
+      .not.toHaveBeenCalled();
+  });
+
+  it('refuses a read aimed at another branch', async () => {
+    const ccrApi = { listDocuments: vi.fn() } as unknown as McpApiClient;
+    await expect(executeTool(
+      'list_documents',
+      { site_id: 'site-1', branch_id: 'branch-2' },
+      ccrApi, 'user-1', TEST_CONTEXT,
+    )).rejects.toThrow('Not your branch');
+  });
+});
+
+// ---------------------------------------------------------------------------
 // executeTool — list_media
 // ---------------------------------------------------------------------------
 
@@ -118,6 +163,14 @@ describe('executeTool list_media', () => {
     await expect(
       executeTool('list_media', { site_id: 'site-1' }, stubCcrApi, 'user-1', TEST_CONTEXT),
     ).rejects.toThrow('not available');
+  });
+
+  it('bounds the media call so a hung worker cannot hold the turn open', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve([]) });
+    vi.stubGlobal('fetch', mockFetch);
+
+    await executeTool('list_media', { site_id: 'site-1' }, stubCcrApi, 'user-1', TEST_CONTEXT, webConfig);
+    expect(mockFetch.mock.calls[0][1].signal).toBeInstanceOf(AbortSignal);
   });
 
   it('calls the media worker with siteId and Bearer token', async () => {
@@ -185,6 +238,19 @@ describe('executeTool list_media', () => {
 describe('executeTool fetch_page', () => {
   const stubCcrApi = {} as McpApiClient;
 
+  /** A 3xx as `redirect: 'manual'` surfaces it: the status, and a Location to resolve. */
+  const redirectTo = (location: string) => ({
+    ok: false,
+    status: 302,
+    headers: { get: (name: string) => (name.toLowerCase() === 'location' ? location : null) },
+  });
+
+  /** Parses nothing: these tests are about which URLs get fetched, not what comes back. */
+  class InertHTMLRewriter {
+    on() { return this; }
+    transform() { return { text: async () => '' }; }
+  }
+
   afterEach(() => {
     vi.unstubAllGlobals();
   });
@@ -209,6 +275,56 @@ describe('executeTool fetch_page', () => {
     await expect(
       executeTool('fetch_page', { url: 'https://example.com/missing' }, stubCcrApi, 'user-1', TEST_CONTEXT),
     ).rejects.toThrow('404');
+  });
+
+  it('re-runs the guard on a redirect target', async () => {
+    const mockFetch = vi.fn().mockResolvedValue(redirectTo('http://169.254.169.254/latest/meta-data/'));
+    vi.stubGlobal('fetch', mockFetch);
+
+    await expect(
+      executeTool('fetch_page', { url: 'https://example.com/go' }, stubCcrApi, 'user-1', TEST_CONTEXT),
+    ).rejects.toThrow('private IP');
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('follows a redirect to a public host', async () => {
+    const mockFetch = vi.fn()
+      .mockResolvedValueOnce(redirectTo('https://elsewhere.example.com/page'))
+      .mockResolvedValueOnce({ ok: true, status: 200 });
+    vi.stubGlobal('HTMLRewriter', InertHTMLRewriter);
+    vi.stubGlobal('fetch', mockFetch);
+
+    await executeTool('fetch_page', { url: 'https://example.com/go' }, stubCcrApi, 'user-1', TEST_CONTEXT);
+    expect(mockFetch.mock.calls[1][0]).toBe('https://elsewhere.example.com/page');
+  });
+
+  it('resolves a relative Location against the URL that sent it', async () => {
+    const mockFetch = vi.fn()
+      .mockResolvedValueOnce(redirectTo('/moved'))
+      .mockResolvedValueOnce({ ok: true, status: 200 });
+    vi.stubGlobal('HTMLRewriter', InertHTMLRewriter);
+    vi.stubGlobal('fetch', mockFetch);
+
+    await executeTool('fetch_page', { url: 'https://example.com/go' }, stubCcrApi, 'user-1', TEST_CONTEXT);
+    expect(mockFetch.mock.calls[1][0]).toBe('https://example.com/moved');
+  });
+
+  it('gives up on a redirect loop rather than following it forever', async () => {
+    const mockFetch = vi.fn().mockResolvedValue(redirectTo('https://example.com/go'));
+    vi.stubGlobal('fetch', mockFetch);
+
+    await expect(
+      executeTool('fetch_page', { url: 'https://example.com/go' }, stubCcrApi, 'user-1', TEST_CONTEXT),
+    ).rejects.toThrow('redirected more than');
+  });
+
+  it('bounds the request so a host that never answers cannot hold the turn open', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({ ok: true, status: 200 });
+    vi.stubGlobal('HTMLRewriter', InertHTMLRewriter);
+    vi.stubGlobal('fetch', mockFetch);
+
+    await executeTool('fetch_page', { url: 'https://example.com/' }, stubCcrApi, 'user-1', TEST_CONTEXT);
+    expect(mockFetch.mock.calls[0][1].signal).toBeInstanceOf(AbortSignal);
   });
 
   it('extracts content via HTMLRewriter and returns a string', async () => {
@@ -1261,9 +1377,10 @@ describe('executeTool page templates', () => {
     return {
       lookupDocumentByPath: vi.fn().mockResolvedValue(null),
       listTemplates: vi.fn().mockResolvedValue({ templates: [blogTemplate] }),
-      createDocumentFromTemplate: vi.fn().mockResolvedValue({
-        documentId: 'doc-1', documentPath: 'blog/hello', versionId: 'v-1',
-      }),
+      // Echoes the path, as the backend does: the result's path is what the agent reports back.
+      createDocumentFromTemplate: vi.fn((_siteId, _branchId, path: string) => Promise.resolve({
+        documentId: 'doc-1', documentPath: path, versionId: 'v-1',
+      })),
       getDocumentLatestVersion: vi.fn().mockResolvedValue({
         id: 'v-1',
         documentId: 'doc-1',
@@ -1326,6 +1443,116 @@ describe('executeTool page templates', () => {
     );
     expect(ccrApi.createDocument).not.toHaveBeenCalled();
     expect(ccrApi.canAgentEdit).toBeUndefined();
+  });
+
+  // The Create Page dialog collects the slug before the template is chosen, so the path the agent
+  // is handed is a slug rather than a final path.
+  it("files the page under the template's route shape", async () => {
+    const ccrApi = makeCcrApi();
+    await executeTool('create_page', {
+      site_id: siteId,
+      branch_id: branchId,
+      document_path: 'hello-world',
+      template_id: 'tpl-blog',
+    }, ccrApi, 'user-1', TEST_CONTEXT);
+
+    expect(ccrApi.createDocumentFromTemplate).toHaveBeenCalledWith(
+      siteId, branchId, 'blog/hello-world', 'tpl-blog', undefined,
+    );
+  });
+
+  // Otherwise the reply sends the user to the path they typed, where there is no page.
+  it('reports the path it used rather than the one asked for', async () => {
+    const ccrApi = makeCcrApi();
+    const result = (await executeTool('create_page', {
+      site_id: siteId,
+      branch_id: branchId,
+      document_path: 'hello-world',
+      template_id: 'tpl-blog',
+    }, ccrApi, 'user-1', TEST_CONTEXT)) as Record<string, unknown>;
+
+    expect(String(result.note)).toContain('The page is at blog/hello-world, not hello-world');
+  });
+
+  it('says nothing about the path when it was already the right one', async () => {
+    const ccrApi = makeCcrApi();
+    const result = (await executeTool('create_page', {
+      site_id: siteId,
+      branch_id: branchId,
+      document_path: 'blog/hello',
+      template_id: 'tpl-blog',
+    }, ccrApi, 'user-1', TEST_CONTEXT)) as Record<string, unknown>;
+
+    expect(String(result.note)).not.toContain('The page is at');
+  });
+
+  // The guard has to see the path the page lands on: checking the requested path would let a
+  // template rewrite recreate a page the agent may not touch.
+  it('checks the resolved path against the write set, not the requested one', async () => {
+    const ccrApi = makeCcrApi({
+      lookupDocumentByPath: vi.fn().mockResolvedValue({ id: 'd1', path: 'blog/other', createdAt: '' }),
+    });
+    await expect(
+      executeTool('create_page', {
+        site_id: siteId,
+        branch_id: branchId,
+        document_path: 'other',
+        template_id: 'tpl-blog',
+      }, ccrApi, 'user-1', TEST_CONTEXT),
+    ).rejects.toThrow('not in your write set');
+
+    expect(ccrApi.lookupDocumentByPath).toHaveBeenCalledWith(siteId, 'blog/other');
+    expect(ccrApi.createDocumentFromTemplate).not.toHaveBeenCalled();
+  });
+
+  // Resolving must not turn a request aimed at the prefix into a page somewhere else, and a
+  // shape must not reach the prefix either.
+  it('refuses the reserved prefix on both the requested and the resolved path', async () => {
+    const ccrApi = makeCcrApi();
+    await expect(
+      executeTool('create_page', {
+        site_id: siteId,
+        branch_id: branchId,
+        document_path: '_registry/templates/mine',
+        template_id: 'tpl-blog',
+      }, ccrApi, 'user-1', TEST_CONTEXT),
+    ).rejects.toThrow(/_registry\/ path prefix/);
+
+    const intoRegistry = makeCcrApi({
+      listTemplates: vi.fn().mockResolvedValue({
+        templates: [{ ...blogTemplate, defaultUrlPattern: '/_registry/:slug' }],
+      }),
+    });
+    await expect(
+      executeTool('create_page', {
+        site_id: siteId,
+        branch_id: branchId,
+        document_path: 'hello-world',
+        template_id: 'tpl-blog',
+      }, intoRegistry, 'user-1', TEST_CONTEXT),
+    ).rejects.toThrow(/_registry\/ path prefix/);
+
+    expect(ccrApi.createDocumentFromTemplate).not.toHaveBeenCalled();
+    expect(intoRegistry.createDocumentFromTemplate).not.toHaveBeenCalled();
+  });
+
+  // Inventing the category would file the page somewhere nobody chose.
+  it('refuses a path that cannot fill the shape, before creating anything', async () => {
+    const ccrApi = makeCcrApi({
+      listTemplates: vi.fn().mockResolvedValue({
+        templates: [{ ...blogTemplate, defaultUrlPattern: '/:category/:slug' }],
+      }),
+    });
+    await expect(
+      executeTool('create_page', {
+        site_id: siteId,
+        branch_id: branchId,
+        document_path: 'hello-world',
+        template_id: 'tpl-blog',
+      }, ccrApi, 'user-1', TEST_CONTEXT),
+    ).rejects.toThrow(/does not fill every segment/);
+
+    expect(ccrApi.createDocumentFromTemplate).not.toHaveBeenCalled();
   });
 
   // Conformance is checked by component id, so the agent needs the ids that landed.

@@ -3,9 +3,9 @@ import type OpenAI from 'openai';
 /**
  * A provider-neutral tool specification — the single source of truth for tool specs.
  * Each transport converts it to its own wire format (`toOpenAiTools` here;
- * `toAnthropicTools` in providers/anthropic.ts). `list_sites`/`list_branches` are intentionally
- * excluded — the site and branch always come from the editor context. Documents are not:
- * the agent reads across the whole site and is held to its write set when it edits.
+ * `toAnthropicTools` in providers/anthropic.ts). No tool lists sites or branches: both always
+ * come from the editor context. Documents are not: the agent reads across the whole site and
+ * is held to its write set when it edits.
  */
 export interface RawTool {
   /** Tool name the model calls (must match a case in `executeTool`). */
@@ -48,7 +48,7 @@ const RAW_CCR_TOOLS: RawTool[] = [
       properties: {
         site_id: { type: 'string' },
         branch_id: { type: 'string' },
-        document_path: { type: 'string', description: 'Document path e.g. /index' },
+        document_path: { type: 'string', description: 'Document path, no leading slash — e.g. index' },
       },
       required: ['site_id', 'branch_id', 'document_path'],
     },
@@ -200,13 +200,19 @@ const RAW_CCR_TOOLS: RawTool[] = [
       '',
       'template_id and components are mutually exclusive: a template supplies the components.',
       'With template_id, only root_props.title is applied — set any other root prop afterwards with apply_document_edits.',
+      "A template's route shape decides where its pages live, so document_path is placed under it. Report the path the result gives back, not the one you asked for.",
     ].join('\n'),
     input_schema: {
       type: 'object' as const,
       properties: {
         site_id: { type: 'string' },
         branch_id: { type: 'string' },
-        document_path: { type: 'string', description: 'Path for the new page, e.g. /about' },
+        document_path: {
+          type: 'string',
+          description:
+            "Path for the new page, no leading slash — e.g. about. With template_id, built from "
+            + "the template's route shape.",
+        },
         template_id: {
           type: 'string',
           description: 'Page template to build from, copied verbatim from list_page_templates.',

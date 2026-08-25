@@ -267,6 +267,25 @@ export function buildRestoredHistory(history: StoredMessage[]): RestoredMessage[
     });
 }
 
+/** Paths a stored `list_documents` keeps: enough to recall the listing, not the whole site. */
+export const MAX_STORED_PATHS = 50;
+
+/**
+ * Project each entry of a tool result that is a bare array. Guarding on `Array.isArray(result)`
+ * rather than reading a property off it is the point: these tools return the array itself, and
+ * a projection written against a `{ items: [...] }` wrapper silently keeps everything.
+ */
+function projectEntries(
+  result: unknown,
+  project: (entry: Record<string, unknown>) => Record<string, unknown>,
+): unknown {
+  if (!Array.isArray(result)) return result;
+  return result.map(entry =>
+    entry !== null && typeof entry === 'object' && !Array.isArray(entry)
+      ? project(entry as Record<string, unknown>)
+      : entry);
+}
+
 export function trimForHistory(toolName: string, result: unknown): unknown {
   if (result === null || typeof result !== 'object') return result;
   const r = result as Record<string, unknown>;
@@ -283,14 +302,23 @@ export function trimForHistory(toolName: string, result: unknown): unknown {
         ...(r.error !== undefined ? { error: r.error } : {}),
       };
 
-    case 'list_components': {
-      if (!Array.isArray(r.components)) return r;
+    case 'list_components':
+      // `defaultProps` is the bulk of it, and the agent has to re-read the registry before
+      // editing anyway — the stored entry only has to say the lookup happened.
+      return projectEntries(result, c => ({ name: c.name }));
+
+    case 'list_page_templates':
+      return projectEntries(result, t => ({ id: t.id, label: t.label ?? t.name }));
+
+    case 'list_media':
+      return projectEntries(result, m => ({ filename: m.filename }));
+
+    case 'list_documents': {
+      const documents = r.documents;
+      if (!Array.isArray(documents) || documents.length <= MAX_STORED_PATHS) return result;
       return {
-        ...r,
-        components: (r.components as Record<string, unknown>[]).map(c => ({
-          name: c.name,
-          description: c.description,
-        })),
+        documents: documents.slice(0, MAX_STORED_PATHS),
+        omitted: documents.length - MAX_STORED_PATHS,
       };
     }
 

@@ -1,31 +1,5 @@
 import type { TemplateSnapshot } from '@pantheon-systems/p1-content-validator';
 
-export interface SiteInfo {
-  id: string;
-  pantheonSiteId: string;
-  name: string;
-  createdAt: string;
-}
-
-export interface ListSitesResponse {
-  sites: SiteInfo[];
-  total: number;
-}
-
-export interface BranchInfo {
-  id: string;
-  siteId: string;
-  name: string;
-  status: string;
-  isMain: boolean;
-  createdAt: string;
-}
-
-export interface ListBranchesResponse {
-  branches: BranchInfo[];
-  total: number;
-}
-
 export interface DocumentInfo {
   id: string;
   path: string;

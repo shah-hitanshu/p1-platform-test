@@ -203,3 +203,116 @@ describe('Anthropic transport streaming', () => {
     expect(result.usage?.cacheCreationInputTokens).toBe(3);
   });
 });
+
+describe('stop reason and temperature (OpenAI transport)', () => {
+  /** Serve one SSE stream and capture the request body the SDK sent. */
+  function recordingSse(frames: string[]) {
+    const seen: { body?: Record<string, unknown> } = {};
+    const fetcher = (async (_url: unknown, init: { body?: string }) => {
+      seen.body = JSON.parse(init.body ?? '{}') as Record<string, unknown>;
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          const enc = new TextEncoder();
+          for (const f of frames) controller.enqueue(enc.encode(f));
+          controller.close();
+        },
+      });
+      return new Response(body, { status: 200, headers: { 'content-type': 'text/event-stream' } });
+    }) as unknown as typeof fetch;
+    return { fetcher, seen };
+  }
+
+  const withFinish = (reason: string | null): string[] => [
+    chunk({ role: 'assistant', content: 'partial' }),
+    openAiFrame({
+      id: 'c', object: 'chat.completion.chunk', created: 0, model: 'm',
+      choices: [{ index: 0, delta: {}, finish_reason: reason }],
+    }),
+    'data: [DONE]\n\n',
+  ];
+
+  it('reports a completion cut at the output limit', async () => {
+    const t = createTransport({ ...baseCfg, model: 'openai/gpt-4o', fetcher: stubSse(withFinish('length')) });
+    const { handlers } = recorder();
+    const result = await t.stream({ system: 's', messages: [{ role: 'user', content: 'hi' }], maxTokens: 8 }, handlers);
+    expect(result.stopReason).toBe('length');
+  });
+
+  it('reports a normal stop and a tool-call stop distinctly', async () => {
+    for (const [reason, expected] of [['stop', 'stop'], ['tool_calls', 'tool_calls'], ['content_filter', 'other']]) {
+      const t = createTransport({ ...baseCfg, model: 'openai/gpt-4o', fetcher: stubSse(withFinish(reason)) });
+      const result = await t.stream({ system: 's', messages: [{ role: 'user', content: 'hi' }], maxTokens: 8 }, recorder().handlers);
+      expect(result.stopReason).toBe(expected);
+    }
+  });
+
+  it('leaves stopReason unset when the provider reports none', async () => {
+    const t = createTransport({ ...baseCfg, model: 'openai/gpt-4o', fetcher: stubSse(withFinish(null)) });
+    const result = await t.stream({ system: 's', messages: [{ role: 'user', content: 'hi' }], maxTokens: 8 }, recorder().handlers);
+    expect(result.stopReason).toBeUndefined();
+  });
+
+  it('sends the requested temperature, and omits it when unset', async () => {
+    const withTemp = recordingSse(withFinish('stop'));
+    const t1 = createTransport({ ...baseCfg, model: 'openai/gpt-4o', fetcher: withTemp.fetcher });
+    await t1.stream({ system: 's', messages: [{ role: 'user', content: 'hi' }], maxTokens: 8, temperature: 0.2 }, recorder().handlers);
+    expect(withTemp.seen.body?.temperature).toBe(0.2);
+
+    const noTemp = recordingSse(withFinish('stop'));
+    const t2 = createTransport({ ...baseCfg, model: 'openai/gpt-4o', fetcher: noTemp.fetcher });
+    await t2.stream({ system: 's', messages: [{ role: 'user', content: 'hi' }], maxTokens: 8 }, recorder().handlers);
+    expect(noTemp.seen.body).not.toHaveProperty('temperature');
+  });
+});
+
+describe('temperature passthrough (Anthropic transport)', () => {
+  const frames = [
+    anthropicFrame('message_start', {
+      type: 'message_start',
+      message: { id: 'm', type: 'message', role: 'assistant', model: 'claude-x', content: [],
+        stop_reason: null, stop_sequence: null, usage: { input_tokens: 1, output_tokens: 0 } },
+    }),
+    anthropicFrame('content_block_start', { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } }),
+    anthropicFrame('content_block_delta', { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'hi' } }),
+    anthropicFrame('content_block_stop', { type: 'content_block_stop', index: 0 }),
+    anthropicFrame('message_delta', { type: 'message_delta', delta: { stop_reason: 'end_turn', stop_sequence: null }, usage: { output_tokens: 2 } }),
+    anthropicFrame('message_stop', { type: 'message_stop' }),
+  ];
+
+  function recording() {
+    const seen: { body?: Record<string, unknown> } = {};
+    const fetcher = (async (_url: unknown, init: { body?: string }) => {
+      seen.body = JSON.parse(init.body ?? '{}') as Record<string, unknown>;
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          const enc = new TextEncoder();
+          for (const f of frames) controller.enqueue(enc.encode(f));
+          controller.close();
+        },
+      });
+      return new Response(body, { status: 200, headers: { 'content-type': 'text/event-stream' } });
+    }) as unknown as typeof fetch;
+    return { fetcher, seen };
+  }
+
+  it('sends the requested temperature', async () => {
+    const rec = recording();
+    const t = createTransport({ ...baseCfg, model: 'anthropic/claude-haiku-4-5', fetcher: rec.fetcher });
+    await t.stream({ system: 's', messages: [{ role: 'user', content: 'hi' }], maxTokens: 16, temperature: 0.2 }, recorder().handlers);
+    expect(rec.seen.body?.temperature).toBe(0.2);
+  });
+
+  it('omits it when unset, leaving the provider default', async () => {
+    const rec = recording();
+    const t = createTransport({ ...baseCfg, model: 'anthropic/claude-haiku-4-5', fetcher: rec.fetcher });
+    await t.stream({ system: 's', messages: [{ role: 'user', content: 'hi' }], maxTokens: 16 }, recorder().handlers);
+    expect(rec.seen.body).not.toHaveProperty('temperature');
+  });
+
+  it('reports the streamed stop reason', async () => {
+    const rec = recording();
+    const t = createTransport({ ...baseCfg, model: 'anthropic/claude-haiku-4-5', fetcher: rec.fetcher });
+    const result = await t.stream({ system: 's', messages: [{ role: 'user', content: 'hi' }], maxTokens: 16 }, recorder().handlers);
+    expect(result.stopReason).toBe('stop');
+  });
+});

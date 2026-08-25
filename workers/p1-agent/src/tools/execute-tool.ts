@@ -3,8 +3,14 @@ import type { ComponentSchema } from '@pantheon-systems/p1-content-validator';
 import type { McpApiClient } from '../ccr/api-client.js';
 import type { TemplateSummaryInfo } from '../ccr/types.js';
 import type { ChatContext } from '../types.js';
-import { assertDocumentWritable, assertWritable, normalizeDocumentPath } from '../conversation/scope.js';
+import {
+  assertDocumentWritable,
+  assertInScope,
+  assertWritable,
+  normalizeDocumentPath,
+} from '../conversation/scope.js';
 import { TEMPLATE_FILL_CONTRACT } from '../prompt/system-prompt.js';
+import { templatePagePath } from './template-path.js';
 
 // Inline ULID generator — no external dependency required in Workers
 const ULID_ENCODING = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
@@ -101,25 +107,20 @@ function scaffoldedComponents(
   });
 }
 
+function isRegistryPath(path: string): boolean {
+  return path.replace(/^\//, '').startsWith('_registry/');
+}
+
 /**
- * Create a page from a template and report what landed on it.
- *
- * The template supplies the components, so none of `create_page`'s own component handling runs:
- * no registry validation (the template's components are already valid) and no edit session (the
- * backend wrote them into version 1).
+ * The template a page is to be built from, resolved against the live list so an id the model
+ * invented fails naming the tool that has the real ones instead of as a 404 from the create call.
  */
-async function createPageFromTemplate(
+async function resolvePageTemplate(
   ccrApi: McpApiClient,
-  { siteId, branchId, documentPath, templateId, title }: {
-    siteId: string;
-    branchId: string;
-    documentPath: string;
-    templateId: string;
-    title?: string;
-  },
-): Promise<unknown> {
-  // Resolved against the live list first, so an id the model invented fails naming the tool that
-  // has the real ones instead of as a 404 from the create call.
+  siteId: string,
+  branchId: string,
+  templateId: string,
+): Promise<TemplateSummaryInfo> {
   const { templates } = await ccrApi.listTemplates(siteId, branchId);
   const template = templates.find(t => t.id === templateId);
   if (!template) {
@@ -132,9 +133,30 @@ async function createPageFromTemplate(
       `The "${template.label ?? template.name}" template is deprecated, so it cannot start a new page.`,
     );
   }
+  return template;
+}
 
+/**
+ * Create a page from a template and report what landed on it.
+ *
+ * The template supplies the components, so none of `create_page`'s own component handling runs:
+ * no registry validation (the template's components are already valid) and no edit session (the
+ * backend wrote them into version 1).
+ */
+async function createPageFromTemplate(
+  ccrApi: McpApiClient,
+  { siteId, branchId, documentPath, template, title, movedFrom }: {
+    siteId: string;
+    branchId: string;
+    documentPath: string;
+    template: TemplateSummaryInfo;
+    title?: string;
+    /** The path asked for, when the template's route shape put the page somewhere else. */
+    movedFrom?: string;
+  },
+): Promise<unknown> {
   const createResult = await ccrApi.createDocumentFromTemplate(
-    siteId, branchId, documentPath, templateId, title,
+    siteId, branchId, documentPath, template.id, title,
   );
 
   let components: { type: string; id: string }[] = [];
@@ -150,9 +172,16 @@ async function createPageFromTemplate(
     ...createResult,
     template: { id: template.id, label: template.label ?? template.name },
     components,
-    // This turn's context note was built before the page existed, so the contract it carries for
-    // template-bound pages is repeated here.
-    note: TEMPLATE_FILL_CONTRACT.join(' '),
+    note: [
+      // Otherwise the reply names the path the model asked for, which is not where the page is.
+      ...(movedFrom === undefined ? [] : [
+        `The page is at ${createResult.documentPath}, not ${movedFrom}: that is where this`,
+        "template's pages live. Use this path when you tell the user about the page.",
+      ]),
+      // This turn's context note was built before the page existed, so the contract it carries
+      // for template-bound pages is repeated here.
+      ...TEMPLATE_FILL_CONTRACT,
+    ].join(' '),
   };
 }
 
@@ -183,18 +212,58 @@ export function validatePublicUrl(raw: string): URL {
     throw new Error(`Fetching localhost URLs is not allowed`);
   }
 
-  // Reject private IPv4 ranges: 127.x, 10.x, 192.168.x, 172.16-31.x
+  // 169.254 is the cloud metadata address, which is what an SSRF attempt usually reaches for.
   const privatePatterns = [
+    /^0\./,
     /^127\./,
     /^10\./,
     /^192\.168\./,
     /^172\.(1[6-9]|2\d|3[01])\./,
+    /^169\.254\./,
   ];
   if (privatePatterns.some(p => p.test(host))) {
     throw new Error(`Fetching private IP addresses is not allowed`);
   }
 
+  // IPv6 literals reach `hostname` bracketed. fc00::/7 is unique-local, fe80::/10 link-local.
+  if (/^\[(f[cd][0-9a-f]{2}|fe[89ab][0-9a-f]):/.test(host)) {
+    throw new Error(`Fetching private IP addresses is not allowed`);
+  }
+
   return url;
+}
+
+/** Ceiling on one outbound web or media call, matching the CCR client's. */
+const OUTBOUND_TIMEOUT_MS = 30_000;
+
+/** Hops `fetch_page` will follow. A chain longer than this is a loop or a tracker. */
+const MAX_REDIRECTS = 5;
+
+/**
+ * Fetch a public page, re-running the guard on every hop.
+ *
+ * Redirects are followed by hand because `validatePublicUrl` vets the URL it is given and says
+ * nothing about where that URL points: under the default `redirect: 'follow'`, any public host
+ * can bounce this straight to a private address with a single 302.
+ */
+async function fetchPublicPage(rawUrl: string): Promise<{ response: Response; url: URL }> {
+  let url = validatePublicUrl(rawUrl);
+  for (let hop = 0; ; hop++) {
+    const response = await fetch(url.toString(), {
+      redirect: 'manual',
+      signal: AbortSignal.timeout(OUTBOUND_TIMEOUT_MS),
+    });
+
+    const location = response.status >= 300 && response.status < 400
+      ? response.headers.get('location')
+      : null;
+    if (location === null) return { response, url };
+
+    if (hop >= MAX_REDIRECTS) {
+      throw new Error(`fetch_page: ${rawUrl} redirected more than ${MAX_REDIRECTS} times`);
+    }
+    url = validatePublicUrl(new URL(location, url).toString());
+  }
 }
 
 // Execute a tool call from Claude against the CCR backend or web tools
@@ -207,15 +276,10 @@ export async function executeTool(
   webConfig?: { token: string; mediaWorkerUrl: string },
 ): Promise<unknown> {
   const name = toolName as ToolName;
+  assertInScope(toolInput, context);
   assertWritable(name, toolInput, context);
 
   switch (name) {
-    case 'list_sites':
-      return ccrApi.listSites();
-
-    case 'list_branches':
-      return ccrApi.listBranches(toolInput.site_id as string);
-
     case 'list_documents': {
       const { documents } = await ccrApi.listDocuments(
         toolInput.site_id as string,
@@ -451,9 +515,23 @@ export async function executeTool(
     }
 
     case 'create_page': {
-      const documentPath = toolInput.document_path as string;
+      const requestedPath = toolInput.document_path as string;
+      const templateId = toolInput.template_id;
+      const template = typeof templateId === 'string' && templateId !== ''
+        ? await resolvePageTemplate(
+          ccrApi, toolInput.site_id as string, toolInput.branch_id as string, templateId,
+        )
+        : null;
 
-      if (documentPath.replace(/^\//, '').startsWith('_registry/')) {
+      // Resolved before the guards below, which must see the path the page is created at: a
+      // template's route shape decides that, not the path the model asked for.
+      const documentPath = template
+        ? templatePagePath(template.defaultUrlPattern, requestedPath, template.label ?? template.name)
+        : requestedPath;
+
+      // Both: the resolved path is where the page lands, and a request aimed here is refused
+      // rather than quietly relocated by the shape.
+      if (isRegistryPath(requestedPath) || isRegistryPath(documentPath)) {
         throw new Error('Cannot create pages at the _registry/ path prefix — this is reserved for system use.');
       }
 
@@ -471,8 +549,7 @@ export async function executeTool(
         parentId?: string;
       }[];
 
-      const templateId = toolInput.template_id;
-      if (typeof templateId === 'string' && templateId !== '') {
+      if (template) {
         if (components.length > 0) {
           throw new Error(
             'A page built from a template takes its components from the template. Call create_page ' +
@@ -484,8 +561,9 @@ export async function executeTool(
           siteId: toolInput.site_id as string,
           branchId: toolInput.branch_id as string,
           documentPath,
-          templateId,
+          template,
           title: typeof rootProps.title === 'string' ? rootProps.title : undefined,
+          ...(documentPath === requestedPath ? {} : { movedFrom: requestedPath }),
         });
       }
 
@@ -600,6 +678,7 @@ export async function executeTool(
       if (search) url.searchParams.set('search', search);
       const res = await fetch(url.toString(), {
         headers: { Authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(OUTBOUND_TIMEOUT_MS),
       });
       if (!res.ok) {
         throw new Error(`Media worker returned ${res.status}: ${await res.text()}`);
@@ -608,12 +687,9 @@ export async function executeTool(
     }
 
     case 'fetch_page': {
-      const rawUrl = toolInput.url as string;
-      const safeUrl = validatePublicUrl(rawUrl);
-
-      const response = await fetch(safeUrl.toString());
+      const { response, url: fetchedUrl } = await fetchPublicPage(toolInput.url as string);
       if (!response.ok) {
-        throw new Error(`fetch_page: ${safeUrl} returned HTTP ${response.status}`);
+        throw new Error(`fetch_page: ${fetchedUrl.toString()} returned HTTP ${response.status}`);
       }
 
       const MAX_CHARS = 5000;

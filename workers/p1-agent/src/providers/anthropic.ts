@@ -4,6 +4,7 @@ import { parseDataUrl } from './vision.js';
 import { restApiBase, fetchOption } from './gateway.js';
 import type {
   ChatMessage,
+  StopReason,
   CompletionRequest,
   CompletionResult,
   CompletionUsage,
@@ -187,6 +188,17 @@ export function withRollingBreakpoint(messages: Anthropic.MessageParam[]): Anthr
   return out;
 }
 
+function mapAnthropicStopReason(reason: Anthropic.Message['stop_reason']): StopReason | undefined {
+  switch (reason) {
+    case 'end_turn': case 'stop_sequence': return 'stop';
+    case 'max_tokens': return 'length';
+    case 'tool_use': return 'tool_calls';
+    // Absent, not unrecognized: streaming reports none until the final message_delta.
+    case null: case undefined: return undefined;
+    default: return 'other';
+  }
+}
+
 /** Normalize an Anthropic response into the OpenAI-shaped {@link CompletionResult} the loop expects. */
 export function fromAnthropicResponse(msg: Anthropic.Message): CompletionResult {
   let content = '';
@@ -202,7 +214,12 @@ export function fromAnthropicResponse(msg: Anthropic.Message): CompletionResult 
       });
     }
   }
-  return { content, toolCalls, usage: mapAnthropicUsage(msg.usage) };
+  return {
+    content,
+    toolCalls,
+    usage: mapAnthropicUsage(msg.usage),
+    stopReason: mapAnthropicStopReason(msg.stop_reason),
+  };
 }
 
 function mapAnthropicUsage(usage: Anthropic.Usage | undefined): CompletionUsage | undefined {
@@ -242,6 +259,7 @@ export class AnthropicTransport implements ModelTransport {
     return {
       model: this.model,
       max_tokens: req.maxTokens,
+      ...(req.temperature !== undefined ? { temperature: req.temperature } : {}),
       system: [{ type: 'text', text: req.system, cache_control: EPHEMERAL }],
       tools: this.tools,
       messages: withRollingBreakpoint(toAnthropicMessages(req.messages)),

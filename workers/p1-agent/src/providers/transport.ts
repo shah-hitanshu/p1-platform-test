@@ -27,6 +27,8 @@ export interface CompletionRequest {
   messages: ChatMessage[];
   /** Max output tokens. */
   maxTokens: number;
+  /** Sampling temperature. Omitted leaves the provider default. */
+  temperature?: number;
 }
 
 /**
@@ -44,6 +46,12 @@ export interface CompletionUsage {
   cacheReadInputTokens?: number;
 }
 
+/**
+ * Why the model stopped, normalized across providers. `length` means the reply was cut at
+ * `maxTokens`, so a tool call it carries may be truncated mid-JSON.
+ */
+export type StopReason = 'stop' | 'length' | 'tool_calls' | 'other';
+
 /** A normalized completion, always in OpenAI shape regardless of the underlying provider. */
 export interface CompletionResult {
   /** Assistant text; `''` when the model produced no text. */
@@ -52,6 +60,7 @@ export interface CompletionResult {
   toolCalls: FnToolCall[];
   /** Token/cache accounting, when the provider reports it. */
   usage?: CompletionUsage;
+  stopReason?: StopReason;
 }
 
 /** Fired while a completion is in flight. Best-effort; the resolved result is authoritative. */

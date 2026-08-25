@@ -41,6 +41,13 @@ describe('toolCallLabel', () => {
     }))).toBe('Applying changes · 3 edits');
   });
 
+  it('counts the pages listed', () => {
+    expect(toolCallLabel(call({
+      name: 'list_documents',
+      result: { documents: ['about', 'contact-us'] },
+    }))).toBe('Checked the pages on this site · 2 pages');
+  });
+
   it('counts the page templates found', () => {
     expect(toolCallLabel(call({
       name: 'list_page_templates',
@@ -176,11 +183,11 @@ describe('toolCallOutcome — result shapes that are not obviously failures', ()
    * rendered a green check reading "Confirmed edit permission" for a denial, and the reason
    * was never shown at all.
    */
-  it('treats a denied edit permission as a failure', () => {
+  it('treats a denied edit permission as a denial, which is an answer and not a fault', () => {
     expect(toolCallOutcome(call({
       name: 'check_edit_permission',
       result: { canEdit: false, reason: 'Region reserved by another editor' },
-    }))).toBe('failed');
+    }))).toBe('denied');
   });
 
   it('still passes a granted edit permission', () => {
@@ -225,6 +232,80 @@ describe('toolCallLabel for abandoned calls', () => {
     // Past tense ("Applied changes") would assert a completion we never observed.
     expect(toolCallLabel(call({ name: 'apply_document_edits', status: 'abandoned' })))
       .toBe("Applying changes — didn't finish");
+  });
+});
+
+describe('a tool the user has not granted the page for', () => {
+  // The Worker refuses these before the call reaches the backend and flags the result, so the
+  // panel does not have to read the message to tell a refusal from a fault.
+  const refused = (name: string) => call({
+    name,
+    result: { error: '"contact-us" is not in your write set. Ask the user to add the page.', denied: true },
+  });
+
+  it('is a denial, not a failure', () => {
+    expect(toolCallOutcome(refused('check_edit_permission'))).toBe('denied');
+    expect(toolCallOutcome(refused('apply_document_edits'))).toBe('denied');
+  });
+
+  // "Couldn't check edit permission" says the check broke, and invites the retry its own reason
+  // rules out.
+  it('says the page cannot be edited rather than that the check failed', () => {
+    expect(toolCallLabel(refused('check_edit_permission'))).toBe("Can't edit this page");
+  });
+
+  // The refused page is rarely the one on screen, and "this page" reads as the one the user is
+  // looking at.
+  it('names the page it was refused for', () => {
+    const call_ = { ...refused('check_edit_permission'), input: { document_path: '/contact-us' } };
+    expect(toolCallLabel(call_)).toBe("Can't edit this page · contact-us");
+  });
+
+  // The page, not the tool's own detail: nothing was applied, so a count of edits would claim
+  // work this call did not do.
+  it('names the page rather than the work it did not do', () => {
+    const call_ = {
+      ...refused('apply_document_edits'),
+      input: { document_path: 'contact-us', operations: [{}, {}, {}] },
+    };
+    expect(toolCallLabel(call_)).toBe("Couldn't apply changes · contact-us");
+  });
+
+  it('keeps an action tool\'s wording, which a refusal does not make untrue', () => {
+    expect(toolCallLabel(refused('apply_document_edits'))).toBe("Couldn't apply changes");
+  });
+
+  it('still shows the reason, which names the page and how to grant it', () => {
+    expect(toolCallNote(refused('check_edit_permission')))
+      .toContain('not in your write set');
+  });
+
+  // Otherwise a broken backend reads as a permission the user could grant by adding a page.
+  it('leaves a genuine fault a failure', () => {
+    const broken = call({ name: 'check_edit_permission', result: { error: 'CSS backend returned 500' } });
+
+    expect(toolCallOutcome(broken)).toBe('failed');
+    expect(toolCallLabel(broken)).toBe("Couldn't check edit permission");
+  });
+});
+
+describe('toolCallLabel for create_page', () => {
+  // A template places the page under its route shape, so the requested path is not necessarily
+  // where the page is — and this row is where the user reads it.
+  it('shows the path the page landed on, not the one asked for', () => {
+    expect(toolCallLabel(call({
+      name: 'create_page',
+      input: { document_path: 'hello-world' },
+      result: { documentId: 'd1', documentPath: 'blog/hello-world' },
+    }))).toBe('Created the page · blog/hello-world');
+  });
+
+  it('falls back to the requested path while the call is still in flight', () => {
+    expect(toolCallLabel(call({
+      name: 'create_page',
+      status: 'running',
+      input: { document_path: 'hello-world' },
+    }))).toBe('Creating the page · hello-world');
   });
 });
 

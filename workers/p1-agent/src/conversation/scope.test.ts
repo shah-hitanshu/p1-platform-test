@@ -1,11 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import type { ChatContext } from '../types.js';
 import {
+  PageNotGrantedError,
+  assertInScope,
   assertWritable,
   createdDocumentPath,
   isWriteSetScoped,
   isWriteTool,
   normalizeDocumentPath,
+  toolErrorResult,
   withCreatedPage,
   writableDocuments,
 } from './scope.js';
@@ -100,6 +103,30 @@ describe('writableDocuments', () => {
   });
 });
 
+describe('assertInScope', () => {
+  const context: ChatContext = { ...base, writeSet: ['about'] };
+
+  // `assertWritable` returns early for a read, so this is the only thing checking the ids one
+  // carries.
+  it('refuses a read aimed at another site', () => {
+    expect(() => assertInScope({ ...writeAt('about'), site_id: 'site-2' }, context))
+      .toThrow('Not your site');
+  });
+
+  it('refuses a read aimed at another branch', () => {
+    expect(() => assertInScope({ ...writeAt('about'), branch_id: 'other' }, context))
+      .toThrow('Not your branch');
+  });
+
+  it('allows the session\'s own site and branch', () => {
+    expect(() => assertInScope(writeAt('anywhere'), context)).not.toThrow();
+  });
+
+  it('allows a tool that names neither', () => {
+    expect(() => assertInScope({ url: 'https://example.com' }, context)).not.toThrow();
+  });
+});
+
 describe('assertWritable', () => {
   const context: ChatContext = { ...base, writeSet: ['about', 'blog/hello'] };
 
@@ -122,6 +149,21 @@ describe('assertWritable', () => {
       expect(() => assertWritable('apply_document_edits', writeAt(spelling), context)).not.toThrow();
     },
   );
+
+  // The transcript reports a refusal as a permission state rather than a fault, and it tells
+  // them apart by type — an error message is prose, and matching on it breaks on a reword.
+  it.each(WRITE_TOOLS)('refuses %s as a page the user has not granted', tool => {
+    expect(() => assertWritable(tool, writeAt('somewhere-else'), context))
+      .toThrow(PageNotGrantedError);
+  });
+
+  // The model sent the wrong branch or site, which is its mistake to fix, not the user's.
+  it('does not call a stale branch or site a permission the user can grant', () => {
+    expect(() => assertWritable('apply_document_edits', { ...writeAt('about'), branch_id: 'other' }, context))
+      .not.toThrow(PageNotGrantedError);
+    expect(() => assertWritable('apply_document_edits', { ...writeAt('about'), site_id: 'site-2' }, context))
+      .not.toThrow(PageNotGrantedError);
+  });
 
   it('refuses a write aimed at another branch of an allowed path', () => {
     const input = { ...writeAt('about'), branch_id: 'some-other-branch' };
@@ -217,5 +259,21 @@ describe('classifying tools', () => {
   it('create_page writes, but is not held to the write set', () => {
     expect(isWriteTool('create_page')).toBe(true);
     expect(isWriteSetScoped('create_page')).toBe(false);
+  });
+});
+
+describe('toolErrorResult', () => {
+  it('marks a page the user has not granted, so the transcript need not read the message', () => {
+    expect(toolErrorResult(new PageNotGrantedError('"about" is not in your write set.')))
+      .toEqual({ error: '"about" is not in your write set.', denied: true });
+  });
+
+  it('leaves an ordinary failure unmarked', () => {
+    expect(toolErrorResult(new Error('CCR backend returned 500')))
+      .toEqual({ error: 'CCR backend returned 500' });
+  });
+
+  it('carries a thrown non-error through as text', () => {
+    expect(toolErrorResult('boom')).toEqual({ error: 'boom' });
   });
 });

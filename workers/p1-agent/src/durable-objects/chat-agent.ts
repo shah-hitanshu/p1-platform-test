@@ -1,15 +1,26 @@
 import { Agent } from 'agents';
 import type { AgentContext, Connection, ConnectionContext, WSMessage } from 'agents';
 import { getLogger } from '@pantheon-systems/p1-telemetry';
+import { pinnedSlotIds } from '../ccr/pinned-slots.js';
 import { attachmentNames, readAttachments } from '../conversation/context.js';
 import type { Env } from '../env.js';
 import type { ChatContext, IncomingMessage, OutgoingMessage, TurnFrame, ValidatedUser } from '../types.js';
 import { McpApiClient } from '../ccr/api-client.js';
 import { CCR_TOOLS, WEB_TOOLS, executeTool } from '../tools/execute-tool.js';
 import { validateCCRToken } from '../auth.js';
-import { createdDocumentPath, withCreatedPage } from '../conversation/scope.js';
+import { createdDocumentPath, toolErrorResult, withCreatedPage } from '../conversation/scope.js';
 import type { StoredMessage } from '../conversation/history.js';
 import { appendTurn, forProvider, sanitizeHistory, trimForHistory, buildRestoredHistory, turnMayCommit, turnHasOutput } from '../conversation/history.js';
+import {
+  MAX_TURN_STEPS,
+  STEP_LIMIT_MESSAGE,
+  TRUNCATED_NUDGE,
+  afterCompletion,
+  atStepLimit,
+  trackedEditSession,
+  type TrackedEditSession,
+} from '../conversation/turn-step.js';
+import { modelSettings } from '../providers/model-settings.js';
 import {
   createTransport,
   apiErrorStatus,
@@ -43,40 +54,50 @@ interface AgentState {
   clearSeq?: number;
 }
 
-/** The one call {@link resolveFollowsTemplate} needs, so a test can stand in for the client. */
-interface DocumentLookup {
+/** The two calls {@link resolvePinnedSlots} needs, so a test can stand in for the client. */
+interface TemplateLookup {
   lookupDocumentByPath(
     siteId: string,
     documentPath: string,
   ): Promise<{ templateId?: string } | null>;
+  getTemplate(siteId: string, branchId: string, templateId: string): Promise<unknown>;
 }
 
 /**
- * Whether the turn's target page is bound to a page template, which changes what editing it
- * safely means. Read from the backend rather than the context, because the context is assembled
- * in the browser and this decides an instruction the agent is told to obey.
+ * The slots the turn's target page has pinned by its template — the components the editor
+ * itself refuses to delete or drag. Everything else on the page is the author's to remove.
+ *
+ * Read from the backend rather than the context, because the context is assembled in the
+ * browser and this decides an instruction the agent is told to obey.
+ *
+ * `cache` holds the document-to-template linkage, fixed when the document is created. The pin
+ * map is not cached: an editor can pin or unpin a slot mid-conversation.
  */
-export async function resolveFollowsTemplate(
-  api: DocumentLookup,
-  context: Pick<ChatContext, 'siteId' | 'documentPath'>,
-  cache: Map<string, boolean>,
-): Promise<boolean> {
-  const { siteId, documentPath } = context;
-  if (!siteId || !documentPath) return false;
-
-  const known = cache.get(documentPath);
-  if (known !== undefined) return known;
+export async function resolvePinnedSlots(
+  api: TemplateLookup,
+  context: Pick<ChatContext, 'siteId' | 'branchId' | 'documentPath'>,
+  cache: Map<string, string | null>,
+): Promise<string[]> {
+  const { siteId, branchId, documentPath } = context;
+  if (!siteId || !branchId || !documentPath) return [];
 
   try {
-    const doc = await api.lookupDocumentByPath(siteId, documentPath);
-    const follows = !!doc?.templateId;
-    cache.set(documentPath, follows);
-    return follows;
+    let templateId = cache.get(documentPath);
+    if (templateId === undefined) {
+      const doc = await api.lookupDocumentByPath(siteId, documentPath);
+      templateId = doc?.templateId ?? null;
+      cache.set(documentPath, templateId);
+    }
+    if (templateId === null) return [];
+
+    return pinnedSlotIds(await api.getTemplate(siteId, branchId, templateId));
   } catch (err) {
     // Losing the note beats failing the turn, the same trade the post-apply structure check
-    // makes. Left uncached so one failure doesn't mute it for the rest of the conversation.
-    console.warn('[template] lookup failed, omitting the template note:', err);
-    return false;
+    // makes. A page whose template cannot be read is one the editor also leaves unlocked.
+    getLogger().warn('template read failed; omitting the pinned-slot note', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return [];
   }
 }
 
@@ -93,10 +114,10 @@ export class ChatAgent extends Agent<Env, AgentState> {
   }
 
   /**
-   * Cache for {@link resolveFollowsTemplate}, keyed by path. Lives as long as the object: a
-   * document's `templateId` is only accepted when it is created, so neither answer goes stale.
+   * Which template each path is bound to, `null` for none. Lives as long as the object: a
+   * document's `templateId` is only accepted when it is created, so the linkage cannot go stale.
    */
-  private followsTemplateByPath = new Map<string, boolean>();
+  private templateIdByPath = new Map<string, string | null>();
 
   /**
    * The SDK's state protocol sends all of `state` to a connection before any message is
@@ -154,17 +175,50 @@ export class ChatAgent extends Agent<Env, AgentState> {
     }
 
     // Declared before the try so the catch can reach them for cleanup.
-    interface ActiveEditSession {
-      siteId: string;
-      branchId: string;
-      documentPath: string;
-      editSessionId: string;
-    }
-    let activeEditSession: ActiveEditSession | null = null;
+    let activeEditSession: TrackedEditSession | null = null;
     let ccrApi: McpApiClient | null = null;
     let turnAbort: AbortController | null = null;
     // Stays undefined on the get_history/clear paths, which are not turn-scoped.
     let turnId: string | undefined;
+
+    // Only this turn's own entries. They are appended to whatever is in state when the
+    // turn ends, rather than rewriting a snapshot taken before it began — the model
+    // streams for many seconds, and a clear or another tab's turn can commit meanwhile.
+    const newEntries: StoredMessage[] = [];
+    // Both set once the turn is past setup; until then there is nothing to commit.
+    let startClearSeq = 0;
+    let ownerId: string | undefined;
+    let committed = false;
+
+    /**
+     * Append this turn to state as it stands now, and bind the conversation to the
+     * authenticated user so get_history/clear can be authorized against an owner.
+     *
+     * Out here because the failure path needs it too: a turn that threw on its eighth model
+     * call has already applied seven steps of edits, and dropping its entries leaves the
+     * conversation denying work the user can see on the page.
+     */
+    const commitTurn = async (): Promise<void> => {
+      if (committed || ownerId === undefined) return;
+      if (!turnMayCommit(this.state.clearSeq, startClearSeq)) {
+        getLogger().info('turn discarded: the conversation was cleared while it ran');
+        return;
+      }
+      if (!turnHasOutput(newEntries)) {
+        getLogger().info('turn not stored: it ended before producing a reply');
+        return;
+      }
+      // Set before the write, not after: `appendTurn` reads live state, so the catch retrying
+      // a setState that failed late would append this turn twice.
+      committed = true;
+      await this.setState({
+        conversationHistory: appendTurn(this.state.conversationHistory, newEntries),
+        ownerId,
+        // setState replaces rather than merges, so an omitted field is a deletion. Dropping
+        // clearSeq here reverted it to undefined, which the next turn read as a clear.
+        clearSeq: startClearSeq,
+      });
+    };
 
     /** Send a frame stamped with this turn, so the client can attribute it. */
     const sendTurn = (message: TurnFrame): void =>
@@ -286,6 +340,7 @@ export class ChatAgent extends Agent<Env, AgentState> {
       const model = this.env.AGENT_MODEL || DEFAULT_MODEL;
       // One answer for both the attachment and the prompt, so they cannot disagree.
       const seesImages = modelSeesImages(this.env, model, DEFAULT_MODEL);
+      const settings = modelSettings(model);
       const transport = createTransport({
         accountId: this.env.AI_GATEWAY_ACCOUNT_ID,
         gatewayId: this.env.AI_GATEWAY_NAME,
@@ -299,9 +354,9 @@ export class ChatAgent extends Agent<Env, AgentState> {
       const contextNote = buildContextNote(context, {
         // Skipped while a page is pending: there is no document to look up yet, and the note's
         // pending-page branch carries its own instructions.
-        followsTemplate: context.pendingPage
-          ? false
-          : await resolveFollowsTemplate(ccrApi, context, this.followsTemplateByPath),
+        pinnedSlots: context.pendingPage
+          ? []
+          : await resolvePinnedSlots(ccrApi, context, this.templateIdByPath),
         seesImages,
       });
       const userContent = contextNote ? `${contextNote}\n\n${message}` : message;
@@ -315,17 +370,14 @@ export class ChatAgent extends Agent<Env, AgentState> {
       // Read once the setup awaits are done, so this measures a clear landing during the
       // work itself. That is the case worth discarding a turn over: a clear before the work
       // started is simply an earlier event, and this turn belongs after it.
-      const startClearSeq = this.state.clearSeq ?? 0;
+      startClearSeq = this.state.clearSeq ?? 0;
+      ownerId = user.id;
 
       // Sanitize on load — drops malformed/legacy entries persisted before the Workers AI
       // migration so old sessions self-heal instead of crashing.
       // forProvider drops the attachment names we persist: they are for replaying the
       // conversation, and a provider rejects properties it did not define.
       const history: ChatMessage[] = forProvider(sanitizeHistory([...this.state.conversationHistory]));
-      // Only this turn's own entries. They are appended to whatever is in state when the
-      // turn ends, rather than rewriting a snapshot taken before it began — the model
-      // streams for many seconds, and a clear or another tab's turn can commit meanwhile.
-      const newEntries: StoredMessage[] = [];
       // Images ride on the model-facing message only — `newEntries` is what gets persisted —
       // so a screenshot is looked at once rather than re-sent on every later turn.
       // The turn answers as though a dropped file had never been attached, so both causes are
@@ -361,14 +413,21 @@ export class ChatAgent extends Agent<Env, AgentState> {
 
       // Agentic loop — keep calling the model until it stops requesting tools. The
       // transport normalizes any provider's response to OpenAI-shaped tool calls.
-      while (true) {
+      let stoppedAtStepLimit = false;
+      for (let step = 0; ; step++) {
+        if (atStepLimit(step, MAX_TURN_STEPS)) {
+          stoppedAtStepLimit = true;
+          getLogger().warn('turn stopped at the step limit', { steps: step });
+          break;
+        }
         let completion: CompletionResult;
         try {
           completion = await transport.stream(
             {
               system: SYSTEM_PROMPT,
               messages: history,
-              maxTokens: 8192,
+              maxTokens: settings.maxOutputTokens,
+              temperature: settings.temperature,
             },
             {
               onText: delta => sendTurn({ type: 'token', content: delta }),
@@ -386,7 +445,9 @@ export class ChatAgent extends Agent<Env, AgentState> {
           }
           throw err;
         }
-        const { content, toolCalls, usage } = completion;
+        const { content, usage } = completion;
+        const next = afterCompletion(completion);
+        const toolCalls = next.kind === 'run_tools' ? next.toolCalls : [];
 
         // Prompt-cache accounting for observability. Anthropic reports write+read;
         // native/OpenAI/Gemini report a read count only.
@@ -405,7 +466,18 @@ export class ChatAgent extends Agent<Env, AgentState> {
         history.push(assistantMsg);
         newEntries.push(assistantMsg);
 
-        if (toolCalls.length === 0) break;
+        if (next.kind === 'continue_truncated') {
+          getLogger().warn('completion cut at the output limit', {
+            max_output_tokens: settings.maxOutputTokens,
+            dropped_tool_calls: next.toolCallsDropped,
+          });
+          // `history` only, never `newEntries`: the user did not say this, and persisting it
+          // would replay as a message they never sent.
+          history.push({ role: 'user', content: TRUNCATED_NUDGE });
+          continue;
+        }
+
+        if (next.kind === 'complete') break;
 
         // Execute each tool call and append its result to history.
         for (const tc of toolCalls) {
@@ -434,17 +506,15 @@ export class ChatAgent extends Agent<Env, AgentState> {
 
             // Track edit session lifecycle for cleanup on failure
             if (tc.function.name === 'start_edit_session') {
-              activeEditSession = {
-                siteId: input.site_id as string,
-                branchId: input.branch_id as string,
-                documentPath: input.document_path as string,
-                editSessionId: (result as { editSessionId: string }).editSessionId,
-              };
+              activeEditSession = trackedEditSession(input, result);
+              if (activeEditSession === null) {
+                getLogger().warn('start_edit_session named no session; cleanup cannot close it');
+              }
             } else if (tc.function.name === 'complete_edit_session' || tc.function.name === 'abort_edit_session') {
               activeEditSession = null;
             }
           } catch (err) {
-            result = { error: err instanceof Error ? err.message : String(err) };
+            result = toolErrorResult(err);
             isError = true;
           }
 
@@ -467,39 +537,24 @@ export class ChatAgent extends Agent<Env, AgentState> {
         if (cancelled) break;
       }
 
-      // A cancelled turn may have left an edit session open. Closing it matters more here
+      // A turn stopped early may have left an edit session open. Closing it matters more here
       // than on the error path: the user is still working in the editor and a stale
       // session blocks their next edit.
-      if (cancelled && activeEditSession && ccrApi) {
+      if ((cancelled || stoppedAtStepLimit) && activeEditSession && ccrApi) {
         try {
-          await ccrApi.abortAgentEdit({ ...activeEditSession, reason: 'Cancelled by user' });
+          // Recorded on the CCR session, so it has to say which of the two actually happened.
+          const reason = cancelled ? 'Cancelled by user' : 'Stopped at the step limit';
+          await ccrApi.abortAgentEdit({ ...activeEditSession, reason });
           activeEditSession = null;
         } catch {
           // Ignore cleanup failures — the cancellation itself still stands.
         }
       }
 
-      // Persist this turn by appending it to whatever is in state NOW (keeping the last 20
-      // entries to manage DO storage), and bind the conversation to the authenticated user
-      // so subsequent get_history/clear calls can be authorized against this owner.
-      //
-      // A clear that landed while the model was streaming wins outright: rewriting state
-      // from this turn would resurrect the whole conversation the user just deleted.
-      if (!turnMayCommit(this.state.clearSeq, startClearSeq)) {
-        console.log('[history] turn discarded: conversation was cleared while it ran');
-      } else if (!turnHasOutput(newEntries)) {
-        console.log('[history] turn not stored: it ended before producing a reply');
-      } else {
-        await this.setState({
-          conversationHistory: appendTurn(this.state.conversationHistory, newEntries),
-          ownerId: user.id,
-          // setState replaces rather than merges, so an omitted field is a deletion. Dropping
-          // clearSeq here reverted it to undefined, which the next turn read as a clear.
-          clearSeq: startClearSeq,
-        });
-      }
+      await commitTurn();
 
-      sendTurn(cancelled ? { type: 'cancelled' } : { type: 'done' });
+      if (stoppedAtStepLimit) sendTurn({ type: 'error', error: STEP_LIMIT_MESSAGE });
+      else sendTurn(cancelled ? { type: 'cancelled' } : { type: 'done' });
     } catch (err) {
       // Best-effort abort any open edit session before reporting the error
       if (activeEditSession && ccrApi) {
@@ -512,6 +567,13 @@ export class ChatAgent extends Agent<Env, AgentState> {
           // Ignore cleanup failures — primary error takes precedence
         }
       }
+      // Best-effort: a commit that itself fails must not replace the error the user needs.
+      try {
+        await commitTurn();
+      } catch (commitErr) {
+        getLogger().error('could not store a failed turn', commitErr);
+      }
+
       // A cancel landing between two awaits surfaces here rather than at the stream call.
       // Report it as a cancellation: the client is already showing the turn as stopped,
       // and an error toast over a deliberate Stop reads as a bug.
