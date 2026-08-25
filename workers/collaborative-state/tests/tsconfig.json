@@ -10,5 +10,5 @@
     // guard on every one buys nothing — the assertion that follows is the check.
     "noUncheckedIndexedAccess": false
   },
-  "include": ["**/*.ts", "../src/**/*.ts"]
+  "include": ["**/*.ts", "../src/**/*.ts", "../scripts/**/*.ts"]
 }

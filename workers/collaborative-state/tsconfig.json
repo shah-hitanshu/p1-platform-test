@@ -46,6 +46,6 @@
       "@cloudflare/workers-types": ["./src/types/cloudflare-workers-types.d.ts"]
     }
   },
-  "include": ["src/**/*.ts"],
+  "include": ["src/**/*.ts", "scripts/**/*.ts"],
   "exclude": ["node_modules", "dist"]
 }

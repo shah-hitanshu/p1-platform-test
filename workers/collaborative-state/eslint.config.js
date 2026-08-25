@@ -9,6 +9,6 @@ export default [
   }),
   ...testsConfig,
   {
-    ignores: ['node_modules/**', 'dist/**', '*.js'],
+    ignores: ['node_modules/**', 'dist/**', '**/*.js'],
   },
 ];
