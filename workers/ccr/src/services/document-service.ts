@@ -445,6 +445,36 @@ export async function documentExists(
 }
 
 /**
+ * How many of a site's documents hold content in each locale, keyed by the tag
+ * stored on the document. Documents whose language is unrecorded are counted
+ * under no tag.
+ *
+ * Holding content means not archived. A page deleted through the editor is
+ * recorded as a tombstone version and leaves archived_at NULL, so it is still
+ * counted; which of the two removal mechanisms marks a page as gone is what
+ * PCC-3618 settles. The count is site-wide rather than branch-scoped, so a
+ * translation on an unmerged branch counts the same as published content.
+ *
+ * @param siteId - The site ID
+ * @returns Document counts keyed by locale tag
+ */
+export async function countDocumentsByLocale(
+  siteId: string,
+): Promise<Record<string, number>> {
+  const result = await query<{ locale: string; count: string }>(
+    `SELECT locale, COUNT(*) as count
+     FROM app.documents
+     WHERE site_id = $1 AND archived_at IS NULL AND locale IS NOT NULL
+     GROUP BY locale`,
+    [siteId],
+  );
+
+  return Object.fromEntries(
+    result.rows.map((row) => [row.locale, parseInt(row.count, 10)]),
+  );
+}
+
+/**
  * Archives (soft-deletes) a document.
  * The document path becomes available for reuse after archival.
  *

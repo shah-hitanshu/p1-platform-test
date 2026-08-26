@@ -49,6 +49,7 @@
     "@pantheon-systems/p1-telemetry": "workspace:*",
     "ajv": "^8.18.0",
     "aws4fetch": "^1.0.20",
+    "cldr-localenames-full": "^48.2.0",
     "fast-json-patch": "^3.1.1",
     "fflate": "^0.8.2",
     "jose": "^5.10.0",

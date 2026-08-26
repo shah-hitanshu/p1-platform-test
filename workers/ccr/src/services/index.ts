@@ -123,6 +123,7 @@ export {
   deleteDocument,
   listDocuments,
   documentExists,
+  countDocumentsByLocale,
   archiveDocument,
   restoreDocument,
   // Branch-scoped document operations

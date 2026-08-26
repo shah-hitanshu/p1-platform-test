@@ -9,6 +9,7 @@ vi.mock('../../src/services/site-settings-service', async () => {
     ...actual,
     getSiteSettings: vi.fn(),
     updateSiteSettings: vi.fn(),
+    localeCountsForRegistry: vi.fn(),
   };
 });
 
@@ -17,6 +18,7 @@ vi.mock('../../src/services', async () => {
   return {
     ...actual,
     getMainBranch: vi.fn(),
+    countDocumentsByLocale: vi.fn(),
   };
 });
 
@@ -297,6 +299,130 @@ describe('Site Settings API Routes', () => {
       });
 
       expect(response.status).toBe(403);
+    });
+  });
+
+  describe('locale registry', () => {
+    const locales = {
+      markets: ['de', 'ja'],
+      policy: 'fallback' as const,
+    };
+
+    async function mockMainBranch(): Promise<void> {
+      const services = await import('../../src/services');
+      vi.mocked(services.getMainBranch).mockResolvedValue(makeBranch({
+        id: 'branch-main',
+        siteId: 'site-123',
+        name: 'main',
+        isMain: true,
+        status: 'active',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      }));
+    }
+
+    it('passes the registry through to the settings write', async () => {
+      const { handleSiteSettingsRoutes } = await import('../../src/routes/site-settings-api');
+      const settingsService = await import('../../src/services/site-settings-service');
+      await mockMainBranch();
+
+      vi.mocked(settingsService.updateSiteSettings).mockResolvedValue({
+        cacheTtlMain: 60,
+        cacheTtlBranch: 5,
+        locales,
+      });
+
+      const request = new Request('https://api.example.com/api/sites/site-123/settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ locales }),
+      });
+
+      const response = await handleSiteSettingsRoutes(request, {
+        siteId: 'site-123',
+        principal: mockPrincipal,
+      });
+
+      expect(response.status).toBe(200);
+      expect(settingsService.updateSiteSettings).toHaveBeenCalledWith('site-123', { locales });
+      const body = await readJson(response);
+      expect(body.settings).toMatchObject({ locales });
+    });
+
+    it('reports how many documents each locale holds for a localized site', async () => {
+      const { handleSiteSettingsRoutes } = await import('../../src/routes/site-settings-api');
+      const services = await import('../../src/services');
+      const settingsService = await import('../../src/services/site-settings-service');
+      await mockMainBranch();
+
+      vi.mocked(settingsService.getSiteSettings).mockResolvedValue({
+        cacheTtlMain: 60,
+        cacheTtlBranch: 5,
+        locales,
+      });
+      vi.mocked(services.countDocumentsByLocale).mockResolvedValue({ de: 12, ja: 4 });
+      vi.mocked(settingsService.localeCountsForRegistry).mockReturnValue({ de: 12, ja: 4 });
+
+      const request = new Request('https://api.example.com/api/sites/site-123/settings');
+      const response = await handleSiteSettingsRoutes(request, {
+        siteId: 'site-123',
+        principal: mockPrincipal,
+      });
+
+      expect(response.status).toBe(200);
+      const body = await readJson(response);
+      expect(body.localeCounts).toEqual({ de: 12, ja: 4 });
+      expect(settingsService.localeCountsForRegistry).toHaveBeenCalledWith(
+        locales,
+        { de: 12, ja: 4 },
+      );
+    });
+
+    it('still serves the settings when the counts are unavailable', async () => {
+      const { handleSiteSettingsRoutes } = await import('../../src/routes/site-settings-api');
+      const services = await import('../../src/services');
+      const settingsService = await import('../../src/services/site-settings-service');
+      await mockMainBranch();
+
+      vi.mocked(settingsService.getSiteSettings).mockResolvedValue({
+        cacheTtlMain: 60,
+        cacheTtlBranch: 5,
+        locales,
+      });
+      vi.mocked(services.countDocumentsByLocale).mockRejectedValue(new Error('db down'));
+
+      const request = new Request('https://api.example.com/api/sites/site-123/settings');
+      const response = await handleSiteSettingsRoutes(request, {
+        siteId: 'site-123',
+        principal: mockPrincipal,
+      });
+
+      expect(response.status).toBe(200);
+      const body = await readJson(response);
+      expect(body.settings).toMatchObject({ locales });
+      expect(body.localeCounts).toBeUndefined();
+    });
+
+    it('leaves the counts out for a site with no locales', async () => {
+      const { handleSiteSettingsRoutes } = await import('../../src/routes/site-settings-api');
+      const services = await import('../../src/services');
+      const settingsService = await import('../../src/services/site-settings-service');
+      await mockMainBranch();
+
+      vi.mocked(settingsService.getSiteSettings).mockResolvedValue({
+        cacheTtlMain: 60,
+        cacheTtlBranch: 5,
+      });
+
+      const request = new Request('https://api.example.com/api/sites/site-123/settings');
+      const response = await handleSiteSettingsRoutes(request, {
+        siteId: 'site-123',
+        principal: mockPrincipal,
+      });
+
+      const body = await readJson(response);
+      expect(body.localeCounts).toBeUndefined();
+      expect(services.countDocumentsByLocale).not.toHaveBeenCalled();
     });
   });
 

@@ -8,13 +8,18 @@
  * PATCH /api/sites/:siteId/settings  - Update site settings
  */
 
+import { getLogger } from '@pantheon-systems/p1-telemetry';
 import type { AuthenticatedPrincipal } from '../types';
 import {
   getSiteSettings,
   updateSiteSettings,
+  localeCountsForRegistry,
 } from '../services/site-settings-service';
-import type { SiteSettingsUpdate } from '../services/site-settings-service';
-import { getMainBranch, HttpError } from '../services';
+import type {
+  SiteLocales,
+  SiteSettingsUpdate,
+} from '../services/site-settings-service';
+import { countDocumentsByLocale, getMainBranch, HttpError } from '../services';
 import { assertPermission } from '../auth/authorization';
 
 /**
@@ -87,7 +92,27 @@ async function handleGetSettings(
 ): Promise<Response> {
   await assertPermission(principal, siteId, mainBranchId, 'canView');
   const settings = await getSiteSettings(siteId);
-  return jsonResponse({ settings });
+
+  // A localized site also gets the per-locale document counts, which is what
+  // tells an admin what dropping a market would strand. They decorate one
+  // interstitial, so losing them leaves the rest of the settings readable.
+  if (settings?.locales === undefined) {
+    return jsonResponse({ settings });
+  }
+
+  let localeCounts: Record<string, number> | undefined;
+  try {
+    localeCounts = localeCountsForRegistry(
+      settings.locales,
+      await countDocumentsByLocale(siteId),
+    );
+  } catch (error) {
+    getLogger().error('Locale document counts unavailable', error, { siteId });
+  }
+
+  return jsonResponse(
+    localeCounts === undefined ? { settings } : { settings, localeCounts },
+  );
 }
 
 async function handleUpdateSettings(
@@ -105,6 +130,7 @@ async function handleUpdateSettings(
   if ('cacheTtlBranch' in body) filtered.cacheTtlBranch = body.cacheTtlBranch as number | null;
   if ('ogImage' in body) filtered.ogImage = body.ogImage as string | null;
   if ('ogLocale' in body) filtered.ogLocale = body.ogLocale as string | null;
+  if ('locales' in body) filtered.locales = body.locales as SiteLocales | null;
 
   const settings = await updateSiteSettings(siteId, filtered);
 

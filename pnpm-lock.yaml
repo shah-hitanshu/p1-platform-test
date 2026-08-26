@@ -572,6 +572,9 @@ importers:
       aws4fetch:
         specifier: ^1.0.20
         version: 1.0.20
+      cldr-localenames-full:
+        specifier: ^48.2.0
+        version: 48.2.0(cldr-core@48.2.0)
       fast-json-patch:
         specifier: ^3.1.1
         version: 3.1.1
@@ -3198,6 +3201,14 @@ packages:
 
   classnames@2.5.1:
     resolution: {integrity: sha512-saHYOzhIQs6wy2sVxTM6bUDsQO4F50V9RQ22qBpEdCW+I+/Wmke2HOl6lS6dTpdxVhb88/I6+Hs+438c3lfUow==}
+
+  cldr-core@48.2.0:
+    resolution: {integrity: sha512-zfmLothncSwfv2jlevoSrgI2VGgH8SDGHXst6jUEotHA8nq9Igeg9jzdJDFtBso9pgJuG89DK16TzrmZDdo2Bg==}
+
+  cldr-localenames-full@48.2.0:
+    resolution: {integrity: sha512-4o0paYDz0UXhfhChAVFkmVl2CP0YTSEqE6WrC0fNafaSC5u5DAXphxH3SZ1Ujczarikr8DToKZfiok6EqWLdNQ==}
+    peerDependencies:
+      cldr-core: 48.2.0
 
   client-only@0.0.1:
     resolution: {integrity: sha512-IV3Ou0jSMzZrd3pZ48nLkT9DA7Ag1pnPzaiQhpW7c3RbcqqzvzzVu+L8gfqMp/8IM2MQtSiqaCxrrcfu8I8rMA==}
@@ -8525,7 +8536,7 @@ snapshots:
       obug: 2.1.4
       std-env: 4.2.0
       tinyrainbow: 3.1.0
-      vitest: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@20.19.43)(@vitest/coverage-v8@4.1.10)(happy-dom@20.11.0)(jsdom@30.0.1)(vite@8.0.16(@types/node@20.19.43)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))
+      vitest: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(happy-dom@20.11.0)(jsdom@30.0.1)(vite@8.0.16(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))
 
   '@vitest/expect@3.2.7':
     dependencies:
@@ -8967,6 +8978,12 @@ snapshots:
       readdirp: 4.1.2
 
   classnames@2.5.1: {}
+
+  cldr-core@48.2.0: {}
+
+  cldr-localenames-full@48.2.0(cldr-core@48.2.0):
+    dependencies:
+      cldr-core: 48.2.0
 
   client-only@0.0.1: {}
 
