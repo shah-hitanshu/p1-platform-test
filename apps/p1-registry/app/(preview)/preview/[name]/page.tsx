@@ -1,5 +1,5 @@
 import { PreviewRenderer } from '../../../../_components/PreviewRenderer';
-import { previewNames } from '../../../../lib/preview-map';
+import { previewNames } from '../../../../lib/preview-names';
 
 export function generateStaticParams() {
   return previewNames.map((name) => ({ name }));

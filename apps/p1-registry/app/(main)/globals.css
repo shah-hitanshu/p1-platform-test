@@ -1,15 +1,22 @@
 *, *::before, *::after { box-sizing: border-box; }
 
 :root {
-  --fg: #1a1523;
-  --fg-muted: #6e6887;
-  --border: #e8e5f0;
+  --p1-black: #23232D;
+  --p1-purple: #5F41E5;
+  --p1-purple-light: #D0C6FF;
+  --p1-yellow: #FFDC28;
+
+  --fg: #23232D;
+  --fg-muted: #6b6880;
+  --border: #e5e2f0;
+  --border-strong: #c4bfda;
   --surface: #ffffff;
-  --surface-subtle: #f8f7fb;
-  --accent: oklch(0.55 0.21 280);
+  --surface-subtle: #f7f6fb;
+  --accent: var(--p1-purple);
   --radius-card: 0.75rem;
   --radius-pill: 9999px;
-  --font: Inter, system-ui, sans-serif;
+  --font: var(--font-inter, Inter, system-ui, sans-serif);
+  --font-display: var(--font-poppins, Poppins, system-ui, sans-serif);
 }
 
 body {
@@ -23,67 +30,175 @@ body {
 
 a { color: var(--accent); }
 
-/* ── Site shell ───────────────────────────── */
+/* ── Site shell ─────────────────────────────── */
 .p1-shell { display: flex; flex-direction: column; min-height: 100dvh; }
 
 .p1-header {
-  align-items: center;
+  background: var(--surface);
   border-bottom: 1px solid var(--border);
+  height: 4.5rem;
+}
+
+/* Full-bleed bar like the editor toolbar: brand near the left edge, nav near
+   the right, not indented to the content container below. */
+.p1-header__inner {
+  align-items: center;
   display: flex;
-  gap: 1.5rem;
+  height: 100%;
   justify-content: space-between;
-  padding: 1.125rem 2rem;
+  padding: 0 1.5rem;
+  width: 100%;
 }
 
 .p1-header__brand {
   align-items: center;
   color: var(--fg);
   display: flex;
-  font-size: 1.125rem;
-  font-weight: 700;
-  gap: 0.625rem;
-  letter-spacing: -0.02em;
+  gap: 0;
   text-decoration: none;
 }
 
 .p1-header__logo {
   display: block;
-  height: 2rem;
+  height: 2.25rem;
   width: auto;
 }
 
-.p1-header__nav { display: flex; gap: 1.5rem; align-items: center; }
-.p1-header__nav a {
-  color: var(--fg-muted);
-  font-size: 0.9375rem;
-  font-weight: 500;
-  text-decoration: none;
+.p1-header__brand-divider {
+  background: var(--border-strong);
+  display: block;
+  flex-shrink: 0;
+  height: 1.25rem;
+  margin: 0 0.875rem;
+  width: 1px;
 }
-.p1-header__nav a:hover { color: var(--fg); }
 
-.p1-main { flex: 1; padding: 2rem 1.5rem; max-width: 80rem; margin-inline: auto; width: 100%; }
+.p1-header__brand-label {
+  color: var(--fg);
+  font-family: var(--font-display);
+  font-size: 0.9375rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.p1-header__nav {
+  align-items: center;
+  display: flex;
+  gap: 0;
+}
+
+.p1-header__nav a {
+  border-radius: 0.375rem;
+  color: var(--fg-muted);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  padding: 0.25rem 0.375rem;
+  text-decoration: none;
+  transition: color 0.1s, background 0.1s;
+}
+.p1-header__nav a:hover { color: var(--fg); background: var(--surface-subtle); }
+
+.p1-header__nav-divider {
+  background: var(--border-strong);
+  display: block;
+  flex-shrink: 0;
+  height: 1rem;
+  margin: 0 0.25rem;
+  width: 1px;
+}
+
+.p1-main {
+  flex: 1;
+  margin-inline: auto;
+  max-width: 90rem;
+  padding: 2.5rem 4rem 4rem;
+  width: 100%;
+}
 
 .p1-footer {
   border-top: 1px solid var(--border);
   color: var(--fg-muted);
   font-size: 0.8125rem;
-  padding: 1.25rem 1.5rem;
+  padding: 1.25rem 4rem;
   text-align: center;
 }
 
-/* ── Hero intro ───────────────────────────── */
+/* ── Catalog intro ──────────────────────────── */
 .p1-catalog-intro { margin-bottom: 2rem; }
-.p1-catalog-intro h1 { font-size: clamp(1.5rem, 4vw, 2.5rem); font-weight: 800; margin: 0 0 0.5rem; letter-spacing: -0.03em; }
-.p1-catalog-intro p { color: var(--fg-muted); margin: 0 0 1.5rem; max-width: 40rem; }
+.p1-catalog-intro h1 {
+  font-family: var(--font-display);
+  font-size: clamp(1.75rem, 4vw, 2.75rem);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  margin: 0 0 0.5rem;
+}
+.p1-catalog-intro p { color: var(--fg-muted); margin: 0 0 1.5rem; max-width: 48rem; }
+.p1-catalog-intro p code {
+  background: var(--surface-subtle);
+  border: 1px solid var(--border);
+  border-radius: 0.3rem;
+  font-size: 0.875em;
+  padding: 0.1em 0.4em;
+}
 
-/* ── Category filter ──────────────────────── */
+/* ── Install commands ───────────────────────── */
+.p1-install-commands {
+  align-items: flex-start;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  max-width: 100%;
+}
+/* Each row hugs its command instead of stretching to a shared width. */
+.p1-install-commands__row {
+  align-items: center;
+  background: var(--p1-black);
+  border: none;
+  border-radius: 0.5rem;
+  display: flex;
+  gap: 0.75rem;
+  justify-content: flex-start;
+  max-width: 100%;
+  padding: 0.625rem 0.875rem;
+  width: fit-content;
+}
+.p1-install-commands__label {
+  color: #9b96b8;
+  flex-shrink: 0;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.p1-install-commands__code {
+  background: none;
+  border: none;
+  color: #e8e4ff;
+  font-size: 0.8125rem;
+  overflow: hidden;
+  padding: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.p1-install-commands__copy {
+  background: none;
+  border: none;
+  color: #9b96b8;
+  cursor: pointer;
+  flex-shrink: 0;
+  font-size: 0.875rem;
+  line-height: 1;
+  padding: 0;
+}
+.p1-install-commands__copy:hover { color: var(--p1-purple-light); }
+
+/* ── Category filter ────────────────────────── */
 .p1-cat-filter {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
-  margin-bottom: 1.75rem;
+  gap: 0.375rem;
+  margin-bottom: 1.5rem;
 }
-
 .p1-cat-filter__btn {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -92,9 +207,9 @@ a { color: var(--accent); }
   font-family: inherit;
   font-size: 0.8125rem;
   font-weight: 500;
-  padding: 0.375rem 0.875rem;
+  padding: 0.3125rem 0.875rem;
   text-transform: capitalize;
-  transition: background 0.1s, border-color 0.1s;
+  transition: background 0.1s, border-color 0.1s, color 0.1s;
 }
 .p1-cat-filter__btn:hover { border-color: var(--accent); color: var(--accent); }
 .p1-cat-filter__btn[data-active] {
@@ -103,14 +218,14 @@ a { color: var(--accent); }
   color: #fff;
 }
 
-/* ── Block grid ───────────────────────────── */
+/* ── Block grid ─────────────────────────────── */
 .p1-block-grid {
   display: grid;
   gap: 1.25rem;
-  grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(30rem, 1fr));
 }
 
-/* ── Block card ───────────────────────────── */
+/* ── Block card ─────────────────────────────── */
 .p1-block-card {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -118,23 +233,83 @@ a { color: var(--accent); }
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  gap: 0;
+  transition: box-shadow 0.15s, border-color 0.15s;
 }
+.p1-block-card:hover { border-color: var(--border-strong); box-shadow: 0 4px 16px rgb(0 0 0 / 0.06); }
 
-/* ── Block preview thumbnail (clickable button) ─ */
+/* Card bar: tag + title left, "Get code" right */
+.p1-block-card__bar {
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  gap: 0.75rem;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+}
+.p1-block-card__bar-left {
+  align-items: center;
+  display: flex;
+  gap: 0.5rem;
+  min-width: 0;
+}
+/* Category pill. Shared by the card bar and the "Get code" modal so one
+   category reads the same colour in both places. */
+.p1-tag {
+  background: var(--surface-subtle);
+  border-radius: var(--radius-pill);
+  color: var(--fg-muted);
+  flex-shrink: 0;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  padding: 0.125rem 0.625rem;
+  text-transform: uppercase;
+}
+.p1-tag[data-category="attention"]  { background: #fff3cd; color: #92600a; }
+.p1-tag[data-category="convert"]    { background: #fde8e8; color: #9b1c1c; }
+.p1-tag[data-category="trust"]      { background: #d1fae5; color: #065f46; }
+.p1-tag[data-category="value"]      { background: #ede9fe; color: #5b21b6; }
+.p1-tag[data-category="showcase"]   { background: #dbeafe; color: #1e40af; }
+.p1-tag[data-category="content"]    { background: #e0f2fe; color: #075985; }
+.p1-tag[data-category="editorial"]  { background: #f0fdf4; color: #166534; }
+.p1-tag[data-category="layout"]     { background: #f3f4f6; color: #374151; }
+.p1-tag[data-category="global"]     { background: #fef3c7; color: #92400e; }
+.p1-tag[data-category="other"]      { background: #f5f3ff; color: #6d28d9; }
+.p1-block-card__title {
+  color: var(--fg);
+  font-size: 0.875rem;
+  font-weight: 600;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.p1-block-card__get-code {
+  background: var(--p1-black);
+  border: none;
+  border-radius: 0.375rem;
+  color: #fff;
+  cursor: pointer;
+  flex-shrink: 0;
+  font-family: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.3125rem 0.75rem;
+  transition: opacity 0.1s;
+}
+.p1-block-card__get-code:hover { opacity: 0.82; }
+
+/* Large preview area */
 /*
- * Rendered as a <button> with all: unset, then styled as a thumbnail area.
- * The iframe renders at 1280×640px, scaled 0.25 → appears 320×160px visible.
- * position:absolute takes the iframe out of flow so the button height is set
- * explicitly (160px = 640 * 0.25) rather than expanding to iframe's layout size.
+ * iframe renders at 1600px wide, scaled to 0.5 → fills the card width (≥480px content).
+ * height: 400px on preview = 800px iframe, giving a tall above-fold preview.
  */
 .p1-block-card__preview {
   all: unset;
   background: var(--surface-subtle);
-  border-bottom: 1px solid var(--border);
   cursor: zoom-in;
   display: block;
-  height: 160px;
+  height: 320px;
   overflow: hidden;
   position: relative;
   width: 100%;
@@ -149,71 +324,167 @@ a { color: var(--accent); }
   pointer-events: none;
   position: absolute;
   top: 0;
-  transform: scale(0.25);
+  transform: scale(0.5);
   transform-origin: top left;
-  width: 1280px;
+  width: 200%;
 }
 
-.p1-block-card__header { flex: 1; padding: 1rem 1.25rem 0; }
-.p1-block-card__tag {
-  background: var(--surface-subtle);
-  border-radius: var(--radius-pill);
-  color: var(--fg-muted);
-  display: inline-block;
-  font-size: 0.75rem;
-  font-weight: 500;
-  margin-bottom: 0.5rem;
-  padding: 0.125rem 0.625rem;
-  text-transform: capitalize;
-}
-.p1-block-card__title { font-size: 0.9375rem; font-weight: 700; margin: 0 0 0.375rem; }
-.p1-block-card__desc { color: var(--fg-muted); font-size: 0.8125rem; line-height: 1.5; margin: 0; }
-.p1-block-card__footer { padding: 1rem 1.25rem; }
-
-/* ── Add command ──────────────────────────── */
-.p1-add-command { display: flex; flex-direction: column; gap: 0.375rem; }
-
-.p1-add-command__btn {
+.p1-block-card__no-preview {
   align-items: center;
+  background: var(--surface-subtle);
+  color: var(--fg-muted);
+  display: flex;
+  font-size: 0.8125rem;
+  height: 100px;
+  justify-content: center;
+  width: 100%;
+}
+
+/* ── Full-size preview dialog ───────────────── */
+.p1-preview-dialog {
+  background: transparent;
+  border: none;
+  height: 100dvh;
+  max-height: 100dvh;
+  max-width: 100dvw;
+  padding: 0;
+  width: 100dvw;
+}
+.p1-preview-dialog::backdrop {
+  backdrop-filter: blur(4px);
+  background: rgb(0 0 0 / 0.65);
+}
+.p1-preview-dialog__inner {
+  background: var(--surface);
+  border-radius: var(--radius-card);
+  box-shadow: 0 24px 64px rgb(0 0 0 / 0.3);
+  display: flex;
+  flex-direction: column;
+  height: 90dvh;
+  left: 50%;
+  max-width: 1200px;
+  overflow: hidden;
+  position: fixed;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 90dvw;
+}
+.p1-preview-dialog__toolbar {
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  padding: 0.75rem 1.25rem;
+}
+.p1-preview-dialog__title { font-size: 0.9375rem; font-weight: 700; }
+.p1-preview-dialog__close {
   background: var(--surface-subtle);
   border: 1px solid var(--border);
   border-radius: 0.375rem;
-  cursor: pointer;
-  display: flex;
-  font-family: inherit;
-  gap: 0.5rem;
-  justify-content: space-between;
-  padding: 0.5rem 0.75rem;
-  text-align: left;
-  width: 100%;
-}
-.p1-add-command__btn code {
-  font-size: 0.75rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.p1-add-command__badge {
   color: var(--fg-muted);
-  flex-shrink: 0;
-  font-size: 0.6875rem;
-  font-weight: 500;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.875rem;
+  line-height: 1;
+  padding: 0.375rem 0.625rem;
 }
+.p1-preview-dialog__close:hover { border-color: var(--border-strong); color: var(--fg); }
+.p1-preview-dialog__frame { flex: 1; overflow: hidden; }
+.p1-preview-dialog__frame iframe { border: none; display: block; height: 100%; width: 100%; }
 
-.p1-add-command__agent {
+/* ── "Get code" dialog ──────────────────────── */
+.p1-code-dialog {
+  background: transparent;
+  border: none;
+  height: 100dvh;
+  max-height: 100dvh;
+  max-width: 100dvw;
+  padding: 0;
+  width: 100dvw;
+}
+.p1-code-dialog::backdrop {
+  backdrop-filter: blur(4px);
+  background: rgb(0 0 0 / 0.55);
+}
+.p1-code-dialog__inner {
+  background: var(--surface);
+  border-radius: var(--radius-card);
+  box-shadow: 0 16px 48px rgb(0 0 0 / 0.25);
+  left: 50%;
+  max-width: 480px;
+  padding: 1.5rem;
+  position: fixed;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 90dvw;
+}
+.p1-code-dialog__header {
+  align-items: flex-start;
+  display: flex;
+  gap: 0.75rem;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+.p1-code-dialog__title { font-family: var(--font-display); font-size: 1.0625rem; font-weight: 700; margin: 0; }
+.p1-code-dialog__tag {
+  display: inline-block;
+  margin-top: 0.25rem;
+}
+.p1-code-dialog__close {
   background: none;
   border: none;
   color: var(--fg-muted);
   cursor: pointer;
+  flex-shrink: 0;
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0.125rem;
+}
+.p1-code-dialog__close:hover { color: var(--fg); }
+.p1-code-dialog__desc { color: var(--fg-muted); font-size: 0.875rem; line-height: 1.55; margin: 0 0 1.25rem; }
+.p1-code-dialog__cmd-label {
+  color: var(--fg-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  margin-bottom: 0.375rem;
+  text-transform: uppercase;
+}
+/* Dark block, same treatment as the ONE/ALL install rows on the catalog page. */
+.p1-code-dialog__cmd {
+  align-items: center;
+  background: var(--p1-black);
+  border: none;
+  border-radius: 0.5rem;
+  display: flex;
+  gap: 0.75rem;
+  justify-content: space-between;
+  padding: 0.625rem 0.875rem;
+}
+.p1-code-dialog__cmd code {
+  color: #e8e4ff;
+  font-size: 0.8125rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.p1-code-dialog__copy {
+  background: rgb(255 255 255 / 0.1);
+  border: none;
+  border-radius: 0.375rem;
+  color: #e8e4ff;
+  cursor: pointer;
+  flex-shrink: 0;
   font-family: inherit;
   font-size: 0.75rem;
-  padding: 0;
-  text-align: left;
-  text-decoration: underline;
+  font-weight: 600;
+  padding: 0.375rem 0.75rem;
+  transition: background 0.1s, color 0.1s;
 }
-.p1-add-command__agent:hover { color: var(--accent); }
+.p1-code-dialog__copy:hover { background: rgb(255 255 255 / 0.18); color: #fff; }
 
-/* ── Theme panel ──────────────────────────── */
+/* ── Theme panel ────────────────────────────── */
 .p1-theme-panel { max-width: 56rem; }
 .p1-theme-panel__toolbar {
   align-items: center;
@@ -235,87 +506,41 @@ a { color: var(--accent); }
   padding: 0.5rem 1rem;
 }
 .p1-theme-panel__code {
-  background: var(--surface-subtle);
-  border: 1px solid var(--border);
+  background: var(--p1-black);
+  border: none;
   border-radius: var(--radius-card);
+  color: #e8e4ff;
   font-size: 0.75rem;
   line-height: 1.6;
   overflow-x: auto;
-  padding: 1.25rem;
+  padding: 1.5rem;
   white-space: pre;
 }
 .p1-theme-panel__hint { color: var(--fg-muted); font-size: 0.875rem; margin-top: 1rem; }
 
-/* ── Catalog client wrapper ───────────────── */
+/* ── Catalog client wrapper ─────────────────── */
 .p1-catalog-client { }
 
-/* ── Full-size preview dialog ─────────────── */
-.p1-preview-dialog {
-  background: transparent;
-  border: none;
-  max-height: 100dvh;
-  max-width: 100dvw;
-  padding: 0;
-  width: 100dvw;
-  height: 100dvh;
-}
-
-.p1-preview-dialog::backdrop {
-  background: rgb(0 0 0 / 0.6);
-  backdrop-filter: blur(4px);
-}
-
-.p1-preview-dialog__inner {
-  background: var(--surface);
-  border-radius: var(--radius-card);
-  box-shadow: 0 24px 64px rgb(0 0 0 / 0.3);
-  display: flex;
-  flex-direction: column;
-  height: 90dvh;
-  left: 50%;
-  max-width: 1200px;
-  position: fixed;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  width: 90dvw;
-  overflow: hidden;
-}
-
-.p1-preview-dialog__toolbar {
+/* ── Add command (legacy, kept for compat) ──── */
+.p1-add-command { display: flex; flex-direction: column; gap: 0.375rem; }
+.p1-add-command__btn {
   align-items: center;
-  border-bottom: 1px solid var(--border);
-  display: flex;
-  gap: 1rem;
-  justify-content: space-between;
-  padding: 0.75rem 1.25rem;
-}
-
-.p1-preview-dialog__title {
-  font-size: 0.9375rem;
-  font-weight: 700;
-}
-
-.p1-preview-dialog__close {
   background: var(--surface-subtle);
   border: 1px solid var(--border);
   border-radius: 0.375rem;
-  color: var(--fg-muted);
   cursor: pointer;
+  display: flex;
   font-family: inherit;
-  font-size: 0.875rem;
-  line-height: 1;
-  padding: 0.375rem 0.625rem;
-}
-.p1-preview-dialog__close:hover { color: var(--fg); border-color: var(--fg-muted); }
-
-.p1-preview-dialog__frame {
-  flex: 1;
-  overflow: hidden;
-}
-
-.p1-preview-dialog__frame iframe {
-  border: none;
-  display: block;
-  height: 100%;
+  gap: 0.5rem;
+  justify-content: space-between;
+  padding: 0.5rem 0.75rem;
+  text-align: left;
   width: 100%;
 }
+.p1-add-command__btn code { font-size: 0.75rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.p1-add-command__badge { color: var(--fg-muted); flex-shrink: 0; font-size: 0.6875rem; font-weight: 500; }
+.p1-add-command__agent {
+  background: none; border: none; color: var(--fg-muted); cursor: pointer;
+  font-family: inherit; font-size: 0.75rem; padding: 0; text-align: left; text-decoration: underline;
+}
+.p1-add-command__agent:hover { color: var(--accent); }

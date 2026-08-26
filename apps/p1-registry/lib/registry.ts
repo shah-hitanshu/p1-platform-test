@@ -36,7 +36,7 @@ export function loadCatalog(registryDir?: string): Catalog {
 
   // Catalog shows blocks and theme items only. Internal shared libs (registry:lib)
   // and the base meta-package are dependencies, not user-installable items.
-  const SHOW_TYPES = new Set(['registry:block', 'registry:theme']);
+  const SHOW_TYPES = new Set(['registry:block']);
   const items: CatalogItem[] = index.items
     .filter((i) => SHOW_TYPES.has(i.type))
     .map((i) => ({
