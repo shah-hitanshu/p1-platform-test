@@ -486,7 +486,7 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
 
   private async loadOrgSettingsIfNeeded(): Promise<void> {
     if (this.orgSettingsLoaded) return;
-    const result = await loadOrgSettingsFn(this.sessionInfo);
+    const result = await loadOrgSettingsFn(this.sessionInfo, this.env);
     this.cachedOrganization = result.organization;
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- test mocks may omit settings
     if (result.organization?.settings?.agentIdleTimeoutMs !== undefined) {
@@ -498,7 +498,7 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
   private async refreshOrganizationSettings(): Promise<void> {
     this.orgSettingsLoaded = false;
     this.cachedOrganization = undefined;
-    const result = await refreshOrgSettingsFn(this.sessionInfo);
+    const result = await refreshOrgSettingsFn(this.sessionInfo, this.env);
     this.cachedOrganization = result.organization;
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- test mocks may omit settings
     if (result.organization?.settings?.agentIdleTimeoutMs !== undefined) {

@@ -6,8 +6,11 @@
  * the organization info along with idle timeout configuration.
  */
 
+import { getLogger } from '@pantheon-systems/p1-telemetry';
 import type { Organization } from '../types';
 import { getOrganizationForSite } from '../services/organization-service';
+import { runWithEnvConnection } from '../db';
+import type { ConnectionEnv } from '../db/resolve-connection';
 import type { SessionInfo } from './document-session-types';
 
 /**
@@ -22,11 +25,16 @@ export interface OrgSettingsResult {
  * Load organization settings from the database.
  * Returns the organization associated with the site, or null.
  *
+ * A Durable Object runs outside the worker's request scope, so it has to open
+ * its own connection rather than inherit one from `runWithConnection`.
+ *
  * @param sessionInfo - Session info containing the siteId
+ * @param env - Bindings used to open a database connection
  * @returns The organization settings result
  */
 export async function loadOrganizationSettings(
   sessionInfo: SessionInfo,
+  env: ConnectionEnv,
 ): Promise<OrgSettingsResult> {
   const { siteId } = sessionInfo;
 
@@ -36,10 +44,13 @@ export async function loadOrganizationSettings(
   }
 
   try {
-    const org = await getOrganizationForSite(siteId);
+    const org = await runWithEnvConnection(env, () => getOrganizationForSite(siteId));
     return { organization: org };
   } catch (error) {
-    console.warn('Failed to load organization settings:', error);
+    getLogger().warn('Failed to load organization settings', {
+      siteId,
+      error: error instanceof Error ? error.message : String(error),
+    });
     return { organization: null };
   }
 }
@@ -50,10 +61,12 @@ export async function loadOrganizationSettings(
  * after resetting the caller's cached state.
  *
  * @param sessionInfo - Session info containing the siteId
+ * @param env - Bindings used to open a database connection
  * @returns The refreshed organization settings result
  */
 export async function refreshOrganizationSettings(
   sessionInfo: SessionInfo,
+  env: ConnectionEnv,
 ): Promise<OrgSettingsResult> {
-  return loadOrganizationSettings(sessionInfo);
+  return loadOrganizationSettings(sessionInfo, env);
 }
