@@ -7,31 +7,80 @@ import { copyTemplate } from './copy-template.js';
 import { detectPackageManager, isPackageManagerAvailable, installDependencies } from './install-deps.js';
 import { showWelcome, showSuccess, showInstallHelp, showError } from './messages.js';
 
+const PROJECT_NAME_RULE =
+  'Project name must be lowercase and can only contain letters, numbers, hyphens, and underscores';
+
+function validateProjectName(value) {
+  if (!value) return 'Please enter a project name';
+  if (!/^[a-z0-9-_]+$/.test(value)) return PROJECT_NAME_RULE;
+  return undefined;
+}
+
+const PACKAGE_MANAGERS = new Set(['pnpm', 'npm', 'yarn']);
+
+export function parseArgs(args) {
+  const parsed = { projectName: undefined, yes: false, pm: undefined, git: undefined, install: undefined };
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === '--yes' || arg === '-y') {
+      parsed.yes = true;
+    } else if (arg === '--pm' || arg.startsWith('--pm=')) {
+      const value = arg === '--pm' ? args[++i] : arg.slice('--pm='.length);
+      if (!PACKAGE_MANAGERS.has(value)) {
+        throw new Error(`--pm must be one of: ${[...PACKAGE_MANAGERS].join(', ')}`);
+      }
+      parsed.pm = value;
+    } else if (arg === '--git' || arg === '--no-git') {
+      parsed.git = arg === '--git';
+    } else if (arg === '--install' || arg === '--no-install') {
+      parsed.install = arg === '--install';
+    } else if (arg.startsWith('-')) {
+      throw new Error(`Unknown option: ${arg}`);
+    } else if (parsed.projectName === undefined) {
+      parsed.projectName = arg;
+    } else {
+      throw new Error(`Unexpected argument: ${arg}`);
+    }
+  }
+
+  return parsed;
+}
+
 export async function runCLI() {
   showWelcome();
 
-  const args = process.argv.slice(2);
-  const targetDirArg = args[0];
+  let parsed;
+  try {
+    parsed = parseArgs(process.argv.slice(2));
+  } catch (error) {
+    showError(error.message);
+    process.exit(1);
+  }
 
   clack.intro(pc.bgCyan(pc.black(' P1 Starter Kit Setup ')));
 
   // Get project name
-  const projectName = await clack.text({
-    message: 'What is your project named?',
-    placeholder: 'my-p1-app',
-    initialValue: targetDirArg || 'my-p1-app',
-    validate: (value) => {
-      if (!value) return 'Please enter a project name';
-      if (!/^[a-z0-9-_]+$/.test(value)) {
-        return 'Project name must be lowercase and can only contain letters, numbers, hyphens, and underscores';
-      }
-      return undefined;
-    },
-  });
+  let projectName;
+  if (parsed.yes) {
+    projectName = parsed.projectName || 'my-p1-app';
+    const problem = validateProjectName(projectName);
+    if (problem) {
+      showError(problem);
+      process.exit(1);
+    }
+  } else {
+    projectName = await clack.text({
+      message: 'What is your project named?',
+      placeholder: 'my-p1-app',
+      initialValue: parsed.projectName || 'my-p1-app',
+      validate: validateProjectName,
+    });
 
-  if (clack.isCancel(projectName)) {
-    clack.cancel('Operation cancelled');
-    process.exit(0);
+    if (clack.isCancel(projectName)) {
+      clack.cancel('Operation cancelled');
+      process.exit(0);
+    }
   }
 
   const targetDir = path.resolve(process.cwd(), projectName);
@@ -44,47 +93,67 @@ export async function runCLI() {
 
   // Detect package manager
   const detectedPM = detectPackageManager();
-  const packageManager = await clack.select({
-    message: 'Which package manager do you want to use?',
-    options: [
-      { value: 'pnpm', label: 'pnpm', hint: detectedPM === 'pnpm' ? 'detected' : '' },
-      { value: 'npm', label: 'npm', hint: detectedPM === 'npm' ? 'detected' : '' },
-      { value: 'yarn', label: 'yarn', hint: detectedPM === 'yarn' ? 'detected' : '' },
-    ],
-    initialValue: detectedPM,
-  });
+  let packageManager;
+  if (parsed.pm) {
+    packageManager = parsed.pm;
+  } else if (parsed.yes) {
+    packageManager = detectedPM;
+  } else {
+    packageManager = await clack.select({
+      message: 'Which package manager do you want to use?',
+      options: [
+        { value: 'pnpm', label: 'pnpm', hint: detectedPM === 'pnpm' ? 'detected' : '' },
+        { value: 'npm', label: 'npm', hint: detectedPM === 'npm' ? 'detected' : '' },
+        { value: 'yarn', label: 'yarn', hint: detectedPM === 'yarn' ? 'detected' : '' },
+      ],
+      initialValue: detectedPM,
+    });
 
-  if (clack.isCancel(packageManager)) {
-    clack.cancel('Operation cancelled');
-    process.exit(0);
-  }
-
-  // Check if package manager is available
-  if (!isPackageManagerAvailable(packageManager)) {
-    showError(`${packageManager} is not installed. Please install it first or choose a different package manager.`);
-    process.exit(1);
+    if (clack.isCancel(packageManager)) {
+      clack.cancel('Operation cancelled');
+      process.exit(0);
+    }
   }
 
   // Git init?
-  const shouldInitGit = await clack.confirm({
-    message: 'Initialize a git repository?',
-    initialValue: true,
-  });
+  let shouldInitGit;
+  if (parsed.git !== undefined) {
+    shouldInitGit = parsed.git;
+  } else if (parsed.yes) {
+    shouldInitGit = true;
+  } else {
+    shouldInitGit = await clack.confirm({
+      message: 'Initialize a git repository?',
+      initialValue: true,
+    });
 
-  if (clack.isCancel(shouldInitGit)) {
-    clack.cancel('Operation cancelled');
-    process.exit(0);
+    if (clack.isCancel(shouldInitGit)) {
+      clack.cancel('Operation cancelled');
+      process.exit(0);
+    }
   }
 
   // Install deps?
-  const shouldInstall = await clack.confirm({
-    message: 'Install dependencies now?',
-    initialValue: true,
-  });
+  let shouldInstall;
+  if (parsed.install !== undefined) {
+    shouldInstall = parsed.install;
+  } else if (parsed.yes) {
+    shouldInstall = true;
+  } else {
+    shouldInstall = await clack.confirm({
+      message: 'Install dependencies now?',
+      initialValue: true,
+    });
 
-  if (clack.isCancel(shouldInstall)) {
-    clack.cancel('Operation cancelled');
-    process.exit(0);
+    if (clack.isCancel(shouldInstall)) {
+      clack.cancel('Operation cancelled');
+      process.exit(0);
+    }
+  }
+
+  if (shouldInstall && !isPackageManagerAvailable(packageManager)) {
+    showError(`${packageManager} is not installed. Please install it first or choose a different package manager.`);
+    process.exit(1);
   }
 
   const s = clack.spinner();

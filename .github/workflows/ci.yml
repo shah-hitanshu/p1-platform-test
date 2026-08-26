@@ -116,6 +116,31 @@ jobs:
           pnpm --filter ccr-worker test:db
           pnpm --filter ccr-worker test:integration
 
+  # Nothing else ever installs a generated project, so a template that scaffolds
+  # into something that cannot `pnpm install` (it has happened — PCC-3623) is
+  # invisible until a customer hits it. The scaffold installs against packed
+  # tarballs of the in-repo packages, so this gates unpublished code.
+  #
+  # Only the five in-repo packages are pinned, to packed tarballs. Everything else
+  # resolves fresh — the scaffold has no lockfile and does not inherit the root's
+  # overrides — which is what a customer gets, but also means an unrelated upstream
+  # publish can turn this job red on a PR that changed nothing here.
+  scaffold:
+    name: scaffolded project installs, builds, and tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build the packages the scaffold consumes
+        run: pnpm exec turbo run build --filter='@pantheon-systems/css-client' --filter='@pantheon-systems/puck-css' --filter='@pantheon-systems/p1-next-sdk' --filter='@pantheon-systems/p1-ai-chat' --filter='@pantheon-systems/p1-media'
+      - name: Scaffold a project and install/build/typecheck/test it against packed tarballs
+        run: pnpm --filter @pantheon-systems/create-p1-starter-kit test:scaffold
+
   e2e:
     name: playwright e2e (starter app vs mock backend)
     runs-on: ubuntu-latest

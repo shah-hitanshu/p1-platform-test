@@ -12,7 +12,8 @@
     "lint": "eslint index.js lib scripts",
     "lint:fix": "eslint index.js lib scripts --fix",
     "prepublishOnly": "npm run build",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:scaffold": "node scripts/validate-scaffold.js"
   },
   "files": [
     "index.js",
