@@ -218,8 +218,8 @@ export default {
           telemetry.requestId,
         );
       } finally {
-        // Flush metrics (fire-and-forget)
-        await flushMetrics();
+        // Under `waitUntil` so the outbound metrics POST cannot delay the response.
+        ctx.waitUntil(flushMetrics());
         // Drains the local ndjson sink when `P1_LOG_SINK` is set; a no-op when console is
         // the only sink. Under `waitUntil` so it cannot delay the response.
         ctx.waitUntil(logger.flush());
