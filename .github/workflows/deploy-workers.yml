@@ -223,12 +223,8 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ steps.secrets.outputs.cf_token }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
 
-  # Staging only: the agent has no production env in wrangler.jsonc, so a
-  # production run would fail here and take the whole release with it. Drop the
-  # `if:` once a production env exists (and re-check the release step below).
   p1-agent:
     needs: [verify, config]
-    if: needs.config.outputs.environment != 'production'
     runs-on: ubuntu-latest
     environment: ${{ needs.config.outputs.environment }}
     steps:
@@ -253,12 +249,32 @@ jobs:
         with:
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
 
-      - name: Fetch Cloudflare API token
+      - name: Fetch secrets
         id: secrets
         uses: google-github-actions/get-secretmanager-secrets@bc9c54b29fdffb8a47776820a7d26e77b379d262 # v3.0.0
         with:
           secrets: |-
             cf_token:${{ vars.GCP_PROJECT_ID }}/P1_CF_DEPLOY_TOKEN
+            agent_id:${{ vars.GCP_PROJECT_ID }}/P1_AGENT_CCR_AGENT_ID
+            agent_api_key:${{ vars.GCP_PROJECT_ID }}/P1_AGENT_CCR_API_KEY
+            ai_gateway_api_token:${{ vars.GCP_PROJECT_ID }}/P1_AGENT_AI_GATEWAY_API_TOKEN
+
+      # The agent's runtime credentials: its CCR identity and the token it calls
+      # the AI Gateway REST API with. Distinct from the ephemeral CF deploy token.
+      - name: Set Wrangler secrets
+        if: ${{ needs.config.outputs.dry_run != 'true' }}
+        working-directory: workers/p1-agent
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ steps.secrets.outputs.cf_token }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          AGENT_ID: ${{ steps.secrets.outputs.agent_id }}
+          AGENT_API_KEY: ${{ steps.secrets.outputs.agent_api_key }}
+          AI_GATEWAY_API_TOKEN: ${{ steps.secrets.outputs.ai_gateway_api_token }}
+          DEPLOY_ENV: ${{ needs.config.outputs.environment }}
+        run: |
+          printf '%s' "$AGENT_ID" | pnpm exec wrangler secret put AGENT_ID --env "$DEPLOY_ENV"
+          printf '%s' "$AGENT_API_KEY" | pnpm exec wrangler secret put AGENT_API_KEY --env "$DEPLOY_ENV"
+          printf '%s' "$AI_GATEWAY_API_TOKEN" | pnpm exec wrangler secret put AI_GATEWAY_API_TOKEN --env "$DEPLOY_ENV"
 
       - name: Deploy
         run: >
@@ -355,7 +371,7 @@ jobs:
   #
   # Staging deploys are not released: a release records what is in production.
   release:
-    needs: [config, backend, mcp-server, p1-media]
+    needs: [config, backend, mcp-server, p1-agent, p1-media]
     if: ${{ always() && needs.config.outputs.environment == 'production' && needs.config.outputs.dry_run != 'true' }}
     runs-on: ubuntu-latest
     permissions:
@@ -377,6 +393,12 @@ jobs:
       - name: Release ccr-mcp-server
         if: needs.mcp-server.result == 'success'
         run: .github/scripts/worker-release.sh ccr-mcp-server workers/ccr-mcp-server css-mcp-server
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Release p1-chatbot-agent
+        if: needs.p1-agent.result == 'success'
+        run: .github/scripts/worker-release.sh p1-chatbot-agent workers/p1-agent
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
