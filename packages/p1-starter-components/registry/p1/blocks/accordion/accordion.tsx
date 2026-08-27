@@ -18,7 +18,7 @@ export interface AccordionProps {
 export function AccordionRender({ heading, align, items }: AccordionProps) {
   const list = items || [];
   const [open, setOpen] = React.useState<Record<string, boolean>>(
-    list[0] ? { [list[0].title]: true } : {},
+    list[0] ? { [list[0].title || "0"]: true } : {},
   );
   return (
     <div className="p1-accordion p1-block" data-align={align}>

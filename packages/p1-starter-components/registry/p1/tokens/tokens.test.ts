@@ -47,6 +47,12 @@ describe('block padding parity with apps/p1-starter', () => {
   }
 
   it('matches the starter kit exactly', () => {
-    expect(registryPaddingRem()).toEqual(starterKitPaddingRem());
+    let starter: { inline: number; block: number };
+    try {
+      starter = starterKitPaddingRem();
+    } catch (e) {
+      expect.fail(`Could not read starter kit padding: ${(e as Error).message}`);
+    }
+    expect(registryPaddingRem()).toEqual(starter);
   });
 });
