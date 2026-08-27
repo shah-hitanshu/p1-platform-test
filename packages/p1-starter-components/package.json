@@ -21,7 +21,6 @@
     "registry:build": "shadcn build --output ../../apps/p1-registry/public/r"
   },
   "devDependencies": {
-    "@chromatic-com/storybook": "^5.1.2",
     "isomorphic-dompurify": "^3.18.0",
     "@pantheon-systems/eslint-config": "workspace:*",
     "@puckeditor/core": "^0.21.1",
