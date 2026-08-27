@@ -9,7 +9,7 @@ interface BlockCardProps {
 }
 
 export function BlockCard({ item }: BlockCardProps) {
-  const hasPreview = previewNames.includes(item.name);
+  const hasPreview = (previewNames as readonly string[]).includes(item.name);
   const [open, setOpen] = React.useState(false);
   const dialogRef = React.useRef<HTMLDialogElement>(null);
 
@@ -51,6 +51,7 @@ export function BlockCard({ item }: BlockCardProps) {
               scrolling="no"
               tabIndex={-1}
               aria-hidden="true"
+              loading="lazy"
             />
           </button>
         )}
