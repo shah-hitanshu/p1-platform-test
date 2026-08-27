@@ -6,7 +6,7 @@ export interface TestimonialProps {
   role: string;
   avatarSrc: string;
   layout: "centered" | "card" | "large";
-  tone: "light" | "white" | "purple" | "dark";
+  tone: "light" | "white" | "accent" | "dark";
 }
 
 export function TestimonialRender({ quote, name, role, avatarSrc, layout, tone }: TestimonialProps) {

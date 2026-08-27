@@ -15,26 +15,61 @@
 
 :root {
   /* Surfaces and ink */
-  --p1-surface-default: var(--pds-color-bg-default, oklch(1 0 0));
-  --p1-surface-subtle: var(--pds-color-bg-default-secondary, oklch(0.9851 0 0));
-  --p1-surface-inverse: var(--pds-color-bg-reverse, oklch(0.2046 0 0));
-  --p1-fg-default: var(--pds-color-fg-default, oklch(0.2046 0 0));
-  --p1-fg-muted: var(--pds-color-fg-default-secondary, oklch(0.5103 0 0));
-  --p1-fg-inverse: var(--pds-color-fg-reverse, oklch(1 0 0));
+  --p1-surface-default: var(--pds-color-surface-default, oklch(1 0 0));
+  --p1-surface-subtle: var(--pds-color-surface-default-secondary, oklch(0.9851 0 0));
+  --p1-surface-inverse: var(--pds-color-surface-reverse, oklch(0.2046 0 0));
+  --p1-fg-default: var(--pds-color-foreground-default, oklch(0.2046 0 0));
+  --p1-fg-muted: var(--pds-color-foreground-default-secondary, oklch(0.5103 0 0));
+  --p1-fg-inverse: var(--pds-color-foreground-reverse, oklch(1 0 0));
   --p1-border: var(--pds-color-border-default, oklch(0.9401 0 0));
   --p1-border-strong: var(--pds-color-border-default-secondary, oklch(0.8853 0 0));
+
+  /* Dark surface — near-black with slight blue cast (the "dark" tone) */
+  --p1-surface-dark: oklch(0.17 0.01 270);
 
   /* Accent — the tone every "branded" block variant resolves to. Replaces the
      hard-coded indigo/purple the blocks used, which is why `tone: "indigo"`
      becomes `tone: "accent"` in this phase. */
   --p1-accent: var(--pds-color-interactive-link-default, oklch(0.55 0.21 280));
   --p1-accent-hover: var(--pds-color-interactive-link-hover, oklch(0.48 0.20 280));
-  --p1-on-accent: var(--pds-color-fg-reverse, oklch(1 0 0));
+  --p1-on-accent: var(--pds-color-foreground-reverse, oklch(1 0 0));
 
   /* Status */
   --p1-success: var(--pds-color-status-success-foreground, oklch(0.62 0.15 152));
   --p1-warning: var(--pds-color-status-warning-foreground, oklch(0.75 0.15 80));
   --p1-critical: var(--pds-color-status-critical-foreground, oklch(0.58 0.22 27));
+
+  /* Gradient stops — for the gradient/banner tones */
+  --p1-gradient-from: oklch(0.65 0.27 329);
+  --p1-gradient-via: oklch(0.55 0.24 292);
+  --p1-gradient-to: oklch(0.34 0.18 265);
+
+  /* On-dark foreground hierarchy */
+  --p1-fg-inverse-muted: oklch(1 0 0 / 0.65);
+  --p1-fg-inverse-subtle: oklch(1 0 0 / 0.8);
+  --p1-fg-inverse-faint: oklch(1 0 0 / 0.9);
+
+  /* On-dark borders */
+  --p1-border-inverse: oklch(1 0 0 / 0.15);
+  --p1-border-inverse-strong: oklch(1 0 0 / 0.3);
+
+  /* Subtle separator — uses PDS border token */
+  --p1-border-subtle: var(--pds-color-border-default, oklch(0.925 0 0));
+
+  /* On-dark input chrome */
+  --p1-input-inverse-bg: oklch(1 0 0 / 0.08);
+  --p1-input-inverse-bg-hover: oklch(1 0 0 / 0.15);
+
+  /* Glow decoration */
+  --p1-glow-warm: oklch(1 0 0 / 0.5);
+  --p1-glow-soft: oklch(1 0 0 / 0.17);
+
+  /* Overlays */
+  --p1-overlay: oklch(0 0 0 / 0.6);
+  --p1-overlay-subtle: oklch(0 0 0 / 0.1);
+
+  /* Code inline surface */
+  --p1-surface-code: oklch(0 0 0 / 0.05);
 
   /* Spacing */
   --p1-space-xs: 0.25rem;
@@ -72,6 +107,7 @@
   /* Type — PDS uses ff (font-family) naming, not "family" */
   --p1-font-body: var(--pds-typography-ff-default, Inter, system-ui, sans-serif);
   --p1-font-heading: var(--pds-typography-ff-compact, var(--p1-font-body));
+  --p1-text-xs: 0.75rem;
   --p1-text-sm: 0.875rem;
   --p1-text-base: 1rem;
   --p1-text-lg: 1.125rem;
@@ -81,12 +117,17 @@
   --p1-text-4xl: 3.5rem;
   --p1-leading-tight: 1.15;
   --p1-leading-normal: 1.6;
+  --p1-leading-relaxed: 1.625;
   --p1-weight-normal: 400;
   --p1-weight-medium: 500;
+  --p1-weight-semibold: 600;
   --p1-weight-bold: 700;
 
   /* Elevation */
-  --p1-shadow-sm: 0 1px 2px rgb(0 0 0 / 0.05);
-  --p1-shadow-md: 0 4px 12px rgb(0 0 0 / 0.08);
-  --p1-shadow-lg: 0 12px 32px rgb(0 0 0 / 0.12);
+  --p1-shadow-sm: 0 1px 4px oklch(0 0 0 / 0.06);
+  --p1-shadow-md: 0 2px 12px oklch(0 0 0 / 0.08);
+  --p1-shadow-lg: 0 8px 32px oklch(0 0 0 / 0.15);
+  --p1-shadow-play: 0 4px 24px oklch(0 0 0 / 0.35);
+  --p1-shadow-card-featured: 0 8px 32px oklch(0 0 0 / 0.2);
+  --p1-drop-shadow-text: 0 1px 4px oklch(0 0 0 / 0.6);
 }

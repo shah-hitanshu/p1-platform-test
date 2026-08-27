@@ -71,7 +71,7 @@
   border-block-end: none;
   border-start-end-radius: var(--p1-radius-card);
   border-start-start-radius: var(--p1-radius-card);
-  color: oklch(1 0 0);
+  color: var(--p1-fg-inverse);
 }
 
 .p1-comparison__row-label {
@@ -99,7 +99,7 @@
   margin-inline: auto;
 }
 .p1-comparison__cell[data-hot="true"] .p1-comparison__check { color: var(--p1-accent); }
-.p1-comparison__col-head[data-hot="true"] .p1-comparison__check { color: oklch(1 0 0); }
+.p1-comparison__col-head[data-hot="true"] .p1-comparison__check { color: var(--p1-fg-inverse); }
 
 .p1-comparison__cross {
   block-size: 1.125rem;
@@ -139,7 +139,7 @@
 }
 .p1-comparison__card[data-hot="true"] .p1-comparison__card-head {
   background-color: var(--p1-accent);
-  color: oklch(1 0 0);
+  color: var(--p1-fg-inverse);
 }
 
 .p1-comparison__card-row {

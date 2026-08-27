@@ -15,7 +15,7 @@ const meta = {
     newsletter: { control: "radio", options: ["on", "off"] },
     social: { control: "radio", options: ["on", "off"] },
     legal: { control: "radio", options: ["on", "off"] },
-    tone: { control: "select", options: ["dark", "indigo", "light"] },
+    tone: { control: "select", options: ["dark", "accent", "light"] },
   },
 } satisfies Meta<typeof FooterWrapper>;
 
@@ -43,5 +43,5 @@ const base: FooterProps = {
 };
 
 export const Dark: Story = { args: { ...base } };
-export const Indigo: Story = { args: { ...base, tone: "indigo" } };
+export const Accent: Story = { args: { ...base, tone: "accent" } };
 export const Light: Story = { args: { ...base, tone: "light" } };

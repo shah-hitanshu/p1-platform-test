@@ -12,7 +12,7 @@ const meta = {
   parameters: { layout: "fullwidth" },
   tags: ["autodocs"],
   argTypes: {
-    tone: { control: "select", options: ["indigo", "purple", "dark", "light"] },
+    tone: { control: "select", options: ["accent", "dark", "light"] },
     layout: { control: "select", options: ["split", "full image", "text only"] },
     imageSide: { control: "radio", options: ["right", "left"] },
     imageFill: { control: "radio", options: ["card", "flush"] },
@@ -34,7 +34,7 @@ const base: HeroProps = {
     "A flexible starting point for your next page. Swap in your own headline, story, and imagery — this layout adapts to whatever you publish.",
   primaryLabel: "Start free trial",
   secondaryLabel: "Book a demo →",
-  tone: "indigo",
+  tone: "accent",
   layout: "split",
   imageSrc: "https://images.unsplash.com/photo-1487958449943-2429e8be8625?w=1200&q=80",
   imageSide: "right",

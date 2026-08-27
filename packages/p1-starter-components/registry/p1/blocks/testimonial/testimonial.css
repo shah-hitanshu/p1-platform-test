@@ -1,5 +1,5 @@
 .p1-testimonial[data-tone="light"] { background-color: var(--p1-surface-subtle); }
-.p1-testimonial[data-tone="purple"] {
+.p1-testimonial[data-tone="accent"] {
   background-color: var(--p1-accent);
   color: var(--p1-fg-inverse);
 }
@@ -29,7 +29,7 @@
 .p1-testimonial[data-tone="white"] .p1-testimonial__mark {
   color: var(--p1-accent);
 }
-.p1-testimonial[data-tone="purple"] .p1-testimonial__mark,
+.p1-testimonial[data-tone="accent"] .p1-testimonial__mark,
 .p1-testimonial[data-tone="dark"] .p1-testimonial__mark {
   color: var(--p1-warning);
 }
@@ -67,7 +67,7 @@
   font-size: var(--p1-text-sm);
   color: var(--p1-fg-muted);
 }
-.p1-testimonial[data-tone="purple"] .p1-testimonial__role,
+.p1-testimonial[data-tone="accent"] .p1-testimonial__role,
 .p1-testimonial[data-tone="dark"] .p1-testimonial__role {
-  color: oklch(1 0 0 / 0.7);
+  color: var(--p1-fg-inverse-muted);
 }

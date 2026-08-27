@@ -41,8 +41,7 @@ export const HeroBlock: ComponentConfig<HeroProps> = {
     tone: {
       type: "select" as const,
       options: [
-        { label: "Indigo", value: "indigo" },
-        { label: "Purple", value: "purple" },
+        { label: "Accent", value: "accent" },
         { label: "Dark", value: "dark" },
         { label: "Light", value: "light" },
       ],
@@ -117,7 +116,7 @@ export const HeroBlock: ComponentConfig<HeroProps> = {
       "A flexible starting point for your next page. Swap in your own headline, story, and imagery — this layout adapts to whatever you publish.",
     primaryLabel: "Start free trial",
     secondaryLabel: "Book a demo →",
-    tone: "indigo",
+    tone: "accent",
     layout: "split",
     imageSrc: "https://images.unsplash.com/photo-1487958449943-2429e8be8625?w=1200&q=80",
     imageSide: "right",

@@ -77,7 +77,7 @@ export const FooterBlock: ComponentConfig<FooterProps> = {
       type: "select" as const,
       options: [
         { label: "Dark", value: "dark" },
-        { label: "Indigo", value: "indigo" },
+        { label: "Accent", value: "accent" },
         { label: "Light", value: "light" },
       ],
     },

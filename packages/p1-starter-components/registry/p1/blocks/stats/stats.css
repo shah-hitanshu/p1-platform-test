@@ -37,4 +37,4 @@
   font-weight: var(--p1-weight-medium);
   margin-block-start: var(--p1-space-sm);
 }
-.p1-stats[data-tone="dark"] .p1-stats__label { color: oklch(1 0 0 / 0.7); }
+.p1-stats[data-tone="dark"] .p1-stats__label { color: var(--p1-fg-inverse-muted); }

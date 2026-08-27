@@ -7,7 +7,7 @@ export interface HeroProps {
   description: string;
   primaryLabel: string;
   secondaryLabel: string;
-  tone: "indigo" | "purple" | "dark" | "light";
+  tone: "accent" | "dark" | "light";
   layout: "split" | "full image" | "text only";
   imageSrc: string;
   imageSide: "right" | "left";

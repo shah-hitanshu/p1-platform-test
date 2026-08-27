@@ -52,7 +52,7 @@ export const CtaBannerBlock: ComponentConfig<CtaBannerProps> = {
       type: "select" as const,
       options: [
         { label: "Yellow", value: "yellow" },
-        { label: "Purple", value: "purple" },
+        { label: "Accent", value: "accent" },
         { label: "Dark", value: "dark" },
         { label: "Light", value: "light" },
         { label: "Gradient", value: "gradient" },

@@ -7,13 +7,13 @@ export interface LeadCaptureProps {
   placeholder: string;
   buttonLabel: string;
   note: string;
-  tone: "light" | "purple" | "dark" | "yellow";
+  tone: "light" | "accent" | "dark" | "yellow";
   layout: "inline" | "stacked";
 }
 
 const BTN_BY_TONE: Record<LeadCaptureProps["tone"], BtnVariant> = {
   light: "purple",
-  purple: "yellow",
+  accent: "yellow",
   dark: "yellow",
   yellow: "primary",
 };

@@ -12,9 +12,9 @@
   background-color: var(--p1-warning);
   color: var(--p1-fg-default);
 }
-.p1-cta__card[data-tone="purple"] {
+.p1-cta__card[data-tone="accent"] {
   background-color: var(--p1-accent);
-  color: oklch(1 0 0);
+  color: var(--p1-fg-inverse);
 }
 .p1-cta__card[data-tone="dark"] {
   background-color: var(--p1-surface-inverse);
@@ -26,8 +26,8 @@
   color: var(--p1-fg-default);
 }
 .p1-cta__card[data-tone="gradient"] {
-  background: linear-gradient(135deg, oklch(0.65 0.27 329), oklch(0.55 0.24 292), oklch(0.34 0.18 265));
-  color: oklch(1 0 0);
+  background: linear-gradient(135deg, var(--p1-gradient-from), var(--p1-gradient-via), var(--p1-gradient-to));
+  color: var(--p1-fg-inverse);
 }
 .p1-cta__card[data-tone="outline"] {
   background-color: var(--p1-surface-default);
@@ -43,7 +43,7 @@
 /* Padding */
 .p1-cta__card[data-padding="compact"] { padding: var(--p1-space-lg); }
 .p1-cta__card[data-padding="regular"] { padding: 2.5rem; }
-.p1-cta__card[data-padding="spacious"] { padding: 4rem; }
+.p1-cta__card[data-padding="spacious"] { padding: var(--p1-space-3xl); }
 
 /* Decoration */
 .p1-cta__decoration {
@@ -57,10 +57,10 @@
 }
 /* Glow */
 .p1-cta__card[data-tone="yellow"][data-decoration="glow"] .p1-cta__decoration {
-  background: radial-gradient(circle, oklch(1 0 0 / 0.5), transparent 70%);
+  background: radial-gradient(circle, var(--p1-glow-warm), transparent 70%);
 }
-.p1-cta__card[data-tone="purple"][data-decoration="glow"] .p1-cta__decoration {
-  background: radial-gradient(circle, oklch(1 0 0 / 0.18), transparent 70%);
+.p1-cta__card[data-tone="accent"][data-decoration="glow"] .p1-cta__decoration {
+  background: radial-gradient(circle, var(--p1-glow-soft), transparent 70%);
 }
 .p1-cta__card[data-tone="dark"][data-decoration="glow"] .p1-cta__decoration {
   background: radial-gradient(circle, color-mix(in oklch, var(--p1-accent) 45%, transparent), transparent 70%);
@@ -69,7 +69,7 @@
   background: radial-gradient(circle, color-mix(in oklch, var(--p1-accent) 14%, transparent), transparent 70%);
 }
 .p1-cta__card[data-tone="gradient"][data-decoration="glow"] .p1-cta__decoration {
-  background: radial-gradient(circle, oklch(1 0 0 / 0.16), transparent 70%);
+  background: radial-gradient(circle, var(--p1-glow-soft), transparent 70%);
 }
 .p1-cta__card[data-tone="outline"][data-decoration="glow"] .p1-cta__decoration {
   background: radial-gradient(circle, color-mix(in oklch, var(--p1-accent) 12%, transparent), transparent 70%);
@@ -110,7 +110,7 @@
   text-transform: uppercase;
 }
 .p1-cta__card[data-tone="yellow"] .p1-cta__eyebrow { color: var(--p1-accent); }
-.p1-cta__card[data-tone="purple"] .p1-cta__eyebrow { color: var(--p1-warning); }
+.p1-cta__card[data-tone="accent"] .p1-cta__eyebrow { color: var(--p1-warning); }
 .p1-cta__card[data-tone="dark"] .p1-cta__eyebrow { color: var(--p1-warning); }
 
 .p1-cta__title {
@@ -132,9 +132,9 @@
 .p1-cta__text[data-center="true"] .p1-cta__subtitle { margin-inline: auto; }
 .p1-cta__card[data-tone="light"] .p1-cta__subtitle,
 .p1-cta__card[data-tone="outline"] .p1-cta__subtitle { color: var(--p1-fg-muted); }
-.p1-cta__card[data-tone="purple"] .p1-cta__subtitle,
+.p1-cta__card[data-tone="accent"] .p1-cta__subtitle,
 .p1-cta__card[data-tone="dark"] .p1-cta__subtitle,
-.p1-cta__card[data-tone="gradient"] .p1-cta__subtitle { color: oklch(1 0 0 / 0.9); }
+.p1-cta__card[data-tone="gradient"] .p1-cta__subtitle { color: var(--p1-fg-inverse-faint); }
 
 .p1-cta__actions {
   align-items: center;
@@ -155,11 +155,11 @@
   font-weight: var(--p1-weight-bold);
   padding: 0.75rem 1.5rem;
 }
-.p1-cta__card[data-tone="purple"] .p1-cta__secondary,
+.p1-cta__card[data-tone="accent"] .p1-cta__secondary,
 .p1-cta__card[data-tone="dark"] .p1-cta__secondary,
 .p1-cta__card[data-tone="gradient"] .p1-cta__secondary {
-  border-color: oklch(1 0 0 / 0.3);
-  color: oklch(1 0 0);
+  border-color: var(--p1-border-inverse-strong);
+  color: var(--p1-fg-inverse);
 }
 .p1-cta__card[data-tone="yellow"] .p1-cta__secondary,
 .p1-cta__card[data-tone="light"] .p1-cta__secondary,

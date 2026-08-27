@@ -9,7 +9,7 @@ export interface CtaBannerProps {
   secondaryLabel: string;
   layout: "centered" | "split";
   align: "left" | "center";
-  tone: "yellow" | "purple" | "dark" | "light" | "gradient" | "outline";
+  tone: "yellow" | "accent" | "dark" | "light" | "gradient" | "outline";
   decoration: "none" | "glow" | "dots";
   corners: "square" | "soft" | "round";
   padding: "compact" | "regular" | "spacious";
@@ -17,7 +17,7 @@ export interface CtaBannerProps {
 
 const BTN_BY_TONE: Record<CtaBannerProps["tone"], BtnVariant> = {
   yellow: "primary",
-  purple: "yellow",
+  accent: "yellow",
   dark: "yellow",
   light: "purple",
   gradient: "yellow",

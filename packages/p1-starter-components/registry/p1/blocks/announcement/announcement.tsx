@@ -3,7 +3,7 @@ import "./announcement.css";
 export interface AnnouncementProps {
   text: string;
   linkLabel: string;
-  tone: "purple" | "yellow" | "dark" | "gradient";
+  tone: "accent" | "yellow" | "dark" | "gradient";
   align: "center" | "left";
 }
 

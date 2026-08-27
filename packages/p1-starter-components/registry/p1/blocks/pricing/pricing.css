@@ -43,7 +43,7 @@
   border-radius: var(--p1-radius-card);
   border: 1px solid var(--p1-border);
   background-color: var(--p1-surface-default);
-  box-shadow: 0 1px 4px oklch(0 0 0 / 0.06);
+  box-shadow: var(--p1-shadow-sm);
   color: var(--p1-fg-default);
   padding: var(--p1-space-lg);
   position: relative;
@@ -51,8 +51,8 @@
 .p1-pricing__card[data-featured="on"] {
   background-color: var(--p1-accent);
   border-color: var(--p1-accent);
-  box-shadow: 0 8px 32px oklch(0 0 0 / 0.2);
-  color: oklch(1 0 0);
+  box-shadow: var(--p1-shadow-card-featured);
+  color: var(--p1-fg-inverse);
   transform: translateY(-0.5rem);
 }
 
@@ -113,6 +113,6 @@
 .p1-pricing__card[data-featured="on"] .p1-pricing__check { color: var(--p1-warning); }
 
 .p1-pricing__feature-text { color: var(--p1-fg-muted); }
-.p1-pricing__card[data-featured="on"] .p1-pricing__feature-text { color: oklch(1 0 0 / 0.9); }
+.p1-pricing__card[data-featured="on"] .p1-pricing__feature-text { color: var(--p1-fg-inverse-faint); }
 
 .p1-pricing__btn { inline-size: 100%; justify-content: center; }

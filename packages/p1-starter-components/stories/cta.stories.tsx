@@ -14,7 +14,7 @@ const meta = {
   argTypes: {
     layout: { control: "select", options: ["centered", "split"] },
     align: { control: "radio", options: ["left", "center"] },
-    tone: { control: "select", options: ["yellow", "purple", "dark", "light", "gradient", "outline"] },
+    tone: { control: "select", options: ["yellow", "accent", "dark", "light", "gradient", "outline"] },
     decoration: { control: "select", options: ["none", "glow", "dots"] },
     corners: { control: "select", options: ["square", "soft", "round"] },
     padding: { control: "select", options: ["compact", "regular", "spacious"] },

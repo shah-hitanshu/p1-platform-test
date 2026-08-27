@@ -19,7 +19,7 @@ export const AnnouncementBlock: ComponentConfig<AnnouncementProps> = {
     tone: {
       type: "select" as const,
       options: [
-        { label: "Purple", value: "purple" },
+        { label: "Accent", value: "accent" },
         { label: "Yellow", value: "yellow" },
         { label: "Dark", value: "dark" },
         { label: "Gradient", value: "gradient" },
@@ -36,7 +36,7 @@ export const AnnouncementBlock: ComponentConfig<AnnouncementProps> = {
   defaultProps: {
     text: "Something new just launched — take a look.",
     linkLabel: "Read the announcement →",
-    tone: "purple",
+    tone: "accent",
     align: "center",
   },
   render: AnnouncementRender,

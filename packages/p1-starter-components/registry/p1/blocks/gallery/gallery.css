@@ -75,7 +75,7 @@
 }
 
 .p1-gallery__caption-overlay {
-  background: linear-gradient(to top, rgb(0 0 0 / 0.6), transparent);
+  background: linear-gradient(to top, var(--p1-overlay), transparent);
   bottom: 0;
   color: var(--p1-fg-inverse);
   inset-inline: 0;

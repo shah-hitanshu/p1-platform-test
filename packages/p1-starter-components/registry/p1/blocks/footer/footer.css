@@ -4,8 +4,8 @@
   padding-inline: var(--p1-space-lg);
 }
 
-.p1-footer[data-tone="dark"] { background-color: oklch(0.17 0.01 270); }
-.p1-footer[data-tone="indigo"] { background-color: oklch(0.19 0.08 274); }
+.p1-footer[data-tone="dark"] { background-color: var(--p1-surface-dark); }
+.p1-footer[data-tone="accent"] { background-color: var(--p1-accent); }
 .p1-footer[data-tone="light"] { background-color: var(--p1-surface-subtle); }
 
 .p1-footer__inner { margin-inline: auto; max-inline-size: var(--p1-container-wide); }
@@ -21,8 +21,8 @@
   margin-block-end: var(--p1-space-xl);
   padding-block-end: var(--p1-space-lg);
 }
-.p1-footer[data-tone="dark"] .p1-footer__newsletter { border-color: oklch(1 0 0 / 0.1); }
-.p1-footer[data-tone="indigo"] .p1-footer__newsletter { border-color: oklch(1 0 0 / 0.15); }
+.p1-footer[data-tone="dark"] .p1-footer__newsletter { border-color: var(--p1-border-inverse); }
+.p1-footer[data-tone="accent"] .p1-footer__newsletter { border-color: var(--p1-border-inverse); }
 .p1-footer[data-tone="light"] .p1-footer__newsletter { border-color: var(--p1-border); }
 
 .p1-footer__newsletter-title {
@@ -35,7 +35,7 @@
   .p1-footer__newsletter-title { font-size: var(--p1-text-3xl); }
 }
 .p1-footer[data-tone="dark"] .p1-footer__newsletter-title,
-.p1-footer[data-tone="indigo"] .p1-footer__newsletter-title { color: oklch(1 0 0); }
+.p1-footer[data-tone="accent"] .p1-footer__newsletter-title { color: var(--p1-fg-inverse); }
 .p1-footer[data-tone="light"] .p1-footer__newsletter-title { color: var(--p1-fg-default); }
 
 .p1-footer__newsletter-form {
@@ -55,14 +55,14 @@
   padding: 0.75rem 1rem;
 }
 .p1-footer[data-tone="dark"] .p1-footer__newsletter-field {
-  background-color: oklch(1 0 0 / 0.05);
-  border-color: oklch(1 0 0 / 0.15);
-  color: oklch(1 0 0 / 0.6);
+  background-color: var(--p1-input-inverse-bg);
+  border-color: var(--p1-border-inverse);
+  color: var(--p1-fg-inverse-muted);
 }
-.p1-footer[data-tone="indigo"] .p1-footer__newsletter-field {
-  background-color: oklch(1 0 0 / 0.1);
-  border-color: oklch(1 0 0 / 0.2);
-  color: oklch(1 0 0 / 0.65);
+.p1-footer[data-tone="accent"] .p1-footer__newsletter-field {
+  background-color: var(--p1-input-inverse-bg);
+  border-color: var(--p1-border-inverse-strong);
+  color: var(--p1-fg-inverse-muted);
 }
 .p1-footer[data-tone="light"] .p1-footer__newsletter-field {
   background-color: var(--p1-surface-default);
@@ -105,7 +105,7 @@
   margin-block-end: var(--p1-space-sm);
 }
 .p1-footer[data-tone="dark"] .p1-footer__logo,
-.p1-footer[data-tone="indigo"] .p1-footer__logo { color: oklch(1 0 0); }
+.p1-footer[data-tone="accent"] .p1-footer__logo { color: var(--p1-fg-inverse); }
 .p1-footer[data-tone="light"] .p1-footer__logo { color: var(--p1-fg-default); }
 
 .p1-footer__tagline {
@@ -115,8 +115,8 @@
   max-inline-size: 20rem;
   text-wrap: pretty;
 }
-.p1-footer[data-tone="dark"] .p1-footer__tagline { color: oklch(1 0 0 / 0.6); }
-.p1-footer[data-tone="indigo"] .p1-footer__tagline { color: oklch(1 0 0 / 0.65); }
+.p1-footer[data-tone="dark"] .p1-footer__tagline { color: var(--p1-fg-inverse-muted); }
+.p1-footer[data-tone="accent"] .p1-footer__tagline { color: var(--p1-fg-inverse-muted); }
 .p1-footer[data-tone="light"] .p1-footer__tagline { color: var(--p1-fg-muted); }
 
 .p1-footer__col-head {
@@ -127,14 +127,14 @@
   text-transform: uppercase;
 }
 .p1-footer[data-tone="dark"] .p1-footer__col-head,
-.p1-footer[data-tone="indigo"] .p1-footer__col-head { color: oklch(1 0 0); }
+.p1-footer[data-tone="accent"] .p1-footer__col-head { color: var(--p1-fg-inverse); }
 .p1-footer[data-tone="light"] .p1-footer__col-head { color: var(--p1-fg-default); }
 
 .p1-footer__col-list { display: flex; flex-direction: column; gap: 0.625rem; list-style: none; margin: 0; padding: 0; }
 
 .p1-footer__col-item { font-size: var(--p1-text-sm); }
-.p1-footer[data-tone="dark"] .p1-footer__col-item { color: oklch(1 0 0 / 0.6); }
-.p1-footer[data-tone="indigo"] .p1-footer__col-item { color: oklch(1 0 0 / 0.65); }
+.p1-footer[data-tone="dark"] .p1-footer__col-item { color: var(--p1-fg-inverse-muted); }
+.p1-footer[data-tone="accent"] .p1-footer__col-item { color: var(--p1-fg-inverse-muted); }
 .p1-footer[data-tone="light"] .p1-footer__col-item { color: var(--p1-fg-muted); }
 
 /* Legal row */
@@ -151,16 +151,16 @@
 @media (width >= 40rem) {
   .p1-footer__legal { flex-direction: row; }
 }
-.p1-footer[data-tone="dark"] .p1-footer__legal { border-color: oklch(1 0 0 / 0.1); }
-.p1-footer[data-tone="indigo"] .p1-footer__legal { border-color: oklch(1 0 0 / 0.15); }
+.p1-footer[data-tone="dark"] .p1-footer__legal { border-color: var(--p1-border-inverse); }
+.p1-footer[data-tone="accent"] .p1-footer__legal { border-color: var(--p1-border-inverse); }
 .p1-footer[data-tone="light"] .p1-footer__legal { border-color: var(--p1-border); }
 
 .p1-footer__copyright,
 .p1-footer__legal-item { font-size: var(--p1-text-xs); }
 .p1-footer[data-tone="dark"] .p1-footer__copyright,
-.p1-footer[data-tone="dark"] .p1-footer__legal-item { color: oklch(1 0 0 / 0.6); }
-.p1-footer[data-tone="indigo"] .p1-footer__copyright,
-.p1-footer[data-tone="indigo"] .p1-footer__legal-item { color: oklch(1 0 0 / 0.65); }
+.p1-footer[data-tone="dark"] .p1-footer__legal-item { color: var(--p1-fg-inverse-muted); }
+.p1-footer[data-tone="accent"] .p1-footer__copyright,
+.p1-footer[data-tone="accent"] .p1-footer__legal-item { color: var(--p1-fg-inverse-muted); }
 .p1-footer[data-tone="light"] .p1-footer__copyright,
 .p1-footer[data-tone="light"] .p1-footer__legal-item { color: var(--p1-fg-muted); }
 
@@ -181,12 +181,12 @@
   place-items: center;
 }
 .p1-footer[data-tone="dark"] .p1-footer__social-btn {
-  border-color: oklch(1 0 0 / 0.1);
-  color: oklch(1 0 0 / 0.6);
+  border-color: var(--p1-border-inverse);
+  color: var(--p1-fg-inverse-muted);
 }
-.p1-footer[data-tone="indigo"] .p1-footer__social-btn {
-  border-color: oklch(1 0 0 / 0.15);
-  color: oklch(1 0 0 / 0.65);
+.p1-footer[data-tone="accent"] .p1-footer__social-btn {
+  border-color: var(--p1-border-inverse);
+  color: var(--p1-fg-inverse-muted);
 }
 .p1-footer[data-tone="light"] .p1-footer__social-btn {
   border-color: var(--p1-border);

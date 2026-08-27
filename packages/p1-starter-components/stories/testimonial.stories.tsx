@@ -13,7 +13,7 @@ const meta = {
   tags: ["autodocs"],
   argTypes: {
     layout: { control: "select", options: ["centered", "card", "large"] },
-    tone: { control: "select", options: ["light", "white", "purple", "dark"] },
+    tone: { control: "select", options: ["light", "white", "accent", "dark"] },
   },
 } satisfies Meta<typeof TestimonialWrapper>;
 
@@ -21,7 +21,7 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 const base: TestimonialProps = {
-  quote: "The team was up and running in a day, and we haven’t looked back. It just works.",
+  quote: "The team was up and running in a day, and we haven't looked back. It just works.",
   name: "Jordan Ellis",
   role: "Operations Lead",
   avatarSrc: "https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=200&q=80",
@@ -30,4 +30,4 @@ const base: TestimonialProps = {
 };
 
 export const Centered: Story = { args: { ...base } };
-export const Purple: Story = { args: { ...base, layout: "large", tone: "purple" } };
+export const Accent: Story = { args: { ...base, layout: "large", tone: "accent" } };

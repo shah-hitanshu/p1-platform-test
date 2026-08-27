@@ -12,7 +12,7 @@ const meta = {
   parameters: { layout: "fullwidth" },
   tags: ["autodocs"],
   argTypes: {
-    tone: { control: "select", options: ["purple", "yellow", "dark", "gradient"] },
+    tone: { control: "select", options: ["accent", "yellow", "dark", "gradient"] },
     align: { control: "radio", options: ["center", "left"] },
   },
 } satisfies Meta<typeof AnnouncementWrapper>;
@@ -23,9 +23,9 @@ type Story = StoryObj<typeof meta>;
 const base: AnnouncementProps = {
   text: "Something new just launched — take a look.",
   linkLabel: "Read the announcement →",
-  tone: "purple",
+  tone: "accent",
   align: "center",
 };
 
-export const Purple: Story = { args: { ...base } };
+export const Accent: Story = { args: { ...base } };
 export const Gradient: Story = { args: { ...base, tone: "gradient" } };

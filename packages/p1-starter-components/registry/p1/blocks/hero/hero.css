@@ -4,18 +4,17 @@
 }
 
 /* ── Tone backgrounds (split + text-only) ─────────── */
-.p1-hero[data-tone="indigo"] { background-color: oklch(0.29 0.1 274); }
-.p1-hero[data-tone="purple"] { background-color: var(--p1-accent); }
-.p1-hero[data-tone="dark"] { background-color: oklch(0.17 0.01 270); }
+.p1-hero[data-tone="accent"] { background-color: var(--p1-accent); }
+.p1-hero[data-tone="dark"] { background-color: var(--p1-surface-dark); }
 .p1-hero[data-tone="light"] { background-color: var(--p1-surface-subtle); }
 
 /* ── Full-image layout ───────────────────────────── */
 .p1-hero[data-layout="full-image"] {
   align-items: center;
-  background-color: oklch(0.17 0.01 270);
+  background-color: var(--p1-surface-dark);
   display: grid;
   min-block-size: 29rem;
-  padding-block: 4rem;
+  padding-block: var(--p1-space-3xl);
   padding-inline: var(--p1-space-lg);
 }
 @media (width >= 48rem) {
@@ -26,7 +25,7 @@
   }
 }
 @media (width >= 64rem) {
-  .p1-hero[data-layout="full-image"] { padding-inline: 4rem; }
+  .p1-hero[data-layout="full-image"] { padding-inline: var(--p1-space-3xl); }
 }
 
 .p1-hero__bg-img {
@@ -62,7 +61,7 @@
   .p1-hero[data-layout="text-only"] { padding-block: 6rem; padding-inline: 2.5rem; }
 }
 @media (width >= 64rem) {
-  .p1-hero[data-layout="text-only"] { padding-inline: 4rem; }
+  .p1-hero[data-layout="text-only"] { padding-inline: var(--p1-space-3xl); }
 }
 
 .p1-hero__text-content {
@@ -75,14 +74,14 @@
 
 /* ── Split layout ────────────────────────────────── */
 .p1-hero[data-layout="split"] {
-  padding-block: 4rem;
+  padding-block: var(--p1-space-3xl);
   padding-inline: var(--p1-space-lg);
 }
 @media (width >= 48rem) {
   .p1-hero[data-layout="split"] { padding-block: 5rem; padding-inline: 2.5rem; }
 }
 @media (width >= 64rem) {
-  .p1-hero[data-layout="split"] { padding-inline: 4rem; }
+  .p1-hero[data-layout="split"] { padding-inline: var(--p1-space-3xl); }
 }
 
 .p1-hero__split-grid {
@@ -120,7 +119,7 @@
   }
 }
 @media (width >= 64rem) {
-  .p1-hero[data-imagefill="flush"] .p1-hero__copy-wrap { padding-inline: 4rem; }
+  .p1-hero[data-imagefill="flush"] .p1-hero__copy-wrap { padding-inline: var(--p1-space-3xl); }
 }
 
 .p1-hero__img-flush {
@@ -148,11 +147,10 @@
 .p1-hero[data-tone="light"] .p1-hero__img-card {
   border: 1px solid var(--p1-border);
 }
-.p1-hero[data-tone="indigo"] .p1-hero__img-card,
-.p1-hero[data-tone="purple"] .p1-hero__img-card,
+.p1-hero[data-tone="accent"] .p1-hero__img-card,
 .p1-hero[data-tone="dark"] .p1-hero__img-card {
-  border: 1px solid oklch(1 0 0 / 0.15);
-  background-color: oklch(1 0 0 / 0.05);
+  border: 1px solid var(--p1-border-inverse);
+  background-color: var(--p1-input-inverse-bg);
 }
 
 .p1-hero__img-card .p1-hero__img {
@@ -183,9 +181,9 @@
   padding: 0.375rem 1rem;
 }
 .p1-hero__copy[data-ondark="true"] .p1-hero__eyebrow {
-  border-color: oklch(1 0 0 / 0.2);
-  background-color: oklch(1 0 0 / 0.1);
-  color: oklch(1 0 0);
+  border-color: var(--p1-border-inverse-strong);
+  background-color: var(--p1-border-inverse);
+  color: var(--p1-fg-inverse);
 }
 .p1-hero__copy:not([data-ondark]) .p1-hero__eyebrow {
   border-color: var(--p1-border);
@@ -200,7 +198,7 @@
   line-height: 1.02;
   text-wrap: balance;
 }
-.p1-hero__copy[data-ondark="true"] .p1-hero__title { color: oklch(1 0 0); }
+.p1-hero__copy[data-ondark="true"] .p1-hero__title { color: var(--p1-fg-inverse); }
 .p1-hero__copy:not([data-ondark]) .p1-hero__title { color: var(--p1-fg-default); }
 
 .p1-hero__desc {
@@ -211,7 +209,7 @@
 }
 .p1-hero__copy[data-align="center"] .p1-hero__desc { margin-inline: auto; }
 .p1-hero__copy[data-align="right"] .p1-hero__desc { margin-inline-start: auto; }
-.p1-hero__copy[data-ondark="true"] .p1-hero__desc { color: oklch(1 0 0 / 0.85); }
+.p1-hero__copy[data-ondark="true"] .p1-hero__desc { color: var(--p1-fg-inverse-subtle); }
 .p1-hero__copy:not([data-ondark]) .p1-hero__desc { color: var(--p1-fg-muted); }
 @media (width >= 40rem) {
   .p1-hero__desc { font-size: var(--p1-text-lg); }
@@ -237,8 +235,8 @@
   padding: 0.75rem 1.5rem;
 }
 .p1-hero__copy[data-ondark="true"] .p1-hero__secondary {
-  border-color: oklch(1 0 0 / 0.3);
-  color: oklch(1 0 0);
+  border-color: var(--p1-border-inverse-strong);
+  color: var(--p1-fg-inverse);
 }
 .p1-hero__copy:not([data-ondark]) .p1-hero__secondary {
   border-color: var(--p1-border);

@@ -85,7 +85,7 @@
 
 .p1-rich code {
   border-radius: var(--p1-radius-sm);
-  background: rgb(0 0 0 / 0.05);
+  background: var(--p1-surface-code);
   padding-inline: 0.25rem;
   padding-block: 0.125rem;
   font-family: monospace;

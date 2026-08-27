@@ -16,7 +16,7 @@ export interface FooterProps {
   legal: "on" | "off";
   copyright: string;
   legalLinks: string;
-  tone: "dark" | "indigo" | "light";
+  tone: "dark" | "accent" | "light";
 }
 
 const splitLines = (s: string) =>

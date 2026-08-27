@@ -15,7 +15,7 @@
 }
 
 .p1-embed__frame[data-kind="video"] {
-  background-color: oklch(0.2 0 0);
+  background-color: var(--p1-surface-inverse);
 }
 .p1-embed__frame[data-kind="social"],
 .p1-embed__frame[data-kind="map"],
@@ -43,7 +43,7 @@
   margin: -2.25rem 0 0 -2.25rem;
   place-content: center;
   background-color: var(--p1-warning);
-  box-shadow: 0 4px 24px oklch(0 0 0 / 0.35);
+  box-shadow: var(--p1-shadow-play);
 }
 .p1-embed__play-triangle {
   block-size: 0;
@@ -74,13 +74,13 @@
   inset-inline-start: 0;
   text-transform: uppercase;
 }
-.p1-embed__provider-tag[data-kind="video"] { color: oklch(1 0 0 / 0.85); }
+.p1-embed__provider-tag[data-kind="video"] { color: var(--p1-fg-inverse-subtle); }
 .p1-embed__provider-tag:not([data-kind="video"]) { color: var(--p1-fg-muted); }
 
 .p1-embed__video-title {
   bottom: var(--p1-space-md);
-  color: oklch(1 0 0);
-  filter: drop-shadow(0 1px 4px oklch(0 0 0 / 0.6));
+  color: var(--p1-fg-inverse);
+  filter: drop-shadow(var(--p1-drop-shadow-text));
   font-size: var(--p1-text-base);
   font-weight: var(--p1-weight-bold);
   inset-block-end: var(--p1-space-md);

@@ -38,7 +38,7 @@ export const LeadCaptureBlock: ComponentConfig<LeadCaptureProps> = {
       type: "select" as const,
       options: [
         { label: "Light", value: "light" },
-        { label: "Purple", value: "purple" },
+        { label: "Accent", value: "accent" },
         { label: "Dark", value: "dark" },
         { label: "Yellow", value: "yellow" },
       ],
@@ -57,7 +57,7 @@ export const LeadCaptureBlock: ComponentConfig<LeadCaptureProps> = {
     placeholder: "you@company.com",
     buttonLabel: "Subscribe",
     note: "No spam. Unsubscribe anytime.",
-    tone: "purple",
+    tone: "accent",
     layout: "inline",
   },
   render: LeadCaptureRender,

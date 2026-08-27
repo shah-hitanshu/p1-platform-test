@@ -39,7 +39,7 @@ export const TestimonialBlock: ComponentConfig<TestimonialProps> = {
       options: [
         { label: "Light", value: "light" },
         { label: "White", value: "white" },
-        { label: "Purple", value: "purple" },
+        { label: "Accent", value: "accent" },
         { label: "Dark", value: "dark" },
       ],
     },
