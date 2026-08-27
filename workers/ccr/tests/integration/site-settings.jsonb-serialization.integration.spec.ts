@@ -15,43 +15,17 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import postgres from 'postgres';
+import type postgres from 'postgres';
 import { setDatabaseInstance } from '../../src/db';
-import type { DatabaseConnection, QueryResult } from '../../src/db';
+import { createRealDatabaseConnection } from '../helpers/database';
 
 import { createSite } from '../../src/services/site-service';
 import { getSiteSettings, updateSiteSettings } from '../../src/services/site-settings-service';
 
-const CONNECTION_STRING = 'postgresql://cssuser:csspass@localhost:5432/cssdb';
 const RUN = `pcc3485-${String(Date.now())}`;
 
 let sql: postgres.Sql;
 const siteIds: string[] = [];
-
-function realConnection(connectionString: string): {
-  connection: DatabaseConnection;
-  sql: postgres.Sql;
-} {
-  const client = postgres(connectionString, { transform: { undefined: null }, max: 1 });
-  const connection: DatabaseConnection = {
-    async query<T = Record<string, unknown>>(
-      sqlQuery: string,
-      params?: unknown[],
-    ): Promise<QueryResult<T>> {
-      const result = await client.unsafe<T[]>(
-        sqlQuery,
-        params,
-      );
-      const rows = [...result] as T[];
-      const withCount = result as unknown as { count?: number };
-      return { rows, rowCount: withCount.count ?? rows.length };
-    },
-    async close(): Promise<void> {
-      await client.end({ timeout: 5 });
-    },
-  };
-  return { connection, sql: client };
-}
 
 async function freshSite(): Promise<string> {
   const suffix = `${RUN}-${String(siteIds.length + 1)}`;
@@ -70,7 +44,7 @@ async function storedSettings(siteId: string): Promise<{ type: string; value: un
 }
 
 beforeAll(() => {
-  const { connection, sql: client } = realConnection(CONNECTION_STRING);
+  const { connection, sql: client } = createRealDatabaseConnection();
   sql = client;
   setDatabaseInstance(connection);
 });

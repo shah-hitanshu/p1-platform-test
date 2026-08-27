@@ -1,4 +1,4 @@
--- Migration 059: Repair site settings stored as a jsonb array
+-- Migration 065: Repair site settings stored as a jsonb array
 --
 -- app.sites.settings is a jsonb object keyed by setting name. Some rows hold an
 -- array instead. updateSiteSettings bound its merge parameter pre-stringified, and
