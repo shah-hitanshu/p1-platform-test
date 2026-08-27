@@ -145,24 +145,24 @@ export const allBlocks = {
 
 // Category configuration for the Puck component drawer.
 export const sourceCategories: Config["categories"] = {
-  "🌐 Global": { title: "Global", components: ["HeaderBlock", "FooterBlock"] },
-  "🎯 Attention": { title: "Attention", components: ["HeroBlock", "AnnouncementBlock"] },
-  "🤝 Trust": { title: "Trust", components: ["LogoCloudBlock", "TestimonialBlock", "StatsBlock", "TeamGridBlock"] },
-  "💎 Value": { title: "Value", components: ["FeatureCardsBlock", "FeatureMediaBlock", "StepsBlock", "TimelineBlock"] },
-  "🖼️ Showcase": { title: "Showcase", components: ["CardGridBlock", "ImageBlock", "GalleryBlock"] },
-  "🚀 Convert": {
+  Global: { title: "Global", components: ["HeaderBlock", "FooterBlock"] },
+  Attention: { title: "Attention", components: ["HeroBlock", "AnnouncementBlock"] },
+  Trust: { title: "Trust", components: ["LogoCloudBlock", "TestimonialBlock", "StatsBlock", "TeamGridBlock"] },
+  Value: { title: "Value", components: ["FeatureCardsBlock", "FeatureMediaBlock", "StepsBlock", "TimelineBlock"] },
+  Showcase: { title: "Showcase", components: ["CardGridBlock", "ImageBlock", "GalleryBlock"] },
+  Convert: {
     title: "Convert",
     components: ["PricingBlock", "FaqBlock", "LeadCaptureBlock", "CtaBannerBlock", "ComparisonTableBlock"],
   },
-  "📰 Editorial": {
+  Editorial: {
     title: "Editorial",
     components: ["ArticleHeaderBlock", "RichTextBlock", "FigureBlock", "PullQuoteBlock", "EmbedBlock", "CalloutBlock"],
   },
-  "🧱 Layout": {
+  Layout: {
     title: "Layout",
     components: ["ColumnsBlock", "ContainerBlock", "TabsBlock", "AccordionBlock"],
   },
-  "✍️ Content": {
+  Content: {
     title: "Content",
     components: ["HeadingBlock", "ParagraphBlock", "QuoteBlock", "ListBlock", "ButtonBlock", "DividerBlock", "SpacerBlock"],
   },
