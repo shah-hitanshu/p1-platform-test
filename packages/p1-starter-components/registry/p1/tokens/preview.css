@@ -1,49 +1,9 @@
-/* Dev aggregate: everything, for Storybook and the catalog app.
+/* Dev aggregate: tokens and shared chrome for Storybook and the catalog app.
  *
- * NOT a distributed file. An installed block imports its own CSS, and tokens
- * arrive in the user's project via `shadcn add @p1/tokens`. This file exists so
- * our own preview surfaces can load the lot in one import.
- *
- * Block imports are appended here as each block is converted to plain CSS.
+ * NOT a distributed file. Block CSS is auto-discovered via import.meta.glob
+ * in .storybook/preview.ts — no manual entry needed when adding a block.
  */
 @import "./p1-tokens.css";
 @import "./base.css";
 @import "../internal/btn.css";
 @import "../internal/rich.css";
-@import "../blocks/divider/divider.css";
-@import "../blocks/heading/heading.css";
-@import "../blocks/paragraph/paragraph.css";
-@import "../blocks/quote/quote.css";
-@import "../blocks/list/list.css";
-@import "../blocks/button/button.css";
-@import "../blocks/spacer/spacer.css";
-@import "../blocks/columns/columns.css";
-@import "../blocks/container/container.css";
-@import "../blocks/tabs/tabs.css";
-@import "../blocks/accordion/accordion.css";
-@import "../blocks/card-grid/card-grid.css";
-@import "../blocks/image/image.css";
-@import "../blocks/gallery/gallery.css";
-@import "../blocks/article-header/article-header.css";
-@import "../blocks/rich-text/rich-text.css";
-@import "../blocks/figure/figure.css";
-@import "../blocks/pull-quote/pull-quote.css";
-@import "../blocks/embed/embed.css";
-@import "../blocks/callout/callout.css";
-@import "../blocks/features/features.css";
-@import "../blocks/feature-media/feature-media.css";
-@import "../blocks/steps/steps.css";
-@import "../blocks/timeline/timeline.css";
-@import "../blocks/logos/logos.css";
-@import "../blocks/testimonial/testimonial.css";
-@import "../blocks/stats/stats.css";
-@import "../blocks/team-grid/team-grid.css";
-@import "../blocks/pricing/pricing.css";
-@import "../blocks/faq/faq.css";
-@import "../blocks/lead-capture/lead-capture.css";
-@import "../blocks/cta/cta.css";
-@import "../blocks/comparison-table/comparison-table.css";
-@import "../blocks/hero/hero.css";
-@import "../blocks/announcement/announcement.css";
-@import "../blocks/header/header.css";
-@import "../blocks/footer/footer.css";
