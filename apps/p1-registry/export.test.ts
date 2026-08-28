@@ -46,3 +46,30 @@ describe.skipIf(!registryBuilt)('registry build output', () => {
     expect(existsSync(join(registryDir, 'base.json'))).toBe(true);
   });
 });
+
+// Preview pages are prerendered block markup shown in the catalog's iframes. The
+// block CSS must arrive as a <link> in that HTML; if it only rides the dynamic
+// import chunk, the markup paints unstyled until JS injects it.
+describe.skipIf(!existsSync(join(root, 'out', 'preview', 'hero.html')))('preview CSS is not runtime-injected', () => {
+  const html = readFileSync(join(root, 'out', 'preview', 'hero.html'), 'utf8');
+
+  it('preview HTML links a stylesheet', () => {
+    expect(html).toMatch(/<link[^>]+rel="stylesheet"/);
+  });
+
+  it('block styles are reachable without running JS', () => {
+    const linked = [...html.matchAll(/<link[^>]+rel="stylesheet"[^>]+href="([^"]+)"/g)].map((m) => m[1]);
+    const inlined = [...html.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g)].map((m) => m[1]).join('\n');
+    const css =
+      inlined +
+      linked
+        .map((href) => {
+          const f = join(root, 'out', href.replace(/^\//, ''));
+          return existsSync(f) ? readFileSync(f, 'utf8') : '';
+        })
+        .join('\n');
+
+    expect(css, 'hero block rules missing from initial HTML').toContain('.p1-hero');
+    expect(css, '.p1-block padding (base.css) missing from initial HTML').toContain('.p1-block');
+  });
+});
