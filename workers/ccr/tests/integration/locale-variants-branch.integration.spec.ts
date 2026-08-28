@@ -13,7 +13,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type postgres from 'postgres';
 import { setDatabaseInstance } from '../../src/db';
-import { createRealDatabaseConnection } from '../helpers/database';
+import { createRealDatabaseConnection, deleteSiteCascade } from '../helpers/database';
 
 import { createSite } from '../../src/services/site-service';
 import { createBranch } from '../../src/services/branch-service';
@@ -130,20 +130,8 @@ describe('Locale-variant listing scope - Integration Tests', () => {
   });
 
   afterAll(async () => {
-    try {
-      await sql`DELETE FROM app.document_relations WHERE source_document_id IN (
-        SELECT id FROM app.documents WHERE site_id = ${siteId}
-      )`;
-      await sql`DELETE FROM app.document_versions WHERE document_id IN (
-        SELECT id FROM app.documents WHERE site_id = ${siteId}
-      )`;
-      await sql`DELETE FROM app.documents WHERE site_id = ${siteId}`;
-      await sql`DELETE FROM app.branches WHERE site_id = ${siteId}`;
-      await sql`DELETE FROM app.sites WHERE id = ${siteId}`;
-      await sql`DELETE FROM app.users WHERE id = ${TEST_USER_ID}`;
-    } catch {
-      // Ignore cleanup errors
-    }
+    await deleteSiteCascade(sql, siteId);
+    await sql`DELETE FROM app.users WHERE id = ${TEST_USER_ID}`;
     await sql.end();
     setDatabaseInstance(null);
   });

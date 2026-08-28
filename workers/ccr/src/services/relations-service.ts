@@ -14,6 +14,12 @@
  */
 
 import { query } from '../db';
+import {
+  branchDocumentPathJoin,
+  branchInheritsFromMain,
+  documentInBranchSitePredicate,
+  publishedOnBranchJoin,
+} from './document-queries';
 import { getFirstRow } from './checkpoint-mappers';
 import { isAuthority } from '@pantheon-systems/p1-content-validator';
 import type { Authority } from '@pantheon-systems/p1-content-validator';
@@ -132,7 +138,10 @@ export async function listLocalizationEdgesByTarget(
   return result.rows.map(mapRowToRelation);
 }
 
-/** One drift candidate: a source document the branch can see, in path order. */
+/**
+ * One drift candidate: a source document the branch can see, in path order.
+ * `path` is the document's path on this branch, which a move there overrides.
+ */
 export interface DriftCandidate {
   documentId: string;
   path: string;
@@ -149,52 +158,64 @@ export interface DriftCandidatePage {
 }
 
 /**
- * A document is visible to the drift listing on the same terms as the branch
+ * A document is visible to a branch listing on the same terms as the branch
  * document listing: either the branch holds versions of it and the newest is not a
  * tombstone, or the branch holds none and inherits a published, non-tombstoned copy
- * from main. `$3` is null when the branch is main, which leaves only the first arm.
+ * from main. `alias` is the documents alias the predicate constrains, so both ends
+ * of an edge can be checked in one query, and `pubAlias` names that end's
+ * {@link publishedOnBranchJoin}, which carries whether main published it.
+ *
+ * A null `pubAlias` returns the first arm alone, for a branch with no distinct main
+ * to inherit from. `mainParam` goes unread then, and so may the join.
  *
  * @see workers/src/services/branch-document-service.ts (listDocumentsOnBranch)
  */
-const VISIBLE_ON_BRANCH = `(
-    (
+function visibleOnBranch(
+  alias: string,
+  pubAlias: string | null,
+  branchParam: string,
+  mainParam: string,
+): string {
+  const liveOnBranch = `(
       EXISTS (
         SELECT 1 FROM app.document_versions dv
-         WHERE dv.document_id = d.id AND dv.branch_id = $2
+         WHERE dv.document_id = ${alias}.id AND dv.branch_id = ${branchParam}
       )
       AND NOT EXISTS (
         SELECT 1 FROM app.document_versions dv_tomb
-         WHERE dv_tomb.document_id = d.id AND dv_tomb.branch_id = $2
+         WHERE dv_tomb.document_id = ${alias}.id AND dv_tomb.branch_id = ${branchParam}
            AND dv_tomb.is_tombstone = true
            AND dv_tomb.version_number = (
              SELECT MAX(dv_latest.version_number) FROM app.document_versions dv_latest
-              WHERE dv_latest.document_id = d.id AND dv_latest.branch_id = $2
+              WHERE dv_latest.document_id = ${alias}.id AND dv_latest.branch_id = ${branchParam}
            )
       )
-    )
+    )`;
+
+  if (pubAlias === null) {
+    return liveOnBranch;
+  }
+
+  return `(
+    ${liveOnBranch}
     OR (
       NOT EXISTS (
         SELECT 1 FROM app.document_versions dv
-         WHERE dv.document_id = d.id AND dv.branch_id = $2
+         WHERE dv.document_id = ${alias}.id AND dv.branch_id = ${branchParam}
       )
-      AND EXISTS (
-        SELECT 1 FROM app.document_versions dv
-          JOIN app.checkpoint_documents cd ON cd.document_version_id = dv.id
-          JOIN app.checkpoints cp ON cp.id = cd.checkpoint_id
-         WHERE dv.document_id = d.id AND dv.branch_id = $3
-           AND cp.branch_id = $3 AND cp.checkpoint_type = 'publish'
-      )
+      AND ${pubAlias}.document_id IS NOT NULL
       AND NOT EXISTS (
         SELECT 1 FROM app.document_versions dv_tomb
-         WHERE dv_tomb.document_id = d.id AND dv_tomb.branch_id = $3
+         WHERE dv_tomb.document_id = ${alias}.id AND dv_tomb.branch_id = ${mainParam}
            AND dv_tomb.is_tombstone = true
            AND dv_tomb.version_number = (
              SELECT MAX(dv_latest.version_number) FROM app.document_versions dv_latest
-              WHERE dv_latest.document_id = d.id AND dv_latest.branch_id = $3
+              WHERE dv_latest.document_id = ${alias}.id AND dv_latest.branch_id = ${mainParam}
            )
       )
     )
   )`;
+}
 
 /**
  * One page of the documents on a branch that source an edge of the given type and
@@ -206,16 +227,19 @@ export async function listDriftCandidates(
   mainBranchId: string | undefined,
   page: { limit: number; offset: number },
 ): Promise<DriftCandidatePage> {
+  const inherits = branchInheritsFromMain(branchId, mainBranchId);
   // One row beyond the page answers whether another page remains.
   const result = await query<{ id: string; path: string; locale: string | null }>(
-    `SELECT d.id, d.path, d.locale
+    `SELECT d.id, COALESCE(bdp.path, d.path) AS path, d.locale
        FROM app.document_relations dr
        JOIN app.documents d ON d.id = dr.source_document_id
+       ${branchDocumentPathJoin('$2')}
        -- An archived target is nothing to reconcile against. A target deleted on the
        -- branch it is read from is dropped by the summary instead, since which branch
        -- that is gets resolved per document.
        JOIN app.documents target
          ON target.id = dr.target_document_id AND target.archived_at IS NULL
+       ${inherits ? publishedOnBranchJoin('pub_d', 'd', '$5') : ''}
       WHERE dr.relation_type = $1
         -- Pinned to nothing, so the diff would run the target against itself.
         AND dr.synced_version IS NOT NULL
@@ -234,10 +258,15 @@ export async function listDriftCandidates(
           )
         )
         AND d.archived_at IS NULL
-        AND ${VISIBLE_ON_BRANCH}
-      ORDER BY d.path ASC
-      LIMIT $4 OFFSET $5`,
-    [relationType, branchId, mainBranchId ?? null, page.limit + 1, page.offset],
+        AND ${visibleOnBranch('d', inherits ? 'pub_d' : null, '$2', '$5')}
+      ORDER BY COALESCE(bdp.path, d.path) ASC
+      LIMIT $3 OFFSET $4`,
+    // The branch to inherit from binds last so that dropping it renumbers nothing.
+    // It has to be dropped rather than passed as null: Postgres cannot infer a type
+    // for a parameter the statement never mentions.
+    inherits
+      ? [relationType, branchId, page.limit + 1, page.offset, mainBranchId]
+      : [relationType, branchId, page.limit + 1, page.offset],
   );
 
   const rows = result.rows.slice(0, page.limit);
@@ -249,6 +278,67 @@ export async function listDriftCandidates(
     })),
     hasMore: result.rows.length > page.limit,
   };
+}
+
+/**
+ * One locale variant of a canonical, as the branch sees it. `path` is the
+ * variant's path on this branch, which a move there overrides.
+ */
+export interface LocaleVariantRow {
+  canonicalDocumentId: string;
+  documentId: string;
+  path: string;
+  locale: string;
+}
+
+/**
+ * Every locale variant the branch can see, paired with the canonical it derives
+ * from, ordered by canonical so a caller can group in one pass. Both ends of the
+ * edge must be visible on the branch and unarchived, so a translation authored on
+ * another branch is absent and one inherited from main is present.
+ *
+ * Unlike the drift listing this applies no `synced_version` predicate: a variant in
+ * sync with its canonical is content the branch holds, and coverage counts it.
+ *
+ * A variant with no `locale` is skipped — the tag is what a caller buckets by, and
+ * the localization edge alone does not supply one.
+ */
+export async function listLocaleVariantsOnBranch(
+  branchId: string,
+  mainBranchId: string | undefined,
+): Promise<LocaleVariantRow[]> {
+  const inherits = branchInheritsFromMain(branchId, mainBranchId);
+  const result = await query<{
+    canonical_document_id: string;
+    id: string;
+    path: string;
+    locale: string;
+  }>(
+    `SELECT dr.target_document_id AS canonical_document_id, d.id,
+            COALESCE(bdp.path, d.path) AS path, d.locale
+       FROM app.documents d
+       ${branchDocumentPathJoin('$1')}
+       JOIN app.document_relations dr
+         ON dr.source_document_id = d.id AND dr.relation_type = 'localization'
+       JOIN app.documents target ON target.id = dr.target_document_id
+       ${inherits ? publishedOnBranchJoin('pub_d', 'd', '$2') : ''}
+       ${inherits ? publishedOnBranchJoin('pub_t', 'target', '$2') : ''}
+      WHERE ${documentInBranchSitePredicate('$1')}
+        AND d.archived_at IS NULL
+        AND d.locale IS NOT NULL
+        AND target.archived_at IS NULL
+        AND ${visibleOnBranch('d', inherits ? 'pub_d' : null, '$1', '$2')}
+        AND ${visibleOnBranch('target', inherits ? 'pub_t' : null, '$1', '$2')}
+      ORDER BY dr.target_document_id ASC`,
+    inherits ? [branchId, mainBranchId] : [branchId],
+  );
+
+  return result.rows.map((row) => ({
+    canonicalDocumentId: row.canonical_document_id,
+    documentId: row.id,
+    path: row.path,
+    locale: row.locale,
+  }));
 }
 
 /**

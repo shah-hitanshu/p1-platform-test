@@ -15,13 +15,14 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type postgres from 'postgres';
 import { setDatabaseInstance } from '../../src/db';
-import { createRealDatabaseConnection } from '../helpers/database';
+import { createRealDatabaseConnection, deleteSiteCascade } from '../helpers/database';
 
 import { createSite } from '../../src/services/site-service';
 import { createBranch } from '../../src/services/branch-service';
 import {
   createDocumentOnBranch,
   deleteDocumentOnBranch,
+  upsertBranchDocumentPaths,
 } from '../../src/services/branch-document-service';
 import { createDocumentVersion } from '../../src/services/document-version-service';
 import { publishDocument } from '../../src/services/checkpoint-service';
@@ -196,25 +197,8 @@ describe('Drift candidate selection - Integration Tests', () => {
   });
 
   afterAll(async () => {
-    try {
-      await sql`DELETE FROM app.document_relation_branch_sync WHERE source_document_id IN (
-        SELECT id FROM app.documents WHERE site_id = ${siteId})`;
-      await sql`DELETE FROM app.document_relations WHERE source_document_id IN (
-        SELECT id FROM app.documents WHERE site_id = ${siteId})`;
-      await sql`DELETE FROM app.checkpoint_documents WHERE checkpoint_id IN (
-        SELECT id FROM app.checkpoints WHERE branch_id IN (
-          SELECT id FROM app.branches WHERE site_id = ${siteId}))`;
-      await sql`DELETE FROM app.checkpoints WHERE branch_id IN (
-        SELECT id FROM app.branches WHERE site_id = ${siteId})`;
-      await sql`DELETE FROM app.document_versions WHERE document_id IN (
-        SELECT id FROM app.documents WHERE site_id = ${siteId})`;
-      await sql`DELETE FROM app.documents WHERE site_id = ${siteId}`;
-      await sql`DELETE FROM app.branches WHERE site_id = ${siteId}`;
-      await sql`DELETE FROM app.sites WHERE id = ${siteId}`;
-      await sql`DELETE FROM app.users WHERE id = ${TEST_USER_ID}`;
-    } catch {
-      // Ignore cleanup errors
-    }
+    await deleteSiteCascade(sql, siteId);
+    await sql`DELETE FROM app.users WHERE id = ${TEST_USER_ID}`;
     await sql.end();
     setDatabaseInstance(null);
   });
@@ -285,6 +269,28 @@ describe('Drift candidate selection - Integration Tests', () => {
 
     const plain = candidates.find((candidate) => candidate.documentId === plainTranslationId);
     expect(plain?.locale).toBe('fr-FR');
+  });
+
+  it('reports the candidate path the branch sees, not the global one', async () => {
+    await upsertBranchDocumentPaths(mainBranchId, [
+      { documentId: plainTranslationId, newPath: 'moved/a-plain.fr-fr' },
+    ]);
+    try {
+      const { candidates } = await listDriftCandidates('localization', mainBranchId, undefined, {
+        limit: 50,
+        offset: 0,
+      });
+
+      const plain = candidates.find((candidate) => candidate.documentId === plainTranslationId);
+      expect(plain?.path).toBe('moved/a-plain.fr-fr');
+      // Ordering follows the path the branch sees, so the moved candidate sorts
+      // where its new path puts it.
+      const paths = candidates.map((candidate) => candidate.path);
+      expect(paths).toEqual([...paths].sort());
+    } finally {
+      await sql`DELETE FROM app.branch_document_paths
+                 WHERE branch_id = ${mainBranchId} AND document_id = ${plainTranslationId}`;
+    }
   });
 
   it('reports more remaining when the page does not reach the end', async () => {

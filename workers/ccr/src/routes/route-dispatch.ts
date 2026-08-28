@@ -26,6 +26,7 @@ import { handleContentRedirectRoutes } from './redirect-content-api';
 import { handleMigrationRoutes } from './migration-api';
 import { handleDriftRoutes } from './drift-api';
 import { handleViewerRoleRoutes } from './viewer-role-api';
+import { handleLocaleCoverageRoutes } from './locale-coverage-api';
 import { handleMergeRoutes } from './merge-api';
 import { handleGrantRoutes } from './grant-api';
 import { handleCollaboratorRoutes } from './collaborator-api';
@@ -192,6 +193,13 @@ export async function dispatchRoute(
 
     case 'drift':
       return await handleDriftRoutes(request, {
+        siteId: route.params.siteId ?? '',
+        branchId: route.params.branchId,
+        principal,
+      });
+
+    case 'locale-coverage':
+      return await handleLocaleCoverageRoutes(request, {
         siteId: route.params.siteId ?? '',
         branchId: route.params.branchId,
         principal,

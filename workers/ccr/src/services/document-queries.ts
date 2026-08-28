@@ -101,6 +101,46 @@ export function effectivePathPrefixPredicate(pathParam: string): string {
 }
 
 /**
+ * LEFT JOIN binding alias `bdp` to document `d`'s path override on the branch at
+ * `branchParam`, if it has one. Pair it with `COALESCE(bdp.path, d.path)` wherever
+ * a path is selected, filtered or ordered on: `documents.path` is global, so a
+ * listing that reads it alone reports the pre-move path for a document moved on
+ * this branch.
+ *
+ * Expects the documents table to be aliased `d`.
+ */
+export function branchDocumentPathJoin(branchParam: string): string {
+  return `LEFT JOIN app.branch_document_paths bdp
+        ON bdp.branch_id = ${branchParam} AND bdp.document_id = d.id`;
+}
+
+/**
+ * LEFT JOIN binding `joinAlias` to the documents published on the branch at
+ * `branchParam`: those holding a version there that a publish checkpoint on the
+ * same branch captured. Membership is `${joinAlias}.document_id IS NOT NULL`.
+ *
+ * One join for the whole query rather than a correlated EXISTS per row, which the
+ * planner answers by scanning checkpoint_documents once per row as soon as
+ * documents carry more than a handful of versions
+ */
+export function publishedOnBranchJoin(
+  joinAlias: string,
+  documentAlias: string,
+  branchParam: string,
+): string {
+  return `LEFT JOIN (
+        SELECT DISTINCT dv_pub.document_id
+          FROM app.document_versions dv_pub
+          INNER JOIN app.checkpoint_documents cd_pub
+            ON cd_pub.document_version_id = dv_pub.id
+          INNER JOIN app.checkpoints cp_pub ON cp_pub.id = cd_pub.checkpoint_id
+         WHERE dv_pub.branch_id = ${branchParam}
+           AND cp_pub.branch_id = ${branchParam}
+           AND cp_pub.checkpoint_type = 'publish'
+      ) ${joinAlias} ON ${joinAlias}.document_id = ${documentAlias}.id`;
+}
+
+/**
  * EXISTS predicate holding when document `d` has a version on the branch at
  * `branchParam` that a publish checkpoint on that same branch captured.
  *

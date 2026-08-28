@@ -84,6 +84,10 @@ Postgres runs in a container, reached through the `Makefile`. Run `make` with no
 - **One reason to fail.** If an unrelated module can redden it, the scope was drawn too wide and the failure will not say where to look.
 - **Deterministic and order-independent.** No shared mutable state, no wall-clock dependence, no reliance on an earlier test having run.
 
+### Helpers
+
+`workers/ccr/tests/helpers/` and `e2e/helpers/` hold the shared setup for their suites. Read them before writing your own setup or teardown. Following the nearest existing file is right for structure, but that file is usually a copy of its own neighbour, so imitating it inherits that lineage's mistakes instead of the fix that landed in the helper.
+
 Traps:
 
 - **`packages/puck-css` aliases `@puckeditor/core` to a hand-written stub** with no store, no fields slice, no `resolveFields`. Every test in the unit project that touches Puck exercises that stub. Anything asserting Puck's own behaviour belongs in `tests-puck/`, which drops the alias. See [spike/pcc-3406/FINDINGS.md](../../../packages/puck-css/spike/pcc-3406/FINDINGS.md).

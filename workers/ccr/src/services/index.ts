@@ -158,6 +158,7 @@ export {
   getLocalizationEdgeBySource,
   listLocalizationEdgesByTarget,
   listDriftCandidates,
+  listLocaleVariantsOnBranch,
   createLocalizationEdge,
   getAuthorityOverrides,
   getAuthorityOverride,
@@ -172,6 +173,7 @@ export type {
   CreateLocalizationEdgeParams,
   DriftCandidate,
   DriftCandidatePage,
+  LocaleVariantRow,
   Authority,
   AuthorityOverrides,
   AuthorityOverridesJson,
@@ -640,6 +642,15 @@ export type {
   BranchDriftPage,
   ListBranchDriftOptions,
 } from './branch-drift-service';
+
+// Locale Coverage Service
+export { getBranchLocaleCoverage } from './locale-coverage-service';
+
+export type {
+  LocaleCoverage,
+  LocaleCoverageEntry,
+  LocaleCoverageVariant,
+} from './locale-coverage-service';
 
 export type {
   SlotDelta,

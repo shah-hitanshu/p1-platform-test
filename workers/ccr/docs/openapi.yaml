@@ -1074,6 +1074,45 @@ paths:
                 $ref: '#/components/schemas/Error'
 
   # ===========================================================================
+  # Locale Coverage
+  # ===========================================================================
+  /api/sites/{siteId}/branches/{branchId}/locale-coverage:
+    parameters:
+      - $ref: '#/components/parameters/siteIdParam'
+      - $ref: '#/components/parameters/branchIdParam'
+    get:
+      summary: List branch locale coverage
+      description: >-
+        Returns every canonical document on the branch that holds at least one
+        locale variant, each with the variants the branch can see, plus the distinct
+        locales across them. Visibility follows the branch document listing: a
+        variant the branch holds a live version of, or inherits published from main,
+        counts. A canonical with no variants is absent. Unlike the drift listing a
+        variant in sync with its canonical is included. Requires view access on the
+        branch.
+      operationId: getBranchLocaleCoverage
+      tags: [Documents]
+      responses:
+        '200':
+          description: The branch's locale coverage
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LocaleCoverageResponse'
+        '403':
+          description: Caller cannot view the branch
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Branch not found on this site
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ===========================================================================
   # Localization
   # ===========================================================================
   /api/sites/{siteId}/branches/{branchId}/documents/{documentId}/translations:
@@ -4416,6 +4455,8 @@ components:
           format: uuid
         path:
           type: string
+          description: >-
+            The document's path on this branch, which a move made here overrides.
         locale:
           type: string
           nullable: true
@@ -4453,6 +4494,53 @@ components:
             drift, so a page often holds fewer entries than limit and the length of
             drift says nothing about whether more pages follow.
       required: [drift, limit, offset, hasMore]
+
+    # -------------------------------------------------------------------------
+    # Locale Coverage
+    # -------------------------------------------------------------------------
+    LocaleCoverageVariant:
+      type: object
+      properties:
+        locale:
+          type: string
+          description: BCP-47 language tag of the variant.
+        documentId:
+          type: string
+          format: uuid
+        path:
+          type: string
+          description: >-
+            The variant's path on this branch, which a move made here overrides.
+      required: [locale, documentId, path]
+
+    LocaleCoverageEntry:
+      type: object
+      properties:
+        canonicalDocumentId:
+          type: string
+          format: uuid
+        variants:
+          type: array
+          description: The canonical's locale variants, sorted by locale.
+          items:
+            $ref: '#/components/schemas/LocaleCoverageVariant'
+      required: [canonicalDocumentId, variants]
+
+    LocaleCoverageResponse:
+      type: object
+      properties:
+        locales:
+          type: array
+          description: >-
+            The distinct locales across coverage, sorted. These are the locales the
+            branch holds content in, not every locale the site is configured for.
+          items:
+            type: string
+        coverage:
+          type: array
+          items:
+            $ref: '#/components/schemas/LocaleCoverageEntry'
+      required: [locales, coverage]
 
     # -------------------------------------------------------------------------
     # Localization

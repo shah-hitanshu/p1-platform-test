@@ -437,6 +437,18 @@ export function parseRoute(path: string): { handler: string; params: RouteParams
     };
   }
 
+  // Branch locale coverage route
+  // /api/sites/{siteId}/branches/{branchId}/locale-coverage
+  const localeCoverageRe = /^\/api\/sites\/([^/]+)\/branches\/([^/]+)\/locale-coverage$/;
+  const localeCoverageMatch = localeCoverageRe.exec(normalizedPath);
+  if (localeCoverageMatch) {
+    const [, siteId, branchId] = localeCoverageMatch;
+    return {
+      handler: 'locale-coverage',
+      params: { siteId, branchId },
+    };
+  }
+
   // Template routes
   // /api/sites/{siteId}/branches/{branchId}/templates/{templateId}/migration-status
   const templateMigrationStatusRe =
