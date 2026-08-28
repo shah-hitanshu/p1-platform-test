@@ -13,6 +13,15 @@ vi.mock('../../src/db', () => ({
   query: vi.fn(),
 }));
 
+// Mock the organization service for auto-create org
+vi.mock('../../src/services/organization-service', async () => {
+  const actual = await vi.importActual('../../src/services/organization-service');
+  return {
+    ...actual,
+    createOrgForUser: vi.fn(),
+  };
+});
+
 describe('Users API Routes', () => {
   const adminPrincipal: AuthenticatedPrincipal = {
     id: 'user-admin',
@@ -492,6 +501,156 @@ describe('Users API Routes', () => {
       });
 
       expect(response.status).toBe(405);
+    });
+  });
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // Business Accounts Phase 1: Auto-create org on user creation
+  // ───────────────────────────────────────────────────────────────────────────
+
+  describe('POST /api/admin/users - auto-create org', () => {
+    it('should auto-create org after adding user', async () => {
+      const { handleUsersRoutes } = await import('../../src/routes/users-api');
+      const db = await import('../../src/db');
+      const { createOrgForUser } = await import('../../src/services/organization-service');
+
+      // isSystemAdmin count query: no users (bootstrap)
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ count: '0' }] });
+      // handleAddUser bootstrap count query
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ count: '0' }] });
+      // Auto-insert principal as admin
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
+      // Duplicate check
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
+      // Insert user
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [mockUserRow] });
+
+      // createOrgForUser mock
+      vi.mocked(createOrgForUser).mockResolvedValueOnce({
+        id: 'org-new',
+        name: 'Example',
+        settings: { agentIdleTimeoutMs: 5000 },
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z',
+        archivedAt: null,
+        externalSpaceId: null,
+      });
+
+      const request = new Request(
+        'https://api.example.com/api/admin/users',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: 'test@example.com',
+            name: 'Test User',
+          }),
+        },
+      );
+
+      const response = await handleUsersRoutes(request, {
+        principal: adminPrincipal,
+      });
+
+      expect(response.status).toBe(201);
+      expect(createOrgForUser).toHaveBeenCalledWith(
+        mockUserRow.id,
+        'test@example.com',
+        undefined,
+        undefined,
+      );
+    });
+
+    it('should pass spaceName and externalSpaceId when provided', async () => {
+      const { handleUsersRoutes } = await import('../../src/routes/users-api');
+      const db = await import('../../src/db');
+      const { createOrgForUser } = await import('../../src/services/organization-service');
+
+      // isSystemAdmin count query: no users (bootstrap)
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ count: '0' }] });
+      // handleAddUser bootstrap count query
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ count: '0' }] });
+      // Auto-insert principal as admin
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
+      // Duplicate check
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
+      // Insert user
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [mockUserRow] });
+
+      vi.mocked(createOrgForUser).mockResolvedValueOnce({
+        id: 'org-new',
+        name: 'Pantheon',
+        settings: { agentIdleTimeoutMs: 5000 },
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z',
+        archivedAt: null,
+        externalSpaceId: 'space_abc',
+      });
+
+      const request = new Request(
+        'https://api.example.com/api/admin/users',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: 'test@example.com',
+            name: 'Test User',
+            spaceName: 'Pantheon',
+            externalSpaceId: 'space_abc',
+          }),
+        },
+      );
+
+      const response = await handleUsersRoutes(request, {
+        principal: adminPrincipal,
+      });
+
+      expect(response.status).toBe(201);
+      expect(createOrgForUser).toHaveBeenCalledWith(
+        mockUserRow.id,
+        'test@example.com',
+        'Pantheon',
+        'space_abc',
+      );
+    });
+
+    it('should still succeed if org creation fails', async () => {
+      const { handleUsersRoutes } = await import('../../src/routes/users-api');
+      const db = await import('../../src/db');
+      const { createOrgForUser } = await import('../../src/services/organization-service');
+
+      // isSystemAdmin count query: no users (bootstrap)
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ count: '0' }] });
+      // handleAddUser bootstrap count query
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ count: '0' }] });
+      // Auto-insert principal as admin
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
+      // Duplicate check
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
+      // Insert user
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [mockUserRow] });
+
+      // Org creation fails — user creation should still succeed
+      vi.mocked(createOrgForUser).mockRejectedValueOnce(new Error('org creation failed'));
+
+      const request = new Request(
+        'https://api.example.com/api/admin/users',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: 'test@example.com',
+            name: 'Test User',
+          }),
+        },
+      );
+
+      const response = await handleUsersRoutes(request, {
+        principal: adminPrincipal,
+      });
+
+      // User creation should still return 201 even if org creation fails
+      expect(response.status).toBe(201);
     });
   });
 });

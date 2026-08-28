@@ -483,6 +483,11 @@ export {
   unlinkSiteFromOrganization,
   getSitesByOrganization,
   getOrganizationForSite,
+  getOrganizationsForUser,
+  getUserPrimaryOrg,
+  createOrgForUser,
+  linkOrgToSpace,
+  isUserInOrganization,
 } from './organization-service';
 
 export type {

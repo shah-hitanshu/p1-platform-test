@@ -999,6 +999,14 @@ export function parseRoute(path: string): { handler: string; params: RouteParams
     };
   }
 
+  // My organizations: /api/organizations/mine (must match before org/{id}/agents)
+  if (normalizedPath === '/api/organizations/mine') {
+    return {
+      handler: 'my-organizations',
+      params: {},
+    };
+  }
+
   // Agent CRUD: /api/organizations/{orgId}/agents(/{agentId}(/status))
   const agentCrudMatch = /^\/api\/organizations\/([^/]+)\/agents(?:\/([^/]+?)(?:\/(status))?)?$/.exec(normalizedPath);
   if (agentCrudMatch) {

@@ -16,6 +16,9 @@ import {
   listSites,
   listBranches,
   getMainBranch,
+  getUserPrimaryOrg,
+  linkSiteToOrganization,
+  isUserInOrganization,
   DuplicatePantheonSiteIdError,
   HttpError,
 } from '../services';
@@ -142,6 +145,17 @@ async function handleCreateSite(
     env,
   );
 
+  if (context.principal.dbUserId !== undefined) {
+    try {
+      const orgId = await getUserPrimaryOrg(context.principal.dbUserId);
+      if (orgId !== null) {
+        await linkSiteToOrganization(site.id, orgId);
+      }
+    } catch (orgError) {
+      getLogger().error('Auto-assign org failed for site', orgError, { site_id: site.id });
+    }
+  }
+
   getLogger().info('site created', {
     site_id: site.id,
     principal_type: context.principal.type,
@@ -164,6 +178,7 @@ async function handleListSites(
   const offsetParam = url.searchParams.get('offset');
   const archivedParam = url.searchParams.get('archived');
   const archived = archivedParam === 'true' ? true : archivedParam === 'false' ? false : undefined;
+  const organizationId = url.searchParams.get('organizationId') ?? undefined;
 
   // Validate pagination parameters
   const pagination = validatePagination(limitParam, offsetParam);
@@ -193,6 +208,18 @@ async function handleListSites(
     actingUserId = actingUserRow.id;
   }
 
+  if (organizationId !== undefined) {
+    // For an agent acting on behalf of a user, membership is checked
+    // against that acting user, same as the site listing below — an
+    // agent with no resolved acting user has no membership to check.
+    const userIdForOrgCheck = actingUserId ?? context.principal.dbUserId;
+    const hasAccess =
+      userIdForOrgCheck !== undefined && (await isUserInOrganization(userIdForOrgCheck, organizationId));
+    if (!hasAccess) {
+      return errorResponse('Access denied to the specified organization', 403);
+    }
+  }
+
   const sites = await listSites({
     limit: pagination.limit,
     offset: pagination.offset,
@@ -200,6 +227,7 @@ async function handleListSites(
     principalType: context.principal.type as 'user' | 'agent',
     actingUserId,
     archived,
+    organizationId,
   });
 
   return jsonResponse({ sites });

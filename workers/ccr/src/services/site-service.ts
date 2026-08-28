@@ -73,6 +73,8 @@ export interface ListSitesOptions {
    * undefined = active only (same as false, the safe default).
    */
   archived?: boolean;
+  /** Filter sites to a specific organization. */
+  organizationId?: string;
 }
 
 /**
@@ -82,6 +84,7 @@ export interface ListSitesOptions {
 interface SiteRow {
   id: string;
   pantheon_site_id: string | null;
+  organization_id: string | null;
   name: string;
   url: string | null;
   workflow_settings: WorkflowSettings | string;
@@ -114,9 +117,7 @@ const DEFAULT_WORKFLOW_SETTINGS: WorkflowSettings = {
  * Parses workflow settings from database.
  * Handles both string and object formats for JSONB columns.
  */
-function parseWorkflowSettings(
-  value: WorkflowSettings | string,
-): WorkflowSettings {
+function parseWorkflowSettings(value: WorkflowSettings | string): WorkflowSettings {
   if (typeof value === 'string') {
     return JSON.parse(value) as WorkflowSettings;
   }
@@ -130,6 +131,7 @@ function mapRowToSite(row: SiteRow): Site {
   return {
     id: row.id,
     pantheonSiteId: row.pantheon_site_id ?? undefined,
+    organizationId: row.organization_id ?? undefined,
     name: row.name,
     url: row.url ?? undefined,
     workflowSettings: parseWorkflowSettings(row.workflow_settings),
@@ -160,9 +162,7 @@ function assertValidUrl(value: string): void {
 /**
  * Normalizes a Pantheon site ID input: blank or missing becomes null.
  */
-function normalizePantheonSiteId(
-  value: string | null | undefined,
-): string | null {
+function normalizePantheonSiteId(value: string | null | undefined): string | null {
   const trimmed = value?.trim() ?? '';
   return trimmed === '' ? null : trimmed;
 }
@@ -172,9 +172,7 @@ function normalizePantheonSiteId(
  */
 function isUniqueConstraintViolation(error: unknown): boolean {
   return (
-    error instanceof Error &&
-    'code' in error &&
-    (error as NodeJS.ErrnoException).code === '23505'
+    error instanceof Error && 'code' in error && (error as NodeJS.ErrnoException).code === '23505'
   );
 }
 
@@ -192,16 +190,19 @@ const DEFAULT_ROOT_PAGE_SNAPSHOT: Record<string, unknown> = {
       props: {
         id: 'seed-welcome',
         heading: 'Welcome to your new Pantheon P1 Site.',
-        description: 'You just created this new site from Pantheon P1 starter kit, congrats! You\'ll need a Pantheon P1 user account to edit it and create new pages.',
+        description:
+          "You just created this new site from Pantheon P1 starter kit, congrats! You'll need a Pantheon P1 user account to edit it and create new pages.",
         ctaLabel: 'Sign-in to P1',
         ctaHref: '/p1',
         footnote: 'Visit [P1 documentation](https://docs.pantheon.io) for more information.',
         loggedInHeading: 'Welcome to your new Pantheon P1 Site.',
-        loggedInDescription: 'You just created this new site from Pantheon P1 starter kit, congrats! Start editing this page or visit the P1 dashboard to manage your site.',
+        loggedInDescription:
+          'You just created this new site from Pantheon P1 starter kit, congrats! Start editing this page or visit the P1 dashboard to manage your site.',
         loggedInCtaLabel: 'Edit this page with P1 Visual Editor',
         loggedInCtaHref: '/p1',
         loggedInSecondaryLabel: 'Go to P1 Dashboard',
-        loggedInFootnote: 'Visit [P1 documentation](https://docs.pantheon.io) for more information.',
+        loggedInFootnote:
+          'Visit [P1 documentation](https://docs.pantheon.io) for more information.',
         showLogo: true,
       },
     },
@@ -337,9 +338,7 @@ export async function createSite(
  * @returns The site or null if not found
  */
 export async function getSite(siteId: string): Promise<Site | null> {
-  const result = await query<SiteRow>('SELECT * FROM app.sites WHERE id = $1', [
-    siteId,
-  ]);
+  const result = await query<SiteRow>('SELECT * FROM app.sites WHERE id = $1', [siteId]);
 
   if (result.rows.length === 0) {
     return null;
@@ -358,13 +357,10 @@ export async function getSite(siteId: string): Promise<Site | null> {
  * @param pantheonSiteId - The Pantheon site ID
  * @returns The site or null if not found
  */
-export async function getSiteByPantheonId(
-  pantheonSiteId: string,
-): Promise<Site | null> {
-  const result = await query<SiteRow>(
-    'SELECT * FROM app.sites WHERE pantheon_site_id = $1',
-    [pantheonSiteId],
-  );
+export async function getSiteByPantheonId(pantheonSiteId: string): Promise<Site | null> {
+  const result = await query<SiteRow>('SELECT * FROM app.sites WHERE pantheon_site_id = $1', [
+    pantheonSiteId,
+  ]);
 
   if (result.rows.length === 0) {
     return null;
@@ -549,30 +545,24 @@ export async function deleteSite(siteId: string): Promise<boolean> {
     );
 
     // Delete branch document metadata
-    await query(
-      'DELETE FROM app.branch_document_metadata WHERE branch_id = ANY($1::uuid[])',
-      [branchIds],
-    );
+    await query('DELETE FROM app.branch_document_metadata WHERE branch_id = ANY($1::uuid[])', [
+      branchIds,
+    ]);
 
     // Delete branch structure state
-    await query(
-      'DELETE FROM app.branch_structure_state WHERE branch_id = ANY($1::uuid[])',
-      [branchIds],
-    );
+    await query('DELETE FROM app.branch_structure_state WHERE branch_id = ANY($1::uuid[])', [
+      branchIds,
+    ]);
 
     // Clear source_checkpoint_id on branches before deleting checkpoints
     // (branches.source_checkpoint_id references checkpoints)
-    await query(
-      'UPDATE app.branches SET source_checkpoint_id = NULL WHERE site_id = $1',
-      [siteId],
-    );
+    await query('UPDATE app.branches SET source_checkpoint_id = NULL WHERE site_id = $1', [siteId]);
 
     // Clear base_checkpoint_id on merge_requests before deleting checkpoints
     // (merge_requests.base_checkpoint_id references checkpoints)
-    await query(
-      'UPDATE app.merge_requests SET base_checkpoint_id = NULL WHERE site_id = $1',
-      [siteId],
-    );
+    await query('UPDATE app.merge_requests SET base_checkpoint_id = NULL WHERE site_id = $1', [
+      siteId,
+    ]);
 
     // Delete checkpoint related data for checkpoints on these branches
     await query(
@@ -594,16 +584,10 @@ export async function deleteSite(siteId: string): Promise<boolean> {
     );
 
     // Delete checkpoints
-    await query(
-      'DELETE FROM app.checkpoints WHERE branch_id = ANY($1::uuid[])',
-      [branchIds],
-    );
+    await query('DELETE FROM app.checkpoints WHERE branch_id = ANY($1::uuid[])', [branchIds]);
 
     // Delete document versions
-    await query(
-      'DELETE FROM app.document_versions WHERE branch_id = ANY($1::uuid[])',
-      [branchIds],
-    );
+    await query('DELETE FROM app.document_versions WHERE branch_id = ANY($1::uuid[])', [branchIds]);
 
     // Delete branches (branch_grants and guest_links have ON DELETE CASCADE)
     await query('DELETE FROM app.branches WHERE site_id = $1', [siteId]);
@@ -619,10 +603,9 @@ export async function deleteSite(siteId: string): Promise<boolean> {
 
   if (structureIds.length > 0) {
     // Delete structure nodes (they reference both site_structures and documents)
-    await query(
-      'DELETE FROM app.structure_nodes WHERE structure_id = ANY($1::uuid[])',
-      [structureIds],
-    );
+    await query('DELETE FROM app.structure_nodes WHERE structure_id = ANY($1::uuid[])', [
+      structureIds,
+    ]);
   }
 
   // Delete site structures
@@ -654,10 +637,9 @@ export async function archiveSite(siteId: string): Promise<boolean | 'already_ar
     );
     if ((result.rowCount ?? 0) === 0) {
       // Distinguish not-found vs already-archived
-      const exists = await query<{ id: string }>(
-        'SELECT id FROM app.sites WHERE id = $1',
-        [siteId],
-      );
+      const exists = await query<{ id: string }>('SELECT id FROM app.sites WHERE id = $1', [
+        siteId,
+      ]);
       await query('COMMIT');
       return exists.rows.length > 0 ? 'already_archived' : false;
     }
@@ -691,10 +673,7 @@ export async function archiveSite(siteId: string): Promise<boolean | 'already_ar
  * Returns the restored Site, or null if not found or not archived.
  */
 export async function restoreSite(siteId: string): Promise<Site | null> {
-  const selectResult = await query<SiteRow>(
-    'SELECT * FROM app.sites WHERE id = $1',
-    [siteId],
-  );
+  const selectResult = await query<SiteRow>('SELECT * FROM app.sites WHERE id = $1', [siteId]);
   const row = selectResult.rows[0];
   if (row?.archived_at == null) {
     return null;
@@ -735,10 +714,18 @@ export async function restoreSite(siteId: string): Promise<Site | null> {
  * Lists sites the given principal has access to, with optional pagination.
  */
 export async function listSites(options: ListSitesOptions): Promise<Site[]> {
-  const { limit, offset, principalId, principalType, actingUserId, archived } = options;
+  const { limit, offset, principalId, principalType, actingUserId, archived, organizationId } =
+    options;
   const params: unknown[] = [principalId];
 
-  const archivedFilter = archived === true ? ' AND s.archived_at IS NOT NULL' : ' AND s.archived_at IS NULL';
+  const archivedFilter =
+    archived === true ? ' AND s.archived_at IS NOT NULL' : ' AND s.archived_at IS NULL';
+
+  let orgFilter = '';
+  if (organizationId !== undefined) {
+    params.push(organizationId);
+    orgFilter = ' AND s.organization_id = $' + String(params.length);
+  }
 
   let sql: string;
   if (principalType === 'agent') {
@@ -753,8 +740,10 @@ export async function listSites(options: ListSitesOptions): Promise<Site[]> {
         ' INNER JOIN app.agent_site_roles asr ON asr.site_id = s.id' +
         ' INNER JOIN app.user_site_roles usr ON usr.site_id = s.id' +
         ' WHERE asr.agent_id = $1 AND asr.revoked_at IS NULL' +
-        ' AND usr.user_id = $2' +
+        ' AND usr.user_id = $' +
+        String(params.length) +
         archivedFilter +
+        orgFilter +
         ' ORDER BY s.created_at DESC';
     } else {
       sql =
@@ -762,6 +751,7 @@ export async function listSites(options: ListSitesOptions): Promise<Site[]> {
         ' INNER JOIN app.agent_site_roles asr ON asr.site_id = s.id' +
         ' WHERE asr.agent_id = $1 AND asr.revoked_at IS NULL' +
         archivedFilter +
+        orgFilter +
         ' ORDER BY s.created_at DESC';
     }
   } else {
@@ -770,6 +760,7 @@ export async function listSites(options: ListSitesOptions): Promise<Site[]> {
       ' INNER JOIN app.user_site_roles usr ON usr.site_id = s.id' +
       ' WHERE usr.user_id = $1' +
       archivedFilter +
+      orgFilter +
       ' ORDER BY s.created_at DESC';
   }
 
@@ -792,9 +783,7 @@ export async function listSites(options: ListSitesOptions): Promise<Site[]> {
  * Retrieves allowed origins for a site (for OAuth redirect URI validation).
  * Returns null when the site does not exist, empty array when origins not configured.
  */
-export async function getSiteAllowedOrigins(
-  siteId: string,
-): Promise<string[] | null> {
+export async function getSiteAllowedOrigins(siteId: string): Promise<string[] | null> {
   const result = await query<{ allowed_origins: string[] | null }>(
     'SELECT allowed_origins FROM app.sites WHERE id = $1',
     [siteId],
@@ -818,9 +807,7 @@ const ALLOWED_ORIGINS_TTL_MS = 5 * 60 * 1000;
  * Use this on hot request paths (CORS enforcement) to avoid a DB round-trip
  * on every API call. Falls through to the DB on a cache miss or expiry.
  */
-export async function getCachedSiteAllowedOrigins(
-  siteId: string,
-): Promise<string[] | null> {
+export async function getCachedSiteAllowedOrigins(siteId: string): Promise<string[] | null> {
   const now = Date.now();
   const cached = _allowedOriginsCache.get(siteId);
   if (cached !== undefined && cached.expiresAt > now) {

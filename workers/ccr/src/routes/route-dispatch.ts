@@ -32,6 +32,7 @@ import { handleGrantRoutes } from './grant-api';
 import { handleCollaboratorRoutes } from './collaborator-api';
 import { handleRolesRoutes } from './roles-api';
 import { handleUsersRoutes } from './users-api';
+import { handleMyOrganizationsRoute } from './my-organizations-api';
 import { handleStructureRoutes } from './structure-api';
 import { handleNodeRoutes } from './node-api';
 import { handleMetadataRoutes } from './metadata-api';
@@ -357,6 +358,9 @@ export async function dispatchRoute(
         keyId: route.params.keyId,
         principal,
       });
+
+    case 'my-organizations':
+      return await handleMyOrganizationsRoute(request, { principal });
 
     case 'agents':
       return await handleAgentRoutes(request, {

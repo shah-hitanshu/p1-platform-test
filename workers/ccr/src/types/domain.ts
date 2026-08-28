@@ -68,6 +68,10 @@ export interface Organization {
   updatedAt: string;
   /** ISO timestamp when the organization was soft-deleted; null if active. */
   archivedAt: string | null;
+  /** PCC space ID linked to this org for frontend BA merging; null if P1-only. */
+  externalSpaceId?: string | null;
+  /** Email of the org owner (first member). */
+  ownerEmail?: string;
 }
 
 /**

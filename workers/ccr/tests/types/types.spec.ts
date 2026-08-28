@@ -1179,6 +1179,34 @@ describe('Phase 1.3: Core TypeScript Types', () => {
         const defaultTier = settings.agentPriorityTiers?.default;
         expect(defaultTier?.idleTimeoutMultiplier).toBe(1.0);
       });
+
+      it('should allow optional externalSpaceId', () => {
+        const org: Organization = {
+          id: 'org-123',
+          name: 'Acme Corp',
+          settings: { agentIdleTimeoutMs: 5000 },
+          createdAt: '2024-01-01T00:00:00Z',
+          updatedAt: '2024-01-01T00:00:00Z',
+          archivedAt: null,
+          externalSpaceId: 'space_abc',
+        };
+        assertType<Organization>(org);
+        expect(org.externalSpaceId).toBe('space_abc');
+      });
+
+      it('should allow null externalSpaceId', () => {
+        const org: Organization = {
+          id: 'org-123',
+          name: 'Acme Corp',
+          settings: { agentIdleTimeoutMs: 5000 },
+          createdAt: '2024-01-01T00:00:00Z',
+          updatedAt: '2024-01-01T00:00:00Z',
+          archivedAt: null,
+          externalSpaceId: null,
+        };
+        assertType<Organization>(org);
+        expect(org.externalSpaceId).toBeNull();
+      });
     });
 
     describe('RegisteredAgent', () => {

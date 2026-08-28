@@ -6,8 +6,10 @@
  * All endpoints require system admin role.
  */
 
+import { getLogger } from '@pantheon-systems/p1-telemetry';
 import type { AuthenticatedPrincipal } from '../types';
 import { query } from '../db';
+import { createOrgForUser } from '../services/organization-service';
 import { isSystemAdmin } from '../utils/admin-check';
 import { normalizePrincipalIdForDb } from '../auth/principal-id-normalization';
 
@@ -59,6 +61,8 @@ interface AddUserBody {
   email?: string;
   name?: string;
   systemRole?: string;
+  spaceName?: string;
+  externalSpaceId?: string;
 }
 
 /**
@@ -70,21 +74,31 @@ async function handleAddUser(
 ): Promise<Response> {
   const body = await parseJsonBody<AddUserBody>(request);
 
-  if (body.email === undefined || body.email.trim() === '') {
-    return errorResponse('email is required', 400);
-  }
-
-  const email = body.email.trim().toLowerCase();
-  const name = body.name?.trim() ?? null;
   const systemRole = body.systemRole ?? 'member';
-
   const validRoles = ['admin', 'member'];
-  if (!validRoles.includes(systemRole)) {
-    return errorResponse(
-      `Invalid systemRole. Must be one of: ${validRoles.join(', ')}`,
-      400,
-    );
+  const trimmedEmail = body.email?.trim() ?? '';
+
+  const validationErrors: string[] = [];
+
+  if (trimmedEmail === '') {
+    validationErrors.push('email is required');
   }
+  if (body.spaceName !== undefined && body.spaceName.length > 255) {
+    validationErrors.push('spaceName must be 255 characters or fewer');
+  }
+  if (body.externalSpaceId !== undefined && body.externalSpaceId.length > 255) {
+    validationErrors.push('externalSpaceId must be 255 characters or fewer');
+  }
+  if (!validRoles.includes(systemRole)) {
+    validationErrors.push(`Invalid systemRole. Must be one of: ${validRoles.join(', ')}`);
+  }
+
+  if (validationErrors.length > 0) {
+    return errorResponse(validationErrors.join('; '), 400, validationErrors);
+  }
+
+  const email = trimmedEmail.toLowerCase();
+  const name = body.name?.trim() ?? null;
 
   // Bootstrap: if this is the first user being added, auto-add the current
   // principal as admin so they don't get locked out when the allowlist activates.
@@ -138,6 +152,12 @@ async function handleAddUser(
   const row = result.rows[0];
   if (row === undefined) {
     return errorResponse('Failed to add user', 500);
+  }
+
+  try {
+    await createOrgForUser(row.id, email, body.spaceName, body.externalSpaceId);
+  } catch (orgError) {
+    getLogger().error('Auto-create org failed for user', orgError, { user_id: row.id });
   }
 
   return jsonResponse(

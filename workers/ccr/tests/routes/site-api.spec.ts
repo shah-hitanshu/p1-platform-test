@@ -25,6 +25,9 @@ vi.mock('../../src/services', async () => {
     listSites: vi.fn(),
     listBranches: vi.fn(),
     getMainBranch: vi.fn(),
+    getUserPrimaryOrg: vi.fn(),
+    linkSiteToOrganization: vi.fn(),
+    isUserInOrganization: vi.fn(),
   };
 });
 
@@ -652,6 +655,92 @@ describe('Phase 7.1.1b: Site API Routes', () => {
         expect(db.query).not.toHaveBeenCalled();
         const listCall = vi.mocked(services.listSites).mock.calls[0][0];
         expect(listCall.actingUserId).toBeUndefined();
+      });
+    });
+
+    describe('GET /api/sites?organizationId= — access check (Business Accounts Phase 1)', () => {
+      it('should allow a user principal that is a member of the organization', async () => {
+        const { handleSiteRoutes } = await import('../../src/routes/site-api');
+        const services = await import('../../src/services');
+
+        vi.mocked(services.isUserInOrganization).mockResolvedValueOnce(true);
+        vi.mocked(services.listSites).mockResolvedValueOnce([]);
+
+        const request = new Request('https://api.example.com/api/sites?organizationId=org-1', {
+          method: 'GET',
+        });
+
+        const response = await handleSiteRoutes(request, {
+          principal: makePrincipal({ id: 'user-1', type: 'user', dbUserId: 'user-uuid-1' }),
+        });
+
+        expect(response.status).toBe(200);
+        expect(services.isUserInOrganization).toHaveBeenCalledWith('user-uuid-1', 'org-1');
+        expect(services.listSites).toHaveBeenCalledWith(
+          expect.objectContaining({ organizationId: 'org-1' }),
+        );
+      });
+
+      it('should deny a user principal that is not a member of the organization', async () => {
+        const { handleSiteRoutes } = await import('../../src/routes/site-api');
+        const services = await import('../../src/services');
+
+        vi.mocked(services.isUserInOrganization).mockResolvedValueOnce(false);
+
+        const request = new Request('https://api.example.com/api/sites?organizationId=org-1', {
+          method: 'GET',
+        });
+
+        const response = await handleSiteRoutes(request, {
+          principal: makePrincipal({ id: 'user-1', type: 'user', dbUserId: 'user-uuid-1' }),
+        });
+
+        expect(response.status).toBe(403);
+        expect(services.listSites).not.toHaveBeenCalled();
+      });
+
+      it('should check membership against the resolved acting user, not the agent, for an agent acting on behalf of a user', async () => {
+        const { handleSiteRoutes } = await import('../../src/routes/site-api');
+        const services = await import('../../src/services');
+        const db = await import('../../src/db');
+
+        // Acting-user email -> app.users.id lookup
+        vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ id: 'db-acting-user-id' }] });
+        vi.mocked(services.isUserInOrganization).mockResolvedValueOnce(true);
+        vi.mocked(services.listSites).mockResolvedValueOnce([]);
+
+        const request = new Request('https://api.example.com/api/sites?organizationId=org-1', {
+          method: 'GET',
+        });
+
+        const response = await handleSiteRoutes(request, {
+          principal: makePrincipal({
+            id: 'agent-uuid',
+            type: 'agent',
+            actingUserEmail: 'known-user@example.com',
+          }),
+        });
+
+        expect(response.status).toBe(200);
+        // Must check the acting user's membership, not the agent's own id.
+        expect(services.isUserInOrganization).toHaveBeenCalledWith('db-acting-user-id', 'org-1');
+      });
+
+      it('should deny an agent with no resolved acting user, without calling isUserInOrganization', async () => {
+        const { handleSiteRoutes } = await import('../../src/routes/site-api');
+        const services = await import('../../src/services');
+
+        const request = new Request('https://api.example.com/api/sites?organizationId=org-1', {
+          method: 'GET',
+        });
+
+        const response = await handleSiteRoutes(request, {
+          principal: makePrincipal({ id: 'agent-uuid', type: 'agent' }),
+        });
+
+        expect(response.status).toBe(403);
+        expect(services.isUserInOrganization).not.toHaveBeenCalled();
+        expect(services.listSites).not.toHaveBeenCalled();
       });
     });
   });
@@ -2274,6 +2363,137 @@ describe('Phase 7.1.1b: Site API Routes', () => {
       expect(services.listSites).toHaveBeenCalledWith(
         expect.not.objectContaining({ archived: true }),
       );
+    });
+  });
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // Business Accounts Phase 1: Auto-assign org on site creation
+  // ───────────────────────────────────────────────────────────────────────────
+
+  describe('POST /api/sites - auto-assign org', () => {
+    it('should auto-assign org to site when creator has membership', async () => {
+      const { handleSiteRoutes } = await import('../../src/routes/site-api');
+      const services = await import('../../src/services');
+
+      vi.mocked(services.createSite).mockResolvedValueOnce({
+        id: 'site-new',
+        pantheonSiteId: 'ps-123',
+        name: 'New Site',
+        allowedOrigins: [],
+        workflowSettings: {
+          mergeApprovalMode: 'optional',
+          minApprovers: 1,
+          allowSelfApproval: true,
+          approverMode: 'both',
+          approverMinRole: 'EDITOR',
+        },
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z',
+        archivedAt: null,
+      });
+
+      vi.mocked(services.getUserPrimaryOrg).mockResolvedValueOnce('org-123');
+      vi.mocked(services.linkSiteToOrganization).mockResolvedValueOnce(true);
+
+      const request = new Request('https://api.example.com/api/sites', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pantheonSiteId: 'ps-123',
+          name: 'New Site',
+        }),
+      });
+
+      const response = await handleSiteRoutes(request, {
+        principal: makePrincipal({ id: 'user-1', type: 'user', dbUserId: 'user-uuid-1' }),
+      });
+
+      expect(response.status).toBe(201);
+      expect(services.getUserPrimaryOrg).toHaveBeenCalledWith('user-uuid-1');
+      expect(services.linkSiteToOrganization).toHaveBeenCalledWith('site-new', 'org-123');
+    });
+
+    it('should not assign org when creator has no membership', async () => {
+      const { handleSiteRoutes } = await import('../../src/routes/site-api');
+      const services = await import('../../src/services');
+
+      vi.mocked(services.createSite).mockResolvedValueOnce({
+        id: 'site-new',
+        pantheonSiteId: 'ps-456',
+        name: 'New Site',
+        allowedOrigins: [],
+        workflowSettings: {
+          mergeApprovalMode: 'optional',
+          minApprovers: 1,
+          allowSelfApproval: true,
+          approverMode: 'both',
+          approverMinRole: 'EDITOR',
+        },
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z',
+        archivedAt: null,
+      });
+
+      vi.mocked(services.getUserPrimaryOrg).mockResolvedValueOnce(null);
+
+      const request = new Request('https://api.example.com/api/sites', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pantheonSiteId: 'ps-456',
+          name: 'New Site',
+        }),
+      });
+
+      const response = await handleSiteRoutes(request, {
+        principal: makePrincipal({ id: 'user-1', type: 'user', dbUserId: 'user-uuid-1' }),
+      });
+
+      expect(response.status).toBe(201);
+      expect(services.getUserPrimaryOrg).toHaveBeenCalledWith('user-uuid-1');
+      expect(services.linkSiteToOrganization).not.toHaveBeenCalled();
+    });
+
+    it('should still succeed if org assignment fails', async () => {
+      const { handleSiteRoutes } = await import('../../src/routes/site-api');
+      const services = await import('../../src/services');
+
+      vi.mocked(services.createSite).mockResolvedValueOnce({
+        id: 'site-new',
+        pantheonSiteId: 'ps-789',
+        name: 'New Site',
+        allowedOrigins: [],
+        workflowSettings: {
+          mergeApprovalMode: 'optional',
+          minApprovers: 1,
+          allowSelfApproval: true,
+          approverMode: 'both',
+          approverMinRole: 'EDITOR',
+        },
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z',
+        archivedAt: null,
+      });
+
+      vi.mocked(services.getUserPrimaryOrg).mockResolvedValueOnce('org-123');
+      vi.mocked(services.linkSiteToOrganization).mockRejectedValueOnce(
+        new Error('link failed'),
+      );
+
+      const request = new Request('https://api.example.com/api/sites', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pantheonSiteId: 'ps-789',
+          name: 'New Site',
+        }),
+      });
+
+      const response = await handleSiteRoutes(request, {
+        principal: makePrincipal({ id: 'user-1', type: 'user', dbUserId: 'user-uuid-1' }),
+      });
+
+      expect(response.status).toBe(201);
     });
   });
 });

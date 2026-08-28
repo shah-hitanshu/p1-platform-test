@@ -839,3 +839,71 @@ describe('Seed Data', () => {
     expect(parseInt(result[0].count, 10)).toBeGreaterThanOrEqual(1);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Business Accounts Phase 1: Organization Members + External Space ID
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('Organization Members Table', () => {
+  it('should exist', async () => {
+    const exists = await tableExists('organization_members');
+    expect(exists).toBe(true);
+  });
+
+  it('should have required columns with correct types', async () => {
+    const columns = await getTableColumns('organization_members');
+
+    expect(hasColumn(columns, 'id', 'uuid')).toBe(true);
+    expect(hasColumn(columns, 'organization_id', 'uuid')).toBe(true);
+    expect(hasColumn(columns, 'user_id', 'uuid')).toBe(true);
+    expect(hasColumn(columns, 'created_at')).toBe(true);
+  });
+
+  it('should have unique constraint on (organization_id, user_id)', async () => {
+    const constraints = await getTableConstraints('organization_members');
+    const hasUnique = constraints.some((c) => c.constraint_type === 'UNIQUE');
+    expect(hasUnique).toBe(true);
+  });
+
+  it('should have foreign key to organizations', async () => {
+    const constraints = await getTableConstraints('organization_members');
+    const hasFk = constraints.some(
+      (c) => c.constraint_type === 'FOREIGN KEY' && c.constraint_name.includes('organization'),
+    );
+    expect(hasFk).toBe(true);
+  });
+
+  it('should have foreign key to users', async () => {
+    const constraints = await getTableConstraints('organization_members');
+    const hasFk = constraints.some(
+      (c) => c.constraint_type === 'FOREIGN KEY' && c.constraint_name.includes('user'),
+    );
+    expect(hasFk).toBe(true);
+  });
+
+  it('should have indexes for common queries', async () => {
+    const indexes = await getTableIndexes('organization_members');
+
+    expect(hasIndex(indexes, 'idx_org_members_user')).toBe(true);
+    expect(hasIndex(indexes, 'idx_org_members_org')).toBe(true);
+  });
+});
+
+describe('Organizations Table - External Space ID', () => {
+  it('should have external_space_id column', async () => {
+    const columns = await getTableColumns('organizations');
+    expect(hasColumn(columns, 'external_space_id', 'text')).toBe(true);
+  });
+
+  it('should have unique partial index on external_space_id', async () => {
+    const indexes = await getTableIndexes('organizations');
+    expect(hasIndex(indexes, 'idx_organizations_external_space')).toBe(true);
+  });
+
+  it('should allow null external_space_id', async () => {
+    const columns = await getTableColumns('organizations');
+    const col = columns.find((c) => c.column_name === 'external_space_id');
+    expect(col).toBeDefined();
+    expect(col?.is_nullable).toBe('YES');
+  });
+});

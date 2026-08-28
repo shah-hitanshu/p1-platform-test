@@ -31,6 +31,8 @@ describe('Agent Politeness Phase 1.3: Organization Service', () => {
     created_at: string;
     updated_at: string;
     archived_at: string | null;
+    /** PCC space this org is linked to; absent/null for P1-only orgs. */
+    external_space_id?: string | null;
   }
 
   // Helper to create a mock organization row (database format)
@@ -574,6 +576,272 @@ describe('Agent Politeness Phase 1.3: Organization Service', () => {
       const result = await getOrganizationForSite('site-without-org');
 
       expect(result).toBeNull();
+    });
+  });
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // Business Accounts Phase 1: New service functions
+  // ───────────────────────────────────────────────────────────────────────────
+
+  describe('getOrganizationsForUser', () => {
+    it('should return orgs from direct membership', async () => {
+      const { getOrganizationsForUser } = await import('../../src/services/organization-service');
+      const db = await import('../../src/db');
+
+      const mockRows = [
+        createMockOrganizationRow({ id: 'org-1', name: 'My Org', external_space_id: 'space_abc' }),
+      ];
+      vi.mocked(db.query).mockResolvedValue({ rows: mockRows });
+
+      const result = await getOrganizationsForUser('user-uuid-123');
+
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe('org-1');
+      expect(result[0].name).toBe('My Org');
+      expect(result[0].externalSpaceId).toBe('space_abc');
+    });
+
+    it('should return orgs from site roles', async () => {
+      const { getOrganizationsForUser } = await import('../../src/services/organization-service');
+      const db = await import('../../src/db');
+
+      const mockRows = [
+        createMockOrganizationRow({ id: 'org-shared', name: 'Shared Org' }),
+      ];
+      vi.mocked(db.query).mockResolvedValue({ rows: mockRows });
+
+      const result = await getOrganizationsForUser('user-uuid-456');
+
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe('org-shared');
+    });
+
+    it('should return empty array when user has no orgs', async () => {
+      const { getOrganizationsForUser } = await import('../../src/services/organization-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValue({ rows: [] });
+
+      const result = await getOrganizationsForUser('user-with-no-orgs');
+
+      expect(result).toEqual([]);
+    });
+
+    it('should include externalSpaceId as null when not set', async () => {
+      const { getOrganizationsForUser } = await import('../../src/services/organization-service');
+      const db = await import('../../src/db');
+
+      const mockRows = [
+        createMockOrganizationRow({ id: 'org-1', name: 'P1 Only Org', external_space_id: null }),
+      ];
+      vi.mocked(db.query).mockResolvedValue({ rows: mockRows });
+
+      const result = await getOrganizationsForUser('user-uuid-123');
+
+      expect(result).toHaveLength(1);
+      expect(result[0].externalSpaceId).toBeNull();
+    });
+  });
+
+  describe('getUserPrimaryOrg', () => {
+    it('should return org id when user has membership', async () => {
+      const { getUserPrimaryOrg } = await import('../../src/services/organization-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValue({
+        rows: [{ organization_id: 'org-uuid-123' }],
+      });
+
+      const result = await getUserPrimaryOrg('user-uuid-123');
+
+      expect(result).toBe('org-uuid-123');
+    });
+
+    it('should return null when user has no membership', async () => {
+      const { getUserPrimaryOrg } = await import('../../src/services/organization-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValue({ rows: [] });
+
+      const result = await getUserPrimaryOrg('user-with-no-org');
+
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('createOrgForUser', () => {
+    it('should create org with spaceName when provided', async () => {
+      const { createOrgForUser } = await import('../../src/services/organization-service');
+      const db = await import('../../src/db');
+
+      const mockOrgRow = createMockOrganizationRow({
+        id: 'new-org-id',
+        name: 'Pantheon',
+        external_space_id: 'space_abc',
+      });
+
+      vi.mocked(db.query)
+        .mockResolvedValueOnce(undefined as never) // BEGIN
+        .mockResolvedValueOnce({ rows: [mockOrgRow] }) // INSERT org
+        .mockResolvedValueOnce({ rows: [{ id: 'member-id' }] }) // INSERT membership
+        .mockResolvedValueOnce(undefined as never); // COMMIT
+
+      const result = await createOrgForUser('user-uuid-123', 'user@pantheon.com', 'Pantheon', 'space_abc');
+
+      expect(result).toBeDefined();
+      expect(result.name).toBe('Pantheon');
+      expect(result.externalSpaceId).toBe('space_abc');
+    });
+
+    it('should derive org name from email domain when spaceName not provided', async () => {
+      const { createOrgForUser } = await import('../../src/services/organization-service');
+      const db = await import('../../src/db');
+
+      const mockOrgRow = createMockOrganizationRow({
+        id: 'new-org-id',
+        name: 'Pantheon',
+      });
+
+      vi.mocked(db.query)
+        .mockResolvedValueOnce(undefined as never) // BEGIN
+        .mockResolvedValueOnce({ rows: [] }) // name uniqueness check
+        .mockResolvedValueOnce({ rows: [mockOrgRow] }) // INSERT org
+        .mockResolvedValueOnce({ rows: [{ id: 'member-id' }] }) // INSERT membership
+        .mockResolvedValueOnce(undefined as never); // COMMIT
+
+      const result = await createOrgForUser('user-uuid-123', 'user@pantheon.com');
+
+      expect(result).toBeDefined();
+      expect(result.name).toBe('Pantheon');
+    });
+
+    it('should title-case each hyphen-separated segment of the domain, matching migration 054\'s INITCAP', async () => {
+      const { createOrgForUser } = await import('../../src/services/organization-service');
+      const db = await import('../../src/db');
+
+      const mockOrgRow = createMockOrganizationRow({
+        id: 'new-org-id',
+        name: 'Big-Corp',
+      });
+
+      vi.mocked(db.query)
+        .mockResolvedValueOnce(undefined as never) // BEGIN
+        .mockResolvedValueOnce({ rows: [] }) // name uniqueness check
+        .mockResolvedValueOnce({ rows: [mockOrgRow] }) // INSERT org
+        .mockResolvedValueOnce({ rows: [{ id: 'member-id' }] }) // INSERT membership
+        .mockResolvedValueOnce(undefined as never); // COMMIT
+
+      await createOrgForUser('user-uuid-123', 'user@big-corp.com');
+
+      expect(db.query).toHaveBeenNthCalledWith(
+        3,
+        expect.stringContaining('INSERT INTO app.organizations'),
+        ['Big-Corp', expect.any(String), null],
+      );
+    });
+
+    it('should handle public email domains by using username', async () => {
+      const { createOrgForUser } = await import('../../src/services/organization-service');
+      const db = await import('../../src/db');
+
+      const mockOrgRow = createMockOrganizationRow({
+        id: 'new-org-id',
+        name: 'johndoe',
+      });
+
+      vi.mocked(db.query)
+        .mockResolvedValueOnce(undefined as never) // BEGIN
+        .mockResolvedValueOnce({ rows: [] }) // name uniqueness check
+        .mockResolvedValueOnce({ rows: [mockOrgRow] }) // INSERT org
+        .mockResolvedValueOnce({ rows: [{ id: 'member-id' }] }) // INSERT membership
+        .mockResolvedValueOnce(undefined as never); // COMMIT
+
+      const result = await createOrgForUser('user-uuid-123', 'johndoe@gmail.com');
+
+      expect(result).toBeDefined();
+    });
+
+    it('should rollback on error', async () => {
+      const { createOrgForUser } = await import('../../src/services/organization-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query)
+        .mockResolvedValueOnce(undefined as never) // BEGIN
+        .mockResolvedValueOnce({ rows: [] }) // name uniqueness check
+        .mockRejectedValueOnce(new Error('insert failed')); // INSERT org fails
+
+      await expect(createOrgForUser('user-uuid-123', 'user@test.com')).rejects.toThrow('insert failed');
+
+      // Verify ROLLBACK was called
+      const calls = vi.mocked(db.query).mock.calls;
+      const lastCall = calls[calls.length - 1];
+      expect(lastCall[0]).toContain('ROLLBACK');
+    });
+  });
+
+  describe('linkOrgToSpace', () => {
+    it('should link org to external space when org has no existing link', async () => {
+      const db = await import('../../src/db');
+      const { linkOrgToSpace } = await import('../../src/services/organization-service');
+
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [{ id: 'org-uuid-123' }],
+        rowCount: 1,
+      });
+
+      const result = await linkOrgToSpace('org-uuid-123', 'space_abc');
+
+      expect(result).toBe(true);
+      expect(db.query).toHaveBeenCalledWith(
+        expect.stringContaining('UPDATE app.organizations'),
+        ['org-uuid-123', 'space_abc'],
+      );
+    });
+
+    it('should return false when org already has external_space_id', async () => {
+      const db = await import('../../src/db');
+      const { linkOrgToSpace } = await import('../../src/services/organization-service');
+
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [],
+        rowCount: 0,
+      });
+
+      const result = await linkOrgToSpace('org-uuid-123', 'space_abc');
+
+      expect(result).toBe(false);
+    });
+
+    it('should return false when org does not exist', async () => {
+      const db = await import('../../src/db');
+      const { linkOrgToSpace } = await import('../../src/services/organization-service');
+
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [],
+        rowCount: 0,
+      });
+
+      const result = await linkOrgToSpace('non-existent-org', 'space_abc');
+
+      expect(result).toBe(false);
+    });
+
+    it('should update org name when spaceName is provided', async () => {
+      const db = await import('../../src/db');
+      const { linkOrgToSpace } = await import('../../src/services/organization-service');
+
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [{ id: 'org-uuid-123' }],
+        rowCount: 1,
+      });
+
+      const result = await linkOrgToSpace('org-uuid-123', 'space_abc', 'My Space');
+
+      expect(result).toBe(true);
+      expect(db.query).toHaveBeenCalledWith(
+        expect.stringContaining('name = $3'),
+        ['org-uuid-123', 'space_abc', 'My Space'],
+      );
     });
   });
 });
