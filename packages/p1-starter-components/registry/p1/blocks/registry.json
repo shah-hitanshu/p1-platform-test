@@ -21,7 +21,7 @@
         "version": "0.1.0",
         "atlas": "layout/accordion"
       },
-      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { AccordionBlock } from './accordion/accordion.block';\n  export const p1Blocks = { ...p1Blocks, P1Accordion: AccordionBlock };\n\nThen edit components/puck/blocks/accordion/accordion.css to restyle it — the file is yours.",
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  // 1. Add the import:\n  import { AccordionBlock } from './accordion/accordion.block';\n  // 2. Add an entry to the existing p1Blocks object:\n  //    P1Accordion: AccordionBlock,\n\nThen edit components/puck/blocks/accordion/accordion.css to restyle it — the file is yours.",
       "files": [
         {
           "path": "accordion/accordion.tsx",
@@ -58,7 +58,7 @@
         "version": "0.1.0",
         "atlas": "attention/announcement"
       },
-      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { AnnouncementBlock } from './announcement/announcement.block';\n  export const p1Blocks = { ...p1Blocks, P1Announcement: AnnouncementBlock };\n\nThen edit components/puck/blocks/announcement/announcement.css to restyle it — the file is yours.",
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  // 1. Add the import:\n  import { AnnouncementBlock } from './announcement/announcement.block';\n  // 2. Add an entry to the existing p1Blocks object:\n  //    P1Announcement: AnnouncementBlock,\n\nThen edit components/puck/blocks/announcement/announcement.css to restyle it — the file is yours.",
       "files": [
         {
           "path": "announcement/announcement.tsx",
@@ -95,7 +95,7 @@
         "version": "0.1.0",
         "atlas": "editorial/article-header"
       },
-      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { ArticleHeaderBlock } from './article-header/article-header.block';\n  export const p1Blocks = { ...p1Blocks, P1ArticleHeader: ArticleHeaderBlock };\n\nThen edit components/puck/blocks/article-header/article-header.css to restyle it — the file is yours.",
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  // 1. Add the import:\n  import { ArticleHeaderBlock } from './article-header/article-header.block';\n  // 2. Add an entry to the existing p1Blocks object:\n  //    P1ArticleHeader: ArticleHeaderBlock,\n\nThen edit components/puck/blocks/article-header/article-header.css to restyle it — the file is yours.",
       "files": [
         {
           "path": "article-header/article-header.tsx",
@@ -133,7 +133,7 @@
         "version": "0.1.0",
         "atlas": "content/button"
       },
-      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { ButtonBlock } from './button/button.block';\n  export const p1Blocks = { ...p1Blocks, P1Button: ButtonBlock };\n\nThen edit components/puck/blocks/button/button.css to restyle it — the file is yours.",
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  // 1. Add the import:\n  import { ButtonBlock } from './button/button.block';\n  // 2. Add an entry to the existing p1Blocks object:\n  //    P1Button: ButtonBlock,\n\nThen edit components/puck/blocks/button/button.css to restyle it — the file is yours.",
       "files": [
         {
           "path": "button/button.tsx",
@@ -171,7 +171,7 @@
         "version": "0.1.0",
         "atlas": "editorial/callout"
       },
-      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { CalloutBlock } from './callout/callout.block';\n  export const p1Blocks = { ...p1Blocks, P1Callout: CalloutBlock };\n\nThen edit components/puck/blocks/callout/callout.css to restyle it — the file is yours.",
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  // 1. Add the import:\n  import { CalloutBlock } from './callout/callout.block';\n  // 2. Add an entry to the existing p1Blocks object:\n  //    P1Callout: CalloutBlock,\n\nThen edit components/puck/blocks/callout/callout.css to restyle it — the file is yours.",
       "files": [
         {
           "path": "callout/callout.tsx",
@@ -208,7 +208,7 @@
         "version": "0.1.0",
         "atlas": "showcase/card-grid"
       },
-      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { CardGridBlock } from './card-grid/card-grid.block';\n  export const p1Blocks = { ...p1Blocks, P1CardGrid: CardGridBlock };\n\nThen edit components/puck/blocks/card-grid/card-grid.css to restyle it — the file is yours.",
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  // 1. Add the import:\n  import { CardGridBlock } from './card-grid/card-grid.block';\n  // 2. Add an entry to the existing p1Blocks object:\n  //    P1CardGrid: CardGridBlock,\n\nThen edit components/puck/blocks/card-grid/card-grid.css to restyle it — the file is yours.",
       "files": [
         {
           "path": "card-grid/card-grid.tsx",
@@ -245,7 +245,7 @@
         "version": "0.1.0",
         "atlas": "layout/columns"
       },
-      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { ColumnsBlock } from './columns/columns.block';\n  export const p1Blocks = { ...p1Blocks, P1Columns: ColumnsBlock };\n\nThen edit components/puck/blocks/columns/columns.css to restyle it — the file is yours.",
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  // 1. Add the import:\n  import { ColumnsBlock } from './columns/columns.block';\n  // 2. Add an entry to the existing p1Blocks object:\n  //    P1Columns: ColumnsBlock,\n\nThen edit components/puck/blocks/columns/columns.css to restyle it — the file is yours.",
       "files": [
         {
           "path": "columns/columns.tsx",
@@ -283,7 +283,7 @@
         "version": "0.1.0",
         "atlas": "convert/comparison-table"
       },
-      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { ComparisonTableBlock } from './comparison-table/comparison-table.block';\n  export const p1Blocks = { ...p1Blocks, P1ComparisonTable: ComparisonTableBlock };\n\nThen edit components/puck/blocks/comparison-table/comparison-table.css to restyle it — the file is yours.",
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  // 1. Add the import:\n  import { ComparisonTableBlock } from './comparison-table/comparison-table.block';\n  // 2. Add an entry to the existing p1Blocks object:\n  //    P1ComparisonTable: ComparisonTableBlock,\n\nThen edit components/puck/blocks/comparison-table/comparison-table.css to restyle it — the file is yours.",
       "files": [
         {
           "path": "comparison-table/comparison-table.tsx",
@@ -320,7 +320,7 @@
         "version": "0.1.0",
         "atlas": "layout/container"
       },
-      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { ContainerBlock } from './container/container.block';\n  export const p1Blocks = { ...p1Blocks, P1Container: ContainerBlock };\n\nThen edit components/puck/blocks/container/container.css to restyle it — the file is yours.",
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  // 1. Add the import:\n  import { ContainerBlock } from './container/container.block';\n  // 2. Add an entry to the existing p1Blocks object:\n  //    P1Container: ContainerBlock,\n\nThen edit components/puck/blocks/container/container.css to restyle it — the file is yours.",
       "files": [
         {
           "path": "container/container.tsx",
@@ -358,7 +358,7 @@
         "version": "0.1.0",
         "atlas": "convert/cta"
       },
-      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { CtaBannerBlock } from './cta/cta.block';\n  export const p1Blocks = { ...p1Blocks, P1CtaBanner: CtaBannerBlock };\n\nThen edit components/puck/blocks/cta/cta.css to restyle it — the file is yours.",
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  // 1. Add the import:\n  import { CtaBannerBlock } from './cta/cta.block';\n  // 2. Add an entry to the existing p1Blocks object:\n  //    P1CtaBanner: CtaBannerBlock,\n\nThen edit components/puck/blocks/cta/cta.css to restyle it — the file is yours.",
       "files": [
         {
           "path": "cta/cta.tsx",
@@ -395,7 +395,7 @@
         "version": "0.1.0",
         "atlas": "content/divider"
       },
-      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { DividerBlock } from './divider/divider.block';\n  export const p1Blocks = { ...p1Blocks, P1Divider: DividerBlock };\n\nThen edit components/puck/blocks/divider/divider.css to restyle it — the file is yours.",
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  // 1. Add the import:\n  import { DividerBlock } from './divider/divider.block';\n  // 2. Add an entry to the existing p1Blocks object:\n  //    P1Divider: DividerBlock,\n\nThen edit components/puck/blocks/divider/divider.css to restyle it — the file is yours.",
       "files": [
         {
           "path": "divider/divider.tsx",
@@ -433,7 +433,7 @@
         "version": "0.1.0",
         "atlas": "editorial/embed"
       },
-      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { EmbedBlock } from './embed/embed.block';\n  export const p1Blocks = { ...p1Blocks, P1Embed: EmbedBlock };\n\nThen edit components/puck/blocks/embed/embed.css to restyle it — the file is yours.",
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  // 1. Add the import:\n  import { EmbedBlock } from './embed/embed.block';\n  // 2. Add an entry to the existing p1Blocks object:\n  //    P1Embed: EmbedBlock,\n\nThen edit components/puck/blocks/embed/embed.css to restyle it — the file is yours.",
       "files": [
         {
           "path": "embed/embed.tsx",
@@ -471,7 +471,7 @@
         "version": "0.1.0",
         "atlas": "convert/faq"
       },
-      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { FaqBlock } from './faq/faq.block';\n  export const p1Blocks = { ...p1Blocks, P1Faq: FaqBlock };\n\nThen edit components/puck/blocks/faq/faq.css to restyle it — the file is yours.",
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  // 1. Add the import:\n  import { FaqBlock } from './faq/faq.block';\n  // 2. Add an entry to the existing p1Blocks object:\n  //    P1Faq: FaqBlock,\n\nThen edit components/puck/blocks/faq/faq.css to restyle it — the file is yours.",
       "files": [
         {
           "path": "faq/faq.tsx",
@@ -510,7 +510,7 @@
         "version": "0.1.0",
         "atlas": "value/feature-media"
       },
-      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { FeatureMediaBlock } from './feature-media/feature-media.block';\n  export const p1Blocks = { ...p1Blocks, P1FeatureMedia: FeatureMediaBlock };\n\nThen edit components/puck/blocks/feature-media/feature-media.css to restyle it — the file is yours.",
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  // 1. Add the import:\n  import { FeatureMediaBlock } from './feature-media/feature-media.block';\n  // 2. Add an entry to the existing p1Blocks object:\n  //    P1FeatureMedia: FeatureMediaBlock,\n\nThen edit components/puck/blocks/feature-media/feature-media.css to restyle it — the file is yours.",
       "files": [
         {
           "path": "feature-media/feature-media.tsx",
@@ -547,7 +547,7 @@
         "version": "0.1.0",
         "atlas": "value/features"
       },
-      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { FeatureCardsBlock } from './features/features.block';\n  export const p1Blocks = { ...p1Blocks, P1FeatureCards: FeatureCardsBlock };\n\nThen edit components/puck/blocks/features/features.css to restyle it — the file is yours.",
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  // 1. Add the import:\n  import { FeatureCardsBlock } from './features/features.block';\n  // 2. Add an entry to the existing p1Blocks object:\n  //    P1FeatureCards: FeatureCardsBlock,\n\nThen edit components/puck/blocks/features/features.css to restyle it — the file is yours.",
       "files": [
         {
           "path": "features/features.tsx",
@@ -584,7 +584,7 @@
         "version": "0.1.0",
         "atlas": "editorial/figure"
       },
-      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { FigureBlock } from './figure/figure.block';\n  export const p1Blocks = { ...p1Blocks, P1Figure: FigureBlock };\n\nThen edit components/puck/blocks/figure/figure.css to restyle it — the file is yours.",
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  // 1. Add the import:\n  import { FigureBlock } from './figure/figure.block';\n  // 2. Add an entry to the existing p1Blocks object:\n  //    P1Figure: FigureBlock,\n\nThen edit components/puck/blocks/figure/figure.css to restyle it — the file is yours.",
       "files": [
         {
           "path": "figure/figure.tsx",
@@ -622,7 +622,7 @@
         "version": "0.1.0",
         "atlas": "global/footer"
       },
-      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { FooterBlock } from './footer/footer.block';\n  export const p1Blocks = { ...p1Blocks, P1Footer: FooterBlock };\n\nThen edit components/puck/blocks/footer/footer.css to restyle it — the file is yours.",
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  // 1. Add the import:\n  import { FooterBlock } from './footer/footer.block';\n  // 2. Add an entry to the existing p1Blocks object:\n  //    P1Footer: FooterBlock,\n\nThen edit components/puck/blocks/footer/footer.css to restyle it — the file is yours.",
       "files": [
         {
           "path": "footer/footer.tsx",
@@ -660,7 +660,7 @@
         "version": "0.1.0",
         "atlas": "showcase/gallery"
       },
-      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { GalleryBlock } from './gallery/gallery.block';\n  export const p1Blocks = { ...p1Blocks, P1Gallery: GalleryBlock };\n\nThen edit components/puck/blocks/gallery/gallery.css to restyle it — the file is yours.",
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  // 1. Add the import:\n  import { GalleryBlock } from './gallery/gallery.block';\n  // 2. Add an entry to the existing p1Blocks object:\n  //    P1Gallery: GalleryBlock,\n\nThen edit components/puck/blocks/gallery/gallery.css to restyle it — the file is yours.",
       "files": [
         {
           "path": "gallery/gallery.tsx",
@@ -698,7 +698,7 @@
         "version": "0.1.0",
         "atlas": "global/header"
       },
-      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { HeaderBlock } from './header/header.block';\n  export const p1Blocks = { ...p1Blocks, P1Header: HeaderBlock };\n\nThen edit components/puck/blocks/header/header.css to restyle it — the file is yours.",
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  // 1. Add the import:\n  import { HeaderBlock } from './header/header.block';\n  // 2. Add an entry to the existing p1Blocks object:\n  //    P1Header: HeaderBlock,\n\nThen edit components/puck/blocks/header/header.css to restyle it — the file is yours.",
       "files": [
         {
           "path": "header/header.tsx",
@@ -735,7 +735,7 @@
         "version": "0.1.0",
         "atlas": "content/heading"
       },
-      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { HeadingBlock } from './heading/heading.block';\n  export const p1Blocks = { ...p1Blocks, P1Heading: HeadingBlock };\n\nThen edit components/puck/blocks/heading/heading.css to restyle it — the file is yours.",
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  // 1. Add the import:\n  import { HeadingBlock } from './heading/heading.block';\n  // 2. Add an entry to the existing p1Blocks object:\n  //    P1Heading: HeadingBlock,\n\nThen edit components/puck/blocks/heading/heading.css to restyle it — the file is yours.",
       "files": [
         {
           "path": "heading/heading.tsx",
@@ -773,7 +773,7 @@
         "version": "0.1.0",
         "atlas": "attention/hero"
       },
-      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { HeroBlock } from './hero/hero.block';\n  export const p1Blocks = { ...p1Blocks, P1Hero: HeroBlock };\n\nThen edit components/puck/blocks/hero/hero.css to restyle it — the file is yours.",
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  // 1. Add the import:\n  import { HeroBlock } from './hero/hero.block';\n  // 2. Add an entry to the existing p1Blocks object:\n  //    P1Hero: HeroBlock,\n\nThen edit components/puck/blocks/hero/hero.css to restyle it — the file is yours.",
       "files": [
         {
           "path": "hero/hero.tsx",
@@ -810,7 +810,7 @@
         "version": "0.1.0",
         "atlas": "showcase/image"
       },
-      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { ImageBlock } from './image/image.block';\n  export const p1Blocks = { ...p1Blocks, P1Image: ImageBlock };\n\nThen edit components/puck/blocks/image/image.css to restyle it — the file is yours.",
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  // 1. Add the import:\n  import { ImageBlock } from './image/image.block';\n  // 2. Add an entry to the existing p1Blocks object:\n  //    P1Image: ImageBlock,\n\nThen edit components/puck/blocks/image/image.css to restyle it — the file is yours.",
       "files": [
         {
           "path": "image/image.tsx",
@@ -848,7 +848,7 @@
         "version": "0.1.0",
         "atlas": "convert/lead-capture"
       },
-      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { LeadCaptureBlock } from './lead-capture/lead-capture.block';\n  export const p1Blocks = { ...p1Blocks, P1LeadCapture: LeadCaptureBlock };\n\nThen edit components/puck/blocks/lead-capture/lead-capture.css to restyle it — the file is yours.",
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  // 1. Add the import:\n  import { LeadCaptureBlock } from './lead-capture/lead-capture.block';\n  // 2. Add an entry to the existing p1Blocks object:\n  //    P1LeadCapture: LeadCaptureBlock,\n\nThen edit components/puck/blocks/lead-capture/lead-capture.css to restyle it — the file is yours.",
       "files": [
         {
           "path": "lead-capture/lead-capture.tsx",
@@ -885,7 +885,7 @@
         "version": "0.1.0",
         "atlas": "content/list"
       },
-      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { ListBlock } from './list/list.block';\n  export const p1Blocks = { ...p1Blocks, P1List: ListBlock };\n\nThen edit components/puck/blocks/list/list.css to restyle it — the file is yours.",
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  // 1. Add the import:\n  import { ListBlock } from './list/list.block';\n  // 2. Add an entry to the existing p1Blocks object:\n  //    P1List: ListBlock,\n\nThen edit components/puck/blocks/list/list.css to restyle it — the file is yours.",
       "files": [
         {
           "path": "list/list.tsx",
@@ -922,7 +922,7 @@
         "version": "0.1.0",
         "atlas": "trust/logos"
       },
-      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { LogoCloudBlock } from './logos/logos.block';\n  export const p1Blocks = { ...p1Blocks, P1LogoCloud: LogoCloudBlock };\n\nThen edit components/puck/blocks/logos/logos.css to restyle it — the file is yours.",
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  // 1. Add the import:\n  import { LogoCloudBlock } from './logos/logos.block';\n  // 2. Add an entry to the existing p1Blocks object:\n  //    P1LogoCloud: LogoCloudBlock,\n\nThen edit components/puck/blocks/logos/logos.css to restyle it — the file is yours.",
       "files": [
         {
           "path": "logos/logos.tsx",
@@ -961,7 +961,7 @@
         "version": "0.1.0",
         "atlas": "content/paragraph"
       },
-      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { ParagraphBlock } from './paragraph/paragraph.block';\n  export const p1Blocks = { ...p1Blocks, P1Paragraph: ParagraphBlock };\n\nThen edit components/puck/blocks/paragraph/paragraph.css to restyle it — the file is yours.",
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  // 1. Add the import:\n  import { ParagraphBlock } from './paragraph/paragraph.block';\n  // 2. Add an entry to the existing p1Blocks object:\n  //    P1Paragraph: ParagraphBlock,\n\nThen edit components/puck/blocks/paragraph/paragraph.css to restyle it — the file is yours.",
       "files": [
         {
           "path": "paragraph/paragraph.tsx",
@@ -1000,7 +1000,7 @@
         "version": "0.1.0",
         "atlas": "convert/pricing"
       },
-      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { PricingBlock } from './pricing/pricing.block';\n  export const p1Blocks = { ...p1Blocks, P1Pricing: PricingBlock };\n\nThen edit components/puck/blocks/pricing/pricing.css to restyle it — the file is yours.",
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  // 1. Add the import:\n  import { PricingBlock } from './pricing/pricing.block';\n  // 2. Add an entry to the existing p1Blocks object:\n  //    P1Pricing: PricingBlock,\n\nThen edit components/puck/blocks/pricing/pricing.css to restyle it — the file is yours.",
       "files": [
         {
           "path": "pricing/pricing.tsx",
@@ -1038,7 +1038,7 @@
         "version": "0.1.0",
         "atlas": "editorial/pull-quote"
       },
-      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { PullQuoteBlock } from './pull-quote/pull-quote.block';\n  export const p1Blocks = { ...p1Blocks, P1PullQuote: PullQuoteBlock };\n\nThen edit components/puck/blocks/pull-quote/pull-quote.css to restyle it — the file is yours.",
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  // 1. Add the import:\n  import { PullQuoteBlock } from './pull-quote/pull-quote.block';\n  // 2. Add an entry to the existing p1Blocks object:\n  //    P1PullQuote: PullQuoteBlock,\n\nThen edit components/puck/blocks/pull-quote/pull-quote.css to restyle it — the file is yours.",
       "files": [
         {
           "path": "pull-quote/pull-quote.tsx",
@@ -1077,7 +1077,7 @@
         "version": "0.1.0",
         "atlas": "content/quote"
       },
-      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { QuoteBlock } from './quote/quote.block';\n  export const p1Blocks = { ...p1Blocks, P1Quote: QuoteBlock };\n\nThen edit components/puck/blocks/quote/quote.css to restyle it — the file is yours.",
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  // 1. Add the import:\n  import { QuoteBlock } from './quote/quote.block';\n  // 2. Add an entry to the existing p1Blocks object:\n  //    P1Quote: QuoteBlock,\n\nThen edit components/puck/blocks/quote/quote.css to restyle it — the file is yours.",
       "files": [
         {
           "path": "quote/quote.tsx",
@@ -1115,7 +1115,7 @@
         "version": "0.1.0",
         "atlas": "editorial/rich-text"
       },
-      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { RichTextBlock } from './rich-text/rich-text.block';\n  export const p1Blocks = { ...p1Blocks, P1RichText: RichTextBlock };\n\nThen edit components/puck/blocks/rich-text/rich-text.css to restyle it — the file is yours.",
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  // 1. Add the import:\n  import { RichTextBlock } from './rich-text/rich-text.block';\n  // 2. Add an entry to the existing p1Blocks object:\n  //    P1RichText: RichTextBlock,\n\nThen edit components/puck/blocks/rich-text/rich-text.css to restyle it — the file is yours.",
       "files": [
         {
           "path": "rich-text/rich-text.tsx",
@@ -1152,7 +1152,7 @@
         "version": "0.1.0",
         "atlas": "content/spacer"
       },
-      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { SpacerBlock } from './spacer/spacer.block';\n  export const p1Blocks = { ...p1Blocks, P1Spacer: SpacerBlock };\n\nThen edit components/puck/blocks/spacer/spacer.css to restyle it — the file is yours.",
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  // 1. Add the import:\n  import { SpacerBlock } from './spacer/spacer.block';\n  // 2. Add an entry to the existing p1Blocks object:\n  //    P1Spacer: SpacerBlock,\n\nThen edit components/puck/blocks/spacer/spacer.css to restyle it — the file is yours.",
       "files": [
         {
           "path": "spacer/spacer.tsx",
@@ -1189,7 +1189,7 @@
         "version": "0.1.0",
         "atlas": "trust/stats"
       },
-      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { StatsBlock } from './stats/stats.block';\n  export const p1Blocks = { ...p1Blocks, P1Stats: StatsBlock };\n\nThen edit components/puck/blocks/stats/stats.css to restyle it — the file is yours.",
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  // 1. Add the import:\n  import { StatsBlock } from './stats/stats.block';\n  // 2. Add an entry to the existing p1Blocks object:\n  //    P1Stats: StatsBlock,\n\nThen edit components/puck/blocks/stats/stats.css to restyle it — the file is yours.",
       "files": [
         {
           "path": "stats/stats.tsx",
@@ -1226,7 +1226,7 @@
         "version": "0.1.0",
         "atlas": "value/steps"
       },
-      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { StepsBlock } from './steps/steps.block';\n  export const p1Blocks = { ...p1Blocks, P1Steps: StepsBlock };\n\nThen edit components/puck/blocks/steps/steps.css to restyle it — the file is yours.",
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  // 1. Add the import:\n  import { StepsBlock } from './steps/steps.block';\n  // 2. Add an entry to the existing p1Blocks object:\n  //    P1Steps: StepsBlock,\n\nThen edit components/puck/blocks/steps/steps.css to restyle it — the file is yours.",
       "files": [
         {
           "path": "steps/steps.tsx",
@@ -1264,7 +1264,7 @@
         "version": "0.1.0",
         "atlas": "layout/tabs"
       },
-      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { TabsBlock } from './tabs/tabs.block';\n  export const p1Blocks = { ...p1Blocks, P1Tabs: TabsBlock };\n\nThen edit components/puck/blocks/tabs/tabs.css to restyle it — the file is yours.",
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  // 1. Add the import:\n  import { TabsBlock } from './tabs/tabs.block';\n  // 2. Add an entry to the existing p1Blocks object:\n  //    P1Tabs: TabsBlock,\n\nThen edit components/puck/blocks/tabs/tabs.css to restyle it — the file is yours.",
       "files": [
         {
           "path": "tabs/tabs.tsx",
@@ -1301,7 +1301,7 @@
         "version": "0.1.0",
         "atlas": "trust/team-grid"
       },
-      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { TeamGridBlock } from './team-grid/team-grid.block';\n  export const p1Blocks = { ...p1Blocks, P1TeamGrid: TeamGridBlock };\n\nThen edit components/puck/blocks/team-grid/team-grid.css to restyle it — the file is yours.",
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  // 1. Add the import:\n  import { TeamGridBlock } from './team-grid/team-grid.block';\n  // 2. Add an entry to the existing p1Blocks object:\n  //    P1TeamGrid: TeamGridBlock,\n\nThen edit components/puck/blocks/team-grid/team-grid.css to restyle it — the file is yours.",
       "files": [
         {
           "path": "team-grid/team-grid.tsx",
@@ -1338,7 +1338,7 @@
         "version": "0.1.0",
         "atlas": "trust/testimonial"
       },
-      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { TestimonialBlock } from './testimonial/testimonial.block';\n  export const p1Blocks = { ...p1Blocks, P1Testimonial: TestimonialBlock };\n\nThen edit components/puck/blocks/testimonial/testimonial.css to restyle it — the file is yours.",
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  // 1. Add the import:\n  import { TestimonialBlock } from './testimonial/testimonial.block';\n  // 2. Add an entry to the existing p1Blocks object:\n  //    P1Testimonial: TestimonialBlock,\n\nThen edit components/puck/blocks/testimonial/testimonial.css to restyle it — the file is yours.",
       "files": [
         {
           "path": "testimonial/testimonial.tsx",
@@ -1375,7 +1375,7 @@
         "version": "0.1.0",
         "atlas": "value/timeline"
       },
-      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  import { TimelineBlock } from './timeline/timeline.block';\n  export const p1Blocks = { ...p1Blocks, P1Timeline: TimelineBlock };\n\nThen edit components/puck/blocks/timeline/timeline.css to restyle it — the file is yours.",
+      "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  // 1. Add the import:\n  import { TimelineBlock } from './timeline/timeline.block';\n  // 2. Add an entry to the existing p1Blocks object:\n  //    P1Timeline: TimelineBlock,\n\nThen edit components/puck/blocks/timeline/timeline.css to restyle it — the file is yours.",
       "files": [
         {
           "path": "timeline/timeline.tsx",

@@ -48,6 +48,9 @@ const CATEGORY_TITLE = {
 
 // Parse the `export const meta = { ... }` literal from a .block.tsx file.
 // Uses brace counting so nested structures are handled correctly.
+// Limitation: brace counting does not skip string literals — a description
+// containing an unmatched { or } would mis-terminate. Use only balanced
+// braces in block meta strings (or HTML entities &#123; / &#125;).
 function parseMeta(filePath) {
   const content = readFileSync(filePath, 'utf8');
 
@@ -102,8 +105,10 @@ function generateDocs(name, exportName) {
   return (
     `Register the block in your Puck config:\n\n` +
     `  // components/puck/blocks/index.ts\n` +
+    `  // 1. Add the import:\n` +
     `  import { ${exportName} } from './${name}/${name}.block';\n` +
-    `  export const p1Blocks = { ...p1Blocks, ${puckKey}: ${exportName} };\n\n` +
+    `  // 2. Add an entry to the existing p1Blocks object:\n` +
+    `  //    ${puckKey}: ${exportName},\n\n` +
     `Then edit components/puck/blocks/${name}/${name}.css to restyle it — the file is yours.`
   );
 }
@@ -226,6 +231,21 @@ ${catalogDynamicEntries}
 
 writeFileSync(join(REGISTRY_APP, 'lib', 'catalog.generated.tsx'), catalogGeneratedTsx);
 console.log('  Generated apps/p1-registry/lib/catalog.generated.tsx');
+
+// ── Generate apps/p1-registry/lib/preview-names.ts ───────────────────────────
+// Kept free of component imports so the catalog page avoids pulling in block
+// CSS (which would override .p1-header / .p1-footer in the site chrome).
+
+const previewNamesTsContent = `${HEADER}
+// Kept free of component imports — importing previewComponents here would
+// pull every block's CSS into the catalog page and override site chrome.
+export const previewNames: string[] = [
+  ${blockNames.map((n) => `'${n}'`).join(', ')},
+];
+`;
+
+writeFileSync(join(REGISTRY_APP, 'lib', 'preview-names.ts'), previewNamesTsContent);
+console.log('  Generated apps/p1-registry/lib/preview-names.ts');
 
 // ── Scaffold stories/<name>.stories.tsx for new blocks ───────────────────────
 // Never overwrites an existing file — the developer owns it once it exists.

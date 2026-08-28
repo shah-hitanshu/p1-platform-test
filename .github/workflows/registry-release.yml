@@ -43,8 +43,6 @@ jobs:
 
       - name: Build registry and catalog
         run: pnpm --filter @pantheon-systems/p1-registry build
-        env:
-          REGISTRY_HOST: ${{ vars.REGISTRY_HOST }}
 
       - name: Assemble the deploy tree
         run: |

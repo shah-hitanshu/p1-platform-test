@@ -1,45 +1,9 @@
-// Kebab-case registry name → allBlocks key. Kept free of component imports so
-// the catalog page can list preview names without pulling in every block's CSS,
-// which would otherwise override the site chrome (.p1-header, .p1-footer).
-// Three names deviate from the simple pascal pattern (logos, features, cta).
-export const NAME_TO_KEY = {
-  accordion: 'AccordionBlock',
-  announcement: 'AnnouncementBlock',
-  'article-header': 'ArticleHeaderBlock',
-  button: 'ButtonBlock',
-  callout: 'CalloutBlock',
-  'card-grid': 'CardGridBlock',
-  'comparison-table': 'ComparisonTableBlock',
-  columns: 'ColumnsBlock',
-  container: 'ContainerBlock',
-  cta: 'CtaBannerBlock',
-  divider: 'DividerBlock',
-  embed: 'EmbedBlock',
-  faq: 'FaqBlock',
-  'feature-media': 'FeatureMediaBlock',
-  features: 'FeatureCardsBlock',
-  figure: 'FigureBlock',
-  footer: 'FooterBlock',
-  gallery: 'GalleryBlock',
-  header: 'HeaderBlock',
-  heading: 'HeadingBlock',
-  hero: 'HeroBlock',
-  image: 'ImageBlock',
-  'lead-capture': 'LeadCaptureBlock',
-  list: 'ListBlock',
-  logos: 'LogoCloudBlock',
-  paragraph: 'ParagraphBlock',
-  pricing: 'PricingBlock',
-  'pull-quote': 'PullQuoteBlock',
-  quote: 'QuoteBlock',
-  'rich-text': 'RichTextBlock',
-  spacer: 'SpacerBlock',
-  stats: 'StatsBlock',
-  steps: 'StepsBlock',
-  tabs: 'TabsBlock',
-  'team-grid': 'TeamGridBlock',
-  testimonial: 'TestimonialBlock',
-  timeline: 'TimelineBlock',
-} as const;
+// AUTO-GENERATED — DO NOT EDIT
+// Source: packages/p1-starter-components/scripts/generate-catalog.mjs
+// Run `pnpm registry:generate` to refresh after adding or removing a block.
 
-export const previewNames = Object.keys(NAME_TO_KEY);
+// Kept free of component imports — importing previewComponents here would
+// pull every block's CSS into the catalog page and override site chrome.
+export const previewNames: string[] = [
+  'accordion', 'announcement', 'article-header', 'button', 'callout', 'card-grid', 'columns', 'comparison-table', 'container', 'cta', 'divider', 'embed', 'faq', 'feature-media', 'features', 'figure', 'footer', 'gallery', 'header', 'heading', 'hero', 'image', 'lead-capture', 'list', 'logos', 'paragraph', 'pricing', 'pull-quote', 'quote', 'rich-text', 'spacer', 'stats', 'steps', 'tabs', 'team-grid', 'testimonial', 'timeline',
+];

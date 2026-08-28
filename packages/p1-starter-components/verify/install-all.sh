@@ -75,7 +75,8 @@ node -e "
 "
 
 echo "==> registering every block and building"
-pnpm add @puckeditor/core@0.21.1 >/dev/null
+PUCK_VERSION=$(node -p "require('$PKG_DIR/package.json').devDependencies['@puckeditor/core'].replace(/^\^/, '')")
+pnpm add "@puckeditor/core@$PUCK_VERSION" >/dev/null
 node -e "
   const { readdirSync, writeFileSync } = require('fs');
   const dirs = readdirSync('components/puck/blocks', { withFileTypes: true })
