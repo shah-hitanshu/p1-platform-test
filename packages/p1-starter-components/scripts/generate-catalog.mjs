@@ -233,7 +233,6 @@ console.log('  Generated apps/p1-registry/lib/catalog.generated.tsx');
 let storiesScaffolded = 0;
 for (const { name, exportName, category, meta } of blocks) {
   const storyPath = join(STORIES_DIR, `${name}.stories.tsx`);
-  if (existsSync(storyPath)) continue;
 
   const title = meta.title ?? name;
   const catTitle = CATEGORY_TITLE[category] ?? (category[0].toUpperCase() + category.slice(1));
@@ -260,7 +259,14 @@ type Story = StoryObj<typeof meta>;
 export const Default: Story = { args: {} };
 `;
 
-  writeFileSync(storyPath, scaffold);
+  // Exclusive create, so an existing file is never clobbered even if it
+  // appears between this loop starting and the write.
+  try {
+    writeFileSync(storyPath, scaffold, { flag: 'wx' });
+  } catch (err) {
+    if (err.code === 'EEXIST') continue;
+    throw err;
+  }
   console.log(`  Scaffolded stories/${name}.stories.tsx`);
   storiesScaffolded++;
 }
