@@ -62,4 +62,5 @@ export const meta = defineMeta({
   title: 'Logo Cloud',
   description: 'Logo cloud row/grid of partner or customer logos in mono or color style with optional heading; use for social-proof or partner sections.',
   categories: ["trust"],
+  published: true,
 });

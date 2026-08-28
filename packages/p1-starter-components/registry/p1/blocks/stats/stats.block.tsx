@@ -48,4 +48,5 @@ export const meta = defineMeta({
   title: 'Stats',
   description: 'Horizontal grid of large value+label stat items in light or dark tone; use for key metrics or social-proof numbers.',
   categories: ["trust"],
+  published: true,
 });

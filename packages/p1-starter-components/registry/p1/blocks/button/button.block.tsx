@@ -46,5 +46,6 @@ export const meta = defineMeta({
   title: 'Button',
   description: 'Single CTA button (primary/secondary/yellow/purple) centered or left-aligned; use to place a standalone call-to-action.',
   categories: ["content"],
+  published: true,
   registryDependencies: ["@p1/tokens","@p1/internal-btn"],
 });

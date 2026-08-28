@@ -80,4 +80,5 @@ export const meta = defineMeta({
   title: 'Figure',
   description: 'Single image with optional caption and photo credit, supporting aspect ratio, width, radius, and b&w treatment; use for editorial images.',
   categories: ["editorial"],
+  published: true,
 });

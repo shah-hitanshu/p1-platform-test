@@ -88,4 +88,5 @@ export const meta = defineMeta({
   title: 'Team Grid',
   description: 'Grid of team member cards with avatar, name, role, and bio in circle or rounded photo shape; use for About/Team pages.',
   categories: ["trust"],
+  published: true,
 });

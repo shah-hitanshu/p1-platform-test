@@ -37,6 +37,7 @@ export const meta = defineMeta({
   title: 'Quote',
   description: 'Simple blockquote with rich-text quote and an attribution line in standard or display scale; use for inline quotations.',
   categories: ["content"],
+  published: true,
   dependencies: ["@puckeditor/core","@pantheon-systems/puck-css"],
   registryDependencies: ["@p1/tokens","@p1/internal-rich"],
 });

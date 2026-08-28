@@ -60,4 +60,5 @@ export const meta = defineMeta({
   title: 'Testimonial',
   description: 'Customer testimonial with quote text, name, role, and avatar in centered/card/large layouts and multiple tones; use for social proof.',
   categories: ["trust"],
+  published: true,
 });

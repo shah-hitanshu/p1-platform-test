@@ -53,5 +53,6 @@ export const meta = defineMeta({
   title: 'Tabs',
   description: 'Tabbed content switcher with a heading and per-tab rich-text body; use to organize related content into switchable panels.',
   categories: ["layout"],
+  published: true,
   registryDependencies: ["@p1/tokens","@p1/internal-rich"],
 });

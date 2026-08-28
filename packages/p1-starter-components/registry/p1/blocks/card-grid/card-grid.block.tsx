@@ -50,4 +50,5 @@ export const meta = defineMeta({
   title: 'Card Grid',
   description: 'Responsive 2–4 column grid of image+title+subtitle cards with an optional section heading; use for feature or product showcases.',
   categories: ["showcase"],
+  published: true,
 });

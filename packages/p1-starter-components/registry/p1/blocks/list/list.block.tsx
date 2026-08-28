@@ -44,4 +44,5 @@ export const meta = defineMeta({
   title: 'List',
   description: 'Bullet, numbered, or checkmark list of text items; use for simple inline content lists.',
   categories: ["content"],
+  published: true,
 });

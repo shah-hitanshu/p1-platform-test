@@ -81,4 +81,5 @@ export const meta = defineMeta({
   title: 'Image',
   description: 'Simple full-bleed or contained image block with aspect ratio, fit, position, radius, and b&w treatment controls; use for standalone images.',
   categories: ["showcase"],
+  published: true,
 });

@@ -79,5 +79,6 @@ export const meta = defineMeta({
   title: 'Comparison Table',
   description: 'Feature comparison table with up to 4 named columns and checkmark/text rows; use for pricing or product capability comparisons.',
   categories: ["convert"],
+  published: true,
   registryDependencies: ["@p1/tokens","@p1/internal-icons"],
 });

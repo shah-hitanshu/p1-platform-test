@@ -26,4 +26,5 @@ export const meta = defineMeta({
   title: 'Spacer',
   description: 'Invisible vertical whitespace element in xs–xl sizes; use to add breathing room between blocks.',
   categories: ["content"],
+  published: true,
 });

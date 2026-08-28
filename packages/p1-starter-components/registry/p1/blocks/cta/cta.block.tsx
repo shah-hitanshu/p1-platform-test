@@ -105,5 +105,6 @@ export const meta = defineMeta({
   title: 'CTA Banner',
   description: 'Full-width call-to-action banner with eyebrow, title, subtitle, and up to two buttons in multiple tones and layouts; use for conversion sections.',
   categories: ["convert"],
+  published: true,
   registryDependencies: ["@p1/tokens","@p1/internal-btn"],
 });

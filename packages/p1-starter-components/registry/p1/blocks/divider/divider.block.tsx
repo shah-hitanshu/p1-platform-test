@@ -30,4 +30,5 @@ export const meta = defineMeta({
   title: 'Divider',
   description: 'Horizontal rule in solid, dashed, or dot styles with configurable vertical spacing; use to visually separate page sections.',
   categories: ["content"],
+  published: true,
 });

@@ -45,6 +45,7 @@ export const meta = defineMeta({
   title: 'Paragraph',
   description: 'Rich-text paragraph in body or lead style with size and alignment controls; use for body copy blocks.',
   categories: ["content"],
+  published: true,
   dependencies: ["@puckeditor/core","@pantheon-systems/puck-css"],
   registryDependencies: ["@p1/tokens","@p1/internal-rich"],
 });

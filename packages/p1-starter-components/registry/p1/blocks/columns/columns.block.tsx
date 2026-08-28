@@ -60,4 +60,5 @@ export const meta = defineMeta({
   title: 'Columns',
   description: 'Drag-and-drop layout grid of 2–4 columns with configurable ratio, gap, and vertical alignment; use as a layout wrapper for other blocks.',
   categories: ["layout"],
+  published: true,
 });

@@ -108,5 +108,6 @@ export const meta = defineMeta({
   title: 'Footer',
   description: 'Site footer with logo, tagline, multi-column link groups, newsletter signup, social icons, and legal/copyright row in dark/indigo/light tones.',
   categories: ["global"],
+  published: true,
   registryDependencies: ["@p1/tokens","@p1/internal-icons"],
 });

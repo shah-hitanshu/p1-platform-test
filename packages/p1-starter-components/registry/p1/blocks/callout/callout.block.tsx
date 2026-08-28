@@ -39,5 +39,6 @@ export const meta = defineMeta({
   title: 'Callout',
   description: 'Highlighted aside box with an icon, title, and body text in note/info/tip/warning variants; use to flag important inline content.',
   categories: ["editorial"],
+  published: true,
   registryDependencies: ["@p1/tokens","@p1/internal-icons"],
 });

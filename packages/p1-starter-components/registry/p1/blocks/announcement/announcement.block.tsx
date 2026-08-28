@@ -47,4 +47,5 @@ export const meta = defineMeta({
   title: 'Announcement',
   description: 'Slim banner strip with a text message and optional link label in themed tones (purple/yellow/dark/gradient); use for site-wide notices.',
   categories: ["attention"],
+  published: true,
 });

@@ -46,5 +46,6 @@ export const meta = defineMeta({
   title: 'FAQ',
   description: 'Vertically stacked question-and-answer list with a section heading and icon-decorated rows; use for support or product FAQ sections.',
   categories: ["convert"],
+  published: true,
   registryDependencies: ["@p1/tokens","@p1/internal-icons"],
 });

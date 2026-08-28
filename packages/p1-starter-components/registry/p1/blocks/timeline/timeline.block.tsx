@@ -76,4 +76,5 @@ export const meta = defineMeta({
   title: 'Timeline',
   description: 'Vertical or alternating chronological list of date+title+body events; use for company history, product roadmaps, or process timelines.',
   categories: ["value"],
+  published: true,
 });

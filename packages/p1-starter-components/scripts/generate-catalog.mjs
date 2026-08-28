@@ -79,7 +79,6 @@ function parseMeta(filePath) {
     return {
       dependencies: ['@puckeditor/core'],
       registryDependencies: ['@p1/tokens'],
-      published: true,
       ...raw,
     };
   } catch (e) {

@@ -115,4 +115,5 @@ export const meta = defineMeta({
   title: 'Feature Cards',
   description: 'Grid of 2–4 feature cards each with eyebrow, title, and body in multiple color schemes and card styles; use for feature lists or benefit grids.',
   categories: ["value"],
+  published: true,
 });

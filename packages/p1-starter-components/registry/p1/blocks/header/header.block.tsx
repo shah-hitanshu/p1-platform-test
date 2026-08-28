@@ -108,5 +108,6 @@ export const meta = defineMeta({
   title: 'Header',
   description: 'Site navigation bar with logo, nav links, optional search, and a CTA button in white/light/dark tones; use as the page header/navbar.',
   categories: ["global"],
+  published: true,
   registryDependencies: ["@p1/tokens","@p1/internal-icons"],
 });

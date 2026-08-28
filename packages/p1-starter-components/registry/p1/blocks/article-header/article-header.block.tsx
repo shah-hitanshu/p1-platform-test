@@ -81,4 +81,5 @@ export const meta = defineMeta({
   title: 'Article Header',
   description: 'Blog/article masthead with category, title, standfirst, author avatar, date, and read-time; use at the top of editorial pages.',
   categories: ["editorial"],
+  published: true,
 });

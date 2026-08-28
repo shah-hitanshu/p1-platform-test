@@ -83,5 +83,6 @@ export const meta = defineMeta({
   title: 'Pricing',
   description: 'Pricing tier cards with name, price, period, feature list, and CTA button, supporting a featured/highlighted tier; use for pricing pages.',
   categories: ["convert"],
+  published: true,
   registryDependencies: ["@p1/tokens","@p1/internal-btn","@p1/internal-icons"],
 });

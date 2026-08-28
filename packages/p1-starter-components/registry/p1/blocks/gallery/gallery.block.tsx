@@ -94,5 +94,6 @@ export const meta = defineMeta({
   title: 'Gallery',
   description: 'Multi-image display in grid, masonry, filmstrip, or carousel layout with optional captions and configurable columns/gap/ratio; use for photo galleries.',
   categories: ["showcase"],
+  published: true,
   registryDependencies: ["@p1/tokens","@p1/internal-icons"],
 });

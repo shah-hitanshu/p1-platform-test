@@ -36,4 +36,5 @@ export const meta = defineMeta({
   title: 'Heading',
   description: 'Single H1–H4 heading element with left/center alignment; use to add a standalone section title.',
   categories: ["content"],
+  published: true,
 });

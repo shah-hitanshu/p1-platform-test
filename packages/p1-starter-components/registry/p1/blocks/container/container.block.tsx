@@ -62,4 +62,5 @@ export const meta = defineMeta({
   title: 'Container',
   description: 'Constrained-width wrapper slot with tone, padding, radius, and max-width controls; use to scope and style groups of nested blocks.',
   categories: ["layout"],
+  published: true,
 });
