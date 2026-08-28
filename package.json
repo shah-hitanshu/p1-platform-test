@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "Pre-built static catalog for p1 components",
   "scripts": {
+    "build": "echo 'no build step'",
     "start": "node server.js"
   },
   "dependencies": {
