@@ -1,4 +1,5 @@
 import type { ComponentConfig } from "@puckeditor/core";
+import { defineMeta } from '../define-meta';
 import { ColumnsRender, type ColumnsProps } from "./columns";
 export type { ColumnsProps };
 
@@ -54,3 +55,9 @@ export const ColumnsBlock: ComponentConfig<ColumnsProps> = {
   },
   render: ColumnsRender as unknown as ComponentConfig<ColumnsProps>["render"],
 };
+
+export const meta = defineMeta({
+  title: 'Columns',
+  description: 'Drag-and-drop layout grid of 2–4 columns with configurable ratio, gap, and vertical alignment; use as a layout wrapper for other blocks.',
+  categories: ["layout"],
+});

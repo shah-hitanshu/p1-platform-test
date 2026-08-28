@@ -1,4 +1,5 @@
 import type { ComponentConfig } from "@puckeditor/core";
+import { defineMeta } from '../define-meta';
 import { FeatureMediaRender, type FeatureMediaProps, type FeatureMediaBullet } from "./feature-media";
 export type { FeatureMediaProps, FeatureMediaBullet };
 
@@ -77,3 +78,10 @@ export const FeatureMediaBlock: ComponentConfig<FeatureMediaProps> = {
   },
   render: FeatureMediaRender,
 };
+
+export const meta = defineMeta({
+  title: 'Feature Media',
+  description: 'Side-by-side text+image block with eyebrow, title, body, bullet points, and a CTA button; use for product feature highlights.',
+  categories: ["value"],
+  registryDependencies: ["@p1/tokens","@p1/internal-btn","@p1/internal-icons"],
+});

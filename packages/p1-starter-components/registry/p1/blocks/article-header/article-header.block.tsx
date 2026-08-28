@@ -1,4 +1,5 @@
 import type { ComponentConfig } from "@puckeditor/core";
+import { defineMeta } from '../define-meta';
 import { ArticleHeaderRender, type ArticleHeaderProps } from "./article-header";
 export type { ArticleHeaderProps };
 
@@ -75,3 +76,9 @@ export const ArticleHeaderBlock: ComponentConfig<ArticleHeaderProps> = {
   },
   render: ArticleHeaderRender,
 };
+
+export const meta = defineMeta({
+  title: 'Article Header',
+  description: 'Blog/article masthead with category, title, standfirst, author avatar, date, and read-time; use at the top of editorial pages.',
+  categories: ["editorial"],
+});

@@ -1,4 +1,5 @@
 import type { ComponentConfig } from "@puckeditor/core";
+import { defineMeta } from '../define-meta';
 import { HeroRender, type HeroProps } from "./hero";
 export type { HeroProps };
 
@@ -129,3 +130,10 @@ export const HeroBlock: ComponentConfig<HeroProps> = {
   },
   render: HeroRender,
 };
+
+export const meta = defineMeta({
+  title: 'Hero',
+  description: 'Large page hero with eyebrow, title, description, two CTA buttons, and an image in split/full-image/text-only layouts with overlay options.',
+  categories: ["attention"],
+  registryDependencies: ["@p1/tokens","@p1/internal-btn"],
+});

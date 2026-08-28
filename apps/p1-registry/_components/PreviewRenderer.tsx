@@ -1,3 +1,7 @@
+// AUTO-GENERATED — DO NOT EDIT
+// Source: packages/p1-starter-components/scripts/generate-catalog.mjs
+// Run `pnpm registry:generate` to refresh after adding or removing a block.
+
 'use client';
 import dynamic from 'next/dynamic';
 import React from 'react';
@@ -22,115 +26,115 @@ function makeDynamic(loader: () => Promise<BlockConfig>) {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const dynamicBlocks: Record<string, React.ComponentType<any>> = {
-  accordion: makeDynamic(() =>
+  'accordion': makeDynamic(() =>
     import('@pantheon-systems/p1-starter-components/registry/p1/blocks/accordion/accordion.block')
       .then(m => m.AccordionBlock as unknown as BlockConfig)),
-  announcement: makeDynamic(() =>
+  'announcement': makeDynamic(() =>
     import('@pantheon-systems/p1-starter-components/registry/p1/blocks/announcement/announcement.block')
       .then(m => m.AnnouncementBlock as unknown as BlockConfig)),
   'article-header': makeDynamic(() =>
     import('@pantheon-systems/p1-starter-components/registry/p1/blocks/article-header/article-header.block')
       .then(m => m.ArticleHeaderBlock as unknown as BlockConfig)),
-  button: makeDynamic(() =>
+  'button': makeDynamic(() =>
     import('@pantheon-systems/p1-starter-components/registry/p1/blocks/button/button.block')
       .then(m => m.ButtonBlock as unknown as BlockConfig)),
-  callout: makeDynamic(() =>
+  'callout': makeDynamic(() =>
     import('@pantheon-systems/p1-starter-components/registry/p1/blocks/callout/callout.block')
       .then(m => m.CalloutBlock as unknown as BlockConfig)),
   'card-grid': makeDynamic(() =>
     import('@pantheon-systems/p1-starter-components/registry/p1/blocks/card-grid/card-grid.block')
       .then(m => m.CardGridBlock as unknown as BlockConfig)),
+  'columns': makeDynamic(() =>
+    import('@pantheon-systems/p1-starter-components/registry/p1/blocks/columns/columns.block')
+      .then(m => m.ColumnsBlock as unknown as BlockConfig)),
   'comparison-table': makeDynamic(() =>
     import('@pantheon-systems/p1-starter-components/registry/p1/blocks/comparison-table/comparison-table.block')
       .then(m => m.ComparisonTableBlock as unknown as BlockConfig)),
-  columns: makeDynamic(() =>
-    import('@pantheon-systems/p1-starter-components/registry/p1/blocks/columns/columns.block')
-      .then(m => m.ColumnsBlock as unknown as BlockConfig)),
-  container: makeDynamic(() =>
+  'container': makeDynamic(() =>
     import('@pantheon-systems/p1-starter-components/registry/p1/blocks/container/container.block')
       .then(m => m.ContainerBlock as unknown as BlockConfig)),
-  cta: makeDynamic(() =>
+  'cta': makeDynamic(() =>
     import('@pantheon-systems/p1-starter-components/registry/p1/blocks/cta/cta.block')
       .then(m => m.CtaBannerBlock as unknown as BlockConfig)),
-  divider: makeDynamic(() =>
+  'divider': makeDynamic(() =>
     import('@pantheon-systems/p1-starter-components/registry/p1/blocks/divider/divider.block')
       .then(m => m.DividerBlock as unknown as BlockConfig)),
-  embed: makeDynamic(() =>
+  'embed': makeDynamic(() =>
     import('@pantheon-systems/p1-starter-components/registry/p1/blocks/embed/embed.block')
       .then(m => m.EmbedBlock as unknown as BlockConfig)),
-  faq: makeDynamic(() =>
+  'faq': makeDynamic(() =>
     import('@pantheon-systems/p1-starter-components/registry/p1/blocks/faq/faq.block')
       .then(m => m.FaqBlock as unknown as BlockConfig)),
   'feature-media': makeDynamic(() =>
     import('@pantheon-systems/p1-starter-components/registry/p1/blocks/feature-media/feature-media.block')
       .then(m => m.FeatureMediaBlock as unknown as BlockConfig)),
-  features: makeDynamic(() =>
+  'features': makeDynamic(() =>
     import('@pantheon-systems/p1-starter-components/registry/p1/blocks/features/features.block')
       .then(m => m.FeatureCardsBlock as unknown as BlockConfig)),
-  figure: makeDynamic(() =>
+  'figure': makeDynamic(() =>
     import('@pantheon-systems/p1-starter-components/registry/p1/blocks/figure/figure.block')
       .then(m => m.FigureBlock as unknown as BlockConfig)),
-  footer: makeDynamic(() =>
+  'footer': makeDynamic(() =>
     import('@pantheon-systems/p1-starter-components/registry/p1/blocks/footer/footer.block')
       .then(m => m.FooterBlock as unknown as BlockConfig)),
-  gallery: makeDynamic(() =>
+  'gallery': makeDynamic(() =>
     import('@pantheon-systems/p1-starter-components/registry/p1/blocks/gallery/gallery.block')
       .then(m => m.GalleryBlock as unknown as BlockConfig)),
-  header: makeDynamic(() =>
+  'header': makeDynamic(() =>
     import('@pantheon-systems/p1-starter-components/registry/p1/blocks/header/header.block')
       .then(m => m.HeaderBlock as unknown as BlockConfig)),
-  heading: makeDynamic(() =>
+  'heading': makeDynamic(() =>
     import('@pantheon-systems/p1-starter-components/registry/p1/blocks/heading/heading.block')
       .then(m => m.HeadingBlock as unknown as BlockConfig)),
-  hero: makeDynamic(() =>
+  'hero': makeDynamic(() =>
     import('@pantheon-systems/p1-starter-components/registry/p1/blocks/hero/hero.block')
       .then(m => m.HeroBlock as unknown as BlockConfig)),
-  image: makeDynamic(() =>
+  'image': makeDynamic(() =>
     import('@pantheon-systems/p1-starter-components/registry/p1/blocks/image/image.block')
       .then(m => m.ImageBlock as unknown as BlockConfig)),
   'lead-capture': makeDynamic(() =>
     import('@pantheon-systems/p1-starter-components/registry/p1/blocks/lead-capture/lead-capture.block')
       .then(m => m.LeadCaptureBlock as unknown as BlockConfig)),
-  list: makeDynamic(() =>
+  'list': makeDynamic(() =>
     import('@pantheon-systems/p1-starter-components/registry/p1/blocks/list/list.block')
       .then(m => m.ListBlock as unknown as BlockConfig)),
-  logos: makeDynamic(() =>
+  'logos': makeDynamic(() =>
     import('@pantheon-systems/p1-starter-components/registry/p1/blocks/logos/logos.block')
       .then(m => m.LogoCloudBlock as unknown as BlockConfig)),
-  paragraph: makeDynamic(() =>
+  'paragraph': makeDynamic(() =>
     import('@pantheon-systems/p1-starter-components/registry/p1/blocks/paragraph/paragraph.block')
       .then(m => m.ParagraphBlock as unknown as BlockConfig)),
-  pricing: makeDynamic(() =>
+  'pricing': makeDynamic(() =>
     import('@pantheon-systems/p1-starter-components/registry/p1/blocks/pricing/pricing.block')
       .then(m => m.PricingBlock as unknown as BlockConfig)),
   'pull-quote': makeDynamic(() =>
     import('@pantheon-systems/p1-starter-components/registry/p1/blocks/pull-quote/pull-quote.block')
       .then(m => m.PullQuoteBlock as unknown as BlockConfig)),
-  quote: makeDynamic(() =>
+  'quote': makeDynamic(() =>
     import('@pantheon-systems/p1-starter-components/registry/p1/blocks/quote/quote.block')
       .then(m => m.QuoteBlock as unknown as BlockConfig)),
   'rich-text': makeDynamic(() =>
     import('@pantheon-systems/p1-starter-components/registry/p1/blocks/rich-text/rich-text.block')
       .then(m => m.RichTextBlock as unknown as BlockConfig)),
-  spacer: makeDynamic(() =>
+  'spacer': makeDynamic(() =>
     import('@pantheon-systems/p1-starter-components/registry/p1/blocks/spacer/spacer.block')
       .then(m => m.SpacerBlock as unknown as BlockConfig)),
-  stats: makeDynamic(() =>
+  'stats': makeDynamic(() =>
     import('@pantheon-systems/p1-starter-components/registry/p1/blocks/stats/stats.block')
       .then(m => m.StatsBlock as unknown as BlockConfig)),
-  steps: makeDynamic(() =>
+  'steps': makeDynamic(() =>
     import('@pantheon-systems/p1-starter-components/registry/p1/blocks/steps/steps.block')
       .then(m => m.StepsBlock as unknown as BlockConfig)),
-  tabs: makeDynamic(() =>
+  'tabs': makeDynamic(() =>
     import('@pantheon-systems/p1-starter-components/registry/p1/blocks/tabs/tabs.block')
       .then(m => m.TabsBlock as unknown as BlockConfig)),
   'team-grid': makeDynamic(() =>
     import('@pantheon-systems/p1-starter-components/registry/p1/blocks/team-grid/team-grid.block')
       .then(m => m.TeamGridBlock as unknown as BlockConfig)),
-  testimonial: makeDynamic(() =>
+  'testimonial': makeDynamic(() =>
     import('@pantheon-systems/p1-starter-components/registry/p1/blocks/testimonial/testimonial.block')
       .then(m => m.TestimonialBlock as unknown as BlockConfig)),
-  timeline: makeDynamic(() =>
+  'timeline': makeDynamic(() =>
     import('@pantheon-systems/p1-starter-components/registry/p1/blocks/timeline/timeline.block')
       .then(m => m.TimelineBlock as unknown as BlockConfig)),
 };

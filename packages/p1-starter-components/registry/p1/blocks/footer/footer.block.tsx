@@ -1,4 +1,5 @@
 import type { ComponentConfig } from "@puckeditor/core";
+import { defineMeta } from '../define-meta';
 import { FooterRender, type FooterProps, type FooterColumn } from "./footer";
 export type { FooterProps, FooterColumn };
 
@@ -102,3 +103,10 @@ export const FooterBlock: ComponentConfig<FooterProps> = {
   },
   render: FooterRender,
 };
+
+export const meta = defineMeta({
+  title: 'Footer',
+  description: 'Site footer with logo, tagline, multi-column link groups, newsletter signup, social icons, and legal/copyright row in dark/indigo/light tones.',
+  categories: ["global"],
+  registryDependencies: ["@p1/tokens","@p1/internal-icons"],
+});

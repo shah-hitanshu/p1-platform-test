@@ -1,4 +1,5 @@
 import type { ComponentConfig } from "@puckeditor/core";
+import { defineMeta } from '../define-meta';
 import { Heading, type HeadingProps } from "./heading";
 export type { HeadingProps };
 
@@ -30,3 +31,9 @@ export const HeadingBlock: ComponentConfig<HeadingProps> = {
   defaultProps: { text: "A heading to anchor the section", level: "H2", align: "left" },
   render: Heading,
 };
+
+export const meta = defineMeta({
+  title: 'Heading',
+  description: 'Single H1–H4 heading element with left/center alignment; use to add a standalone section title.',
+  categories: ["content"],
+});

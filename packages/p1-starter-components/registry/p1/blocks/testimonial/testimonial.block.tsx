@@ -1,4 +1,5 @@
 import type { ComponentConfig } from "@puckeditor/core";
+import { defineMeta } from '../define-meta';
 import { TestimonialRender, type TestimonialProps } from "./testimonial";
 export type { TestimonialProps };
 
@@ -54,3 +55,9 @@ export const TestimonialBlock: ComponentConfig<TestimonialProps> = {
   },
   render: TestimonialRender,
 };
+
+export const meta = defineMeta({
+  title: 'Testimonial',
+  description: 'Customer testimonial with quote text, name, role, and avatar in centered/card/large layouts and multiple tones; use for social proof.',
+  categories: ["trust"],
+});

@@ -1,4 +1,5 @@
 import type { ComponentConfig } from "@puckeditor/core";
+import { defineMeta } from '../define-meta';
 import { CalloutRender, type CalloutProps } from "./callout";
 export type { CalloutProps };
 
@@ -33,3 +34,10 @@ export const CalloutBlock: ComponentConfig<CalloutProps> = {
   },
   render: CalloutRender,
 };
+
+export const meta = defineMeta({
+  title: 'Callout',
+  description: 'Highlighted aside box with an icon, title, and body text in note/info/tip/warning variants; use to flag important inline content.',
+  categories: ["editorial"],
+  registryDependencies: ["@p1/tokens","@p1/internal-icons"],
+});

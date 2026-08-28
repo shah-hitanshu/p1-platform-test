@@ -1,4 +1,5 @@
 import type { ComponentConfig } from "@puckeditor/core";
+import { defineMeta } from '../define-meta';
 import { TeamGridRender, type TeamGridProps, type TeamMember } from "./team-grid";
 export type { TeamGridProps, TeamMember };
 
@@ -82,3 +83,9 @@ export const TeamGridBlock: ComponentConfig<TeamGridProps> = {
   },
   render: TeamGridRender,
 };
+
+export const meta = defineMeta({
+  title: 'Team Grid',
+  description: 'Grid of team member cards with avatar, name, role, and bio in circle or rounded photo shape; use for About/Team pages.',
+  categories: ["trust"],
+});

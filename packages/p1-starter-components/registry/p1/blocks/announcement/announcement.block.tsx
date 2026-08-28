@@ -1,4 +1,5 @@
 import type { ComponentConfig } from "@puckeditor/core";
+import { defineMeta } from '../define-meta';
 import { AnnouncementRender, type AnnouncementProps } from "./announcement";
 export type { AnnouncementProps };
 
@@ -41,3 +42,9 @@ export const AnnouncementBlock: ComponentConfig<AnnouncementProps> = {
   },
   render: AnnouncementRender,
 };
+
+export const meta = defineMeta({
+  title: 'Announcement',
+  description: 'Slim banner strip with a text message and optional link label in themed tones (purple/yellow/dark/gradient); use for site-wide notices.',
+  categories: ["attention"],
+});

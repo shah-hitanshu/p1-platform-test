@@ -1,4 +1,5 @@
 import type { ComponentConfig } from "@puckeditor/core";
+import { defineMeta } from '../define-meta';
 import { AccordionRender, type AccordionProps, type AccordionItem } from "./accordion";
 export type { AccordionProps, AccordionItem };
 
@@ -47,3 +48,10 @@ export const AccordionBlock: ComponentConfig<AccordionProps> = {
   },
   render: AccordionRender,
 };
+
+export const meta = defineMeta({
+  title: 'Accordion',
+  description: 'Expandable list of title/body items with a section heading; use for collapsible content like FAQs or grouped details.',
+  categories: ["layout"],
+  registryDependencies: ["@p1/tokens","@p1/internal-icons","@p1/internal-rich"],
+});

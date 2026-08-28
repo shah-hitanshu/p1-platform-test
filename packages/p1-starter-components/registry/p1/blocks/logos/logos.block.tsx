@@ -1,4 +1,5 @@
 import type { ComponentConfig } from "@puckeditor/core";
+import { defineMeta } from '../define-meta';
 import { LogoCloudRender, type LogoCloudProps, type LogoItem } from "./logos";
 export type { LogoCloudProps, LogoItem };
 
@@ -56,3 +57,9 @@ export const LogoCloudBlock: ComponentConfig<LogoCloudProps> = {
   },
   render: LogoCloudRender,
 };
+
+export const meta = defineMeta({
+  title: 'Logo Cloud',
+  description: 'Logo cloud row/grid of partner or customer logos in mono or color style with optional heading; use for social-proof or partner sections.',
+  categories: ["trust"],
+});

@@ -1,4 +1,5 @@
 import type { ComponentConfig } from "@puckeditor/core";
+import { defineMeta } from '../define-meta';
 import { PullQuoteRender, type PullQuoteProps } from "./pull-quote";
 export type { PullQuoteProps };
 
@@ -44,3 +45,10 @@ export const PullQuoteBlock: ComponentConfig<PullQuoteProps> = {
   },
   render: PullQuoteRender,
 };
+
+export const meta = defineMeta({
+  title: 'Pull Quote',
+  description: 'Large typographic blockquote with optional yellow rule or quotation mark accent and attribution; use for editorial emphasis quotes.',
+  categories: ["editorial"],
+  registryDependencies: ["@p1/tokens","@p1/internal-rich"],
+});

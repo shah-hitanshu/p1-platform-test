@@ -1,4 +1,5 @@
 import type { ComponentConfig } from "@puckeditor/core";
+import { defineMeta } from '../define-meta';
 import { Divider, type DividerProps } from "./divider";
 export type { DividerProps };
 
@@ -24,3 +25,9 @@ export const DividerBlock: ComponentConfig<DividerProps> = {
   defaultProps: { style: "solid", spacing: "medium" },
   render: Divider,
 };
+
+export const meta = defineMeta({
+  title: 'Divider',
+  description: 'Horizontal rule in solid, dashed, or dot styles with configurable vertical spacing; use to visually separate page sections.',
+  categories: ["content"],
+});

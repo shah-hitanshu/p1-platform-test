@@ -1,4 +1,5 @@
 import type { ComponentConfig } from "@puckeditor/core";
+import { defineMeta } from '../define-meta';
 import { CardGridRender, type CardGridProps, type CardGridItem } from "./card-grid";
 export type { CardGridProps, CardGridItem };
 
@@ -44,3 +45,9 @@ export const CardGridBlock: ComponentConfig<CardGridProps> = {
   },
   render: CardGridRender,
 };
+
+export const meta = defineMeta({
+  title: 'Card Grid',
+  description: 'Responsive 2–4 column grid of image+title+subtitle cards with an optional section heading; use for feature or product showcases.',
+  categories: ["showcase"],
+});

@@ -1,4 +1,5 @@
 import type { ComponentConfig } from "@puckeditor/core";
+import { defineMeta } from '../define-meta';
 import { CtaBannerRender, type CtaBannerProps } from "./cta";
 export type { CtaBannerProps };
 
@@ -99,3 +100,10 @@ export const CtaBannerBlock: ComponentConfig<CtaBannerProps> = {
   },
   render: CtaBannerRender,
 };
+
+export const meta = defineMeta({
+  title: 'CTA Banner',
+  description: 'Full-width call-to-action banner with eyebrow, title, subtitle, and up to two buttons in multiple tones and layouts; use for conversion sections.',
+  categories: ["convert"],
+  registryDependencies: ["@p1/tokens","@p1/internal-btn"],
+});

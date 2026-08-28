@@ -2,6 +2,7 @@
 
 import type { ComponentConfig } from "@puckeditor/core";
 import { richtextField } from "@pantheon-systems/puck-css/fields";
+import { defineMeta } from '../define-meta';
 import { Paragraph, type ParagraphProps } from "./paragraph";
 export type { ParagraphProps };
 
@@ -39,3 +40,11 @@ export const ParagraphBlock: ComponentConfig<ParagraphProps> = {
   },
   render: Paragraph,
 };
+
+export const meta = defineMeta({
+  title: 'Paragraph',
+  description: 'Rich-text paragraph in body or lead style with size and alignment controls; use for body copy blocks.',
+  categories: ["content"],
+  dependencies: ["@puckeditor/core","@pantheon-systems/puck-css"],
+  registryDependencies: ["@p1/tokens","@p1/internal-rich"],
+});

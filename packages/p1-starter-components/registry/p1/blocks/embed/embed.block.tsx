@@ -1,4 +1,5 @@
 import type { ComponentConfig } from "@puckeditor/core";
+import { defineMeta } from '../define-meta';
 import { EmbedRender, type EmbedProps } from "./embed";
 export type { EmbedProps };
 
@@ -55,3 +56,10 @@ export const EmbedBlock: ComponentConfig<EmbedProps> = {
   },
   render: EmbedRender,
 };
+
+export const meta = defineMeta({
+  title: 'Embed',
+  description: 'Responsive iframe embed for video (YouTube/Vimeo/Wistia), social posts, maps, or generic URLs with aspect-ratio and caption; use for media embeds.',
+  categories: ["editorial"],
+  registryDependencies: ["@p1/tokens","@p1/internal-icons"],
+});

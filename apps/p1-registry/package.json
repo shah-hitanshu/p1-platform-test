@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "next dev -p 3005",
+    "dev": "pnpm --filter @pantheon-systems/p1-starter-components registry:generate && next dev -p 3005",
     "build": "pnpm --filter @pantheon-systems/p1-starter-components registry:build && next build",
     "clean": "rm -rf .next out public/r *.tsbuildinfo",
     "lint": "eslint .",

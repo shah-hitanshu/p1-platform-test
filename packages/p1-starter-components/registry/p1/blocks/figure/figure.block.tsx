@@ -1,4 +1,5 @@
 import type { ComponentConfig } from "@puckeditor/core";
+import { defineMeta } from '../define-meta';
 import { FigureRender, type FigureProps } from "./figure";
 export type { FigureProps };
 
@@ -74,3 +75,9 @@ export const FigureBlock: ComponentConfig<FigureProps> = {
   },
   render: FigureRender,
 };
+
+export const meta = defineMeta({
+  title: 'Figure',
+  description: 'Single image with optional caption and photo credit, supporting aspect ratio, width, radius, and b&w treatment; use for editorial images.',
+  categories: ["editorial"],
+});

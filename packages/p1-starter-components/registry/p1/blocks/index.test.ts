@@ -4,7 +4,6 @@ import { describe, it, expect } from 'vitest';
 import * as lib from './index';
 import { allBlocks, sourceCategories } from './index';
 
-const EXPECTED_BLOCK_COUNT = 37;
 const blocksDir = import.meta.dirname;
 
 const blockDirs = readdirSync(blocksDir, { withFileTypes: true })
@@ -13,10 +12,6 @@ const blockDirs = readdirSync(blocksDir, { withFileTypes: true })
   .sort();
 
 describe('block layout on disk', () => {
-  it('has exactly 37 block directories', () => {
-    expect(blockDirs).toHaveLength(EXPECTED_BLOCK_COUNT);
-  });
-
   it('names every directory in kebab-case', () => {
     // Directory names become registry item names — renaming one after release
     // breaks every customer's install command.
@@ -31,8 +26,8 @@ describe('block layout on disk', () => {
 });
 
 describe('block barrel', () => {
-  it('exports exactly 37 blocks in allBlocks', () => {
-    expect(Object.keys(allBlocks)).toHaveLength(EXPECTED_BLOCK_COUNT);
+  it('barrel matches the number of block directories on disk', () => {
+    expect(Object.keys(allBlocks)).toHaveLength(blockDirs.length);
   });
 
   it('exports every allBlocks entry as a named export too', () => {

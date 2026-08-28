@@ -1,4 +1,5 @@
 import type { ComponentConfig } from "@puckeditor/core";
+import { defineMeta } from '../define-meta';
 import { RichTextRender, type RichTextProps } from "./rich-text";
 export type { RichTextProps };
 
@@ -43,3 +44,10 @@ export const RichTextBlock: ComponentConfig<RichTextProps> = {
   },
   render: RichTextRender,
 };
+
+export const meta = defineMeta({
+  title: 'Rich Text',
+  description: 'Free-form rich-text editor output with configurable measure, size, and optional drop cap; use for long-form article body content.',
+  categories: ["editorial"],
+  registryDependencies: ["@p1/tokens","@p1/internal-rich"],
+});

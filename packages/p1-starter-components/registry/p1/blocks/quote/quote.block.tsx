@@ -2,6 +2,7 @@
 
 import type { ComponentConfig } from "@puckeditor/core";
 import { richtextField } from "@pantheon-systems/puck-css/fields";
+import { defineMeta } from '../define-meta';
 import { Quote, type QuoteProps } from "./quote";
 export type { QuoteProps };
 
@@ -31,3 +32,11 @@ export const QuoteBlock: ComponentConfig<QuoteProps> = {
   },
   render: Quote,
 };
+
+export const meta = defineMeta({
+  title: 'Quote',
+  description: 'Simple blockquote with rich-text quote and an attribution line in standard or display scale; use for inline quotations.',
+  categories: ["content"],
+  dependencies: ["@puckeditor/core","@pantheon-systems/puck-css"],
+  registryDependencies: ["@p1/tokens","@p1/internal-rich"],
+});

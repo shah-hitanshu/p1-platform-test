@@ -1,4 +1,5 @@
 import type { ComponentConfig } from "@puckeditor/core";
+import { defineMeta } from '../define-meta';
 import { ComparisonTableRender, type ComparisonTableProps, type ComparisonRow } from "./comparison-table";
 export type { ComparisonTableProps, ComparisonRow };
 
@@ -73,3 +74,10 @@ export const ComparisonTableBlock: ComponentConfig<ComparisonTableProps> = {
   },
   render: ComparisonTableRender,
 };
+
+export const meta = defineMeta({
+  title: 'Comparison Table',
+  description: 'Feature comparison table with up to 4 named columns and checkmark/text rows; use for pricing or product capability comparisons.',
+  categories: ["convert"],
+  registryDependencies: ["@p1/tokens","@p1/internal-icons"],
+});

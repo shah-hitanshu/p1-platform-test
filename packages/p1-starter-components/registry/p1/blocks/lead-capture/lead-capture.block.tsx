@@ -1,4 +1,5 @@
 import type { ComponentConfig } from "@puckeditor/core";
+import { defineMeta } from '../define-meta';
 import { LeadCaptureRender, type LeadCaptureProps } from "./lead-capture";
 export type { LeadCaptureProps };
 
@@ -62,3 +63,10 @@ export const LeadCaptureBlock: ComponentConfig<LeadCaptureProps> = {
   },
   render: LeadCaptureRender,
 };
+
+export const meta = defineMeta({
+  title: 'Lead Capture',
+  description: 'Email capture section with heading, subtitle, placeholder text, a submit button, and a note field in inline or stacked layout; use for newsletter/lead forms.',
+  categories: ["convert"],
+  registryDependencies: ["@p1/tokens","@p1/internal-btn"],
+});

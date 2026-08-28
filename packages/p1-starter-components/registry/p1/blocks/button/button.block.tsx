@@ -1,4 +1,5 @@
 import type { ComponentConfig } from "@puckeditor/core";
+import { defineMeta } from '../define-meta';
 import { Button, type ButtonProps } from "./button";
 export type { ButtonProps };
 
@@ -40,3 +41,10 @@ export const ButtonBlock: ComponentConfig<ButtonProps> = {
   },
   render: Button,
 };
+
+export const meta = defineMeta({
+  title: 'Button',
+  description: 'Single CTA button (primary/secondary/yellow/purple) centered or left-aligned; use to place a standalone call-to-action.',
+  categories: ["content"],
+  registryDependencies: ["@p1/tokens","@p1/internal-btn"],
+});

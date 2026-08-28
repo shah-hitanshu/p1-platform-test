@@ -1,3 +1,7 @@
+// AUTO-GENERATED — DO NOT EDIT
+// Source: packages/p1-starter-components/scripts/generate-catalog.mjs
+// Run `pnpm registry:generate` to refresh after adding or removing a block.
+
 /**
  * Dev-only barrel. Storybook, the catalog app and the invariant tests enumerate
  * blocks through here. It is NOT part of any registry item and never reaches a
@@ -5,165 +9,144 @@
  */
 import type { Config } from "@puckeditor/core";
 
-// ── Global chrome ──────────────────────────────────────────
-import { HeaderBlock } from "./header/header.block";
+// ── Global ────────────────────────────────────────────────
 import { FooterBlock } from "./footer/footer.block";
-// ── Attention ──────────────────────────────────────────────
-import { HeroBlock } from "./hero/hero.block";
+import { HeaderBlock } from "./header/header.block";
+// ── Attention ─────────────────────────────────────────────
 import { AnnouncementBlock } from "./announcement/announcement.block";
-// ── Trust ──────────────────────────────────────────────────
+import { HeroBlock } from "./hero/hero.block";
+// ── Trust ─────────────────────────────────────────────────
 import { LogoCloudBlock } from "./logos/logos.block";
-import { TestimonialBlock } from "./testimonial/testimonial.block";
 import { StatsBlock } from "./stats/stats.block";
 import { TeamGridBlock } from "./team-grid/team-grid.block";
-// ── Value ──────────────────────────────────────────────────
-import { FeatureCardsBlock } from "./features/features.block";
+import { TestimonialBlock } from "./testimonial/testimonial.block";
+// ── Value ─────────────────────────────────────────────────
 import { FeatureMediaBlock } from "./feature-media/feature-media.block";
+import { FeatureCardsBlock } from "./features/features.block";
 import { StepsBlock } from "./steps/steps.block";
 import { TimelineBlock } from "./timeline/timeline.block";
-// ── Showcase ───────────────────────────────────────────────
+// ── Showcase ──────────────────────────────────────────────
 import { CardGridBlock } from "./card-grid/card-grid.block";
-import { ImageBlock } from "./image/image.block";
 import { GalleryBlock } from "./gallery/gallery.block";
-// ── Convert ────────────────────────────────────────────────
-import { PricingBlock } from "./pricing/pricing.block";
+import { ImageBlock } from "./image/image.block";
+// ── Convert ───────────────────────────────────────────────
+import { ComparisonTableBlock } from "./comparison-table/comparison-table.block";
+import { CtaBannerBlock } from "./cta/cta.block";
 import { FaqBlock } from "./faq/faq.block";
 import { LeadCaptureBlock } from "./lead-capture/lead-capture.block";
-import { CtaBannerBlock } from "./cta/cta.block";
-import { ComparisonTableBlock } from "./comparison-table/comparison-table.block";
-// ── Editorial ──────────────────────────────────────────────
+import { PricingBlock } from "./pricing/pricing.block";
+// ── Editorial ─────────────────────────────────────────────
 import { ArticleHeaderBlock } from "./article-header/article-header.block";
-import { RichTextBlock } from "./rich-text/rich-text.block";
+import { CalloutBlock } from "./callout/callout.block";
+import { EmbedBlock } from "./embed/embed.block";
 import { FigureBlock } from "./figure/figure.block";
 import { PullQuoteBlock } from "./pull-quote/pull-quote.block";
-import { EmbedBlock } from "./embed/embed.block";
-import { CalloutBlock } from "./callout/callout.block";
-// ── Layout ─────────────────────────────────────────────────
+import { RichTextBlock } from "./rich-text/rich-text.block";
+// ── Layout ────────────────────────────────────────────────
+import { AccordionBlock } from "./accordion/accordion.block";
 import { ColumnsBlock } from "./columns/columns.block";
 import { ContainerBlock } from "./container/container.block";
 import { TabsBlock } from "./tabs/tabs.block";
-import { AccordionBlock } from "./accordion/accordion.block";
-// ── Content ────────────────────────────────────────────────
-import { HeadingBlock } from "./heading/heading.block";
-import { ParagraphBlock } from "./paragraph/paragraph.block";
-import { QuoteBlock } from "./quote/quote.block";
-import { ListBlock } from "./list/list.block";
+// ── Content ───────────────────────────────────────────────
 import { ButtonBlock } from "./button/button.block";
 import { DividerBlock } from "./divider/divider.block";
+import { HeadingBlock } from "./heading/heading.block";
+import { ListBlock } from "./list/list.block";
+import { ParagraphBlock } from "./paragraph/paragraph.block";
+import { QuoteBlock } from "./quote/quote.block";
 import { SpacerBlock } from "./spacer/spacer.block";
 
 // Re-export every component config
 export {
-  // Global
-  HeaderBlock,
   FooterBlock,
-  // Attention
-  HeroBlock,
+  HeaderBlock,
   AnnouncementBlock,
-  // Trust
+  HeroBlock,
   LogoCloudBlock,
-  TestimonialBlock,
   StatsBlock,
   TeamGridBlock,
-  // Value
-  FeatureCardsBlock,
+  TestimonialBlock,
   FeatureMediaBlock,
+  FeatureCardsBlock,
   StepsBlock,
   TimelineBlock,
-  // Showcase
   CardGridBlock,
-  ImageBlock,
   GalleryBlock,
-  // Convert
-  PricingBlock,
+  ImageBlock,
+  ComparisonTableBlock,
+  CtaBannerBlock,
   FaqBlock,
   LeadCaptureBlock,
-  CtaBannerBlock,
-  ComparisonTableBlock,
-  // Editorial
+  PricingBlock,
   ArticleHeaderBlock,
-  RichTextBlock,
+  CalloutBlock,
+  EmbedBlock,
   FigureBlock,
   PullQuoteBlock,
-  EmbedBlock,
-  CalloutBlock,
-  // Layout
+  RichTextBlock,
+  AccordionBlock,
   ColumnsBlock,
   ContainerBlock,
   TabsBlock,
-  AccordionBlock,
-  // Content
-  HeadingBlock,
-  ParagraphBlock,
-  QuoteBlock,
-  ListBlock,
   ButtonBlock,
   DividerBlock,
+  HeadingBlock,
+  ListBlock,
+  ParagraphBlock,
+  QuoteBlock,
   SpacerBlock,
 };
 
 // Convenience map — pass to Puck's `components`. Not distributed; see jsdoc above.
 export const allBlocks = {
-  HeaderBlock,
   FooterBlock,
-  HeroBlock,
+  HeaderBlock,
   AnnouncementBlock,
+  HeroBlock,
   LogoCloudBlock,
-  TestimonialBlock,
   StatsBlock,
   TeamGridBlock,
-  FeatureCardsBlock,
+  TestimonialBlock,
   FeatureMediaBlock,
+  FeatureCardsBlock,
   StepsBlock,
   TimelineBlock,
   CardGridBlock,
-  ImageBlock,
   GalleryBlock,
-  PricingBlock,
+  ImageBlock,
+  ComparisonTableBlock,
+  CtaBannerBlock,
   FaqBlock,
   LeadCaptureBlock,
-  CtaBannerBlock,
-  ComparisonTableBlock,
+  PricingBlock,
   ArticleHeaderBlock,
-  RichTextBlock,
+  CalloutBlock,
+  EmbedBlock,
   FigureBlock,
   PullQuoteBlock,
-  EmbedBlock,
-  CalloutBlock,
+  RichTextBlock,
+  AccordionBlock,
   ColumnsBlock,
   ContainerBlock,
   TabsBlock,
-  AccordionBlock,
-  HeadingBlock,
-  ParagraphBlock,
-  QuoteBlock,
-  ListBlock,
   ButtonBlock,
   DividerBlock,
+  HeadingBlock,
+  ListBlock,
+  ParagraphBlock,
+  QuoteBlock,
   SpacerBlock,
 };
 
 // Category configuration for the Puck component drawer.
 export const sourceCategories: Config["categories"] = {
-  Global: { title: "Global", components: ["HeaderBlock", "FooterBlock"] },
-  Attention: { title: "Attention", components: ["HeroBlock", "AnnouncementBlock"] },
-  Trust: { title: "Trust", components: ["LogoCloudBlock", "TestimonialBlock", "StatsBlock", "TeamGridBlock"] },
-  Value: { title: "Value", components: ["FeatureCardsBlock", "FeatureMediaBlock", "StepsBlock", "TimelineBlock"] },
-  Showcase: { title: "Showcase", components: ["CardGridBlock", "ImageBlock", "GalleryBlock"] },
-  Convert: {
-    title: "Convert",
-    components: ["PricingBlock", "FaqBlock", "LeadCaptureBlock", "CtaBannerBlock", "ComparisonTableBlock"],
-  },
-  Editorial: {
-    title: "Editorial",
-    components: ["ArticleHeaderBlock", "RichTextBlock", "FigureBlock", "PullQuoteBlock", "EmbedBlock", "CalloutBlock"],
-  },
-  Layout: {
-    title: "Layout",
-    components: ["ColumnsBlock", "ContainerBlock", "TabsBlock", "AccordionBlock"],
-  },
-  Content: {
-    title: "Content",
-    components: ["HeadingBlock", "ParagraphBlock", "QuoteBlock", "ListBlock", "ButtonBlock", "DividerBlock", "SpacerBlock"],
-  },
+  Global: { title: "Global", components: ["FooterBlock", "HeaderBlock"] },
+  Attention: { title: "Attention", components: ["AnnouncementBlock", "HeroBlock"] },
+  Trust: { title: "Trust", components: ["LogoCloudBlock", "StatsBlock", "TeamGridBlock", "TestimonialBlock"] },
+  Value: { title: "Value", components: ["FeatureMediaBlock", "FeatureCardsBlock", "StepsBlock", "TimelineBlock"] },
+  Showcase: { title: "Showcase", components: ["CardGridBlock", "GalleryBlock", "ImageBlock"] },
+  Convert: { title: "Convert", components: ["ComparisonTableBlock", "CtaBannerBlock", "FaqBlock", "LeadCaptureBlock", "PricingBlock"] },
+  Editorial: { title: "Editorial", components: ["ArticleHeaderBlock", "CalloutBlock", "EmbedBlock", "FigureBlock", "PullQuoteBlock", "RichTextBlock"] },
+  Layout: { title: "Layout", components: ["AccordionBlock", "ColumnsBlock", "ContainerBlock", "TabsBlock"] },
+  Content: { title: "Content", components: ["ButtonBlock", "DividerBlock", "HeadingBlock", "ListBlock", "ParagraphBlock", "QuoteBlock", "SpacerBlock"] },
 };

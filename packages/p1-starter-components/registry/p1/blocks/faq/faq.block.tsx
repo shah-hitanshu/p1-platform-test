@@ -1,4 +1,5 @@
 import type { ComponentConfig } from "@puckeditor/core";
+import { defineMeta } from '../define-meta';
 import { FaqRender, type FaqProps, type FaqItem } from "./faq";
 export type { FaqProps, FaqItem };
 
@@ -40,3 +41,10 @@ export const FaqBlock: ComponentConfig<FaqProps> = {
   },
   render: FaqRender,
 };
+
+export const meta = defineMeta({
+  title: 'FAQ',
+  description: 'Vertically stacked question-and-answer list with a section heading and icon-decorated rows; use for support or product FAQ sections.',
+  categories: ["convert"],
+  registryDependencies: ["@p1/tokens","@p1/internal-icons"],
+});

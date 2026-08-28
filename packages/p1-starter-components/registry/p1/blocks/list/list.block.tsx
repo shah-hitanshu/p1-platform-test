@@ -1,4 +1,5 @@
 import type { ComponentConfig } from "@puckeditor/core";
+import { defineMeta } from '../define-meta';
 import { List, type ListProps } from "./list";
 export type { ListProps };
 
@@ -38,3 +39,9 @@ export const ListBlock: ComponentConfig<ListProps> = {
   },
   render: List,
 };
+
+export const meta = defineMeta({
+  title: 'List',
+  description: 'Bullet, numbered, or checkmark list of text items; use for simple inline content lists.',
+  categories: ["content"],
+});

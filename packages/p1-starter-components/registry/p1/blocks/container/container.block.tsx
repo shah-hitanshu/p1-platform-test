@@ -1,4 +1,5 @@
 import type { ComponentConfig } from "@puckeditor/core";
+import { defineMeta } from '../define-meta';
 import { ContainerRender, type ContainerProps } from "./container";
 export type { ContainerProps };
 
@@ -56,3 +57,9 @@ export const ContainerBlock: ComponentConfig<ContainerProps> = {
   },
   render: ContainerRender as unknown as ComponentConfig<ContainerProps>["render"],
 };
+
+export const meta = defineMeta({
+  title: 'Container',
+  description: 'Constrained-width wrapper slot with tone, padding, radius, and max-width controls; use to scope and style groups of nested blocks.',
+  categories: ["layout"],
+});

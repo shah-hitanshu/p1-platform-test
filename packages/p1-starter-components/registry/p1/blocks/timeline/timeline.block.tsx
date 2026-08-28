@@ -1,4 +1,5 @@
 import type { ComponentConfig } from "@puckeditor/core";
+import { defineMeta } from '../define-meta';
 import { TimelineRender, type TimelineProps, type TimelineItem } from "./timeline";
 export type { TimelineProps, TimelineItem };
 
@@ -70,3 +71,9 @@ export const TimelineBlock: ComponentConfig<TimelineProps> = {
   },
   render: TimelineRender,
 };
+
+export const meta = defineMeta({
+  title: 'Timeline',
+  description: 'Vertical or alternating chronological list of date+title+body events; use for company history, product roadmaps, or process timelines.',
+  categories: ["value"],
+});

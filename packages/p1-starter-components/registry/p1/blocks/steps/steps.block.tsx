@@ -1,4 +1,5 @@
 import type { ComponentConfig } from "@puckeditor/core";
+import { defineMeta } from '../define-meta';
 import { StepsRender, type StepsProps, type StepItem } from "./steps";
 export type { StepsProps, StepItem };
 
@@ -56,3 +57,9 @@ export const StepsBlock: ComponentConfig<StepsProps> = {
   },
   render: StepsRender,
 };
+
+export const meta = defineMeta({
+  title: 'Steps',
+  description: 'Numbered sequential steps with eyebrow, heading, and title+body per step in a 1–4 column layout; use for how-it-works or onboarding flows.',
+  categories: ["value"],
+});
