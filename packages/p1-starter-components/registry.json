@@ -1,7 +1,7 @@
 {
   "$schema": "https://ui.shadcn.com/schema/registry.json",
   "name": "p1",
-  "homepage": "https://P1_REGISTRY_HOST_TBD",
+  "homepage": "https://components.p1.pantheon.io",
   "include": [
     "registry/p1/base/registry.json",
     "registry/p1/tokens/registry.json",

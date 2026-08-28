@@ -19,7 +19,7 @@
     "test:storybook": "vitest run --project=storybook",
     "typecheck": "tsc --noEmit",
     "registry:generate": "node scripts/generate-catalog.mjs",
-    "registry:build": "node scripts/generate-catalog.mjs && shadcn build --output ../../apps/p1-registry/public/r && node scripts/patch-registry-host.mjs",
+    "registry:build": "node scripts/generate-catalog.mjs && shadcn build --output ../../apps/p1-registry/public/r",
     "verify:registry": "bash verify/install-all.sh && bash verify/update-semantics.sh",
     "verify:public": "bash verify/public-install.sh",
     "test:visual": "playwright test --config visual/playwright.visual.config.ts",
