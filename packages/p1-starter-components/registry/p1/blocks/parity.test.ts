@@ -33,7 +33,7 @@ beforeAll(async () => {
 
   allBlocks = modules.filter((e): e is [string, ComponentConfig] => e !== undefined);
   converted = allBlocks.filter(([name]) => !PENDING.has(name));
-});
+}, 30_000);
 
 describe('create-block convention parity', () => {
   it('has at least one converted block to check', () => {

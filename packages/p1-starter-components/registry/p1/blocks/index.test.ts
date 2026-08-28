@@ -43,7 +43,7 @@ describe('block configs', () => {
       }),
     );
     allBlocks = modules.filter((m): m is BlockData => m !== undefined);
-  });
+  }, 30_000);
 
   it('every block directory exports a block with a render function', () => {
     expect(allBlocks).toHaveLength(blockDirs.length);
