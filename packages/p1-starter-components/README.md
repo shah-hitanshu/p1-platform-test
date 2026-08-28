@@ -41,6 +41,7 @@ export const meta = defineMeta({
   title: 'My Block',
   description: 'One sentence describing what it does and when to use it.',
   categories: ['content'], // attention | trust | value | showcase | convert | editorial | layout | content | global
+  // published: false,     // false = Storybook only, not visible in catalog or registry; omit or true to publish
   // registryDependencies: ['@p1/tokens', '@p1/internal-btn'], // add only if you import from a @p1/internal-* package
 });
 

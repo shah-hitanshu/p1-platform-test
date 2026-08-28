@@ -2,6 +2,11 @@ type BlockMeta = {
   title: string;
   description: string;
   categories: readonly string[];
+  /**
+   * false = Storybook only — block is excluded from the catalog and the shadcn
+   * registry. Use while a block is in development. Omit or set true to publish.
+   */
+  published?: boolean;
   /** Additional internal registry deps beyond @p1/tokens. Common values:
    *  '@p1/internal-btn'   — uses the btn primitive
    *  '@p1/internal-icons' — uses SVG icons
@@ -17,6 +22,7 @@ export function defineMeta(meta: BlockMeta) {
   return {
     dependencies: ['@puckeditor/core'],
     registryDependencies: ['@p1/tokens'],
+    published: true,
     ...meta,
   } as const;
 }

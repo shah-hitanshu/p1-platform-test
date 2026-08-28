@@ -79,6 +79,7 @@ function parseMeta(filePath) {
     return {
       dependencies: ['@puckeditor/core'],
       registryDependencies: ['@p1/tokens'],
+      published: true,
       ...raw,
     };
   } catch (e) {
@@ -129,7 +130,7 @@ const blocks = blockNames.map((name) => {
   const category = (meta.categories?.[0] ?? 'other').toLowerCase();
 
   return { name, exportName, category, meta };
-});
+}).filter((b) => b.meta.published !== false);
 
 // ── Build category → [exportName] map ───────────────────────────────────────
 
