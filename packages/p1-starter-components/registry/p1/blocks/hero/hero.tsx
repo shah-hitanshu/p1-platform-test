@@ -1,3 +1,4 @@
+import { wireframe } from "../define-meta";
 import { Btn } from "@/registry/p1/internal/btn";
 import "./hero.css";
 
@@ -19,7 +20,7 @@ export interface HeroProps {
   knockout: "off" | "on";
 }
 
-const FALLBACK_IMG = "https://images.unsplash.com/photo-1487958449943-2429e8be8625?w=1200&q=80";
+const FALLBACK_IMG = wireframe(1200, 675);
 
 const ALPHA: Record<HeroProps["overlayStrength"], number> = { light: 0.32, medium: 0.56, heavy: 0.8 };
 

@@ -1,5 +1,5 @@
 import type { ComponentConfig } from "@puckeditor/core";
-import { defineMeta } from '../define-meta';
+import { defineMeta, wireframe } from '../define-meta';
 import { FigureRender, type FigureProps } from "./figure";
 export type { FigureProps };
 
@@ -64,7 +64,7 @@ export const FigureBlock: ComponentConfig<FigureProps> = {
     },
   },
   defaultProps: {
-    src: "https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=1300&q=80",
+    src: wireframe(1300, 731),
     alt: "The team reviewing a preview together",
     caption: "The team reviews a preview link before anything reaches Live.",
     credit: "Photo — Pantheon",

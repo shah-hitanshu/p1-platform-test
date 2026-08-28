@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { TeamGridBlock, type TeamGridProps } from "@/registry/p1/blocks/team-grid/team-grid.block";
+import { wireframe } from '@/registry/p1/blocks/define-meta';
 
 const TeamGridWrapper = (props: TeamGridProps) => {
   const Component = TeamGridBlock.render as React.FC<TeamGridProps>;
@@ -22,9 +23,9 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 const members = [
-  { name: "Jordan Ellis", role: "Head of Operations", avatar: "https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=300&q=80", bio: "" },
-  { name: "Sam Rivera", role: "Principal Engineer", avatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=300&q=80", bio: "" },
-  { name: "Priya Nair", role: "Design Lead", avatar: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=300&q=80", bio: "" },
+  { name: "Jordan Ellis", role: "Head of Operations", avatar: wireframe(300, 300), bio: "" },
+  { name: "Sam Rivera", role: "Principal Engineer", avatar: wireframe(300, 300), bio: "" },
+  { name: "Priya Nair", role: "Design Lead", avatar: wireframe(300, 300), bio: "" },
 ];
 
 export const Default: Story = {

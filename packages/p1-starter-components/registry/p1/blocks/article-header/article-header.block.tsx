@@ -1,5 +1,5 @@
 import type { ComponentConfig } from "@puckeditor/core";
-import { defineMeta } from '../define-meta';
+import { defineMeta, wireframe } from '../define-meta';
 import { ArticleHeaderRender, type ArticleHeaderProps } from "./article-header";
 export type { ArticleHeaderProps };
 
@@ -68,7 +68,7 @@ export const ArticleHeaderBlock: ComponentConfig<ArticleHeaderProps> = {
     standfirst:
       "A behind-the-scenes look at how the team moved from weeks to hours — and the small habits that made the difference.",
     authorName: "Jordan Ellis",
-    authorAvatar: "https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=200&q=80",
+    authorAvatar: wireframe(200, 200),
     date: "April 18, 2026",
     readTime: "6 min read",
     align: "left",

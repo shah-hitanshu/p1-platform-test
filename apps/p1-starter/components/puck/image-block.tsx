@@ -16,8 +16,11 @@ export const imageBlock = {
     },
   },
   defaultProps: {
-    src: "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=1200&q=80",
-    alt: "Mountain landscape",
+    // Placeholder art inline as a data URI, so a fresh block loads nothing off
+    // the network. Authors replace it with their own image.
+    src:
+      "data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%221200%22%20height%3D%22675%22%20viewBox%3D%220%200%201200%20675%22%3E%3Crect%20width%3D%221200%22%20height%3D%22675%22%20fill%3D%22%23f1f1f3%22%2F%3E%3Cpath%20d%3D%22M0%20675L1200%200%22%20stroke%3D%22%23c8c8ce%22%20stroke-width%3D%2284%22%2F%3E%3C%2Fsvg%3E",
+    alt: "",
     caption: "",
     loading: "lazy",
   },

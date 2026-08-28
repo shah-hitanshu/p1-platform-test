@@ -1,5 +1,5 @@
 import type { ComponentConfig } from "@puckeditor/core";
-import { defineMeta } from '../define-meta';
+import { defineMeta, wireframe } from '../define-meta';
 import { TeamGridRender, type TeamGridProps, type TeamMember } from "./team-grid";
 export type { TeamGridProps, TeamMember };
 
@@ -76,9 +76,9 @@ export const TeamGridBlock: ComponentConfig<TeamGridProps> = {
     shape: "circle",
     tone: "white",
     members: [
-      { name: "Jordan Ellis", role: "Head of Operations", avatar: "https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=300&q=80", bio: "" },
-      { name: "Sam Rivera", role: "Principal Engineer", avatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=300&q=80", bio: "" },
-      { name: "Priya Nair", role: "Design Lead", avatar: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=300&q=80", bio: "" },
+      { name: "Jordan Ellis", role: "Head of Operations", avatar: wireframe(300, 300), bio: "" },
+      { name: "Sam Rivera", role: "Principal Engineer", avatar: wireframe(300, 300), bio: "" },
+      { name: "Priya Nair", role: "Design Lead", avatar: wireframe(300, 300), bio: "" },
     ],
   },
   render: TeamGridRender,

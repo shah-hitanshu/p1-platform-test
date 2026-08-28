@@ -1,5 +1,5 @@
 import type { ComponentConfig } from "@puckeditor/core";
-import { defineMeta } from '../define-meta';
+import { defineMeta, wireframe } from '../define-meta';
 import { CardGridRender, type CardGridProps, type CardGridItem } from "./card-grid";
 export type { CardGridProps, CardGridItem };
 
@@ -29,7 +29,7 @@ export const CardGridBlock: ComponentConfig<CardGridProps> = {
       defaultItemProps: {
         title: "Company",
         subtitle: "Industry · Result",
-        imageUrl: "https://images.unsplash.com/photo-1521737604893-d14cc237f11d?w=600&q=80",
+        imageUrl: wireframe(600, 400),
       },
       getItemSummary: (item: CardGridItem) => item.title || "Card",
     },
@@ -38,9 +38,9 @@ export const CardGridBlock: ComponentConfig<CardGridProps> = {
     heading: "Customer stories",
     columns: "3",
     items: [
-      { title: "Northwind", subtitle: "Retail · 38% faster launches", imageUrl: "https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=600&q=80" },
-      { title: "Atlas Media", subtitle: "Publishing · 2M monthly reads", imageUrl: "https://images.unsplash.com/photo-1499750310107-5fef28a66643?w=600&q=80" },
-      { title: "Brightline", subtitle: "SaaS · 4.9/5 satisfaction", imageUrl: "https://images.unsplash.com/photo-1551434678-e076c223a692?w=600&q=80" },
+      { title: "Northwind", subtitle: "Retail · 38% faster launches", imageUrl: wireframe(600, 400) },
+      { title: "Atlas Media", subtitle: "Publishing · 2M monthly reads", imageUrl: wireframe(600, 400) },
+      { title: "Brightline", subtitle: "SaaS · 4.9/5 satisfaction", imageUrl: wireframe(600, 400) },
     ],
   },
   render: CardGridRender,

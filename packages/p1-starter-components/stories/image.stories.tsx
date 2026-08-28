@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { ImageBlock, type ImageProps } from "@/registry/p1/blocks/image/image.block";
+import { wireframe } from '@/registry/p1/blocks/define-meta';
 
 const ImageWrapper = (props: ImageProps) => {
   const Component = ImageBlock.render as React.FC<ImageProps>;
@@ -25,7 +26,7 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 const base: ImageProps = {
-  src: "https://images.unsplash.com/photo-1559136555-9303baea8ebd?w=1100&q=80",
+  src: wireframe(1100, 619),
   alt: "Editorial photograph",
   width: "contained",
   ratio: "16 / 9",

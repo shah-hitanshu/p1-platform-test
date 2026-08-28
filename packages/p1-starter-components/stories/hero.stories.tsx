@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { HeroBlock, type HeroProps } from "@/registry/p1/blocks/hero/hero.block";
+import { wireframe } from '@/registry/p1/blocks/define-meta';
 
 const HeroWrapper = (props: HeroProps) => {
   const Component = HeroBlock.render as React.FC<HeroProps>;
@@ -36,7 +37,7 @@ const base: HeroProps = {
   secondaryLabel: "Book a demo →",
   tone: "accent",
   layout: "split",
-  imageSrc: "https://images.unsplash.com/photo-1487958449943-2429e8be8625?w=1200&q=80",
+  imageSrc: wireframe(1200, 675),
   imageSide: "right",
   imageFill: "card",
   splitRatio: "even",

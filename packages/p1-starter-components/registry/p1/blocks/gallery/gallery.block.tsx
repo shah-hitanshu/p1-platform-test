@@ -1,5 +1,5 @@
 import type { ComponentConfig } from "@puckeditor/core";
-import { defineMeta } from '../define-meta';
+import { defineMeta, wireframe } from '../define-meta';
 import { GalleryRender, type GalleryProps, type GalleryImage } from "./gallery";
 export type { GalleryProps, GalleryImage };
 
@@ -66,7 +66,7 @@ export const GalleryBlock: ComponentConfig<GalleryProps> = {
         src: { type: "text" as const },
         caption: { type: "text" as const, contentEditable: true, visible: false },
       },
-      defaultItemProps: { src: "https://images.unsplash.com/photo-1522202176988-66273c2fd55f?w=800&q=80", caption: "" },
+      defaultItemProps: { src: wireframe(800, 600), caption: "" },
       getItemSummary: (item: GalleryImage) => item.caption || "Image",
     },
   },
@@ -79,12 +79,12 @@ export const GalleryBlock: ComponentConfig<GalleryProps> = {
     radius: "soft",
     captions: "off",
     images: [
-      { src: "https://images.unsplash.com/photo-1522202176988-66273c2fd55f?w=800&q=80", caption: "Team offsite" },
-      { src: "https://images.unsplash.com/photo-1531482615713-2afd69097998?w=800&q=80", caption: "Workshop" },
-      { src: "https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?w=800&q=80", caption: "Launch day" },
-      { src: "https://images.unsplash.com/photo-1542744173-8e7e53415bb0?w=800&q=80", caption: "Planning" },
-      { src: "https://images.unsplash.com/photo-1556761175-5973dc0f32e7?w=800&q=80", caption: "Standup" },
-      { src: "https://images.unsplash.com/photo-1551836022-deb4988cc6c0?w=800&q=80", caption: "Ship it" },
+      { src: wireframe(800, 600), caption: "Team offsite" },
+      { src: wireframe(800, 600), caption: "Workshop" },
+      { src: wireframe(800, 600), caption: "Launch day" },
+      { src: wireframe(800, 600), caption: "Planning" },
+      { src: wireframe(800, 600), caption: "Standup" },
+      { src: wireframe(800, 600), caption: "Ship it" },
     ],
   },
   render: GalleryRender,

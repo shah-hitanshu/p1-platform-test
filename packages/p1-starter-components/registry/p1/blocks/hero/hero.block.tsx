@@ -1,5 +1,5 @@
 import type { ComponentConfig } from "@puckeditor/core";
-import { defineMeta } from '../define-meta';
+import { defineMeta, wireframe } from '../define-meta';
 import { HeroRender, type HeroProps } from "./hero";
 export type { HeroProps };
 
@@ -119,7 +119,7 @@ export const HeroBlock: ComponentConfig<HeroProps> = {
     secondaryLabel: "Book a demo →",
     tone: "accent",
     layout: "split",
-    imageSrc: "https://images.unsplash.com/photo-1487958449943-2429e8be8625?w=1200&q=80",
+    imageSrc: wireframe(1200, 675),
     imageSide: "right",
     imageFill: "card",
     splitRatio: "even",

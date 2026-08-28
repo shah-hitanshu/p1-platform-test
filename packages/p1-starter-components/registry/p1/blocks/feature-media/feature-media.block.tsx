@@ -1,5 +1,5 @@
 import type { ComponentConfig } from "@puckeditor/core";
-import { defineMeta } from '../define-meta';
+import { defineMeta, wireframe } from '../define-meta';
 import { FeatureMediaRender, type FeatureMediaProps, type FeatureMediaBullet } from "./feature-media";
 export type { FeatureMediaProps, FeatureMediaBullet };
 
@@ -72,7 +72,7 @@ export const FeatureMediaBlock: ComponentConfig<FeatureMediaProps> = {
       { text: "Publish in one click" },
     ],
     buttonLabel: "See how it works →",
-    imageSrc: "https://images.unsplash.com/photo-1551434678-e076c223a692?w=1000&q=80",
+    imageSrc: wireframe(1000, 563),
     mediaSide: "right",
     tone: "white",
   },
