@@ -1,6 +1,7 @@
-import { describe, it, expect } from 'vitest';
+import { readdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { describe, it, expect, beforeAll } from 'vitest';
 import type { ComponentConfig } from '@puckeditor/core';
-import * as lib from './index';
 
 /**
  * Blocks not yet through the phase-2 conversion. Remove a name when its
@@ -11,12 +12,28 @@ const PENDING = new Set<string>([
 
 const PLAIN_PROSE_TYPES = new Set(['text', 'textarea']);
 
-const allBlocks = Object.entries(lib).filter(
-  ([name, value]) =>
-    name.endsWith('Block') && typeof (value as ComponentConfig)?.render === 'function',
-) as [string, ComponentConfig][];
+const blocksDir = import.meta.dirname;
 
-const converted = allBlocks.filter(([name]) => !PENDING.has(name));
+let allBlocks: [string, ComponentConfig][] = [];
+let converted: [string, ComponentConfig][] = [];
+
+beforeAll(async () => {
+  const blockDirs = readdirSync(blocksDir, { withFileTypes: true })
+    .filter((e) => e.isDirectory())
+    .map((e) => e.name);
+
+  const modules = await Promise.all(
+    blockDirs.map(async (name) => {
+      const mod = await import(join(blocksDir, name, `${name}.block`));
+      return Object.entries(mod).find(
+        ([k, v]) => k.endsWith('Block') && typeof (v as ComponentConfig)?.render === 'function',
+      ) as [string, ComponentConfig] | undefined;
+    }),
+  );
+
+  allBlocks = modules.filter((e): e is [string, ComponentConfig] => e !== undefined);
+  converted = allBlocks.filter(([name]) => !PENDING.has(name));
+});
 
 describe('create-block convention parity', () => {
   it('has at least one converted block to check', () => {

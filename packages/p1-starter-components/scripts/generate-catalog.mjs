@@ -1,8 +1,7 @@
 /**
- * Catalog generator — scans registry/p1/blocks/ and writes three derived artifacts:
+ * Catalog generator — scans registry/p1/blocks/ and writes two derived artifacts:
  *
  *   registry/p1/blocks/registry.json            (shadcn registry manifest)
- *   registry/p1/blocks/index.ts                 (barrel: imports, allBlocks, sourceCategories)
  *   apps/p1-registry/lib/catalog.generated.tsx  (previewNames, CATALOG_CATEGORY_ORDER, previewComponents)
  *   stories/<name>.stories.tsx                  (scaffolded if missing — never overwritten)
  *
@@ -32,12 +31,10 @@ const REGISTRY_APP = resolve(__dirname, '../../../apps/p1-registry');
 const REGISTRY_JSON_PATH = join(BLOCKS_DIR, 'registry.json');
 
 const NON_BLOCK = new Set([
-  'index.ts', 'index.test.ts', 'parity.test.ts',
+  'index.test.ts', 'parity.test.ts',
   'registry.json', 'registry.test.ts',
 ]);
 
-// Category display order for the Puck drawer (global chrome first).
-const CATEGORY_ORDER_BARREL = ['global', 'attention', 'trust', 'value', 'showcase', 'convert', 'editorial', 'layout', 'content'];
 // Category display order for the catalog UI (most visual first).
 const CATEGORY_ORDER_CATALOG = ['attention', 'trust', 'value', 'showcase', 'convert', 'editorial', 'layout', 'content', 'global'];
 
@@ -175,57 +172,6 @@ const registryJson = {
 writeFileSync(REGISTRY_JSON_PATH, JSON.stringify(registryJson, null, 2) + '\n');
 console.log('  Generated registry/p1/blocks/registry.json');
 
-// ── Generate registry/p1/blocks/index.ts ─────────────────────────────────────
-
-const barrelCategories = orderedCategories(CATEGORY_ORDER_BARREL);
-
-const importLines = barrelCategories.flatMap((cat) => {
-  const title = CATEGORY_TITLE[cat] ?? (cat[0].toUpperCase() + cat.slice(1));
-  const sep = `// ── ${title} ${'─'.repeat(Math.max(0, 54 - title.length))}`;
-  const imports = categoryMap[cat].map((exportName) => {
-    const block = blocks.find((b) => b.exportName === exportName);
-    return `import { ${exportName} } from "./${block.name}/${block.name}.block";`;
-  });
-  return [sep, ...imports];
-});
-
-const allExportNames = barrelCategories.flatMap((c) => categoryMap[c]);
-
-const sourceCatLines = barrelCategories.map((cat) => {
-  const title = CATEGORY_TITLE[cat] ?? (cat[0].toUpperCase() + cat.slice(1));
-  const components = categoryMap[cat].map((e) => `"${e}"`).join(', ');
-  return `  ${title}: { title: "${title}", components: [${components}] },`;
-});
-
-const indexTs = `${HEADER}
-/**
- * Dev-only barrel. Storybook, the catalog app and the invariant tests enumerate
- * blocks through here. It is NOT part of any registry item and never reaches a
- * user's project — the code registry distributes each block's files directly.
- */
-import type { Config } from "@puckeditor/core";
-
-${importLines.join('\n')}
-
-// Re-export every component config
-export {
-${allExportNames.map((e) => `  ${e},`).join('\n')}
-};
-
-// Convenience map — pass to Puck's \`components\`. Not distributed; see jsdoc above.
-export const allBlocks = {
-${allExportNames.map((e) => `  ${e},`).join('\n')}
-};
-
-// Category configuration for the Puck component drawer.
-export const sourceCategories: Config["categories"] = {
-${sourceCatLines.join('\n')}
-};
-`;
-
-writeFileSync(join(BLOCKS_DIR, 'index.ts'), indexTs);
-console.log('  Generated registry/p1/blocks/index.ts');
-
 // ── Generate apps/p1-registry/lib/catalog.generated.tsx ─────────────────────
 
 const catalogOrderEntries = orderedCategories(CATEGORY_ORDER_CATALOG)
@@ -321,4 +267,4 @@ export const Default: Story = { args: {} };
 
 if (storiesScaffolded === 0) console.log('  Stories: all already exist, nothing scaffolded');
 
-console.log(`\nDone: ${blocks.length} blocks across ${barrelCategories.length} categories.`);
+console.log(`\nDone: ${blocks.length} blocks across ${Object.keys(categoryMap).length} categories.`);
