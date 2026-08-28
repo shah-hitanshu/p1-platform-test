@@ -193,6 +193,10 @@ jobs:
         run: pnpm --filter @pantheon-systems/p1-starter-components build-storybook
       - name: Build the code registry
         run: pnpm --filter @pantheon-systems/p1-starter-components registry:build
+      - name: Test and typecheck the catalog app
+        run: |
+          pnpm --filter @pantheon-systems/p1-registry test
+          pnpm --filter @pantheon-systems/p1-registry typecheck
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: starter-components-storybook

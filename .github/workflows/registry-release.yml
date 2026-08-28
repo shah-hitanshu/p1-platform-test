@@ -2,7 +2,6 @@ name: Registry Release
 
 # Triggered by a published GitHub Release. Builds the code registry and catalog,
 # then opens a PR into registry-deploy for human review before anything goes live.
-# Set REGISTRY_HOST in repo Settings → Variables before cutting the first release.
 
 on:
   release:
