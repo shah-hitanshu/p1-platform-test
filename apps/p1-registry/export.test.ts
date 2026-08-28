@@ -50,8 +50,9 @@ describe.skipIf(!registryBuilt)('registry build output', () => {
 // Preview pages are prerendered block markup shown in the catalog's iframes. The
 // block CSS must arrive as a <link> in that HTML; if it only rides the dynamic
 // import chunk, the markup paints unstyled until JS injects it.
-describe.skipIf(!existsSync(join(root, 'out', 'preview', 'hero.html')))('preview CSS is not runtime-injected', () => {
-  const html = readFileSync(join(root, 'out', 'preview', 'hero.html'), 'utf8');
+const previewHeroPath = join(root, 'out', 'preview', 'hero.html');
+describe.skipIf(!existsSync(previewHeroPath))('preview CSS is not runtime-injected', () => {
+  const html = existsSync(previewHeroPath) ? readFileSync(previewHeroPath, 'utf8') : '';
 
   it('preview HTML links a stylesheet', () => {
     expect(html).toMatch(/<link[^>]+rel="stylesheet"/);
