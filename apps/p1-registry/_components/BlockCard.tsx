@@ -7,8 +7,10 @@ interface BlockCardProps {
   item: CatalogItem;
 }
 
-export function BlockCard({ item }: BlockCardProps) {
-  const hasPreview = (previewNames as readonly string[]).includes(item.name);
+// One <dialog> per card section. handleClick compares the click against the
+// dialog's own box, so a click on the backdrop closes it but one inside doesn't.
+function useDialog() {
+  const ref = React.useRef<HTMLDialogElement>(null);
   const [open, setOpen] = React.useState(false);
 
   React.useEffect(() => {
