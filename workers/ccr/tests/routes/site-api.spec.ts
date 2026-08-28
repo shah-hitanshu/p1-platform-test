@@ -302,25 +302,9 @@ describe('Phase 7.1.1b: Site API Routes', () => {
       );
     });
 
-    it('should pass creatorId and createdByType agent when principal is an agent', async () => {
+    it('should reject creation by an agent principal', async () => {
       const { handleSiteRoutes } = await import('../../src/routes/site-api');
       const services = await import('../../src/services');
-
-      vi.mocked(services.createSite).mockResolvedValueOnce({
-        id: 'site-new',
-        pantheonSiteId: 'site-abc-789',
-        name: 'Agent Site',
-        allowedOrigins: [],
-        workflowSettings: {
-          mergeApprovalMode: 'optional',
-          minApprovers: 1,
-          allowSelfApproval: true,
-          approverMode: 'both',
-          approverMinRole: 'EDITOR',
-        },
-        createdAt: '2026-01-24T10:00:00.000Z',
-        updatedAt: '2026-01-24T10:00:00.000Z',
-      });
 
       const request = new Request('https://api.example.com/api/sites', {
         method: 'POST',
@@ -331,17 +315,50 @@ describe('Phase 7.1.1b: Site API Routes', () => {
         }),
       });
 
-      await handleSiteRoutes(request, {
+      const response = await handleSiteRoutes(request, {
         principal: makePrincipal({ id: 'agent-uuid', type: 'agent' }),
       });
 
-      expect(services.createSite).toHaveBeenCalledWith(
-        expect.objectContaining({
-          creatorId: 'agent-uuid',
-          createdByType: 'agent',
-        }),
-        undefined,
-      );
+      expect(response.status).toBe(403);
+      expect(services.createSite).not.toHaveBeenCalled();
+    });
+
+    it('should explain why an agent may not create a site', async () => {
+      const { handleSiteRoutes } = await import('../../src/routes/site-api');
+
+      const request = new Request('https://api.example.com/api/sites', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Agent Site' }),
+      });
+
+      const response = await handleSiteRoutes(request, {
+        principal: makePrincipal({ id: 'agent-uuid', type: 'agent' }),
+      });
+
+      // The MCP layer surfaces this string verbatim to the model, so it has to
+      // name both the cause and the remedy.
+      const body = await readJson(response);
+      expect(body.error).toContain('authenticated user session');
+      expect(body.error).toContain('agent API key');
+    });
+
+    it('should reject creation by a service principal', async () => {
+      const { handleSiteRoutes } = await import('../../src/routes/site-api');
+      const services = await import('../../src/services');
+
+      const request = new Request('https://api.example.com/api/sites', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Service Site' }),
+      });
+
+      const response = await handleSiteRoutes(request, {
+        principal: makePrincipal({ id: 'token-uuid', type: 'service' }),
+      });
+
+      expect(response.status).toBe(403);
+      expect(services.createSite).not.toHaveBeenCalled();
     });
   });
 
@@ -998,6 +1015,121 @@ describe('Phase 7.1.1b: Site API Routes', () => {
   // ===========================================================================
   // DELETE /api/sites/{siteId} - Delete Site
   // ===========================================================================
+
+  describe('PATCH /api/sites/{siteId} — blank name', () => {
+    it('rejects an empty name rather than blanking the site', async () => {
+      const { handleSiteRoutes } = await import('../../src/routes/site-api');
+      const services = await import('../../src/services');
+
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce(makeBranch({
+        id: 'main-branch-id',
+        siteId: 'site-1',
+        name: 'main',
+        isMain: true,
+        status: 'active',
+        createdAt: '2026-01-24T10:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+      }));
+
+      const request = new Request('https://api.example.com/api/sites/site-1', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: '' }),
+      });
+
+      const response = await handleSiteRoutes(request, {
+        siteId: 'site-1',
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
+      });
+
+      // updateSite writes name through COALESCE($1, name), so '' would be
+      // stored as the new name instead of leaving it alone.
+      expect(response.status).toBe(400);
+      expect(services.updateSite).not.toHaveBeenCalled();
+    });
+
+    it('rejects a whitespace-only name', async () => {
+      const { handleSiteRoutes } = await import('../../src/routes/site-api');
+      const services = await import('../../src/services');
+
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce(makeBranch({
+        id: 'main-branch-id',
+        siteId: 'site-1',
+        name: 'main',
+        isMain: true,
+        status: 'active',
+        createdAt: '2026-01-24T10:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+      }));
+
+      const request = new Request('https://api.example.com/api/sites/site-1', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: '   ' }),
+      });
+
+      const response = await handleSiteRoutes(request, {
+        siteId: 'site-1',
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
+      });
+
+      expect(response.status).toBe(400);
+      expect(services.updateSite).not.toHaveBeenCalled();
+    });
+
+    it('still allows a name that was not supplied at all', async () => {
+      const { handleSiteRoutes } = await import('../../src/routes/site-api');
+      const services = await import('../../src/services');
+
+      // The 404 test above queues an updateSite result it never consumes, and
+      // clearAllMocks does not drain queued once-values, so it would be
+      // returned here instead of the one set below.
+      vi.mocked(services.updateSite).mockReset();
+
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce(makeBranch({
+        id: 'main-branch-id',
+        siteId: 'site-1',
+        name: 'main',
+        isMain: true,
+        status: 'active',
+        createdAt: '2026-01-24T10:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+      }));
+
+      vi.mocked(services.updateSite).mockResolvedValueOnce({
+        id: 'site-1',
+        name: 'Unchanged',
+        allowedOrigins: [],
+        workflowSettings: {
+          mergeApprovalMode: 'optional',
+          minApprovers: 1,
+          allowSelfApproval: true,
+          approverMode: 'both',
+          approverMinRole: 'EDITOR',
+        },
+        createdAt: '2026-01-24T10:00:00.000Z',
+        updatedAt: '2026-01-24T10:00:00.000Z',
+        archivedAt: null,
+      });
+
+      const request = new Request('https://api.example.com/api/sites/site-1', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: 'https://example.com' }),
+      });
+
+      const response = await handleSiteRoutes(request, {
+        siteId: 'site-1',
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
+      });
+
+      expect(response.status).toBe(200);
+      expect(services.updateSite).toHaveBeenCalled();
+    });
+  });
 
   describe('DELETE /api/sites/{siteId}', () => {
     it('should delete a site when all branches are archived', async () => {

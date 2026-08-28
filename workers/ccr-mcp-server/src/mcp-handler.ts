@@ -46,6 +46,9 @@ export interface McpHandlerConfig {
 // reads from one source of truth. check_merge and preview_merge are POST
 // but read-only, so they stay on the looser read limiter.
 const MUTATION_TOOLS = new Set<string>([
+  'create_site',
+  'update_site',
+  'update_site_settings',
   'apply_document_edits',
   'create_page',
   'start_edit_session',

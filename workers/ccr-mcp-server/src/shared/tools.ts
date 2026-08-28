@@ -8,7 +8,22 @@
  */
 
 import { z } from 'zod';
-import type { McpApiClient } from './api-client.js';
+import {
+  validateOps as _validateOps,
+  validateDocumentStructure,
+  componentNameFromPath,
+  validateTranslationAuthority,
+  type AuthorityDiagnostic,
+  type ValidationError,
+  type StructuralConformanceError,
+} from '@pantheon-systems/p1-content-validator';
+import type {
+  McpApiClient,
+  SiteDetail,
+  SiteSettings,
+  UpdateSiteRequest,
+  UpdateSiteSettingsRequest,
+} from './api-client.js';
 import type { ActingUser } from './types.js';
 import {
   remintComponentIdsInValue,
@@ -17,17 +32,6 @@ import {
   slotId,
   type ComponentPosition,
 } from './component-ids.js';
-import {
-  validateOps as _validateOps,
-  validateDocumentStructure,
-  componentNameFromPath,
-} from '@pantheon-systems/p1-content-validator';
-import { validateTranslationAuthority } from '@pantheon-systems/p1-content-validator';
-import type {
-  AuthorityDiagnostic,
-  ValidationError,
-  StructuralConformanceError,
-} from '@pantheon-systems/p1-content-validator';
 
 // Narrow the loosely-typed package export to the input/output shape used here.
 const validateOps = _validateOps as (input: {
@@ -93,6 +97,142 @@ export interface ToolResult {
 // =============================================================================
 
 const ListSitesInputSchema = z.object({});
+
+const WorkflowSettingsSchema = z.object({
+  mergeApprovalMode: z
+    .enum(['none', 'optional', 'required'])
+    .optional()
+    .describe('Whether merges into main need approval. Defaults to "optional".'),
+  minApprovers: z.number().optional().describe('How many approvals a merge needs. Defaults to 1.'),
+  allowSelfApproval: z
+    .boolean()
+    .optional()
+    .describe('Whether the author of a change may approve it. Defaults to true.'),
+  approverMode: z
+    .enum(['role_based', 'explicit', 'both'])
+    .optional()
+    .describe('How approvers are determined. Defaults to "both".'),
+  approverMinRole: z
+    .enum(['EDITOR', 'ADMIN'])
+    .optional()
+    .describe('Lowest role that may approve when approverMode is role_based or both.'),
+});
+
+const CreateSiteInputSchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(1)
+    .describe('Human-readable name for the new site. Required and cannot be blank.'),
+  url: z
+    .string()
+    .optional()
+    .describe('Public URL of the site, e.g. "https://example.com". Must be http or https.'),
+  pantheon_site_id: z
+    .string()
+    .optional()
+    .describe(
+      'ID of the Pantheon hosting site to link this site to. Omit to create an unlinked site — it can be linked later with update_site.',
+    ),
+  allowed_origins: z
+    .array(z.string())
+    .optional()
+    .describe(
+      'Origin patterns permitted to embed or authenticate against the site, e.g. ["https://example.com", "https://*.example.com"]. Each entry must include the scheme, carry at most one "*" in the leftmost label, and have no path. An empty or omitted list is not a neutral default: CORS then accepts every origin, while the login redirect flow refuses all of them. Configure the real origins instead of relying on it.',
+    ),
+  workflow_settings: WorkflowSettingsSchema.optional().describe(
+    'Merge-approval workflow for the site. Omit to accept the defaults.',
+  ),
+});
+
+const GetSiteSettingsInputSchema = z.object({
+  site_id: z.string().describe('The site ID (UUID from list_sites)'),
+});
+
+const SiteLocalesSchema = z.object({
+  markets: z
+    .array(z.string())
+    .describe('Locale codes this site publishes, e.g. ["en-US", "fr-FR"]. At most 1000.'),
+  policy: z
+    .enum(['fallback', 'localized-only'])
+    .describe(
+      '"fallback" serves the default locale when a translation is missing; "localized-only" serves nothing.',
+    ),
+});
+
+const UpdateSiteSettingsInputSchema = z.object({
+  site_id: z.string().describe('The site ID (UUID from list_sites)'),
+  cache_ttl_main: z
+    .number()
+    .nullable()
+    .optional()
+    .describe(
+      'Seconds to cache published pages on the main branch. 1 to 86400 (one day). Pass null to restore the default of 60.',
+    ),
+  cache_ttl_branch: z
+    .number()
+    .nullable()
+    .optional()
+    .describe(
+      'Seconds to cache pages on non-main branches. 1 to 86400. Pass null to restore the default of 5.',
+    ),
+  og_image: z
+    .string()
+    .nullable()
+    .optional()
+    .describe(
+      'Site-wide og:image URL, inherited by any page that does not set its own. Max 2048 characters. Pass null to remove it.',
+    ),
+  og_locale: z
+    .string()
+    .nullable()
+    .optional()
+    .describe(
+      'Site-wide og:locale, inherited by any page that does not set its own, e.g. "en_US". Max 35 characters. Pass null to remove it.',
+    ),
+  locales: SiteLocalesSchema.nullable()
+    .optional()
+    .describe(
+      'Localization policy for the site. Replaces the stored value wholesale — read it with get_site_settings first. Pass null to make the site non-localized.',
+    ),
+});
+
+const GetSiteInputSchema = z.object({
+  site_id: z.string().describe('The site ID (UUID from list_sites)'),
+});
+
+const UpdateSiteInputSchema = z.object({
+  site_id: z.string().describe('The site ID (UUID from list_sites)'),
+  name: z
+    .string()
+    .trim()
+    .min(1)
+    .optional()
+    .describe('New name for the site. Cannot be blank — there is no way to clear a site name.'),
+  url: z
+    .string()
+    .nullable()
+    .optional()
+    .describe(
+      'New public URL. Pass null to clear it. Omit the field entirely to leave the current value alone.',
+    ),
+  pantheon_site_id: z
+    .string()
+    .nullable()
+    .optional()
+    .describe(
+      'Pantheon hosting site to link to. Pass null to unlink. Omit the field entirely to leave the current value alone.',
+    ),
+  allowed_origins: z
+    .array(z.string())
+    .optional()
+    .describe(
+      'Replacement list of allowed origin patterns — this overwrites the stored list rather than appending, so call get_site first and send the full intended set. Never send [] to loosen a site that has origins configured: an empty list makes CORS accept every origin AND makes the login redirect flow refuse every origin, breaking sign-in. Send the intended origins instead.',
+    ),
+  workflow_settings: WorkflowSettingsSchema.optional().describe(
+    'Merge-approval workflow fields to change. Merged with the stored settings.',
+  ),
+});
 
 const ListBranchesInputSchema = z.object({
   site_id: z.string().describe('The site ID (UUID from list_sites)'),
@@ -599,6 +739,41 @@ export function getToolDefinitions(): ToolDefinition[] {
       description:
         'List all sites accessible to you. Use this as your starting point to discover available sites before working with documents. Each site has a unique UUID — use that site_id in all subsequent calls.',
       inputSchema: ListSitesInputSchema,
+    },
+    {
+      name: 'create_site',
+      description:
+        'Create a new site, provisioned with a "main" branch and a welcome page at "/". Requires an authenticated user session; agent API keys cannot create sites.',
+      inputSchema: CreateSiteInputSchema,
+      annotations: { title: 'Create site', destructiveHint: false, idempotentHint: false },
+    },
+    {
+      name: 'get_site',
+      description:
+        "Read a site's configuration: name, public URL, linked Pantheon site, allowed origins, and merge-approval workflow settings.",
+      inputSchema: GetSiteInputSchema,
+      annotations: { title: 'Get site', readOnlyHint: true },
+    },
+    {
+      name: 'update_site',
+      description:
+        "Update a site's configuration: name, public URL, linked Pantheon site, allowed origins, or merge-approval workflow. Requires admin on the site.",
+      inputSchema: UpdateSiteInputSchema,
+      annotations: { title: 'Update site', destructiveHint: false, idempotentHint: true },
+    },
+    {
+      name: 'get_site_settings',
+      description:
+        "Read a site's cache TTLs, social sharing defaults (og:image, og:locale) and localization policy. These are separate from get_site, which covers the name, public URL and allowed origins. A localized site also reports how many documents exist per locale.",
+      inputSchema: GetSiteSettingsInputSchema,
+      annotations: { title: 'Get site settings', readOnlyHint: true },
+    },
+    {
+      name: 'update_site_settings',
+      description:
+        "Update a site's cache TTLs, social sharing defaults or localization policy. Only the fields you pass change; pass null to clear one and fall back to its default. Requires admin on the site — an editor cannot change these.",
+      inputSchema: UpdateSiteSettingsInputSchema,
+      annotations: { title: 'Update site settings', destructiveHint: false, idempotentHint: true },
     },
     {
       name: 'list_branches',
@@ -1166,6 +1341,55 @@ function formatError(error: unknown): ToolResult {
   };
 }
 
+function formatSiteConfig(site: SiteDetail): string {
+  // An empty list is not "unrestricted": buildCorsPatterns falls back to
+  // wildcard-all while resolveRedirectOrigin fails closed, so the two consumers
+  // disagree. Reporting only the CORS half would hide the broken sign-in.
+  const origins =
+    site.allowedOrigins.length > 0
+      ? site.allowedOrigins.join(', ')
+      : '(none configured — CORS accepts any origin, but login redirects are refused)';
+  return (
+    `Site "${site.name}"\n`
+    + `  site_id: ${site.id}\n`
+    + `  public URL: ${site.url ?? '(not set)'}\n`
+    + `  pantheon_site_id: ${site.pantheonSiteId ?? '(not linked)'}\n`
+    + `  allowed origins: ${origins}\n`
+    + `  workflow settings: ${JSON.stringify(site.workflowSettings)}`
+  );
+}
+
+function formatSiteSettings(result: {
+  settings: SiteSettings | null;
+  localeCounts?: Record<string, number>;
+}): string {
+  const s = result.settings;
+  if (s === null) {
+    return 'Site not found.';
+  }
+  const lines = [
+    'Site settings',
+    `  cache TTL (main): ${String(s.cacheTtlMain ?? '(default)')}s`,
+    `  cache TTL (branch): ${String(s.cacheTtlBranch ?? '(default)')}s`,
+    `  og:image: ${s.ogImage ?? '(not set)'}`,
+    `  og:locale: ${s.ogLocale ?? '(not set)'}`,
+  ];
+  if (s.locales === undefined) {
+    lines.push('  localization: (not localized)');
+  } else {
+    lines.push(
+      `  localization: ${s.locales.markets.join(', ')} (policy: ${s.locales.policy})`,
+    );
+  }
+  if (result.localeCounts !== undefined) {
+    const counts = Object.entries(result.localeCounts)
+      .map(([locale, n]) => `${locale}=${String(n)}`)
+      .join(', ');
+    lines.push(`  documents per locale: ${counts}`);
+  }
+  return lines.join('\n');
+}
+
 interface ConflictResolutionInputShape {
   document_id: string;
   strategy: 'take-source' | 'take-target' | 'manual';
@@ -1298,11 +1522,21 @@ type ListLocaleVariantsInput = z.infer<typeof ListLocaleVariantsInputSchema>;
 type GetDriftInput = z.infer<typeof GetDriftInputSchema>;
 type ListDatasourcesInput = z.infer<typeof ListDatasourcesInputSchema>;
 type ListQueriesInput = z.infer<typeof ListQueriesInputSchema>;
+type CreateSiteInput = z.infer<typeof CreateSiteInputSchema>;
+type GetSiteInput = z.infer<typeof GetSiteInputSchema>;
+type UpdateSiteInput = z.infer<typeof UpdateSiteInputSchema>;
+type GetSiteSettingsInput = z.infer<typeof GetSiteSettingsInputSchema>;
+type UpdateSiteSettingsInput = z.infer<typeof UpdateSiteSettingsInputSchema>;
 type GetQueryInput = z.infer<typeof GetQueryInputSchema>;
 type QueryResultsInput = z.infer<typeof QueryResultsInputSchema>;
 
 export interface ToolHandlers {
   list_sites: () => Promise<ToolResult>;
+  create_site: (input: CreateSiteInput) => Promise<ToolResult>;
+  get_site: (input: GetSiteInput) => Promise<ToolResult>;
+  update_site: (input: UpdateSiteInput) => Promise<ToolResult>;
+  get_site_settings: (input: GetSiteSettingsInput) => Promise<ToolResult>;
+  update_site_settings: (input: UpdateSiteSettingsInput) => Promise<ToolResult>;
   list_branches: (input: ListBranchesInput) => Promise<ToolResult>;
   list_documents: (input: ListDocumentsInput) => Promise<ToolResult>;
   get_document: (input: GetDocumentInput) => Promise<ToolResult>;
@@ -1389,6 +1623,109 @@ export function createToolHandlers(
           .map((site) => `- "${site.name}"\n  site_id: ${site.id}`)
           .join('\n');
         return formatResult(`Sites (use the site_id UUID in subsequent calls):\n${formatted}`);
+      } catch (error) {
+        return formatError(error);
+      }
+    },
+
+    async create_site(input: CreateSiteInput): Promise<ToolResult> {
+      // An agent-key site would be granted to the agent alone, and every later
+      // call intersects the agent's access with its acting user's roles — the
+      // site would be invisible to list_sites and unusable. The backend rejects
+      // this too; checking here just saves a round trip and says why.
+      if (apiClient.actorType !== 'user') {
+        return formatError(
+          new Error(
+            'Site creation requires an authenticated user session. This connection uses an agent API key, so it cannot create sites. Ask the user to connect over OAuth and create the site from their own session.',
+          ),
+        );
+      }
+
+      try {
+        const site = await apiClient.createSite({
+          name: input.name,
+          ...(input.url !== undefined ? { url: input.url } : {}),
+          ...(input.pantheon_site_id !== undefined
+            ? { pantheonSiteId: input.pantheon_site_id }
+            : {}),
+          ...(input.allowed_origins !== undefined
+            ? { allowedOrigins: input.allowed_origins }
+            : {}),
+          ...(input.workflow_settings !== undefined
+            ? { workflowSettings: input.workflow_settings }
+            : {}),
+        });
+
+        return formatResult(
+          `Created site "${site.name}".\n`
+            + `  site_id: ${site.id}\n`
+            + '\nThe site is ready to use: a "main" branch exists and a welcome page is seeded at "/". '
+            + 'Call list_branches to get the main branch_id, then list_documents or create_page to start authoring.',
+        );
+      } catch (error) {
+        return formatError(error);
+      }
+    },
+
+    async get_site(input: GetSiteInput): Promise<ToolResult> {
+      try {
+        const site = await apiClient.getSite(input.site_id);
+        return formatResult(formatSiteConfig(site));
+      } catch (error) {
+        return formatError(error);
+      }
+    },
+
+    async update_site(input: UpdateSiteInput): Promise<ToolResult> {
+      try {
+        // Key presence is the wire contract: the backend distinguishes "leave
+        // as-is" (key absent) from "clear" (key present, null) via `'url' in
+        // body`, so a spread of undefined would silently mean the wrong thing.
+        const body: UpdateSiteRequest = {};
+        if (input.name !== undefined) body.name = input.name;
+        if ('url' in input) body.url = input.url;
+        if ('pantheon_site_id' in input) body.pantheonSiteId = input.pantheon_site_id;
+        if (input.allowed_origins !== undefined) body.allowedOrigins = input.allowed_origins;
+        if (input.workflow_settings !== undefined) body.workflowSettings = input.workflow_settings;
+
+        if (Object.keys(body).length === 0) {
+          return formatError(new Error('No configuration fields supplied — nothing to update.'));
+        }
+
+        const site = await apiClient.updateSite(input.site_id, body);
+        return formatResult(`Updated site.\n\n${formatSiteConfig(site)}`);
+      } catch (error) {
+        return formatError(error);
+      }
+    },
+
+    async get_site_settings(input: GetSiteSettingsInput): Promise<ToolResult> {
+      try {
+        const result = await apiClient.getSiteSettings(input.site_id);
+        return formatResult(formatSiteSettings(result));
+      } catch (error) {
+        return formatError(error);
+      }
+    },
+
+    async update_site_settings(input: UpdateSiteSettingsInput): Promise<ToolResult> {
+      try {
+        // Same key-presence contract as update_site: the backend reads
+        // `'ogImage' in body`, so an omitted key means "leave as-is" and an
+        // explicit null deletes the key and restores its default.
+        const body: UpdateSiteSettingsRequest = {};
+        if ('cache_ttl_main' in input) body.cacheTtlMain = input.cache_ttl_main;
+        if ('cache_ttl_branch' in input) body.cacheTtlBranch = input.cache_ttl_branch;
+        if ('og_image' in input) body.ogImage = input.og_image;
+        if ('og_locale' in input) body.ogLocale = input.og_locale;
+        if ('locales' in input) body.locales = input.locales;
+
+        if (Object.keys(body).length === 0) {
+          return formatError(new Error('No settings supplied — nothing to update.'));
+        }
+
+        const result = await apiClient.updateSiteSettings(input.site_id, body);
+        return formatResult(`Updated site settings.\n\n${formatSiteSettings(result)}`);
       } catch (error) {
         return formatError(error);
       }
@@ -2609,6 +2946,11 @@ export function createToolHandlers(
 
 export const schemas = {
   list_sites: ListSitesInputSchema,
+  create_site: CreateSiteInputSchema,
+  get_site: GetSiteInputSchema,
+  update_site: UpdateSiteInputSchema,
+  get_site_settings: GetSiteSettingsInputSchema,
+  update_site_settings: UpdateSiteSettingsInputSchema,
   list_branches: ListBranchesInputSchema,
   list_documents: ListDocumentsInputSchema,
   get_document: GetDocumentInputSchema,

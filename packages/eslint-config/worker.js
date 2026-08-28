@@ -16,6 +16,13 @@ import globals from 'globals';
  */
 export function createWorkerConfig({ project, tsconfigRootDir, restrictWorkersTypes = false }) {
   return tseslint.config(
+    {
+      // Wrangler's local build output. Present in every worker after a
+      // `wrangler dev` run, and its generated entrypoints sit outside the
+      // tsconfig project, so linting them fails on a parser error and makes
+      // `pnpm lint` red for anyone who has run the dev server.
+      ignores: ['**/.wrangler/**'],
+    },
     eslint.configs.recommended,
     ...tseslint.configs.strictTypeChecked,
     ...tseslint.configs.stylisticTypeChecked,

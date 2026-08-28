@@ -5,6 +5,7 @@
  * Includes deletion protection for sites with non-archived branches.
  */
 
+import { getLogger } from '@pantheon-systems/p1-telemetry';
 import type { WorkflowSettings, AuthenticatedPrincipal } from '../types';
 import {
   createSite,
@@ -19,9 +20,9 @@ import {
   HttpError,
 } from '../services';
 import { assertPermission, getSiteRole } from '../auth/authorization';
-import { validatePagination, validateAllowedOriginPatterns } from './validation';
 import type { ScreenshotProducerEnv } from '../queues/screenshot-producer';
 import { query } from '../db';
+import { validatePagination, validateAllowedOriginPatterns } from './validation';
 
 /**
  * Request context for site routes
@@ -95,12 +96,25 @@ function errorResponse(
  *
  * Creates a new site and automatically creates the main branch.
  * The main branch represents the production state of the site.
+ *
+ * Restricted to user principals. An agent-created site is granted only to the
+ * agent, and both listSites and getEffectiveRole intersect an agent's access
+ * with its acting user's roles, so such a site is invisible to the agent's own
+ * listing and unusable by every branch and document operation. A person creates
+ * the site through their own authenticated session instead.
  */
 async function handleCreateSite(
   request: Request,
   context: SiteRouteContext,
   env: ScreenshotProducerEnv | undefined,
 ): Promise<Response> {
+  if (context.principal.type !== 'user') {
+    return errorResponse(
+      'Site creation requires an authenticated user session. An agent API key cannot create sites; connect as a user and retry.',
+      403,
+    );
+  }
+
   const body = await parseJsonBody<CreateSiteBody>(request);
 
   if (body.name === undefined || body.name.trim() === '') {
@@ -123,10 +137,17 @@ async function handleCreateSite(
       workflowSettings: body.workflowSettings,
       allowedOrigins: body.allowedOrigins,
       creatorId: context.principal.dbUserId ?? context.principal.id,
-      createdByType: context.principal.type as 'user' | 'agent',
+      createdByType: context.principal.type,
     },
     env,
   );
+
+  getLogger().info('site created', {
+    site_id: site.id,
+    principal_type: context.principal.type,
+    principal_id: context.principal.dbUserId ?? context.principal.id,
+    outcome: 'ok',
+  });
 
   return jsonResponse(site, 201);
 }
@@ -216,6 +237,14 @@ async function handleUpdateSite(
   }
 
   const body = await parseJsonBody<UpdateSiteBody>(request);
+
+  // updateSite writes name through COALESCE($1, name), which treats '' as a
+  // value rather than "leave alone" — unlike url and pantheonSiteId, which
+  // carry an explicit provided flag. A blank name is invalid input, not an
+  // instruction to clear, and handleCreateSite already rejects it.
+  if (body.name?.trim() === '') {
+    return errorResponse('name cannot be empty', 400);
+  }
 
   // PCC-3531: validate only origins that are not already stored. Read the row
   // directly rather than through getCachedSiteAllowedOrigins — a stale cache

@@ -7,17 +7,15 @@
  * with acting-user header support for the remote MCP server.
  */
 
-import type { McpApiClientConfig, ActingUser } from './types.js';
-import { getBackendBreaker } from '../circuit-breaker.js';
-import type {
-  Authority,
-  ComponentSchema,
-  TemplateSnapshot,
-} from '@pantheon-systems/p1-content-validator';
 import {
   snapshotToComponentSchema,
   registryComponentKey,
+  type Authority,
+  type ComponentSchema,
+  type TemplateSnapshot,
 } from '@pantheon-systems/p1-content-validator';
+import { getBackendBreaker } from '../circuit-breaker.js';
+import type { McpApiClientConfig, ActingUser } from './types.js';
 
 // =============================================================================
 // Types
@@ -33,6 +31,77 @@ export interface SiteInfo {
 export interface ListSitesResponse {
   sites: SiteInfo[];
   total: number;
+}
+
+export interface WorkflowSettingsInput {
+  mergeApprovalMode?: string;
+  minApprovers?: number;
+  allowSelfApproval?: boolean;
+  approverMode?: string;
+  approverMinRole?: string;
+}
+
+/** Full site record as returned by GET/POST/PATCH /api/sites. */
+export interface SiteDetail extends SiteInfo {
+  url?: string;
+  allowedOrigins: string[];
+  workflowSettings: Record<string, unknown>;
+  updatedAt: string;
+}
+
+export interface CreateSiteRequest {
+  name: string;
+  url?: string;
+  pantheonSiteId?: string;
+  allowedOrigins?: string[];
+  workflowSettings?: WorkflowSettingsInput;
+}
+
+/**
+ * PATCH body. `url` and `pantheonSiteId` are clearable, and the backend keys off
+ * key presence (`'url' in body`), so an omitted key means "leave as-is" while an
+ * explicit null means "clear". Never populate these with undefined.
+ */
+export interface UpdateSiteRequest {
+  name?: string;
+  url?: string | null;
+  pantheonSiteId?: string | null;
+  allowedOrigins?: string[];
+  workflowSettings?: WorkflowSettingsInput;
+}
+
+export interface SiteLocales {
+  markets: string[];
+  policy: 'fallback' | 'localized-only';
+}
+
+/** The JSONB settings blob, merged with the backend's defaults on read. */
+export interface SiteSettings {
+  cacheTtlMain?: number;
+  cacheTtlBranch?: number;
+  ogImage?: string;
+  ogLocale?: string;
+  locales?: SiteLocales;
+}
+
+export interface SiteSettingsResponse {
+  /** Null when the site does not exist. */
+  settings: SiteSettings | null;
+  /** Per-locale document counts; present only for a localized site. */
+  localeCounts?: Record<string, number>;
+}
+
+/**
+ * PATCH body for the settings blob. Every field is clearable and the backend
+ * keys off key presence, so an omitted key means "leave as-is" and an explicit
+ * null deletes the key, restoring the default.
+ */
+export interface UpdateSiteSettingsRequest {
+  cacheTtlMain?: number | null;
+  cacheTtlBranch?: number | null;
+  ogImage?: string | null;
+  ogLocale?: string | null;
+  locales?: SiteLocales | null;
 }
 
 export interface BranchInfo {
@@ -431,6 +500,15 @@ export class McpApiClient {
     return data as T;
   }
 
+  /**
+   * Which credential this client is carrying. Site creation is a user-session
+   * operation, so the tool layer checks this to fail fast with a useful message
+   * rather than round-tripping to a backend 403.
+   */
+  get actorType(): 'user' | 'agent' {
+    return this.accessToken !== undefined && this.accessToken !== '' ? 'user' : 'agent';
+  }
+
   async listSites(): Promise<ListSitesResponse> {
     const url = `${this.baseUrl}/api/sites`;
     const response = await this.doFetch(url, {
@@ -438,6 +516,57 @@ export class McpApiClient {
       headers: this.getHeaders(),
     });
     return this.handleResponse<ListSitesResponse>(response);
+  }
+
+  async createSite(body: CreateSiteRequest): Promise<SiteDetail> {
+    const url = `${this.baseUrl}/api/sites`;
+    const response = await this.doFetch(url, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify(body),
+    });
+    return this.handleResponse<SiteDetail>(response);
+  }
+
+  async getSite(siteId: string): Promise<SiteDetail> {
+    const url = `${this.baseUrl}/api/sites/${siteId}`;
+    const response = await this.doFetch(url, {
+      method: 'GET',
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse<SiteDetail>(response);
+  }
+
+  async updateSite(siteId: string, body: UpdateSiteRequest): Promise<SiteDetail> {
+    const url = `${this.baseUrl}/api/sites/${siteId}`;
+    const response = await this.doFetch(url, {
+      method: 'PATCH',
+      headers: this.getHeaders(),
+      body: JSON.stringify(body),
+    });
+    return this.handleResponse<SiteDetail>(response);
+  }
+
+  async getSiteSettings(siteId: string): Promise<SiteSettingsResponse> {
+    const url = `${this.baseUrl}/api/sites/${siteId}/settings`;
+    const response = await this.doFetch(url, {
+      method: 'GET',
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse<SiteSettingsResponse>(response);
+  }
+
+  async updateSiteSettings(
+    siteId: string,
+    body: UpdateSiteSettingsRequest,
+  ): Promise<SiteSettingsResponse> {
+    const url = `${this.baseUrl}/api/sites/${siteId}/settings`;
+    const response = await this.doFetch(url, {
+      method: 'PATCH',
+      headers: this.getHeaders(),
+      body: JSON.stringify(body),
+    });
+    return this.handleResponse<SiteSettingsResponse>(response);
   }
 
   async listBranches(siteId: string): Promise<ListBranchesResponse> {
