@@ -18,6 +18,7 @@ vi.mock('../../../src/auth/oauth/auth0-handler.js', () => ({
 vi.mock('../../../src/auth/oauth/state-signing.js', () => ({
   signState: vi.fn(),
   verifyAndParseState: vi.fn(),
+  DEFAULT_STATE_TTL_SECONDS: 600,
 }));
 
 vi.mock('../../../src/middleware/authentication.js', () => ({
@@ -80,6 +81,11 @@ function createMockEnv(): Env {
     BROKER_JWT_AUDIENCE: 'css-api',
     INTERNAL_SECRET: 'test-secret-at-least-32-characters-long',
   } as unknown as Env;
+}
+
+/** createMockEnv() typed as Env, for call sites that need the real handler signature. */
+function createMockAuthEnv(): Env {
+  return createMockEnv();
 }
 
 describe('BrokerRoutes', () => {
@@ -803,6 +809,539 @@ describe('BrokerRoutes', () => {
 
       const response = await handleBrokerRoutes(request, createMockEnv(), '/broker/redeem');
       expect(response?.status).toBe(403);
+    });
+  });
+
+  describe('POST /broker/logout', () => {
+    // Matches what BrokerJwtIdentityProvider actually builds: siteId set from
+    // the site_id claim, pantheonSiteRoles empty.
+    function brokerPrincipal(siteId = 'site-123'): AuthenticatedPrincipal {
+      return {
+        id: 'auth0|user-1',
+        type: 'user',
+        authProvider: 'broker',
+        pantheonSiteRoles: {},
+        siteId,
+        tokenExpiry: new Date(Date.now() + 3600000).toISOString(),
+      };
+    }
+
+    it('returns logoutUrl without returnTo or warning when none is provided', async () => {
+      const { handleBrokerRoutes } = await import('../../../src/routes/broker-routes.js');
+      const { signState } = await import('../../../src/auth/oauth/state-signing.js');
+      const { authenticate } = await import('../../../src/middleware/authentication.js');
+
+      vi.mocked(authenticate).mockResolvedValue(brokerPrincipal());
+      vi.mocked(signState).mockResolvedValue('signed-logout-state');
+
+      const request = new Request('https://css.example.com/broker/logout', {
+        method: 'POST',
+      });
+
+      const response = await handleBrokerRoutes(request, createMockAuthEnv(), '/broker/logout');
+      expect(response).not.toBeNull();
+      expect(response?.status).toBe(200);
+
+      const body: { logoutUrl: string } = await response!.json();
+      expect(body.logoutUrl).toContain('example.auth0.com/v2/logout');
+      expect(body.logoutUrl).toContain('client_id=test-client-id');
+      expect(body.logoutUrl).toContain('broker%2Flogout%2Fcomplete');
+      expect(body).not.toHaveProperty('warning');
+
+      expect(signState).toHaveBeenCalledWith(
+        expect.objectContaining({ purpose: 'logout', returnTo: undefined, nonce: expect.any(String) }),
+        'test-secret-at-least-32-characters-long',
+      );
+    });
+
+    it('includes validated returnTo in signed state with no warning when origin matches', async () => {
+      const { handleBrokerRoutes } = await import('../../../src/routes/broker-routes.js');
+      const { signState } = await import('../../../src/auth/oauth/state-signing.js');
+      const { authenticate } = await import('../../../src/middleware/authentication.js');
+      const siteService = await import('../../../src/services/site-service.js');
+
+      vi.mocked(authenticate).mockResolvedValue(brokerPrincipal());
+      vi.mocked(signState).mockResolvedValue('signed-logout-state');
+      vi.mocked(siteService.getCachedSiteAllowedOrigins).mockResolvedValue([
+        'https://mysite.example.com',
+      ]);
+
+      const request = new Request('https://css.example.com/broker/logout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ returnTo: 'https://mysite.example.com/goodbye' }),
+      });
+
+      const response = await handleBrokerRoutes(request, createMockAuthEnv(), '/broker/logout');
+      expect(response?.status).toBe(200);
+
+      const body: { logoutUrl: string } = await response!.json();
+      expect(body).not.toHaveProperty('warning');
+
+      expect(signState).toHaveBeenCalledWith(
+        expect.objectContaining({
+          purpose: 'logout',
+          returnTo: 'https://mysite.example.com/goodbye',
+          nonce: expect.any(String),
+        }),
+        'test-secret-at-least-32-characters-long',
+      );
+    });
+
+    it('drops returnTo when origin is not registered', async () => {
+      const { handleBrokerRoutes } = await import('../../../src/routes/broker-routes.js');
+      const { signState } = await import('../../../src/auth/oauth/state-signing.js');
+      const { authenticate } = await import('../../../src/middleware/authentication.js');
+      const siteService = await import('../../../src/services/site-service.js');
+
+      vi.mocked(authenticate).mockResolvedValue(brokerPrincipal());
+      vi.mocked(signState).mockResolvedValue('signed-logout-state');
+      vi.mocked(siteService.getCachedSiteAllowedOrigins).mockResolvedValue([
+        'https://mysite.example.com',
+      ]);
+
+      const request = new Request('https://css.example.com/broker/logout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ returnTo: 'https://evil.example.com' }),
+      });
+
+      const response = await handleBrokerRoutes(request, createMockAuthEnv(), '/broker/logout');
+      expect(response?.status).toBe(200);
+
+      const body: { logoutUrl: string } = await response!.json();
+      // The rejected URL is logged, never echoed back to whoever proposed it.
+      expect(body).not.toHaveProperty('warning');
+
+      expect(signState).toHaveBeenCalledWith(
+        expect.objectContaining({ purpose: 'logout', returnTo: undefined, nonce: expect.any(String) }),
+        'test-secret-at-least-32-characters-long',
+      );
+    });
+
+    it('drops returnTo when site has no registered origins (fail-closed)', async () => {
+      const { handleBrokerRoutes } = await import('../../../src/routes/broker-routes.js');
+      const { signState } = await import('../../../src/auth/oauth/state-signing.js');
+      const { authenticate } = await import('../../../src/middleware/authentication.js');
+      const siteService = await import('../../../src/services/site-service.js');
+
+      vi.mocked(authenticate).mockResolvedValue(brokerPrincipal());
+      vi.mocked(signState).mockResolvedValue('signed-logout-state');
+      vi.mocked(siteService.getCachedSiteAllowedOrigins).mockResolvedValue([]);
+
+      const request = new Request('https://css.example.com/broker/logout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ returnTo: 'https://mysite.example.com' }),
+      });
+
+      const response = await handleBrokerRoutes(request, createMockAuthEnv(), '/broker/logout');
+      expect(response?.status).toBe(200);
+
+      const body: { logoutUrl: string } = await response!.json();
+      expect(body).not.toHaveProperty('warning');
+
+      expect(signState).toHaveBeenCalledWith(
+        expect.objectContaining({ purpose: 'logout', returnTo: undefined, nonce: expect.any(String) }),
+        'test-secret-at-least-32-characters-long',
+      );
+    });
+
+    it('drops returnTo when origins lookup fails', async () => {
+      const { handleBrokerRoutes } = await import('../../../src/routes/broker-routes.js');
+      const { signState } = await import('../../../src/auth/oauth/state-signing.js');
+      const { authenticate } = await import('../../../src/middleware/authentication.js');
+      const siteService = await import('../../../src/services/site-service.js');
+
+      vi.mocked(authenticate).mockResolvedValue(brokerPrincipal());
+      vi.mocked(signState).mockResolvedValue('signed-logout-state');
+      vi.mocked(siteService.getCachedSiteAllowedOrigins).mockRejectedValue(
+        new Error('db unavailable'),
+      );
+
+      const request = new Request('https://css.example.com/broker/logout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ returnTo: 'https://mysite.example.com' }),
+      });
+
+      const response = await handleBrokerRoutes(request, createMockAuthEnv(), '/broker/logout');
+      expect(response?.status).toBe(200);
+
+      expect(signState).toHaveBeenCalledWith(
+        expect.objectContaining({ purpose: 'logout', returnTo: undefined, nonce: expect.any(String) }),
+        'test-secret-at-least-32-characters-long',
+      );
+    });
+
+    // Unauthenticated by design. The URL is built from config and a fresh nonce,
+    // so a credential has nothing here to protect.
+    it('mints a logout URL with no credential at all', async () => {
+      const { handleBrokerRoutes } = await import('../../../src/routes/broker-routes.js');
+      const { signState } = await import('../../../src/auth/oauth/state-signing.js');
+      const { authenticate } = await import('../../../src/middleware/authentication.js');
+      const siteService = await import('../../../src/services/site-service.js');
+
+      vi.mocked(authenticate).mockResolvedValue(null);
+      vi.mocked(signState).mockResolvedValue('signed-logout-state');
+
+      const request = new Request('https://css.example.com/broker/logout', {
+        method: 'POST',
+      });
+
+      const response = await handleBrokerRoutes(request, createMockAuthEnv(), '/broker/logout');
+      expect(response?.status).toBe(200);
+      const body: { logoutUrl: string } = await response!.json();
+      expect(body.logoutUrl).toContain('https://example.auth0.com/v2/logout');
+      expect(body).not.toHaveProperty('warning');
+      expect(siteService.getCachedSiteAllowedOrigins).not.toHaveBeenCalled();
+      expect(signState).toHaveBeenCalledWith(
+        expect.objectContaining({ purpose: 'logout', returnTo: undefined }),
+        'test-secret-at-least-32-characters-long',
+      );
+    });
+
+    // The case this route exists to serve: the broker JWT expired while a tab
+    // sat open, so authenticate() rejects it. The Auth0 session still ends.
+    it('still mints a logout URL when the broker JWT has expired', async () => {
+      const { handleBrokerRoutes } = await import('../../../src/routes/broker-routes.js');
+      const { signState } = await import('../../../src/auth/oauth/state-signing.js');
+      const { authenticate } = await import('../../../src/middleware/authentication.js');
+      const siteService = await import('../../../src/services/site-service.js');
+
+      // An expired token is indistinguishable from no token here — the verifier
+      // rejects it before a principal is ever built.
+      vi.mocked(authenticate).mockResolvedValue(null);
+      vi.mocked(signState).mockResolvedValue('signed-logout-state');
+
+      const request = new Request('https://css.example.com/broker/logout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ returnTo: 'https://mysite.example.com' }),
+      });
+
+      const response = await handleBrokerRoutes(request, createMockAuthEnv(), '/broker/logout');
+      expect(response?.status).toBe(200);
+      const body: { logoutUrl: string } = await response!.json();
+      expect(body.logoutUrl).toContain('https://example.auth0.com/v2/logout');
+      // The rejection is logged, never returned — the caller cannot act on it,
+      // and it would tell an anonymous caller how the route decided.
+      expect(body).not.toHaveProperty('warning');
+      // No session means no site, and no site means no database read.
+      expect(siteService.getCachedSiteAllowedOrigins).not.toHaveBeenCalled();
+      expect(signState).toHaveBeenCalledWith(
+        expect.objectContaining({ purpose: 'logout', returnTo: undefined }),
+        'test-secret-at-least-32-characters-long',
+      );
+    });
+
+    it('throws if AUTH0_ISSUER_BASE_URL is missing, consistent with /broker/login and /auth/callback', async () => {
+      const { handleBrokerRoutes } = await import('../../../src/routes/broker-routes.js');
+      const { authenticate } = await import('../../../src/middleware/authentication.js');
+
+      vi.mocked(authenticate).mockResolvedValue(brokerPrincipal());
+
+      const env = createMockAuthEnv();
+      delete env.AUTH0_ISSUER_BASE_URL;
+
+      const request = new Request('https://css.example.com/broker/logout', {
+        method: 'POST',
+      });
+
+      await expect(handleBrokerRoutes(request, env, '/broker/logout')).rejects.toThrow(
+        'Missing required environment variable: AUTH0_ISSUER_BASE_URL',
+      );
+    });
+
+    it('resolves the site to validate returnTo against from principal.siteId', async () => {
+      const { handleBrokerRoutes } = await import('../../../src/routes/broker-routes.js');
+      const { signState } = await import('../../../src/auth/oauth/state-signing.js');
+      const { authenticate } = await import('../../../src/middleware/authentication.js');
+      const siteService = await import('../../../src/services/site-service.js');
+
+      vi.mocked(authenticate).mockResolvedValue(brokerPrincipal());
+      vi.mocked(signState).mockResolvedValue('signed-logout-state');
+      vi.mocked(siteService.getCachedSiteAllowedOrigins).mockResolvedValue([
+        'https://mysite.example.com',
+      ]);
+
+      const request = new Request('https://css.example.com/broker/logout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ returnTo: 'https://mysite.example.com/goodbye' }),
+      });
+
+      const response = await handleBrokerRoutes(request, createMockAuthEnv(), '/broker/logout');
+      expect(response?.status).toBe(200);
+      expect(siteService.getCachedSiteAllowedOrigins).toHaveBeenCalledWith('site-123');
+    });
+
+    // Deliberately wider than the 403 this replaces. Scope to one site is the
+    // whole authorisation rule, so a site token qualifies exactly as a broker
+    // JWT does; a provider check would add a second rule that guards nothing.
+    it('validates returnTo for any principal scoped to a single site', async () => {
+      const { handleBrokerRoutes } = await import('../../../src/routes/broker-routes.js');
+      const { signState } = await import('../../../src/auth/oauth/state-signing.js');
+      const { authenticate } = await import('../../../src/middleware/authentication.js');
+      const siteService = await import('../../../src/services/site-service.js');
+
+      vi.mocked(authenticate).mockResolvedValue({
+        id: 'site-token-user',
+        type: 'service',
+        authProvider: 'site_token',
+        pantheonSiteRoles: {},
+        siteId: 'site-123',
+        tokenExpiry: new Date(Date.now() + 3600000).toISOString(),
+      });
+      vi.mocked(signState).mockResolvedValue('signed-logout-state');
+      vi.mocked(siteService.getCachedSiteAllowedOrigins).mockResolvedValue([
+        'https://mysite.example.com',
+      ]);
+
+      const request = new Request('https://css.example.com/broker/logout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ returnTo: 'https://mysite.example.com/goodbye' }),
+      });
+
+      const response = await handleBrokerRoutes(request, createMockAuthEnv(), '/broker/logout');
+      expect(response?.status).toBe(200);
+      expect(siteService.getCachedSiteAllowedOrigins).toHaveBeenCalledWith('site-123');
+      expect(signState).toHaveBeenCalledWith(
+        expect.objectContaining({
+          purpose: 'logout',
+          returnTo: 'https://mysite.example.com/goodbye',
+        }),
+        'test-secret-at-least-32-characters-long',
+      );
+    });
+
+    // Site resolution used to fall back to a single pantheonSiteRoles entry.
+    // Without this, reinstating that fallback goes unnoticed.
+    it('does not fall back to pantheonSiteRoles when siteId is absent', async () => {
+      const { handleBrokerRoutes } = await import('../../../src/routes/broker-routes.js');
+      const { signState } = await import('../../../src/auth/oauth/state-signing.js');
+      const { authenticate } = await import('../../../src/middleware/authentication.js');
+      const siteService = await import('../../../src/services/site-service.js');
+
+      const rolesOnly: AuthenticatedPrincipal = brokerPrincipal();
+      delete rolesOnly.siteId;
+      rolesOnly.pantheonSiteRoles = { 'site-123': 'admin' };
+      vi.mocked(authenticate).mockResolvedValue(rolesOnly);
+      vi.mocked(signState).mockResolvedValue('signed-logout-state');
+
+      const request = new Request('https://css.example.com/broker/logout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ returnTo: 'https://mysite.example.com' }),
+      });
+
+      const response = await handleBrokerRoutes(request, createMockAuthEnv(), '/broker/logout');
+      expect(response?.status).toBe(200);
+      expect(siteService.getCachedSiteAllowedOrigins).not.toHaveBeenCalled();
+      // The roles entry naming site-123 must not reach the signed state.
+      expect(signState).toHaveBeenCalledWith(
+        expect.objectContaining({ purpose: 'logout', returnTo: undefined }),
+        'test-secret-at-least-32-characters-long',
+      );
+    });
+
+    // The request Origin was briefly used as a fallback when returnTo was
+    // rejected. It let a registered localhost origin through on a deployed
+    // environment, bypassing the rule that had just rejected the proposal.
+    it('does not fall back to the request Origin when returnTo is rejected', async () => {
+      const { handleBrokerRoutes } = await import('../../../src/routes/broker-routes.js');
+      const { signState } = await import('../../../src/auth/oauth/state-signing.js');
+      const { authenticate } = await import('../../../src/middleware/authentication.js');
+      const siteService = await import('../../../src/services/site-service.js');
+
+      vi.mocked(authenticate).mockResolvedValue(brokerPrincipal());
+      vi.mocked(signState).mockResolvedValue('signed-logout-state');
+      vi.mocked(siteService.getCachedSiteAllowedOrigins).mockResolvedValue([
+        'https://mysite.example.com',
+      ]);
+
+      const request = new Request('https://css.example.com/broker/logout', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          // Registered, and would have been handed back as the fallback.
+          'Origin': 'https://mysite.example.com',
+        },
+        // Not registered, so it is rejected.
+        body: JSON.stringify({ returnTo: 'https://elsewhere.example.com/goodbye' }),
+      });
+
+      const response = await handleBrokerRoutes(request, createMockAuthEnv(), '/broker/logout');
+      expect(response?.status).toBe(200);
+
+      expect(signState).toHaveBeenCalledWith(
+        expect.objectContaining({ purpose: 'logout', returnTo: undefined }),
+        'test-secret-at-least-32-characters-long',
+      );
+    });
+
+    // A principal that names no site cannot authorise a returnTo, but it also
+    // must not cost the caller the logout itself.
+    it('drops returnTo but still mints a URL when the principal names no site', async () => {
+      const { handleBrokerRoutes } = await import('../../../src/routes/broker-routes.js');
+      const { signState } = await import('../../../src/auth/oauth/state-signing.js');
+      const { authenticate } = await import('../../../src/middleware/authentication.js');
+      const siteService = await import('../../../src/services/site-service.js');
+
+      const withoutSiteId: AuthenticatedPrincipal = brokerPrincipal();
+      delete withoutSiteId.siteId;
+      vi.mocked(authenticate).mockResolvedValue(withoutSiteId);
+      vi.mocked(signState).mockResolvedValue('signed-logout-state');
+
+      const request = new Request('https://css.example.com/broker/logout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ returnTo: 'https://mysite.example.com' }),
+      });
+
+      const response = await handleBrokerRoutes(request, createMockAuthEnv(), '/broker/logout');
+      expect(response?.status).toBe(200);
+      const body: { logoutUrl: string } = await response!.json();
+      expect(body.logoutUrl).toContain('https://example.auth0.com/v2/logout');
+      expect(body).not.toHaveProperty('warning');
+      expect(siteService.getCachedSiteAllowedOrigins).not.toHaveBeenCalled();
+      expect(signState).toHaveBeenCalledWith(
+        expect.objectContaining({ purpose: 'logout', returnTo: undefined }),
+        'test-secret-at-least-32-characters-long',
+      );
+    });
+  });
+
+  describe('GET /broker/logout/complete', () => {
+    it('redirects to returnTo when state contains a validated returnTo', async () => {
+      const { handleBrokerRoutes } = await import('../../../src/routes/broker-routes.js');
+      const { verifyAndParseState } = await import('../../../src/auth/oauth/state-signing.js');
+
+      vi.mocked(verifyAndParseState).mockResolvedValue({
+        purpose: 'logout',
+        returnTo: 'https://mysite.example.com/goodbye',
+        nonce: 'nonce-1',
+      });
+      mockTransactionResponse = { claimed: true };
+
+      const request = new Request(
+        'https://css.example.com/broker/logout/complete?state=signed-logout-state',
+      );
+
+      const response = await handleBrokerRoutes(request, createMockAuthEnv(), '/broker/logout/complete');
+      expect(response?.status).toBe(302);
+      expect(response?.headers.get('Location')).toBe('https://mysite.example.com/goodbye');
+      expect(response?.headers.get('Referrer-Policy')).toBe('no-referrer');
+    });
+
+    it('shows logged-out page when state has no returnTo', async () => {
+      const { handleBrokerRoutes } = await import('../../../src/routes/broker-routes.js');
+      const { verifyAndParseState } = await import('../../../src/auth/oauth/state-signing.js');
+
+      vi.mocked(verifyAndParseState).mockResolvedValue({
+        purpose: 'logout',
+        nonce: 'nonce-2',
+      });
+      mockTransactionResponse = { claimed: true };
+
+      const request = new Request(
+        'https://css.example.com/broker/logout/complete?state=signed-logout-state',
+      );
+
+      const response = await handleBrokerRoutes(request, createMockAuthEnv(), '/broker/logout/complete');
+      expect(response?.status).toBe(200);
+      const body = await response?.text();
+      expect(body).toContain('Logged out');
+      expect(body).toContain('close this window');
+      // No returnTo means no redirect to make single-use, so nothing is claimed
+      // and an anonymous caller cannot make the route write durable state.
+      expect(capturedDoCalls).toEqual([]);
+    });
+
+    it('returns logged-out HTML page on back-navigation when nonce was already claimed', async () => {
+      const { handleBrokerRoutes } = await import('../../../src/routes/broker-routes.js');
+      const { verifyAndParseState } = await import('../../../src/auth/oauth/state-signing.js');
+
+      // Carries a returnTo: a state without one can never redirect, so it is the
+      // only case where a replayed nonce could produce a second redirect.
+      vi.mocked(verifyAndParseState).mockResolvedValue({
+        purpose: 'logout',
+        returnTo: 'https://mysite.example.com/goodbye',
+        nonce: 'nonce-abc',
+      });
+      mockTransactionResponse = { claimed: false };
+
+      const request = new Request(
+        'https://css.example.com/broker/logout/complete?state=signed-logout-state',
+      );
+
+      const response = await handleBrokerRoutes(request, createMockAuthEnv(), '/broker/logout/complete');
+      // Must not redirect (no second redirect from an already-consumed nonce).
+      expect(response?.status).toBe(200);
+      const body = await response?.text();
+      expect(body).toContain('Logged out');
+      expect(capturedDoCalls).toEqual([
+        { path: '/nonce/claim', body: { nonce: 'nonce-abc', ttlSeconds: 600 } },
+      ]);
+    });
+
+    it('returns 400 when state purpose is not logout', async () => {
+      const { handleBrokerRoutes } = await import('../../../src/routes/broker-routes.js');
+      const { verifyAndParseState } = await import('../../../src/auth/oauth/state-signing.js');
+
+      vi.mocked(verifyAndParseState).mockResolvedValue({
+        purpose: 'login',
+        nonce: 'nonce-abc',
+      });
+
+      const request = new Request(
+        'https://css.example.com/broker/logout/complete?state=signed-logout-state',
+      );
+
+      const response = await handleBrokerRoutes(request, createMockAuthEnv(), '/broker/logout/complete');
+      expect(response?.status).toBe(400);
+      expect(capturedDoCalls).toEqual([]);
+    });
+
+    it('returns 400 when state has no nonce', async () => {
+      const { handleBrokerRoutes } = await import('../../../src/routes/broker-routes.js');
+      const { verifyAndParseState } = await import('../../../src/auth/oauth/state-signing.js');
+
+      vi.mocked(verifyAndParseState).mockResolvedValue({
+        purpose: 'logout',
+      });
+
+      const request = new Request(
+        'https://css.example.com/broker/logout/complete?state=signed-logout-state',
+      );
+
+      const response = await handleBrokerRoutes(request, createMockAuthEnv(), '/broker/logout/complete');
+      expect(response?.status).toBe(400);
+      expect(capturedDoCalls).toEqual([]);
+    });
+
+    it('returns 400 if state is missing', async () => {
+      const { handleBrokerRoutes } = await import('../../../src/routes/broker-routes.js');
+
+      const request = new Request('https://css.example.com/broker/logout/complete');
+
+      const response = await handleBrokerRoutes(request, createMockAuthEnv(), '/broker/logout/complete');
+      expect(response?.status).toBe(400);
+    });
+
+    it('returns 400 if state verification fails (tampered or expired)', async () => {
+      const { handleBrokerRoutes } = await import('../../../src/routes/broker-routes.js');
+      const { verifyAndParseState } = await import('../../../src/auth/oauth/state-signing.js');
+
+      vi.mocked(verifyAndParseState).mockResolvedValue(null);
+
+      const request = new Request(
+        'https://css.example.com/broker/logout/complete?state=tampered-state',
+      );
+
+      const response = await handleBrokerRoutes(request, createMockAuthEnv(), '/broker/logout/complete');
+      expect(response?.status).toBe(400);
     });
   });
 

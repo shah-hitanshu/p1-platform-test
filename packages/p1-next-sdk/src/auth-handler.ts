@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { PRODUCTION_BASE_URL } from "@pantheon-systems/puck-css/server";
-import { postBrokerLogin, postBrokerRedeem } from "./routes/broker";
+import { postBrokerLogin, postBrokerLogout, postBrokerRedeem } from "./routes/broker";
 
 export interface P1AuthHandlerConfig {
   p1ApiKey?: string;
@@ -27,6 +27,9 @@ export function createP1AuthHandler(opts: P1AuthHandlerConfig) {
     }
     if (route === "redeem") {
       return postBrokerRedeem(request, opts.p1ApiKey, p1BaseUrl);
+    }
+    if (route === "logout") {
+      return postBrokerLogout(request, p1BaseUrl);
     }
 
     return NextResponse.json({ error: "not_found" }, { status: 404 });

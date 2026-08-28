@@ -12,7 +12,7 @@ vi.mock("next/server", () => ({
 const fetchSpy = vi.fn();
 vi.stubGlobal("fetch", fetchSpy);
 
-import { postBrokerLogin, postBrokerRedeem } from "../routes/broker";
+import { postBrokerLogin, postBrokerLogout, postBrokerRedeem } from "../routes/broker";
 
 function makeRequest(body?: unknown): Request {
   if (body === undefined) {
@@ -534,5 +534,94 @@ describe("postBrokerRedeem", () => {
     );
     expect((resp as { status: number }).status).toBe(401);
     expect((resp as { __body: unknown }).__body).toEqual({ error: "unauthorized" });
+  });
+});
+
+describe("postBrokerLogout", () => {
+  beforeEach(() => {
+    fetchSpy.mockReset();
+  });
+
+  function logoutRequest(
+    headers: Record<string, string> = { authorization: "Bearer broker-jwt" },
+    body = JSON.stringify({ returnTo: "https://mysite.example.com" }),
+  ): Request {
+    return new Request("http://localhost/p1/auth/logout", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...headers },
+      body,
+    });
+  }
+
+  it("forwards the caller's Authorization and never attaches an API key", async () => {
+    fetchSpy.mockResolvedValueOnce(okResponse({ logoutUrl: "https://auth0.example.com/v2/logout" }));
+
+    const resp = await postBrokerLogout(logoutRequest(), "https://css.example.com");
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("https://css.example.com/broker/logout");
+    const headers = init.headers as Record<string, string>;
+    expect(headers.Authorization).toBe("Bearer broker-jwt");
+    // Logout authenticates with the browser's broker JWT; there is no secret here.
+    expect(JSON.stringify(headers)).not.toContain("key");
+    expect((resp as { __body: unknown }).__body).toEqual({
+      logoutUrl: "https://auth0.example.com/v2/logout",
+    });
+  });
+
+  it("forwards the request body through to the broker", async () => {
+    fetchSpy.mockResolvedValueOnce(okResponse({ logoutUrl: "https://auth0.example.com/v2/logout" }));
+
+    await postBrokerLogout(logoutRequest(), "https://css.example.com");
+
+    const [, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toEqual({ returnTo: "https://mysite.example.com" });
+  });
+
+  it("returns 401 without calling upstream when Authorization is absent", async () => {
+    const resp = await postBrokerLogout(logoutRequest({}), "https://css.example.com");
+
+    expect((resp as { status: number }).status).toBe(401);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("returns 500 when baseUrl is missing", async () => {
+    const resp = await postBrokerLogout(logoutRequest(), undefined);
+
+    expect((resp as { status: number }).status).toBe(500);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("proxies upstream error status", async () => {
+    fetchSpy.mockResolvedValueOnce(errorResponse(403, { error: "Broker JWT required" }));
+
+    const resp = await postBrokerLogout(logoutRequest(), "https://css.example.com");
+
+    expect((resp as { status: number }).status).toBe(403);
+    expect((resp as { __body: unknown }).__body).toEqual({ error: "Broker JWT required" });
+  });
+
+  // Same reasoning as login: the warning names whether an origin is registered
+  // for a site, so it is logged and stripped rather than echoed to the browser.
+  it("strips the warning field from a successful response", async () => {
+    fetchSpy.mockResolvedValueOnce(
+      okResponse({ logoutUrl: "https://auth0.example.com/v2/logout", warning: "origin not registered" }),
+    );
+
+    const resp = await postBrokerLogout(logoutRequest(), "https://css.example.com");
+
+    expect((resp as { __body: Record<string, unknown> }).__body).toEqual({
+      logoutUrl: "https://auth0.example.com/v2/logout",
+    });
+  });
+
+  it("survives a non-JSON upstream body", async () => {
+    fetchSpy.mockResolvedValueOnce(new Response("not json", { status: 502 }));
+
+    const resp = await postBrokerLogout(logoutRequest(), "https://css.example.com");
+
+    expect((resp as { status: number }).status).toBe(502);
+    expect((resp as { __body: unknown }).__body).toEqual({ error: "Unknown error" });
   });
 });

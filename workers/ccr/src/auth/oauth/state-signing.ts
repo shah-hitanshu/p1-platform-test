@@ -7,9 +7,16 @@
 
 import { CompactSign, compactVerify } from 'jose';
 
-export async function signState(data: object, hmacKey: string): Promise<string> {
+export const DEFAULT_STATE_TTL_SECONDS = 600;
+
+export async function signState(
+  data: object,
+  hmacKey: string,
+  ttlSeconds: number = DEFAULT_STATE_TTL_SECONDS,
+): Promise<string> {
+  const exp = Math.floor(Date.now() / 1000) + ttlSeconds;
   const secret = new TextEncoder().encode(hmacKey);
-  return new CompactSign(new TextEncoder().encode(JSON.stringify(data)))
+  return new CompactSign(new TextEncoder().encode(JSON.stringify({ ...data, exp })))
     .setProtectedHeader({ alg: 'HS256' })
     .sign(secret);
 }
@@ -18,7 +25,11 @@ export async function verifyAndParseState<T>(signedState: string, hmacKey: strin
   try {
     const secret = new TextEncoder().encode(hmacKey);
     const { payload } = await compactVerify(signedState, secret);
-    return JSON.parse(new TextDecoder().decode(payload)) as T;
+    const parsed = JSON.parse(new TextDecoder().decode(payload)) as Record<string, unknown>;
+    if (typeof parsed.exp !== 'number' || parsed.exp < Math.floor(Date.now() / 1000)) {
+      return null;
+    }
+    return parsed as T;
   } catch {
     return null;
   }

@@ -6,7 +6,7 @@
  * so the plugin object never changes identity, avoiding Puck re-renders.
  */
 
-import { useRef, useMemo } from 'react';
+import { useRef, useMemo, useState, useEffect } from 'react';
 import type { DocumentVersion, ActorPresence, RegisteredAgent } from '@pantheon-systems/css-client';
 import { useP1Puck } from '../core/P1PuckContext.js';
 import type { SiteMenuItem, CurrentUser } from '../pds/components/P1EditorHeader.js';
@@ -14,6 +14,7 @@ import type { TemplateSummary } from '../features/content-type-templates/types.j
 import { createP1Plugin } from './plugin/P1Plugin.js';
 import type { P1PluginOptions, PuckPlugin } from './plugin/P1Plugin.js';
 import type { DocumentSyncStore } from './plugin/document-sync-plugin.js';
+import { createLogoutStore } from './logout-store.js';
 
 /**
  * Options that consumers can pass to customize the plugin behavior.
@@ -83,7 +84,11 @@ export interface UseP1PluginOptions {
   /** Currently authenticated user */
   currentUser?: CurrentUser;
   /** Callback when user logs out */
-  onLogout?: () => void;
+  onLogout?: () => void | Promise<void>;
+  /** Message shown in the header when a logout attempt failed. */
+  logoutError?: string | null;
+  /** True while a logout is in flight; disables the menu item. */
+  isLoggingOut?: boolean;
   /** Callback for Compare with Live action */
   onCompareWithLive?: () => void;
   /** Callback for the publish action. When omitted, context's publishDocument is used. */
@@ -138,6 +143,16 @@ export function useP1Plugin(options: UseP1PluginOptions = {}): PuckPlugin {
     presenceEnabled: true,
     agentModeEnabled: false,
   };
+
+  // Consumers pass logout state as plain values; the header needs a store to
+  // re-render on, since the options Proxy below is invisible to React.
+  const [logoutStore] = useState(createLogoutStore);
+  useEffect(() => {
+    logoutStore.set({
+      isLoggingOut: options.isLoggingOut ?? false,
+      error: options.logoutError ?? null,
+    });
+  }, [logoutStore, options.isLoggingOut, options.logoutError]);
 
   // Build the full plugin options from context + consumer options,
   // gating features by the resolved featureConfig flags.
@@ -198,6 +213,7 @@ export function useP1Plugin(options: UseP1PluginOptions = {}): PuckPlugin {
     logoUrl: options.logoUrl,
     currentUser: options.currentUser,
     onLogout: options.onLogout,
+    logoutStore,
     onPublish: fc.enablePublishButton ? options.onPublish : undefined,
     onReviewAndPublish: options.onReviewAndPublish,
     onCreateWorkstream: options.onCreateWorkstream,

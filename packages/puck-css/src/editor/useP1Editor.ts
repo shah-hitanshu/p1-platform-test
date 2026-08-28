@@ -451,11 +451,38 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
   // so its context sync defers document switches to this store.
   const [documentSyncStore] = useState(createDocumentSyncStore);
 
+  // Logout gets its own state rather than the auth context's `error`, which is
+  // the login slot: it is written on a failed token validation that still
+  // leaves the user signed in, and cleared only by a later login. Borrowing it
+  // would show a logout failure for something that was never a logout.
+  const [logoutError, setLogoutError] = useState<string | null>(null);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  const handleLogout = useCallback(async () => {
+    setIsLoggingOut(true);
+    setLogoutError(null);
+    try {
+      const outcome = await logout();
+      if (outcome.status === 'error') {
+        // Still signed in and retryable, so hand the reason back to the header.
+        setLogoutError(outcome.message);
+        setIsLoggingOut(false);
+      }
+      // signed_out navigates away and no_session drops the session, so in both
+      // cases this component is on its way out — leave the pending state set.
+    } catch (err) {
+      setLogoutError(err instanceof Error ? err.message : 'Logout failed');
+      setIsLoggingOut(false);
+    }
+  }, [logout]);
+
   const p1Plugin = useP1Plugin({
     documentSyncStore,
     onSelectionChange: handleSelectionChange,
     currentUser: user ? { id: ccr.userId, name: user.name, email: user.email, avatar: user.picture } : undefined,
-    onLogout: logout,
+    onLogout: handleLogout,
+    logoutError,
+    isLoggingOut,
     puckConfig,
     ...pluginOptions,
     onPublish: handlePublish,

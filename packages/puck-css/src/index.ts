@@ -18,6 +18,7 @@ export {
   DEMO_USERS,
   P1LoginPage,
   P1_LOGGED_IN_KEY,
+  performLogout,
 } from './auth/index.js';
 export type {
   AuthMode,
@@ -25,6 +26,8 @@ export type {
   P1AuthContextValue,
   P1AuthProviderProps,
   P1LoginPageProps,
+  PerformLogoutConfig,
+  LogoutOutcome,
 } from './auth/index.js';
 
 // Provider and Context

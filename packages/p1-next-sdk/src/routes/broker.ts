@@ -180,3 +180,54 @@ export async function postBrokerRedeem(
 
   return NextResponse.json(body);
 }
+
+/**
+ * Unlike login and redeem, this carries no API key: logout authenticates with
+ * the broker JWT the browser already holds. The hop exists so a proxy-mode app
+ * can keep a same-origin connect-src, matching how login and redeem are routed.
+ */
+export async function postBrokerLogout(
+  request: Request,
+  baseUrl: string | undefined,
+) {
+  if (!baseUrl) {
+    return NextResponse.json(
+      { error: "Server configuration error" },
+      { status: 500 },
+    );
+  }
+
+  const authorization = request.headers.get("authorization");
+  if (authorization === null) {
+    return NextResponse.json(
+      { error: "Authentication required" },
+      { status: 401 },
+    );
+  }
+
+  const origin = request.headers.get("origin");
+  const response = await fetch(`${baseUrl}/broker/logout`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": authorization,
+      ...(origin !== null ? { "Origin": origin } : {}),
+    },
+    body: await request.text(),
+  });
+
+  const body = await response.json().catch(() => ({ error: "Unknown error" }));
+
+  if (!response.ok) {
+    return NextResponse.json(body, { status: response.status });
+  }
+
+  // CCR no longer returns a warning here, but an older backend might, and it
+  // names whether an origin is registered for a site. This route is public.
+  const { warning: _warning, ...clientBody } = body as { warning?: unknown } & Record<
+    string,
+    unknown
+  >;
+
+  return NextResponse.json(clientBody);
+}

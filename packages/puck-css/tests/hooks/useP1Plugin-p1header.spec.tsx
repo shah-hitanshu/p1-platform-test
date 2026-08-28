@@ -205,6 +205,30 @@ describe('useP1Plugin — P1 header props forwarding', () => {
     expect((capturedOptions as unknown as Record<string, unknown>).onLogout).toBe(onLogout);
   });
 
+  it('publishes logout state into a store the header can subscribe to', () => {
+    const wrapper = createWrapper(client);
+
+    const { rerender } = renderHook(
+      (props: any) => useP1Plugin(props),
+      { wrapper, initialProps: { logoutError: null, isLoggingOut: false } as any },
+    );
+
+    const store = (capturedOptions as unknown as Record<string, unknown>).logoutStore as
+      | { getSnapshot(): { isLoggingOut: boolean; error: string | null } }
+      | undefined;
+    expect(store).toBeDefined();
+    expect(store!.getSnapshot()).toEqual({ isLoggingOut: false, error: null });
+
+    rerender({ logoutError: 'Broker logout failed (502)', isLoggingOut: false } as any);
+    expect(store!.getSnapshot()).toEqual({
+      isLoggingOut: false,
+      error: 'Broker logout failed (502)',
+    });
+
+    rerender({ logoutError: null, isLoggingOut: true } as any);
+    expect(store!.getSnapshot()).toEqual({ isLoggingOut: true, error: null });
+  });
+
   it('forwards onCompareWithLive through the stable proxy', () => {
     const onCompareWithLive = vi.fn();
     const wrapper = createWrapper(client);

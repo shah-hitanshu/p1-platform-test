@@ -275,6 +275,49 @@ describe('BrokerJwtIdentityProvider', () => {
       expect(principal).toBeNull();
     });
 
+    // Every consumer of a broker principal reads siteId. Rejecting here keeps
+    // that field non-optional in practice rather than at every call site.
+    it.each([
+      ['missing', undefined],
+      ['empty', ''],
+    ])('returns null for a JWT with a %s site_id claim', async (_label, siteId) => {
+      const { macVerify } = await import('../../../src/auth/broker/gcp-kms-client.js');
+      const { BrokerJwtIdentityProvider } = await import('../../../src/auth/broker-jwt-identity-provider.js');
+
+      vi.mocked(macVerify).mockResolvedValue(true);
+
+      const provider = new BrokerJwtIdentityProvider({
+        issuer: ISSUER,
+        audience: AUDIENCE,
+        serviceAccountKeyJson: '{}',
+        keyResource: KEY_RESOURCE,
+      });
+
+      const token = buildJwt({}, { site_id: siteId });
+      expect(await provider.validateToken(token)).toBeNull();
+      // Rejected on claims alone — no KMS round trip.
+      expect(macVerify).not.toHaveBeenCalled();
+    });
+
+    it('sets siteId on the principal from the site_id claim', async () => {
+      const { macVerify } = await import('../../../src/auth/broker/gcp-kms-client.js');
+      const { BrokerJwtIdentityProvider } = await import('../../../src/auth/broker-jwt-identity-provider.js');
+
+      vi.mocked(macVerify).mockResolvedValue(true);
+
+      const provider = new BrokerJwtIdentityProvider({
+        issuer: ISSUER,
+        audience: AUDIENCE,
+        serviceAccountKeyJson: '{}',
+        keyResource: KEY_RESOURCE,
+      });
+
+      const principal = await provider.validateToken(buildJwt({}, { site_id: 'site-abc' }));
+      expect(principal?.siteId).toBe('site-abc');
+      // The logout route relies on this being empty, not on a roles fallback.
+      expect(principal?.pantheonSiteRoles).toEqual({});
+    });
+
     it('caches verified tokens to avoid redundant macVerify calls', async () => {
       const { macVerify } = await import('../../../src/auth/broker/gcp-kms-client.js');
       const { BrokerJwtIdentityProvider } = await import('../../../src/auth/broker-jwt-identity-provider.js');

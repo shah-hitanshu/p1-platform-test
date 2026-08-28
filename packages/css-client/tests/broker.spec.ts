@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { createBrokerAuth, hasPendingBrokerLogin, redeemPendingBrokerLogin } from '../src/broker.js';
+import { createBrokerAuth, brokerLogout, hasPendingBrokerLogin, redeemPendingBrokerLogin } from '../src/broker.js';
 import { createOAuthAuthProvider } from '../src/oauth.js';
 import type { BrokerAuthConfig } from '../src/broker.js';
 
@@ -54,7 +54,11 @@ const sessionStorageMock = (() => {
 Object.defineProperty(global, 'localStorage', { value: localStorageMock, writable: true });
 Object.defineProperty(global, 'sessionStorage', { value: sessionStorageMock, writable: true });
 Object.defineProperty(global, 'window', {
-  value: { localStorage: localStorageMock, sessionStorage: sessionStorageMock },
+  value: {
+    localStorage: localStorageMock,
+    sessionStorage: sessionStorageMock,
+    location: { href: '', origin: 'https://mysite.example.com' },
+  },
   writable: true,
   configurable: true,
 });
@@ -77,16 +81,24 @@ const defaultConfig: BrokerAuthConfig = {
 describe('createBrokerAuth', () => {
   const savedFetch = global.fetch;
 
+  let warnSpy: ReturnType<typeof vi.spyOn>;
+
   beforeEach(() => {
     localStorageMock.clear();
     sessionStorageMock.clear();
+    vi.clearAllMocks();
     mockFetch.mockReset();
     global.fetch = mockFetch;
     vi.restoreAllMocks();
+    warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    if (typeof window !== 'undefined' && window.location) {
+      (window as unknown as { location: { href: string } }).location.href = '';
+    }
   });
 
   afterEach(() => {
     global.fetch = savedFetch;
+    warnSpy.mockRestore();
   });
 
   it('creates a session with provider set to broker', () => {
@@ -212,10 +224,183 @@ describe('createBrokerAuth', () => {
     const session = createBrokerAuth(defaultConfig);
     expect(session.isAuthenticated()).toBe(true);
 
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({
+        logoutUrl: 'https://example.auth0.com/v2/logout?returnTo=...',
+      }),
+    });
+
     await session.logout();
     expect(session.isAuthenticated()).toBe(false);
     expect(session.getUserInfo()).toBeNull();
     expect(localStorageMock.removeItem).toHaveBeenCalledWith('ccr_broker_token');
+  });
+
+  it('POSTs to broker/logout with the broker JWT on logout', async () => {
+    const jwt = createTestJwt({
+      sub: 'user-1',
+      exp: Math.floor(Date.now() / 1000) + 3600,
+    });
+    localStorageMock.setItem('css_broker_token', jwt);
+    const session = createBrokerAuth(defaultConfig);
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({
+        logoutUrl: 'https://example.auth0.com/v2/logout?returnTo=...',
+      }),
+    });
+
+    await session.logout();
+
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    const [url, opts] = mockFetch.mock.calls[0];
+    expect(url).toBe('https://css-api.example.com/broker/logout');
+    expect(opts.method).toBe('POST');
+    expect(opts.headers['Authorization']).toBe(`Bearer ${jwt}`);
+    expect(opts.headers['Content-Type']).toBe('application/json');
+    const body = JSON.parse(opts.body as string);
+    expect(body).toHaveProperty('returnTo');
+  });
+
+  // defaultConfig carries a siteApiToken, so every other logout test above runs
+  // in direct mode. P1AuthProvider builds its session without one.
+  it('POSTs logout through the proxy path when no siteApiToken is configured', async () => {
+    const jwt = createTestJwt({
+      sub: 'user-1',
+      exp: Math.floor(Date.now() / 1000) + 3600,
+    });
+    localStorageMock.setItem('ccr_broker_token', jwt);
+    const session = createBrokerAuth({
+      cssBaseUrl: 'https://css-api.example.com',
+      onLoginUrl: vi.fn(),
+    });
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({
+        logoutUrl: 'https://example.auth0.com/v2/logout?returnTo=...',
+      }),
+    });
+
+    await session.logout();
+
+    const [url, opts] = mockFetch.mock.calls[0];
+    expect(url).toBe('/p1/auth/logout');
+    expect(opts.headers['Authorization']).toBe(`Bearer ${jwt}`);
+  });
+
+  it('redirects to logoutUrl returned by the broker on logout', async () => {
+    const jwt = createTestJwt({
+      sub: 'user-1',
+      exp: Math.floor(Date.now() / 1000) + 3600,
+    });
+    localStorageMock.setItem('css_broker_token', jwt);
+    const session = createBrokerAuth(defaultConfig);
+
+    const logoutUrl = 'https://example.auth0.com/v2/logout?client_id=abc&returnTo=https://mysite.com';
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ logoutUrl }),
+    });
+
+    await session.logout();
+
+    expect((window as unknown as { location: { href: string } }).location.href).toBe(logoutUrl);
+  });
+
+  it('preserves broker token in localStorage when logout call fails (network error)', async () => {
+    const jwt = createTestJwt({
+      sub: 'user-1',
+      email: 'user@example.com',
+      exp: Math.floor(Date.now() / 1000) + 3600,
+    });
+    localStorageMock.setItem('css_broker_token', jwt);
+    const session = createBrokerAuth(defaultConfig);
+    expect(session.isAuthenticated()).toBe(true);
+
+    mockFetch.mockRejectedValueOnce(new Error('Network error'));
+
+    const outcome = await session.logout();
+
+    expect(outcome.status).toBe('error');
+    // Token is preserved in localStorage on failure — user can retry
+    expect(session.isAuthenticated()).toBe(true);
+    // The identity stays with the credential, so the session is never
+    // authenticated-but-anonymous.
+    expect(session.getUserInfo()).not.toBeNull();
+    expect(localStorageMock.removeItem).not.toHaveBeenCalledWith('ccr_broker_token');
+  });
+
+  it('preserves broker token in localStorage when broker returns non-ok response', async () => {
+    const jwt = createTestJwt({
+      sub: 'user-1',
+      exp: Math.floor(Date.now() / 1000) + 3600,
+    });
+    localStorageMock.setItem('css_broker_token', jwt);
+    const session = createBrokerAuth(defaultConfig);
+
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+      json: () => Promise.resolve({ error: 'Internal error' }),
+    });
+
+    await session.logout();
+    // Token preserved on failure so the user can retry
+    expect(session.isAuthenticated()).toBe(true);
+    expect(localStorageMock.removeItem).not.toHaveBeenCalledWith('ccr_broker_token');
+  });
+
+  it('calls backend without Authorization when no token is stored on logout', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ logoutUrl: 'https://auth0.example.com/v2/logout' }),
+    });
+    const session = createBrokerAuth(defaultConfig);
+    await session.logout();
+    expect(mockFetch).toHaveBeenCalledOnce();
+    const [, opts] = mockFetch.mock.calls[0];
+    expect(opts.headers['Authorization']).toBeUndefined();
+  });
+
+  it('does not redirect and preserves token when broker response is missing logoutUrl', async () => {
+    const jwt = createTestJwt({
+      sub: 'user-1',
+      exp: Math.floor(Date.now() / 1000) + 3600,
+    });
+    localStorageMock.setItem('css_broker_token', jwt);
+    const session = createBrokerAuth(defaultConfig);
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({}),
+    });
+
+    await session.logout();
+    expect((window as unknown as { location: { href: string } }).location.href).toBe('');
+    // Treated as error — token preserved so user can retry
+    expect(session.isAuthenticated()).toBe(true);
+    expect(localStorageMock.removeItem).not.toHaveBeenCalledWith('ccr_broker_token');
+  });
+
+  it('preserves broker token when fetch times out', async () => {
+    const jwt = createTestJwt({
+      sub: 'user-1',
+      exp: Math.floor(Date.now() / 1000) + 3600,
+    });
+    localStorageMock.setItem('css_broker_token', jwt);
+    const session = createBrokerAuth(defaultConfig);
+
+    mockFetch.mockImplementationOnce(() => new Promise((_resolve, reject) => {
+      setTimeout(() => reject(new DOMException('The operation was aborted.', 'TimeoutError')), 5);
+    }));
+
+    await session.logout();
+    // Timeout is treated as error — token preserved so user can retry
+    expect(session.isAuthenticated()).toBe(true);
+    expect(localStorageMock.removeItem).not.toHaveBeenCalledWith('ccr_broker_token');
   });
 
   describe('login()', () => {
@@ -1030,6 +1215,217 @@ describe('createBrokerAuth', () => {
 
       await expect(authProvider()).rejects.toThrow('No OAuth token available');
     });
+  });
+});
+
+describe('brokerLogout()', () => {
+  const savedFetch = global.fetch;
+
+  beforeEach(() => {
+    localStorageMock.clear();
+    sessionStorageMock.clear();
+    vi.clearAllMocks();
+    mockFetch.mockReset();
+    global.fetch = mockFetch;
+  });
+
+  afterEach(() => {
+    global.fetch = savedFetch;
+  });
+
+  it('calls backend without Authorization when no token is stored and returns signed_out', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ logoutUrl: 'https://auth0.example.com/v2/logout' }),
+    });
+    const outcome = await brokerLogout({ cssBaseUrl: 'https://css-api.example.com' });
+    expect(outcome).toEqual({ status: 'signed_out', logoutUrl: 'https://auth0.example.com/v2/logout' });
+    expect(mockFetch).toHaveBeenCalledOnce();
+    const [, opts] = mockFetch.mock.calls[0];
+    expect(opts.headers['Authorization']).toBeUndefined();
+  });
+
+  it('reads ccr_broker_token by default (post-rename key)', async () => {
+    const jwt = createTestJwt({ sub: 'user-1', exp: Math.floor(Date.now() / 1000) + 3600 });
+    localStorageMock.setItem('ccr_broker_token', jwt);
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ logoutUrl: 'https://auth0.example.com/v2/logout' }),
+    });
+
+    const outcome = await brokerLogout({ cssBaseUrl: 'https://css-api.example.com' });
+    expect(outcome.status).toBe('signed_out');
+    const [, opts] = mockFetch.mock.calls[0];
+    expect(opts.headers['Authorization']).toBe(`Bearer ${jwt}`);
+  });
+
+  it('migrates css_broker_token to ccr_broker_token and reads it', async () => {
+    const jwt = createTestJwt({ sub: 'user-1', exp: Math.floor(Date.now() / 1000) + 3600 });
+    localStorageMock.setItem('css_broker_token', jwt);
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ logoutUrl: 'https://auth0.example.com/v2/logout' }),
+    });
+
+    const outcome = await brokerLogout({ cssBaseUrl: 'https://css-api.example.com' });
+    expect(outcome.status).toBe('signed_out');
+    // Legacy key removed, post-rename key used for auth
+    expect(localStorageMock.removeItem).toHaveBeenCalledWith('css_broker_token');
+  });
+
+  it('returns signed_out with logoutUrl on a successful CCR response', async () => {
+    const jwt = createTestJwt({ sub: 'user-1', exp: Math.floor(Date.now() / 1000) + 3600 });
+    localStorageMock.setItem('ccr_broker_token', jwt);
+
+    const logoutUrl = 'https://auth0.example.com/v2/logout?client_id=abc';
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ logoutUrl }),
+    });
+
+    const outcome = await brokerLogout({ cssBaseUrl: 'https://css-api.example.com' });
+    expect(outcome).toEqual({ status: 'signed_out', logoutUrl });
+  });
+
+  it('does not navigate — caller is responsible for window.location.href', async () => {
+    const jwt = createTestJwt({ sub: 'user-1', exp: Math.floor(Date.now() / 1000) + 3600 });
+    localStorageMock.setItem('ccr_broker_token', jwt);
+    const hrefBefore = (window as unknown as { location: { href: string } }).location.href;
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ logoutUrl: 'https://auth0.example.com/v2/logout' }),
+    });
+
+    await brokerLogout({ cssBaseUrl: 'https://css-api.example.com' });
+    expect((window as unknown as { location: { href: string } }).location.href).toBe(hrefBefore);
+  });
+
+  it('removes the broker token from storage only after a successful CCR response', async () => {
+    const jwt = createTestJwt({ sub: 'user-1', exp: Math.floor(Date.now() / 1000) + 3600 });
+    localStorageMock.setItem('ccr_broker_token', jwt);
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ logoutUrl: 'https://auth0.example.com/v2/logout' }),
+    });
+
+    await brokerLogout({ cssBaseUrl: 'https://css-api.example.com' });
+    expect(localStorageMock.removeItem).toHaveBeenCalledWith('ccr_broker_token');
+  });
+
+  it('returns error and does NOT remove token when CCR returns non-2xx', async () => {
+    const jwt = createTestJwt({ sub: 'user-1', exp: Math.floor(Date.now() / 1000) + 3600 });
+    localStorageMock.setItem('ccr_broker_token', jwt);
+
+    mockFetch.mockResolvedValueOnce({ ok: false, status: 500 });
+
+    const outcome = await brokerLogout({ cssBaseUrl: 'https://css-api.example.com' });
+    expect(outcome.status).toBe('error');
+    expect((outcome as { status: 'error'; message: string }).message).toContain('500');
+    expect(localStorageMock.removeItem).not.toHaveBeenCalledWith('ccr_broker_token');
+  });
+
+  it('returns error and does NOT remove token on network failure', async () => {
+    const jwt = createTestJwt({ sub: 'user-1', exp: Math.floor(Date.now() / 1000) + 3600 });
+    localStorageMock.setItem('ccr_broker_token', jwt);
+
+    mockFetch.mockRejectedValueOnce(new Error('Network error'));
+
+    const outcome = await brokerLogout({ cssBaseUrl: 'https://css-api.example.com' });
+    expect(outcome.status).toBe('error');
+    expect((outcome as { status: 'error'; message: string }).message).toContain('Network error');
+    expect(localStorageMock.removeItem).not.toHaveBeenCalledWith('ccr_broker_token');
+  });
+
+  it('returns error when CCR response is missing logoutUrl', async () => {
+    const jwt = createTestJwt({ sub: 'user-1', exp: Math.floor(Date.now() / 1000) + 3600 });
+    localStorageMock.setItem('ccr_broker_token', jwt);
+
+    mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({}) });
+
+    const outcome = await brokerLogout({ cssBaseUrl: 'https://css-api.example.com' });
+    expect(outcome.status).toBe('error');
+    expect(localStorageMock.removeItem).not.toHaveBeenCalledWith('ccr_broker_token');
+  });
+
+  // Callers assign logoutUrl to window.location, so a javascript: URL would
+  // execute in the page's origin. The token is kept, as with any other error.
+  it.each([
+    ['javascript:alert(1)', 'javascript:'],
+    ['data:text/html,<script>alert(1)</script>', 'data:'],
+    ['http://auth0.example.com/v2/logout', 'http:'],
+  ])('rejects a non-HTTPS logoutUrl (%s)', async (logoutUrl) => {
+    const jwt = createTestJwt({ sub: 'user-1', exp: Math.floor(Date.now() / 1000) + 3600 });
+    localStorageMock.setItem('ccr_broker_token', jwt);
+
+    mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ logoutUrl }) });
+
+    const outcome = await brokerLogout({ cssBaseUrl: 'https://css-api.example.com' });
+
+    expect(outcome.status).toBe('error');
+    expect((outcome as { status: 'error'; message: string }).message).toContain('non-HTTPS');
+    expect(localStorageMock.removeItem).not.toHaveBeenCalledWith('ccr_broker_token');
+  });
+
+  it('returns error when logoutUrl is not a parseable URL', async () => {
+    const jwt = createTestJwt({ sub: 'user-1', exp: Math.floor(Date.now() / 1000) + 3600 });
+    localStorageMock.setItem('ccr_broker_token', jwt);
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ logoutUrl: '/not-absolute' }),
+    });
+
+    const outcome = await brokerLogout({ cssBaseUrl: 'https://css-api.example.com' });
+
+    expect(outcome.status).toBe('error');
+    expect((outcome as { status: 'error'; message: string }).message).toContain('malformed');
+    expect(localStorageMock.removeItem).not.toHaveBeenCalledWith('ccr_broker_token');
+  });
+
+  it('uses custom storageKey', async () => {
+    const jwt = createTestJwt({ sub: 'user-1', exp: Math.floor(Date.now() / 1000) + 3600 });
+    localStorageMock.setItem('my_key', jwt);
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ logoutUrl: 'https://auth0.example.com/v2/logout' }),
+    });
+
+    const outcome = await brokerLogout({ cssBaseUrl: 'https://css-api.example.com', storageKey: 'my_key' });
+    expect(outcome.status).toBe('signed_out');
+    expect(localStorageMock.removeItem).toHaveBeenCalledWith('my_key');
+  });
+
+  it('routes through proxy path (/p1/auth/logout) when siteApiToken is absent', async () => {
+    const jwt = createTestJwt({ sub: 'user-1', exp: Math.floor(Date.now() / 1000) + 3600 });
+    localStorageMock.setItem('ccr_broker_token', jwt);
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ logoutUrl: 'https://auth0.example.com/v2/logout' }),
+    });
+
+    await brokerLogout({ cssBaseUrl: 'https://css-api.example.com' });
+    const [url] = mockFetch.mock.calls[0];
+    expect(url).toBe('/p1/auth/logout');
+  });
+
+  it('routes directly to cssBaseUrl when siteApiToken is present', async () => {
+    const jwt = createTestJwt({ sub: 'user-1', exp: Math.floor(Date.now() / 1000) + 3600 });
+    localStorageMock.setItem('ccr_broker_token', jwt);
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ logoutUrl: 'https://auth0.example.com/v2/logout' }),
+    });
+
+    await brokerLogout({ cssBaseUrl: 'https://css-api.example.com', siteApiToken: 'tok_abc' });
+    const [url] = mockFetch.mock.calls[0];
+    expect(url).toBe('https://css-api.example.com/broker/logout');
   });
 });
 

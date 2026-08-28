@@ -30,6 +30,7 @@ import {
 
 const TRANSACTION_TTL_MS = 300_000; // 5 minutes
 const TRANSACTION_STORAGE_KEY = 'transaction';
+const NONCE_CLAIM_STORAGE_KEY = 'nonce-claim';
 
 /** Maximum length for transaction/token IDs (UUIDs are 36 chars) */
 const MAX_TX_ID_LENGTH = 64;
@@ -72,6 +73,12 @@ export interface ApproveUserInfo {
   userAvatarUrl?: string;
 }
 
+interface NonceClaimRecord {
+  id: string;
+  claimedAt: number;
+  expiresAt: number;
+}
+
 /** This Durable Object takes no bindings. */
 type BrokerTransactionEnv = Record<string, never>;
 
@@ -86,6 +93,7 @@ export class BrokerTransaction extends DurableObject<BrokerTransactionEnv> {
   }
 
   private transaction: LoginTransaction | null = null;
+  private nonceClaim: NonceClaimRecord | null = null;
   private initialized = false;
 
   // ===========================================================================
@@ -109,6 +117,11 @@ export class BrokerTransaction extends DurableObject<BrokerTransactionEnv> {
       if (typeof stored === 'object' && stored !== null) {
         this.transaction = stored as LoginTransaction;
       }
+
+      const storedNonceClaim: unknown = await this.state.storage.get(NONCE_CLAIM_STORAGE_KEY);
+      if (typeof storedNonceClaim === 'object' && storedNonceClaim !== null) {
+        this.nonceClaim = storedNonceClaim as NonceClaimRecord;
+      }
     } catch (error) {
       console.warn('[BrokerTransaction] Failed to restore from storage:', error);
     }
@@ -131,6 +144,7 @@ export class BrokerTransaction extends DurableObject<BrokerTransactionEnv> {
   private validateFields(fields: Record<string, string | null | undefined>): void {
     const limits: Record<string, number> = {
       txId: MAX_TX_ID_LENGTH,
+      nonce: MAX_TX_ID_LENGTH,
       siteId: MAX_SITE_ID_LENGTH,
       siteApiTokenId: MAX_TX_ID_LENGTH,
       userId: MAX_ACTOR_ID_LENGTH,
@@ -197,6 +211,14 @@ export class BrokerTransaction extends DurableObject<BrokerTransactionEnv> {
       if (method === 'redeem' && request.method === 'POST') {
         const tx = await this.redeem();
         return new Response(JSON.stringify(tx), {
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      if (method === 'nonce/claim' && request.method === 'POST') {
+        const body: { nonce: string; ttlSeconds?: number } = await request.json();
+        const result = await this.claimNonce(body.nonce, body.ttlSeconds ?? 600);
+        return new Response(JSON.stringify(result), {
           headers: { 'Content-Type': 'application/json' },
         });
       }
@@ -343,19 +365,46 @@ export class BrokerTransaction extends DurableObject<BrokerTransactionEnv> {
     return this.transaction;
   }
 
+  /**
+   * Atomically claims a single-use nonce. Returns `{ claimed: true }` for the
+   * first caller against this DO instance (one instance per idFromName(nonce));
+   * every later call for the same nonce returns `{ claimed: false }`, making
+   * this the single-use enforcement for one-shot capabilities like signed
+   * logout state.
+   */
+  async claimNonce(id: string, ttlSeconds: number): Promise<{ claimed: boolean }> {
+    await this.initializeIfNeeded();
+    this.validateFields({ nonce: id });
+
+    if (this.nonceClaim !== null) {
+      return { claimed: false };
+    }
+
+    const now = Math.floor(Date.now() / 1000);
+    this.nonceClaim = { id, claimedAt: now, expiresAt: now + ttlSeconds };
+
+    await this.state.storage.put(NONCE_CLAIM_STORAGE_KEY, this.nonceClaim);
+    await this.state.storage.setAlarm(Date.now() + ttlSeconds * 1000);
+
+    return { claimed: true };
+  }
+
   // ===========================================================================
   // Alarm Handler
   // ===========================================================================
 
   /**
-   * Alarm handler for automatic transaction cleanup.
-   * Fires after 5 minutes (on create) or 60 seconds (on redeem).
+   * Alarm handler for automatic transaction/nonce-claim cleanup.
+   * Fires after 5 minutes (on create), 60 seconds (on redeem), or the
+   * caller-supplied TTL (on claimNonce).
    */
   async alarm(): Promise<void> {
     await this.initializeIfNeeded();
 
     // Auto-cleanup when alarm fires
     this.transaction = null;
+    this.nonceClaim = null;
     await this.state.storage.delete(TRANSACTION_STORAGE_KEY);
+    await this.state.storage.delete(NONCE_CLAIM_STORAGE_KEY);
   }
 }

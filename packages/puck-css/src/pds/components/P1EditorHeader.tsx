@@ -52,7 +52,14 @@ export interface P1EditorHeaderProps {
   onSelectDocument: (doc: PageNavigatorDocument) => void;
   onCreateDocument?: (path: string, template?: TemplateSummary | null, title?: string) => Promise<void>;
   onGenerateWithAI?: (brief: string, page: { path: string; title: string }) => void;
-  onLogout: () => void;
+  onLogout: () => void | Promise<void>;
+  /**
+   * Set when a logout attempt failed. Rendered in the header rather than the
+   * user menu, which closes on click before the attempt resolves.
+   */
+  logoutError?: string | null;
+  /** True while a logout is in flight; disables the menu item. */
+  isLoggingOut?: boolean;
   templates?: TemplateSummary[];
   templatesLoading?: boolean;
   /** Data sources (built-in + user) for the modal's collection builder. */
@@ -83,6 +90,8 @@ export function P1EditorHeader({
   onCreateDocument,
   onGenerateWithAI,
   onLogout,
+  logoutError,
+  isLoggingOut,
   templates,
   templatesLoading,
   onCreateTemplate,
@@ -269,6 +278,18 @@ export function P1EditorHeader({
 
   return (
     <header data-testid="p1-editor-header" className={styles.header}>
+      {/* The user menu closes as soon as Log out is clicked, so both the
+          in-flight and the failed state have to surface out here instead. */}
+      {isLoggingOut && (
+        <p role="status" data-testid="logout-pending" className={styles.logoutStatus}>
+          Signing you out…
+        </p>
+      )}
+      {!isLoggingOut && logoutError && (
+        <p role="alert" data-testid="logout-error" className={styles.logoutStatus} data-variant="error">
+          You are still signed in — {logoutError}
+        </p>
+      )}
       {/* Branding */}
       <a
         href={dashboardHref}
@@ -497,13 +518,16 @@ export function P1EditorHeader({
               role="menuitem"
               data-testid="user-menu-logout"
               className={styles.dropdownMenuItem}
+              disabled={isLoggingOut}
+              aria-busy={isLoggingOut}
               onClick={() => {
+                if (isLoggingOut) return;
                 setUserMenuOpen(false);
                 onLogout();
               }}
             >
               <Icon iconName="bracketRight" size="s" aria-hidden="true" />
-              Log out
+              {isLoggingOut ? 'Logging out…' : 'Log out'}
             </button>
           </div>,
           document.body

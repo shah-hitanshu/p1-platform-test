@@ -559,4 +559,55 @@ describe('BrokerTransaction Durable Object', () => {
       expect(tx.id).toBe('a'.repeat(64));
     });
   });
+
+  describe('claimNonce', () => {
+    it('returns claimed:true on a fresh DO instance (cold start)', async () => {
+      const state = createMockDurableObjectState('nonce-cold');
+      const doInstance = new BrokerTransaction(state, {});
+
+      const result = await doInstance.claimNonce('nonce-cold', 600);
+      expect(result).toEqual({ claimed: true });
+    });
+
+    it('returns claimed:false on the second call for the same nonce', async () => {
+      const state = createMockDurableObjectState('nonce-replay');
+      const doInstance = new BrokerTransaction(state, {});
+
+      const first = await doInstance.claimNonce('nonce-replay', 600);
+      const second = await doInstance.claimNonce('nonce-replay', 600);
+
+      expect(first).toEqual({ claimed: true });
+      expect(second).toEqual({ claimed: false });
+    });
+
+    it('persists the claim, so a rebuilt instance over the same storage rejects a replay', async () => {
+      // The single-use nonce is what stops a logout link redirecting twice, and
+      // in-memory state alone would lose it when the DO is evicted.
+      const state = createMockDurableObjectState('nonce-evicted');
+
+      const first = await new BrokerTransaction(state, {}).claimNonce('nonce-evicted', 600);
+      const second = await new BrokerTransaction(state, {}).claimNonce('nonce-evicted', 600);
+
+      expect(first).toEqual({ claimed: true });
+      expect(second).toEqual({ claimed: false });
+    });
+
+    it('returns claimed:false when nonce is already persisted in storage (simulates warm DO after eviction)', async () => {
+      const state = createMockDurableObjectState('nonce-warm');
+      // Pre-populate storage to simulate a DO that was previously initialized
+      // and then evicted — the next request starts cold but storage has the record.
+      const existingClaim = { id: 'nonce-warm', claimedAt: 1000, expiresAt: 1600 };
+      vi.mocked(state.storage.get as (key: string) => Promise<unknown>).mockImplementation(
+        async (key: string) => {
+          if (key === 'nonce-claim') return existingClaim;
+          return undefined;
+        },
+      );
+
+      const doInstance = new BrokerTransaction(state, {});
+      const result = await doInstance.claimNonce('nonce-warm', 600);
+
+      expect(result).toEqual({ claimed: false });
+    });
+  });
 });

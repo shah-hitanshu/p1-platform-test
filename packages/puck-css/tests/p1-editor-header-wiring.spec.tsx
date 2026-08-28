@@ -122,6 +122,8 @@ vi.mock('../src/pds/components/P1EditorHeader.js', () => ({
     currentDocument,
     branches,
     collaborators,
+    logoutError,
+    isLoggingOut,
   }: Record<string, unknown>) => {
     const isMain = (currentBranch as { isMain: boolean } | null)?.isMain ?? true;
     const collabs = (collaborators ?? []) as { name?: string; avatar?: string }[];
@@ -156,6 +158,8 @@ vi.mock('../src/pds/components/P1EditorHeader.js', () => ({
           {(siteMenuItems as unknown[])?.length ?? 0}
         </span>
         <span data-testid="has-user">{currentUser ? 'yes' : 'no'}</span>
+        <span data-testid="logout-error">{(logoutError as string | null) ?? ''}</span>
+        <span data-testid="logout-pending">{isLoggingOut ? 'yes' : 'no'}</span>
         <span data-testid="current-doc-path">
           {(currentDocument as { path: string } | null)?.path ?? ''}
         </span>
@@ -241,6 +245,7 @@ vi.mock('../src/merge/components/merge-resolution/MergeReviewPage.js', () => ({
 // ---------------------------------------------------------------------------
 
 import { createP1Plugin } from '../src/editor/plugin/P1Plugin.js';
+import { createLogoutStore } from '../src/editor/logout-store.js';
 
 // ---------------------------------------------------------------------------
 // Shared test data
@@ -481,6 +486,37 @@ describe('createP1Plugin overrides.header — P1EditorHeader', () => {
       screen.getByTestId('logout-btn').click();
     });
     expect(onLogout).toHaveBeenCalledOnce();
+  });
+
+  describe('logout state', () => {
+    // Puck memoizes the header, and plugin options are read through a Proxy React
+    // cannot observe, so a plain option would never reach the rendered header.
+    it('re-renders the header each time the logout store changes', async () => {
+      const logoutStore = createLogoutStore();
+      renderHeader(createP1Plugin({ ...baseOptions, logoutStore }));
+
+      expect(screen.getByTestId('logout-pending').textContent).toBe('no');
+      expect(screen.getByTestId('logout-error').textContent).toBe('');
+
+      await act(async () => {
+        logoutStore.set({ isLoggingOut: true, error: null });
+      });
+      expect(screen.getByTestId('logout-pending').textContent).toBe('yes');
+      expect(screen.getByTestId('logout-error').textContent).toBe('');
+
+      await act(async () => {
+        logoutStore.set({ isLoggingOut: false, error: 'Broker logout failed (502)' });
+      });
+      expect(screen.getByTestId('logout-pending').textContent).toBe('no');
+      expect(screen.getByTestId('logout-error').textContent).toBe('Broker logout failed (502)');
+    });
+
+    it('shows an idle logout state when no store is supplied', () => {
+      renderHeader(createP1Plugin(baseOptions));
+
+      expect(screen.getByTestId('logout-pending').textContent).toBe('no');
+      expect(screen.getByTestId('logout-error').textContent).toBe('');
+    });
   });
 });
 

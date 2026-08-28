@@ -8,14 +8,7 @@
  * Framework-agnostic within React — works with Next.js, Remix, Vite, CRA, etc.
  */
 
-import React, {
-  createContext,
-  useContext,
-  useState,
-  useCallback,
-  useEffect,
-  useRef,
-} from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import {
   createBrokerAuth,
   validateToken,
@@ -24,6 +17,9 @@ import {
   redeemPendingBrokerLogin,
 } from '@pantheon-systems/css-client';
 import type { OAuthSession, OAuthUserInfo, BrokerRedeemResult } from '@pantheon-systems/css-client';
+import { performLogout } from './logout.js';
+import type { LogoutOutcome } from './logout.js';
+import { DEFAULT_TOKEN_KEY, P1_LOGGED_IN_KEY } from './storage-keys.js';
 
 export type AuthMode = 'mock' | 'broker';
 
@@ -43,7 +39,12 @@ export interface P1AuthContextValue {
   authMode: AuthMode;
   isSessionExpired: boolean;
   login(userId?: string): Promise<void>;
-  logout(): Promise<void>;
+  /**
+   * Returns the outcome rather than throwing. `error` means the credential was
+   * deliberately kept and the user is still signed in, so the caller has to say
+   * so — `error` on this context is the login slot and is not set here.
+   */
+  logout(): Promise<LogoutOutcome>;
   getToken: () => Promise<string | null>;
 }
 
@@ -59,9 +60,7 @@ export const DEMO_USERS = [
   { id: '33333333-3333-3333-3333-333333333333', name: 'Carol Coder' },
 ];
 
-const DEFAULT_TOKEN_KEY = 'p1_auth_token';
-
-export const P1_LOGGED_IN_KEY = 'p1_logged_in';
+export { P1_LOGGED_IN_KEY };
 
 /**
  * Where to land after the broker round trip. The broker can only redirect to
@@ -138,7 +137,9 @@ export function P1AuthProvider(props: P1AuthProviderProps): React.ReactElement {
     return createBrokerAuth({
       cssBaseUrl: props.p1BaseUrl,
       loginMode: 'redirect',
-      onLoginUrl: (url) => { window.location.href = url; },
+      onLoginUrl: (url) => {
+        window.location.href = url;
+      },
     });
   });
 
@@ -324,19 +325,37 @@ export function P1AuthProvider(props: P1AuthProviderProps): React.ReactElement {
     [authMode, brokerSession, p1BaseUrl, storageKey],
   );
 
-  const logout = useCallback(async () => {
+  const logout = useCallback(async (): Promise<LogoutOutcome> => {
+    let outcome: LogoutOutcome;
+
     if (authMode === 'mock') {
       localStorage.removeItem(storageKey);
-    } else if (brokerSession) {
-      await brokerSession.logout();
+      localStorage.removeItem(P1_LOGGED_IN_KEY);
+      // Mock mode has no Auth0 session behind it, so there is nothing for the
+      // caller to redirect to — the local clear above is the whole logout.
+      outcome = { status: 'no_session' };
+    } else {
+      outcome = await performLogout({ cssBaseUrl: p1BaseUrl, tokenStorageKey: storageKey });
+      if (outcome.status === 'signed_out') {
+        window.location.href = outcome.logoutUrl;
+        return outcome; // navigation takes over; state cleanup happens on next load
+      }
+      if (outcome.status === 'error') {
+        // The token is kept on purpose so the user can retry. Clearing state
+        // here would render signed out over a live credential, and the next
+        // mount would read the token back and sign them straight in again.
+        // Deliberately not setError: that slot belongs to login, is cleared
+        // only by login, and a stale value there would outlive this attempt.
+        return outcome;
+      }
+      // no_session: performLogout has already cleared the puck-css keys.
     }
 
-    localStorage.removeItem(P1_LOGGED_IN_KEY);
     setToken(null);
     setUser(null);
-    setError(null);
     setIsSessionExpired(false);
-  }, [authMode, brokerSession, storageKey]);
+    return outcome;
+  }, [authMode, p1BaseUrl, storageKey]);
 
   const value: P1AuthContextValue = {
     isAuthenticated,

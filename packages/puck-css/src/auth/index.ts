@@ -24,3 +24,6 @@ export type {
 
 export { P1LoginPage } from './P1LoginPage.js';
 export type { P1LoginPageProps } from './P1LoginPage.js';
+
+export { performLogout } from './logout.js';
+export type { PerformLogoutConfig, LogoutOutcome } from './logout.js';

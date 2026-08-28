@@ -9,13 +9,37 @@
 
 import { issueBrokerJwt } from '../auth/broker/jwt-issuer.js';
 import { exchangeAuth0Code, getAuth0AuthorizationUrl } from '../auth/oauth/auth0-handler.js';
-import { signState, verifyAndParseState } from '../auth/oauth/state-signing.js';
+import {
+  DEFAULT_STATE_TTL_SECONDS,
+  signState,
+  verifyAndParseState,
+} from '../auth/oauth/state-signing.js';
 import type { LoginTransaction } from '../durable-objects/broker-transaction.js';
 import { requireEnv } from '../env.js';
 import type { Env } from '../index.js';
 import { authenticate } from '../middleware/authentication.js';
+import type { AuthenticatedPrincipal } from '../types.js';
 import { getCachedSiteAllowedOrigins } from '../services/site-service.js';
 import { resolveBrokerRedirectUrl } from '../auth/broker/redirect-origin.js';
+import { getLogger } from '@pantheon-systems/p1-telemetry';
+
+function loggedOutPage(): Response {
+  return new Response(
+    '<html><body><h1>Logged out</h1><p>You have been logged out. You may close this window.</p></body></html>',
+    { status: 200, headers: { 'Content-Type': 'text/html' } },
+  );
+}
+
+/**
+ * The site a principal is allowed to authorise a redirect for, or undefined if
+ * it is allowed to authorise none. Scope to one site is the whole rule — which
+ * provider issued the credential does not enter into it.
+ */
+function authorizedSiteId(principal: AuthenticatedPrincipal | null): string | undefined {
+  if (principal === null) return undefined;
+  if (principal.siteId === undefined || principal.siteId === '') return undefined;
+  return principal.siteId;
+}
 
 function generateNonce(): string {
   const bytes = new Uint8Array(16);
@@ -34,14 +58,16 @@ function errorResponse(error: string, status: number): Response {
   return jsonResponse({ error }, status);
 }
 
+function trimTrailingSlashes(s: string): string {
+  let end = s.length;
+  while (end > 0 && s[end - 1] === '/') end--;
+  return s.slice(0, end);
+}
+
 function getPublicOrigin(request: Request, env: Env): string {
   const configured = env.PUBLIC_ORIGIN;
   if (configured !== undefined && configured !== '') {
-    let origin = configured;
-    while (origin.endsWith('/')) {
-      origin = origin.slice(0, -1);
-    }
-    return origin;
+    return trimTrailingSlashes(configured);
   }
   return new URL(request.url).origin;
 }
@@ -55,7 +81,7 @@ async function handleDoResponse<T>(response: Response, fallbackError: string): P
     const error: { error?: string } = await response.json();
     throw new Error(error.error ?? fallbackError);
   }
-  return (await response.json());
+  return await response.json();
 }
 
 export async function handleBrokerRoutes(
@@ -354,7 +380,7 @@ export async function handleBrokerRoutes(
       return errorResponse('Site mismatch', 403);
     }
 
-    const issuer = (env.BROKER_JWT_ISSUER) ?? getPublicOrigin(request, env);
+    const issuer = env.BROKER_JWT_ISSUER ?? getPublicOrigin(request, env);
 
     try {
       const token = await issueBrokerJwt({
@@ -362,7 +388,7 @@ export async function handleBrokerRoutes(
         keyResource: requireEnv(env, 'GCP_KMS_KEY_RESOURCE'),
         issuer,
         subject: tx.userId ?? '',
-        audience: (env.BROKER_JWT_AUDIENCE) ?? 'css-api',
+        audience: env.BROKER_JWT_AUDIENCE ?? 'css-api',
         ttlSeconds: 3600,
         siteId: tx.siteId,
         email: tx.userEmail ?? '',
@@ -379,6 +405,146 @@ export async function handleBrokerRoutes(
       );
       return errorResponse('Failed to issue token', 502);
     }
+  }
+
+  // POST /broker/logout — mint an Auth0 logout URL. Unauthenticated by design: the
+  // URL comes from config and a fresh nonce, never from the caller, so a credential
+  // only ever buys a validated returnTo.
+  if (path === '/broker/logout' && request.method === 'POST') {
+    const principal = await authenticate(request, env);
+
+    // Only a site-scoped principal can authorise a returnTo — that site's
+    // registered origins are the allow-list. Without one, no target reaches the
+    // signed state, so an anonymous caller cannot mint a reusable redirect here.
+    const siteId = authorizedSiteId(principal);
+
+    const issuerBase = requireEnv(env, 'AUTH0_ISSUER_BASE_URL');
+    const clientId = requireEnv(env, 'AUTH0_CLIENT_ID');
+
+    // Resolve returnTo server-side: validate against the site's allowed origins.
+    // Why a rejection happened is logged, never returned — the caller cannot act
+    // on it, and it would let anyone probe which origins a site has registered.
+    let returnTo: string | undefined;
+
+    const contentType = request.headers.get('Content-Type') ?? '';
+    if (contentType.includes('application/json')) {
+      try {
+        const body: { returnTo?: string } = await request.json();
+        if (typeof body.returnTo === 'string' && body.returnTo !== '') {
+          if (siteId === undefined) {
+            getLogger().info('returnTo rejected', {
+              reason: 'no site-scoped session to validate it against',
+            });
+          } else {
+            let allowedOrigins: string[] | null = null;
+            try {
+              allowedOrigins = await getCachedSiteAllowedOrigins(siteId);
+            } catch (err) {
+              getLogger().error('allowed-origins lookup failed; ignoring returnTo', err, {
+                site_id: siteId,
+              });
+            }
+
+            const resolved = resolveBrokerRedirectUrl({
+              proposedRedirectUrl: body.returnTo,
+              allowedOrigins,
+              environment: env.ENVIRONMENT,
+            });
+            returnTo = resolved.redirectUrl;
+            if (returnTo !== undefined) {
+              getLogger().info('returnTo accepted', { site_id: siteId });
+            } else {
+              // `reason` and `site_id` are allow-listed; a field that is not gets
+              // dropped by redaction and the line arrives with nothing on it.
+              getLogger().info('returnTo rejected', { reason: resolved.warning, site_id: siteId });
+            }
+          }
+        }
+      } catch {
+        // No body or invalid JSON — proceed without returnTo
+      }
+    }
+
+    const origin = getPublicOrigin(request, env);
+    const nonce = generateNonce();
+    const signedState = await signState({ purpose: 'logout', returnTo, nonce }, internalSecret);
+    const callbackUrl = `${origin}/broker/logout/complete?state=${encodeURIComponent(signedState)}`;
+    const logoutUrl =
+      `${trimTrailingSlashes(issuerBase)}/v2/logout` +
+      `?client_id=${encodeURIComponent(clientId)}` +
+      `&returnTo=${encodeURIComponent(callbackUrl)}`;
+
+    return jsonResponse({ logoutUrl });
+  }
+
+  // GET /broker/logout/complete — Auth0 redirects here after session ends
+  if (path === '/broker/logout/complete' && request.method === 'GET') {
+    const url = new URL(request.url);
+    const stateParam = url.searchParams.get('state');
+
+    if (stateParam === null) {
+      return errorResponse('Missing state parameter', 400);
+    }
+
+    const stateData = await verifyAndParseState<{
+      purpose: string;
+      returnTo?: string;
+      nonce?: string;
+    }>(stateParam, internalSecret);
+    if (stateData === null) {
+      return errorResponse('Invalid or expired state', 400);
+    }
+
+    if (stateData.purpose !== 'logout') {
+      return errorResponse('Invalid state purpose', 400);
+    }
+
+    if (typeof stateData.nonce !== 'string' || stateData.nonce === '') {
+      return errorResponse('Invalid state', 400);
+    }
+
+    // The nonce makes a redirect single-use, so it only needs claiming when there
+    // is one. Without a returnTo this page is the whole outcome, and reaching it
+    // must not depend on a Durable Object being healthy.
+    if (stateData.returnTo === undefined || stateData.returnTo === '') {
+      return loggedOutPage();
+    }
+
+    // The state verified, so Auth0 has already ended the session. If the claim
+    // cannot be reached we lose only the redirect, so show the page rather than
+    // an error — the same reason the no-returnTo branch above skips the DO.
+    let claim: { claimed: boolean };
+    try {
+      const stub = brokerTx.get(brokerTx.idFromName(stateData.nonce));
+      const claimResponse = await stub.fetch('http://do/nonce/claim', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nonce: stateData.nonce, ttlSeconds: DEFAULT_STATE_TTL_SECONDS }),
+      });
+      claim = await handleDoResponse<{ claimed: boolean }>(
+        claimResponse,
+        'Failed to verify logout state',
+      );
+    } catch (err) {
+      getLogger().error('logout nonce claim failed; showing the logged-out page', err, {
+        reason: 'nonce_claim_unreachable',
+      });
+      return loggedOutPage();
+    }
+
+    if (!claim.claimed) {
+      // Nonce already consumed — browser back-navigation after logout. Show the
+      // page rather than redirecting a second time.
+      return loggedOutPage();
+    }
+
+    return new Response(null, {
+      status: 302,
+      headers: {
+        Location: stateData.returnTo,
+        'Referrer-Policy': 'no-referrer',
+      },
+    });
   }
 
   return null;

@@ -15,9 +15,11 @@ vi.mock("@pantheon-systems/puck-css/server", () => ({
 
 const postBrokerLogin = vi.fn(() => ({ __body: { ok: true }, status: 200 }));
 const postBrokerRedeem = vi.fn(() => ({ __body: { ok: true }, status: 200 }));
+const postBrokerLogout = vi.fn(() => ({ __body: { ok: true }, status: 200 }));
 vi.mock("../routes/broker", () => ({
   postBrokerLogin: (...args: unknown[]) => postBrokerLogin(...args),
   postBrokerRedeem: (...args: unknown[]) => postBrokerRedeem(...args),
+  postBrokerLogout: (...args: unknown[]) => postBrokerLogout(...args),
 }));
 
 import { createP1AuthHandler } from "../auth-handler";
@@ -30,6 +32,7 @@ describe("createP1AuthHandler p1BaseUrl fallback (PCC-3554)", () => {
   beforeEach(() => {
     postBrokerLogin.mockClear();
     postBrokerRedeem.mockClear();
+    postBrokerLogout.mockClear();
   });
 
   it("falls back to PRODUCTION_BASE_URL for login when p1BaseUrl is not configured", async () => {
@@ -74,5 +77,26 @@ describe("createP1AuthHandler p1BaseUrl fallback (PCC-3554)", () => {
       undefined,
       undefined,
     );
+  });
+
+  it("routes logout to postBrokerLogout without passing the API key", async () => {
+    const handler = createP1AuthHandler({
+      p1ApiKey: "key",
+      p1BaseUrl: "https://staging.example.com",
+    });
+    const req = new Request("http://localhost/p1/auth/logout", { method: "POST" });
+
+    await handler.POST(req, makeParams("logout"));
+
+    expect(postBrokerLogout).toHaveBeenCalledWith(req, "https://staging.example.com");
+  });
+
+  it("falls back to PRODUCTION_BASE_URL for logout when p1BaseUrl is not configured", async () => {
+    const handler = createP1AuthHandler({});
+    const req = new Request("http://localhost/p1/auth/logout", { method: "POST" });
+
+    await handler.POST(req, makeParams("logout"));
+
+    expect(postBrokerLogout).toHaveBeenCalledWith(req, "https://ccr.p1.pantheon.io");
   });
 });

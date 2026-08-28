@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react";
 import type { Data } from "@puckeditor/core";
-import { RenderClient } from "@pantheon-systems/puck-css";
+import { RenderClient, performLogout, P1_LOGGED_IN_KEY } from "@pantheon-systems/puck-css";
 import config from "../../puck.config";
+import { runWidgetLogout } from "./widget-logout";
 
 function EditIcon() {
   return (
@@ -35,10 +36,12 @@ function LogoutIcon() {
 export function P1EditWidget({ route }: { route: string }) {
   const [hasToken, setHasToken] = useState(false);
   const [open, setOpen] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [logoutError, setLogoutError] = useState<string | null>(null);
 
   useEffect(() => {
     const flag = typeof localStorage !== "undefined"
-      ? localStorage.getItem("p1_logged_in")
+      ? localStorage.getItem(P1_LOGGED_IN_KEY)
       : null;
     setHasToken(!!flag);
   }, []);
@@ -62,6 +65,22 @@ export function P1EditWidget({ route }: { route: string }) {
   if (!hasToken) return null;
 
   const editHref = `/p1${route === "/" ? "" : route}`;
+
+  const handleLogout = () =>
+    runWidgetLogout({
+      logout: () =>
+        performLogout({
+          cssBaseUrl: process.env.NEXT_PUBLIC_CSS_BASE_URL ?? "http://localhost:8787",
+        }),
+      navigate: (url) => {
+        window.location.href = url;
+      },
+      reload: () => {
+        window.location.reload();
+      },
+      setBusy: setIsLoggingOut,
+      setError: setLogoutError,
+    });
 
   return (
     <div
@@ -145,14 +164,8 @@ export function P1EditWidget({ route }: { route: string }) {
           <div style={{ height: 1, background: "#e0e0e0", margin: "6px 4px" }} />
           <button
             role="menuitem"
-            onClick={() => {
-              localStorage.removeItem("p1_logged_in");
-              localStorage.removeItem("p1_auth_token");
-              localStorage.removeItem("ccr_broker_token");
-              // Pre-rename key; keep until the css_* fallback is dropped.
-              localStorage.removeItem("css_broker_token");
-              window.location.reload();
-            }}
+            disabled={isLoggingOut}
+            onClick={handleLogout}
             style={{
               display: "flex",
               alignItems: "center",
@@ -165,15 +178,28 @@ export function P1EditWidget({ route }: { route: string }) {
               textDecoration: "none",
               background: "transparent",
               border: "none",
-              cursor: "pointer",
+              cursor: isLoggingOut ? "not-allowed" : "pointer",
               fontFamily: "inherit",
             }}
             onMouseEnter={(e) => { e.currentTarget.style.background = "#f5f5f5"; }}
             onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
           >
             <span style={{ color: "#888", flex: "0 0 auto" }}><LogoutIcon /></span>
-            Log out
+            {isLoggingOut ? "Logging out…" : "Log out"}
           </button>
+          {logoutError && (
+            <p
+              role="alert"
+              style={{
+                margin: "2px 10px 6px",
+                fontSize: 12,
+                lineHeight: 1.4,
+                color: "#b3261e",
+              }}
+            >
+              {logoutError}
+            </p>
+          )}
         </div>
       )}
     </div>

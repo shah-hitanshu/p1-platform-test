@@ -43,6 +43,8 @@ import { deriveLiveDocState } from '../../pds/utils/deriveLiveDocState.js';
 import type { Template } from '../../features/content-type-templates/types.js';
 import { useEditorContext } from '../../p1/editor/index.js';
 import type { TemplateSummary } from '../../features/content-type-templates/types.js';
+import { createLogoutStore } from '../logout-store.js';
+import type { LogoutStore } from '../logout-store.js';
 import { selectHeaderCollaborators } from './selectHeaderCollaborators.js';
 import type { DocumentSyncStore } from './document-sync-plugin.js';
 import { resolveContextSyncKey } from './context-sync-key.js';
@@ -590,7 +592,9 @@ export interface P1PluginOptions {
   /** Currently authenticated user */
   currentUser?: CurrentUser;
   /** Callback when user logs out */
-  onLogout?: () => void;
+  onLogout?: () => void | Promise<void>;
+  /** Logout progress and failure state. The header subscribes to it directly. */
+  logoutStore?: LogoutStore;
   /** Callback for Compare with Live action. When omitted, a built-in overlay is shown. */
   onCompareWithLive?: () => void;
   /** Callback for the publish action. When omitted, context's publishDocument is used. */
@@ -871,6 +875,10 @@ export function createP1Plugin(options: P1PluginOptions): PuckPlugin {
   const filteredVersionsStore = createFilteredVersionsStore();
   const handleFilteredVersionsChange = (v: DocumentVersion[]) => { filteredVersionsStore.set(v); };
 
+  // Used when the plugin is built directly rather than through useP1Plugin, so
+  // the header can subscribe unconditionally.
+  const fallbackLogoutStore = createLogoutStore();
+
   function PreviewOverride({ children }: { children: React.ReactNode }): React.ReactElement {
     const filteredVersions = React.useSyncExternalStore(
       filteredVersionsStore.subscribe,
@@ -903,6 +911,11 @@ export function createP1Plugin(options: P1PluginOptions): PuckPlugin {
     }, []);
     const ccr = useP1Puck();
     const auth = useOptionalP1Auth();
+
+    // Same reason as currentUser below: a plain options read cannot re-render
+    // this header, so logout progress and failures come from a store.
+    const logoutStore = stableOptions.logoutStore ?? fallbackLogoutStore;
+    const logout = React.useSyncExternalStore(logoutStore.subscribe, logoutStore.getSnapshot);
 
     // Merge avatar from live auth state so the header re-renders when the
     // async token validation resolves (stableOptions alone won't trigger it).
@@ -982,6 +995,8 @@ export function createP1Plugin(options: P1PluginOptions): PuckPlugin {
           onCreateTemplate={stableOptions.onCreateTemplate}
           datasources={datasources}
           onLogout={stableOptions.onLogout ?? (() => {})}
+          logoutError={logout.error}
+          isLoggingOut={logout.isLoggingOut}
         />
         <div id="p1-subheader-slot" />
         {(fc.enableMergeControl ?? true) && showMergeReview && (() => {

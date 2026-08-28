@@ -20,6 +20,9 @@ vi.mock('@pantheon-systems/css-client', () => ({
   loginMockUser: vi.fn(),
   hasPendingBrokerLogin: vi.fn().mockReturnValue(false),
   redeemPendingBrokerLogin: vi.fn().mockResolvedValue(null),
+  // Stubbed here rather than mocking performLogout itself, so the provider's
+  // logout path still runs through the real implementation.
+  brokerLogout: vi.fn().mockResolvedValue({ status: 'no_session' }),
 }));
 
 import {

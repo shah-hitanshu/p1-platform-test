@@ -36,6 +36,17 @@ export interface BrokerRedeemResult {
   userInfo: OAuthUserInfo | null;
 }
 
+export interface BrokerLogoutConfig {
+  cssBaseUrl: string;
+  siteApiToken?: string;
+  storageKey?: string;
+}
+
+export type LogoutOutcome =
+  | { status: 'signed_out'; logoutUrl: string }
+  | { status: 'no_session' }
+  | { status: 'error'; message: string };
+
 export interface BrokerRedeemConfig {
   cssBaseUrl: string;
   siteApiToken?: string;
@@ -82,11 +93,84 @@ function brokerEndpoint(config: BrokerAuthConfig, action: 'login' | 'redeem'): s
   return `${PROXY_PATH}/${action}`;
 }
 
+function brokerLogoutEndpoint(config: BrokerLogoutConfig): string {
+  if (config.siteApiToken) {
+    return `${trimTrailingSlash(config.cssBaseUrl)}/broker/logout`;
+  }
+  return `${PROXY_PATH}/logout`;
+}
+
 function brokerHeaders(config: BrokerAuthConfig): Record<string, string> {
   if (config.siteApiToken) {
     return { 'Authorization': `Bearer ${config.siteApiToken}` };
   }
   return {};
+}
+
+/**
+ * Initiates broker logout by calling the CCR backend and returning the Auth0
+ * logout URL. Does NOT navigate — the caller is responsible for redirecting.
+ *
+ * Outcomes:
+ *   signed_out  — CCR returned a logout URL; caller should navigate there.
+ *   no_session  — No stored broker token; nothing to sign out of.
+ *   error       — CCR unreachable or returned an error; credentials left intact
+ *                 so the caller can retry or fall back gracefully.
+ *
+ * The broker token is removed from storage only on `signed_out`, after the
+ * URL is successfully obtained. On `error`, the token is preserved for retry.
+ */
+export async function brokerLogout(config: BrokerLogoutConfig): Promise<LogoutOutcome> {
+  if (typeof window === 'undefined') {
+    return { status: 'no_session' };
+  }
+
+  const storageKey = resolveTokenKey(config);
+  const token = window.localStorage.getItem(storageKey);
+
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  try {
+    const response = await fetch(brokerLogoutEndpoint(config), {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ returnTo: window.location.origin }),
+      signal: AbortSignal.timeout(10_000),
+    });
+
+    if (!response.ok) {
+      return { status: 'error', message: `Broker logout failed (${response.status})` };
+    }
+
+    const { logoutUrl } = (await response.json()) as { logoutUrl?: string };
+    if (typeof logoutUrl !== 'string') {
+      return { status: 'error', message: 'Broker logout response missing logoutUrl' };
+    }
+
+    // Callers assign this to window.location, so a javascript: or data: URL
+    // would run in the page's own origin. Only https: leaves this function.
+    let parsedLogoutUrl: URL;
+    try {
+      parsedLogoutUrl = new URL(logoutUrl);
+    } catch {
+      return { status: 'error', message: 'Broker logout response has a malformed logoutUrl' };
+    }
+    if (parsedLogoutUrl.protocol !== 'https:') {
+      return { status: 'error', message: 'Broker logout response has a non-HTTPS logoutUrl' };
+    }
+
+    // Clear the token only after successfully obtaining the Auth0 logout URL.
+    if (token) window.localStorage.removeItem(storageKey);
+    return { status: 'signed_out', logoutUrl };
+  } catch (err) {
+    return {
+      status: 'error',
+      message: err instanceof Error ? err.message : 'Broker logout request failed',
+    };
+  }
 }
 
 /**
@@ -140,7 +224,7 @@ export function createBrokerAuth(config: BrokerAuthConfig): OAuthSession {
       if (!loginResponse.ok) {
         let detail = '';
         try {
-          const body = await loginResponse.json() as { error?: string };
+          const body = (await loginResponse.json()) as { error?: string };
           if (body.error) detail = `: ${body.error}`;
         } catch {
           // non-JSON body — status code alone is still useful
@@ -205,11 +289,22 @@ export function createBrokerAuth(config: BrokerAuthConfig): OAuthSession {
       throw new Error('Broker login timed out waiting for user approval');
     },
 
-    async logout(): Promise<void> {
-      if (typeof window !== 'undefined') {
-        window.localStorage.removeItem(storageKey);
+    async logout(): Promise<LogoutOutcome> {
+      const outcome = await brokerLogout({
+        cssBaseUrl: config.cssBaseUrl,
+        storageKey,
+        ...(config.siteApiToken !== undefined ? { siteApiToken: config.siteApiToken } : {}),
+      });
+      if (outcome.status === 'error') {
+        // The token is kept for retry, so the identity that goes with it stays
+        // too — otherwise the session reads as authenticated but anonymous.
+        return outcome;
       }
       userInfo = null;
+      if (outcome.status === 'signed_out' && typeof window !== 'undefined') {
+        window.location.href = outcome.logoutUrl;
+      }
+      return outcome;
     },
 
     isAuthenticated(): boolean {

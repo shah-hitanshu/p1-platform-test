@@ -679,6 +679,70 @@ describe('P1EditorHeader', () => {
     expect(onLogout).toHaveBeenCalledTimes(1);
   });
 
+  it('shows nothing when there is no logout error', () => {
+    render(<P1EditorHeader {...defaultProps} />);
+    expect(screen.queryByTestId('logout-error')).toBeNull();
+  });
+
+  // The menu closes on click, so the failure has to surface outside it or the
+  // user is told nothing at all.
+  it('surfaces a logout failure outside the user menu', async () => {
+    render(
+      <P1EditorHeader {...defaultProps} logoutError="Broker logout failed (502)" />
+    );
+
+    const alert = screen.getByTestId('logout-error');
+    expect(alert.textContent).toContain('You are still signed in');
+    expect(alert.textContent).toContain('Broker logout failed (502)');
+    expect(alert.getAttribute('role')).toBe('alert');
+
+    fireEvent.click(screen.getByTestId('user-menu-trigger'));
+    await waitFor(() => {
+      expect(screen.getByTestId('user-menu')).toBeTruthy();
+    });
+    fireEvent.click(screen.getByTestId('user-menu-logout'));
+
+    expect(screen.queryByTestId('user-menu')).toBeNull();
+    expect(screen.getByTestId('logout-error')).toBeTruthy();
+  });
+
+  // The menu is already closed by the time the request resolves, so the only
+  // place progress can show is the header itself.
+  it('shows progress in the header while a logout is in flight', () => {
+    render(<P1EditorHeader {...defaultProps} isLoggingOut />);
+
+    const pending = screen.getByTestId('logout-pending');
+    expect(pending.textContent).toContain('Signing you out');
+    expect(pending.getAttribute('role')).toBe('status');
+  });
+
+  it('disables the menu item while a logout is in flight', async () => {
+    const onLogout = vi.fn();
+    render(<P1EditorHeader {...defaultProps} onLogout={onLogout} isLoggingOut />);
+
+    fireEvent.click(screen.getByTestId('user-menu-trigger'));
+    await waitFor(() => {
+      expect(screen.getByTestId('user-menu')).toBeTruthy();
+    });
+
+    const item = screen.getByTestId('user-menu-logout') as HTMLButtonElement;
+    expect(item.disabled).toBe(true);
+    expect(item.textContent).toContain('Logging out');
+
+    fireEvent.click(item);
+    expect(onLogout).not.toHaveBeenCalled();
+  });
+
+  // A retry replaces the banner rather than stacking a stale failure under it.
+  it('hides a previous failure while the retry is in flight', () => {
+    render(
+      <P1EditorHeader {...defaultProps} logoutError="Broker logout failed (502)" isLoggingOut />
+    );
+
+    expect(screen.queryByTestId('logout-error')).toBeNull();
+    expect(screen.getByTestId('logout-pending')).toBeTruthy();
+  });
+
   it('closes menu after "Log out" is clicked', async () => {
     render(<P1EditorHeader {...defaultProps} />);
 

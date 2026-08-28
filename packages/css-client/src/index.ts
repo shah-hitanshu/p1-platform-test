@@ -127,8 +127,8 @@ export type {
 } from './oauth.js';
 
 // Broker authentication
-export { createBrokerAuth, hasPendingBrokerLogin, redeemPendingBrokerLogin } from './broker.js';
-export type { BrokerAuthConfig, BrokerRedeemConfig, BrokerRedeemResult } from './broker.js';
+export { createBrokerAuth, brokerLogout, hasPendingBrokerLogin, redeemPendingBrokerLogin } from './broker.js';
+export type { BrokerAuthConfig, BrokerLogoutConfig, BrokerRedeemConfig, BrokerRedeemResult, LogoutOutcome } from './broker.js';
 
 // Errors
 export {

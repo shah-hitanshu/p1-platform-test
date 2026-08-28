@@ -1,5 +1,6 @@
 import type { AuthProvider } from './auth.js';
-
+// Type-only, so this erases at compile and does not create a cycle with broker.ts.
+import type { LogoutOutcome } from './broker.js';
 
 /** User info returned from OAuth providers */
 export interface OAuthUserInfo {
@@ -12,7 +13,7 @@ export interface OAuthUserInfo {
 export interface OAuthSession {
   provider: 'broker';
   login(): Promise<void>;
-  logout(): Promise<void>;
+  logout(): Promise<LogoutOutcome>;
   isAuthenticated(): boolean;
   getUserInfo(): OAuthUserInfo | null;
   getToken(): Promise<string | null>;

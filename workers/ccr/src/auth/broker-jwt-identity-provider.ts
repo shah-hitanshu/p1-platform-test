@@ -132,6 +132,11 @@ export class BrokerJwtIdentityProvider implements IdentityProvider {
       if (claims.exp === undefined) {
         return null;
       }
+      // Broker JWTs are issued per-site. Without this claim the principal names
+      // no site, and every consumer would have to handle that case separately.
+      if (claims.site_id === undefined || claims.site_id === '') {
+        return null;
+      }
       const now = Math.floor(Date.now() / 1000);
       if (claims.exp <= now) {
         return null;
