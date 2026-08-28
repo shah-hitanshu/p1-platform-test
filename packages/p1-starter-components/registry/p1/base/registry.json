@@ -12,7 +12,7 @@
         "style": "p1",
         "tsx": true,
         "rsc": true,
-        "registries": { "@p1": "https://components.p1.pantheon.io/r/{name}.json" }
+        "registries": { "@p1": "https://dev-p1-registry.pantheonsite.io/r/{name}.json" }
       },
       "dependencies": ["@pantheon-systems/puck-css", "@puckeditor/core"],
       "registryDependencies": [
