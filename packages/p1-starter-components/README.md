@@ -113,14 +113,8 @@ pnpm --filter @pantheon-systems/p1-starter-components storybook
 
 Stories live in `stories/<name>.stories.tsx`. A scaffold is created automatically when you add a block. The `Default` story uses the block's `defaultProps` — add named exports for additional variants.
 
-- `registry/p1/blocks/` — one `ComponentConfig` per file, 37 in total.
-- `registry/p1/internal/` — shared helpers (`Btn`, icons, rich-text). Not blocks, not exported.
-- `registry/p1/tokens/variables.css` — design tokens. Override these in a consuming project.
-- `registry/p1/blocks/index.ts` — named exports plus `marketingBlocks` and `secondaryLibraryCategories`.
+---
 
-## Code registry
-
-Private and unpublished. npm publishing planned for a later phase.
 ## Visual regression gate
 
 Baselines are machine-specific and gitignored. Before converting a block:
