@@ -37,10 +37,19 @@ export function BlockCard({ item }: BlockCardProps) {
   const preview = useDialog();
   const code = useDialog();
 
-  const installCmd = `pnpm dlx shadcn@latest add @p1/${item.name}`;
+  const [copied, setCopied] = React.useState<'cmd' | 'agent' | null>(null);
 
-  function copyCmd() {
-    navigator.clipboard.writeText(installCmd).catch(() => {});
+  const installCmd = `pnpm dlx shadcn@latest add @p1/${item.name}`;
+  const agentPrompt = `Add the P1 ${item.title ?? item.name} block to this project and register it in the Puck config.`;
+
+  function copy(text: string, kind: 'cmd' | 'agent') {
+    navigator.clipboard
+      .writeText(text)
+      .then(() => {
+        setCopied(kind);
+        setTimeout(() => setCopied(null), 1500);
+      })
+      .catch(() => {});
   }
 
   return (
@@ -151,12 +160,20 @@ export function BlockCard({ item }: BlockCardProps) {
             <code className="p1-code-dialog__cmd-code">{installCmd}</code>
             <button
               className="p1-code-dialog__copy"
-              onClick={copyCmd}
+              onClick={() => copy(installCmd, 'cmd')}
               type="button"
             >
-              Copy
+              {copied === 'cmd' ? 'Copied!' : 'Copy'}
             </button>
           </div>
+          <button
+            className="p1-code-dialog__agent"
+            onClick={() => copy(agentPrompt, 'agent')}
+            type="button"
+            title="Copy a prompt for an AI agent"
+          >
+            {copied === 'agent' ? 'Copied!' : 'Copy for agent'}
+          </button>
         </div>
       </dialog>
     </>
