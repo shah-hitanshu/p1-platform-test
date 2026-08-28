@@ -1,10 +1,9 @@
 /**
- * Catalog generator — scans registry/p1/blocks/ and writes five derived artifacts:
+ * Catalog generator — scans registry/p1/blocks/ and writes three derived artifacts:
  *
  *   registry/p1/blocks/registry.json            (shadcn registry manifest)
  *   registry/p1/blocks/index.ts                 (barrel: imports, allBlocks, sourceCategories)
- *   apps/p1-registry/lib/preview-map.ts         (previewNames array)
- *   apps/p1-registry/_components/PreviewRenderer.tsx
+ *   apps/p1-registry/lib/catalog.generated.tsx  (previewNames, CATALOG_CATEGORY_ORDER, previewComponents)
  *   stories/<name>.stories.tsx                  (scaffolded if missing — never overwritten)
  *
  * Source of truth: each block's <name>.block.tsx must export `meta` containing
@@ -227,38 +226,13 @@ ${sourceCatLines.join('\n')}
 writeFileSync(join(BLOCKS_DIR, 'index.ts'), indexTs);
 console.log('  Generated registry/p1/blocks/index.ts');
 
-// ── Generate apps/p1-registry/lib/preview-map.ts ─────────────────────────────
-
-const previewMapTs = `${HEADER}
-// Names of blocks that have a /preview route.
-export const previewNames = [
-  ${blockNames.map((n) => `'${n}'`).join(', ')},
-] as const;
-`;
-
-writeFileSync(join(REGISTRY_APP, 'lib', 'preview-map.ts'), previewMapTs);
-console.log('  Generated apps/p1-registry/lib/preview-map.ts');
-
-// ── Generate apps/p1-registry/lib/catalog-order.ts ───────────────────────────
+// ── Generate apps/p1-registry/lib/catalog.generated.tsx ─────────────────────
 
 const catalogOrderEntries = orderedCategories(CATEGORY_ORDER_CATALOG)
   .map((cat, i) => `  ${cat}: ${i},`)
   .join('\n');
 
-const catalogOrderTs = `${HEADER}
-// Category display priority for the catalog UI.
-// Unknown categories fall back to 99 (appended alphabetically by the generator).
-export const CATALOG_CATEGORY_ORDER: Record<string, number> = {
-${catalogOrderEntries}
-};
-`;
-
-writeFileSync(join(REGISTRY_APP, 'lib', 'catalog-order.ts'), catalogOrderTs);
-console.log('  Generated apps/p1-registry/lib/catalog-order.ts');
-
-// ── Generate apps/p1-registry/_components/PreviewRenderer.tsx ────────────────
-
-const dynamicEntries = blocks
+const catalogDynamicEntries = blocks
   .map(
     ({ name, exportName }) =>
       `  '${name}': makeDynamic(() =>\n` +
@@ -267,20 +241,18 @@ const dynamicEntries = blocks
   )
   .join('\n');
 
-const previewRendererTsx = `${HEADER}
-'use client';
-import dynamic from 'next/dynamic';
+const catalogGeneratedTsx = `${HEADER}
 import React from 'react';
+import dynamic from 'next/dynamic';
 
-// Block shape we need for preview: render component + default props.
+// Block shape needed for preview: render component + initial prop values.
 type BlockConfig = {
   render: React.ComponentType<Record<string, unknown>>;
   defaultProps?: Record<string, unknown>;
 };
 
-// Each entry is a separate import() string so the bundler can code-split per block.
-// Template-literal imports would cause the bundler to include every block in every chunk.
-function makeDynamic(loader: () => Promise<BlockConfig>) {
+// Each import() uses a static string literal so the bundler code-splits per block.
+function makeDynamic(loader: () => Promise<BlockConfig>): React.ComponentType {
   return dynamic(() =>
     loader().then(({ render: Render, defaultProps = {} }) => ({
       default: function BlockPreview() {
@@ -290,28 +262,24 @@ function makeDynamic(loader: () => Promise<BlockConfig>) {
   );
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const dynamicBlocks: Record<string, React.ComponentType<any>> = {
-${dynamicEntries}
+// Used by generateStaticParams() — safe to import in server context.
+export const previewNames = [
+  ${blockNames.map((n) => `'${n}'`).join(', ')},
+] as const;
+
+// Category display priority for the catalog UI. Unknown categories fall back to 99.
+export const CATALOG_CATEGORY_ORDER: Record<string, number> = {
+${catalogOrderEntries}
 };
 
-interface PreviewRendererProps {
-  name: string;
-}
-
-export function PreviewRenderer({ name }: PreviewRendererProps) {
-  const Block = dynamicBlocks[name];
-
-  if (!Block) {
-    return <div style={{ padding: '2rem', color: '#888' }}>Block &quot;{name}&quot; not found.</div>;
-  }
-
-  return <Block />;
-}
+// Dynamic block map for PreviewRenderer. Each entry is code-split independently.
+export const previewComponents: Record<string, React.ComponentType> = {
+${catalogDynamicEntries}
+};
 `;
 
-writeFileSync(join(REGISTRY_APP, '_components', 'PreviewRenderer.tsx'), previewRendererTsx);
-console.log('  Generated apps/p1-registry/_components/PreviewRenderer.tsx');
+writeFileSync(join(REGISTRY_APP, 'lib', 'catalog.generated.tsx'), catalogGeneratedTsx);
+console.log('  Generated apps/p1-registry/lib/catalog.generated.tsx');
 
 // ── Scaffold stories/<name>.stories.tsx for new blocks ───────────────────────
 // Never overwrites an existing file — the developer owns it once it exists.

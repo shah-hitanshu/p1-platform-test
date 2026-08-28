@@ -1,7 +1,7 @@
 'use client';
 import * as React from 'react';
 import type { CatalogItem } from '../../../lib/registry';
-import { CATALOG_CATEGORY_ORDER } from '../../../lib/catalog-order';
+import { CATALOG_CATEGORY_ORDER } from '../../../lib/catalog.generated';
 import { BlockCard } from '../../../_components/BlockCard';
 import { CategoryFilter } from '../../../_components/CategoryFilter';
 
