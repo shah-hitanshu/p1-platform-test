@@ -1,0 +1,56 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "extends": "none",
+  "name": "base",
+  "title": "P1 starter blocks",
+  "description": "The P1 marketing and editorial block set for Puck: 29 blocks plus the P1 token layer. Installs code you own and can modify.",
+  "dependencies": [
+    "@pantheon-systems/puck-css",
+    "@puckeditor/core"
+  ],
+  "registryDependencies": [
+    "@p1/tokens",
+    "@p1/announcement",
+    "@p1/hero",
+    "@p1/article-header",
+    "@p1/callout",
+    "@p1/embed",
+    "@p1/figure",
+    "@p1/pull-quote",
+    "@p1/rich-text",
+    "@p1/comparison-table",
+    "@p1/cta",
+    "@p1/faq",
+    "@p1/lead-capture",
+    "@p1/pricing",
+    "@p1/footer",
+    "@p1/header",
+    "@p1/accordion",
+    "@p1/columns",
+    "@p1/container",
+    "@p1/tabs",
+    "@p1/card-grid",
+    "@p1/gallery",
+    "@p1/logos",
+    "@p1/stats",
+    "@p1/team-grid",
+    "@p1/testimonial",
+    "@p1/features",
+    "@p1/feature-media",
+    "@p1/steps",
+    "@p1/timeline"
+  ],
+  "meta": {
+    "version": "0.1.0"
+  },
+  "docs": "Register the installed blocks in components/puck/blocks/index.ts, which your Puck config already spreads. Add more any time with `shadcn add @p1/<name>`, and review our updates to a block you have edited with `shadcn add @p1/<name> --diff`.",
+  "type": "registry:base",
+  "config": {
+    "style": "p1",
+    "rsc": true,
+    "tsx": true,
+    "registries": {
+      "@p1": "https://dev-p1-registry.pantheonsite.io/r/{name}.json"
+    }
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "tabs",
+  "title": "Tabs",
+  "description": "Tabbed content switcher with a heading and per-tab rich-text body; use to organize related content into switchable panels.",
+  "dependencies": [
+    "@puckeditor/core"
+  ],
+  "registryDependencies": [
+    "@p1/tokens",
+    "@p1/internal-rich"
+  ],
+  "files": [
+    {
+      "path": "registry/p1/blocks/tabs/tabs.tsx",
+      "content": "\"use client\";\nimport * as React from \"react\";\nimport { RichValue } from \"@/registry/p1/internal/rich\";\nimport \"./tabs.css\";\n\nexport interface TabItem {\n  label: string;\n  body: string;\n}\n\nexport interface TabsProps {\n  heading: string;\n  align: \"left\" | \"center\";\n  tabs: TabItem[];\n}\n\nexport function TabsRender({ heading, align, tabs }: TabsProps) {\n  const list = tabs || [];\n  const [active, setActive] = React.useState(list[0]?.label ?? \"\");\n  // Stay on a valid tab after the author reorders or deletes tabs.\n  const activeLabel = list.some((t) => t.label === active) ? active : (list[0]?.label ?? \"\");\n  const i = list.findIndex((t) => t.label === activeLabel);\n  return (\n    <div className=\"p1-tabs p1-block\" data-align={align}>\n      {heading && <h2 className=\"p1-tabs__heading\">{heading}</h2>}\n      <div className=\"p1-tabs__bar\" role=\"tablist\">\n        {list.map((tb, ti) => {\n          const on = tb.label === activeLabel;\n          return (\n            <button\n              key={tb.label || ti}\n              type=\"button\"\n              role=\"tab\"\n              aria-selected={on}\n              data-active={on ? \"true\" : undefined}\n              onClick={() => setActive(tb.label)}\n              className=\"p1-tabs__tab\"\n            >\n              {tb.label || `Tab ${ti + 1}`}\n            </button>\n          );\n        })}\n      </div>\n      <div className=\"p1-tabs__panel\" role=\"tabpanel\">\n        <RichValue value={(list[i] ?? ({} as TabItem)).body ?? \"\"} />\n      </div>\n    </div>\n  );\n}\n",
+      "type": "registry:component",
+      "target": "components/puck/blocks/tabs/tabs.tsx"
+    },
+    {
+      "path": "registry/p1/blocks/tabs/tabs.block.tsx",
+      "content": "import type { ComponentConfig } from \"@puckeditor/core\";\nimport { defineMeta } from '../define-meta';\nimport { TabsRender, type TabsProps, type TabItem } from \"./tabs\";\nexport type { TabsProps, TabItem };\n\nexport const TabsBlock: ComponentConfig<TabsProps> = {\n  fields: {\n    heading: {\n      type: \"text\" as const,\n      contentEditable: true,\n      visible: false,\n      ai: { instructions: \"A section heading of 2–6 words. Plain text, sentence case, no trailing punctuation.\" },\n    },\n    align: {\n      type: \"radio\" as const,\n      options: [\n        { label: \"Left\", value: \"left\" },\n        { label: \"Center\", value: \"center\" },\n      ],\n    },\n    tabs: {\n      type: \"array\" as const,\n      arrayFields: {\n        label: { type: \"text\" as const, contentEditable: true, visible: false },\n        body: { type: \"richtext\" as const, contentEditable: true },\n      },\n      defaultItemProps: { label: \"Tab\", body: \"<p>Tab content.</p>\" },\n      getItemSummary: (item: TabItem) => item.label || \"Tab\",\n    },\n  },\n  defaultProps: {\n    heading: \"Everything in one workflow\",\n    align: \"left\",\n    tabs: [\n      {\n        label: \"Develop\",\n        body: \"<p>Branch every change into its own <mark>Multidev</mark> environment.</p><ul><li>No more stepping on each other</li><li>Real URLs to share for review</li><li>Merge when it's ready</li></ul>\",\n      },\n      {\n        label: \"Test\",\n        body: \"<p>Push to Test with one click and run against <mark>production-like data</mark>.</p><ul><li>Automated visual checks</li><li>Stakeholder sign-off</li><li>Nothing surprises you on Live</li></ul>\",\n      },\n      {\n        label: \"Launch\",\n        body: \"<p>Deploy to Live in seconds — and roll back just as fast if you need to.</p><blockquote>Confidence to publish on a Friday afternoon.</blockquote>\",\n      },\n    ],\n  },\n  render: TabsRender,\n};\n\nexport const meta = defineMeta({\n  title: 'Tabs',\n  description: 'Tabbed content switcher with a heading and per-tab rich-text body; use to organize related content into switchable panels.',\n  categories: [\"layout\"],\n  published: true,\n  registryDependencies: [\"@p1/tokens\",\"@p1/internal-rich\"],\n});\n",
+      "type": "registry:component",
+      "target": "components/puck/blocks/tabs/tabs.block.tsx"
+    },
+    {
+      "path": "registry/p1/blocks/tabs/tabs.css",
+      "content": ".p1-tabs {\n  margin-inline: auto;\n  max-inline-size: var(--p1-container-default);\n}\n\n.p1-tabs__heading {\n  font-family: var(--p1-font-heading);\n  font-size: var(--p1-text-2xl);\n  font-weight: var(--p1-weight-bold);\n  letter-spacing: -0.02em;\n  line-height: var(--p1-leading-tight);\n  margin-block-end: var(--p1-space-lg);\n}\n@media (width >= 48rem) {\n  .p1-tabs__heading { font-size: var(--p1-text-3xl); }\n}\n.p1-tabs[data-align=\"center\"] .p1-tabs__heading { text-align: center; }\n\n.p1-tabs__bar {\n  border-block-end: 1px solid var(--p1-border);\n  display: flex;\n  flex-wrap: wrap;\n  gap: var(--p1-space-xs);\n  margin-block-end: var(--p1-space-lg);\n}\n.p1-tabs[data-align=\"center\"] .p1-tabs__bar { justify-content: center; }\n\n.p1-tabs__tab {\n  background: none;\n  border: 0;\n  border-block-end: 2px solid transparent;\n  color: var(--p1-fg-muted);\n  cursor: pointer;\n  font-weight: var(--p1-weight-bold);\n  margin-block-end: -1px;\n  padding-block: var(--p1-space-sm);\n  padding-inline: var(--p1-space-md);\n}\n@media (prefers-reduced-motion: no-preference) {\n  .p1-tabs__tab { transition: color 150ms ease, border-color 150ms ease; }\n}\n.p1-tabs__tab:hover { color: var(--p1-fg-default); }\n.p1-tabs__tab[data-active=\"true\"] {\n  border-block-end-color: var(--p1-accent);\n  color: var(--p1-fg-default);\n}\n",
+      "type": "registry:file",
+      "target": "components/puck/blocks/tabs/tabs.css"
+    }
+  ],
+  "meta": {
+    "version": "0.1.0",
+    "atlas": "layout/tabs"
+  },
+  "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  // 1. Add the import:\n  import { TabsBlock } from './tabs/tabs.block';\n  // 2. Add an entry to the existing p1Blocks object:\n  //    P1Tabs: TabsBlock,\n\nThen edit components/puck/blocks/tabs/tabs.css to restyle it — the file is yours.",
+  "categories": [
+    "layout"
+  ],
+  "type": "registry:block"
+}

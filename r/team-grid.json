@@ -1,0 +1,41 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "team-grid",
+  "title": "Team Grid",
+  "description": "Grid of team member cards with avatar, name, role, and bio in circle or rounded photo shape; use for About/Team pages.",
+  "dependencies": [
+    "@puckeditor/core"
+  ],
+  "registryDependencies": [
+    "@p1/tokens"
+  ],
+  "files": [
+    {
+      "path": "registry/p1/blocks/team-grid/team-grid.tsx",
+      "content": "import \"./team-grid.css\";\n\nexport interface TeamMember {\n  name: string;\n  role: string;\n  avatar: string;\n  bio: string;\n}\nexport interface TeamGridProps {\n  eyebrow: string;\n  heading: string;\n  columns: \"2\" | \"3\" | \"4\";\n  shape: \"circle\" | \"rounded\";\n  tone: \"white\" | \"light\";\n  members: TeamMember[];\n}\n\nexport function TeamGridRender({ eyebrow, heading, columns, shape, tone, members }: TeamGridProps) {\n  return (\n    <div className=\"p1-team-grid p1-block\" data-tone={tone} data-cols={columns}>\n      <div className=\"p1-team-grid__inner\">\n        <div className=\"p1-team-grid__header\">\n          {eyebrow && <p className=\"p1-team-grid__eyebrow\">{eyebrow}</p>}\n          {heading && <h2 className=\"p1-team-grid__heading\">{heading}</h2>}\n        </div>\n        <div className=\"p1-team-grid__grid\">\n          {(members || []).map((m, i) => (\n            <div key={i} className=\"p1-team-grid__member\">\n              <div className=\"p1-team-grid__avatar\" data-shape={shape}>\n                {m.avatar && <img src={m.avatar} alt={m.name} className=\"p1-team-grid__avatar-img\" />}\n              </div>\n              <div className=\"p1-team-grid__name\">{m.name}</div>\n              <div className=\"p1-team-grid__role\">{m.role}</div>\n              {m.bio && <p className=\"p1-team-grid__bio\">{m.bio}</p>}\n            </div>\n          ))}\n        </div>\n      </div>\n    </div>\n  );\n}\n",
+      "type": "registry:component",
+      "target": "components/puck/blocks/team-grid/team-grid.tsx"
+    },
+    {
+      "path": "registry/p1/blocks/team-grid/team-grid.block.tsx",
+      "content": "import type { ComponentConfig } from \"@puckeditor/core\";\nimport { defineMeta, wireframe } from '../define-meta';\nimport { TeamGridRender, type TeamGridProps, type TeamMember } from \"./team-grid\";\nexport type { TeamGridProps, TeamMember };\n\nexport const TeamGridBlock: ComponentConfig<TeamGridProps> = {\n  fields: {\n    eyebrow: {\n      type: \"text\" as const,\n      contentEditable: true,\n      visible: false,\n      ai: { instructions: \"Short label above the heading. 2–4 words. E.g. The team.\" },\n    },\n    heading: {\n      type: \"text\" as const,\n      contentEditable: true,\n      visible: false,\n      ai: { instructions: \"Section heading. 4–8 words.\" },\n    },\n    columns: {\n      type: \"select\" as const,\n      options: [\n        { label: \"2\", value: \"2\" },\n        { label: \"3\", value: \"3\" },\n        { label: \"4\", value: \"4\" },\n      ],\n    },\n    shape: {\n      type: \"radio\" as const,\n      options: [\n        { label: \"Circle\", value: \"circle\" },\n        { label: \"Rounded\", value: \"rounded\" },\n      ],\n    },\n    tone: {\n      type: \"radio\" as const,\n      options: [\n        { label: \"White\", value: \"white\" },\n        { label: \"Light\", value: \"light\" },\n      ],\n    },\n    members: {\n      type: \"array\" as const,\n      arrayFields: {\n        name: {\n          type: \"text\" as const,\n          contentEditable: true,\n          visible: false,\n          ai: { instructions: \"Team member's full name.\" },\n        },\n        role: {\n          type: \"text\" as const,\n          contentEditable: true,\n          visible: false,\n          ai: { instructions: \"Job title. E.g. Head of Operations.\" },\n        },\n        avatar: {\n          type: \"text\" as const,\n          ai: { exclude: true },\n        },\n        bio: {\n          type: \"text\" as const,\n          contentEditable: true,\n          visible: false,\n          ai: { instructions: \"1–2 sentence bio. Optional — leave blank to omit.\" },\n        },\n      },\n      defaultItemProps: { name: \"Team member\", role: \"Role\", avatar: \"\", bio: \"\" },\n      getItemSummary: (item: TeamMember) => item.name || \"Member\",\n    },\n  },\n  defaultProps: {\n    eyebrow: \"The team\",\n    heading: \"People behind the platform.\",\n    columns: \"3\",\n    shape: \"circle\",\n    tone: \"white\",\n    members: [\n      { name: \"Jordan Ellis\", role: \"Head of Operations\", avatar: wireframe(300, 300), bio: \"\" },\n      { name: \"Sam Rivera\", role: \"Principal Engineer\", avatar: wireframe(300, 300), bio: \"\" },\n      { name: \"Priya Nair\", role: \"Design Lead\", avatar: wireframe(300, 300), bio: \"\" },\n    ],\n  },\n  render: TeamGridRender,\n};\n\nexport const meta = defineMeta({\n  title: 'Team Grid',\n  description: 'Grid of team member cards with avatar, name, role, and bio in circle or rounded photo shape; use for About/Team pages.',\n  categories: [\"trust\"],\n  published: true,\n});\n",
+      "type": "registry:component",
+      "target": "components/puck/blocks/team-grid/team-grid.block.tsx"
+    },
+    {
+      "path": "registry/p1/blocks/team-grid/team-grid.css",
+      "content": ".p1-team-grid[data-tone=\"light\"] { background-color: var(--p1-surface-subtle); }\n\n.p1-team-grid__inner {\n  margin-inline: auto;\n  max-inline-size: var(--p1-container-default);\n}\n\n.p1-team-grid__header {\n  margin-block-end: var(--p1-space-xl);\n  text-align: center;\n}\n.p1-team-grid__eyebrow {\n  color: var(--p1-accent);\n  font-size: var(--p1-text-xl);\n  font-style: italic;\n  margin-block-end: var(--p1-space-sm);\n}\n.p1-team-grid__heading {\n  font-size: var(--p1-text-2xl);\n  font-weight: var(--p1-weight-bold);\n  letter-spacing: -0.02em;\n  text-wrap: balance;\n}\n@media (width >= 48rem) {\n  .p1-team-grid__heading { font-size: var(--p1-text-3xl); }\n}\n\n.p1-team-grid__grid {\n  display: grid;\n  gap: var(--p1-space-lg);\n  grid-template-columns: 1fr;\n}\n@media (width >= 40rem) {\n  .p1-team-grid__grid { grid-template-columns: repeat(2, 1fr); }\n}\n@media (width >= 64rem) {\n  .p1-team-grid[data-cols=\"3\"] .p1-team-grid__grid { grid-template-columns: repeat(3, 1fr); }\n  .p1-team-grid[data-cols=\"4\"] .p1-team-grid__grid { grid-template-columns: repeat(4, 1fr); }\n}\n\n.p1-team-grid__member {\n  align-items: center;\n  display: flex;\n  flex-direction: column;\n  gap: 0.25rem;\n  text-align: center;\n}\n\n.p1-team-grid__avatar {\n  background-color: color-mix(in oklch, var(--p1-surface-inverse) 15%, transparent);\n  block-size: 8rem;\n  inline-size: 8rem;\n  margin-block-end: var(--p1-space-sm);\n  overflow: hidden;\n}\n.p1-team-grid__avatar[data-shape=\"circle\"] { border-radius: var(--p1-radius-pill); }\n.p1-team-grid__avatar[data-shape=\"rounded\"] { border-radius: var(--p1-radius-card); }\n.p1-team-grid__avatar-img { block-size: 100%; inline-size: 100%; object-fit: cover; }\n\n.p1-team-grid__name {\n  color: var(--p1-fg-default);\n  font-size: var(--p1-text-lg);\n  font-weight: var(--p1-weight-bold);\n}\n.p1-team-grid__role {\n  color: var(--p1-accent);\n  font-size: var(--p1-text-sm);\n  font-weight: var(--p1-weight-medium);\n}\n.p1-team-grid__bio {\n  color: var(--p1-fg-muted);\n  font-size: var(--p1-text-sm);\n  line-height: var(--p1-leading-normal);\n  margin-block-start: var(--p1-space-sm);\n  max-inline-size: 16rem;\n}\n",
+      "type": "registry:file",
+      "target": "components/puck/blocks/team-grid/team-grid.css"
+    }
+  ],
+  "meta": {
+    "version": "0.1.0",
+    "atlas": "trust/team-grid"
+  },
+  "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  // 1. Add the import:\n  import { TeamGridBlock } from './team-grid/team-grid.block';\n  // 2. Add an entry to the existing p1Blocks object:\n  //    P1TeamGrid: TeamGridBlock,\n\nThen edit components/puck/blocks/team-grid/team-grid.css to restyle it — the file is yours.",
+  "categories": [
+    "trust"
+  ],
+  "type": "registry:block"
+}

@@ -1,0 +1,43 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "quote",
+  "title": "Quote",
+  "description": "Simple blockquote with rich-text quote and an attribution line in standard or display scale; use for inline quotations.",
+  "dependencies": [
+    "@puckeditor/core",
+    "@pantheon-systems/puck-css"
+  ],
+  "registryDependencies": [
+    "@p1/tokens",
+    "@p1/internal-rich"
+  ],
+  "files": [
+    {
+      "path": "registry/p1/blocks/quote/quote.tsx",
+      "content": "import \"./quote.css\";\nimport { RichValue } from \"@/registry/p1/internal/rich\";\n\nexport interface QuoteProps {\n  quote: unknown;\n  attribution: string;\n  scale: \"standard\" | \"display\";\n}\n\nexport function Quote({ quote, attribution, scale }: QuoteProps) {\n  return (\n    <div className=\"p1-quote p1-block\" data-scale={scale}>\n      <blockquote className=\"p1-quote__blockquote\">\n        <RichValue value={quote} className=\"p1-quote__text\" />\n        <cite className=\"p1-quote__cite\">— {attribution}</cite>\n      </blockquote>\n    </div>\n  );\n}\n",
+      "type": "registry:component",
+      "target": "components/puck/blocks/quote/quote.tsx"
+    },
+    {
+      "path": "registry/p1/blocks/quote/quote.block.tsx",
+      "content": "\"use client\";\n\nimport type { ComponentConfig } from \"@puckeditor/core\";\nimport { richtextField } from \"@pantheon-systems/puck-css/fields\";\nimport { defineMeta } from '../define-meta';\nimport { Quote, type QuoteProps } from \"./quote\";\nexport type { QuoteProps };\n\nexport const QuoteBlock: ComponentConfig<QuoteProps> = {\n  fields: {\n    quote: richtextField,\n    attribution: {\n      type: \"text\" as const,\n      ai: {\n        instructions:\n          \"Name and optional title of the person being quoted. Example: 'Jane Smith, VP of Engineering'. 1–2 line max.\",\n      },\n    },\n    scale: {\n      type: \"radio\" as const,\n      options: [\n        { label: \"Standard\", value: \"standard\" },\n        { label: \"Display\", value: \"display\" },\n      ],\n    },\n  },\n  defaultProps: {\n    quote:\n      \"The measure of intelligence is the ability to change. Adapt, evolve, and keep moving forward.\",\n    attribution: \"Albert Einstein\",\n    scale: \"standard\",\n  },\n  render: Quote,\n};\n\nexport const meta = defineMeta({\n  title: 'Quote',\n  description: 'Simple blockquote with rich-text quote and an attribution line in standard or display scale; use for inline quotations.',\n  categories: [\"content\"],\n  published: true,\n  dependencies: [\"@puckeditor/core\",\"@pantheon-systems/puck-css\"],\n  registryDependencies: [\"@p1/tokens\",\"@p1/internal-rich\"],\n});\n",
+      "type": "registry:component",
+      "target": "components/puck/blocks/quote/quote.block.tsx"
+    },
+    {
+      "path": "registry/p1/blocks/quote/quote.css",
+      "content": ".p1-quote__blockquote {\n  margin: 0;\n  padding: 0;\n}\n\n.p1-quote__text {\n  color: var(--p1-fg-default);\n  text-wrap: balance;\n}\n\n.p1-quote[data-scale=\"standard\"] .p1-quote__text {\n  font-size: var(--p1-text-xl);\n  line-height: var(--p1-leading-normal);\n  font-style: italic;\n}\n\n@media (width >= 48rem) {\n  .p1-quote[data-scale=\"standard\"] .p1-quote__text {\n    font-size: var(--p1-text-2xl);\n  }\n}\n\n.p1-quote[data-scale=\"display\"] .p1-quote__text {\n  font-size: var(--p1-text-2xl);\n  line-height: var(--p1-leading-tight);\n  font-style: italic;\n  font-weight: var(--p1-weight-bold);\n  letter-spacing: -0.02em;\n}\n\n@media (width >= 48rem) {\n  .p1-quote[data-scale=\"display\"] .p1-quote__text {\n    font-size: var(--p1-text-4xl);\n  }\n}\n\n.p1-quote__cite {\n  display: block;\n  margin-block-start: var(--p1-space-md);\n  font-size: var(--p1-text-sm);\n  font-style: normal;\n  color: var(--p1-fg-muted);\n}\n",
+      "type": "registry:file",
+      "target": "components/puck/blocks/quote/quote.css"
+    }
+  ],
+  "meta": {
+    "version": "0.1.0",
+    "atlas": "content/quote"
+  },
+  "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  // 1. Add the import:\n  import { QuoteBlock } from './quote/quote.block';\n  // 2. Add an entry to the existing p1Blocks object:\n  //    P1Quote: QuoteBlock,\n\nThen edit components/puck/blocks/quote/quote.css to restyle it — the file is yours.",
+  "categories": [
+    "content"
+  ],
+  "type": "registry:block"
+}

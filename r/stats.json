@@ -1,0 +1,41 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "stats",
+  "title": "Stats",
+  "description": "Horizontal grid of large value+label stat items in light or dark tone; use for key metrics or social-proof numbers.",
+  "dependencies": [
+    "@puckeditor/core"
+  ],
+  "registryDependencies": [
+    "@p1/tokens"
+  ],
+  "files": [
+    {
+      "path": "registry/p1/blocks/stats/stats.tsx",
+      "content": "import \"./stats.css\";\n\nexport interface StatItem {\n  value: string;\n  label: string;\n}\nexport interface StatsProps {\n  tone: \"light\" | \"dark\";\n  items: StatItem[];\n}\n\nexport function StatsRender({ tone, items }: StatsProps) {\n  const list = items || [];\n  const cols = Math.min(4, list.length || 1);\n  return (\n    <div className=\"p1-stats p1-block\" data-tone={tone}>\n      <div\n        className=\"p1-stats__grid\"\n        style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}\n      >\n        {list.map((it, i) => (\n          <div key={i} className=\"p1-stats__item\">\n            <div className=\"p1-stats__value\">{it.value}</div>\n            <div className=\"p1-stats__label\">{it.label}</div>\n          </div>\n        ))}\n      </div>\n    </div>\n  );\n}\n",
+      "type": "registry:component",
+      "target": "components/puck/blocks/stats/stats.tsx"
+    },
+    {
+      "path": "registry/p1/blocks/stats/stats.block.tsx",
+      "content": "import type { ComponentConfig } from \"@puckeditor/core\";\nimport { defineMeta } from '../define-meta';\nimport { StatsRender, type StatsProps, type StatItem } from \"./stats\";\nexport type { StatsProps, StatItem };\n\nexport const StatsBlock: ComponentConfig<StatsProps> = {\n  fields: {\n    tone: {\n      type: \"radio\" as const,\n      options: [\n        { label: \"Light\", value: \"light\" },\n        { label: \"Dark\", value: \"dark\" },\n      ],\n    },\n    items: {\n      type: \"array\" as const,\n      arrayFields: {\n        value: {\n          type: \"text\" as const,\n          contentEditable: true,\n          visible: false,\n          ai: { instructions: \"The statistic value. E.g. 99.9% or 10k+.\" },\n        },\n        label: {\n          type: \"text\" as const,\n          contentEditable: true,\n          visible: false,\n          ai: { instructions: \"Short label below the value. 2–4 words.\" },\n        },\n      },\n      defaultItemProps: { value: \"100%\", label: \"Metric\" },\n      getItemSummary: (item: StatItem) => item.value || \"Stat\",\n    },\n  },\n  defaultProps: {\n    tone: \"light\",\n    items: [\n      { value: \"10k+\", label: \"Teams onboarded\" },\n      { value: \"99.9%\", label: \"Uptime\" },\n      { value: \"2M+\", label: \"Pages published\" },\n      { value: \"4.9/5\", label: \"Customer rating\" },\n    ],\n  },\n  render: StatsRender,\n};\n\nexport const meta = defineMeta({\n  title: 'Stats',\n  description: 'Horizontal grid of large value+label stat items in light or dark tone; use for key metrics or social-proof numbers.',\n  categories: [\"trust\"],\n  published: true,\n});\n",
+      "type": "registry:component",
+      "target": "components/puck/blocks/stats/stats.block.tsx"
+    },
+    {
+      "path": "registry/p1/blocks/stats/stats.css",
+      "content": ".p1-stats[data-tone=\"light\"] { background-color: var(--p1-surface-subtle); }\n.p1-stats[data-tone=\"dark\"] {\n  background-color: var(--p1-surface-inverse);\n  color: var(--p1-fg-inverse);\n}\n\n.p1-stats__grid {\n  display: grid;\n  gap: var(--p1-space-lg);\n  grid-template-columns: 1fr;\n  margin-inline: auto;\n  max-inline-size: var(--p1-container-default);\n}\n@media (width >= 40rem) {\n  .p1-stats__grid { grid-template-columns: repeat(2, 1fr); }\n}\n@media (width < 40rem) {\n  .p1-stats__grid { grid-template-columns: 1fr !important; }\n}\n\n.p1-stats__item { text-align: center; }\n\n.p1-stats__value {\n  color: var(--p1-accent);\n  font-size: var(--p1-text-3xl);\n  font-weight: 800;\n  letter-spacing: -0.02em;\n}\n@media (width >= 48rem) {\n  .p1-stats__value { font-size: var(--p1-text-4xl); }\n}\n.p1-stats[data-tone=\"dark\"] .p1-stats__value { color: var(--p1-warning); }\n\n.p1-stats__label {\n  color: var(--p1-fg-muted);\n  font-size: var(--p1-text-sm);\n  font-weight: var(--p1-weight-medium);\n  margin-block-start: var(--p1-space-sm);\n}\n.p1-stats[data-tone=\"dark\"] .p1-stats__label { color: var(--p1-fg-inverse-muted); }\n",
+      "type": "registry:file",
+      "target": "components/puck/blocks/stats/stats.css"
+    }
+  ],
+  "meta": {
+    "version": "0.1.0",
+    "atlas": "trust/stats"
+  },
+  "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  // 1. Add the import:\n  import { StatsBlock } from './stats/stats.block';\n  // 2. Add an entry to the existing p1Blocks object:\n  //    P1Stats: StatsBlock,\n\nThen edit components/puck/blocks/stats/stats.css to restyle it — the file is yours.",
+  "categories": [
+    "trust"
+  ],
+  "type": "registry:block"
+}

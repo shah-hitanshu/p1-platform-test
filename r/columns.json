@@ -1,0 +1,41 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "columns",
+  "title": "Columns",
+  "description": "Drag-and-drop layout grid of 2–4 columns with configurable ratio, gap, and vertical alignment; use as a layout wrapper for other blocks.",
+  "dependencies": [
+    "@puckeditor/core"
+  ],
+  "registryDependencies": [
+    "@p1/tokens"
+  ],
+  "files": [
+    {
+      "path": "registry/p1/blocks/columns/columns.tsx",
+      "content": "import * as React from \"react\";\nimport { type Slot } from \"@puckeditor/core\";\nimport \"./columns.css\";\n\nexport interface ColumnsProps {\n  distribution: \"1:1\" | \"1:1:1\" | \"2:1\" | \"1:2\" | \"1:1:1:1\";\n  gap: \"tight\" | \"regular\" | \"wide\";\n  valign: \"top\" | \"center\" | \"stretch\";\n  tone: \"none\" | \"light\";\n  col1: Slot;\n  col2: Slot;\n  col3: Slot;\n  col4: Slot;\n}\n\nconst TEMPLATES: Record<ColumnsProps[\"distribution\"], { count: number; template: string }> = {\n  \"1:1\": { count: 2, template: \"1fr 1fr\" },\n  \"2:1\": { count: 2, template: \"1.5fr 1fr\" },\n  \"1:2\": { count: 2, template: \"1fr 1.5fr\" },\n  \"1:1:1\": { count: 3, template: \"1fr 1fr 1fr\" },\n  \"1:1:1:1\": { count: 4, template: \"1fr 1fr 1fr 1fr\" },\n};\n\nfunction SlotPlaceholder({ label }: { label: string }) {\n  return <div className=\"p1-columns__placeholder\">{label}</div>;\n}\n\n/** Render a slot safely — a Puck SlotComponent in the editor or a static placeholder. */\nfunction renderSlot(slot: unknown, label: string) {\n  if (typeof slot === \"function\") {\n    const Comp = slot as React.ComponentType;\n    return <Comp />;\n  }\n  return <SlotPlaceholder label={label} />;\n}\n\nexport function ColumnsRender({ distribution, gap, valign, tone, col1, col2, col3, col4 }: ColumnsProps) {\n  const { count, template } = TEMPLATES[distribution ?? \"1:1\"];\n  const slots = [col1, col2, col3, col4].slice(0, count);\n  return (\n    <div className=\"p1-columns\" data-tone={tone}>\n      <div\n        className=\"p1-columns__grid\"\n        data-gap={gap}\n        data-valign={valign}\n        style={{ gridTemplateColumns: template }}\n      >\n        {slots.map((slot, i) => (\n          <div key={i} className=\"p1-columns__col\">\n            {renderSlot(slot, `Column ${i + 1} — drop blocks here`)}\n          </div>\n        ))}\n      </div>\n    </div>\n  );\n}\n",
+      "type": "registry:component",
+      "target": "components/puck/blocks/columns/columns.tsx"
+    },
+    {
+      "path": "registry/p1/blocks/columns/columns.block.tsx",
+      "content": "import type { ComponentConfig } from \"@puckeditor/core\";\nimport { defineMeta } from '../define-meta';\nimport { ColumnsRender, type ColumnsProps } from \"./columns\";\nexport type { ColumnsProps };\n\nexport const ColumnsBlock: ComponentConfig<ColumnsProps> = {\n  fields: {\n    distribution: {\n      type: \"select\" as const,\n      options: [\n        { label: \"Two — even\", value: \"1:1\" },\n        { label: \"Two — left wide\", value: \"2:1\" },\n        { label: \"Two — right wide\", value: \"1:2\" },\n        { label: \"Three\", value: \"1:1:1\" },\n        { label: \"Four\", value: \"1:1:1:1\" },\n      ],\n    },\n    gap: {\n      type: \"select\" as const,\n      options: [\n        { label: \"Tight\", value: \"tight\" },\n        { label: \"Regular\", value: \"regular\" },\n        { label: \"Wide\", value: \"wide\" },\n      ],\n    },\n    valign: {\n      type: \"select\" as const,\n      options: [\n        { label: \"Top\", value: \"top\" },\n        { label: \"Center\", value: \"center\" },\n        { label: \"Stretch\", value: \"stretch\" },\n      ],\n    },\n    tone: {\n      type: \"radio\" as const,\n      options: [\n        { label: \"None\", value: \"none\" },\n        { label: \"Light\", value: \"light\" },\n      ],\n    },\n    col1: { type: \"slot\" as const },\n    col2: { type: \"slot\" as const },\n    col3: { type: \"slot\" as const },\n    col4: { type: \"slot\" as const },\n  },\n  defaultProps: {\n    distribution: \"1:1\",\n    gap: \"regular\",\n    valign: \"top\",\n    tone: \"none\",\n    col1: [],\n    col2: [],\n    col3: [],\n    col4: [],\n  },\n  render: ColumnsRender as unknown as ComponentConfig<ColumnsProps>[\"render\"],\n};\n\nexport const meta = defineMeta({\n  title: 'Columns',\n  description: 'Drag-and-drop layout grid of 2–4 columns with configurable ratio, gap, and vertical alignment; use as a layout wrapper for other blocks.',\n  categories: [\"layout\"],\n  published: true,\n});\n",
+      "type": "registry:component",
+      "target": "components/puck/blocks/columns/columns.block.tsx"
+    },
+    {
+      "path": "registry/p1/blocks/columns/columns.css",
+      "content": ".p1-columns {\n  padding-block: var(--p1-space-lg);\n  padding-inline: var(--p1-space-lg);\n}\n\n.p1-columns[data-tone=\"light\"] {\n  background-color: var(--p1-surface-subtle);\n}\n\n.p1-columns__grid {\n  display: grid;\n  margin-inline: auto;\n  max-inline-size: var(--p1-container-wide);\n  /* gridTemplateColumns is set via inline style from the distribution prop */\n}\n\n.p1-columns__grid[data-gap=\"tight\"]   { gap: var(--p1-space-md); }\n.p1-columns__grid[data-gap=\"regular\"] { gap: var(--p1-space-lg); }\n.p1-columns__grid[data-gap=\"wide\"]    { gap: var(--p1-space-xl); }\n\n.p1-columns__grid[data-valign=\"top\"]     { align-items: start; }\n.p1-columns__grid[data-valign=\"center\"]  { align-items: center; }\n.p1-columns__grid[data-valign=\"stretch\"] { align-items: stretch; }\n\n.p1-columns__col { min-inline-size: 0; }\n\n.p1-columns__placeholder {\n  border: 1px dashed var(--p1-border);\n  border-radius: var(--p1-radius-card);\n  color: var(--p1-fg-muted);\n  font-size: var(--p1-text-sm);\n  padding: var(--p1-space-lg);\n  text-align: center;\n}\n\n@media (width < 48rem) {\n  .p1-columns__grid { grid-template-columns: 1fr !important; }\n}\n",
+      "type": "registry:file",
+      "target": "components/puck/blocks/columns/columns.css"
+    }
+  ],
+  "meta": {
+    "version": "0.1.0",
+    "atlas": "layout/columns"
+  },
+  "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  // 1. Add the import:\n  import { ColumnsBlock } from './columns/columns.block';\n  // 2. Add an entry to the existing p1Blocks object:\n  //    P1Columns: ColumnsBlock,\n\nThen edit components/puck/blocks/columns/columns.css to restyle it — the file is yours.",
+  "categories": [
+    "layout"
+  ],
+  "type": "registry:block"
+}

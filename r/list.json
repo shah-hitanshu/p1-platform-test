@@ -1,0 +1,41 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "list",
+  "title": "List",
+  "description": "Bullet, numbered, or checkmark list of text items; use for simple inline content lists.",
+  "dependencies": [
+    "@puckeditor/core"
+  ],
+  "registryDependencies": [
+    "@p1/tokens"
+  ],
+  "files": [
+    {
+      "path": "registry/p1/blocks/list/list.tsx",
+      "content": "import \"./list.css\";\n\nexport interface ListProps {\n  items: { text: string }[];\n  style: \"bullet\" | \"numbered\" | \"check\";\n}\n\nexport function List({ items, style }: ListProps) {\n  const Tag = style === \"numbered\" ? \"ol\" : \"ul\";\n  return (\n    <div className=\"p1-list p1-block\" data-style={style}>\n      <Tag className=\"p1-list__items\">\n        {items.map((item, i) => (\n          <li key={i} className=\"p1-list__item\">\n            <span className=\"p1-list__marker\" aria-hidden=\"true\" />\n            <span className=\"p1-list__text\">{item.text}</span>\n          </li>\n        ))}\n      </Tag>\n    </div>\n  );\n}\n",
+      "type": "registry:component",
+      "target": "components/puck/blocks/list/list.tsx"
+    },
+    {
+      "path": "registry/p1/blocks/list/list.block.tsx",
+      "content": "import type { ComponentConfig } from \"@puckeditor/core\";\nimport { defineMeta } from '../define-meta';\nimport { List, type ListProps } from \"./list\";\nexport type { ListProps };\n\nexport const ListBlock: ComponentConfig<ListProps> = {\n  fields: {\n    items: {\n      type: \"array\",\n      arrayFields: {\n        text: {\n          type: \"text\" as const,\n          ai: {\n            instructions:\n              \"A single concise list item. Plain text, sentence case, no trailing punctuation except for complete sentences.\",\n          },\n        },\n      },\n      defaultItemProps: {\n        text: \"A clear, scannable list item\",\n      },\n    },\n    style: {\n      type: \"radio\" as const,\n      options: [\n        { label: \"Bullet\", value: \"bullet\" },\n        { label: \"Numbered\", value: \"numbered\" },\n        { label: \"Check\", value: \"check\" },\n      ],\n    },\n  },\n  defaultProps: {\n    items: [\n      { text: \"First item that gets the reader's attention\" },\n      { text: \"Second item with supporting detail\" },\n      { text: \"Third item that rounds out the set\" },\n    ],\n    style: \"bullet\",\n  },\n  render: List,\n};\n\nexport const meta = defineMeta({\n  title: 'List',\n  description: 'Bullet, numbered, or checkmark list of text items; use for simple inline content lists.',\n  categories: [\"content\"],\n  published: true,\n});\n",
+      "type": "registry:component",
+      "target": "components/puck/blocks/list/list.block.tsx"
+    },
+    {
+      "path": "registry/p1/blocks/list/list.css",
+      "content": ".p1-list__items {\n  margin: 0;\n  padding: 0;\n  list-style: none;\n  display: flex;\n  flex-direction: column;\n  gap: var(--p1-space-sm);\n  max-inline-size: 65ch;\n}\n\n.p1-list__item {\n  display: flex;\n  align-items: baseline;\n  gap: var(--p1-space-sm);\n  font-size: var(--p1-text-base);\n  color: var(--p1-fg-muted);\n  line-height: var(--p1-leading-normal);\n}\n\n.p1-list__text {\n  flex: 1;\n}\n\n/* Bullet marker */\n.p1-list[data-style=\"bullet\"] .p1-list__marker {\n  flex-shrink: 0;\n  inline-size: 0.375rem;\n  block-size: 0.375rem;\n  border-radius: var(--p1-radius-pill);\n  background: var(--p1-accent);\n  margin-block-start: 0.45em;\n}\n\n/* Numbered marker — CSS counter */\n.p1-list[data-style=\"numbered\"] .p1-list__items {\n  counter-reset: list-counter;\n}\n\n.p1-list[data-style=\"numbered\"] .p1-list__item {\n  counter-increment: list-counter;\n}\n\n.p1-list[data-style=\"numbered\"] .p1-list__marker {\n  flex-shrink: 0;\n  min-inline-size: 1.25rem;\n  font-size: var(--p1-text-sm);\n  font-weight: var(--p1-weight-bold);\n  color: var(--p1-accent);\n  line-height: 1;\n}\n\n.p1-list[data-style=\"numbered\"] .p1-list__marker::before {\n  content: counter(list-counter) \".\";\n}\n\n/* Check marker */\n.p1-list[data-style=\"check\"] .p1-list__marker {\n  flex-shrink: 0;\n  inline-size: 1rem;\n  block-size: 1rem;\n  background: var(--p1-accent);\n  border-radius: 2px;\n  clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);\n  margin-block-start: 0.15em;\n}\n",
+      "type": "registry:file",
+      "target": "components/puck/blocks/list/list.css"
+    }
+  ],
+  "meta": {
+    "version": "0.1.0",
+    "atlas": "content/list"
+  },
+  "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  // 1. Add the import:\n  import { ListBlock } from './list/list.block';\n  // 2. Add an entry to the existing p1Blocks object:\n  //    P1List: ListBlock,\n\nThen edit components/puck/blocks/list/list.css to restyle it — the file is yours.",
+  "categories": [
+    "content"
+  ],
+  "type": "registry:block"
+}

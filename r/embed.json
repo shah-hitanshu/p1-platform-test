@@ -1,0 +1,42 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "embed",
+  "title": "Embed",
+  "description": "Responsive iframe embed for video (YouTube/Vimeo/Wistia), social posts, maps, or generic URLs with aspect-ratio and caption; use for media embeds.",
+  "dependencies": [
+    "@puckeditor/core"
+  ],
+  "registryDependencies": [
+    "@p1/tokens",
+    "@p1/internal-icons"
+  ],
+  "files": [
+    {
+      "path": "registry/p1/blocks/embed/embed.tsx",
+      "content": "import { Icon, type IconName } from \"@/registry/p1/internal/icons\";\nimport \"./embed.css\";\n\nexport interface EmbedProps {\n  kind: \"video\" | \"social\" | \"map\" | \"generic\";\n  url: string;\n  title: string;\n  ratio: \"16 / 9\" | \"4 / 3\" | \"1 / 1\";\n  caption: string;\n  width: \"contained\" | \"wide\";\n}\n\nfunction providerOf(url: string, kind: EmbedProps[\"kind\"]): string {\n  const u = (url || \"\").toLowerCase();\n  if (/youtu\\.?be/.test(u)) return \"YouTube\";\n  if (/vimeo/.test(u)) return \"Vimeo\";\n  if (/wistia/.test(u)) return \"Wistia\";\n  if (/twitter|x\\.com/.test(u)) return \"X / Twitter\";\n  if (/instagram/.test(u)) return \"Instagram\";\n  if (/linkedin/.test(u)) return \"LinkedIn\";\n  if (/maps|google\\.com\\/maps/.test(u)) return \"Google Maps\";\n  return { video: \"Video\", social: \"Social post\", map: \"Map\", generic: \"Embedded content\" }[kind];\n}\n\nconst ICON_BY_KIND: Record<EmbedProps[\"kind\"], IconName> = {\n  video: \"external\",\n  social: \"chat\",\n  map: \"map-pin\",\n  generic: \"external\",\n};\n\nexport function EmbedRender({ kind, url, title, ratio, caption, width }: EmbedProps) {\n  const provider = providerOf(url, kind);\n  const isVideo = kind === \"video\";\n  return (\n    <div className=\"p1-embed p1-block\" data-width={width}>\n      <div className=\"p1-embed__frame\" data-kind={kind} style={{ aspectRatio: ratio }}>\n        {isVideo ? (\n          <div className=\"p1-embed__play\" aria-hidden=\"true\">\n            <span className=\"p1-embed__play-triangle\" />\n          </div>\n        ) : (\n          <div className=\"p1-embed__placeholder\">\n            <Icon name={ICON_BY_KIND[kind]} className=\"p1-embed__placeholder-icon\" />\n            <div className=\"p1-embed__placeholder-label\">{provider}</div>\n          </div>\n        )}\n        <div className=\"p1-embed__provider-tag\" data-kind={kind}>{provider}</div>\n        {isVideo && title && (\n          <div className=\"p1-embed__video-title\">{title}</div>\n        )}\n      </div>\n      {caption && <div className=\"p1-embed__caption\">{caption}</div>}\n    </div>\n  );\n}\n",
+      "type": "registry:component",
+      "target": "components/puck/blocks/embed/embed.tsx"
+    },
+    {
+      "path": "registry/p1/blocks/embed/embed.block.tsx",
+      "content": "import type { ComponentConfig } from \"@puckeditor/core\";\nimport { defineMeta } from '../define-meta';\nimport { EmbedRender, type EmbedProps } from \"./embed\";\nexport type { EmbedProps };\n\nexport const EmbedBlock: ComponentConfig<EmbedProps> = {\n  fields: {\n    kind: {\n      type: \"select\" as const,\n      options: [\n        { label: \"Video\", value: \"video\" },\n        { label: \"Social\", value: \"social\" },\n        { label: \"Map\", value: \"map\" },\n        { label: \"Generic\", value: \"generic\" },\n      ],\n    },\n    url: {\n      type: \"text\" as const,\n      ai: { exclude: true },\n    },\n    title: {\n      type: \"text\" as const,\n      contentEditable: true,\n      visible: false,\n      ai: { instructions: \"Short video title shown on the embed preview. Under 12 words.\" },\n    },\n    ratio: {\n      type: \"select\" as const,\n      options: [\n        { label: \"16 / 9\", value: \"16 / 9\" },\n        { label: \"4 / 3\", value: \"4 / 3\" },\n        { label: \"1 / 1\", value: \"1 / 1\" },\n      ],\n    },\n    caption: {\n      type: \"text\" as const,\n      contentEditable: true,\n      visible: false,\n      ai: { instructions: \"Optional caption shown below the embed. 1 sentence.\" },\n    },\n    width: {\n      type: \"select\" as const,\n      options: [\n        { label: \"Contained\", value: \"contained\" },\n        { label: \"Wide\", value: \"wide\" },\n      ],\n    },\n  },\n  defaultProps: {\n    kind: \"video\",\n    url: \"https://youtube.com/watch?v=demo\",\n    title: \"Inside a Pantheon deploy — start to Live in 90 seconds\",\n    ratio: \"16 / 9\",\n    caption: \"\",\n    width: \"wide\",\n  },\n  render: EmbedRender,\n};\n\nexport const meta = defineMeta({\n  title: 'Embed',\n  description: 'Responsive iframe embed for video (YouTube/Vimeo/Wistia), social posts, maps, or generic URLs with aspect-ratio and caption; use for media embeds.',\n  categories: [\"editorial\"],\n  published: true,\n  registryDependencies: [\"@p1/tokens\",\"@p1/internal-icons\"],\n});\n",
+      "type": "registry:component",
+      "target": "components/puck/blocks/embed/embed.block.tsx"
+    },
+    {
+      "path": "registry/p1/blocks/embed/embed.css",
+      "content": ".p1-embed__frame {\n  border-radius: var(--p1-radius-card);\n  overflow: hidden;\n  position: relative;\n}\n\n.p1-embed[data-width=\"contained\"] { max-inline-size: var(--p1-container-narrow); }\n.p1-embed[data-width=\"wide\"] { max-inline-size: var(--p1-container-default); }\n\n.p1-embed[data-width=\"contained\"],\n.p1-embed[data-width=\"wide\"] {\n  margin-inline: auto;\n  padding-block: var(--p1-space-md);\n  padding-inline: var(--p1-space-lg);\n}\n\n.p1-embed__frame[data-kind=\"video\"] {\n  background-color: var(--p1-surface-inverse);\n}\n.p1-embed__frame[data-kind=\"social\"],\n.p1-embed__frame[data-kind=\"map\"],\n.p1-embed__frame[data-kind=\"generic\"] {\n  background-color: color-mix(in oklch, var(--p1-surface-inverse) 6%, transparent);\n  border: 1px solid var(--p1-border);\n}\n\n/* Centre content vertically and horizontally */\n.p1-embed__play,\n.p1-embed__placeholder {\n  align-items: center;\n  display: grid;\n  inset: 0;\n  justify-items: center;\n  place-content: center;\n  position: absolute;\n}\n\n.p1-embed__play {\n  block-size: 4.5rem;\n  border-radius: var(--p1-radius-pill);\n  inset: 50% auto auto 50%;\n  inline-size: 4.5rem;\n  margin: -2.25rem 0 0 -2.25rem;\n  place-content: center;\n  background-color: var(--p1-warning);\n  box-shadow: var(--p1-shadow-play);\n}\n.p1-embed__play-triangle {\n  block-size: 0;\n  border-block: 0.8125rem solid transparent;\n  border-inline-start: 1.3125rem solid var(--p1-fg-default);\n  inline-size: 0;\n  margin-inline-start: 0.2rem;\n}\n\n.p1-embed__placeholder { gap: var(--p1-space-sm); text-align: center; }\n.p1-embed__placeholder-icon {\n  block-size: 2.25rem;\n  color: var(--p1-fg-muted);\n  inline-size: 2.25rem;\n}\n.p1-embed__placeholder-label {\n  color: var(--p1-fg-muted);\n  font-weight: var(--p1-weight-bold);\n}\n\n.p1-embed__provider-tag {\n  font-size: var(--p1-text-sm);\n  font-weight: var(--p1-weight-bold);\n  letter-spacing: 0.12em;\n  padding: var(--p1-space-sm) var(--p1-space-md);\n  position: absolute;\n  inset-block-start: 0;\n  inset-inline-start: 0;\n  text-transform: uppercase;\n}\n.p1-embed__provider-tag[data-kind=\"video\"] { color: var(--p1-fg-inverse-subtle); }\n.p1-embed__provider-tag:not([data-kind=\"video\"]) { color: var(--p1-fg-muted); }\n\n.p1-embed__video-title {\n  bottom: var(--p1-space-md);\n  color: var(--p1-fg-inverse);\n  filter: drop-shadow(var(--p1-drop-shadow-text));\n  font-size: var(--p1-text-base);\n  font-weight: var(--p1-weight-bold);\n  inset-block-end: var(--p1-space-md);\n  inset-inline: var(--p1-space-lg);\n  line-height: var(--p1-leading-tight);\n  position: absolute;\n}\n\n.p1-embed__caption {\n  color: var(--p1-fg-muted);\n  font-size: var(--p1-text-sm);\n  line-height: var(--p1-leading-normal);\n  margin-block-start: var(--p1-space-sm);\n}\n",
+      "type": "registry:file",
+      "target": "components/puck/blocks/embed/embed.css"
+    }
+  ],
+  "meta": {
+    "version": "0.1.0",
+    "atlas": "editorial/embed"
+  },
+  "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  // 1. Add the import:\n  import { EmbedBlock } from './embed/embed.block';\n  // 2. Add an entry to the existing p1Blocks object:\n  //    P1Embed: EmbedBlock,\n\nThen edit components/puck/blocks/embed/embed.css to restyle it — the file is yours.",
+  "categories": [
+    "editorial"
+  ],
+  "type": "registry:block"
+}

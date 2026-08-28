@@ -1,0 +1,43 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "paragraph",
+  "title": "Paragraph",
+  "description": "Rich-text paragraph in body or lead style with size and alignment controls; use for body copy blocks.",
+  "dependencies": [
+    "@puckeditor/core",
+    "@pantheon-systems/puck-css"
+  ],
+  "registryDependencies": [
+    "@p1/tokens",
+    "@p1/internal-rich"
+  ],
+  "files": [
+    {
+      "path": "registry/p1/blocks/paragraph/paragraph.tsx",
+      "content": "import \"./paragraph.css\";\nimport { RichValue } from \"@/registry/p1/internal/rich\";\n\nexport interface ParagraphProps {\n  text: unknown;\n  style: \"body\" | \"lead\";\n  size: \"small\" | \"regular\" | \"large\";\n  align: \"left\" | \"center\";\n}\n\nexport function Paragraph({ text, style, size, align }: ParagraphProps) {\n  return (\n    <div className=\"p1-paragraph p1-block\" data-style={style} data-size={size} data-align={align}>\n      <RichValue value={text} className=\"p1-paragraph__body\" />\n    </div>\n  );\n}\n",
+      "type": "registry:component",
+      "target": "components/puck/blocks/paragraph/paragraph.tsx"
+    },
+    {
+      "path": "registry/p1/blocks/paragraph/paragraph.block.tsx",
+      "content": "\"use client\";\n\nimport type { ComponentConfig } from \"@puckeditor/core\";\nimport { richtextField } from \"@pantheon-systems/puck-css/fields\";\nimport { defineMeta } from '../define-meta';\nimport { Paragraph, type ParagraphProps } from \"./paragraph\";\nexport type { ParagraphProps };\n\nexport const ParagraphBlock: ComponentConfig<ParagraphProps> = {\n  fields: {\n    text: richtextField,\n    style: {\n      type: \"radio\" as const,\n      options: [\n        { label: \"Body\", value: \"body\" },\n        { label: \"Lead\", value: \"lead\" },\n      ],\n    },\n    size: {\n      type: \"select\" as const,\n      options: [\n        { label: \"Small\", value: \"small\" },\n        { label: \"Regular\", value: \"regular\" },\n        { label: \"Large\", value: \"large\" },\n      ],\n    },\n    align: {\n      type: \"radio\" as const,\n      options: [\n        { label: \"Left\", value: \"left\" },\n        { label: \"Center\", value: \"center\" },\n      ],\n    },\n  },\n  defaultProps: {\n    text: \"This is a paragraph. Use it to expand on the heading above with a sentence or two of supporting detail — keep it clear, specific, and easy to scan.\",\n    style: \"body\",\n    size: \"regular\",\n    align: \"left\",\n  },\n  render: Paragraph,\n};\n\nexport const meta = defineMeta({\n  title: 'Paragraph',\n  description: 'Rich-text paragraph in body or lead style with size and alignment controls; use for body copy blocks.',\n  categories: [\"content\"],\n  published: true,\n  dependencies: [\"@puckeditor/core\",\"@pantheon-systems/puck-css\"],\n  registryDependencies: [\"@p1/tokens\",\"@p1/internal-rich\"],\n});\n",
+      "type": "registry:component",
+      "target": "components/puck/blocks/paragraph/paragraph.block.tsx"
+    },
+    {
+      "path": "registry/p1/blocks/paragraph/paragraph.css",
+      "content": ".p1-paragraph {\n  padding-block: var(--p1-space-sm);\n}\n\n.p1-paragraph__body {\n  max-inline-size: 65ch;\n  text-wrap: pretty;\n  line-height: var(--p1-leading-normal);\n}\n\n.p1-paragraph[data-align=\"center\"] .p1-paragraph__body {\n  margin-inline: auto;\n  text-align: center;\n}\n\n.p1-paragraph[data-align=\"left\"] .p1-paragraph__body {\n  text-align: left;\n}\n\n/* Body style */\n.p1-paragraph[data-style=\"body\"] .p1-paragraph__body {\n  color: var(--p1-fg-muted);\n}\n\n.p1-paragraph[data-style=\"body\"][data-size=\"small\"] .p1-paragraph__body {\n  font-size: var(--p1-text-sm);\n}\n\n.p1-paragraph[data-style=\"body\"][data-size=\"regular\"] .p1-paragraph__body {\n  font-size: var(--p1-text-base);\n}\n\n@media (width >= 48rem) {\n  .p1-paragraph[data-style=\"body\"][data-size=\"regular\"] .p1-paragraph__body {\n    font-size: var(--p1-text-lg);\n  }\n}\n\n.p1-paragraph[data-style=\"body\"][data-size=\"large\"] .p1-paragraph__body {\n  font-size: var(--p1-text-lg);\n}\n\n@media (width >= 48rem) {\n  .p1-paragraph[data-style=\"body\"][data-size=\"large\"] .p1-paragraph__body {\n    font-size: var(--p1-text-xl);\n  }\n}\n\n/* Lead style */\n.p1-paragraph[data-style=\"lead\"] .p1-paragraph__body {\n  font-family: Georgia, serif;\n  font-size: var(--p1-text-xl);\n  color: var(--p1-fg-default);\n}\n\n@media (width >= 48rem) {\n  .p1-paragraph[data-style=\"lead\"] .p1-paragraph__body {\n    font-size: var(--p1-text-2xl);\n  }\n}\n",
+      "type": "registry:file",
+      "target": "components/puck/blocks/paragraph/paragraph.css"
+    }
+  ],
+  "meta": {
+    "version": "0.1.0",
+    "atlas": "content/paragraph"
+  },
+  "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  // 1. Add the import:\n  import { ParagraphBlock } from './paragraph/paragraph.block';\n  // 2. Add an entry to the existing p1Blocks object:\n  //    P1Paragraph: ParagraphBlock,\n\nThen edit components/puck/blocks/paragraph/paragraph.css to restyle it — the file is yours.",
+  "categories": [
+    "content"
+  ],
+  "type": "registry:block"
+}

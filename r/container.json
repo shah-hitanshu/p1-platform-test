@@ -1,0 +1,41 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "container",
+  "title": "Container",
+  "description": "Constrained-width wrapper slot with tone, padding, radius, and max-width controls; use to scope and style groups of nested blocks.",
+  "dependencies": [
+    "@puckeditor/core"
+  ],
+  "registryDependencies": [
+    "@p1/tokens"
+  ],
+  "files": [
+    {
+      "path": "registry/p1/blocks/container/container.tsx",
+      "content": "import * as React from \"react\";\nimport { type Slot } from \"@puckeditor/core\";\nimport \"./container.css\";\n\nexport interface ContainerProps {\n  content: Slot;\n  tone: \"none\" | \"light\" | \"white\";\n  pad: \"compact\" | \"regular\" | \"spacious\";\n  maxWidth: \"narrow\" | \"standard\" | \"wide\" | \"full\";\n  align: \"left\" | \"center\";\n  radius: \"none\" | \"soft\" | \"round\";\n}\n\nfunction SlotPlaceholder() {\n  return (\n    <div className=\"p1-container__placeholder\">\n      Drop blocks here, or add them in the inspector.\n    </div>\n  );\n}\n\nexport function ContainerRender({ content, tone, pad, maxWidth, align, radius }: ContainerProps) {\n  const Content = content as unknown;\n  const hasBackground = tone !== \"none\";\n  const inner =\n    typeof Content === \"function\" ? (\n      (() => {\n        const Comp = Content as React.ComponentType;\n        return <Comp />;\n      })()\n    ) : (\n      <SlotPlaceholder />\n    );\n  return (\n    <div className=\"p1-container\">\n      <div className=\"p1-container__outer\">\n        <div\n          className=\"p1-container__box\"\n          data-tone={tone}\n          data-pad={hasBackground ? pad : undefined}\n          data-radius={hasBackground ? radius : undefined}\n        >\n          <div className=\"p1-container__inner\" data-maxwidth={maxWidth} data-align={align}>\n            {inner}\n          </div>\n        </div>\n      </div>\n    </div>\n  );\n}\n",
+      "type": "registry:component",
+      "target": "components/puck/blocks/container/container.tsx"
+    },
+    {
+      "path": "registry/p1/blocks/container/container.block.tsx",
+      "content": "import type { ComponentConfig } from \"@puckeditor/core\";\nimport { defineMeta } from '../define-meta';\nimport { ContainerRender, type ContainerProps } from \"./container\";\nexport type { ContainerProps };\n\nexport const ContainerBlock: ComponentConfig<ContainerProps> = {\n  fields: {\n    content: { type: \"slot\" as const },\n    tone: {\n      type: \"select\" as const,\n      options: [\n        { label: \"None\", value: \"none\" },\n        { label: \"Light\", value: \"light\" },\n        { label: \"White\", value: \"white\" },\n      ],\n    },\n    pad: {\n      type: \"select\" as const,\n      options: [\n        { label: \"Compact\", value: \"compact\" },\n        { label: \"Regular\", value: \"regular\" },\n        { label: \"Spacious\", value: \"spacious\" },\n      ],\n    },\n    maxWidth: {\n      type: \"select\" as const,\n      options: [\n        { label: \"Narrow\", value: \"narrow\" },\n        { label: \"Standard\", value: \"standard\" },\n        { label: \"Wide\", value: \"wide\" },\n        { label: \"Full\", value: \"full\" },\n      ],\n    },\n    align: {\n      type: \"radio\" as const,\n      options: [\n        { label: \"Left\", value: \"left\" },\n        { label: \"Center\", value: \"center\" },\n      ],\n    },\n    radius: {\n      type: \"select\" as const,\n      options: [\n        { label: \"None\", value: \"none\" },\n        { label: \"Soft\", value: \"soft\" },\n        { label: \"Round\", value: \"round\" },\n      ],\n    },\n  },\n  defaultProps: {\n    content: [],\n    tone: \"light\",\n    pad: \"regular\",\n    maxWidth: \"standard\",\n    align: \"left\",\n    radius: \"soft\",\n  },\n  render: ContainerRender as unknown as ComponentConfig<ContainerProps>[\"render\"],\n};\n\nexport const meta = defineMeta({\n  title: 'Container',\n  description: 'Constrained-width wrapper slot with tone, padding, radius, and max-width controls; use to scope and style groups of nested blocks.',\n  categories: [\"layout\"],\n  published: true,\n});\n",
+      "type": "registry:component",
+      "target": "components/puck/blocks/container/container.block.tsx"
+    },
+    {
+      "path": "registry/p1/blocks/container/container.css",
+      "content": ".p1-container {\n  padding-block: var(--p1-space-md);\n  padding-inline: var(--p1-space-lg);\n}\n\n.p1-container__outer {\n  margin-inline: auto;\n  max-inline-size: var(--p1-container-wide);\n}\n\n.p1-container__box[data-tone=\"light\"] { background-color: var(--p1-surface-subtle); }\n.p1-container__box[data-tone=\"white\"] {\n  background-color: var(--p1-surface-default);\n  border: 1px solid var(--p1-border);\n}\n\n.p1-container__box[data-pad=\"compact\"]  { padding: var(--p1-space-lg); }\n.p1-container__box[data-pad=\"regular\"]  { padding: var(--p1-space-xl); }\n.p1-container__box[data-pad=\"spacious\"] { padding: var(--p1-space-xl); }\n@media (width >= 48rem) {\n  .p1-container__box[data-pad=\"spacious\"] { padding: var(--p1-space-3xl); }\n}\n\n.p1-container__box[data-radius=\"soft\"]  { border-radius: var(--p1-radius-card); }\n.p1-container__box[data-radius=\"round\"] { border-radius: var(--p1-radius-xl); }\n\n.p1-container__inner[data-maxwidth=\"narrow\"]   { max-inline-size: var(--p1-container-narrow); }\n.p1-container__inner[data-maxwidth=\"standard\"] { max-inline-size: var(--p1-container-default); }\n.p1-container__inner[data-maxwidth=\"wide\"]     { max-inline-size: var(--p1-container-wide); }\n\n.p1-container__inner[data-align=\"center\"] { margin-inline: auto; }\n\n.p1-container__placeholder {\n  border: 1px dashed var(--p1-border);\n  border-radius: var(--p1-radius-card);\n  color: var(--p1-fg-muted);\n  font-size: var(--p1-text-sm);\n  padding: var(--p1-space-lg);\n  text-align: center;\n}\n",
+      "type": "registry:file",
+      "target": "components/puck/blocks/container/container.css"
+    }
+  ],
+  "meta": {
+    "version": "0.1.0",
+    "atlas": "layout/container"
+  },
+  "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  // 1. Add the import:\n  import { ContainerBlock } from './container/container.block';\n  // 2. Add an entry to the existing p1Blocks object:\n  //    P1Container: ContainerBlock,\n\nThen edit components/puck/blocks/container/container.css to restyle it — the file is yours.",
+  "categories": [
+    "layout"
+  ],
+  "type": "registry:block"
+}

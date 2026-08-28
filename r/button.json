@@ -1,0 +1,42 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "button",
+  "title": "Button",
+  "description": "Single CTA button (primary/secondary/yellow/purple) centered or left-aligned; use to place a standalone call-to-action.",
+  "dependencies": [
+    "@puckeditor/core"
+  ],
+  "registryDependencies": [
+    "@p1/tokens",
+    "@p1/internal-btn"
+  ],
+  "files": [
+    {
+      "path": "registry/p1/blocks/button/button.tsx",
+      "content": "import \"./button.css\";\nimport { Btn } from \"@/registry/p1/internal/btn\";\n\nexport interface ButtonProps {\n  label: string;\n  href: string;\n  variant: \"primary\" | \"secondary\" | \"yellow\" | \"purple\";\n  align: \"left\" | \"center\";\n}\n\nexport function Button({ label, href, variant, align }: ButtonProps) {\n  return (\n    <div className=\"p1-button p1-block\" data-align={align}>\n      <Btn href={href} variant={variant}>\n        {label}\n      </Btn>\n    </div>\n  );\n}\n",
+      "type": "registry:component",
+      "target": "components/puck/blocks/button/button.tsx"
+    },
+    {
+      "path": "registry/p1/blocks/button/button.block.tsx",
+      "content": "import type { ComponentConfig } from \"@puckeditor/core\";\nimport { defineMeta } from '../define-meta';\nimport { Button, type ButtonProps } from \"./button\";\nexport type { ButtonProps };\n\nexport const ButtonBlock: ComponentConfig<ButtonProps> = {\n  fields: {\n    label: {\n      type: \"text\" as const,\n      ai: {\n        instructions:\n          \"Call-to-action label. 2–5 words, imperative verb first. Example: 'Get started free', 'Learn more'. No trailing punctuation.\",\n      },\n    },\n    href: {\n      type: \"text\" as const,\n      ai: { exclude: true },\n    },\n    variant: {\n      type: \"select\" as const,\n      options: [\n        { label: \"Primary\", value: \"primary\" },\n        { label: \"Secondary\", value: \"secondary\" },\n        { label: \"Yellow\", value: \"yellow\" },\n        { label: \"Purple\", value: \"purple\" },\n      ],\n    },\n    align: {\n      type: \"radio\" as const,\n      options: [\n        { label: \"Left\", value: \"left\" },\n        { label: \"Center\", value: \"center\" },\n      ],\n    },\n  },\n  defaultProps: {\n    label: \"Get started\",\n    href: \"#\",\n    variant: \"primary\",\n    align: \"left\",\n  },\n  render: Button,\n};\n\nexport const meta = defineMeta({\n  title: 'Button',\n  description: 'Single CTA button (primary/secondary/yellow/purple) centered or left-aligned; use to place a standalone call-to-action.',\n  categories: [\"content\"],\n  published: true,\n  registryDependencies: [\"@p1/tokens\",\"@p1/internal-btn\"],\n});\n",
+      "type": "registry:component",
+      "target": "components/puck/blocks/button/button.block.tsx"
+    },
+    {
+      "path": "registry/p1/blocks/button/button.css",
+      "content": ".p1-button {\n  display: flex;\n}\n\n.p1-button[data-align=\"left\"] {\n  justify-content: flex-start;\n}\n\n.p1-button[data-align=\"center\"] {\n  justify-content: center;\n}\n",
+      "type": "registry:file",
+      "target": "components/puck/blocks/button/button.css"
+    }
+  ],
+  "meta": {
+    "version": "0.1.0",
+    "atlas": "content/button"
+  },
+  "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  // 1. Add the import:\n  import { ButtonBlock } from './button/button.block';\n  // 2. Add an entry to the existing p1Blocks object:\n  //    P1Button: ButtonBlock,\n\nThen edit components/puck/blocks/button/button.css to restyle it — the file is yours.",
+  "categories": [
+    "content"
+  ],
+  "type": "registry:block"
+}

@@ -1,0 +1,42 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "callout",
+  "title": "Callout",
+  "description": "Highlighted aside box with an icon, title, and body text in note/info/tip/warning variants; use to flag important inline content.",
+  "dependencies": [
+    "@puckeditor/core"
+  ],
+  "registryDependencies": [
+    "@p1/tokens",
+    "@p1/internal-icons"
+  ],
+  "files": [
+    {
+      "path": "registry/p1/blocks/callout/callout.tsx",
+      "content": "import { Icon, type IconName } from \"@/registry/p1/internal/icons\";\nimport \"./callout.css\";\n\nexport interface CalloutProps {\n  variant: \"note\" | \"info\" | \"tip\" | \"warning\";\n  title: string;\n  body: string;\n}\n\nconst ICON_BY_VARIANT: Record<CalloutProps[\"variant\"], IconName> = {\n  note: \"lines\",\n  info: \"info\",\n  tip: \"lightbulb\",\n  warning: \"warning\",\n};\n\nexport function CalloutRender({ variant, title, body }: CalloutProps) {\n  return (\n    <div className=\"p1-callout p1-block\" data-variant={variant}>\n      <div className=\"p1-callout__inner\">\n        <div className=\"p1-callout__box\">\n          <div className=\"p1-callout__icon-wrap\" aria-hidden=\"true\">\n            <Icon name={ICON_BY_VARIANT[variant]} className=\"p1-callout__icon\" />\n          </div>\n          <div className=\"p1-callout__content\">\n            {title && <div className=\"p1-callout__title\">{title}</div>}\n            <p className=\"p1-callout__body\">{body}</p>\n          </div>\n        </div>\n      </div>\n    </div>\n  );\n}\n",
+      "type": "registry:component",
+      "target": "components/puck/blocks/callout/callout.tsx"
+    },
+    {
+      "path": "registry/p1/blocks/callout/callout.block.tsx",
+      "content": "import type { ComponentConfig } from \"@puckeditor/core\";\nimport { defineMeta } from '../define-meta';\nimport { CalloutRender, type CalloutProps } from \"./callout\";\nexport type { CalloutProps };\n\nexport const CalloutBlock: ComponentConfig<CalloutProps> = {\n  fields: {\n    variant: {\n      type: \"select\" as const,\n      options: [\n        { label: \"Note\", value: \"note\" },\n        { label: \"Info\", value: \"info\" },\n        { label: \"Tip\", value: \"tip\" },\n        { label: \"Warning\", value: \"warning\" },\n      ],\n    },\n    title: {\n      type: \"text\" as const,\n      contentEditable: true,\n      visible: false,\n      ai: { instructions: \"Short label for the callout. 2–4 words. E.g. Try this, Good to know, Heads up.\" },\n    },\n    body: {\n      type: \"text\" as const,\n      contentEditable: true,\n      visible: false,\n      ai: { instructions: \"1–2 sentences of actionable or informative text. Plain prose.\" },\n    },\n  },\n  defaultProps: {\n    variant: \"tip\",\n    title: \"Try this\",\n    body: \"Make “preview first” the default. Share the link before you publish — reviewers stop guessing and start seeing.\",\n  },\n  render: CalloutRender,\n};\n\nexport const meta = defineMeta({\n  title: 'Callout',\n  description: 'Highlighted aside box with an icon, title, and body text in note/info/tip/warning variants; use to flag important inline content.',\n  categories: [\"editorial\"],\n  published: true,\n  registryDependencies: [\"@p1/tokens\",\"@p1/internal-icons\"],\n});\n",
+      "type": "registry:component",
+      "target": "components/puck/blocks/callout/callout.block.tsx"
+    },
+    {
+      "path": "registry/p1/blocks/callout/callout.css",
+      "content": ".p1-callout__inner {\n  margin-inline: auto;\n  max-inline-size: var(--p1-container-narrow);\n  padding-inline: var(--p1-space-lg);\n}\n\n.p1-callout__box {\n  border-radius: var(--p1-radius-card);\n  border: 1px solid;\n  border-inline-start-width: 4px;\n  display: flex;\n  gap: var(--p1-space-md);\n  padding: var(--p1-space-md);\n}\n\n/* Variant colours */\n.p1-callout[data-variant=\"note\"] .p1-callout__box {\n  background-color: var(--p1-surface-subtle);\n  border-color: var(--p1-border);\n  border-inline-start-color: var(--p1-fg-muted);\n}\n.p1-callout[data-variant=\"info\"] .p1-callout__box {\n  background-color: color-mix(in oklch, var(--p1-accent) 8%, var(--p1-surface-default));\n  border-color: color-mix(in oklch, var(--p1-accent) 25%, var(--p1-border));\n  border-inline-start-color: var(--p1-accent);\n}\n.p1-callout[data-variant=\"tip\"] .p1-callout__box {\n  background-color: color-mix(in oklch, var(--p1-success) 8%, var(--p1-surface-default));\n  border-color: color-mix(in oklch, var(--p1-success) 25%, var(--p1-border));\n  border-inline-start-color: var(--p1-success);\n}\n.p1-callout[data-variant=\"warning\"] .p1-callout__box {\n  background-color: color-mix(in oklch, var(--p1-warning) 12%, var(--p1-surface-default));\n  border-color: color-mix(in oklch, var(--p1-warning) 30%, var(--p1-border));\n  border-inline-start-color: var(--p1-warning);\n}\n\n.p1-callout__icon-wrap {\n  align-items: center;\n  border-radius: var(--p1-radius-pill);\n  display: grid;\n  block-size: 2.25rem;\n  flex: none;\n  inline-size: 2.25rem;\n  justify-items: center;\n  place-content: center;\n}\n.p1-callout[data-variant=\"note\"] .p1-callout__icon-wrap {\n  background-color: color-mix(in oklch, var(--p1-fg-muted) 15%, transparent);\n  color: var(--p1-fg-muted);\n}\n.p1-callout[data-variant=\"info\"] .p1-callout__icon-wrap {\n  background-color: color-mix(in oklch, var(--p1-accent) 15%, transparent);\n  color: var(--p1-accent);\n}\n.p1-callout[data-variant=\"tip\"] .p1-callout__icon-wrap {\n  background-color: color-mix(in oklch, var(--p1-success) 15%, transparent);\n  color: var(--p1-success);\n}\n.p1-callout[data-variant=\"warning\"] .p1-callout__icon-wrap {\n  background-color: color-mix(in oklch, var(--p1-warning) 20%, transparent);\n  color: color-mix(in oklch, var(--p1-warning) 70%, var(--p1-fg-default));\n}\n\n.p1-callout__icon {\n  block-size: 1.125rem;\n  inline-size: 1.125rem;\n}\n\n.p1-callout__content { flex: 1; min-inline-size: 0; }\n.p1-callout__title {\n  color: var(--p1-fg-default);\n  font-weight: var(--p1-weight-bold);\n  margin-block-end: 0.25rem;\n}\n.p1-callout__body {\n  color: color-mix(in oklch, var(--p1-fg-default) 80%, transparent);\n  font-size: 0.9375rem;\n  line-height: var(--p1-leading-normal);\n  margin: 0;\n  text-wrap: pretty;\n}\n",
+      "type": "registry:file",
+      "target": "components/puck/blocks/callout/callout.css"
+    }
+  ],
+  "meta": {
+    "version": "0.1.0",
+    "atlas": "editorial/callout"
+  },
+  "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  // 1. Add the import:\n  import { CalloutBlock } from './callout/callout.block';\n  // 2. Add an entry to the existing p1Blocks object:\n  //    P1Callout: CalloutBlock,\n\nThen edit components/puck/blocks/callout/callout.css to restyle it — the file is yours.",
+  "categories": [
+    "editorial"
+  ],
+  "type": "registry:block"
+}

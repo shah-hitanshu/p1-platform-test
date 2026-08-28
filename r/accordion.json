@@ -1,0 +1,43 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "accordion",
+  "title": "Accordion",
+  "description": "Expandable list of title/body items with a section heading; use for collapsible content like FAQs or grouped details.",
+  "dependencies": [
+    "@puckeditor/core"
+  ],
+  "registryDependencies": [
+    "@p1/tokens",
+    "@p1/internal-icons",
+    "@p1/internal-rich"
+  ],
+  "files": [
+    {
+      "path": "registry/p1/blocks/accordion/accordion.tsx",
+      "content": "\"use client\";\nimport * as React from \"react\";\nimport { Icon } from \"@/registry/p1/internal/icons\";\nimport { RichValue } from \"@/registry/p1/internal/rich\";\nimport \"./accordion.css\";\n\nexport interface AccordionItem {\n  title: string;\n  body: string;\n}\n\nexport interface AccordionProps {\n  heading: string;\n  align: \"left\" | \"center\";\n  items: AccordionItem[];\n}\n\nexport function AccordionRender({ heading, align, items }: AccordionProps) {\n  const list = items || [];\n  const [open, setOpen] = React.useState<Record<string, boolean>>(\n    list[0] ? { [list[0].title || \"0\"]: true } : {},\n  );\n  return (\n    <div className=\"p1-accordion p1-block\" data-align={align}>\n      {heading && <h2 className=\"p1-accordion__heading\">{heading}</h2>}\n      <div className=\"p1-accordion__list\">\n        {list.map((it, ii) => {\n          const key = it.title || String(ii);\n          const isOpen = !!open[key];\n          return (\n            <div key={key} className=\"p1-accordion__item\" data-open={isOpen ? \"true\" : undefined}>\n              <button\n                type=\"button\"\n                onClick={() => setOpen((o) => ({ ...o, [key]: !o[key] }))}\n                className=\"p1-accordion__trigger\"\n              >\n                <span className=\"p1-accordion__title\">{it.title || `Item ${ii + 1}`}</span>\n                <Icon name=\"plus\" className=\"p1-accordion__icon\" />\n              </button>\n              {isOpen && (\n                <div className=\"p1-accordion__body\">\n                  <RichValue value={it.body || \"\"} />\n                </div>\n              )}\n            </div>\n          );\n        })}\n      </div>\n    </div>\n  );\n}\n",
+      "type": "registry:component",
+      "target": "components/puck/blocks/accordion/accordion.tsx"
+    },
+    {
+      "path": "registry/p1/blocks/accordion/accordion.block.tsx",
+      "content": "import type { ComponentConfig } from \"@puckeditor/core\";\nimport { defineMeta } from '../define-meta';\nimport { AccordionRender, type AccordionProps, type AccordionItem } from \"./accordion\";\nexport type { AccordionProps, AccordionItem };\n\nexport const AccordionBlock: ComponentConfig<AccordionProps> = {\n  fields: {\n    heading: {\n      type: \"text\" as const,\n      contentEditable: true,\n      visible: false,\n      ai: { instructions: \"A section heading of 2–6 words. Plain text, sentence case, no trailing punctuation.\" },\n    },\n    align: {\n      type: \"radio\" as const,\n      options: [\n        { label: \"Left\", value: \"left\" },\n        { label: \"Center\", value: \"center\" },\n      ],\n    },\n    items: {\n      type: \"array\" as const,\n      arrayFields: {\n        title: { type: \"text\" as const, contentEditable: true, visible: false },\n        body: { type: \"richtext\" as const, contentEditable: true },\n      },\n      defaultItemProps: { title: \"Section title\", body: \"<p>Section content.</p>\" },\n      getItemSummary: (item: AccordionItem) => item.title || \"Section\",\n    },\n  },\n  defaultProps: {\n    heading: \"The details\",\n    align: \"left\",\n    items: [\n      {\n        title: \"What frameworks are supported?\",\n        body: \"<p>WordPress, Drupal, and Next.js — all on the same platform, with the same <mark>Dev-Test-Live</mark> workflow.</p>\",\n      },\n      {\n        title: \"How do environments work?\",\n        body: \"<p>Every site gets Dev, Test, and Live — plus unlimited Multidev branches for parallel work.</p><ul><li>Isolated by default</li><li>Shareable preview URLs</li><li>One-click promotion</li></ul>\",\n      },\n      {\n        title: \"Can the whole team use it?\",\n        body: \"<p>Yes. Developers, marketers, and IT share one workflow with role-based access — no one waits on anyone else.</p>\",\n      },\n    ],\n  },\n  render: AccordionRender,\n};\n\nexport const meta = defineMeta({\n  title: 'Accordion',\n  description: 'Expandable list of title/body items with a section heading; use for collapsible content like FAQs or grouped details.',\n  categories: [\"layout\"],\n  published: true,\n  registryDependencies: [\"@p1/tokens\",\"@p1/internal-icons\",\"@p1/internal-rich\"],\n});\n",
+      "type": "registry:component",
+      "target": "components/puck/blocks/accordion/accordion.block.tsx"
+    },
+    {
+      "path": "registry/p1/blocks/accordion/accordion.css",
+      "content": ".p1-accordion {\n  margin-inline: auto;\n  max-inline-size: var(--p1-container-narrow);\n}\n\n.p1-accordion__heading {\n  font-family: var(--p1-font-heading);\n  font-size: var(--p1-text-2xl);\n  font-weight: var(--p1-weight-bold);\n  letter-spacing: -0.02em;\n  line-height: var(--p1-leading-tight);\n  margin-block-end: var(--p1-space-lg);\n}\n@media (width >= 48rem) {\n  .p1-accordion__heading { font-size: var(--p1-text-3xl); }\n}\n.p1-accordion[data-align=\"center\"] .p1-accordion__heading { text-align: center; }\n\n.p1-accordion__list { border-block-start: 1px solid var(--p1-border); }\n\n.p1-accordion__item { border-block-end: 1px solid var(--p1-border); }\n\n.p1-accordion__trigger {\n  align-items: center;\n  background: none;\n  border: 0;\n  cursor: pointer;\n  display: flex;\n  gap: var(--p1-space-md);\n  justify-content: space-between;\n  padding-block: var(--p1-space-md);\n  text-align: start;\n  width: 100%;\n}\n\n.p1-accordion__title {\n  color: var(--p1-fg-default);\n  font-size: var(--p1-text-lg);\n  font-weight: var(--p1-weight-bold);\n  line-height: var(--p1-leading-tight);\n}\n\n.p1-accordion__icon {\n  block-size: 1.25rem;\n  color: var(--p1-fg-muted);\n  flex: none;\n  inline-size: 1.25rem;\n}\n@media (prefers-reduced-motion: no-preference) {\n  .p1-accordion__icon { transition: transform 200ms ease; }\n}\n.p1-accordion__item[data-open=\"true\"] .p1-accordion__icon {\n  transform: rotate(45deg);\n}\n\n.p1-accordion__body { padding-block-end: var(--p1-space-lg); }\n",
+      "type": "registry:file",
+      "target": "components/puck/blocks/accordion/accordion.css"
+    }
+  ],
+  "meta": {
+    "version": "0.1.0",
+    "atlas": "layout/accordion"
+  },
+  "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  // 1. Add the import:\n  import { AccordionBlock } from './accordion/accordion.block';\n  // 2. Add an entry to the existing p1Blocks object:\n  //    P1Accordion: AccordionBlock,\n\nThen edit components/puck/blocks/accordion/accordion.css to restyle it — the file is yours.",
+  "categories": [
+    "layout"
+  ],
+  "type": "registry:block"
+}

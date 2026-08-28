@@ -1,0 +1,42 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "rich-text",
+  "title": "Rich Text",
+  "description": "Free-form rich-text editor output with configurable measure, size, and optional drop cap; use for long-form article body content.",
+  "dependencies": [
+    "@puckeditor/core"
+  ],
+  "registryDependencies": [
+    "@p1/tokens",
+    "@p1/internal-rich"
+  ],
+  "files": [
+    {
+      "path": "registry/p1/blocks/rich-text/rich-text.tsx",
+      "content": "import { RichValue } from \"@/registry/p1/internal/rich\";\nimport \"./rich-text.css\";\n\nexport interface RichTextProps {\n  content: string;\n  measure: \"narrow\" | \"standard\" | \"wide\";\n  size: \"regular\" | \"large\";\n  dropCap: \"off\" | \"on\";\n}\n\nexport function RichTextRender({ content, measure, size, dropCap }: RichTextProps) {\n  return (\n    <div\n      className=\"p1-rich-text p1-block\"\n      data-measure={measure}\n      data-size={size}\n      data-dropcap={dropCap}\n    >\n      <div className=\"p1-rich-text__inner\">\n        <RichValue value={content} />\n      </div>\n    </div>\n  );\n}\n",
+      "type": "registry:component",
+      "target": "components/puck/blocks/rich-text/rich-text.tsx"
+    },
+    {
+      "path": "registry/p1/blocks/rich-text/rich-text.block.tsx",
+      "content": "import type { ComponentConfig } from \"@puckeditor/core\";\nimport { defineMeta } from '../define-meta';\nimport { RichTextRender, type RichTextProps } from \"./rich-text\";\nexport type { RichTextProps };\n\nexport const RichTextBlock: ComponentConfig<RichTextProps> = {\n  fields: {\n    content: { type: \"richtext\" as const, contentEditable: true, visible: false },\n    measure: {\n      type: \"select\" as const,\n      options: [\n        { label: \"Narrow\", value: \"narrow\" },\n        { label: \"Standard\", value: \"standard\" },\n        { label: \"Wide\", value: \"wide\" },\n      ],\n    },\n    size: {\n      type: \"radio\" as const,\n      options: [\n        { label: \"Regular\", value: \"regular\" },\n        { label: \"Large\", value: \"large\" },\n      ],\n    },\n    dropCap: {\n      type: \"radio\" as const,\n      options: [\n        { label: \"Off\", value: \"off\" },\n        { label: \"On\", value: \"on\" },\n      ],\n    },\n  },\n  defaultProps: {\n    content:\n      \"<p>A year ago, shipping a change meant a ticket, a queue, and a wait. Today it takes minutes — and the difference wasn't a single tool.</p>\" +\n      \"<h2>It started with previews</h2>\" +\n      \"<p>Every change got a shareable link before it went live. Reviewers stopped guessing and <mark>started seeing</mark>.</p>\" +\n      \"<ul><li>Fewer round-trips between teams</li><li>Marketers unblocked from engineering</li><li>Confidence to publish on a Friday</li></ul>\" +\n      \"<h3>The habit that stuck</h3>\" +\n      \"<p>We made \\\"preview first\\\" the default, not the exception. Small change, large compounding effect.</p>\" +\n      \"<blockquote>The best workflow is the one your whole team actually uses.</blockquote>\",\n    measure: \"standard\",\n    size: \"regular\",\n    dropCap: \"off\",\n  },\n  render: RichTextRender,\n};\n\nexport const meta = defineMeta({\n  title: 'Rich Text',\n  description: 'Free-form rich-text editor output with configurable measure, size, and optional drop cap; use for long-form article body content.',\n  categories: [\"editorial\"],\n  published: true,\n  registryDependencies: [\"@p1/tokens\",\"@p1/internal-rich\"],\n});\n",
+      "type": "registry:component",
+      "target": "components/puck/blocks/rich-text/rich-text.block.tsx"
+    },
+    {
+      "path": "registry/p1/blocks/rich-text/rich-text.css",
+      "content": ".p1-rich-text__inner {\n  margin-inline: auto;\n}\n\n.p1-rich-text[data-measure=\"narrow\"] .p1-rich-text__inner {\n  max-inline-size: var(--p1-container-narrow);\n}\n.p1-rich-text[data-measure=\"standard\"] .p1-rich-text__inner {\n  max-inline-size: var(--p1-container-default);\n}\n.p1-rich-text[data-measure=\"wide\"] .p1-rich-text__inner {\n  max-inline-size: var(--p1-container-wide);\n}\n\n.p1-rich-text__inner > * { margin-block: 0; }\n.p1-rich-text__inner > * + * { margin-block-start: var(--p1-space-md); }\n\n.p1-rich-text__inner p,\n.p1-rich-text__inner li {\n  line-height: var(--p1-leading-normal);\n  text-wrap: pretty;\n}\n.p1-rich-text[data-size=\"large\"] .p1-rich-text__inner p,\n.p1-rich-text[data-size=\"large\"] .p1-rich-text__inner li {\n  font-size: var(--p1-text-lg);\n}\n\n.p1-rich-text__inner h2 {\n  font-size: var(--p1-text-2xl);\n  font-weight: var(--p1-weight-bold);\n  letter-spacing: -0.02em;\n  line-height: var(--p1-leading-tight);\n  margin-block-start: var(--p1-space-xl);\n  text-wrap: balance;\n}\n.p1-rich-text__inner h3 {\n  font-size: var(--p1-text-xl);\n  font-weight: var(--p1-weight-bold);\n  letter-spacing: -0.01em;\n  line-height: var(--p1-leading-tight);\n  margin-block-start: var(--p1-space-lg);\n  text-wrap: balance;\n}\n\n.p1-rich-text__inner ul,\n.p1-rich-text__inner ol {\n  padding-inline-start: 1.5rem;\n}\n.p1-rich-text__inner ul { list-style-type: disc; }\n.p1-rich-text__inner ol { list-style-type: decimal; }\n.p1-rich-text__inner li + li { margin-block-start: 0.375rem; }\n\n.p1-rich-text__inner blockquote {\n  border-inline-start: 3px solid var(--p1-border);\n  color: var(--p1-fg-muted);\n  font-style: italic;\n  padding-inline-start: var(--p1-space-md);\n}\n\n.p1-rich-text__inner strong { font-weight: var(--p1-weight-bold); }\n.p1-rich-text__inner em { font-style: italic; }\n.p1-rich-text__inner a {\n  color: var(--p1-accent);\n  text-decoration: underline;\n}\n.p1-rich-text__inner mark {\n  background-color: color-mix(in oklch, var(--p1-warning) 40%, transparent);\n  border-radius: 0.125rem;\n  padding-inline: 0.125rem;\n}\n\n.p1-rich-text[data-dropcap=\"on\"] .p1-rich-text__inner > p:first-of-type::first-letter {\n  float: left;\n  font-size: 4em;\n  font-weight: 800;\n  line-height: 0.8;\n  margin-block-end: 0.05em;\n  margin-inline-end: 0.1em;\n}\n",
+      "type": "registry:file",
+      "target": "components/puck/blocks/rich-text/rich-text.css"
+    }
+  ],
+  "meta": {
+    "version": "0.1.0",
+    "atlas": "editorial/rich-text"
+  },
+  "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  // 1. Add the import:\n  import { RichTextBlock } from './rich-text/rich-text.block';\n  // 2. Add an entry to the existing p1Blocks object:\n  //    P1RichText: RichTextBlock,\n\nThen edit components/puck/blocks/rich-text/rich-text.css to restyle it — the file is yours.",
+  "categories": [
+    "editorial"
+  ],
+  "type": "registry:block"
+}

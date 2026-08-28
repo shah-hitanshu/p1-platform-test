@@ -1,0 +1,41 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "logos",
+  "title": "Logo Cloud",
+  "description": "Logo cloud row/grid of partner or customer logos in mono or color style with optional heading; use for social-proof or partner sections.",
+  "dependencies": [
+    "@puckeditor/core"
+  ],
+  "registryDependencies": [
+    "@p1/tokens"
+  ],
+  "files": [
+    {
+      "path": "registry/p1/blocks/logos/logos.tsx",
+      "content": "import \"./logos.css\";\n\nexport interface LogoItem {\n  src: string;\n  label: string;\n}\nexport interface LogoCloudProps {\n  heading: string;\n  style: \"mono\" | \"color\";\n  height: \"small\" | \"medium\" | \"large\";\n  logos: LogoItem[];\n}\n\nexport function LogoCloudRender({ heading, style, height, logos }: LogoCloudProps) {\n  return (\n    <div className=\"p1-logo-cloud p1-block\" data-style={style} data-height={height}>\n      <div className=\"p1-logo-cloud__inner\">\n        {heading && <div className=\"p1-logo-cloud__heading\">{heading}</div>}\n        <div className=\"p1-logo-cloud__list\">\n          {(logos || []).map((l, i) =>\n            l.src ? (\n              <img\n                key={i}\n                src={l.src}\n                alt={l.label || \"\"}\n                className=\"p1-logo-cloud__img\"\n              />\n            ) : (\n              <div key={i} className=\"p1-logo-cloud__placeholder\">{l.label || \"Logo\"}</div>\n            )\n          )}\n        </div>\n      </div>\n    </div>\n  );\n}\n",
+      "type": "registry:component",
+      "target": "components/puck/blocks/logos/logos.tsx"
+    },
+    {
+      "path": "registry/p1/blocks/logos/logos.block.tsx",
+      "content": "import type { ComponentConfig } from \"@puckeditor/core\";\nimport { defineMeta } from '../define-meta';\nimport { LogoCloudRender, type LogoCloudProps, type LogoItem } from \"./logos\";\nexport type { LogoCloudProps, LogoItem };\n\nexport const LogoCloudBlock: ComponentConfig<LogoCloudProps> = {\n  fields: {\n    heading: {\n      type: \"text\" as const,\n      contentEditable: true,\n      visible: false,\n      ai: { instructions: \"Short label above the logos. E.g. Featured in or Trusted by.\" },\n    },\n    style: {\n      type: \"radio\" as const,\n      options: [\n        { label: \"Mono\", value: \"mono\" },\n        { label: \"Color\", value: \"color\" },\n      ],\n    },\n    height: {\n      type: \"select\" as const,\n      options: [\n        { label: \"Small\", value: \"small\" },\n        { label: \"Medium\", value: \"medium\" },\n        { label: \"Large\", value: \"large\" },\n      ],\n    },\n    logos: {\n      type: \"array\" as const,\n      arrayFields: {\n        src: {\n          type: \"text\" as const,\n          ai: { exclude: true },\n        },\n        label: {\n          type: \"text\" as const,\n          contentEditable: true,\n          visible: false,\n          ai: { instructions: \"Brand or publication name. E.g. Reuters.\" },\n        },\n      },\n      defaultItemProps: { src: \"\", label: \"Brand\" },\n      getItemSummary: (item: LogoItem) => item.label || \"Logo\",\n    },\n  },\n  defaultProps: {\n    heading: \"Featured in\",\n    style: \"mono\",\n    height: \"medium\",\n    logos: [\n      { src: \"\", label: \"NPR\" },\n      { src: \"\", label: \"PBS\" },\n      { src: \"\", label: \"REUTERS\" },\n      { src: \"\", label: \"NATURE\" },\n    ],\n  },\n  render: LogoCloudRender,\n};\n\nexport const meta = defineMeta({\n  title: 'Logo Cloud',\n  description: 'Logo cloud row/grid of partner or customer logos in mono or color style with optional heading; use for social-proof or partner sections.',\n  categories: [\"trust\"],\n  published: true,\n});\n",
+      "type": "registry:component",
+      "target": "components/puck/blocks/logos/logos.block.tsx"
+    },
+    {
+      "path": "registry/p1/blocks/logos/logos.css",
+      "content": ".p1-logo-cloud__inner {\n  margin-inline: auto;\n  max-inline-size: var(--p1-container-default);\n}\n\n.p1-logo-cloud__heading {\n  color: var(--p1-fg-muted);\n  font-size: var(--p1-text-sm);\n  font-weight: var(--p1-weight-bold);\n  letter-spacing: 0.14em;\n  margin-block-end: var(--p1-space-lg);\n  text-align: center;\n  text-transform: uppercase;\n}\n\n.p1-logo-cloud__list {\n  align-items: center;\n  display: flex;\n  flex-wrap: wrap;\n  gap: var(--p1-space-lg) 3rem;\n  justify-content: center;\n}\n\n.p1-logo-cloud__img {\n  inline-size: auto;\n  max-inline-size: 11.25rem;\n  object-fit: contain;\n}\n\n/* Logo heights */\n.p1-logo-cloud[data-height=\"small\"] .p1-logo-cloud__img { block-size: 1.625rem; }\n.p1-logo-cloud[data-height=\"medium\"] .p1-logo-cloud__img { block-size: 2.375rem; }\n.p1-logo-cloud[data-height=\"large\"] .p1-logo-cloud__img { block-size: 3.25rem; }\n\n/* Mono style */\n.p1-logo-cloud[data-style=\"mono\"] .p1-logo-cloud__img {\n  filter: grayscale(1);\n  opacity: 0.6;\n}\n\n.p1-logo-cloud__placeholder {\n  color: var(--p1-border-strong);\n  font-size: var(--p1-text-xl);\n  font-weight: 800;\n  letter-spacing: 0.05em;\n}\n",
+      "type": "registry:file",
+      "target": "components/puck/blocks/logos/logos.css"
+    }
+  ],
+  "meta": {
+    "version": "0.1.0",
+    "atlas": "trust/logos"
+  },
+  "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  // 1. Add the import:\n  import { LogoCloudBlock } from './logos/logos.block';\n  // 2. Add an entry to the existing p1Blocks object:\n  //    P1LogoCloud: LogoCloudBlock,\n\nThen edit components/puck/blocks/logos/logos.css to restyle it — the file is yours.",
+  "categories": [
+    "trust"
+  ],
+  "type": "registry:block"
+}

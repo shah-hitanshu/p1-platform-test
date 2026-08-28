@@ -1,0 +1,31 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "internal-rich",
+  "title": "P1 rich text wrapper",
+  "description": "Prose typography wrapper used by the P1 editorial blocks, replacing Tailwind's prose classes.",
+  "dependencies": [
+    "isomorphic-dompurify"
+  ],
+  "files": [
+    {
+      "path": "registry/p1/internal/rich.tsx",
+      "content": "import * as React from \"react\";\nimport \"./rich.css\";\nimport { sanitizeRichtextHtml } from \"@/registry/p1/internal/sanitize-richtext\";\n\n/**\n * Renders the value of a Puck `richtext` field.\n *\n * A `richtext` field's value reaches `render` in one of two shapes:\n *   1. A stored **HTML string** — when the page is published or first mounts.\n *   2. A live **ReactNode** — while being edited inline on the Puck canvas.\n *\n * Strings are sanitized before rendering; ReactNodes pass through unchanged.\n */\nexport interface RichValueProps {\n  value: unknown;\n  className?: string;\n}\n\n/** @deprecated Use `p1-rich` className directly. Removed when accordion/rich-text/tabs convert. */\nexport const RICH_PROSE = \"p1-rich\";\n\nexport function RichValue({ value, className }: RichValueProps) {\n  const cls = [\"p1-rich\", className].filter(Boolean).join(\" \");\n  if (value == null || value === \"\") return null;\n  if (typeof value === \"string\") {\n    return <div className={cls} dangerouslySetInnerHTML={{ __html: sanitizeRichtextHtml(value) }} />;\n  }\n  return <div className={cls}>{value as React.ReactNode}</div>;\n}\n",
+      "type": "registry:lib"
+    },
+    {
+      "path": "registry/p1/internal/rich.css",
+      "content": ".p1-rich {\n  max-inline-size: 65ch;\n  text-wrap: pretty;\n}\n\n.p1-rich > *:first-child { margin-block-start: 0; }\n.p1-rich > *:last-child { margin-block-end: 0; }\n\n.p1-rich p {\n  margin-block-end: var(--p1-space-md);\n  line-height: var(--p1-leading-normal);\n  color: var(--p1-fg-muted);\n}\n\n.p1-rich h2 {\n  margin-block: var(--p1-space-md) var(--p1-space-sm);\n  font-size: var(--p1-text-2xl);\n  font-weight: var(--p1-weight-bold);\n  letter-spacing: -0.025em;\n  color: var(--p1-fg-default);\n}\n\n@media (width >= 48rem) {\n  .p1-rich h2 {\n    font-size: var(--p1-text-3xl);\n  }\n}\n\n.p1-rich h3 {\n  margin-block: var(--p1-space-sm);\n  font-size: var(--p1-text-xl);\n  font-weight: var(--p1-weight-bold);\n  letter-spacing: -0.025em;\n  color: var(--p1-fg-default);\n}\n\n.p1-rich ul {\n  margin-block-end: var(--p1-space-md);\n  list-style: disc;\n  padding-inline-start: 1.25rem;\n}\n\n.p1-rich ol {\n  margin-block-end: var(--p1-space-md);\n  list-style: decimal;\n  padding-inline-start: 1.25rem;\n}\n\n.p1-rich li {\n  margin-block-end: 0.25rem;\n  line-height: var(--p1-leading-normal);\n  color: var(--p1-fg-muted);\n}\n\n.p1-rich blockquote {\n  margin-block: var(--p1-space-md);\n  border-inline-start: 4px solid var(--p1-warning);\n  padding-inline-start: var(--p1-space-md);\n  font-size: var(--p1-text-xl);\n  font-style: italic;\n  line-height: var(--p1-leading-normal);\n  color: var(--p1-fg-default);\n}\n\n.p1-rich strong {\n  font-weight: var(--p1-weight-medium);\n  color: var(--p1-fg-default);\n}\n\n.p1-rich em {\n  font-style: italic;\n}\n\n.p1-rich a {\n  color: var(--p1-accent);\n  text-decoration: underline;\n}\n\n.p1-rich mark {\n  border-radius: var(--p1-radius-sm);\n  background: color-mix(in oklch, var(--p1-warning) 40%, transparent);\n  padding-inline: 0.125rem;\n  color: var(--p1-fg-default);\n}\n\n.p1-rich code {\n  border-radius: var(--p1-radius-sm);\n  background: var(--p1-surface-code);\n  padding-inline: 0.25rem;\n  padding-block: 0.125rem;\n  font-family: monospace;\n  font-size: 0.9em;\n}\n",
+      "type": "registry:file",
+      "target": "lib/rich.css"
+    },
+    {
+      "path": "registry/p1/internal/sanitize-richtext.ts",
+      "content": "import DOMPurify from \"isomorphic-dompurify\";\n\n/**\n * Sanitize richtext HTML before rendering via `dangerouslySetInnerHTML`.\n *\n * Allowlist matches what the Puck richtext toolbar can produce; anything\n * else — `<script>`, `<img onerror>`, `javascript:`/`data:` hrefs — is\n * stripped. Runs in both Node (SSR) and the browser via isomorphic-dompurify.\n */\nconst ALLOWED_TAGS = [\n  \"p\", \"br\", \"strong\", \"b\", \"em\", \"i\", \"u\", \"s\",\n  \"ul\", \"ol\", \"li\", \"a\", \"code\", \"span\",\n  \"h2\", \"h3\", \"blockquote\", \"mark\",\n];\n\nconst ALLOWED_ATTR = [\"href\", \"target\", \"rel\"];\n\nexport function sanitizeRichtextHtml(html: string): string {\n  return DOMPurify.sanitize(html, {\n    ALLOWED_TAGS,\n    ALLOWED_ATTR,\n    ALLOWED_URI_REGEXP: /^(?:https?:|mailto:|tel:|ftp:|#|\\/|\\.)/i,\n  });\n}\n",
+      "type": "registry:lib"
+    }
+  ],
+  "meta": {
+    "version": "0.1.0"
+  },
+  "type": "registry:lib"
+}

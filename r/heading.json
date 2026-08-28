@@ -1,0 +1,41 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "heading",
+  "title": "Heading",
+  "description": "Single H1–H4 heading element with left/center alignment; use to add a standalone section title.",
+  "dependencies": [
+    "@puckeditor/core"
+  ],
+  "registryDependencies": [
+    "@p1/tokens"
+  ],
+  "files": [
+    {
+      "path": "registry/p1/blocks/heading/heading.tsx",
+      "content": "import \"./heading.css\";\n\nexport interface HeadingProps {\n  text: string;\n  level: \"H1\" | \"H2\" | \"H3\" | \"H4\";\n  align: \"left\" | \"center\";\n}\n\nexport function Heading({ text, level, align }: HeadingProps) {\n  const Tag = level.toLowerCase() as \"h1\" | \"h2\" | \"h3\" | \"h4\";\n  return (\n    <div className=\"p1-heading p1-block\" data-level={level} data-align={align}>\n      <Tag className=\"p1-heading__text\">{text}</Tag>\n    </div>\n  );\n}\n",
+      "type": "registry:component",
+      "target": "components/puck/blocks/heading/heading.tsx"
+    },
+    {
+      "path": "registry/p1/blocks/heading/heading.block.tsx",
+      "content": "import type { ComponentConfig } from \"@puckeditor/core\";\nimport { defineMeta } from '../define-meta';\nimport { Heading, type HeadingProps } from \"./heading\";\nexport type { HeadingProps };\n\nexport const HeadingBlock: ComponentConfig<HeadingProps> = {\n  fields: {\n    text: {\n      type: \"text\" as const,\n      contentEditable: true,\n      visible: false,\n      ai: { instructions: \"A section heading of 2-6 words. Plain text, sentence case, no trailing punctuation.\" },\n    },\n    level: {\n      type: \"select\" as const,\n      options: [\n        { label: \"H1\", value: \"H1\" },\n        { label: \"H2\", value: \"H2\" },\n        { label: \"H3\", value: \"H3\" },\n        { label: \"H4\", value: \"H4\" },\n      ],\n    },\n    align: {\n      type: \"radio\" as const,\n      options: [\n        { label: \"Left\", value: \"left\" },\n        { label: \"Center\", value: \"center\" },\n      ],\n    },\n  },\n  defaultProps: { text: \"A heading to anchor the section\", level: \"H2\", align: \"left\" },\n  render: Heading,\n};\n\nexport const meta = defineMeta({\n  title: 'Heading',\n  description: 'Single H1–H4 heading element with left/center alignment; use to add a standalone section title.',\n  categories: [\"content\"],\n  published: true,\n});\n",
+      "type": "registry:component",
+      "target": "components/puck/blocks/heading/heading.block.tsx"
+    },
+    {
+      "path": "registry/p1/blocks/heading/heading.css",
+      "content": ".p1-heading {\n  padding-block: var(--p1-space-md);\n}\n\n.p1-heading[data-align=\"center\"] .p1-heading__text {\n  text-align: center;\n}\n\n.p1-heading[data-align=\"left\"] .p1-heading__text {\n  text-align: left;\n}\n\n.p1-heading__text {\n  margin: 0;\n  font-weight: var(--p1-weight-bold);\n  line-height: var(--p1-leading-tight);\n  letter-spacing: -0.025em;\n  text-wrap: balance;\n  color: var(--p1-fg-default);\n}\n\n.p1-heading[data-level=\"H1\"] .p1-heading__text {\n  font-size: var(--p1-text-4xl);\n}\n\n@media (width >= 48rem) {\n  .p1-heading[data-level=\"H1\"] .p1-heading__text {\n    font-size: 3rem;\n  }\n}\n\n.p1-heading[data-level=\"H2\"] .p1-heading__text {\n  font-size: var(--p1-text-3xl);\n}\n\n@media (width >= 48rem) {\n  .p1-heading[data-level=\"H2\"] .p1-heading__text {\n    font-size: var(--p1-text-4xl);\n  }\n}\n\n.p1-heading[data-level=\"H3\"] .p1-heading__text {\n  font-size: var(--p1-text-2xl);\n}\n\n@media (width >= 48rem) {\n  .p1-heading[data-level=\"H3\"] .p1-heading__text {\n    font-size: var(--p1-text-3xl);\n  }\n}\n\n.p1-heading[data-level=\"H4\"] .p1-heading__text {\n  font-size: var(--p1-text-xl);\n}\n",
+      "type": "registry:file",
+      "target": "components/puck/blocks/heading/heading.css"
+    }
+  ],
+  "meta": {
+    "version": "0.1.0",
+    "atlas": "content/heading"
+  },
+  "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  // 1. Add the import:\n  import { HeadingBlock } from './heading/heading.block';\n  // 2. Add an entry to the existing p1Blocks object:\n  //    P1Heading: HeadingBlock,\n\nThen edit components/puck/blocks/heading/heading.css to restyle it — the file is yours.",
+  "categories": [
+    "content"
+  ],
+  "type": "registry:block"
+}

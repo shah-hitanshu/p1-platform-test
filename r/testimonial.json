@@ -1,0 +1,41 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "testimonial",
+  "title": "Testimonial",
+  "description": "Customer testimonial with quote text, name, role, and avatar in centered/card/large layouts and multiple tones; use for social proof.",
+  "dependencies": [
+    "@puckeditor/core"
+  ],
+  "registryDependencies": [
+    "@p1/tokens"
+  ],
+  "files": [
+    {
+      "path": "registry/p1/blocks/testimonial/testimonial.tsx",
+      "content": "import \"./testimonial.css\";\n\nexport interface TestimonialProps {\n  quote: string;\n  name: string;\n  role: string;\n  avatarSrc: string;\n  layout: \"centered\" | \"card\" | \"large\";\n  tone: \"light\" | \"white\" | \"accent\" | \"dark\";\n}\n\nexport function TestimonialRender({ quote, name, role, avatarSrc, layout, tone }: TestimonialProps) {\n  return (\n    <div className=\"p1-testimonial p1-block\" data-layout={layout} data-tone={tone}>\n      <div className=\"p1-testimonial__inner\">\n        <div className=\"p1-testimonial__mark\" aria-hidden=\"true\">&ldquo;</div>\n        <p className=\"p1-testimonial__quote\">{quote}</p>\n        <div className=\"p1-testimonial__attribution\">\n          <div className=\"p1-testimonial__avatar\">\n            {avatarSrc && <img src={avatarSrc} alt={name} className=\"p1-testimonial__avatar-img\" />}\n          </div>\n          <div className=\"p1-testimonial__byline\">\n            <div className=\"p1-testimonial__name\">{name}</div>\n            <div className=\"p1-testimonial__role\">{role}</div>\n          </div>\n        </div>\n      </div>\n    </div>\n  );\n}\n",
+      "type": "registry:component",
+      "target": "components/puck/blocks/testimonial/testimonial.tsx"
+    },
+    {
+      "path": "registry/p1/blocks/testimonial/testimonial.block.tsx",
+      "content": "import type { ComponentConfig } from \"@puckeditor/core\";\nimport { defineMeta, wireframe } from '../define-meta';\nimport { TestimonialRender, type TestimonialProps } from \"./testimonial\";\nexport type { TestimonialProps };\n\nexport const TestimonialBlock: ComponentConfig<TestimonialProps> = {\n  fields: {\n    quote: {\n      type: \"text\" as const,\n      contentEditable: true,\n      visible: false,\n      ai: { instructions: \"A genuine-sounding customer quote, 15–35 words. First person.\" },\n    },\n    name: {\n      type: \"text\" as const,\n      contentEditable: true,\n      visible: false,\n      ai: { instructions: \"Customer's full name.\" },\n    },\n    role: {\n      type: \"text\" as const,\n      contentEditable: true,\n      visible: false,\n      ai: { instructions: \"Job title and company. E.g. Operations Lead, Acme Corp.\" },\n    },\n    avatarSrc: {\n      type: \"text\" as const,\n      ai: { exclude: true },\n    },\n    layout: {\n      type: \"select\" as const,\n      options: [\n        { label: \"Centered\", value: \"centered\" },\n        { label: \"Card\", value: \"card\" },\n        { label: \"Large\", value: \"large\" },\n      ],\n    },\n    tone: {\n      type: \"select\" as const,\n      options: [\n        { label: \"Light\", value: \"light\" },\n        { label: \"White\", value: \"white\" },\n        { label: \"Accent\", value: \"accent\" },\n        { label: \"Dark\", value: \"dark\" },\n      ],\n    },\n  },\n  defaultProps: {\n    quote: \"The team was up and running in a day, and we haven't looked back. It just works.\",\n    name: \"Jordan Ellis\",\n    role: \"Operations Lead\",\n    avatarSrc: wireframe(200, 200),\n    layout: \"centered\",\n    tone: \"light\",\n  },\n  render: TestimonialRender,\n};\n\nexport const meta = defineMeta({\n  title: 'Testimonial',\n  description: 'Customer testimonial with quote text, name, role, and avatar in centered/card/large layouts and multiple tones; use for social proof.',\n  categories: [\"trust\"],\n  published: true,\n});\n",
+      "type": "registry:component",
+      "target": "components/puck/blocks/testimonial/testimonial.block.tsx"
+    },
+    {
+      "path": "registry/p1/blocks/testimonial/testimonial.css",
+      "content": ".p1-testimonial[data-tone=\"light\"] { background-color: var(--p1-surface-subtle); }\n.p1-testimonial[data-tone=\"accent\"] {\n  background-color: var(--p1-accent);\n  color: var(--p1-fg-inverse);\n}\n.p1-testimonial[data-tone=\"dark\"] {\n  background-color: var(--p1-surface-inverse);\n  color: var(--p1-fg-inverse);\n}\n\n.p1-testimonial__inner {\n  display: flex;\n  flex-direction: column;\n  gap: var(--p1-space-lg);\n  margin-inline: auto;\n}\n.p1-testimonial[data-layout=\"large\"] .p1-testimonial__inner { max-inline-size: var(--p1-container-narrow); }\n.p1-testimonial:not([data-layout=\"large\"]) .p1-testimonial__inner { max-inline-size: 48rem; }\n\n.p1-testimonial:not([data-layout=\"card\"]) .p1-testimonial__inner { text-align: center; }\n\n.p1-testimonial__mark {\n  font-size: 5rem;\n  font-style: italic;\n  font-weight: 800;\n  line-height: 0.5;\n}\n.p1-testimonial[data-tone=\"light\"] .p1-testimonial__mark,\n.p1-testimonial[data-tone=\"white\"] .p1-testimonial__mark {\n  color: var(--p1-accent);\n}\n.p1-testimonial[data-tone=\"accent\"] .p1-testimonial__mark,\n.p1-testimonial[data-tone=\"dark\"] .p1-testimonial__mark {\n  color: var(--p1-warning);\n}\n\n.p1-testimonial__quote {\n  font-size: var(--p1-text-2xl);\n  font-style: italic;\n  font-weight: var(--p1-weight-medium);\n  line-height: var(--p1-leading-tight);\n  margin: 0;\n  text-wrap: balance;\n}\n.p1-testimonial[data-layout=\"large\"] .p1-testimonial__quote { font-size: var(--p1-text-3xl); }\n\n.p1-testimonial__attribution {\n  align-items: center;\n  display: flex;\n  gap: var(--p1-space-sm);\n}\n.p1-testimonial:not([data-layout=\"card\"]) .p1-testimonial__attribution { justify-content: center; }\n\n.p1-testimonial__avatar {\n  background-color: color-mix(in oklch, var(--p1-fg-default) 10%, transparent);\n  block-size: 3rem;\n  border-radius: var(--p1-radius-pill);\n  flex: none;\n  inline-size: 3rem;\n  overflow: hidden;\n}\n.p1-testimonial__avatar-img { block-size: 100%; inline-size: 100%; object-fit: cover; }\n\n.p1-testimonial__byline { text-align: start; }\n.p1-testimonial__name { font-weight: var(--p1-weight-bold); }\n.p1-testimonial__role {\n  font-size: var(--p1-text-sm);\n  color: var(--p1-fg-muted);\n}\n.p1-testimonial[data-tone=\"accent\"] .p1-testimonial__role,\n.p1-testimonial[data-tone=\"dark\"] .p1-testimonial__role {\n  color: var(--p1-fg-inverse-muted);\n}\n",
+      "type": "registry:file",
+      "target": "components/puck/blocks/testimonial/testimonial.css"
+    }
+  ],
+  "meta": {
+    "version": "0.1.0",
+    "atlas": "trust/testimonial"
+  },
+  "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  // 1. Add the import:\n  import { TestimonialBlock } from './testimonial/testimonial.block';\n  // 2. Add an entry to the existing p1Blocks object:\n  //    P1Testimonial: TestimonialBlock,\n\nThen edit components/puck/blocks/testimonial/testimonial.css to restyle it — the file is yours.",
+  "categories": [
+    "trust"
+  ],
+  "type": "registry:block"
+}

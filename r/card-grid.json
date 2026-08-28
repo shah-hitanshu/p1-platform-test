@@ -1,0 +1,41 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "card-grid",
+  "title": "Card Grid",
+  "description": "Responsive 2–4 column grid of image+title+subtitle cards with an optional section heading; use for feature or product showcases.",
+  "dependencies": [
+    "@puckeditor/core"
+  ],
+  "registryDependencies": [
+    "@p1/tokens"
+  ],
+  "files": [
+    {
+      "path": "registry/p1/blocks/card-grid/card-grid.tsx",
+      "content": "import \"./card-grid.css\";\n\nexport interface CardGridItem {\n  title: string;\n  subtitle: string;\n  imageUrl: string;\n}\n\nexport interface CardGridProps {\n  heading: string;\n  columns: \"2\" | \"3\" | \"4\";\n  items: CardGridItem[];\n}\n\nexport function CardGridRender({ heading, columns, items }: CardGridProps) {\n  return (\n    <div className=\"p1-card-grid p1-block\">\n      <div className=\"p1-card-grid__inner\">\n        {heading && <h2 className=\"p1-card-grid__heading\">{heading}</h2>}\n        <div className=\"p1-card-grid__grid\" data-columns={columns}>\n          {(items || []).map((item, i) => (\n            <div key={i} className=\"p1-card-grid__card\">\n              {item.imageUrl && (\n                <div className=\"p1-card-grid__img-wrap\">\n                  <img src={item.imageUrl} alt=\"\" className=\"p1-card-grid__img\" />\n                </div>\n              )}\n              <div className=\"p1-card-grid__body\">\n                <div className=\"p1-card-grid__title\">{item.title}</div>\n                <div className=\"p1-card-grid__subtitle\">{item.subtitle}</div>\n              </div>\n            </div>\n          ))}\n        </div>\n      </div>\n    </div>\n  );\n}\n",
+      "type": "registry:component",
+      "target": "components/puck/blocks/card-grid/card-grid.tsx"
+    },
+    {
+      "path": "registry/p1/blocks/card-grid/card-grid.block.tsx",
+      "content": "import type { ComponentConfig } from \"@puckeditor/core\";\nimport { defineMeta, wireframe } from '../define-meta';\nimport { CardGridRender, type CardGridProps, type CardGridItem } from \"./card-grid\";\nexport type { CardGridProps, CardGridItem };\n\nexport const CardGridBlock: ComponentConfig<CardGridProps> = {\n  fields: {\n    heading: {\n      type: \"text\" as const,\n      contentEditable: true,\n      visible: false,\n      ai: { instructions: \"A short section heading of 2–5 words. Plain text, sentence case.\" },\n    },\n    columns: {\n      type: \"select\" as const,\n      options: [\n        { label: \"2\", value: \"2\" },\n        { label: \"3\", value: \"3\" },\n        { label: \"4\", value: \"4\" },\n      ],\n    },\n    items: {\n      type: \"array\" as const,\n      arrayFields: {\n        title: { type: \"text\" as const, contentEditable: true, visible: false },\n        subtitle: { type: \"text\" as const, contentEditable: true, visible: false },\n        imageUrl: { type: \"text\" as const },\n      },\n      defaultItemProps: {\n        title: \"Company\",\n        subtitle: \"Industry · Result\",\n        imageUrl: wireframe(600, 400),\n      },\n      getItemSummary: (item: CardGridItem) => item.title || \"Card\",\n    },\n  },\n  defaultProps: {\n    heading: \"Customer stories\",\n    columns: \"3\",\n    items: [\n      { title: \"Northwind\", subtitle: \"Retail · 38% faster launches\", imageUrl: wireframe(600, 400) },\n      { title: \"Atlas Media\", subtitle: \"Publishing · 2M monthly reads\", imageUrl: wireframe(600, 400) },\n      { title: \"Brightline\", subtitle: \"SaaS · 4.9/5 satisfaction\", imageUrl: wireframe(600, 400) },\n    ],\n  },\n  render: CardGridRender,\n};\n\nexport const meta = defineMeta({\n  title: 'Card Grid',\n  description: 'Responsive 2–4 column grid of image+title+subtitle cards with an optional section heading; use for feature or product showcases.',\n  categories: [\"showcase\"],\n  published: true,\n});\n",
+      "type": "registry:component",
+      "target": "components/puck/blocks/card-grid/card-grid.block.tsx"
+    },
+    {
+      "path": "registry/p1/blocks/card-grid/card-grid.css",
+      "content": ".p1-card-grid__inner {\n  margin-inline: auto;\n  max-inline-size: var(--p1-container-wide);\n}\n\n.p1-card-grid__heading {\n  font-family: var(--p1-font-heading);\n  font-size: var(--p1-text-2xl);\n  font-weight: var(--p1-weight-bold);\n  letter-spacing: -0.02em;\n  line-height: var(--p1-leading-tight);\n  margin-block-end: var(--p1-space-xl);\n  text-align: center;\n}\n\n.p1-card-grid__grid {\n  display: grid;\n  gap: var(--p1-space-md);\n  grid-template-columns: 1fr;\n}\n\n@media (width >= 40rem) {\n  .p1-card-grid__grid { grid-template-columns: repeat(2, 1fr); }\n}\n\n@media (width >= 64rem) {\n  .p1-card-grid__grid[data-columns=\"2\"] { grid-template-columns: repeat(2, 1fr); }\n  .p1-card-grid__grid[data-columns=\"3\"] { grid-template-columns: repeat(3, 1fr); }\n  .p1-card-grid__grid[data-columns=\"4\"] { grid-template-columns: repeat(4, 1fr); }\n}\n\n.p1-card-grid__card {\n  background-color: var(--p1-surface-default);\n  border: 1px solid var(--p1-border);\n  border-radius: var(--p1-radius-card);\n  box-shadow: var(--p1-shadow-sm);\n  overflow: hidden;\n}\n\n.p1-card-grid__img-wrap {\n  aspect-ratio: 4 / 3;\n  background-color: var(--p1-surface-subtle);\n  overflow: hidden;\n}\n\n.p1-card-grid__img {\n  block-size: 100%;\n  inline-size: 100%;\n  object-fit: cover;\n}\n\n.p1-card-grid__body { padding: var(--p1-space-md); }\n\n.p1-card-grid__title {\n  color: var(--p1-fg-default);\n  font-size: var(--p1-text-lg);\n  font-weight: var(--p1-weight-bold);\n  line-height: var(--p1-leading-tight);\n}\n\n.p1-card-grid__subtitle {\n  color: var(--p1-fg-muted);\n  font-size: var(--p1-text-sm);\n  margin-block-start: var(--p1-space-xs);\n}\n",
+      "type": "registry:file",
+      "target": "components/puck/blocks/card-grid/card-grid.css"
+    }
+  ],
+  "meta": {
+    "version": "0.1.0",
+    "atlas": "showcase/card-grid"
+  },
+  "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  // 1. Add the import:\n  import { CardGridBlock } from './card-grid/card-grid.block';\n  // 2. Add an entry to the existing p1Blocks object:\n  //    P1CardGrid: CardGridBlock,\n\nThen edit components/puck/blocks/card-grid/card-grid.css to restyle it — the file is yours.",
+  "categories": [
+    "showcase"
+  ],
+  "type": "registry:block"
+}

@@ -1,0 +1,14 @@
+{
+  "name": "p1-registry-static",
+  "version": "1.0.0",
+  "description": "Pre-built static catalog for p1 components",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "serve-handler": "6.1.5"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

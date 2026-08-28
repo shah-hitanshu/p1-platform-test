@@ -1,0 +1,41 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "figure",
+  "title": "Figure",
+  "description": "Single image with optional caption and photo credit, supporting aspect ratio, width, radius, and b&w treatment; use for editorial images.",
+  "dependencies": [
+    "@puckeditor/core"
+  ],
+  "registryDependencies": [
+    "@p1/tokens"
+  ],
+  "files": [
+    {
+      "path": "registry/p1/blocks/figure/figure.tsx",
+      "content": "import \"./figure.css\";\n\nexport interface FigureProps {\n  src: string;\n  alt: string;\n  caption: string;\n  credit: string;\n  ratio: \"16 / 9\" | \"3 / 2\" | \"4 / 3\" | \"1 / 1\" | \"21 / 9\";\n  width: \"contained\" | \"wide\" | \"full bleed\";\n  radius: \"none\" | \"soft\" | \"round\";\n  treatment: \"color\" | \"b&w\";\n}\n\nexport function FigureRender({ src, alt, caption, credit, ratio, width, radius, treatment }: FigureProps) {\n  const hasCap = Boolean(caption || credit);\n  return (\n    <figure className=\"p1-figure p1-block\" data-width={width} data-radius={radius}>\n      <div className=\"p1-figure__frame\" style={{ aspectRatio: ratio }}>\n        <img src={src} alt={alt} className=\"p1-figure__img\" data-treatment={treatment} />\n      </div>\n      {hasCap && (\n        <figcaption className=\"p1-figure__caption\">\n          <span className=\"p1-figure__caption-text\">{caption}</span>\n          {credit && <span className=\"p1-figure__credit\">{credit}</span>}\n        </figcaption>\n      )}\n    </figure>\n  );\n}\n",
+      "type": "registry:component",
+      "target": "components/puck/blocks/figure/figure.tsx"
+    },
+    {
+      "path": "registry/p1/blocks/figure/figure.block.tsx",
+      "content": "import type { ComponentConfig } from \"@puckeditor/core\";\nimport { defineMeta, wireframe } from '../define-meta';\nimport { FigureRender, type FigureProps } from \"./figure\";\nexport type { FigureProps };\n\nexport const FigureBlock: ComponentConfig<FigureProps> = {\n  fields: {\n    src: {\n      type: \"text\" as const,\n      contentEditable: true,\n      visible: false,\n      ai: { exclude: true },\n    },\n    alt: {\n      type: \"text\" as const,\n      contentEditable: true,\n      visible: false,\n      ai: { instructions: \"Alt text for the image. 1–2 sentences describing what is shown.\" },\n    },\n    caption: {\n      type: \"text\" as const,\n      contentEditable: true,\n      visible: false,\n      ai: { instructions: \"A brief caption for the image. 1 sentence.\" },\n    },\n    credit: {\n      type: \"text\" as const,\n      contentEditable: true,\n      visible: false,\n      ai: { instructions: \"Photo credit. Format: Photo — Source Name.\" },\n    },\n    ratio: {\n      type: \"select\" as const,\n      options: [\n        { label: \"16 / 9\", value: \"16 / 9\" },\n        { label: \"3 / 2\", value: \"3 / 2\" },\n        { label: \"4 / 3\", value: \"4 / 3\" },\n        { label: \"1 / 1\", value: \"1 / 1\" },\n        { label: \"21 / 9\", value: \"21 / 9\" },\n      ],\n    },\n    width: {\n      type: \"select\" as const,\n      options: [\n        { label: \"Contained\", value: \"contained\" },\n        { label: \"Wide\", value: \"wide\" },\n        { label: \"Full bleed\", value: \"full bleed\" },\n      ],\n    },\n    radius: {\n      type: \"select\" as const,\n      options: [\n        { label: \"None\", value: \"none\" },\n        { label: \"Soft\", value: \"soft\" },\n        { label: \"Round\", value: \"round\" },\n      ],\n    },\n    treatment: {\n      type: \"radio\" as const,\n      options: [\n        { label: \"Color\", value: \"color\" },\n        { label: \"B&W\", value: \"b&w\" },\n      ],\n    },\n  },\n  defaultProps: {\n    src: wireframe(1300, 731),\n    alt: \"The team reviewing a preview together\",\n    caption: \"The team reviews a preview link before anything reaches Live.\",\n    credit: \"Photo — Pantheon\",\n    ratio: \"3 / 2\",\n    width: \"wide\",\n    radius: \"soft\",\n    treatment: \"color\",\n  },\n  render: FigureRender,\n};\n\nexport const meta = defineMeta({\n  title: 'Figure',\n  description: 'Single image with optional caption and photo credit, supporting aspect ratio, width, radius, and b&w treatment; use for editorial images.',\n  categories: [\"editorial\"],\n  published: true,\n});\n",
+      "type": "registry:component",
+      "target": "components/puck/blocks/figure/figure.block.tsx"
+    },
+    {
+      "path": "registry/p1/blocks/figure/figure.css",
+      "content": ".p1-figure {\n  margin-inline: auto;\n  padding-block: var(--p1-space-md);\n}\n\n.p1-figure[data-width=\"contained\"] {\n  max-inline-size: var(--p1-container-narrow);\n  padding-inline: var(--p1-space-lg);\n}\n.p1-figure[data-width=\"wide\"] {\n  max-inline-size: var(--p1-container-default);\n  padding-inline: var(--p1-space-lg);\n}\n\n.p1-figure__frame {\n  background-color: color-mix(in oklch, var(--p1-surface-inverse) 8%, transparent);\n  overflow: hidden;\n}\n\n.p1-figure[data-width=\"contained\"] .p1-figure__frame,\n.p1-figure[data-width=\"wide\"] .p1-figure__frame {\n  border: 1px solid var(--p1-border);\n}\n\n.p1-figure[data-radius=\"soft\"] .p1-figure__frame { border-radius: var(--p1-radius-card); }\n.p1-figure[data-radius=\"round\"] .p1-figure__frame { border-radius: var(--p1-radius-xl); }\n\n.p1-figure__img {\n  block-size: 100%;\n  inline-size: 100%;\n  object-fit: cover;\n}\n.p1-figure__img[data-treatment=\"b&w\"] { filter: grayscale(1); }\n\n.p1-figure__caption {\n  align-items: baseline;\n  display: flex;\n  flex-wrap: wrap;\n  gap: var(--p1-space-md);\n  justify-content: space-between;\n  margin-block-start: var(--p1-space-sm);\n}\n.p1-figure[data-width=\"full bleed\"] .p1-figure__caption {\n  margin-inline: auto;\n  max-inline-size: var(--p1-container-default);\n  padding-inline: var(--p1-space-lg);\n}\n\n.p1-figure__caption-text {\n  color: var(--p1-fg-muted);\n  flex: 1;\n  font-size: var(--p1-text-sm);\n  line-height: var(--p1-leading-normal);\n}\n.p1-figure__credit {\n  color: var(--p1-fg-muted);\n  flex: none;\n  font-size: var(--p1-text-sm);\n  font-style: italic;\n  opacity: 0.75;\n}\n",
+      "type": "registry:file",
+      "target": "components/puck/blocks/figure/figure.css"
+    }
+  ],
+  "meta": {
+    "version": "0.1.0",
+    "atlas": "editorial/figure"
+  },
+  "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  // 1. Add the import:\n  import { FigureBlock } from './figure/figure.block';\n  // 2. Add an entry to the existing p1Blocks object:\n  //    P1Figure: FigureBlock,\n\nThen edit components/puck/blocks/figure/figure.css to restyle it — the file is yours.",
+  "categories": [
+    "editorial"
+  ],
+  "type": "registry:block"
+}

@@ -1,0 +1,42 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "faq",
+  "title": "FAQ",
+  "description": "Vertically stacked question-and-answer list with a section heading and icon-decorated rows; use for support or product FAQ sections.",
+  "dependencies": [
+    "@puckeditor/core"
+  ],
+  "registryDependencies": [
+    "@p1/tokens",
+    "@p1/internal-icons"
+  ],
+  "files": [
+    {
+      "path": "registry/p1/blocks/faq/faq.tsx",
+      "content": "import { Icon } from \"@/registry/p1/internal/icons\";\nimport \"./faq.css\";\n\nexport interface FaqItem {\n  q: string;\n  a: string;\n}\nexport interface FaqProps {\n  heading: string;\n  items: FaqItem[];\n}\n\nexport function FaqRender({ heading, items }: FaqProps) {\n  return (\n    <div className=\"p1-faq p1-block\">\n      <div className=\"p1-faq__inner\">\n        {heading && <h2 className=\"p1-faq__heading\">{heading}</h2>}\n        <div className=\"p1-faq__list\">\n          {(items || []).map((item, i) => (\n            <div key={i} className=\"p1-faq__item\">\n              <div className=\"p1-faq__question-row\">\n                <h3 className=\"p1-faq__question\">{item.q}</h3>\n                <Icon name=\"plus\" className=\"p1-faq__icon\" />\n              </div>\n              <p className=\"p1-faq__answer\">{item.a}</p>\n            </div>\n          ))}\n        </div>\n      </div>\n    </div>\n  );\n}\n",
+      "type": "registry:component",
+      "target": "components/puck/blocks/faq/faq.tsx"
+    },
+    {
+      "path": "registry/p1/blocks/faq/faq.block.tsx",
+      "content": "import type { ComponentConfig } from \"@puckeditor/core\";\nimport { defineMeta } from '../define-meta';\nimport { FaqRender, type FaqProps, type FaqItem } from \"./faq\";\nexport type { FaqProps, FaqItem };\n\nexport const FaqBlock: ComponentConfig<FaqProps> = {\n  fields: {\n    heading: {\n      type: \"text\" as const,\n      contentEditable: true,\n      visible: false,\n      ai: { instructions: \"Section heading for the FAQ. E.g. Frequently asked questions.\" },\n    },\n    items: {\n      type: \"array\" as const,\n      arrayFields: {\n        q: {\n          type: \"text\" as const,\n          contentEditable: true,\n          visible: false,\n          ai: { instructions: \"A common customer question. End with a question mark.\" },\n        },\n        a: {\n          type: \"text\" as const,\n          contentEditable: true,\n          visible: false,\n          ai: { instructions: \"Clear, helpful answer. 1–3 sentences.\" },\n        },\n      },\n      defaultItemProps: { q: \"Question?\", a: \"Answer.\" },\n      getItemSummary: (item: FaqItem) => item.q || \"Question\",\n    },\n  },\n  defaultProps: {\n    heading: \"Frequently asked questions\",\n    items: [\n      { q: \"Do I need a developer to make changes?\", a: \"No. Anyone on your team can edit pages visually with ready-made blocks — no code required.\" },\n      { q: \"Can I use my own components?\", a: \"Yes. Developers can add custom blocks once, and the whole team can reuse them.\" },\n      { q: \"How do previews work?\", a: \"Every change gets a shareable preview link, so you can review before publishing.\" },\n    ],\n  },\n  render: FaqRender,\n};\n\nexport const meta = defineMeta({\n  title: 'FAQ',\n  description: 'Vertically stacked question-and-answer list with a section heading and icon-decorated rows; use for support or product FAQ sections.',\n  categories: [\"convert\"],\n  published: true,\n  registryDependencies: [\"@p1/tokens\",\"@p1/internal-icons\"],\n});\n",
+      "type": "registry:component",
+      "target": "components/puck/blocks/faq/faq.block.tsx"
+    },
+    {
+      "path": "registry/p1/blocks/faq/faq.css",
+      "content": ".p1-faq__inner {\n  margin-inline: auto;\n  max-inline-size: var(--p1-container-narrow);\n}\n\n.p1-faq__heading {\n  font-size: var(--p1-text-2xl);\n  font-weight: var(--p1-weight-bold);\n  letter-spacing: -0.02em;\n  margin-block-end: var(--p1-space-xl);\n  text-align: center;\n  text-wrap: balance;\n}\n@media (width >= 48rem) {\n  .p1-faq__heading { font-size: var(--p1-text-3xl); }\n}\n\n.p1-faq__list { border-block-start: 1px solid var(--p1-border); }\n\n.p1-faq__item {\n  border-block-end: 1px solid var(--p1-border);\n  padding-block: var(--p1-space-md);\n}\n\n.p1-faq__question-row {\n  align-items: start;\n  display: flex;\n  gap: var(--p1-space-md);\n  justify-content: space-between;\n}\n.p1-faq__question {\n  font-size: var(--p1-text-lg);\n  font-weight: var(--p1-weight-bold);\n  line-height: var(--p1-leading-tight);\n}\n.p1-faq__icon {\n  block-size: 1.25rem;\n  color: var(--p1-fg-muted);\n  flex: none;\n  inline-size: 1.25rem;\n  margin-block-start: 0.25rem;\n}\n\n.p1-faq__answer {\n  color: var(--p1-fg-muted);\n  line-height: var(--p1-leading-normal);\n  margin-block-start: var(--p1-space-sm);\n  max-inline-size: 92%;\n}\n",
+      "type": "registry:file",
+      "target": "components/puck/blocks/faq/faq.css"
+    }
+  ],
+  "meta": {
+    "version": "0.1.0",
+    "atlas": "convert/faq"
+  },
+  "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  // 1. Add the import:\n  import { FaqBlock } from './faq/faq.block';\n  // 2. Add an entry to the existing p1Blocks object:\n  //    P1Faq: FaqBlock,\n\nThen edit components/puck/blocks/faq/faq.css to restyle it — the file is yours.",
+  "categories": [
+    "convert"
+  ],
+  "type": "registry:block"
+}

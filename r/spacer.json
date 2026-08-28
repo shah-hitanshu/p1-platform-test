@@ -1,0 +1,41 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "spacer",
+  "title": "Spacer",
+  "description": "Invisible vertical whitespace element in xs–xl sizes; use to add breathing room between blocks.",
+  "dependencies": [
+    "@puckeditor/core"
+  ],
+  "registryDependencies": [
+    "@p1/tokens"
+  ],
+  "files": [
+    {
+      "path": "registry/p1/blocks/spacer/spacer.tsx",
+      "content": "import \"./spacer.css\";\n\nexport interface SpacerProps {\n  size: \"xs\" | \"sm\" | \"md\" | \"lg\" | \"xl\";\n}\n\nexport function Spacer({ size }: SpacerProps) {\n  return <div className=\"p1-spacer\" data-size={size} aria-hidden=\"true\" />;\n}\n",
+      "type": "registry:component",
+      "target": "components/puck/blocks/spacer/spacer.tsx"
+    },
+    {
+      "path": "registry/p1/blocks/spacer/spacer.block.tsx",
+      "content": "import type { ComponentConfig } from \"@puckeditor/core\";\nimport { defineMeta } from '../define-meta';\nimport { Spacer, type SpacerProps } from \"./spacer\";\nexport type { SpacerProps };\n\nexport const SpacerBlock: ComponentConfig<SpacerProps> = {\n  fields: {\n    size: {\n      type: \"select\" as const,\n      options: [\n        { label: \"Extra Small\", value: \"xs\" },\n        { label: \"Small\", value: \"sm\" },\n        { label: \"Medium\", value: \"md\" },\n        { label: \"Large\", value: \"lg\" },\n        { label: \"Extra Large\", value: \"xl\" },\n      ],\n    },\n  },\n  defaultProps: {\n    size: \"md\",\n  },\n  render: Spacer,\n};\n\nexport const meta = defineMeta({\n  title: 'Spacer',\n  description: 'Invisible vertical whitespace element in xs–xl sizes; use to add breathing room between blocks.',\n  categories: [\"content\"],\n  published: true,\n});\n",
+      "type": "registry:component",
+      "target": "components/puck/blocks/spacer/spacer.block.tsx"
+    },
+    {
+      "path": "registry/p1/blocks/spacer/spacer.css",
+      "content": ".p1-spacer[data-size=\"xs\"] {\n  block-size: var(--p1-space-xs);\n}\n\n.p1-spacer[data-size=\"sm\"] {\n  block-size: var(--p1-space-sm);\n}\n\n.p1-spacer[data-size=\"md\"] {\n  block-size: var(--p1-space-lg);\n}\n\n.p1-spacer[data-size=\"lg\"] {\n  block-size: var(--p1-space-xl);\n}\n\n.p1-spacer[data-size=\"xl\"] {\n  block-size: var(--p1-space-2xl);\n}\n",
+      "type": "registry:file",
+      "target": "components/puck/blocks/spacer/spacer.css"
+    }
+  ],
+  "meta": {
+    "version": "0.1.0",
+    "atlas": "content/spacer"
+  },
+  "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  // 1. Add the import:\n  import { SpacerBlock } from './spacer/spacer.block';\n  // 2. Add an entry to the existing p1Blocks object:\n  //    P1Spacer: SpacerBlock,\n\nThen edit components/puck/blocks/spacer/spacer.css to restyle it — the file is yours.",
+  "categories": [
+    "content"
+  ],
+  "type": "registry:block"
+}

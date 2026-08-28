@@ -1,0 +1,41 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "image",
+  "title": "Image",
+  "description": "Simple full-bleed or contained image block with aspect ratio, fit, position, radius, and b&w treatment controls; use for standalone images.",
+  "dependencies": [
+    "@puckeditor/core"
+  ],
+  "registryDependencies": [
+    "@p1/tokens"
+  ],
+  "files": [
+    {
+      "path": "registry/p1/blocks/image/image.tsx",
+      "content": "import \"./image.css\";\n\nexport interface ImageProps {\n  src: string;\n  alt: string;\n  width: \"contained\" | \"full bleed\";\n  ratio: \"16 / 9\" | \"4 / 3\" | \"1 / 1\" | \"3 / 2\" | \"21 / 9\";\n  fit: \"cover\" | \"contain\" | \"fill\";\n  position: \"center\" | \"top\" | \"bottom\" | \"left\" | \"right\";\n  radius: \"none\" | \"soft\" | \"round\";\n  treatment: \"color\" | \"b&w\";\n}\n\nexport function ImageRender({ src, alt, width, ratio, fit, position, radius, treatment }: ImageProps) {\n  const full = width === \"full bleed\";\n  return (\n    <div className=\"p1-image\" data-width={width}>\n      <div\n        className=\"p1-image__wrap\"\n        data-radius={!full ? radius : undefined}\n        style={{ aspectRatio: ratio }}\n      >\n        <img\n          src={src}\n          alt={alt}\n          className=\"p1-image__img\"\n          data-treatment={treatment}\n          style={{ objectFit: fit, objectPosition: position }}\n        />\n      </div>\n    </div>\n  );\n}\n",
+      "type": "registry:component",
+      "target": "components/puck/blocks/image/image.tsx"
+    },
+    {
+      "path": "registry/p1/blocks/image/image.block.tsx",
+      "content": "import type { ComponentConfig } from \"@puckeditor/core\";\nimport { defineMeta, wireframe } from '../define-meta';\nimport { ImageRender, type ImageProps } from \"./image\";\nexport type { ImageProps };\n\nexport const ImageBlock: ComponentConfig<ImageProps> = {\n  fields: {\n    src: {\n      type: \"text\" as const,\n      ai: { exclude: true },\n    },\n    alt: {\n      type: \"text\" as const,\n      ai: { instructions: \"Concise alt text describing what's in the image. Screen reader users depend on this.\" },\n    },\n    width: {\n      type: \"radio\" as const,\n      options: [\n        { label: \"Contained\", value: \"contained\" },\n        { label: \"Full bleed\", value: \"full bleed\" },\n      ],\n    },\n    ratio: {\n      type: \"select\" as const,\n      options: [\n        { label: \"16 / 9\", value: \"16 / 9\" },\n        { label: \"4 / 3\", value: \"4 / 3\" },\n        { label: \"1 / 1\", value: \"1 / 1\" },\n        { label: \"3 / 2\", value: \"3 / 2\" },\n        { label: \"21 / 9\", value: \"21 / 9\" },\n      ],\n    },\n    fit: {\n      type: \"select\" as const,\n      options: [\n        { label: \"Cover\", value: \"cover\" },\n        { label: \"Contain\", value: \"contain\" },\n        { label: \"Fill\", value: \"fill\" },\n      ],\n    },\n    position: {\n      type: \"select\" as const,\n      options: [\n        { label: \"Center\", value: \"center\" },\n        { label: \"Top\", value: \"top\" },\n        { label: \"Bottom\", value: \"bottom\" },\n        { label: \"Left\", value: \"left\" },\n        { label: \"Right\", value: \"right\" },\n      ],\n    },\n    radius: {\n      type: \"select\" as const,\n      options: [\n        { label: \"None\", value: \"none\" },\n        { label: \"Soft\", value: \"soft\" },\n        { label: \"Round\", value: \"round\" },\n      ],\n    },\n    treatment: {\n      type: \"radio\" as const,\n      options: [\n        { label: \"Color\", value: \"color\" },\n        { label: \"B&W\", value: \"b&w\" },\n      ],\n    },\n  },\n  defaultProps: {\n    src: wireframe(1100, 619),\n    alt: \"Editorial photograph\",\n    width: \"contained\",\n    ratio: \"16 / 9\",\n    fit: \"cover\",\n    position: \"center\",\n    radius: \"soft\",\n    treatment: \"color\",\n  },\n  render: ImageRender,\n};\n\nexport const meta = defineMeta({\n  title: 'Image',\n  description: 'Simple full-bleed or contained image block with aspect ratio, fit, position, radius, and b&w treatment controls; use for standalone images.',\n  categories: [\"showcase\"],\n  published: true,\n});\n",
+      "type": "registry:component",
+      "target": "components/puck/blocks/image/image.block.tsx"
+    },
+    {
+      "path": "registry/p1/blocks/image/image.css",
+      "content": ".p1-image { margin-inline: auto; }\n\n/* Contained: page gutters + max-width */\n.p1-image[data-width=\"contained\"] {\n  max-inline-size: var(--p1-container-wide);\n  padding-block: var(--p1-space-md);\n  padding-inline: var(--p1-space-lg);\n}\n\n.p1-image__wrap {\n  background-color: var(--p1-surface-subtle);\n  overflow: hidden;\n}\n\n/* Contained-only decorations */\n.p1-image[data-width=\"contained\"] .p1-image__wrap {\n  border: 1px solid var(--p1-border);\n}\n\n.p1-image__wrap[data-radius=\"soft\"]  { border-radius: var(--p1-radius-card); }\n.p1-image__wrap[data-radius=\"round\"] { border-radius: var(--p1-radius-xl); }\n\n.p1-image__img {\n  block-size: 100%;\n  display: block;\n  inline-size: 100%;\n}\n\n.p1-image__img[data-treatment=\"b&w\"] { filter: grayscale(1); }\n",
+      "type": "registry:file",
+      "target": "components/puck/blocks/image/image.css"
+    }
+  ],
+  "meta": {
+    "version": "0.1.0",
+    "atlas": "showcase/image"
+  },
+  "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  // 1. Add the import:\n  import { ImageBlock } from './image/image.block';\n  // 2. Add an entry to the existing p1Blocks object:\n  //    P1Image: ImageBlock,\n\nThen edit components/puck/blocks/image/image.css to restyle it — the file is yours.",
+  "categories": [
+    "showcase"
+  ],
+  "type": "registry:block"
+}

@@ -1,0 +1,23 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "internal-btn",
+  "title": "P1 Button primitive",
+  "description": "Shared button element used by the P1 marketing blocks. Tone, size and variant are data attributes.",
+  "files": [
+    {
+      "path": "registry/p1/internal/btn.tsx",
+      "content": "import * as React from \"react\";\nimport \"./btn.css\";\n\n/**\n * Shared pill button used across blocks (Hero, CTA, Pricing, Lead capture,\n * Feature+Media, Button…). Renders an <a> when `href` is set, else a <span>\n * — matching the static, non-interactive style of the prototype's CanvasButton.\n * Shared utility — not a Puck block.\n */\nexport type BtnVariant = \"primary\" | \"secondary\" | \"yellow\" | \"purple\";\n\nexport interface BtnProps {\n  variant?: BtnVariant;\n  href?: string;\n  children: React.ReactNode;\n  className?: string;\n}\n\nfunction safeHref(h: string): string {\n  return /^(https?:\\/\\/|\\/|#)/.test(h) ? h : \"#\";\n}\n\nexport function Btn({ variant = \"primary\", href, children, className = \"\" }: BtnProps) {\n  const cls = [\"p1-btn\", className].filter(Boolean).join(\" \");\n  if (href) {\n    return (\n      <a href={safeHref(href)} className={cls} data-variant={variant}>\n        {children}\n      </a>\n    );\n  }\n  return (\n    <span className={cls} data-variant={variant}>\n      {children}\n    </span>\n  );\n}\n",
+      "type": "registry:lib"
+    },
+    {
+      "path": "registry/p1/internal/btn.css",
+      "content": ".p1-btn {\n  display: inline-flex;\n  align-items: center;\n  gap: 0.5rem;\n  border-radius: var(--p1-radius-pill);\n  padding-inline: 1.5rem;\n  padding-block: 0.75rem;\n  font-size: var(--p1-text-sm);\n  font-weight: var(--p1-weight-bold);\n  text-decoration: none;\n  cursor: pointer;\n}\n\n@media (prefers-reduced-motion: no-preference) {\n  .p1-btn {\n    transition: opacity 200ms ease;\n  }\n}\n\n.p1-btn:hover {\n  opacity: 0.9;\n}\n\n.p1-btn[data-variant=\"primary\"] {\n  background: var(--p1-surface-inverse);\n  color: var(--p1-fg-inverse);\n}\n\n.p1-btn[data-variant=\"secondary\"] {\n  border: 1px solid var(--p1-border);\n  background: var(--p1-surface-default);\n  color: var(--p1-fg-default);\n}\n\n.p1-btn[data-variant=\"yellow\"] {\n  background: var(--p1-warning);\n  color: var(--p1-fg-default);\n}\n\n.p1-btn[data-variant=\"purple\"] {\n  background: var(--p1-accent);\n  color: var(--p1-fg-inverse);\n}\n",
+      "type": "registry:file",
+      "target": "lib/btn.css"
+    }
+  ],
+  "meta": {
+    "version": "0.1.0"
+  },
+  "type": "registry:lib"
+}

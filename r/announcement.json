@@ -1,0 +1,41 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "announcement",
+  "title": "Announcement",
+  "description": "Slim banner strip with a text message and optional link label in themed tones (purple/yellow/dark/gradient); use for site-wide notices.",
+  "dependencies": [
+    "@puckeditor/core"
+  ],
+  "registryDependencies": [
+    "@p1/tokens"
+  ],
+  "files": [
+    {
+      "path": "registry/p1/blocks/announcement/announcement.tsx",
+      "content": "import \"./announcement.css\";\n\nexport interface AnnouncementProps {\n  text: string;\n  linkLabel: string;\n  tone: \"accent\" | \"yellow\" | \"dark\" | \"gradient\";\n  align: \"center\" | \"left\";\n}\n\nexport function AnnouncementRender({ text, linkLabel, tone, align }: AnnouncementProps) {\n  return (\n    <div className=\"p1-announcement\" data-tone={tone} data-align={align}>\n      <span className=\"p1-announcement__text\">{text}</span>\n      {linkLabel && <span className=\"p1-announcement__link\">{linkLabel}</span>}\n    </div>\n  );\n}\n",
+      "type": "registry:component",
+      "target": "components/puck/blocks/announcement/announcement.tsx"
+    },
+    {
+      "path": "registry/p1/blocks/announcement/announcement.block.tsx",
+      "content": "import type { ComponentConfig } from \"@puckeditor/core\";\nimport { defineMeta } from '../define-meta';\nimport { AnnouncementRender, type AnnouncementProps } from \"./announcement\";\nexport type { AnnouncementProps };\n\nexport const AnnouncementBlock: ComponentConfig<AnnouncementProps> = {\n  fields: {\n    text: {\n      type: \"text\" as const,\n      contentEditable: true,\n      visible: false,\n      ai: { instructions: \"Short announcement message. 1 sentence.\" },\n    },\n    linkLabel: {\n      type: \"text\" as const,\n      contentEditable: true,\n      visible: false,\n      ai: { instructions: \"CTA label after the message. E.g. Read more →. Leave blank to omit.\" },\n    },\n    tone: {\n      type: \"select\" as const,\n      options: [\n        { label: \"Accent\", value: \"accent\" },\n        { label: \"Yellow\", value: \"yellow\" },\n        { label: \"Dark\", value: \"dark\" },\n        { label: \"Gradient\", value: \"gradient\" },\n      ],\n    },\n    align: {\n      type: \"radio\" as const,\n      options: [\n        { label: \"Center\", value: \"center\" },\n        { label: \"Left\", value: \"left\" },\n      ],\n    },\n  },\n  defaultProps: {\n    text: \"Something new just launched — take a look.\",\n    linkLabel: \"Read the announcement →\",\n    tone: \"accent\",\n    align: \"center\",\n  },\n  render: AnnouncementRender,\n};\n\nexport const meta = defineMeta({\n  title: 'Announcement',\n  description: 'Slim banner strip with a text message and optional link label in themed tones (purple/yellow/dark/gradient); use for site-wide notices.',\n  categories: [\"attention\"],\n  published: true,\n});\n",
+      "type": "registry:component",
+      "target": "components/puck/blocks/announcement/announcement.block.tsx"
+    },
+    {
+      "path": "registry/p1/blocks/announcement/announcement.css",
+      "content": ".p1-announcement {\n  align-items: center;\n  display: flex;\n  flex-wrap: wrap;\n  gap: 0.75rem;\n  padding-block: 0.75rem;\n  padding-inline: var(--p1-space-lg);\n}\n\n.p1-announcement[data-align=\"center\"] { justify-content: center; }\n.p1-announcement[data-align=\"left\"] { justify-content: start; }\n\n.p1-announcement[data-tone=\"accent\"] {\n  background-color: var(--p1-accent);\n  color: var(--p1-fg-inverse);\n}\n.p1-announcement[data-tone=\"yellow\"] {\n  background-color: var(--p1-warning);\n  color: var(--p1-fg-default);\n}\n.p1-announcement[data-tone=\"dark\"] {\n  background-color: var(--p1-surface-dark);\n  color: var(--p1-fg-inverse);\n}\n.p1-announcement[data-tone=\"gradient\"] {\n  background: linear-gradient(90deg, var(--p1-gradient-from), var(--p1-gradient-via), var(--p1-gradient-to));\n  color: var(--p1-fg-inverse);\n}\n\n.p1-announcement__text { font-size: var(--p1-text-sm); font-weight: var(--p1-weight-medium); }\n\n.p1-announcement__link { font-size: var(--p1-text-sm); font-weight: var(--p1-weight-bold); }\n.p1-announcement[data-tone=\"accent\"] .p1-announcement__link { color: var(--p1-warning); }\n.p1-announcement[data-tone=\"yellow\"] .p1-announcement__link { color: var(--p1-accent); }\n.p1-announcement[data-tone=\"dark\"] .p1-announcement__link { color: var(--p1-warning); }\n.p1-announcement[data-tone=\"gradient\"] .p1-announcement__link { color: var(--p1-warning); }\n",
+      "type": "registry:file",
+      "target": "components/puck/blocks/announcement/announcement.css"
+    }
+  ],
+  "meta": {
+    "version": "0.1.0",
+    "atlas": "attention/announcement"
+  },
+  "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  // 1. Add the import:\n  import { AnnouncementBlock } from './announcement/announcement.block';\n  // 2. Add an entry to the existing p1Blocks object:\n  //    P1Announcement: AnnouncementBlock,\n\nThen edit components/puck/blocks/announcement/announcement.css to restyle it — the file is yours.",
+  "categories": [
+    "attention"
+  ],
+  "type": "registry:block"
+}

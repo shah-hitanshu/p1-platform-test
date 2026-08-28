@@ -1,0 +1,41 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "article-header",
+  "title": "Article Header",
+  "description": "Blog/article masthead with category, title, standfirst, author avatar, date, and read-time; use at the top of editorial pages.",
+  "dependencies": [
+    "@puckeditor/core"
+  ],
+  "registryDependencies": [
+    "@p1/tokens"
+  ],
+  "files": [
+    {
+      "path": "registry/p1/blocks/article-header/article-header.tsx",
+      "content": "import \"./article-header.css\";\n\nexport interface ArticleHeaderProps {\n  category: string;\n  title: string;\n  standfirst: string;\n  authorName: string;\n  authorAvatar: string;\n  date: string;\n  readTime: string;\n  align: \"left\" | \"center\";\n  rule: \"on\" | \"off\";\n}\n\nexport function ArticleHeaderRender({\n  category,\n  title,\n  standfirst,\n  authorName,\n  authorAvatar,\n  date,\n  readTime,\n  align,\n  rule,\n}: ArticleHeaderProps) {\n  return (\n    <div className=\"p1-article-header p1-block\" data-align={align}>\n      <div className=\"p1-article-header__inner\">\n        {category && <div className=\"p1-article-header__category\">{category}</div>}\n        <h1 className=\"p1-article-header__title\">{title}</h1>\n        {standfirst && <p className=\"p1-article-header__standfirst\">{standfirst}</p>}\n        <div className=\"p1-article-header__byline\">\n          <div className=\"p1-article-header__avatar\">\n            {authorAvatar && <img src={authorAvatar} alt={authorName} className=\"p1-article-header__avatar-img\" />}\n          </div>\n          <div className=\"p1-article-header__author-info\">\n            <div className=\"p1-article-header__author-name\">{authorName}</div>\n            {(date || readTime) && (\n              <div className=\"p1-article-header__meta\">\n                {date}\n                {date && readTime && <span className=\"p1-article-header__sep\">·</span>}\n                {readTime}\n              </div>\n            )}\n          </div>\n        </div>\n        {rule !== \"off\" && <hr className=\"p1-article-header__rule\" />}\n      </div>\n    </div>\n  );\n}\n",
+      "type": "registry:component",
+      "target": "components/puck/blocks/article-header/article-header.tsx"
+    },
+    {
+      "path": "registry/p1/blocks/article-header/article-header.block.tsx",
+      "content": "import type { ComponentConfig } from \"@puckeditor/core\";\nimport { defineMeta, wireframe } from '../define-meta';\nimport { ArticleHeaderRender, type ArticleHeaderProps } from \"./article-header\";\nexport type { ArticleHeaderProps };\n\nexport const ArticleHeaderBlock: ComponentConfig<ArticleHeaderProps> = {\n  fields: {\n    category: {\n      type: \"text\" as const,\n      contentEditable: true,\n      visible: false,\n      ai: { instructions: \"Category label in 1–3 words. Title case. E.g. Engineering, Product, Community.\" },\n    },\n    title: {\n      type: \"text\" as const,\n      contentEditable: true,\n      visible: false,\n      ai: { instructions: \"Article title — compelling and specific, under 15 words.\" },\n    },\n    standfirst: {\n      type: \"text\" as const,\n      contentEditable: true,\n      visible: false,\n      ai: { instructions: \"A 1–2 sentence summary of the article. Plain text, no formatting.\" },\n    },\n    authorName: {\n      type: \"text\" as const,\n      contentEditable: true,\n      visible: false,\n      ai: { instructions: \"Author's full name.\" },\n    },\n    authorAvatar: {\n      type: \"text\" as const,\n      contentEditable: true,\n      visible: false,\n      ai: { exclude: true },\n    },\n    date: {\n      type: \"text\" as const,\n      contentEditable: true,\n      visible: false,\n      ai: { instructions: \"Publication date. Format: Month Day, Year. E.g. April 18, 2026.\" },\n    },\n    readTime: {\n      type: \"text\" as const,\n      contentEditable: true,\n      visible: false,\n      ai: { instructions: \"Estimated read time. Format: N min read.\" },\n    },\n    align: {\n      type: \"radio\" as const,\n      options: [\n        { label: \"Left\", value: \"left\" },\n        { label: \"Center\", value: \"center\" },\n      ],\n    },\n    rule: {\n      type: \"radio\" as const,\n      options: [\n        { label: \"On\", value: \"on\" },\n        { label: \"Off\", value: \"off\" },\n      ],\n    },\n  },\n  defaultProps: {\n    category: \"Engineering\",\n    title: \"What a year of shipping on Multidev taught us about flow.\",\n    standfirst:\n      \"A behind-the-scenes look at how the team moved from weeks to hours — and the small habits that made the difference.\",\n    authorName: \"Jordan Ellis\",\n    authorAvatar: wireframe(200, 200),\n    date: \"April 18, 2026\",\n    readTime: \"6 min read\",\n    align: \"left\",\n    rule: \"on\",\n  },\n  render: ArticleHeaderRender,\n};\n\nexport const meta = defineMeta({\n  title: 'Article Header',\n  description: 'Blog/article masthead with category, title, standfirst, author avatar, date, and read-time; use at the top of editorial pages.',\n  categories: [\"editorial\"],\n  published: true,\n});\n",
+      "type": "registry:component",
+      "target": "components/puck/blocks/article-header/article-header.block.tsx"
+    },
+    {
+      "path": "registry/p1/blocks/article-header/article-header.css",
+      "content": ".p1-article-header__inner {\n  margin-inline: auto;\n  max-inline-size: var(--p1-container-narrow);\n}\n\n.p1-article-header__category {\n  color: var(--p1-accent);\n  font-size: var(--p1-text-sm);\n  font-weight: var(--p1-weight-bold);\n  letter-spacing: 0.16em;\n  margin-block-end: var(--p1-space-md);\n  text-transform: uppercase;\n}\n\n.p1-article-header__title {\n  font-size: var(--p1-text-3xl);\n  font-weight: 800;\n  letter-spacing: -0.02em;\n  line-height: var(--p1-leading-tight);\n  margin-block-end: var(--p1-space-md);\n  text-wrap: balance;\n}\n@media (width >= 48rem) {\n  .p1-article-header__title { font-size: var(--p1-text-4xl); }\n}\n\n.p1-article-header__standfirst {\n  color: var(--p1-fg-muted);\n  font-size: var(--p1-text-xl);\n  font-style: italic;\n  line-height: var(--p1-leading-normal);\n  margin-block-end: var(--p1-space-lg);\n  text-wrap: pretty;\n}\n\n.p1-article-header[data-align=\"center\"] .p1-article-header__inner { text-align: center; }\n.p1-article-header[data-align=\"center\"] .p1-article-header__standfirst {\n  margin-inline: auto;\n  max-inline-size: 32rem;\n}\n\n.p1-article-header__byline {\n  align-items: center;\n  display: flex;\n  gap: var(--p1-space-sm);\n}\n.p1-article-header[data-align=\"center\"] .p1-article-header__byline { justify-content: center; }\n\n.p1-article-header__avatar {\n  background: color-mix(in oklch, var(--p1-surface-inverse) 10%, transparent);\n  block-size: 2.75rem;\n  border-radius: var(--p1-radius-pill);\n  flex: none;\n  inline-size: 2.75rem;\n  overflow: hidden;\n}\n.p1-article-header__avatar-img {\n  block-size: 100%;\n  inline-size: 100%;\n  object-fit: cover;\n}\n\n.p1-article-header__author-info { text-align: start; }\n\n.p1-article-header__author-name {\n  color: var(--p1-fg-default);\n  font-weight: var(--p1-weight-bold);\n}\n\n.p1-article-header__meta {\n  color: var(--p1-fg-muted);\n  font-size: var(--p1-text-sm);\n  margin-block-start: 0.125rem;\n}\n\n.p1-article-header__sep {\n  color: var(--p1-border);\n  margin-inline: var(--p1-space-xs);\n}\n\n.p1-article-header__rule {\n  border: 0;\n  border-block-start: 1px solid var(--p1-border);\n  margin-block-start: var(--p1-space-lg);\n}\n",
+      "type": "registry:file",
+      "target": "components/puck/blocks/article-header/article-header.css"
+    }
+  ],
+  "meta": {
+    "version": "0.1.0",
+    "atlas": "editorial/article-header"
+  },
+  "docs": "Register the block in your Puck config:\n\n  // components/puck/blocks/index.ts\n  // 1. Add the import:\n  import { ArticleHeaderBlock } from './article-header/article-header.block';\n  // 2. Add an entry to the existing p1Blocks object:\n  //    P1ArticleHeader: ArticleHeaderBlock,\n\nThen edit components/puck/blocks/article-header/article-header.css to restyle it — the file is yours.",
+  "categories": [
+    "editorial"
+  ],
+  "type": "registry:block"
+}

@@ -1,0 +1,1 @@
+(globalThis.TURBOPACK||(globalThis.TURBOPACK=[])).push(["object"==typeof document?document.currentScript:void 0,84958,i=>{"use strict";i.i(1214),i.i(94676),i.i(91800);var e=i.i(77209);i.i(57613),i.s(["RichTextMenu",()=>e.RichTextMenu])}]);
