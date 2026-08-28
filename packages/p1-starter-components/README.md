@@ -17,9 +17,7 @@ The following files are **auto-generated** — do not edit by hand:
 | File | Generated from |
 |---|---|
 | `registry/p1/blocks/registry.json` | `meta` in each `.block.tsx` + filesystem |
-| `registry/p1/blocks/index.ts` | filesystem scan |
-| `apps/p1-registry/lib/preview-map.ts` | filesystem scan |
-| `apps/p1-registry/_components/PreviewRenderer.tsx` | filesystem scan |
+| `apps/p1-registry/lib/catalog.generated.tsx` | filesystem scan — preview names, category order, dynamic imports |
 
 ---
 
@@ -62,15 +60,11 @@ pnpm --filter @pantheon-systems/p1-starter-components registry:generate
 ```
 
 The generator automatically:
-- Adds `my-block` to `registry.json`, `index.ts`, `PreviewRenderer.tsx`, and `preview-map.ts`
+- Adds `my-block` to `registry.json` and `catalog.generated.tsx`
 - Creates `stories/my-block.stories.tsx` with a `Default` story (enhance with named variants as needed)
 - Handles new categories — if `categories: ['interactive']` is new, a new drawer group appears everywhere with no extra steps
 
-**4. Update the block count in `index.test.ts`:**
-
-```ts
-const EXPECTED_BLOCK_COUNT = 38; // bump by 1
-```
+No registration step needed — tests discover blocks from the filesystem directly.
 
 ---
 
@@ -79,7 +73,6 @@ const EXPECTED_BLOCK_COUNT = 38; // bump by 1
 1. Delete the block folder: `rm -rf registry/p1/blocks/my-block/`
 2. Delete the story file: `rm stories/my-block.stories.tsx`
 3. Run the generator: `pnpm registry:generate`
-4. Decrement `EXPECTED_BLOCK_COUNT` in `index.test.ts`
 
 The story file is **not** auto-deleted — the generator only creates stories, never removes them.
 
