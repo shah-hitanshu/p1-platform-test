@@ -156,7 +156,7 @@ The catalog is a Pantheon Next.js site (`p1-registry`), connected to this repo's
 installs with pnpm, runs the root `build` script, then runs the root `start`
 script to serve the app in a Node container behind Pantheon's CDN.
 
-Two details make that work in a monorepo:
+Three details make that work in a monorepo:
 
 - **Scoped build.** Pantheon builds from the repo root, where `build` is
   `turbo run build` across all 18 workspace members. The root script branches on
@@ -167,6 +167,16 @@ Two details make that work in a monorepo:
   `@pantheon-systems/puck-css/fields`.
 - **Root start script.** `start` delegates to the catalog app, so `next start`
   runs with `apps/p1-registry` as its working directory.
+- **pnpm stays on 10.x.** The buildpack installs pnpm by downloading a bare
+  `pnpm-linux-x64` binary from the matching GitHub release. pnpm renamed that
+  asset in 11.x, so any 11 pin fails the build with a 404 before install runs.
+- **Static assets are copied to the repo root.** Pantheon's static-file step
+  searches only `/workspace/.next/static`, `/app/.next/static` and
+  `/layers/.next/static`. A monorepo app builds to
+  `apps/p1-registry/.next/static`, so none match, nothing reaches the CDN, and
+  every `/_next/static/*` request falls through to Node and 404s — the site
+  renders with no CSS, JS or fonts. The build copies that directory to the repo
+  root so the step finds it. `.next/` is gitignored, so nothing is committed.
 
 Dev auto-deploys from every push to `main`. Live promotes when a sequential
 `pantheon_live_N` git tag is pushed.
@@ -181,6 +191,21 @@ One consequence worth knowing: `verify:registry` no longer runs automatically an
 `registry:build`, the catalog tests and typecheck on every PR, but not the full install-37-blocks-into-a-
 bare-app check. Run it by hand before promoting to Live — it is step 3 under
 [Steps to ship a new block version](#steps-to-ship-a-new-block-version).
+
+### Add or remove a block
+
+To add one: write the block in `packages/p1-starter-components`, then add its
+entry to `registry/p1/blocks/registry.json`. Add it to `@p1/base` only if its
+Puck key does not collide with a p1-starter built-in — `button`, `divider`,
+`heading`, `image`, `list`, `paragraph`, `quote`, `spacer` stay individually
+installable so a consumer does not end up with duplicate config entries.
+
+To remove one: delete the entry. `/r/<name>.json` starts returning 404, but
+anyone who already installed it keeps a working copy — shadcn writes files into
+the consumer's project, so there is no runtime dependency on this origin. A
+removal is therefore silent; announce it rather than relying on a broken URL.
+
+Either way the release path is the same as an update, below.
 
 ### Steps to ship a new block version
 
