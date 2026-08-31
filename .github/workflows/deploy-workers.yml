@@ -108,7 +108,7 @@ jobs:
         run: pnpm exec turbo run build --filter='ccr-worker^...'
 
       - name: Authenticate to GCP
-        uses: pantheon-systems/common-gh/auth-wif@0a1dafc525b4ffa9fcfbfcf1c889dc0251c0c4e4 # main @ 2026-06
+        uses: pantheon-systems/action-auth-wif@2b360d3ed643803ad0286736ca0fdc80c85042a0 # v0.1.1
         with:
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
 
@@ -187,7 +187,7 @@ jobs:
         run: pnpm exec turbo run build --filter='ccr-mcp-server^...'
 
       - name: Authenticate to GCP
-        uses: pantheon-systems/common-gh/auth-wif@0a1dafc525b4ffa9fcfbfcf1c889dc0251c0c4e4 # main @ 2026-06
+        uses: pantheon-systems/action-auth-wif@2b360d3ed643803ad0286736ca0fdc80c85042a0 # v0.1.1
         with:
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
 
@@ -245,7 +245,7 @@ jobs:
         run: pnpm exec turbo run build --filter='@p1/agent^...'
 
       - name: Authenticate to GCP
-        uses: pantheon-systems/common-gh/auth-wif@0a1dafc525b4ffa9fcfbfcf1c889dc0251c0c4e4 # main @ 2026-06
+        uses: pantheon-systems/action-auth-wif@2b360d3ed643803ad0286736ca0fdc80c85042a0 # v0.1.1
         with:
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
 
@@ -306,7 +306,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Authenticate to GCP
-        uses: pantheon-systems/common-gh/auth-wif@0a1dafc525b4ffa9fcfbfcf1c889dc0251c0c4e4 # main @ 2026-06
+        uses: pantheon-systems/action-auth-wif@2b360d3ed643803ad0286736ca0fdc80c85042a0 # v0.1.1
         with:
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
 
