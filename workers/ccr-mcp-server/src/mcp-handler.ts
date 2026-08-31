@@ -8,19 +8,15 @@
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { McpApiClient } from './shared/api-client.js';
-import {
-  createToolHandlers,
-  getToolDefinitions,
-  schemas,
-  type ToolHandlers,
-  type ToolResult,
-} from './shared/tools.js';
 import type { ActingUser } from './shared/types.js';
+import { allTools } from './tools/index.js';
+import type { P1McpToolContext } from './tools/types/p1-mcp-tool-context.js';
 import {
   checkToolRateLimit,
   type RateLimiters,
   type RateLimitContext,
 } from './rate-limit.js';
+import { CallToolResult } from '@modelcontextprotocol/sdk/types';
 
 export interface McpHandlerConfig {
   baseUrl: string;
@@ -40,40 +36,6 @@ export interface McpHandlerConfig {
   rateLimiters?: RateLimiters;
   rateLimitContext?: RateLimitContext;
 }
-
-// PCC-3192 — tools that mutate backend state get the tighter limiter.
-// Centralised here so every place that decides "is this a mutation?"
-// reads from one source of truth. check_merge and preview_merge are POST
-// but read-only, so they stay on the looser read limiter.
-const MUTATION_TOOLS = new Set<string>([
-  'create_site',
-  'update_site',
-  'update_site_settings',
-  'apply_document_edits',
-  'create_page',
-  'start_edit_session',
-  'complete_edit_session',
-  'abort_edit_session',
-  'create_branch',
-  'update_branch',
-  'archive_branch',
-  'restore_branch',
-  'execute_merge',
-  'create_merge_request',
-  'update_merge_request',
-  'execute_merge_request',
-  'add_navigation_item',
-  'update_navigation_item',
-  'move_navigation_item',
-  'reorder_navigation_items',
-  'remove_navigation_item',
-  'set_page_metadata',
-  'restore_document_version',
-  'publish_page',
-  'archive_page',
-  'restore_page',
-  'rename_page',
-]);
 
 interface ToolErrorResult {
   [x: string]: unknown;
@@ -101,6 +63,7 @@ function formatRateLimitError(tool: string, scope: 'user' | 'ip'): ToolErrorResu
  */
 async function rateLimitPreCheck(
   toolName: string,
+  mutates: boolean,
   config: McpHandlerConfig,
 ): Promise<ToolErrorResult | null> {
   if (!config.rateLimiters || !config.rateLimitContext) {
@@ -109,7 +72,7 @@ async function rateLimitPreCheck(
   const verdict = await checkToolRateLimit(
     config.rateLimiters,
     toolName,
-    MUTATION_TOOLS.has(toolName),
+    mutates,
     config.rateLimitContext,
   );
   return verdict.allowed ? null : formatRateLimitError(toolName, verdict.scope);
@@ -126,30 +89,46 @@ export function createMcpServer(config: McpHandlerConfig): McpServer {
     enableValidation: true,
   });
 
-  // PCC-3189: pass actingUser so handlers can attribute edit-session calls
-  // to a real human (trigger='human_requested' + requestedById) instead of
-  // hardcoding 'autonomous' for everything.
-  const handlers = createToolHandlers(apiClient, config.actingUser);
   const server = new McpServer({
     name: config.serverName,
     version: config.serverVersion,
   });
 
-  // registerTool infers a tool's argument type from a static inputSchema;
-  // indexing schemas and handlers by name yields unions instead, so the args
-  // and handler are cast at the call site.
-  for (const { name, description, annotations } of getToolDefinitions()) {
-    const toolName = name as keyof ToolHandlers;
+  // PCC-3189: pass actingUser so handlers can attribute edit-session calls
+  // to a real human (trigger='human_requested' + requestedById) instead of
+  // hardcoding 'autonomous' for everything.
+  const requestedById =
+    config.actingUser?.id !== undefined && config.actingUser.id !== ''
+      ? config.actingUser.id
+      : undefined;
+  const toolContext: P1McpToolContext = {
+    apiClient,
+    ...(config.actingUser !== undefined ? { actingUser: config.actingUser } : {}),
+    ...(requestedById !== undefined ? { requestedById } : {}),
+    trigger: requestedById !== undefined ? 'human_requested' : 'autonomous',
+  };
+
+  for (const [name, tool] of Object.entries(allTools)) {
     server.registerTool(
       name,
-      { description, inputSchema: schemas[toolName], ...(annotations !== undefined ? { annotations } : {}) },
+      {
+        description: tool.description,
+        inputSchema: tool.inputSchema,
+        ...(tool.annotations !== undefined ? { annotations: tool.annotations } : {}),
+      },
       async (args: unknown) => {
-        const denied = await rateLimitPreCheck(name, config);
+        const denied = await rateLimitPreCheck(name, tool.mutates, config);
         if (denied) {
           return denied;
         }
-        const handler = handlers[toolName] as (a: unknown) => Promise<ToolResult>;
-        return handler(args);
+        // Object.entries widens the map to a union of tool types, so the
+        // handler is cast here; each tool's own definition is what type-checks
+        // its schema against its input.
+        const handler = tool.handler as (
+          ctx: P1McpToolContext,
+          input: unknown,
+        ) => Promise<CallToolResult>;
+        return handler(toolContext, args);
       },
     );
   }

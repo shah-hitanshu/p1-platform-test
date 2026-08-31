@@ -31,9 +31,9 @@ describe('End-to-end agent workflow: list_components → create_page', () => {
   // Test 4: Agent calls list_components then create_page with discovered components
   it('discovers HeroBlock via list_components then creates a page using it with a ULID id', async () => {
     const { McpApiClient } = await import('../../src/shared/api-client.js');
-    const { createToolHandlers } = await import('../../src/shared/tools.js');
+    const { createTestHandlers } = await import('../helpers/tool-handlers.js');
     const client = new McpApiClient(defaultConfig);
-    const handlers = createToolHandlers(client);
+    const handlers = await createTestHandlers(client);
 
     // Fetch 1: list_components → listDocuments returns one component doc
     mockFetch.mockResolvedValueOnce(createMockResponse(true, {

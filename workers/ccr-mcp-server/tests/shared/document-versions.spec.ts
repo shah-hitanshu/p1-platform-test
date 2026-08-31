@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import type { ToolHandlers } from '../../src/shared/tools.js';
+import type { CallToolResult } from '@modelcontextprotocol/sdk/types';
 
 const mockFetch = vi.fn();
 vi.stubGlobal('fetch', mockFetch);
@@ -23,11 +23,11 @@ const defaultConfig = {
 const versionId = '11111111-1111-4111-8111-111111111111';
 const versionsUrl = 'http://localhost:8787/api/sites/site-1/branches/branch-1/documents/doc-1/versions';
 
-async function loadHandlers(actingUser?: { id: string; email: string }): Promise<ToolHandlers> {
+async function loadHandlers(actingUser?: { id: string; email: string }): Promise<Record<string, (input?: unknown) => Promise<CallToolResult>>> {
   const { McpApiClient } = await import('../../src/shared/api-client.js');
-  const { createToolHandlers } = await import('../../src/shared/tools.js');
+  const { createTestHandlers } = await import('../helpers/tool-handlers.js');
   const config = actingUser !== undefined ? { ...defaultConfig, actingUser } : defaultConfig;
-  return createToolHandlers(new McpApiClient(config), actingUser);
+  return createTestHandlers(new McpApiClient(config), actingUser);
 }
 
 describe('list_document_versions tool', () => {

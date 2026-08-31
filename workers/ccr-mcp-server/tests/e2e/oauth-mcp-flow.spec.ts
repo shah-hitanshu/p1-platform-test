@@ -50,13 +50,13 @@ describe('OAuth + MCP Flow', () => {
 
   it('should return formatted tool response from list_sites', async () => {
     const { McpApiClient } = await import('../../src/shared/api-client.js');
-    const { createToolHandlers } = await import('../../src/shared/tools.js');
+    const { createTestHandlers } = await import('../helpers/tool-handlers.js');
     const client = new McpApiClient({
       baseUrl: 'http://localhost:8787',
       agentId: 'agent-1',
       agentApiKey: 'aak_test',
     });
-    const handlers = createToolHandlers(client);
+    const handlers = await createTestHandlers(client);
 
     mockFetch.mockResolvedValueOnce(createMockResponse(true, {
       sites: [{ id: 's1', name: 'Test', pantheonSiteId: 'p1', createdAt: '2026-01-01' }],
@@ -73,12 +73,12 @@ describe('OAuth + MCP Flow', () => {
   // agent from the key and the edit session from its id.
   it('agent authoring round-trip forwards the key with no fabricated actor id', async () => {
     const { McpApiClient } = await import('../../src/shared/api-client.js');
-    const { createToolHandlers } = await import('../../src/shared/tools.js');
+    const { createTestHandlers } = await import('../helpers/tool-handlers.js');
     const client = new McpApiClient({
       baseUrl: 'http://localhost:8787',
       agentApiKey: 'aak_agent',
     });
-    const handlers = createToolHandlers(client);
+    const handlers = await createTestHandlers(client);
 
     mockFetch
       .mockResolvedValueOnce(createMockResponse(true, {
@@ -123,14 +123,14 @@ describe('OAuth + MCP Flow', () => {
   // actor type user, and sends no actor id or agent key.
   it('human read forwards the bearer token as a user with no actor id', async () => {
     const { McpApiClient } = await import('../../src/shared/api-client.js');
-    const { createToolHandlers } = await import('../../src/shared/tools.js');
+    const { createTestHandlers } = await import('../helpers/tool-handlers.js');
     const actingUser = { id: 'auth0|user-1', email: 'u@ex.com' };
     const client = new McpApiClient({
       baseUrl: 'http://localhost:8787',
       accessToken: 'auth0-token',
       actingUser,
     });
-    const handlers = createToolHandlers(client, actingUser);
+    const handlers = await createTestHandlers(client, actingUser);
 
     mockFetch.mockResolvedValueOnce(createMockResponse(true, {
       snapshot: { content: [] }, version: 1, documentPath: '/home',

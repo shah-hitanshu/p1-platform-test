@@ -66,8 +66,8 @@ describe('apply_document_edits id re-minting', () => {
 
   it('mints a fresh server-side id for a component added through an add op and discards the client id', async () => {
     const { McpApiClient } = await import('../../src/shared/api-client.js');
-    const { createToolHandlers } = await import('../../src/shared/tools.js');
-    const handlers = createToolHandlers(new McpApiClient(defaultConfig));
+    const { createTestHandlers } = await import('../helpers/tool-handlers.js');
+    const handlers = await createTestHandlers(new McpApiClient(defaultConfig));
 
     mockApplyEditsFlow({ content: [] });
 
@@ -92,8 +92,8 @@ describe('apply_document_edits id re-minting', () => {
 
   it('mints fresh ids for every component nested in arrays and objects within an add op value', async () => {
     const { McpApiClient } = await import('../../src/shared/api-client.js');
-    const { createToolHandlers } = await import('../../src/shared/tools.js');
-    const handlers = createToolHandlers(new McpApiClient(defaultConfig));
+    const { createTestHandlers } = await import('../helpers/tool-handlers.js');
+    const handlers = await createTestHandlers(new McpApiClient(defaultConfig));
 
     mockApplyEditsFlow({ content: [] });
 
@@ -148,8 +148,8 @@ describe('apply_document_edits id re-minting', () => {
 
   it('re-mints the incoming id when a replace op targets a component position whose current id differs', async () => {
     const { McpApiClient } = await import('../../src/shared/api-client.js');
-    const { createToolHandlers } = await import('../../src/shared/tools.js');
-    const handlers = createToolHandlers(new McpApiClient(defaultConfig));
+    const { createTestHandlers } = await import('../helpers/tool-handlers.js');
+    const handlers = await createTestHandlers(new McpApiClient(defaultConfig));
 
     mockApplyEditsFlow({
       content: [
@@ -178,8 +178,8 @@ describe('apply_document_edits id re-minting', () => {
 
   it('preserves the incoming id when a replace op targets a component position whose current id matches', async () => {
     const { McpApiClient } = await import('../../src/shared/api-client.js');
-    const { createToolHandlers } = await import('../../src/shared/tools.js');
-    const handlers = createToolHandlers(new McpApiClient(defaultConfig));
+    const { createTestHandlers } = await import('../helpers/tool-handlers.js');
+    const handlers = await createTestHandlers(new McpApiClient(defaultConfig));
 
     const slotId = 'HeroBlock-1111aaaa-2222-3333-4444-555566667777';
     mockApplyEditsFlow({
@@ -206,8 +206,8 @@ describe('apply_document_edits id re-minting', () => {
 
   it('preserves a zone item id when a replace op targets its position and the current id matches', async () => {
     const { McpApiClient } = await import('../../src/shared/api-client.js');
-    const { createToolHandlers } = await import('../../src/shared/tools.js');
-    const handlers = createToolHandlers(new McpApiClient(defaultConfig));
+    const { createTestHandlers } = await import('../helpers/tool-handlers.js');
+    const handlers = await createTestHandlers(new McpApiClient(defaultConfig));
 
     const zoneKey = 'Layout-abc:main';
     const slotId = 'HeroBlock-9999bbbb-8888-7777-6666-555544443333';
@@ -235,8 +235,8 @@ describe('apply_document_edits id re-minting', () => {
 
   it('leaves a replace at a deeper prop path untouched', async () => {
     const { McpApiClient } = await import('../../src/shared/api-client.js');
-    const { createToolHandlers } = await import('../../src/shared/tools.js');
-    const handlers = createToolHandlers(new McpApiClient(defaultConfig));
+    const { createTestHandlers } = await import('../helpers/tool-handlers.js');
+    const handlers = await createTestHandlers(new McpApiClient(defaultConfig));
 
     mockApplyEditsFlow({
       content: [{ type: 'HeroBlock', props: { id: 'HeroBlock-current-slot', title: 'Old' } }],
@@ -260,8 +260,8 @@ describe('apply_document_edits id re-minting', () => {
 
   it('leaves a remove op untouched', async () => {
     const { McpApiClient } = await import('../../src/shared/api-client.js');
-    const { createToolHandlers } = await import('../../src/shared/tools.js');
-    const handlers = createToolHandlers(new McpApiClient(defaultConfig));
+    const { createTestHandlers } = await import('../helpers/tool-handlers.js');
+    const handlers = await createTestHandlers(new McpApiClient(defaultConfig));
 
     mockApplyEditsFlow({
       content: [
@@ -286,8 +286,8 @@ describe('apply_document_edits id re-minting', () => {
 
   it('rejects the request when a whole-component replace cannot read the current snapshot', async () => {
     const { McpApiClient } = await import('../../src/shared/api-client.js');
-    const { createToolHandlers } = await import('../../src/shared/tools.js');
-    const handlers = createToolHandlers(new McpApiClient(defaultConfig));
+    const { createTestHandlers } = await import('../helpers/tool-handlers.js');
+    const handlers = await createTestHandlers(new McpApiClient(defaultConfig));
 
     // getDocument fails; lookupDocumentByPath still resolves. No occupant can be read.
     mockFetch.mockRejectedValueOnce(new Error('snapshot fetch failed'));
@@ -309,8 +309,8 @@ describe('apply_document_edits id re-minting', () => {
 
   it('applies an add-only request even when the current snapshot cannot be read', async () => {
     const { McpApiClient } = await import('../../src/shared/api-client.js');
-    const { createToolHandlers } = await import('../../src/shared/tools.js');
-    const handlers = createToolHandlers(new McpApiClient(defaultConfig));
+    const { createTestHandlers } = await import('../helpers/tool-handlers.js');
+    const handlers = await createTestHandlers(new McpApiClient(defaultConfig));
 
     mockFetch.mockRejectedValueOnce(new Error('snapshot fetch failed'));
     mockFetch.mockResolvedValueOnce(createMockResponse(true, {}));
@@ -333,8 +333,8 @@ describe('apply_document_edits id re-minting', () => {
 
   it('rejects the request when an earlier op shifts the list a later whole-component replace targets', async () => {
     const { McpApiClient } = await import('../../src/shared/api-client.js');
-    const { createToolHandlers } = await import('../../src/shared/tools.js');
-    const handlers = createToolHandlers(new McpApiClient(defaultConfig));
+    const { createTestHandlers } = await import('../helpers/tool-handlers.js');
+    const handlers = await createTestHandlers(new McpApiClient(defaultConfig));
 
     mockApplyEditsFlow({
       content: [
@@ -360,8 +360,8 @@ describe('apply_document_edits id re-minting', () => {
 
   it('preserves ids for several in-place replaces when no op shifts the list', async () => {
     const { McpApiClient } = await import('../../src/shared/api-client.js');
-    const { createToolHandlers } = await import('../../src/shared/tools.js');
-    const handlers = createToolHandlers(new McpApiClient(defaultConfig));
+    const { createTestHandlers } = await import('../helpers/tool-handlers.js');
+    const handlers = await createTestHandlers(new McpApiClient(defaultConfig));
 
     mockApplyEditsFlow({
       content: [
@@ -389,8 +389,8 @@ describe('apply_document_edits id re-minting', () => {
 
   it('preserves nested component ids when an in-place replace matches the current occupant', async () => {
     const { McpApiClient } = await import('../../src/shared/api-client.js');
-    const { createToolHandlers } = await import('../../src/shared/tools.js');
-    const handlers = createToolHandlers(new McpApiClient(defaultConfig));
+    const { createTestHandlers } = await import('../helpers/tool-handlers.js');
+    const handlers = await createTestHandlers(new McpApiClient(defaultConfig));
 
     const gridId = 'Grid-1111aaaa-2222-3333-4444-555566667777';
     const cellId = 'Cell-9999bbbb-8888-7777-6666-555544443333';
@@ -424,8 +424,8 @@ describe('apply_document_edits id re-minting', () => {
 
   it('re-mints only the foreign elements of a whole-array replace, keeping ids already in the array', async () => {
     const { McpApiClient } = await import('../../src/shared/api-client.js');
-    const { createToolHandlers } = await import('../../src/shared/tools.js');
-    const handlers = createToolHandlers(new McpApiClient(defaultConfig));
+    const { createTestHandlers } = await import('../helpers/tool-handlers.js');
+    const handlers = await createTestHandlers(new McpApiClient(defaultConfig));
 
     const keptId = 'TextBlock-1111aaaa-2222-3333-4444-555566667777';
     mockApplyEditsFlow({

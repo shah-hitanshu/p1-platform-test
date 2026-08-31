@@ -35,8 +35,8 @@ const siteResponse = {
 
 async function makeHandlers(config: Record<string, unknown>) {
   const { McpApiClient } = await import('../../src/shared/api-client.js');
-  const { createToolHandlers } = await import('../../src/shared/tools.js');
-  return createToolHandlers(new McpApiClient(config as never));
+  const { createTestHandlers } = await import('../helpers/tool-handlers.js');
+  return createTestHandlers(new McpApiClient(config as never));
 }
 
 describe('create_site tool', () => {
@@ -104,7 +104,7 @@ describe('create_site tool', () => {
 
 describe('site tool input schemas', () => {
   it('rejects a blank name on create and update', async () => {
-    const { schemas } = await import('../../src/shared/tools.js');
+    const { schemas } = await import('../../src/tools/index.js');
 
     // updateSite writes name through COALESCE($1, name), so '' is stored as
     // the new name rather than meaning "leave it alone". The backend rejects
@@ -116,7 +116,7 @@ describe('site tool input schemas', () => {
   });
 
   it('still accepts a real name, and an update that omits it', async () => {
-    const { schemas } = await import('../../src/shared/tools.js');
+    const { schemas } = await import('../../src/tools/index.js');
 
     expect(schemas.create_site.safeParse({ name: 'Marketing' }).success).toBe(true);
     expect(schemas.update_site.safeParse({ site_id: 's', url: null }).success).toBe(true);

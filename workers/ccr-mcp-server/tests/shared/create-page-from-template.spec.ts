@@ -52,8 +52,8 @@ describe('create_page from a template', () => {
 
   it('forwards the template id and omits a client snapshot when a template id is given without components', async () => {
     const { McpApiClient } = await import('../../src/shared/api-client.js');
-    const { createToolHandlers } = await import('../../src/shared/tools.js');
-    const handlers = createToolHandlers(new McpApiClient(defaultConfig));
+    const { createTestHandlers } = await import('../helpers/tool-handlers.js');
+    const handlers = await createTestHandlers(new McpApiClient(defaultConfig));
 
     mockFetch.mockResolvedValueOnce(createMockResponse(true, CREATE_DOCUMENT_RESPONSE));
 
@@ -73,8 +73,8 @@ describe('create_page from a template', () => {
 
   it('rejects a template id combined with components and forwards no create-document request', async () => {
     const { McpApiClient } = await import('../../src/shared/api-client.js');
-    const { createToolHandlers } = await import('../../src/shared/tools.js');
-    const handlers = createToolHandlers(new McpApiClient(defaultConfig));
+    const { createTestHandlers } = await import('../helpers/tool-handlers.js');
+    const handlers = await createTestHandlers(new McpApiClient(defaultConfig));
 
     mockFetch.mockResolvedValueOnce(createMockResponse(true, CREATE_DOCUMENT_RESPONSE));
 
@@ -92,8 +92,8 @@ describe('create_page from a template', () => {
 
   it('forwards a snapshot carrying the components when no template id is given', async () => {
     const { McpApiClient } = await import('../../src/shared/api-client.js');
-    const { createToolHandlers } = await import('../../src/shared/tools.js');
-    const handlers = createToolHandlers(new McpApiClient(defaultConfig));
+    const { createTestHandlers } = await import('../helpers/tool-handlers.js');
+    const handlers = await createTestHandlers(new McpApiClient(defaultConfig));
 
     mockFetch.mockResolvedValueOnce(createMockResponse(true, CREATE_DOCUMENT_RESPONSE));
 
@@ -117,8 +117,8 @@ describe('create_page from a template', () => {
 
   it('forwards the root title when a template id and a title are given', async () => {
     const { McpApiClient } = await import('../../src/shared/api-client.js');
-    const { createToolHandlers } = await import('../../src/shared/tools.js');
-    const handlers = createToolHandlers(new McpApiClient(defaultConfig));
+    const { createTestHandlers } = await import('../helpers/tool-handlers.js');
+    const handlers = await createTestHandlers(new McpApiClient(defaultConfig));
 
     mockFetch.mockResolvedValueOnce(createMockResponse(true, CREATE_DOCUMENT_RESPONSE));
 

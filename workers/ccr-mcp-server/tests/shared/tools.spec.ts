@@ -61,30 +61,29 @@ describe('Tool Definitions', () => {
   // Every tool definition has a matching schema and vice versa, so a tool
   // can never be advertised without a validatable input shape.
   it('exposes a schema for every tool definition and no orphan schemas', async () => {
-    const { getToolDefinitions, schemas } = await import('../../src/shared/tools.js');
-    const defNames = getToolDefinitions().map((d) => d.name).sort();
+    const { allTools, schemas } = await import('../../src/tools/index.js');
+    const toolNames = Object.keys(allTools).sort();
     const schemaNames = Object.keys(schemas).sort();
-    expect(schemaNames).toEqual(defNames);
+    expect(schemaNames).toEqual(toolNames);
   });
 
   // Test 19: Each tool has required fields
   it('should have name, description, and inputSchema for every tool', async () => {
-    const { getToolDefinitions } = await import('../../src/shared/tools.js');
-    const defs = getToolDefinitions();
-    for (const def of defs) {
-      expect(def.name).toBeTruthy();
-      expect(def.description).toBeTruthy();
-      expect(def.inputSchema).toBeDefined();
+    const { allTools } = await import('../../src/tools/index.js');
+    for (const [name, tool] of Object.entries(allTools)) {
+      expect(name).toBeTruthy();
+      expect(tool.description).toBeTruthy();
+      expect(tool.inputSchema).toBeDefined();
     }
   });
 
   // The list response carries template metadata only, no per-component data,
   // so the tool description must not advertise a component or pinned breakdown.
   it('list_templates description does not promise component structure', async () => {
-    const { getToolDefinitions } = await import('../../src/shared/tools.js');
-    const def = getToolDefinitions().find((d) => d.name === 'list_templates');
-    expect(def?.description).not.toMatch(/component/i);
-    expect(def?.description).not.toMatch(/pinned/i);
+    const { allTools } = await import('../../src/tools/index.js');
+    const def = allTools.list_templates;
+    expect(def.description).not.toMatch(/component/i);
+    expect(def.description).not.toMatch(/pinned/i);
   });
 });
 
@@ -101,9 +100,9 @@ describe('Tool Handlers', () => {
   // Test 20: list_sites formatted output
   it('should format site list with UUIDs', async () => {
     const { McpApiClient } = await import('../../src/shared/api-client.js');
-    const { createToolHandlers } = await import('../../src/shared/tools.js');
+    const { createTestHandlers } = await import('../helpers/tool-handlers.js');
     const client = new McpApiClient(defaultConfig);
-    const handlers = createToolHandlers(client);
+    const handlers = await createTestHandlers(client);
 
     mockFetch.mockResolvedValueOnce(createMockResponse(true, {
       sites: [{ id: 'site-1', pantheonSiteId: 'p1', name: 'My Site', createdAt: '2026-01-01' }],
@@ -118,9 +117,9 @@ describe('Tool Handlers', () => {
   // Test 21: list_sites empty
   it('should show message for empty site list', async () => {
     const { McpApiClient } = await import('../../src/shared/api-client.js');
-    const { createToolHandlers } = await import('../../src/shared/tools.js');
+    const { createTestHandlers } = await import('../helpers/tool-handlers.js');
     const client = new McpApiClient(defaultConfig);
-    const handlers = createToolHandlers(client);
+    const handlers = await createTestHandlers(client);
 
     mockFetch.mockResolvedValueOnce(createMockResponse(true, { sites: [], total: 0 }));
 
@@ -131,9 +130,9 @@ describe('Tool Handlers', () => {
   // Test 22: get_document with region
   it('should extract region from document snapshot', async () => {
     const { McpApiClient } = await import('../../src/shared/api-client.js');
-    const { createToolHandlers } = await import('../../src/shared/tools.js');
+    const { createTestHandlers } = await import('../helpers/tool-handlers.js');
     const client = new McpApiClient(defaultConfig);
-    const handlers = createToolHandlers(client);
+    const handlers = await createTestHandlers(client);
 
     mockFetch.mockResolvedValueOnce(createMockResponse(true, {
       snapshot: { content: { body: 'Hello' } },
@@ -151,9 +150,9 @@ describe('Tool Handlers', () => {
   // Test 23: apply_document_edits normalizes paths
   it('should normalize JSON Pointer paths to dot-notation', async () => {
     const { McpApiClient } = await import('../../src/shared/api-client.js');
-    const { createToolHandlers } = await import('../../src/shared/tools.js');
+    const { createTestHandlers } = await import('../helpers/tool-handlers.js');
     const client = new McpApiClient(defaultConfig);
-    const handlers = createToolHandlers(client);
+    const handlers = await createTestHandlers(client);
 
     mockFetch.mockImplementation(routeApplyEditsFetch({ preEditSnapshot: {} }));
 
@@ -174,9 +173,9 @@ describe('Tool Handlers', () => {
   // Test 24: Tool handlers return isError on API errors
   it('should return isError:true on API errors', async () => {
     const { McpApiClient } = await import('../../src/shared/api-client.js');
-    const { createToolHandlers } = await import('../../src/shared/tools.js');
+    const { createTestHandlers } = await import('../helpers/tool-handlers.js');
     const client = new McpApiClient(defaultConfig);
-    const handlers = createToolHandlers(client);
+    const handlers = await createTestHandlers(client);
 
     mockFetch.mockRejectedValueOnce(new Error('Network failure'));
 
@@ -188,9 +187,9 @@ describe('Tool Handlers', () => {
   // Test 25: get_branch_presence formats data
   it('should format branch presence data', async () => {
     const { McpApiClient } = await import('../../src/shared/api-client.js');
-    const { createToolHandlers } = await import('../../src/shared/tools.js');
+    const { createTestHandlers } = await import('../helpers/tool-handlers.js');
     const client = new McpApiClient(defaultConfig);
-    const handlers = createToolHandlers(client);
+    const handlers = await createTestHandlers(client);
 
     mockFetch.mockResolvedValueOnce(createMockResponse(true, {
       siteId: 's1',
@@ -218,9 +217,9 @@ describe('Tool Handlers', () => {
   // Test 26a: create_branch happy path
   it('create_branch should call apiClient.createBranch with mapped fields and format result', async () => {
     const { McpApiClient } = await import('../../src/shared/api-client.js');
-    const { createToolHandlers } = await import('../../src/shared/tools.js');
+    const { createTestHandlers } = await import('../helpers/tool-handlers.js');
     const client = new McpApiClient(defaultConfig);
-    const handlers = createToolHandlers(client);
+    const handlers = await createTestHandlers(client);
 
     mockFetch.mockResolvedValueOnce(createMockResponse(true, {
       id: 'branch-new-1',
@@ -260,9 +259,9 @@ describe('Tool Handlers', () => {
   // Test 26b: create_branch error path surfaces isError:true
   it('create_branch should return isError:true when API rejects', async () => {
     const { McpApiClient } = await import('../../src/shared/api-client.js');
-    const { createToolHandlers } = await import('../../src/shared/tools.js');
+    const { createTestHandlers } = await import('../helpers/tool-handlers.js');
     const client = new McpApiClient(defaultConfig);
-    const handlers = createToolHandlers(client);
+    const handlers = await createTestHandlers(client);
 
     mockFetch.mockResolvedValueOnce(createMockResponse(false, {
       error: 'Branch with this name already exists',
@@ -279,7 +278,7 @@ describe('Tool Handlers', () => {
 
   // Test 26c: create_branch schema rejects empty name
   it('create_branch schema should reject empty name', async () => {
-    const { schemas } = await import('../../src/shared/tools.js');
+    const { schemas } = await import('../../src/tools/index.js');
     const parseResult = schemas.create_branch.safeParse({
       site_id: 'site-1',
       name: '',
@@ -290,9 +289,9 @@ describe('Tool Handlers', () => {
   // Test 26: get_document_presence formats actor list
   it('should format document presence with role tags', async () => {
     const { McpApiClient } = await import('../../src/shared/api-client.js');
-    const { createToolHandlers } = await import('../../src/shared/tools.js');
+    const { createTestHandlers } = await import('../helpers/tool-handlers.js');
     const client = new McpApiClient(defaultConfig);
-    const handlers = createToolHandlers(client);
+    const handlers = await createTestHandlers(client);
 
     mockFetch.mockResolvedValueOnce(createMockResponse(true, {
       presences: [
@@ -322,9 +321,9 @@ describe('Tool Handlers', () => {
   // "components" field the list API does not populate.
   it('should list templates from flattened metadata without component counts', async () => {
     const { McpApiClient } = await import('../../src/shared/api-client.js');
-    const { createToolHandlers } = await import('../../src/shared/tools.js');
+    const { createTestHandlers } = await import('../helpers/tool-handlers.js');
     const client = new McpApiClient(defaultConfig);
-    const handlers = createToolHandlers(client);
+    const handlers = await createTestHandlers(client);
 
     mockFetch.mockResolvedValueOnce(createMockResponse(true, {
       templates: [
@@ -374,9 +373,9 @@ describe('apply_document_edits structural validation', () => {
 
   it('flags a document missing a component pinned in the template content snapshot', async () => {
     const { McpApiClient } = await import('../../src/shared/api-client.js');
-    const { createToolHandlers } = await import('../../src/shared/tools.js');
+    const { createTestHandlers } = await import('../helpers/tool-handlers.js');
     const client = new McpApiClient(validatingConfig);
-    const handlers = createToolHandlers(client);
+    const handlers = await createTestHandlers(client);
 
     // Post-edit the document has only Body; the template pins Hero, so
     // conformance must fail.
@@ -442,9 +441,9 @@ describe('Agent attribution (PCC-3189)', () => {
 
   it('check_edit_permission with actingUser sends trigger=human_requested + requestedById', async () => {
     const { McpApiClient } = await import('../../src/shared/api-client.js');
-    const { createToolHandlers } = await import('../../src/shared/tools.js');
+    const { createTestHandlers } = await import('../helpers/tool-handlers.js');
     const client = new McpApiClient(defaultConfig);
-    const handlers = createToolHandlers(client, actingUser);
+    const handlers = await createTestHandlers(client, actingUser);
 
     mockFetch.mockResolvedValueOnce(createMockResponse(true, { allowed: true }));
     await handlers.check_edit_permission({
@@ -459,9 +458,9 @@ describe('Agent attribution (PCC-3189)', () => {
 
   it('start_edit_session with actingUser sends trigger=human_requested + requestedById', async () => {
     const { McpApiClient } = await import('../../src/shared/api-client.js');
-    const { createToolHandlers } = await import('../../src/shared/tools.js');
+    const { createTestHandlers } = await import('../helpers/tool-handlers.js');
     const client = new McpApiClient(defaultConfig);
-    const handlers = createToolHandlers(client, actingUser);
+    const handlers = await createTestHandlers(client, actingUser);
 
     mockFetch.mockResolvedValueOnce(createMockResponse(true, {
       editSessionId: 'es-1', checkpointId: 'cp-1',
@@ -479,9 +478,9 @@ describe('Agent attribution (PCC-3189)', () => {
 
   it('check_edit_permission without actingUser falls back to trigger=autonomous + no requestedById', async () => {
     const { McpApiClient } = await import('../../src/shared/api-client.js');
-    const { createToolHandlers } = await import('../../src/shared/tools.js');
+    const { createTestHandlers } = await import('../helpers/tool-handlers.js');
     const client = new McpApiClient(defaultConfig);
-    const handlers = createToolHandlers(client);
+    const handlers = await createTestHandlers(client);
 
     mockFetch.mockResolvedValueOnce(createMockResponse(true, { allowed: true }));
     await handlers.check_edit_permission({
@@ -496,9 +495,9 @@ describe('Agent attribution (PCC-3189)', () => {
 
   it('start_edit_session without actingUser falls back to trigger=autonomous + no requestedById', async () => {
     const { McpApiClient } = await import('../../src/shared/api-client.js');
-    const { createToolHandlers } = await import('../../src/shared/tools.js');
+    const { createTestHandlers } = await import('../helpers/tool-handlers.js');
     const client = new McpApiClient(defaultConfig);
-    const handlers = createToolHandlers(client);
+    const handlers = await createTestHandlers(client);
 
     mockFetch.mockResolvedValueOnce(createMockResponse(true, {
       editSessionId: 'es-1', checkpointId: 'cp-1',
@@ -520,9 +519,9 @@ describe('Agent attribution (PCC-3189)', () => {
   // post-fix. Named explicitly so a future regression jumps out.
   it('NEVER sends trigger=autonomous when actingUser is set (regression invariant)', async () => {
     const { McpApiClient } = await import('../../src/shared/api-client.js');
-    const { createToolHandlers } = await import('../../src/shared/tools.js');
+    const { createTestHandlers } = await import('../helpers/tool-handlers.js');
     const client = new McpApiClient(defaultConfig);
-    const handlers = createToolHandlers(client, actingUser);
+    const handlers = await createTestHandlers(client, actingUser);
 
     mockFetch.mockResolvedValueOnce(createMockResponse(true, { allowed: true }));
     mockFetch.mockResolvedValueOnce(createMockResponse(true, {
@@ -552,9 +551,9 @@ describe('Agent attribution (PCC-3189)', () => {
   // the autonomous path so the request still completes.
   it('treats empty actingUser.id as missing — falls back to autonomous', async () => {
     const { McpApiClient } = await import('../../src/shared/api-client.js');
-    const { createToolHandlers } = await import('../../src/shared/tools.js');
+    const { createTestHandlers } = await import('../helpers/tool-handlers.js');
     const client = new McpApiClient(defaultConfig);
-    const handlers = createToolHandlers(client, { id: '', email: 'a@b.test' });
+    const handlers = await createTestHandlers(client, { id: '', email: 'a@b.test' });
 
     mockFetch.mockResolvedValueOnce(createMockResponse(true, { allowed: true }));
     await handlers.check_edit_permission({

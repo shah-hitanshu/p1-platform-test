@@ -19,9 +19,9 @@ describe('list_components tool', () => {
 
   it('returns formatted list of components from the registry', async () => {
     const { McpApiClient } = await import('../../src/shared/api-client.js');
-    const { createToolHandlers } = await import('../../src/shared/tools.js');
+    const { createTestHandlers } = await import('../helpers/tool-handlers.js');
     const client = new McpApiClient(defaultConfig);
-    const handlers = createToolHandlers(client);
+    const handlers = await createTestHandlers(client);
 
     // First call: list docs at /_registry/components/ prefix
     mockFetch.mockResolvedValueOnce(createMockResponse(true, {
@@ -68,9 +68,9 @@ describe('list_components tool', () => {
   // preserved-case name to the calling agent, not the lowercased path.
   it('surfaces the descriptor snapshot\'s original-case name, not the lowercased path', async () => {
     const { McpApiClient } = await import('../../src/shared/api-client.js');
-    const { createToolHandlers } = await import('../../src/shared/tools.js');
+    const { createTestHandlers } = await import('../helpers/tool-handlers.js');
     const client = new McpApiClient(defaultConfig);
-    const handlers = createToolHandlers(client);
+    const handlers = await createTestHandlers(client);
 
     mockFetch.mockResolvedValueOnce(createMockResponse(true, {
       documents: [
@@ -100,9 +100,9 @@ describe('list_components tool', () => {
 
   it('returns a graceful message when no components are registered', async () => {
     const { McpApiClient } = await import('../../src/shared/api-client.js');
-    const { createToolHandlers } = await import('../../src/shared/tools.js');
+    const { createTestHandlers } = await import('../helpers/tool-handlers.js');
     const client = new McpApiClient(defaultConfig);
-    const handlers = createToolHandlers(client);
+    const handlers = await createTestHandlers(client);
 
     mockFetch.mockResolvedValueOnce(createMockResponse(true, { documents: [] }));
 
@@ -114,9 +114,9 @@ describe('list_components tool', () => {
 
   it('returns isError true on API failure', async () => {
     const { McpApiClient } = await import('../../src/shared/api-client.js');
-    const { createToolHandlers } = await import('../../src/shared/tools.js');
+    const { createTestHandlers } = await import('../helpers/tool-handlers.js');
     const client = new McpApiClient(defaultConfig);
-    const handlers = createToolHandlers(client);
+    const handlers = await createTestHandlers(client);
 
     mockFetch.mockResolvedValueOnce(createMockResponse(false, { error: 'Internal server error' }, 500));
 

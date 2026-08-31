@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import type { ToolHandlers } from '../../src/shared/tools.js';
+import type { CallToolResult } from '@modelcontextprotocol/sdk/types';
 
 const mockFetch = vi.fn();
 vi.stubGlobal('fetch', mockFetch);
@@ -35,10 +35,10 @@ const mergeRequestFixture = {
   updatedAt: '2026-06-16T00:00:00Z',
 };
 
-async function loadHandlers(actingUser?: { id: string; email: string }): Promise<ToolHandlers> {
+async function loadHandlers(actingUser?: { id: string; email: string }): Promise<Record<string, (input?: unknown) => Promise<CallToolResult>>> {
   const { McpApiClient } = await import('../../src/shared/api-client.js');
-  const { createToolHandlers } = await import('../../src/shared/tools.js');
-  return createToolHandlers(new McpApiClient(defaultConfig), actingUser);
+  const { createTestHandlers } = await import('../helpers/tool-handlers.js');
+  return createTestHandlers(new McpApiClient(defaultConfig), actingUser);
 }
 
 describe('create_merge_request tool', () => {
@@ -70,7 +70,7 @@ describe('create_merge_request tool', () => {
   });
 
   it('schema rejects an empty title', async () => {
-    const { schemas } = await import('../../src/shared/tools.js');
+    const { schemas } = await import('../../src/tools/index.js');
     const parsed = schemas.create_merge_request.safeParse({
       site_id: 'site-1',
       source_branch_id: 'b1',
@@ -118,7 +118,7 @@ describe('list_merge_requests tool', () => {
   });
 
   it('schema rejects an invalid status', async () => {
-    const { schemas } = await import('../../src/shared/tools.js');
+    const { schemas } = await import('../../src/tools/index.js');
     expect(schemas.list_merge_requests.safeParse({ site_id: 'site-1', status: 'bogus' }).success).toBe(false);
   });
 });

@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import type { ToolHandlers } from '../../src/shared/tools.js';
+import type { CallToolResult } from '@modelcontextprotocol/sdk/types';
 
 const mockFetch = vi.fn();
 vi.stubGlobal('fetch', mockFetch);
@@ -35,11 +35,13 @@ const branchFixture = {
   updatedAt: '2026-06-16T00:00:00Z',
 };
 
-async function loadHandlers(actingUser?: { id: string; email: string }): Promise<ToolHandlers> {
+async function loadHandlers(
+  actingUser?: { id: string; email: string },
+): Promise<Record<string, (input?: unknown) => Promise<CallToolResult>>> {
   const { McpApiClient } = await import('../../src/shared/api-client.js');
-  const { createToolHandlers } = await import('../../src/shared/tools.js');
+  const { createTestHandlers } = await import('../helpers/tool-handlers.js');
   const config = actingUser !== undefined ? { ...defaultConfig, actingUser } : defaultConfig;
-  return createToolHandlers(new McpApiClient(config), actingUser);
+  return createTestHandlers(new McpApiClient(config), actingUser);
 }
 
 describe('get_branch tool', () => {
@@ -106,7 +108,7 @@ describe('update_branch tool', () => {
   });
 
   it('schema rejects an unknown status value', async () => {
-    const { schemas } = await import('../../src/shared/tools.js');
+    const { schemas } = await import('../../src/tools/index.js');
     const parsed = schemas.update_branch.safeParse({
       site_id: 'site-1',
       branch_id: 'branch-1',

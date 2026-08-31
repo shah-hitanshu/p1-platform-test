@@ -25,9 +25,9 @@ describe('create_page tool', () => {
 
   it('creates a document with Puck Data in one atomic call', async () => {
     const { McpApiClient } = await import('../../src/shared/api-client.js');
-    const { createToolHandlers } = await import('../../src/shared/tools.js');
+    const { createTestHandlers } = await import('../helpers/tool-handlers.js');
     const client = new McpApiClient(defaultConfig);
-    const handlers = createToolHandlers(client);
+    const handlers = await createTestHandlers(client);
 
     // Single atomic response: backend creates document + version together
     mockFetch.mockResolvedValueOnce(createMockResponse(
@@ -67,9 +67,9 @@ describe('create_page tool', () => {
 
   it('places zone components in zones object, not content', async () => {
     const { McpApiClient } = await import('../../src/shared/api-client.js');
-    const { createToolHandlers } = await import('../../src/shared/tools.js');
+    const { createTestHandlers } = await import('../helpers/tool-handlers.js');
     const client = new McpApiClient(defaultConfig);
-    const handlers = createToolHandlers(client);
+    const handlers = await createTestHandlers(client);
 
     mockFetch.mockResolvedValueOnce(createMockResponse(
       true,
@@ -109,9 +109,9 @@ describe('create_page tool', () => {
   // Test 16: All component instances get distinct 26-character ULID ids
   it('gives every component in content a distinct 26-character ULID id in props', async () => {
     const { McpApiClient } = await import('../../src/shared/api-client.js');
-    const { createToolHandlers } = await import('../../src/shared/tools.js');
+    const { createTestHandlers } = await import('../helpers/tool-handlers.js');
     const client = new McpApiClient(defaultConfig);
-    const handlers = createToolHandlers(client);
+    const handlers = await createTestHandlers(client);
 
     // Override crypto to produce a unique sequence on each call so ULIDs are distinct
     let callCount = 0;
@@ -163,9 +163,9 @@ describe('create_page tool', () => {
   // Test 24 partial: Zone component also gets a ULID id in props
   it('gives zone components a 26-character ULID id in their props', async () => {
     const { McpApiClient } = await import('../../src/shared/api-client.js');
-    const { createToolHandlers } = await import('../../src/shared/tools.js');
+    const { createTestHandlers } = await import('../helpers/tool-handlers.js');
     const client = new McpApiClient(defaultConfig);
-    const handlers = createToolHandlers(client);
+    const handlers = await createTestHandlers(client);
 
     mockFetch.mockResolvedValueOnce(createMockResponse(
       true,
@@ -201,9 +201,9 @@ describe('create_page tool', () => {
 
   it('rejects document_path starting with /_registry/', async () => {
     const { McpApiClient } = await import('../../src/shared/api-client.js');
-    const { createToolHandlers } = await import('../../src/shared/tools.js');
+    const { createTestHandlers } = await import('../helpers/tool-handlers.js');
     const client = new McpApiClient(defaultConfig);
-    const handlers = createToolHandlers(client);
+    const handlers = await createTestHandlers(client);
 
     const result = await handlers.create_page({
       site_id: 'site-1',
@@ -219,9 +219,9 @@ describe('create_page tool', () => {
 
   it('returns isError true when document creation fails', async () => {
     const { McpApiClient } = await import('../../src/shared/api-client.js');
-    const { createToolHandlers } = await import('../../src/shared/tools.js');
+    const { createTestHandlers } = await import('../helpers/tool-handlers.js');
     const client = new McpApiClient(defaultConfig);
-    const handlers = createToolHandlers(client);
+    const handlers = await createTestHandlers(client);
 
     // Backend returns 409 when path already exists (single call — atomic)
     mockFetch.mockResolvedValueOnce(createMockResponse(false, { error: 'Document already exists at this path' }, 409));
@@ -252,9 +252,9 @@ describe('create_page tool', () => {
 
     it('accepts a PascalCase component type even though its registry path was lowercased', async () => {
       const { McpApiClient } = await import('../../src/shared/api-client.js');
-      const { createToolHandlers } = await import('../../src/shared/tools.js');
+      const { createTestHandlers } = await import('../helpers/tool-handlers.js');
       const client = new McpApiClient(validatingConfig);
-      const handlers = createToolHandlers(client);
+      const handlers = await createTestHandlers(client);
 
       // 1. listDocuments at the registry path prefix — path is lowercased
       //    server-side, so it reads "leadcapture" even though the component's
@@ -302,9 +302,9 @@ describe('create_page tool', () => {
 
     it('rejects a genuinely unknown component type even with a populated registry', async () => {
       const { McpApiClient } = await import('../../src/shared/api-client.js');
-      const { createToolHandlers } = await import('../../src/shared/tools.js');
+      const { createTestHandlers } = await import('../helpers/tool-handlers.js');
       const client = new McpApiClient(validatingConfig);
-      const handlers = createToolHandlers(client);
+      const handlers = await createTestHandlers(client);
 
       mockFetch.mockResolvedValueOnce(createMockResponse(true, {
         documents: [

@@ -26,8 +26,8 @@ describe('Localization tool definitions', () => {
   afterEach(() => { vi.restoreAllMocks(); });
 
   it('lists create_translation, list_locale_variants, and get_drift with matching schemas', async () => {
-    const { getToolDefinitions, schemas } = await import('../../src/shared/tools.js');
-    const names = getToolDefinitions().map((d) => d.name);
+    const { allTools, schemas } = await import('../../src/tools/index.js');
+    const names = Object.keys(allTools);
     for (const tool of ['create_translation', 'list_locale_variants', 'get_drift']) {
       expect(names).toContain(tool);
       expect(schemas).toHaveProperty(tool);
@@ -35,9 +35,9 @@ describe('Localization tool definitions', () => {
   });
 
   it('get_drift description points to the existing edit tools for reconciliation', async () => {
-    const { getToolDefinitions } = await import('../../src/shared/tools.js');
-    const def = getToolDefinitions().find((d) => d.name === 'get_drift');
-    expect(def?.description).toMatch(/edit/i);
+    const { allTools } = await import('../../src/tools/index.js');
+    const def = allTools.get_drift;
+    expect(def.description).toMatch(/edit/i);
   });
 });
 
@@ -53,8 +53,8 @@ describe('create_translation tool', () => {
 
   it('POSTs locale and path to the translations endpoint and returns the created translation', async () => {
     const { McpApiClient } = await import('../../src/shared/api-client.js');
-    const { createToolHandlers } = await import('../../src/shared/tools.js');
-    const handlers = createToolHandlers(new McpApiClient(defaultConfig));
+    const { createTestHandlers } = await import('../helpers/tool-handlers.js');
+    const handlers = await createTestHandlers(new McpApiClient(defaultConfig));
 
     mockFetch.mockResolvedValueOnce(createMockResponse(true, createdResult, 201));
 
@@ -83,8 +83,8 @@ describe('create_translation tool', () => {
 
   it('omits path from the body when not supplied', async () => {
     const { McpApiClient } = await import('../../src/shared/api-client.js');
-    const { createToolHandlers } = await import('../../src/shared/tools.js');
-    const handlers = createToolHandlers(new McpApiClient(defaultConfig));
+    const { createTestHandlers } = await import('../helpers/tool-handlers.js');
+    const handlers = await createTestHandlers(new McpApiClient(defaultConfig));
 
     mockFetch.mockResolvedValueOnce(createMockResponse(true, createdResult, 201));
 
@@ -103,8 +103,8 @@ describe('create_translation tool', () => {
 
   it('returns isError:true when the backend rejects the translation', async () => {
     const { McpApiClient } = await import('../../src/shared/api-client.js');
-    const { createToolHandlers } = await import('../../src/shared/tools.js');
-    const handlers = createToolHandlers(new McpApiClient(defaultConfig));
+    const { createTestHandlers } = await import('../helpers/tool-handlers.js');
+    const handlers = await createTestHandlers(new McpApiClient(defaultConfig));
 
     mockFetch.mockResolvedValueOnce(
       createMockResponse(false, { error: 'locale is required' }, 400),
@@ -122,7 +122,7 @@ describe('create_translation tool', () => {
   });
 
   it('rejects an empty locale at the schema level', async () => {
-    const { schemas } = await import('../../src/shared/tools.js');
+    const { schemas } = await import('../../src/tools/index.js');
     const parsed = schemas.create_translation.safeParse({
       site_id: 'site-1',
       branch_id: 'branch-1',
@@ -139,8 +139,8 @@ describe('list_locale_variants tool', () => {
 
   it('GETs the translations endpoint and returns the canonical and its variants', async () => {
     const { McpApiClient } = await import('../../src/shared/api-client.js');
-    const { createToolHandlers } = await import('../../src/shared/tools.js');
-    const handlers = createToolHandlers(new McpApiClient(defaultConfig));
+    const { createTestHandlers } = await import('../helpers/tool-handlers.js');
+    const handlers = await createTestHandlers(new McpApiClient(defaultConfig));
 
     mockFetch.mockResolvedValueOnce(createMockResponse(true, {
       canonical: { id: 'doc-canonical', path: '/home', siteId: 'site-1', archived: false, createdAt: '', updatedAt: '' },
@@ -172,8 +172,8 @@ describe('list_locale_variants tool', () => {
 
   it('returns isError:true when the document is not found', async () => {
     const { McpApiClient } = await import('../../src/shared/api-client.js');
-    const { createToolHandlers } = await import('../../src/shared/tools.js');
-    const handlers = createToolHandlers(new McpApiClient(defaultConfig));
+    const { createTestHandlers } = await import('../helpers/tool-handlers.js');
+    const handlers = await createTestHandlers(new McpApiClient(defaultConfig));
 
     mockFetch.mockResolvedValueOnce(
       createMockResponse(false, { error: 'Document not found on this branch' }, 404),
@@ -209,8 +209,8 @@ describe('get_drift tool', () => {
 
   it('GETs upstream-diff with relationType=localization by default and returns the classified summary', async () => {
     const { McpApiClient } = await import('../../src/shared/api-client.js');
-    const { createToolHandlers } = await import('../../src/shared/tools.js');
-    const handlers = createToolHandlers(new McpApiClient(defaultConfig));
+    const { createTestHandlers } = await import('../helpers/tool-handlers.js');
+    const handlers = await createTestHandlers(new McpApiClient(defaultConfig));
 
     mockFetch.mockResolvedValueOnce(createMockResponse(true, summary));
 
@@ -234,8 +234,8 @@ describe('get_drift tool', () => {
 
   it('passes relationType=template when the caller selects the template relation', async () => {
     const { McpApiClient } = await import('../../src/shared/api-client.js');
-    const { createToolHandlers } = await import('../../src/shared/tools.js');
-    const handlers = createToolHandlers(new McpApiClient(defaultConfig));
+    const { createTestHandlers } = await import('../helpers/tool-handlers.js');
+    const handlers = await createTestHandlers(new McpApiClient(defaultConfig));
 
     mockFetch.mockResolvedValueOnce(createMockResponse(true, { ...summary, relationType: 'template' }));
 
@@ -252,8 +252,8 @@ describe('get_drift tool', () => {
 
   it('returns isError:true when the document has no relation of that type', async () => {
     const { McpApiClient } = await import('../../src/shared/api-client.js');
-    const { createToolHandlers } = await import('../../src/shared/tools.js');
-    const handlers = createToolHandlers(new McpApiClient(defaultConfig));
+    const { createTestHandlers } = await import('../helpers/tool-handlers.js');
+    const handlers = await createTestHandlers(new McpApiClient(defaultConfig));
 
     mockFetch.mockResolvedValueOnce(
       createMockResponse(false, { error: 'No localization relation for this document' }, 404),
@@ -270,7 +270,7 @@ describe('get_drift tool', () => {
   });
 
   it('rejects an unknown relation_type at the schema level', async () => {
-    const { schemas } = await import('../../src/shared/tools.js');
+    const { schemas } = await import('../../src/tools/index.js');
     const parsed = schemas.get_drift.safeParse({
       site_id: 'site-1',
       branch_id: 'branch-1',

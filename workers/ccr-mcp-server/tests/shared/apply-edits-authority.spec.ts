@@ -63,8 +63,8 @@ function routeFetch(
 
 async function applyTitleEdit(): Promise<{ isError?: boolean; text: string }> {
   const { McpApiClient } = await import('../../src/shared/api-client.js');
-  const { createToolHandlers } = await import('../../src/shared/tools.js');
-  const handlers = createToolHandlers(new McpApiClient(defaultConfig));
+  const { createTestHandlers } = await import('../helpers/tool-handlers.js');
+  const handlers = await createTestHandlers(new McpApiClient(defaultConfig));
 
   const result = await handlers.apply_document_edits({
     site_id: 'site-1',

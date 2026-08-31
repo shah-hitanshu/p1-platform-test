@@ -26,8 +26,8 @@ const settingsResponse = {
 
 async function makeHandlers() {
   const { McpApiClient } = await import('../../src/shared/api-client.js');
-  const { createToolHandlers } = await import('../../src/shared/tools.js');
-  return createToolHandlers(new McpApiClient(userConfig));
+  const { createTestHandlers } = await import('../helpers/tool-handlers.js');
+  return createTestHandlers(new McpApiClient(userConfig));
 }
 
 describe('get_site_settings tool', () => {
