@@ -44,7 +44,7 @@ import {
   createTranslation,
   listLocaleVariants,
   buildChangeSummary,
-  getLocalizationEdgeBySource,
+  getLocalizationEdgeByDerivedDocument,
   getAuthorityOverrides,
   authorityOverridesToJson,
   setAuthorityOverride,
@@ -711,7 +711,7 @@ async function handleListLocaleVariants(
 /**
  * Handle GET /api/sites/{siteId}/branches/{branchId}/documents/{documentId}/upstream-diff
  *
- * Reports the classified drift of a document against its upstream edge target.
+ * Reports the classified drift of a document against its upstream.
  */
 async function handleUpstreamDiff(
   relationType: ChangeRelationType,
@@ -719,7 +719,7 @@ async function handleUpstreamDiff(
   documentId: string,
 ): Promise<Response> {
   const summary = await buildChangeSummary({
-    sourceDocumentId: documentId,
+    derivedDocumentId: documentId,
     branchId,
     relationType,
   });
@@ -737,7 +737,7 @@ async function handleUpstreamDiff(
  * - PUT sets one (slotId, propName) override to canonical or locale.
  * - DELETE clears one (slotId, propName) override.
  *
- * The document must be a translation (the source of a localization edge);
+ * The document must be a translation (the derived side of a localization edge);
  * otherwise the route 404s.
  */
 async function handleAuthorityOverrides(
@@ -745,7 +745,7 @@ async function handleAuthorityOverrides(
   documentId: string,
   branchId: string,
 ): Promise<Response> {
-  const edge = await getLocalizationEdgeBySource(documentId);
+  const edge = await getLocalizationEdgeByDerivedDocument(documentId);
   if (edge === null) {
     return errorResponse('Document is not a translation', 404);
   }
@@ -754,7 +754,7 @@ async function handleAuthorityOverrides(
   // cleared an override re-reads authority from the same body.
   const authorityBody = async (): Promise<Record<string, unknown>> => {
     const authorityOverrides = await getAuthorityOverrides(documentId);
-    const defaults = await resolveSlotAuthorityDefaults(edge.targetDocumentId, branchId);
+    const defaults = await resolveSlotAuthorityDefaults(edge.upstreamDocumentId, branchId);
     return { authorityOverrides: authorityOverridesToJson(authorityOverrides), ...defaults };
   };
 
@@ -1178,7 +1178,7 @@ async function handleBranchScopedDocumentRoutes(
     return await handleListLocaleVariants(context.documentId, branchId);
   }
 
-  // Handle upstream-diff: classified drift of a document against its edge target
+  // Handle upstream-diff: classified drift of a document against its upstream
   if (context.action === 'upstream-diff' && context.documentId !== undefined) {
     if (method !== 'GET') {
       return errorResponse('Method not allowed', 405);

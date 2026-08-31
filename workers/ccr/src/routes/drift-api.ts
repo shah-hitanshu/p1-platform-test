@@ -2,9 +2,9 @@
  * Branch Drift API Routes
  *
  * Read-only, admin-gated listing of upstream drift across a branch. Returns one
- * row per source document that has drifted from its upstream edge target — a
- * translation's canonical for `localization`, a document's template for
- * `template` — each with the classified counts a collapsed dashboard row needs.
+ * row per derived document that has drifted from its upstream — a translation's
+ * canonical for `localization`, a document's template for `template` — each with
+ * the classified counts a collapsed dashboard row needs.
  * The full change list stays behind the per-document upstream-diff request.
  */
 

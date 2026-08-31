@@ -3,8 +3,8 @@
  *
  * Exercises the relation-generic upstream-diff core and its classification layer
  * against a real PostgreSQL database. A change summary reports how a document's
- * upstream (the edge target) drifted between the version the document is synced to
- * and the target's current version, and classifies each change into one of the
+ * upstream drifted between the version the document is synced to and the
+ * upstream's current version, and classifies each change into one of the
  * localization buckets (or the plain structural/prop buckets for a template edge).
  *
  * Prerequisites:
@@ -160,7 +160,7 @@ describe('Change summary - Integration Tests', () => {
       });
 
       const result = await buildChangeSummary({
-        sourceDocumentId: translationId,
+        derivedDocumentId: translationId,
         branchId,
         relationType: 'localization',
       });
@@ -172,8 +172,8 @@ describe('Change summary - Integration Tests', () => {
 
     it('reports the edge endpoints and the version range being diffed', () => {
       expect(summary.relationType).toBe('localization');
-      expect(summary.sourceDocumentId).toBe(translationId);
-      expect(summary.targetDocumentId).toBe(canonicalId);
+      expect(summary.derivedDocumentId).toBe(translationId);
+      expect(summary.upstreamDocumentId).toBe(canonicalId);
       expect(summary.fromVersion).toBe(1);
       expect(summary.toVersion).toBe(2);
     });
@@ -184,8 +184,8 @@ describe('Change summary - Integration Tests', () => {
       expect(change?.classification).toBe('needsTranslation');
       expect(change?.authority).toBe('canonical');
       expect(change?.translatable).toBe(true);
-      expect(change?.templateOldValue).toBe('Hello');
-      expect(change?.templateNewValue).toBe('Hello EDITED');
+      expect(change?.upstreamOldValue).toBe('Hello');
+      expect(change?.upstreamNewValue).toBe('Hello EDITED');
       expect(change?.documentValue).toBe('Hello');
     });
 
@@ -195,7 +195,7 @@ describe('Change summary - Integration Tests', () => {
       expect(change?.classification).toBe('autoApplied');
       expect(change?.authority).toBe('canonical');
       expect(change?.translatable).toBe(false);
-      expect(change?.templateNewValue).toBe('2026-02-02');
+      expect(change?.upstreamNewValue).toBe('2026-02-02');
     });
 
     it('classifies a locale-authority (edge override) prop change as advisory', () => {
@@ -203,7 +203,7 @@ describe('Change summary - Integration Tests', () => {
       expect(change).toBeDefined();
       expect(change?.classification).toBe('advisory');
       expect(change?.authority).toBe('locale');
-      expect(change?.templateNewValue).toBe('20');
+      expect(change?.upstreamNewValue).toBe('20');
     });
 
     it('classifies an added slot as structural and carries it in the slot delta', () => {
@@ -281,7 +281,7 @@ describe('Change summary - Integration Tests', () => {
       });
 
       const result = await buildChangeSummary({
-        sourceDocumentId: pageId,
+        derivedDocumentId: pageId,
         branchId,
         relationType: 'template',
       });
@@ -293,7 +293,7 @@ describe('Change summary - Integration Tests', () => {
 
     it('reports a template relation with the upstream template as the target', () => {
       expect(summary.relationType).toBe('template');
-      expect(summary.sourceDocumentId).toBe(pageId);
+      expect(summary.derivedDocumentId).toBe(pageId);
       expect(summary.fromVersion).toBe(1);
       expect(summary.toVersion).toBe(2);
     });
@@ -312,8 +312,8 @@ describe('Change summary - Integration Tests', () => {
     it('keeps the plain structural/prop shape for a template prop change and added slot', () => {
       const propChange = findByComponent(summary, 'HeadingBlock-t', '/title');
       expect(propChange?.classification).toBe('prop');
-      expect(propChange?.templateOldValue).toBe('Template');
-      expect(propChange?.templateNewValue).toBe('Template v2');
+      expect(propChange?.upstreamOldValue).toBe('Template');
+      expect(propChange?.upstreamNewValue).toBe('Template v2');
 
       const structural = findByComponent(summary, 'FooterBlock-t', undefined);
       expect(structural?.classification).toBe('structural');
@@ -358,7 +358,7 @@ describe('Change summary - Integration Tests', () => {
       });
 
       const summary = await buildChangeSummary({
-        sourceDocumentId: translation.document.id,
+        derivedDocumentId: translation.document.id,
         branchId,
         relationType: 'localization',
       });
@@ -415,7 +415,7 @@ describe('Change summary - Integration Tests', () => {
       });
 
       const summary = await buildChangeSummary({
-        sourceDocumentId: page.document.id,
+        derivedDocumentId: page.document.id,
         branchId,
         relationType: 'template',
       });
@@ -438,7 +438,7 @@ describe('Change summary - Integration Tests', () => {
       });
 
       const result = await buildChangeSummary({
-        sourceDocumentId: orphan.document.id,
+        derivedDocumentId: orphan.document.id,
         branchId,
         relationType: 'localization',
       });

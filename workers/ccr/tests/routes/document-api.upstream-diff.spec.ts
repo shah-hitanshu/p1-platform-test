@@ -88,8 +88,8 @@ const featureBranch = makeBranch({
 
 const summary = {
   relationType: 'localization' as const,
-  sourceDocumentId: DOC_ID,
-  targetDocumentId: '33333333-3333-3333-3333-333333333333',
+  derivedDocumentId: DOC_ID,
+  upstreamDocumentId: '33333333-3333-3333-3333-333333333333',
   fromVersion: 1,
   toVersion: 2,
   slotDelta: { added: [], removed: [], moved: [], templateIds: [] },
@@ -153,7 +153,7 @@ describe('GET upstream-diff', () => {
     expect(body.fromVersion).toBe(1);
 
     const callArg = vi.mocked(services.buildChangeSummary).mock.calls[0]?.[0];
-    expect(callArg?.sourceDocumentId).toBe(DOC_ID);
+    expect(callArg?.derivedDocumentId).toBe(DOC_ID);
     expect(callArg?.branchId).toBe('branch-1');
     expect(callArg?.relationType).toBe('localization');
   });

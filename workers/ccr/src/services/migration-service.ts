@@ -634,19 +634,19 @@ export interface UpstreamDelta extends MigrationDelta {
 }
 
 /**
- * Computes the drift of an edge's upstream — the edge target document — between
+ * Computes the drift of an edge's upstream document between
  * two of its versions, keyed by slot id: a structural slot delta plus per-slot
- * prop patches. Relation-generic, so a `template` source diffs its template and
- * a `localization` source diffs its canonical through the same implementation.
+ * prop patches. Relation-generic, so a `template` edge diffs its template and
+ * a `localization` edge diffs its canonical through the same implementation.
  */
 export async function extractUpstreamDelta(
-  targetDocumentId: string,
+  upstreamDocumentId: string,
   branchId: string,
   fromVersion: number,
   toVersion: number,
 ): Promise<UpstreamDelta> {
-  const fromSnapshot = await reconstructVersionSnapshot(targetDocumentId, branchId, fromVersion);
-  const toSnapshot = await reconstructVersionSnapshot(targetDocumentId, branchId, toVersion);
+  const fromSnapshot = await reconstructVersionSnapshot(upstreamDocumentId, branchId, fromVersion);
+  const toSnapshot = await reconstructVersionSnapshot(upstreamDocumentId, branchId, toVersion);
 
   // A from-version without a content array predates the content-shape
   // conversion. Diffing a manifest against the content shape would read every
@@ -687,7 +687,7 @@ async function getInheritedPublishedSnapshot(
 }
 
 /**
- * Advances a template edge's synced_version for one source document. On a branch
+ * Advances a template edge's synced_version for one derived document. On a branch
  * that inherits the edge, the advance is recorded as a per-branch override so the
  * shared base — main's version — stays put; otherwise it writes the base directly.
  */

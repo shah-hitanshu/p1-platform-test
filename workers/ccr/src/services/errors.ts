@@ -549,7 +549,7 @@ export class MergeNotAllowedError extends HttpError {
 export class AuthorityOverrideLimitError extends HttpError {
   readonly status = 400;
   constructor(
-    public readonly sourceDocumentId: string,
+    public readonly derivedDocumentId: string,
     limit: number,
   ) {
     super(`A translation holds at most ${String(limit)} authority overrides.`);

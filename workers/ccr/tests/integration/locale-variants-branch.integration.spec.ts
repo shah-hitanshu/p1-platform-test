@@ -167,7 +167,7 @@ describe('Locale-variant listing scope - Integration Tests', () => {
     const { variants } = await listLocaleVariants(canonicalId, mainBranchId);
 
     const listed = variants.find((variant) => variant.document.id === mainVariantId);
-    expect(listed?.localization.targetDocumentId).toBe(canonicalId);
+    expect(listed?.localization.upstreamDocumentId).toBe(canonicalId);
     expect(listed?.localization.relationType).toBe('localization');
   });
 });

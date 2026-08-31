@@ -18,7 +18,7 @@ vi.mock('../../src/services', async () => {
     listLocaleVariants: vi.fn(),
     createTranslation: vi.fn(),
     documentExistsOnBranch: vi.fn(),
-    getLocalizationEdgeBySource: vi.fn(),
+    getLocalizationEdgeByDerivedDocument: vi.fn(),
     getAuthorityOverrides: vi.fn(),
     resolveSlotAuthorityDefaults: vi.fn(),
     authorityOverridesToJson: vi.fn(),

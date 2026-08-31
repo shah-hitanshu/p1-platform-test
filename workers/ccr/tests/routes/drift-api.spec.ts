@@ -36,7 +36,7 @@ const driftEntry = {
   documentId: '22222222-2222-2222-2222-222222222222',
   path: 'pages/product',
   locale: 'fr-FR',
-  targetDocumentId: '33333333-3333-3333-3333-333333333333',
+  upstreamDocumentId: '33333333-3333-3333-3333-333333333333',
   counts: { structural: 1, prop: 0, advisory: 0, needsTranslation: 2, autoApplied: 1 },
   total: 4,
 };

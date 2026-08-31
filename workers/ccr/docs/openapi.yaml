@@ -4461,18 +4461,18 @@ components:
           type: string
           nullable: true
           description: BCP-47 language tag; null for a non-localization document.
-        targetDocumentId:
+        upstreamDocumentId:
           type: string
           format: uuid
           description: >-
-            The upstream source the drift was measured against: the canonical for
+            The upstream the drift was measured against: the canonical for
             localization, the template for template.
         counts:
           $ref: '#/components/schemas/ChangeCounts'
         total:
           type: integer
           description: Sum of the per-classification counts.
-      required: [documentId, path, locale, targetDocumentId, counts, total]
+      required: [documentId, path, locale, upstreamDocumentId, counts, total]
 
     BranchDriftResponse:
       type: object
@@ -4557,24 +4557,25 @@ components:
       type: object
       description: The link from a translation to the canonical it derives from.
       properties:
-        sourceDocumentId:
+        derivedDocumentId:
           type: string
           format: uuid
           description: The translation.
-        targetDocumentId:
+        upstreamDocumentId:
           type: string
           format: uuid
           description: The canonical the translation derives from.
         relationType:
           type: string
           enum: [localization]
-        syncedVersion:
+        syncedUpstreamVersion:
           type: integer
           nullable: true
           description: >-
             Canonical version the translation is aligned to; null when it is not
             pinned to a specific version.
-      required: [sourceDocumentId, targetDocumentId, relationType, syncedVersion]
+      required:
+        [derivedDocumentId, upstreamDocumentId, relationType, syncedUpstreamVersion]
 
     CreateTranslationRequest:
       type: object
@@ -4734,8 +4735,8 @@ components:
     ChangeSummaryEntry:
       type: object
       description: >-
-        One classified change. templateOldValue and templateNewValue are the upstream
-        source's values whatever the relation type; documentValue is the requested
+        One classified change. upstreamOldValue and upstreamNewValue are the
+        upstream's values whatever the relation type; documentValue is the requested
         document's current value at that path.
       properties:
         classification:
@@ -4747,9 +4748,9 @@ components:
         propPath:
           type: string
           description: JSON Pointer into the component props; absent on structural entries.
-        templateOldValue:
+        upstreamOldValue:
           description: Upstream value before the change.
-        templateNewValue:
+        upstreamNewValue:
           description: Upstream value after the change.
         documentValue:
           description: The document's current value at that path.
@@ -4769,21 +4770,21 @@ components:
     ChangeSummary:
       type: object
       description: >-
-        The classified drift of a document against its upstream source. fromVersion is
+        The classified drift of a document against its upstream. fromVersion is
         the upstream version the document is synced to, toVersion the upstream's
         current version.
       properties:
         relationType:
           type: string
           enum: [template, localization]
-        sourceDocumentId:
+        derivedDocumentId:
           type: string
           format: uuid
           description: The document the drift was measured for.
-        targetDocumentId:
+        upstreamDocumentId:
           type: string
           format: uuid
-          description: The upstream source it was measured against.
+          description: The upstream it was measured against.
         fromVersion:
           type: integer
         toVersion:
@@ -4798,8 +4799,8 @@ components:
           $ref: '#/components/schemas/ChangeCounts'
       required:
         - relationType
-        - sourceDocumentId
-        - targetDocumentId
+        - derivedDocumentId
+        - upstreamDocumentId
         - fromVersion
         - toVersion
         - slotDelta

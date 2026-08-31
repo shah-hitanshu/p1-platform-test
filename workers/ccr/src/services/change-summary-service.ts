@@ -1,18 +1,18 @@
 /**
  * Change Summary Service
  *
- * Given a document that is the source of a relation edge, computes how the edge
- * target drifted between the version the source is synced to and the target's
- * current version, and classifies each change so the dashboard, editor, and MCP
- * can bucket it without re-deriving authority or translatability.
+ * Given a document that derives from a relation edge, computes how its upstream
+ * drifted between the version the derived document is synced to and the
+ * upstream's current version, and classifies each change so the dashboard,
+ * editor, and MCP can bucket it without re-deriving authority or translatability.
  *
  * The structural and prop diffing is the same engine the template migration uses
  * (`extractUpstreamDelta`), parameterized by relation type:
- *  - `template`: source = document, target = template. Changes stay
+ *  - `template`: derived = document, upstream = template. Changes stay
  *    `structural` / `prop`; the localization axes do not apply.
- *  - `localization`: source = translation, target = canonical. Each prop change
- *    is classified by the translation's effective authority for the slot/prop and
- *    the canonical's per-prop translatability.
+ *  - `localization`: derived = translation, upstream = canonical. Each prop
+ *    change is classified by the translation's effective authority for the
+ *    slot/prop and the canonical's per-prop translatability.
  *
  * @see workers/src/services/migration-service.ts (shared diff core)
  * @see packages/p1-content-validator/src/localization.ts (resolvers)
@@ -30,8 +30,8 @@ import type { DocumentWithArchive } from './document-types';
 import { findMainBranchId, getLatestSnapshot, resolveTemplateReadBranch } from './template-read';
 import { extractUpstreamDelta } from './migration-service';
 import {
-  getEdgeBySource,
-  getLocalizationEdgeBySource,
+  getEdgeByDerivedDocument,
+  getLocalizationEdgeByDerivedDocument,
   authorityOverridesFromMetadata,
 } from './relations-service';
 import type { AuthorityOverrides } from './relations-service';
@@ -67,10 +67,8 @@ export function isChangeRelationType(value: string): value is ChangeRelationType
 }
 
 /**
- * One classified change. The `componentId` / `propPath` / `templateOldValue` /
- * `templateNewValue` / `documentValue` fields are a superset of the dashboard's
- * `CssPropConflict`. `templateOldValue` / `templateNewValue` are the UPSTREAM (edge
- * target) values regardless of relation type; `documentValue` is the source
+ * One classified change. `upstreamOldValue` / `upstreamNewValue` are the edge's
+ * upstream values regardless of relation type; `documentValue` is the derived
  * document's current value at that path.
  */
 export interface ChangeSummaryEntry {
@@ -79,8 +77,8 @@ export interface ChangeSummaryEntry {
   componentId: string;
   /** JSON Pointer into the component props; absent for structural entries. */
   propPath?: string;
-  templateOldValue?: unknown;
-  templateNewValue?: unknown;
+  upstreamOldValue?: unknown;
+  upstreamNewValue?: unknown;
   documentValue?: unknown;
   /** Effective authority; set on localization prop entries only. */
   authority?: Authority;
@@ -91,15 +89,15 @@ export interface ChangeSummaryEntry {
 }
 
 /**
- * The classified drift of a source document against its upstream edge. `slotDelta`
- * is the raw id-keyed structural delta (superset-compatible with the dashboard's
- * `CssMigrationPreview.templateDelta`); `changes` is the per-change classified
- * view; `counts` tallies each bucket.
+ * The classified drift of a derived document against its upstream edge.
+ * `slotDelta` is the raw id-keyed structural delta (superset-compatible with the
+ * dashboard's `CssMigrationPreview.templateDelta`); `changes` is the per-change
+ * classified view; `counts` tallies each bucket.
  */
 export interface ChangeSummary {
   relationType: ChangeRelationType;
-  sourceDocumentId: string;
-  targetDocumentId: string;
+  derivedDocumentId: string;
+  upstreamDocumentId: string;
   fromVersion: number;
   toVersion: number;
   slotDelta: SlotDelta;
@@ -108,7 +106,7 @@ export interface ChangeSummary {
 }
 
 export interface BuildChangeSummaryParams {
-  sourceDocumentId: string;
+  derivedDocumentId: string;
   branchId: string;
   relationType: ChangeRelationType;
   /**
@@ -120,34 +118,34 @@ export interface BuildChangeSummaryParams {
 
 /** An edge reduced to the fields a change summary needs. */
 interface UpstreamEdge {
-  targetDocumentId: string;
-  syncedVersion: number | null;
+  upstreamDocumentId: string;
+  syncedUpstreamVersion: number | null;
   metadata: Record<string, unknown>;
 }
 
 async function resolveEdge(
-  sourceDocumentId: string,
+  derivedDocumentId: string,
   relationType: ChangeRelationType,
 ): Promise<UpstreamEdge | null> {
   if (relationType === 'localization') {
-    const edge = await getLocalizationEdgeBySource(sourceDocumentId);
+    const edge = await getLocalizationEdgeByDerivedDocument(derivedDocumentId);
     if (edge === null) {
       return null;
     }
     return {
-      targetDocumentId: edge.targetDocumentId,
-      syncedVersion: edge.syncedVersion,
+      upstreamDocumentId: edge.upstreamDocumentId,
+      syncedUpstreamVersion: edge.syncedUpstreamVersion,
       metadata: edge.metadata,
     };
   }
 
-  const templateEdge = await getEdgeBySource(sourceDocumentId, 'template');
+  const templateEdge = await getEdgeByDerivedDocument(derivedDocumentId, 'template');
   if (templateEdge === null) {
     return null;
   }
   return {
-    targetDocumentId: templateEdge.targetDocumentId,
-    syncedVersion: templateEdge.syncedVersion,
+    upstreamDocumentId: templateEdge.upstreamDocumentId,
+    syncedUpstreamVersion: templateEdge.syncedUpstreamVersion,
     metadata: {},
   };
 }
@@ -238,65 +236,65 @@ function classifyLocalizationProp(
 }
 
 /**
- * Builds the classified change summary for a source document against its upstream
- * edge of the given relation type. Returns null when there is nothing to reconcile
- * against: no edge of that type, an archived target, or a target with no live
- * version on the branch it is read from.
+ * Builds the classified change summary for a derived document against its
+ * upstream edge of the given relation type. Returns null when there is nothing
+ * to reconcile against: no edge of that type, an archived upstream, or an
+ * upstream with no live version on the branch it is read from.
  */
 export async function buildChangeSummary(
   params: BuildChangeSummaryParams,
 ): Promise<ChangeSummary | null> {
-  const { sourceDocumentId, branchId, relationType } = params;
+  const { derivedDocumentId, branchId, relationType } = params;
 
-  const edge = await resolveEdge(sourceDocumentId, relationType);
+  const edge = await resolveEdge(derivedDocumentId, relationType);
   if (edge === null) {
     return null;
   }
 
-  // An archived target is not something to reconcile against, on the same terms
-  // template migration refuses to run against one.
-  const target: DocumentWithArchive | null = await getDocument(edge.targetDocumentId);
-  if (target === null || target.archivedAt !== undefined) {
+  // An archived upstream is not something to reconcile against, on the same
+  // terms template migration refuses to run against one.
+  const upstreamDoc: DocumentWithArchive | null = await getDocument(edge.upstreamDocumentId);
+  if (upstreamDoc === null || upstreamDoc.archivedAt !== undefined) {
     return null;
   }
 
   const mainBranchId = params.mainBranchId ?? (await findMainBranchId(branchId));
 
-  // A template target lives on whichever branch holds it; a canonical target is a
-  // page, read on the source's own branch.
-  const targetBranchId =
+  // A template upstream lives on whichever branch holds it; a canonical upstream
+  // is a page, read on the derived document's own branch.
+  const upstreamBranchId =
     relationType === 'template'
-      ? await resolveTemplateReadBranch(edge.targetDocumentId, branchId, mainBranchId)
+      ? await resolveTemplateReadBranch(edge.upstreamDocumentId, branchId, mainBranchId)
       : branchId;
 
   // A tombstone is the newest version of a document deleted on the branch it is read
   // from. It reads as absent rather than as content to diff, matching how a template
   // deleted on a branch resolves to nothing instead of falling back to main.
-  const latestTarget = await getLatestDocumentVersion(edge.targetDocumentId, targetBranchId);
-  if (latestTarget === null || latestTarget.isTombstone === true) {
+  const latestUpstream = await getLatestDocumentVersion(edge.upstreamDocumentId, upstreamBranchId);
+  if (latestUpstream === null || latestUpstream.isTombstone === true) {
     return null;
   }
-  const toVersion = latestTarget.versionNumber;
-  // A null synced_version means the source is not pinned to a specific upstream
-  // version; diffing the target against itself yields an empty delta.
-  const fromVersion = edge.syncedVersion ?? toVersion;
+  const toVersion = latestUpstream.versionNumber;
+  // A null pin means the derived document is not aligned to a specific upstream
+  // version; diffing the upstream against itself yields an empty delta.
+  const fromVersion = edge.syncedUpstreamVersion ?? toVersion;
 
   const upstream = await extractUpstreamDelta(
-    edge.targetDocumentId,
-    targetBranchId,
+    edge.upstreamDocumentId,
+    upstreamBranchId,
     fromVersion,
     toVersion,
   );
 
-  const fromTargetProps = indexPropsById(upstream.fromSnapshot);
-  const sourceProps = indexPropsById(await getLatestSnapshot(sourceDocumentId, branchId));
+  const fromUpstreamProps = indexPropsById(upstream.fromSnapshot);
+  const derivedProps = indexPropsById(await getLatestSnapshot(derivedDocumentId, branchId));
 
   let localizationContext: LocalizationContext | null = null;
   if (relationType === 'localization') {
     localizationContext = {
       canonicalSnapshot: upstream.toSnapshot,
       templateSnapshot: await resolveCanonicalTemplateSnapshot(
-        edge.targetDocumentId,
+        edge.upstreamDocumentId,
         branchId,
         mainBranchId,
       ),
@@ -326,15 +324,15 @@ export async function buildChangeSummary(
   }
 
   for (const patch of upstream.propPatches) {
-    const fromProps = fromTargetProps.get(patch.componentId);
-    const docProps = sourceProps.get(patch.componentId);
+    const fromProps = fromUpstreamProps.get(patch.componentId);
+    const docProps = derivedProps.get(patch.componentId);
     for (const op of patch.operations) {
       const entry: ChangeSummaryEntry = {
         classification: 'prop',
         componentId: patch.componentId,
         propPath: op.path,
-        templateOldValue: readAtPointer(fromProps, op.path),
-        templateNewValue: 'value' in op ? (op as { value: unknown }).value : undefined,
+        upstreamOldValue: readAtPointer(fromProps, op.path),
+        upstreamNewValue: 'value' in op ? (op as { value: unknown }).value : undefined,
         documentValue: readAtPointer(docProps, op.path),
       };
 
@@ -356,8 +354,8 @@ export async function buildChangeSummary(
 
   return {
     relationType,
-    sourceDocumentId,
-    targetDocumentId: edge.targetDocumentId,
+    derivedDocumentId,
+    upstreamDocumentId: edge.upstreamDocumentId,
     fromVersion,
     toVersion,
     slotDelta: upstream.slotDelta,

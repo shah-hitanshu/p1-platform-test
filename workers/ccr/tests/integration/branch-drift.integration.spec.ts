@@ -211,7 +211,7 @@ describe('Branch drift listing - Integration Tests', () => {
 
     expect(entry).toBeDefined();
     expect(entry?.locale).toBe('fr-FR');
-    expect(entry?.targetDocumentId).toBe(alphaCanonicalId);
+    expect(entry?.upstreamDocumentId).toBe(alphaCanonicalId);
     expect(typeof entry?.path).toBe('string');
     expect(entry?.path.length).toBeGreaterThan(0);
     expect(entry?.counts.needsTranslation).toBe(1);

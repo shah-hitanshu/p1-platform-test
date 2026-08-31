@@ -2,14 +2,14 @@
  * Branch Drift Service
  *
  * A branch-scoped roll-up of upstream drift. It enumerates every document on a
- * branch that is the source of a relation edge of the requested type and computes
+ * branch that derives from a relation edge of the requested type and computes
  * each one's drift against its upstream with the same `buildChangeSummary` engine
- * the per-document upstream-diff uses, so classification is identical. The upstream
- * is the relation's target: a translation's canonical for `localization`, a
- * document's template for `template`. Documents that are in sync are omitted; each
- * returned row carries the per-classification counts a collapsed dashboard row
- * needs, and the full change list stays behind the per-document upstream-diff
- * request made on expand.
+ * the per-document upstream-diff uses, so classification is identical. The
+ * upstream is the relation's upstream document: a translation's canonical for
+ * `localization`, a document's template for `template`. Documents that are in
+ * sync are omitted; each returned row carries the per-classification counts a
+ * collapsed dashboard row needs, and the full change list stays behind the
+ * per-document upstream-diff request made on expand.
  *
  * @see workers/src/services/change-summary-service.ts (per-document engine)
  */
@@ -31,15 +31,15 @@ export const MAX_DRIFT_LIMIT = 200;
 
 /**
  * One drifted document on a branch. `counts` mirrors a `ChangeSummary`'s
- * per-classification tally; `total` is their sum. `targetDocumentId` is the edge
- * target the drift was measured against; `locale` is set for localization sources
- * and null otherwise.
+ * per-classification tally; `total` is their sum. `upstreamDocumentId` is the
+ * edge's upstream the drift was measured against; `locale` is set for
+ * localization edges and null otherwise.
  */
 export interface BranchDriftEntry {
   documentId: string;
   path: string;
   locale: string | null;
-  targetDocumentId: string;
+  upstreamDocumentId: string;
   counts: Record<ChangeClassification, number>;
   total: number;
 }
@@ -71,11 +71,11 @@ export interface ListBranchDriftOptions {
 }
 
 /**
- * Returns the requested page of source documents on the branch that have drifted
- * from their upstream edge target, ordered by document path. A document with no
- * drift, or whose target has no version to diff against, is omitted. An empty
- * branch yields an empty page. A non-main branch also reports drift for the
- * documents it inherits from main.
+ * Returns the requested page of documents on the branch that have drifted from
+ * their upstream edge, ordered by document path. A document with no drift, or
+ * whose upstream has no version to diff against, is omitted. An empty branch
+ * yields an empty page. A non-main branch also reports drift for the documents
+ * it inherits from main.
  */
 export async function listBranchDrift(
   branchId: string,
@@ -96,7 +96,7 @@ export async function listBranchDrift(
     candidates.map((candidate) =>
       limit(async (): Promise<BranchDriftEntry | null> => {
         const summary = await buildChangeSummary({
-          sourceDocumentId: candidate.documentId,
+          derivedDocumentId: candidate.documentId,
           branchId,
           relationType,
           mainBranchId,
@@ -114,7 +114,7 @@ export async function listBranchDrift(
           documentId: candidate.documentId,
           path: candidate.path,
           locale: candidate.locale,
-          targetDocumentId: summary.targetDocumentId,
+          upstreamDocumentId: summary.upstreamDocumentId,
           counts: summary.counts,
           total,
         };

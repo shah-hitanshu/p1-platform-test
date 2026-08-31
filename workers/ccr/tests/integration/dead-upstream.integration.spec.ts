@@ -146,11 +146,11 @@ describe('Dead upstream - Integration Tests', () => {
   }
 
   async function summaryFor(
-    sourceDocumentId: string,
+    derivedDocumentId: string,
     relationType: 'template' | 'localization',
     readFromBranchId: string = branchId,
   ): Promise<unknown> {
-    return buildChangeSummary({ sourceDocumentId, branchId: readFromBranchId, relationType });
+    return buildChangeSummary({ derivedDocumentId, branchId: readFromBranchId, relationType });
   }
 
   async function candidateIds(relationType: 'template' | 'localization'): Promise<string[]> {

@@ -154,9 +154,9 @@ export type {
 
 // Document Relations Service
 export {
-  getEdgeBySource,
-  getLocalizationEdgeBySource,
-  listLocalizationEdgesByTarget,
+  getEdgeByDerivedDocument,
+  getLocalizationEdgeByDerivedDocument,
+  listLocalizationEdgesByUpstreamDocument,
   listDriftCandidates,
   listLocaleVariantsOnBranch,
   createLocalizationEdge,

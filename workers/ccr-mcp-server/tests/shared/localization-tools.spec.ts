@@ -48,7 +48,7 @@ describe('create_translation tool', () => {
   const createdResult = {
     document: { id: 'doc-fr', path: '/home.fr', siteId: 'site-1', archived: false, createdAt: '', updatedAt: '' },
     version: { id: 'ver-1', versionNumber: 1, snapshot: {}, documentId: 'doc-fr', branchId: 'branch-1', source: 'edit', createdById: 'u1', createdByType: 'user', createdAt: '' },
-    localization: { sourceDocumentId: 'doc-fr', targetDocumentId: 'doc-canonical', relationType: 'localization', syncedVersion: 3 },
+    localization: { derivedDocumentId: 'doc-fr', upstreamDocumentId: 'doc-canonical', relationType: 'localization', syncedUpstreamVersion: 3 },
   };
 
   it('POSTs locale and path to the translations endpoint and returns the created translation', async () => {
@@ -147,7 +147,7 @@ describe('list_locale_variants tool', () => {
       variants: [
         {
           document: { id: 'doc-fr', path: '/home.fr', siteId: 'site-1', archived: false, createdAt: '', updatedAt: '' },
-          localization: { sourceDocumentId: 'doc-fr', targetDocumentId: 'doc-canonical', relationType: 'localization', syncedVersion: 3 },
+          localization: { derivedDocumentId: 'doc-fr', upstreamDocumentId: 'doc-canonical', relationType: 'localization', syncedUpstreamVersion: 3 },
         },
       ],
     }));
@@ -196,8 +196,8 @@ describe('get_drift tool', () => {
 
   const summary = {
     relationType: 'localization',
-    sourceDocumentId: 'doc-fr',
-    targetDocumentId: 'doc-canonical',
+    derivedDocumentId: 'doc-fr',
+    upstreamDocumentId: 'doc-canonical',
     fromVersion: 3,
     toVersion: 5,
     slotDelta: { added: [], removed: [], moved: [] },

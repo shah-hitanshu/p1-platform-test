@@ -20,7 +20,7 @@ vi.mock('../../src/services', async () => {
     ...actual,
     getBranch: vi.fn(),
     getMainBranch: vi.fn(),
-    getLocalizationEdgeBySource: vi.fn(),
+    getLocalizationEdgeByDerivedDocument: vi.fn(),
     getAuthorityOverrides: vi.fn(),
     resolveSlotAuthorityDefaults: vi.fn(),
     setAuthorityOverride: vi.fn(),
@@ -75,10 +75,10 @@ const featureBranch = makeBranch({
 
 const localizationEdge = {
   id: 'edge-1',
-  sourceDocumentId: TRANSLATION_ID,
-  targetDocumentId: CANONICAL_ID,
+  derivedDocumentId: TRANSLATION_ID,
+  upstreamDocumentId: CANONICAL_ID,
   relationType: 'localization' as const,
-  syncedVersion: 3,
+  syncedUpstreamVersion: 3,
   metadata: {},
   createdAt: '2026-01-24T11:00:00.000Z',
 };
@@ -162,7 +162,7 @@ describe('GET authority-overrides', () => {
 
     vi.mocked(services.getBranch).mockResolvedValueOnce(featureBranch);
     vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(true);
-    vi.mocked(services.getLocalizationEdgeBySource).mockResolvedValueOnce(localizationEdge);
+    vi.mocked(services.getLocalizationEdgeByDerivedDocument).mockResolvedValueOnce(localizationEdge);
     vi.mocked(services.getAuthorityOverrides).mockResolvedValueOnce(overridesMap);
 
     const response = await handleDocumentRoutes(getRequest(), context);
@@ -186,7 +186,7 @@ describe('GET authority-overrides', () => {
 
     vi.mocked(services.getBranch).mockResolvedValueOnce(featureBranch);
     vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(true);
-    vi.mocked(services.getLocalizationEdgeBySource).mockResolvedValueOnce(localizationEdge);
+    vi.mocked(services.getLocalizationEdgeByDerivedDocument).mockResolvedValueOnce(localizationEdge);
     vi.mocked(services.getAuthorityOverrides).mockResolvedValueOnce(new Map());
 
     const response = await handleDocumentRoutes(getRequest(), context);
@@ -214,7 +214,7 @@ describe('authority-overrides document guards', () => {
       const response = await handleDocumentRoutes(requestByMethod[method](), context);
 
       expect(response.status).toBe(404);
-      expect(services.getLocalizationEdgeBySource).not.toHaveBeenCalled();
+      expect(services.getLocalizationEdgeByDerivedDocument).not.toHaveBeenCalled();
       expect(services.getAuthorityOverrides).not.toHaveBeenCalled();
       expect(services.setAuthorityOverride).not.toHaveBeenCalled();
       expect(services.clearAuthorityOverride).not.toHaveBeenCalled();
@@ -226,7 +226,7 @@ describe('authority-overrides document guards', () => {
 
       vi.mocked(services.getBranch).mockResolvedValueOnce(featureBranch);
       vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(true);
-      vi.mocked(services.getLocalizationEdgeBySource).mockResolvedValueOnce(null);
+      vi.mocked(services.getLocalizationEdgeByDerivedDocument).mockResolvedValueOnce(null);
 
       const response = await handleDocumentRoutes(requestByMethod[method](), context);
 
@@ -250,7 +250,7 @@ describe('PUT authority-overrides (set)', () => {
 
     vi.mocked(services.getBranch).mockResolvedValueOnce(featureBranch);
     vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(true);
-    vi.mocked(services.getLocalizationEdgeBySource).mockResolvedValueOnce(localizationEdge);
+    vi.mocked(services.getLocalizationEdgeByDerivedDocument).mockResolvedValueOnce(localizationEdge);
     vi.mocked(services.setAuthorityOverride).mockResolvedValueOnce();
     vi.mocked(services.getAuthorityOverrides).mockResolvedValueOnce(new Map([['HeadingBlock-1', new Map([['title', 'locale']])]]));
 
@@ -283,7 +283,7 @@ describe('PUT authority-overrides (set)', () => {
 
     vi.mocked(services.getBranch).mockResolvedValueOnce(featureBranch);
     vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(true);
-    vi.mocked(services.getLocalizationEdgeBySource).mockResolvedValueOnce(localizationEdge);
+    vi.mocked(services.getLocalizationEdgeByDerivedDocument).mockResolvedValueOnce(localizationEdge);
     vi.mocked(services.setAuthorityOverride).mockResolvedValueOnce();
     vi.mocked(services.getAuthorityOverrides).mockResolvedValueOnce(new Map([['HeadingBlock-1', new Map([['title', 'canonical']])]]));
 
@@ -302,7 +302,7 @@ describe('PUT authority-overrides (set)', () => {
 
     vi.mocked(services.getBranch).mockResolvedValueOnce(featureBranch);
     vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(true);
-    vi.mocked(services.getLocalizationEdgeBySource).mockResolvedValueOnce(localizationEdge);
+    vi.mocked(services.getLocalizationEdgeByDerivedDocument).mockResolvedValueOnce(localizationEdge);
 
     const response = await handleDocumentRoutes(
       putRequest({ slotId: 'HeadingBlock-1', propName: 'title', authority: 'bogus' }),
@@ -320,7 +320,7 @@ describe('PUT authority-overrides (set)', () => {
 
     vi.mocked(services.getBranch).mockResolvedValueOnce(featureBranch);
     vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(true);
-    vi.mocked(services.getLocalizationEdgeBySource).mockResolvedValueOnce(localizationEdge);
+    vi.mocked(services.getLocalizationEdgeByDerivedDocument).mockResolvedValueOnce(localizationEdge);
     vi.mocked(services.setAuthorityOverride).mockRejectedValueOnce(
       new AuthorityOverrideLimitError(TRANSLATION_ID, MAX_OVERRIDE_ENTRIES),
     );
@@ -349,7 +349,7 @@ describe('DELETE authority-overrides (clear)', () => {
 
     vi.mocked(services.getBranch).mockResolvedValueOnce(featureBranch);
     vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(true);
-    vi.mocked(services.getLocalizationEdgeBySource).mockResolvedValueOnce(localizationEdge);
+    vi.mocked(services.getLocalizationEdgeByDerivedDocument).mockResolvedValueOnce(localizationEdge);
     vi.mocked(services.clearAuthorityOverride).mockResolvedValueOnce();
     vi.mocked(services.getAuthorityOverrides).mockResolvedValueOnce(new Map());
 
@@ -381,7 +381,7 @@ describe('DELETE authority-overrides (clear)', () => {
 
     vi.mocked(services.getBranch).mockResolvedValueOnce(featureBranch);
     vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(true);
-    vi.mocked(services.getLocalizationEdgeBySource).mockResolvedValueOnce(localizationEdge);
+    vi.mocked(services.getLocalizationEdgeByDerivedDocument).mockResolvedValueOnce(localizationEdge);
     vi.mocked(services.clearAuthorityOverride).mockResolvedValueOnce();
     vi.mocked(services.getAuthorityOverrides).mockResolvedValueOnce(new Map());
 
@@ -411,7 +411,7 @@ describe('authority-overrides method and auth guards', () => {
     const response = await handleDocumentRoutes(request, context);
 
     expect(response.status).toBe(405);
-    expect(services.getLocalizationEdgeBySource).not.toHaveBeenCalled();
+    expect(services.getLocalizationEdgeByDerivedDocument).not.toHaveBeenCalled();
   });
 
   it('returns 403 when the principal lacks the required permission', async () => {
@@ -444,7 +444,7 @@ describe('authority-overrides key validation', () => {
   function primeTranslation(services: typeof import('../../src/services')): void {
     vi.mocked(services.getBranch).mockResolvedValue(featureBranch);
     vi.mocked(services.documentExistsOnBranch).mockResolvedValue(true);
-    vi.mocked(services.getLocalizationEdgeBySource).mockResolvedValue(localizationEdge);
+    vi.mocked(services.getLocalizationEdgeByDerivedDocument).mockResolvedValue(localizationEdge);
   }
 
   const rejectedKeys = [

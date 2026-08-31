@@ -24,7 +24,7 @@ import {
   createTranslation,
   listLocaleVariants,
 } from '../../src/services/create-translation-service';
-import { getLocalizationEdgeBySource } from '../../src/services/relations-service';
+import { getLocalizationEdgeByDerivedDocument } from '../../src/services/relations-service';
 
 const TEST_USER_ID = '77777777-7777-7777-7777-777777777777';
 const SITE_PREFIX = 'document-locale-test';
@@ -115,8 +115,8 @@ describe('Document locale - Integration Tests', () => {
     );
 
     // The edge, not the locale, is what makes a document a translation.
-    expect(await getLocalizationEdgeBySource(sourceId)).toBeNull();
-    expect(await getLocalizationEdgeBySource(translation.document.id)).not.toBeNull();
+    expect(await getLocalizationEdgeByDerivedDocument(sourceId)).toBeNull();
+    expect(await getLocalizationEdgeByDerivedDocument(translation.document.id)).not.toBeNull();
   });
 
   it('clears a locale when null is written', async () => {

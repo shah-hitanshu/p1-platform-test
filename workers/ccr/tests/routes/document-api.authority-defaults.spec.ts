@@ -15,7 +15,7 @@ import type { DocumentRouteContext } from '../../src/routes/document-api';
 vi.mock('../../src/services', () => ({
   getBranch: vi.fn(),
   getMainBranch: vi.fn(),
-  getLocalizationEdgeBySource: vi.fn(),
+  getLocalizationEdgeByDerivedDocument: vi.fn(),
   getAuthorityOverrides: vi.fn(),
   resolveSlotAuthorityDefaults: vi.fn(),
   authorityOverridesToJson: (
@@ -99,10 +99,10 @@ const featureBranch = makeBranch({
 
 const localizationEdge = {
   id: 'edge-1',
-  sourceDocumentId: TRANSLATION_ID,
-  targetDocumentId: CANONICAL_ID,
+  derivedDocumentId: TRANSLATION_ID,
+  upstreamDocumentId: CANONICAL_ID,
   relationType: 'localization' as const,
-  syncedVersion: 3,
+  syncedUpstreamVersion: 3,
   metadata: {},
   createdAt: '2026-01-24T11:00:00.000Z',
 };
@@ -135,7 +135,7 @@ async function primeTranslation(defaults = slotDefaults): Promise<void> {
   const services = await import('../../src/services');
   vi.mocked(services.getBranch).mockResolvedValueOnce(featureBranch);
   vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(true);
-  vi.mocked(services.getLocalizationEdgeBySource).mockResolvedValueOnce(localizationEdge);
+  vi.mocked(services.getLocalizationEdgeByDerivedDocument).mockResolvedValueOnce(localizationEdge);
   vi.mocked(services.getAuthorityOverrides).mockResolvedValueOnce(overridesMap);
   vi.mocked(services.resolveSlotAuthorityDefaults).mockResolvedValueOnce({
     slotDefaults: defaults,

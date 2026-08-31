@@ -28,7 +28,7 @@ import { findMainBranchId, getLatestSnapshot } from './template-read';
 import {
   getAuthorityOverrides,
   authorityOverridesToJson,
-  getLocalizationEdgeBySource,
+  getLocalizationEdgeByDerivedDocument,
 } from './relations-service';
 
 /**
@@ -111,7 +111,7 @@ export async function resolveSlotAuthorityDefaults(
 export async function evaluateTranslationAuthority(
   params: EvaluateTranslationAuthorityParams,
 ): Promise<{ diagnostics: AuthorityDiagnostic[] }> {
-  const edge = await getLocalizationEdgeBySource(params.translationDocumentId);
+  const edge = await getLocalizationEdgeByDerivedDocument(params.translationDocumentId);
   if (edge === null) {
     return { diagnostics: [] };
   }
@@ -125,7 +125,7 @@ export async function evaluateTranslationAuthority(
   // The same resolved defaults the authority read serves, so a server-side
   // evaluation and a client holding that response resolve a slot identically.
   const { slotDefaults } = await resolveSlotAuthorityDefaults(
-    edge.targetDocumentId,
+    edge.upstreamDocumentId,
     params.branchId,
   );
 

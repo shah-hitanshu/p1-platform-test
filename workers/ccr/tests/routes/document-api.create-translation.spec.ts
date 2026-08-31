@@ -85,10 +85,10 @@ const translationResult: CreateTranslationResult = {
     createdAt: '2026-01-24T12:00:00.000Z',
   },
   localization: {
-    sourceDocumentId: 'doc-fr',
-    targetDocumentId: CANONICAL_ID,
+    derivedDocumentId: 'doc-fr',
+    upstreamDocumentId: CANONICAL_ID,
     relationType: 'localization' as const,
-    syncedVersion: 3,
+    syncedUpstreamVersion: 3,
   },
 };
 
@@ -154,7 +154,7 @@ describe('POST create-translation', () => {
     const body = await readJson<CreateTranslationResult>(response);
     expect(body.document.locale).toBe('fr-FR');
     expect(body.version.versionNumber).toBe(1);
-    expect(body.localization.targetDocumentId).toBe(CANONICAL_ID);
+    expect(body.localization.upstreamDocumentId).toBe(CANONICAL_ID);
     expect(body.localization.relationType).toBe('localization');
 
     const callArg = vi.mocked(services.createTranslation).mock.calls[0]?.[0];

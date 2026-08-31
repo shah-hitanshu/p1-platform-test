@@ -33,7 +33,7 @@ import { getDocument } from './document-service';
 import { documentExistsOnBranch } from './branch-document-service';
 import { getLatestDocumentVersion, reconstructVersionSnapshot } from './document-version-service';
 import { enforceUniqueSlotIds } from './slot-id-backstop';
-import { createLocalizationEdge, listLocalizationEdgesByTarget } from './relations-service';
+import { createLocalizationEdge, listLocalizationEdgesByUpstreamDocument } from './relations-service';
 import { validateLocale } from './locale';
 import { CanonicalVersionNotFoundError, TranslationAlreadyExistsError } from './errors';
 
@@ -41,10 +41,10 @@ import { CanonicalVersionNotFoundError, TranslationAlreadyExistsError } from './
  * Summary of a localization edge returned alongside a created translation.
  */
 export interface LocalizationEdgeSummary {
-  sourceDocumentId: string;
-  targetDocumentId: string;
+  derivedDocumentId: string;
+  upstreamDocumentId: string;
   relationType: 'localization';
-  syncedVersion: number | null;
+  syncedUpstreamVersion: number | null;
 }
 
 /**
@@ -176,19 +176,19 @@ export async function createTranslation(
     );
 
     const edge = await createLocalizationEdge({
-      sourceDocumentId: documentRow.id,
-      targetDocumentId: params.canonicalDocumentId,
-      syncedVersion: latest.versionNumber,
+      derivedDocumentId: documentRow.id,
+      upstreamDocumentId: params.canonicalDocumentId,
+      syncedUpstreamVersion: latest.versionNumber,
     });
 
     return {
       document: mapRowToDocument(documentRow),
       version: mapRowToDocumentVersion(getFirstRow(versionResult.rows)),
       localization: {
-        sourceDocumentId: edge.sourceDocumentId,
-        targetDocumentId: edge.targetDocumentId,
+        derivedDocumentId: edge.derivedDocumentId,
+        upstreamDocumentId: edge.upstreamDocumentId,
         relationType: 'localization',
-        syncedVersion: edge.syncedVersion,
+        syncedUpstreamVersion: edge.syncedUpstreamVersion,
       },
     };
   });
@@ -212,23 +212,23 @@ export async function listLocaleVariants(
     throw new DocumentNotFoundError(canonicalDocumentId);
   }
 
-  const edges = await listLocalizationEdgesByTarget(canonicalDocumentId);
+  const edges = await listLocalizationEdgesByUpstreamDocument(canonicalDocumentId);
   const variants: LocaleVariantsResult['variants'] = [];
   for (const edge of edges) {
-    const document: DocumentWithArchive | null = await getDocument(edge.sourceDocumentId);
+    const document: DocumentWithArchive | null = await getDocument(edge.derivedDocumentId);
     if (document === null || document.archivedAt !== undefined) {
       continue;
     }
-    if (!(await documentExistsOnBranch(edge.sourceDocumentId, branchId))) {
+    if (!(await documentExistsOnBranch(edge.derivedDocumentId, branchId))) {
       continue;
     }
     variants.push({
       document,
       localization: {
-        sourceDocumentId: edge.sourceDocumentId,
-        targetDocumentId: edge.targetDocumentId,
+        derivedDocumentId: edge.derivedDocumentId,
+        upstreamDocumentId: edge.upstreamDocumentId,
         relationType: 'localization',
-        syncedVersion: edge.syncedVersion,
+        syncedUpstreamVersion: edge.syncedUpstreamVersion,
       },
     });
   }

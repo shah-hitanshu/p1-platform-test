@@ -6,8 +6,8 @@
  * standalone lookups (a translation's canonical, a canonical's translations),
  * so those reads and the edge write live here.
  *
- * A 'localization' edge points from a localized document (source) to the
- * canonical it derives from (target). synced_version records the canonical
+ * A 'localization' edge points from a localized document (derived) to the
+ * canonical it derives from (upstream). synced_version records the canonical
  * version the translation is aligned to.
  *
  * @see workers/src/db/migrations/042_document_relations.sql
@@ -30,10 +30,10 @@ import { AuthorityOverrideLimitError } from './errors';
  */
 export interface DocumentRelation {
   id: string;
-  sourceDocumentId: string;
-  targetDocumentId: string;
+  derivedDocumentId: string;
+  upstreamDocumentId: string;
   relationType: 'template' | 'localization';
-  syncedVersion: number | null;
+  syncedUpstreamVersion: number | null;
   metadata: Record<string, unknown>;
   createdAt: string;
 }
@@ -52,9 +52,9 @@ interface DocumentRelationRow {
  * Parameters for writing a localization edge.
  */
 export interface CreateLocalizationEdgeParams {
-  sourceDocumentId: string;
-  targetDocumentId: string;
-  syncedVersion: number | null;
+  derivedDocumentId: string;
+  upstreamDocumentId: string;
+  syncedUpstreamVersion: number | null;
 }
 
 export type { Authority };
@@ -83,28 +83,29 @@ export interface LocalizationEdgeMetadata {
 function mapRowToRelation(row: DocumentRelationRow): DocumentRelation {
   return {
     id: row.id,
-    sourceDocumentId: row.source_document_id,
-    targetDocumentId: row.target_document_id,
+    derivedDocumentId: row.source_document_id,
+    upstreamDocumentId: row.target_document_id,
     relationType: row.relation_type,
-    syncedVersion: row.synced_version,
+    syncedUpstreamVersion: row.synced_version,
     metadata: row.metadata,
     createdAt: row.created_at,
   };
 }
 
 /**
- * Returns the edge of the given type whose source is the given document, or null.
- * A source has at most one edge per relation type (UNIQUE source_document_id,
- * relation_type), so this identifies the single upstream of that kind.
+ * Returns the edge of the given type whose derived document is the given
+ * document, or null. A derived document has at most one edge per relation type
+ * (UNIQUE source_document_id, relation_type), so this identifies the single
+ * upstream of that kind.
  */
-export async function getEdgeBySource(
-  sourceDocumentId: string,
+export async function getEdgeByDerivedDocument(
+  derivedDocumentId: string,
   relationType: 'template' | 'localization',
 ): Promise<DocumentRelation | null> {
   const result = await query<DocumentRelationRow>(
     `SELECT * FROM app.document_relations
      WHERE source_document_id = $1 AND relation_type = $2`,
-    [sourceDocumentId, relationType],
+    [derivedDocumentId, relationType],
   );
   if (result.rows.length === 0) {
     return null;
@@ -113,33 +114,34 @@ export async function getEdgeBySource(
 }
 
 /**
- * Returns the localization edge whose source is the given document, or null — the
- * canonical a translation derives from.
+ * Returns the localization edge whose derived document is the given document, or
+ * null — the canonical a translation derives from.
  */
-export async function getLocalizationEdgeBySource(
-  sourceDocumentId: string,
+export async function getLocalizationEdgeByDerivedDocument(
+  derivedDocumentId: string,
 ): Promise<DocumentRelation | null> {
-  return getEdgeBySource(sourceDocumentId, 'localization');
+  return getEdgeByDerivedDocument(derivedDocumentId, 'localization');
 }
 
 /**
- * Returns every localization edge that targets the given canonical document,
- * oldest first. Each edge's source is one locale variant of the canonical.
+ * Returns every localization edge whose upstream is the given canonical
+ * document, oldest first. Each edge's derived document is one locale variant of
+ * the canonical.
  */
-export async function listLocalizationEdgesByTarget(
-  targetDocumentId: string,
+export async function listLocalizationEdgesByUpstreamDocument(
+  upstreamDocumentId: string,
 ): Promise<DocumentRelation[]> {
   const result = await query<DocumentRelationRow>(
     `SELECT * FROM app.document_relations
      WHERE target_document_id = $1 AND relation_type = 'localization'
      ORDER BY created_at ASC`,
-    [targetDocumentId],
+    [upstreamDocumentId],
   );
   return result.rows.map(mapRowToRelation);
 }
 
 /**
- * One drift candidate: a source document the branch can see, in path order.
+ * One drift candidate: a derived document the branch can see, in path order.
  * `path` is the document's path on this branch, which a move there overrides.
  */
 export interface DriftCandidate {
@@ -218,8 +220,9 @@ function visibleOnBranch(
 }
 
 /**
- * One page of the documents on a branch that source an edge of the given type and
- * could have drifted from it, ordered by path and paged in the database.
+ * One page of the documents on a branch that derive from an edge of the given
+ * type and could have drifted from it, ordered by path and paged in the
+ * database.
  */
 export async function listDriftCandidates(
   relationType: string,
@@ -234,18 +237,18 @@ export async function listDriftCandidates(
        FROM app.document_relations dr
        JOIN app.documents d ON d.id = dr.source_document_id
        ${branchDocumentPathJoin('$2')}
-       -- An archived target is nothing to reconcile against. A target deleted on the
-       -- branch it is read from is dropped by the summary instead, since which branch
-       -- that is gets resolved per document.
-       JOIN app.documents target
-         ON target.id = dr.target_document_id AND target.archived_at IS NULL
+       -- An archived upstream is nothing to reconcile against. An upstream deleted on
+       -- the branch it is read from is dropped by the summary instead, since which
+       -- branch that is gets resolved per document.
+       JOIN app.documents upstream
+         ON upstream.id = dr.target_document_id AND upstream.archived_at IS NULL
        ${inherits ? publishedOnBranchJoin('pub_d', 'd', '$5') : ''}
       WHERE dr.relation_type = $1
-        -- Pinned to nothing, so the diff would run the target against itself.
+        -- Pinned to nothing, so the diff would run the upstream against itself.
         AND dr.synced_version IS NOT NULL
-        -- A localization source is pinned to its canonical on this branch: equal to
+        -- A localization edge is pinned to its canonical on this branch: equal to
         -- the newest version there means nothing to take, and no version there at all
-        -- makes MAX null, which drops the row. A template source is pinned to a
+        -- makes MAX null, which drops the row. A template edge is pinned to a
         -- version in whichever branch holds the template, so only the pinning above
         -- is checked here.
         AND (
@@ -320,15 +323,15 @@ export async function listLocaleVariantsOnBranch(
        ${branchDocumentPathJoin('$1')}
        JOIN app.document_relations dr
          ON dr.source_document_id = d.id AND dr.relation_type = 'localization'
-       JOIN app.documents target ON target.id = dr.target_document_id
+       JOIN app.documents upstream ON upstream.id = dr.target_document_id
        ${inherits ? publishedOnBranchJoin('pub_d', 'd', '$2') : ''}
-       ${inherits ? publishedOnBranchJoin('pub_t', 'target', '$2') : ''}
+       ${inherits ? publishedOnBranchJoin('pub_u', 'upstream', '$2') : ''}
       WHERE ${documentInBranchSitePredicate('$1')}
         AND d.archived_at IS NULL
         AND d.locale IS NOT NULL
-        AND target.archived_at IS NULL
+        AND upstream.archived_at IS NULL
         AND ${visibleOnBranch('d', inherits ? 'pub_d' : null, '$1', '$2')}
-        AND ${visibleOnBranch('target', inherits ? 'pub_t' : null, '$1', '$2')}
+        AND ${visibleOnBranch('upstream', inherits ? 'pub_u' : null, '$1', '$2')}
       ORDER BY dr.target_document_id ASC`,
     inherits ? [branchId, mainBranchId] : [branchId],
   );
@@ -342,8 +345,8 @@ export async function listLocaleVariantsOnBranch(
 }
 
 /**
- * Writes a localization edge from a translation (source) to its canonical
- * (target). Runs on the caller's connection, so it participates in an ambient
+ * Writes a localization edge from a translation (derived) to its canonical
+ * (upstream). Runs on the caller's connection, so it participates in an ambient
  * transaction.
  */
 export async function createLocalizationEdge(
@@ -354,7 +357,7 @@ export async function createLocalizationEdge(
        (source_document_id, target_document_id, relation_type, synced_version)
      VALUES ($1, $2, 'localization', $3)
      RETURNING *`,
-    [params.sourceDocumentId, params.targetDocumentId, params.syncedVersion],
+    [params.derivedDocumentId, params.upstreamDocumentId, params.syncedUpstreamVersion],
   );
   return mapRowToRelation(getFirstRow(result.rows));
 }
@@ -399,13 +402,13 @@ export function authorityOverridesToJson(overrides: AuthorityOverrides): Authori
 
 /**
  * Returns every per-prop authority override on a translation's localization
- * edge, nested by slot id then prop name. Empty when the source has no edge or
+ * edge, nested by slot id then prop name. Empty when the document has no edge or
  * no overrides.
  */
 export async function getAuthorityOverrides(
-  sourceDocumentId: string,
+  derivedDocumentId: string,
 ): Promise<AuthorityOverrides> {
-  const edge = await getLocalizationEdgeBySource(sourceDocumentId);
+  const edge = await getLocalizationEdgeByDerivedDocument(derivedDocumentId);
   if (edge === null) {
     return new Map();
   }
@@ -418,11 +421,11 @@ export async function getAuthorityOverrides(
  * template default.
  */
 export async function getAuthorityOverride(
-  sourceDocumentId: string,
+  derivedDocumentId: string,
   slotId: string,
   propName: string,
 ): Promise<Authority | null> {
-  const overrides = await getAuthorityOverrides(sourceDocumentId);
+  const overrides = await getAuthorityOverrides(derivedDocumentId);
   return overrides.get(slotId)?.get(propName) ?? null;
 }
 
@@ -454,7 +457,7 @@ export const MAX_OVERRIDE_ENTRIES = 1000;
  * Sets the authority override for one (slotId, propName) on a translation,
  * breaking that prop's inheritance from its slot's template default. Overwrites
  * any existing override for the key and leaves every other prop, slot, and
- * metadata key as it found them. A no-op when the source has no localization edge.
+ * metadata key as it found them. A no-op when the document has no localization edge.
  *
  * One statement, so concurrent writes to the same edge resolve per prop rather
  * than per map: the loser of a race is the prop, not everything the winner read.
@@ -466,7 +469,7 @@ export const MAX_OVERRIDE_ENTRIES = 1000;
  * @throws AuthorityOverrideLimitError when the map is full and the key is new
  */
 export async function setAuthorityOverride(
-  sourceDocumentId: string,
+  derivedDocumentId: string,
   slotId: string,
   propName: string,
   authority: Authority,
@@ -491,14 +494,14 @@ export async function setAuthorityOverride(
             END
       WHERE source_document_id = $1 AND relation_type = 'localization'
       RETURNING metadata -> 'authorityOverrides' -> $2::text ->> $3::text AS stored`,
-    [sourceDocumentId, slotId, propName, authority, MAX_OVERRIDE_ENTRIES],
+    [derivedDocumentId, slotId, propName, authority, MAX_OVERRIDE_ENTRIES],
   );
   // No row means no localization edge, which is not this function's business.
   if (result.rows.length === 0) {
     return;
   }
   if (getFirstRow(result.rows).stored !== authority) {
-    throw new AuthorityOverrideLimitError(sourceDocumentId, MAX_OVERRIDE_ENTRIES);
+    throw new AuthorityOverrideLimitError(derivedDocumentId, MAX_OVERRIDE_ENTRIES);
   }
 }
 
@@ -506,12 +509,12 @@ export async function setAuthorityOverride(
  * Clears the authority override for one (slotId, propName), restoring the prop to
  * its slot's template default. Prunes the slot entry once its last prop override
  * is removed. Clearing an absent override leaves the map as it was. A no-op when
- * the source has no localization edge.
+ * the document has no localization edge.
  *
  * One statement, on the same terms as `setAuthorityOverride`.
  */
 export async function clearAuthorityOverride(
-  sourceDocumentId: string,
+  derivedDocumentId: string,
   slotId: string,
   propName: string,
 ): Promise<void> {
@@ -528,6 +531,6 @@ export async function clearAuthorityOverride(
               END
             )
       WHERE source_document_id = $1 AND relation_type = 'localization'`,
-    [sourceDocumentId, slotId, propName],
+    [derivedDocumentId, slotId, propName],
   );
 }

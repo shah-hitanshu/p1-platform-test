@@ -25,8 +25,8 @@ import {
   listLocaleVariants,
 } from '../../src/services/create-translation-service';
 import {
-  getLocalizationEdgeBySource,
-  listLocalizationEdgesByTarget,
+  getLocalizationEdgeByDerivedDocument,
+  listLocalizationEdgesByUpstreamDocument,
 } from '../../src/services/relations-service';
 import { TranslationAlreadyExistsError, DocumentNotFoundError } from '../../src/services/errors';
 import { extractComponentIds } from '../../src/services/component-identity';
@@ -140,10 +140,10 @@ describe('Create-translation service - Integration Tests', () => {
         createdByType: 'user',
       });
 
-      expect(result.localization.sourceDocumentId).toBe(result.document.id);
-      expect(result.localization.targetDocumentId).toBe(canonicalId);
+      expect(result.localization.derivedDocumentId).toBe(result.document.id);
+      expect(result.localization.upstreamDocumentId).toBe(canonicalId);
       expect(result.localization.relationType).toBe('localization');
-      expect(result.localization.syncedVersion).toBe(1);
+      expect(result.localization.syncedUpstreamVersion).toBe(1);
 
       const rels = await sql<RelationRow[]>`
         SELECT * FROM app.document_relations WHERE source_document_id = ${result.document.id}
@@ -154,11 +154,11 @@ describe('Create-translation service - Integration Tests', () => {
       expect(rels[0].synced_version).toBe(1);
     });
 
-    it('reads the localization edge back by source', async () => {
-      const edge = await getLocalizationEdgeBySource(translationId);
-      expect(edge?.targetDocumentId).toBe(canonicalId);
+    it('reads the localization edge back by derived document', async () => {
+      const edge = await getLocalizationEdgeByDerivedDocument(translationId);
+      expect(edge?.upstreamDocumentId).toBe(canonicalId);
       expect(edge?.relationType).toBe('localization');
-      expect(edge?.syncedVersion).toBe(1);
+      expect(edge?.syncedUpstreamVersion).toBe(1);
     });
 
     it('surfaces locale on the persisted translation document', async () => {
@@ -200,10 +200,10 @@ describe('Create-translation service - Integration Tests', () => {
       const locales = result.variants.map((v) => v.document.locale).sort();
       expect(locales).toEqual(['de-DE', 'fr-FR']);
 
-      const edges = await listLocalizationEdgesByTarget(canonicalId);
+      const edges = await listLocalizationEdgesByUpstreamDocument(canonicalId);
       expect(edges).toHaveLength(2);
       for (const edge of edges) {
-        expect(edge.targetDocumentId).toBe(canonicalId);
+        expect(edge.upstreamDocumentId).toBe(canonicalId);
         expect(edge.relationType).toBe('localization');
       }
     });
