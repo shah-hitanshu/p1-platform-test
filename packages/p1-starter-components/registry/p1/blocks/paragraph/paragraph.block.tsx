@@ -2,7 +2,7 @@
 
 import type { ComponentConfig } from "@puckeditor/core";
 import { richtextField } from "@pantheon-systems/puck-css/fields";
-import { defineMeta } from '../define-meta';
+import { defineMeta } from '@/registry/p1/internal/define-meta';
 import { Paragraph, type ParagraphProps } from "./paragraph";
 export type { ParagraphProps };
 

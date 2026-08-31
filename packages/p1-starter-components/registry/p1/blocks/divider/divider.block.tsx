@@ -1,5 +1,5 @@
 import type { ComponentConfig } from "@puckeditor/core";
-import { defineMeta } from '../define-meta';
+import { defineMeta } from '@/registry/p1/internal/define-meta';
 import { Divider, type DividerProps } from "./divider";
 export type { DividerProps };
 

@@ -78,14 +78,22 @@ echo "==> registering every block and building"
 PUCK_VERSION=$(node -p "require('$PKG_DIR/package.json').devDependencies['@puckeditor/core'].replace(/^\^/, '')")
 pnpm add "@puckeditor/core@$PUCK_VERSION" >/dev/null
 node -e "
-  const { readdirSync, writeFileSync } = require('fs');
+  const { readdirSync, readFileSync, writeFileSync } = require('fs');
   const dirs = readdirSync('components/puck/blocks', { withFileTypes: true })
     .filter(e => e.isDirectory() && !e.name.startsWith('_')).map(e => e.name);
   const pascal = (s) => s.split('-').map(p => p[0].toUpperCase() + p.slice(1)).join('');
+  // The export name does not always match the directory (features -> FeatureCardsBlock),
+  // so read the real one rather than deriving it.
+  const exportName = (d) => {
+    const src = readFileSync(\`components/puck/blocks/\${d}/\${d}.block.tsx\`, 'utf8');
+    const m = src.match(/export const (\w+Block)\s*[=:]/);
+    if (!m) throw new Error('no *Block export in ' + d);
+    return m[1];
+  };
   writeFileSync('components/puck/blocks/index.ts',
-    dirs.map(d => \`import { \${pascal(d)}Block } from './\${d}/\${d}.block';\`).join('\n') +
+    dirs.map(d => \`import { \${exportName(d)} } from './\${d}/\${d}.block';\`).join('\n') +
     '\n\nexport const p1Blocks = {\n' +
-    dirs.map(d => \`  P1\${pascal(d)}: \${pascal(d)}Block,\`).join('\n') +
+    dirs.map(d => \`  P1\${pascal(d)}: \${exportName(d)},\`).join('\n') +
     '\n};\nexport const p1Categories = {};\n');
 "
 pnpm exec tsc --noEmit

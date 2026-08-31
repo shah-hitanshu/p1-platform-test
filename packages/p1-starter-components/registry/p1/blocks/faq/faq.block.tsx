@@ -1,5 +1,5 @@
 import type { ComponentConfig } from "@puckeditor/core";
-import { defineMeta } from '../define-meta';
+import { defineMeta } from '@/registry/p1/internal/define-meta';
 import { FaqRender, type FaqProps, type FaqItem } from "./faq";
 export type { FaqProps, FaqItem };
 

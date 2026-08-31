@@ -1,5 +1,5 @@
 import type { ComponentConfig } from "@puckeditor/core";
-import { defineMeta } from '../define-meta';
+import { defineMeta } from '@/registry/p1/internal/define-meta';
 import { PricingRender, type PricingProps, type PricingTier } from "./pricing";
 export type { PricingProps, PricingTier };
 

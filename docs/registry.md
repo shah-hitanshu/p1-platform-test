@@ -187,10 +187,21 @@ to an orphan `registry-deploy` branch for Pantheon to serve statically. Pantheon
 instead, so that branch was never read and both fired on a release event that is no longer part of the
 flow. They were removed on 2026-08-31.
 
-One consequence worth knowing: `verify:registry` no longer runs automatically anywhere. CI runs
-`registry:build`, the catalog tests and typecheck on every PR, but not the full install-37-blocks-into-a-
-bare-app check. Run it by hand before promoting to Live — it is step 3 under
-[Steps to ship a new block version](#steps-to-ship-a-new-block-version).
+`verify:registry` runs in CI on every PR, in the `starter-components` job. It is the only check
+that exercises the registry the way a consumer does. In-repo typecheck passes on files that are
+never published — a block can import a helper that resolves as a sibling in this repo and is
+absent from the item's `files`, and nothing but this check will notice.
+
+### Anything a block imports must be shipped by an item
+
+A block's imports must use the `@/registry/...` alias, never a relative path outside its own
+folder. shadcn rewrites the alias to the consumer's install path; a relative path is copied
+through unchanged and resolves to nothing. The shared helpers live in `registry/p1/internal/` and
+are published as `@p1/internal-*` items — `internal-meta` carries `define-meta.ts` and the
+`puck.d.ts` augmentation that gives Puck fields their `ai` property, so every block depends on it.
+
+Adding a new shared helper means adding it to an internal item's `files`, not only dropping it in
+the folder. `verify:registry` is what catches the omission.
 
 ### Add or remove a block
 

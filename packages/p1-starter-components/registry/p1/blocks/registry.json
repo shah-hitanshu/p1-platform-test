@@ -10,12 +10,13 @@
         "layout"
       ],
       "dependencies": [
-        "@puckeditor/core"
+        "@puckeditor/core@^0.21.1"
       ],
       "registryDependencies": [
         "@p1/tokens",
         "@p1/internal-icons",
-        "@p1/internal-rich"
+        "@p1/internal-rich",
+        "@p1/internal-meta"
       ],
       "meta": {
         "version": "0.1.0",
@@ -49,10 +50,11 @@
         "attention"
       ],
       "dependencies": [
-        "@puckeditor/core"
+        "@puckeditor/core@^0.21.1"
       ],
       "registryDependencies": [
-        "@p1/tokens"
+        "@p1/tokens",
+        "@p1/internal-meta"
       ],
       "meta": {
         "version": "0.1.0",
@@ -86,10 +88,11 @@
         "editorial"
       ],
       "dependencies": [
-        "@puckeditor/core"
+        "@puckeditor/core@^0.21.1"
       ],
       "registryDependencies": [
-        "@p1/tokens"
+        "@p1/tokens",
+        "@p1/internal-meta"
       ],
       "meta": {
         "version": "0.1.0",
@@ -123,11 +126,12 @@
         "content"
       ],
       "dependencies": [
-        "@puckeditor/core"
+        "@puckeditor/core@^0.21.1"
       ],
       "registryDependencies": [
         "@p1/tokens",
-        "@p1/internal-btn"
+        "@p1/internal-btn",
+        "@p1/internal-meta"
       ],
       "meta": {
         "version": "0.1.0",
@@ -161,11 +165,12 @@
         "editorial"
       ],
       "dependencies": [
-        "@puckeditor/core"
+        "@puckeditor/core@^0.21.1"
       ],
       "registryDependencies": [
         "@p1/tokens",
-        "@p1/internal-icons"
+        "@p1/internal-icons",
+        "@p1/internal-meta"
       ],
       "meta": {
         "version": "0.1.0",
@@ -199,10 +204,11 @@
         "showcase"
       ],
       "dependencies": [
-        "@puckeditor/core"
+        "@puckeditor/core@^0.21.1"
       ],
       "registryDependencies": [
-        "@p1/tokens"
+        "@p1/tokens",
+        "@p1/internal-meta"
       ],
       "meta": {
         "version": "0.1.0",
@@ -236,10 +242,11 @@
         "layout"
       ],
       "dependencies": [
-        "@puckeditor/core"
+        "@puckeditor/core@^0.21.1"
       ],
       "registryDependencies": [
-        "@p1/tokens"
+        "@p1/tokens",
+        "@p1/internal-meta"
       ],
       "meta": {
         "version": "0.1.0",
@@ -273,11 +280,12 @@
         "convert"
       ],
       "dependencies": [
-        "@puckeditor/core"
+        "@puckeditor/core@^0.21.1"
       ],
       "registryDependencies": [
         "@p1/tokens",
-        "@p1/internal-icons"
+        "@p1/internal-icons",
+        "@p1/internal-meta"
       ],
       "meta": {
         "version": "0.1.0",
@@ -311,10 +319,11 @@
         "layout"
       ],
       "dependencies": [
-        "@puckeditor/core"
+        "@puckeditor/core@^0.21.1"
       ],
       "registryDependencies": [
-        "@p1/tokens"
+        "@p1/tokens",
+        "@p1/internal-meta"
       ],
       "meta": {
         "version": "0.1.0",
@@ -348,11 +357,12 @@
         "convert"
       ],
       "dependencies": [
-        "@puckeditor/core"
+        "@puckeditor/core@^0.21.1"
       ],
       "registryDependencies": [
         "@p1/tokens",
-        "@p1/internal-btn"
+        "@p1/internal-btn",
+        "@p1/internal-meta"
       ],
       "meta": {
         "version": "0.1.0",
@@ -386,10 +396,11 @@
         "content"
       ],
       "dependencies": [
-        "@puckeditor/core"
+        "@puckeditor/core@^0.21.1"
       ],
       "registryDependencies": [
-        "@p1/tokens"
+        "@p1/tokens",
+        "@p1/internal-meta"
       ],
       "meta": {
         "version": "0.1.0",
@@ -423,11 +434,12 @@
         "editorial"
       ],
       "dependencies": [
-        "@puckeditor/core"
+        "@puckeditor/core@^0.21.1"
       ],
       "registryDependencies": [
         "@p1/tokens",
-        "@p1/internal-icons"
+        "@p1/internal-icons",
+        "@p1/internal-meta"
       ],
       "meta": {
         "version": "0.1.0",
@@ -461,11 +473,12 @@
         "convert"
       ],
       "dependencies": [
-        "@puckeditor/core"
+        "@puckeditor/core@^0.21.1"
       ],
       "registryDependencies": [
         "@p1/tokens",
-        "@p1/internal-icons"
+        "@p1/internal-icons",
+        "@p1/internal-meta"
       ],
       "meta": {
         "version": "0.1.0",
@@ -499,12 +512,13 @@
         "value"
       ],
       "dependencies": [
-        "@puckeditor/core"
+        "@puckeditor/core@^0.21.1"
       ],
       "registryDependencies": [
         "@p1/tokens",
         "@p1/internal-btn",
-        "@p1/internal-icons"
+        "@p1/internal-icons",
+        "@p1/internal-meta"
       ],
       "meta": {
         "version": "0.1.0",
@@ -538,10 +552,11 @@
         "value"
       ],
       "dependencies": [
-        "@puckeditor/core"
+        "@puckeditor/core@^0.21.1"
       ],
       "registryDependencies": [
-        "@p1/tokens"
+        "@p1/tokens",
+        "@p1/internal-meta"
       ],
       "meta": {
         "version": "0.1.0",
@@ -575,10 +590,11 @@
         "editorial"
       ],
       "dependencies": [
-        "@puckeditor/core"
+        "@puckeditor/core@^0.21.1"
       ],
       "registryDependencies": [
-        "@p1/tokens"
+        "@p1/tokens",
+        "@p1/internal-meta"
       ],
       "meta": {
         "version": "0.1.0",
@@ -612,11 +628,12 @@
         "global"
       ],
       "dependencies": [
-        "@puckeditor/core"
+        "@puckeditor/core@^0.21.1"
       ],
       "registryDependencies": [
         "@p1/tokens",
-        "@p1/internal-icons"
+        "@p1/internal-icons",
+        "@p1/internal-meta"
       ],
       "meta": {
         "version": "0.1.0",
@@ -650,11 +667,12 @@
         "showcase"
       ],
       "dependencies": [
-        "@puckeditor/core"
+        "@puckeditor/core@^0.21.1"
       ],
       "registryDependencies": [
         "@p1/tokens",
-        "@p1/internal-icons"
+        "@p1/internal-icons",
+        "@p1/internal-meta"
       ],
       "meta": {
         "version": "0.1.0",
@@ -688,11 +706,12 @@
         "global"
       ],
       "dependencies": [
-        "@puckeditor/core"
+        "@puckeditor/core@^0.21.1"
       ],
       "registryDependencies": [
         "@p1/tokens",
-        "@p1/internal-icons"
+        "@p1/internal-icons",
+        "@p1/internal-meta"
       ],
       "meta": {
         "version": "0.1.0",
@@ -726,10 +745,11 @@
         "content"
       ],
       "dependencies": [
-        "@puckeditor/core"
+        "@puckeditor/core@^0.21.1"
       ],
       "registryDependencies": [
-        "@p1/tokens"
+        "@p1/tokens",
+        "@p1/internal-meta"
       ],
       "meta": {
         "version": "0.1.0",
@@ -763,11 +783,12 @@
         "attention"
       ],
       "dependencies": [
-        "@puckeditor/core"
+        "@puckeditor/core@^0.21.1"
       ],
       "registryDependencies": [
         "@p1/tokens",
-        "@p1/internal-btn"
+        "@p1/internal-btn",
+        "@p1/internal-meta"
       ],
       "meta": {
         "version": "0.1.0",
@@ -801,10 +822,11 @@
         "showcase"
       ],
       "dependencies": [
-        "@puckeditor/core"
+        "@puckeditor/core@^0.21.1"
       ],
       "registryDependencies": [
-        "@p1/tokens"
+        "@p1/tokens",
+        "@p1/internal-meta"
       ],
       "meta": {
         "version": "0.1.0",
@@ -838,11 +860,12 @@
         "convert"
       ],
       "dependencies": [
-        "@puckeditor/core"
+        "@puckeditor/core@^0.21.1"
       ],
       "registryDependencies": [
         "@p1/tokens",
-        "@p1/internal-btn"
+        "@p1/internal-btn",
+        "@p1/internal-meta"
       ],
       "meta": {
         "version": "0.1.0",
@@ -876,10 +899,11 @@
         "content"
       ],
       "dependencies": [
-        "@puckeditor/core"
+        "@puckeditor/core@^0.21.1"
       ],
       "registryDependencies": [
-        "@p1/tokens"
+        "@p1/tokens",
+        "@p1/internal-meta"
       ],
       "meta": {
         "version": "0.1.0",
@@ -913,10 +937,11 @@
         "trust"
       ],
       "dependencies": [
-        "@puckeditor/core"
+        "@puckeditor/core@^0.21.1"
       ],
       "registryDependencies": [
-        "@p1/tokens"
+        "@p1/tokens",
+        "@p1/internal-meta"
       ],
       "meta": {
         "version": "0.1.0",
@@ -950,12 +975,13 @@
         "content"
       ],
       "dependencies": [
-        "@puckeditor/core",
+        "@puckeditor/core@^0.21.1",
         "@pantheon-systems/puck-css"
       ],
       "registryDependencies": [
         "@p1/tokens",
-        "@p1/internal-rich"
+        "@p1/internal-rich",
+        "@p1/internal-meta"
       ],
       "meta": {
         "version": "0.1.0",
@@ -989,12 +1015,13 @@
         "convert"
       ],
       "dependencies": [
-        "@puckeditor/core"
+        "@puckeditor/core@^0.21.1"
       ],
       "registryDependencies": [
         "@p1/tokens",
         "@p1/internal-btn",
-        "@p1/internal-icons"
+        "@p1/internal-icons",
+        "@p1/internal-meta"
       ],
       "meta": {
         "version": "0.1.0",
@@ -1028,11 +1055,12 @@
         "editorial"
       ],
       "dependencies": [
-        "@puckeditor/core"
+        "@puckeditor/core@^0.21.1"
       ],
       "registryDependencies": [
         "@p1/tokens",
-        "@p1/internal-rich"
+        "@p1/internal-rich",
+        "@p1/internal-meta"
       ],
       "meta": {
         "version": "0.1.0",
@@ -1066,12 +1094,13 @@
         "content"
       ],
       "dependencies": [
-        "@puckeditor/core",
+        "@puckeditor/core@^0.21.1",
         "@pantheon-systems/puck-css"
       ],
       "registryDependencies": [
         "@p1/tokens",
-        "@p1/internal-rich"
+        "@p1/internal-rich",
+        "@p1/internal-meta"
       ],
       "meta": {
         "version": "0.1.0",
@@ -1105,11 +1134,12 @@
         "editorial"
       ],
       "dependencies": [
-        "@puckeditor/core"
+        "@puckeditor/core@^0.21.1"
       ],
       "registryDependencies": [
         "@p1/tokens",
-        "@p1/internal-rich"
+        "@p1/internal-rich",
+        "@p1/internal-meta"
       ],
       "meta": {
         "version": "0.1.0",
@@ -1143,10 +1173,11 @@
         "content"
       ],
       "dependencies": [
-        "@puckeditor/core"
+        "@puckeditor/core@^0.21.1"
       ],
       "registryDependencies": [
-        "@p1/tokens"
+        "@p1/tokens",
+        "@p1/internal-meta"
       ],
       "meta": {
         "version": "0.1.0",
@@ -1180,10 +1211,11 @@
         "trust"
       ],
       "dependencies": [
-        "@puckeditor/core"
+        "@puckeditor/core@^0.21.1"
       ],
       "registryDependencies": [
-        "@p1/tokens"
+        "@p1/tokens",
+        "@p1/internal-meta"
       ],
       "meta": {
         "version": "0.1.0",
@@ -1217,10 +1249,11 @@
         "value"
       ],
       "dependencies": [
-        "@puckeditor/core"
+        "@puckeditor/core@^0.21.1"
       ],
       "registryDependencies": [
-        "@p1/tokens"
+        "@p1/tokens",
+        "@p1/internal-meta"
       ],
       "meta": {
         "version": "0.1.0",
@@ -1254,11 +1287,12 @@
         "layout"
       ],
       "dependencies": [
-        "@puckeditor/core"
+        "@puckeditor/core@^0.21.1"
       ],
       "registryDependencies": [
         "@p1/tokens",
-        "@p1/internal-rich"
+        "@p1/internal-rich",
+        "@p1/internal-meta"
       ],
       "meta": {
         "version": "0.1.0",
@@ -1292,10 +1326,11 @@
         "trust"
       ],
       "dependencies": [
-        "@puckeditor/core"
+        "@puckeditor/core@^0.21.1"
       ],
       "registryDependencies": [
-        "@p1/tokens"
+        "@p1/tokens",
+        "@p1/internal-meta"
       ],
       "meta": {
         "version": "0.1.0",
@@ -1329,10 +1364,11 @@
         "trust"
       ],
       "dependencies": [
-        "@puckeditor/core"
+        "@puckeditor/core@^0.21.1"
       ],
       "registryDependencies": [
-        "@p1/tokens"
+        "@p1/tokens",
+        "@p1/internal-meta"
       ],
       "meta": {
         "version": "0.1.0",
@@ -1366,10 +1402,11 @@
         "value"
       ],
       "dependencies": [
-        "@puckeditor/core"
+        "@puckeditor/core@^0.21.1"
       ],
       "registryDependencies": [
-        "@p1/tokens"
+        "@p1/tokens",
+        "@p1/internal-meta"
       ],
       "meta": {
         "version": "0.1.0",

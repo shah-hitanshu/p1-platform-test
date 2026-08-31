@@ -1,5 +1,5 @@
 import type { ComponentConfig } from "@puckeditor/core";
-import { defineMeta, wireframe } from '../define-meta';
+import { defineMeta, wireframe } from '@/registry/p1/internal/define-meta';
 import { GalleryRender, type GalleryProps, type GalleryImage } from "./gallery";
 export type { GalleryProps, GalleryImage };
 

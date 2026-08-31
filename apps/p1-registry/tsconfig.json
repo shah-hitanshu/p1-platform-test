@@ -37,7 +37,7 @@
     "**/*.tsx",
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts",
-    "../../packages/p1-starter-components/registry/p1/puck.d.ts",
+    "../../packages/p1-starter-components/registry/p1/internal/puck.d.ts",
     "../../packages/p1-starter-components/registry/p1/css.d.ts"
   ],
   "exclude": [

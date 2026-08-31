@@ -1,4 +1,4 @@
-import { wireframe } from "../define-meta";
+import { wireframe } from '@/registry/p1/internal/define-meta';
 import { Btn } from "@/registry/p1/internal/btn";
 import "./hero.css";
 

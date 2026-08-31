@@ -197,6 +197,11 @@ jobs:
         run: |
           pnpm --filter @pantheon-systems/p1-registry test
           pnpm --filter @pantheon-systems/p1-registry typecheck
+      # The only check that exercises the registry the way a consumer does:
+      # installs every block into a bare app and builds it. In-repo typecheck
+      # passes on files that are never published, so it cannot catch this.
+      - name: Install every block into a bare app and build it
+        run: pnpm --filter @pantheon-systems/p1-starter-components verify:registry
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: starter-components-storybook

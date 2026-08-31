@@ -35,7 +35,7 @@ registry/p1/blocks/my-block/
 **2. Export `meta` and the block config from `my-block.block.tsx`:**
 
 ```ts
-import { defineMeta } from '../define-meta';
+import { defineMeta } from '@/registry/p1/internal/define-meta';
 
 export const meta = defineMeta({
   title: 'My Block',

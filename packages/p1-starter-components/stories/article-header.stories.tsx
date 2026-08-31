@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { ArticleHeaderBlock, type ArticleHeaderProps } from "@/registry/p1/blocks/article-header/article-header.block";
-import { wireframe } from '@/registry/p1/blocks/define-meta';
+import { wireframe } from '@/registry/p1/internal/define-meta';
 
 const ArticleHeaderWrapper = (props: ArticleHeaderProps) => {
   const Component = ArticleHeaderBlock.render as React.FC<ArticleHeaderProps>;

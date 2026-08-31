@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { ImageBlock, type ImageProps } from "@/registry/p1/blocks/image/image.block";
-import { wireframe } from '@/registry/p1/blocks/define-meta';
+import { wireframe } from '@/registry/p1/internal/define-meta';
 
 const ImageWrapper = (props: ImageProps) => {
   const Component = ImageBlock.render as React.FC<ImageProps>;

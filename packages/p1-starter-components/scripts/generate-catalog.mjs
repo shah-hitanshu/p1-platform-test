@@ -28,6 +28,16 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const BLOCKS_DIR = resolve(__dirname, '../registry/p1/blocks');
 const STORIES_DIR = resolve(__dirname, '../stories');
 const REGISTRY_APP = resolve(__dirname, '../../../apps/p1-registry');
+
+// Consumers must install the Puck range these blocks are written against. Unpinned,
+// npm resolves latest, where the `ai` field property no longer typechecks.
+const PUCK_RANGE = (() => {
+  const pkg = JSON.parse(readFileSync(resolve(__dirname, '../package.json'), 'utf8'));
+  const range = pkg.dependencies?.['@puckeditor/core'] ?? pkg.devDependencies?.['@puckeditor/core'];
+  if (!range) throw new Error('@puckeditor/core missing from package.json');
+  return range;
+})();
+const PUCK_DEP = `@puckeditor/core@${PUCK_RANGE}`;
 const REGISTRY_JSON_PATH = join(BLOCKS_DIR, 'registry.json');
 
 const NON_BLOCK = new Set([
@@ -77,7 +87,7 @@ function parseMeta(filePath) {
     const raw = new Function('return ' + objStr)();
     // Mirror defineMeta() defaults so the generator stays in sync with runtime.
     return {
-      dependencies: ['@puckeditor/core'],
+      dependencies: [PUCK_DEP],
       registryDependencies: ['@p1/tokens'],
       ...raw,
     };
@@ -158,8 +168,9 @@ const registryItems = blocks.map(({ name, exportName, category, meta }) => ({
   title: meta.title ?? name,
   description: meta.description ?? '',
   categories: meta.categories ?? [category],
-  dependencies: meta.dependencies ?? ['@puckeditor/core'],
-  registryDependencies: meta.registryDependencies ?? ['@p1/tokens'],
+  dependencies: (meta.dependencies ?? ['@puckeditor/core']).map((d) => (d === '@puckeditor/core' ? PUCK_DEP : d)),
+  // Every block imports defineMeta, so this is appended rather than left to the per-block list.
+  registryDependencies: [...new Set([...(meta.registryDependencies ?? ['@p1/tokens']), '@p1/internal-meta'])],
   meta: { version: '0.1.0', atlas: `${category}/${name}` },
   docs: generateDocs(name, exportName),
   files: [

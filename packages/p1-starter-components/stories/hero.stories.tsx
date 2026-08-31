@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { HeroBlock, type HeroProps } from "@/registry/p1/blocks/hero/hero.block";
-import { wireframe } from '@/registry/p1/blocks/define-meta';
+import { wireframe } from '@/registry/p1/internal/define-meta';
 
 const HeroWrapper = (props: HeroProps) => {
   const Component = HeroBlock.render as React.FC<HeroProps>;

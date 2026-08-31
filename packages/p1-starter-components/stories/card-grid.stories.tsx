@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { CardGridBlock, type CardGridProps } from "@/registry/p1/blocks/card-grid/card-grid.block";
-import { wireframe } from '@/registry/p1/blocks/define-meta';
+import { wireframe } from '@/registry/p1/internal/define-meta';
 
 const CardGridWrapper = (props: CardGridProps) => {
   const Component = CardGridBlock.render as React.FC<CardGridProps>;

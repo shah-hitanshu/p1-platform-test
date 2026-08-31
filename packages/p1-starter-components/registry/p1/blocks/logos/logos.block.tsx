@@ -1,5 +1,5 @@
 import type { ComponentConfig } from "@puckeditor/core";
-import { defineMeta } from '../define-meta';
+import { defineMeta } from '@/registry/p1/internal/define-meta';
 import { LogoCloudRender, type LogoCloudProps, type LogoItem } from "./logos";
 export type { LogoCloudProps, LogoItem };
 

@@ -1,5 +1,5 @@
 import type { ComponentConfig } from "@puckeditor/core";
-import { defineMeta } from '../define-meta';
+import { defineMeta } from '@/registry/p1/internal/define-meta';
 import { AccordionRender, type AccordionProps, type AccordionItem } from "./accordion";
 export type { AccordionProps, AccordionItem };
 

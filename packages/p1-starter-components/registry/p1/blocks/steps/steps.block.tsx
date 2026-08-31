@@ -1,5 +1,5 @@
 import type { ComponentConfig } from "@puckeditor/core";
-import { defineMeta } from '../define-meta';
+import { defineMeta } from '@/registry/p1/internal/define-meta';
 import { StepsRender, type StepsProps, type StepItem } from "./steps";
 export type { StepsProps, StepItem };
 
