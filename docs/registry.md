@@ -77,40 +77,45 @@ Replaces the local copy with the upstream version, discarding local changes.
 
 ## Building and deploying the registry
 
-### The `REGISTRY_HOST` env var
+### The registry host is hardcoded, not an env var
 
-`REGISTRY_HOST` controls the base URL baked into every registry item's `files`
-and `registryDependencies` URLs. Set it before building:
+The base URL is committed directly in two files:
 
-- **Local dev:** defaults to `http://localhost:3005` (no var needed)
-- **Production:** set `REGISTRY_HOST` in GitHub repo Settings → Variables to
-  the hosting URL (e.g. `https://p1-registry.yourdomain.io`) before cutting
-  the first release.
+- `packages/p1-starter-components/registry.json` — the `homepage` field
+- `packages/p1-starter-components/registry/p1/base/registry.json` — `config.registries`
 
-The patch script (`packages/p1-starter-components/scripts/patch-registry-host.mjs`)
-rewrites the placeholder in `public/r/*.json` immediately after `shadcn build`.
+It is currently `https://components.p1.pantheon.io`. **This URL is permanent.**
+It is written into every customer's `components.json` at install time, so moving
+it strands every existing install. Changing it is a migration, not an edit.
 
-### Build the static output locally
-
-The registry is a static Next.js app in `apps/p1-registry`. Its build step
-runs `shadcn build` in `packages/p1-starter-components` to flatten the
-`registry.json` tree into per-item JSON files under `public/r/`, then exports
-the catalog app to `out/`.
+There is no `REGISTRY_HOST` environment variable. Earlier drafts of this doc
+described one, along with a `patch-registry-host.mjs` script; neither was ever
+implemented. To test against a local origin you do not need one — point the
+namespace at localhost when you register it, and leave the built JSON alone:
 
 ```bash
-# Default host (localhost:3005)
+pnpm dlx shadcn@latest registry add @p1=http://localhost:3005/r/{name}.json
+```
+
+### Build locally
+
+The catalog is a Next.js app in `apps/p1-registry`. Its build runs `shadcn build`
+in `packages/p1-starter-components` to flatten the `registry.json` tree into
+per-item JSON under `public/r/`, then builds the app.
+
+```bash
 pnpm --filter @pantheon-systems/p1-registry build
-
-# Custom host
-REGISTRY_HOST=https://p1-registry.yourdomain.io pnpm --filter @pantheon-systems/p1-registry build
+pnpm --filter @pantheon-systems/p1-registry start   # serves on :3005
 ```
 
-The output in `out/` is a self-contained static site that can be served by any
-CDN or static host. Serve it locally to test:
+This is **not** a static export. Pantheon serves the app by running
+`next start`, which refuses to run alongside `output: 'export'`. Pages still
+prerender to static HTML, and `public/r/*.json` is served as plain static files
+— so the registry URLs behave identically, without a static-only build.
 
-```bash
-npx serve apps/p1-registry/out -l 3005
-```
+`apps/p1-registry/export.test.ts` guards this: it asserts the config does not
+re-enable static export and that a `start` script exists. Both are hosting
+requirements, not preferences.
 
 ### Pre-deploy verification
 
@@ -144,21 +149,35 @@ pnpm --filter @pantheon-systems/p1-starter-components verify:public https://<hos
 cache headers, installs `@p1/base` into a clean project using the public URL,
 and confirms `--diff` works on an edited block.
 
-## Release flow (automated via GitHub Actions)
+## How it is hosted
 
-Publishing a GitHub Release triggers `.github/workflows/registry-release.yml`:
+The catalog is a Pantheon Next.js site (`p1-registry`), connected to this repo's
+`main` branch. Pantheon builds from source on every push — it clones the repo,
+installs with pnpm, runs the root `build` script, then runs the root `start`
+script to serve the app in a Node container behind Pantheon's CDN.
 
-1. Checks out the release tag
-2. Runs `verify:registry` — build fails if any block fails to install cleanly
-3. Builds the static catalog with `REGISTRY_HOST` from repo variables
-4. Opens a PR from `deploy/registry-<tag>` into `registry-deploy` for review
+Two details make that work in a monorepo:
 
-Merging that PR triggers `.github/workflows/deploy-registry-live.yml`, which
-pushes the next sequential `pantheon_live_N` tag so Pantheon promotes the build
-to live.
+- **Scoped build.** Pantheon builds from the repo root, where `build` is
+  `turbo run build` across all 18 workspace members. The root script branches on
+  `PANTHEON_ENVIRONMENT` (which Pantheon sets during builds) to run
+  `turbo run build --filter=@pantheon-systems/p1-registry` instead. It must be
+  turbo's filter, not pnpm's — pnpm's `--filter` skips workspace dependencies, so
+  `puck-css` never builds and the catalog fails with a module-not-found on
+  `@pantheon-systems/puck-css/fields`.
+- **Root start script.** `start` delegates to the catalog app, so `next start`
+  runs with `apps/p1-registry` as its working directory.
 
-The `registry-deploy` orphan branch is created automatically on the first
-release if it doesn't exist — no manual setup required.
+Dev auto-deploys from every push to `main`. Live promotes when a sequential
+`pantheon_live_N` git tag is pushed.
+
+> **Stale CI:** `.github/workflows/registry-release.yml` and
+> `deploy-registry-live.yml` were written for a retired model in which GitHub
+> Actions built the site and pushed the artifact to an orphan `registry-deploy`
+> branch that Pantheon served statically. Pantheon builds from source instead, so
+> that branch is never read and both workflows are dead weight. They are pending
+> removal; do not rely on them, and do not treat the deploy PR they open as a
+> release gate.
 
 ### Steps to ship a new block version
 
@@ -167,21 +186,7 @@ release if it doesn't exist — no manual setup required.
 2. Run `registry:build` locally and confirm the updated JSON looks right in
    `apps/p1-registry/public/r/`.
 3. Run `verify:registry` — all checks must pass.
-4. Merge to `main`.
-5. Publish a GitHub Release (any semver tag, e.g. `v0.2.0`).
-6. Review and merge the deploy PR the workflow opens into `registry-deploy`.
-7. Run `verify:public` against the live URL to confirm the new version is
-   served correctly.
-
-There is no automated rollback — re-deploy the previous tag if needed.
-
-## Catalog app
-
-`apps/p1-registry` is the catalog. It serves:
-
-- `/` — block grid with live iframe previews, category filter, and install commands
-- `/preview/<name>` — bare block render at 1280 px (loaded in the catalog's iframes)
-- `/theme` — full token listing with a one-click copy
-
-The catalog is a static Next.js export (`output: 'export'`). It is rebuilt and
-deployed as part of the same release flow as the registry JSON.
+4. Merge to `main`. Pantheon builds and deploys Dev automatically.
+5. Confirm the Dev origin serves the change.
+6. Push the next `pantheon_live_N` tag to promote to Live.
+7. Run `verify:public` against the live URL to confirm the new version is served.
