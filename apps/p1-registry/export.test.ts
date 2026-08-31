@@ -5,13 +5,22 @@ import { describe, it, expect } from 'vitest';
 const root = join(import.meta.dirname);
 const registryBuilt = existsSync(join(root, 'public', 'r', 'registry.json'));
 
-describe('static export configuration', () => {
-  it('next.config declares output: export', () => {
+// Pantheon serves this app by running `next start`, which throws outright if
+// output: 'export' is set. These guard the hosting contract, not a style choice.
+describe('hosting configuration', () => {
+  it('next.config does not set output: export', () => {
     const cfg = readFileSync(join(root, 'next.config.ts'), 'utf8');
-    expect(cfg).toContain("output: 'export'");
+    expect(cfg).not.toContain("output: 'export'");
   });
 
-  it('next.config disables image optimization (required for static export)', () => {
+  it('declares the start script the host runs to serve the app', () => {
+    const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as {
+      scripts?: Record<string, string>;
+    };
+    expect(pkg.scripts?.start).toBeTruthy();
+  });
+
+  it('next.config disables image optimization', () => {
     const cfg = readFileSync(join(root, 'next.config.ts'), 'utf8');
     expect(cfg).toContain('unoptimized: true');
   });
