@@ -1,7 +1,7 @@
 {
   "name": "@pantheon-systems/puck-css",
   "version": "0.12.0",
-  "description": "Puck editor integration with Collaborative Content Repository",
+  "description": "Puck editor integration with Pantheon's P1 content platform",
   "publishConfig": {
     "access": "public",
     "registry": "https://registry.npmjs.org/",
@@ -88,11 +88,10 @@
   "files": [
     "dist",
     "src/**/*.css",
-    "!src/**/*.module.css",
-    "src/pds/theme"
+    "!src/**/*.module.css"
   ],
   "scripts": {
-    "build": "pnpm run clean && tsc -p tsconfig.build.json && find src -name '*.module.css' | while read f; do dest=\"dist/${f#src/}\"; mkdir -p \"$(dirname \"$dest\")\"; cp \"$f\" \"$dest\"; done; (cp node_modules/@pantheon-systems/pds-toolkit-react/dist/css/pds-core.css src/pds/theme/pds-core.css && node scripts/generate-pds-content.cjs) || true",
+    "build": "pnpm run clean && tsc -p tsconfig.build.json --emitDeclarationOnly && tsc -p tsconfig.build.json --declaration false --declarationMap false --removeComments && find src -name '*.module.css' | while read f; do dest=\"dist/${f#src/}\"; mkdir -p \"$(dirname \"$dest\")\"; cp \"$f\" \"$dest\"; done; (cp node_modules/@pantheon-systems/pds-toolkit-react/dist/css/pds-core.css src/pds/theme/pds-core.css && node scripts/generate-pds-content.cjs) || true",
     "clean": "rm -rf dist *.tsbuildinfo",
     "dev": "vite --config vite.config.preview.ts",
     "lint": "eslint src",

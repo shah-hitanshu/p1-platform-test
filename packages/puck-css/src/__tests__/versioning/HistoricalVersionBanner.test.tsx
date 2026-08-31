@@ -23,7 +23,6 @@ const baseVersion: DocumentVersion = {
   versionNumber: 42,
   createdAt: '2024-06-15T14:30:00Z',
   snapshot: {},
-  crdtState: null,
   source: 'edit',
   createdById: 'user-1',
   createdByType: 'user',

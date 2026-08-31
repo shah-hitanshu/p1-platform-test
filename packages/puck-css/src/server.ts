@@ -72,7 +72,7 @@ export {
 export { createP1PageStore } from "./data/dal/p1-store.js";
 export type { P1StoreConfig, P1StoreClient } from "./data/dal/p1-store.js";
 // Re-exported so consumers (e.g. the app's generateMetadata) can type the
-// root.props._seo the DAL folds in (PCC-3407) without depending on css-client
+// root.props._seo the DAL folds in without depending on css-client
 // directly.
 export type { SeoMetadata } from "@pantheon-systems/css-client";
 export { ensureInitialized, getSharedP1Client, getSharedSiteId, getSharedBranchId, createAuthenticatedClient, type P1DataConfig } from "./data/dal/init.js";
@@ -97,7 +97,7 @@ export type {
   RemoteDatasourceFieldDocInput,
 } from "./data/remote-datasources/user-remote-datasource-types.js";
 
-// --- CCR Query adapters ---
+// --- Backend query adapters ---
 export { cssQueriesToDatasourceDefinitions, CSS_QUERY_ID_PREFIX } from "./data/css-queries/css-query-registry.js";
 
 export {

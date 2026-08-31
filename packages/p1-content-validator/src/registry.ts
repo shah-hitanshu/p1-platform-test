@@ -93,7 +93,7 @@ function cacheKey(ccrBaseUrl: string, siteId: string, branchId: string): string 
 // ---------------------------------------------------------------------------
 
 /**
- * Fetch and cache all component schemas from the CCR registry.
+ * Fetch and cache all component schemas from the registry.
  *
  * Makes two types of requests:
  *   1. GET /api/sites/{siteId}/branches/{branchId}/documents?pathPrefix=_registry%2Fcomponents%2F
@@ -174,7 +174,7 @@ export async function fetchRegistry(
  * Useful for cache invalidation checks — compare IDs against a local cache
  * to detect which component schemas have been updated without fetching bodies.
  *
- * Note: the CCR list endpoint does not currently expose versionId; the document
+ * Note: the list endpoint does not currently expose versionId; the document
  * id is returned as a stable identifier. Full version-id tracking requires a
  * backend extension (tracked separately).
  */

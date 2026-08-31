@@ -1,6 +1,6 @@
 # @pantheon-systems/p1-content-validator
 
-Validates Puck component edit operations against a Collaborative Content Repository (CCR) component
+Validates Puck component edit operations against Pantheon's P1 component
 registry, so writes that don't match a component's registered prop shape are rejected before
 they reach a document.
 
@@ -25,7 +25,7 @@ const result = validateOps(ops, registry);
 
 Operations are checked against the registry entry for each component — unknown components,
 unknown props, and type mismatches are reported rather than silently written. This is the same
-validation the CCR backend applies to AI-assisted and API-driven edits.
+validation the backend applies to AI-assisted and API-driven edits.
 
 Also exported:
 

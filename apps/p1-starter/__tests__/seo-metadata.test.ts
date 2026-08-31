@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildPageMetadata } from "../lib/seo-metadata";
 
 /**
- * PCC-3407: buildPageMetadata maps the head metadata inputs (client-derived
+ * buildPageMetadata maps the head metadata inputs (client-derived
  * title/description/canonical plus the backend-supplied siteName) onto the
  * Next.js Metadata object that renders the per-page <head> tags. Next replaces
  * (not deep-merges) a page's openGraph over the layout's, so og:type and the

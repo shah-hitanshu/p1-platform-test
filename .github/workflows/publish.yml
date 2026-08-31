@@ -60,6 +60,15 @@ jobs:
       - name: Build publishable packages
         run: pnpm exec turbo run build --filter='./packages/*'
 
+      # PCC-3819: comments, JSDoc, package.json fields, and READMEs had been
+      # shipping internal ticket refs, service codenames, and backend
+      # implementation details to the public npm registry. This packs each
+      # public package exactly as `npm publish` would and greps the result.
+      - name: Guard against internal-architecture leaks
+        run: |
+          bash .github/scripts/check-npm-leaks.sh --self-test
+          bash .github/scripts/check-npm-leaks.sh
+
       # Publishes each package whose version isn't on npm yet, pushes one tag per
       # package, and creates one GitHub Release per tag (createGithubReleases
       # defaults to true) — three packages published means three releases.

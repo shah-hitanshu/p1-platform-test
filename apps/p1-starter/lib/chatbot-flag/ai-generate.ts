@@ -6,7 +6,7 @@ import type { DraftRequestChannel } from "@pantheon-systems/p1-ai-chat";
  *
  * The page does not exist yet: the chat proposes the page template it should start from and
  * creates it once the user agrees, because a document's template can only be set as it is
- * created (PCC-3555). Until then the request carries the title and path the dialog collected.
+ * created. Until then the request carries the title and path the dialog collected.
  */
 export function createGenerateWithAIHandler(
   draftRequests: DraftRequestChannel,

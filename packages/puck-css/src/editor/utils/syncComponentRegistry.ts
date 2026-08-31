@@ -1,7 +1,7 @@
 /**
  * syncComponentRegistry
  *
- * Serialises ComponentDescriptor objects to CCR documents under the
+ * Serialises ComponentDescriptor objects to backend documents under the
  * /_registry/ path prefix, hash-checking to skip unchanged components.
  *
  * Extracted from useComponentRegistry.ts (verbatim, renamed) so it can run
@@ -37,7 +37,7 @@ export const INDEX_PATH = '_registry/index';
 
 /**
  * Maximum age of the registry index's last full per-component verification
- * (PCC-3430) before the fast path is forced to re-verify every component's
+ * before the fast path is forced to re-verify every component's
  * actual document content instead of trusting the index's hashes map alone.
  * Bounds how long an index/document desync can persist undetected.
  */

@@ -127,7 +127,7 @@ interface PuckStateWithDispatch {
 }
 
 /**
- * Props for the CCR Plugin panel content
+ * Props for the P1 Plugin panel content
  */
 interface P1PluginPanelProps {
   /** List of versions for the current document */
@@ -466,7 +466,7 @@ function RealtimeDataCaptureBridge(): React.ReactElement | null {
 }
 
 /**
- * Options for creating the CCR Plugin
+ * Options for creating the P1 Plugin
  */
 export interface P1PluginOptions {
   /** List of available branches */
@@ -821,7 +821,7 @@ function createFilteredVersionsStore() {
 }
 
 /**
- * Creates a CCR Plugin for the Puck editor.
+ * Creates a P1 Plugin for the Puck editor.
  *
  * @example
  * ```tsx

@@ -34,7 +34,7 @@
     "bin"
   ],
   "scripts": {
-    "build": "pnpm run clean && tsc",
+    "build": "pnpm run clean && tsc --emitDeclarationOnly && tsc --declaration false --declarationMap false --removeComments",
     "clean": "rm -rf dist *.tsbuildinfo",
     "lint": "eslint src",
     "lint:fix": "eslint src --fix",

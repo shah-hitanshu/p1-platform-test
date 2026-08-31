@@ -1,7 +1,7 @@
 /**
  * P1 Client Types
  *
- * TypeScript types matching the Collaborative Content Repository API.
+ * TypeScript types matching Pantheon's P1 content platform API.
  */
 
 // =============================================================================
@@ -20,7 +20,7 @@ export interface WorkflowSettings {
 }
 
 /**
- * A site in the Collaborative Content Repository.
+ * A site on the P1 platform.
  */
 export interface Site {
   id: string;
@@ -91,7 +91,6 @@ export interface DocumentVersion {
   branchId: string;
   versionNumber: number;
   snapshot: Record<string, unknown>;
-  crdtState: string | null;
   source: DocumentVersionSource;
   createdById: string;
   createdByType: 'user' | 'agent';
@@ -798,7 +797,7 @@ export interface MergeExecuteResult {
   checkpointId?: string;
   documentsUpdated?: number;
   /**
-   * Merge job runner [PCC-3737]: present on every runner response. When the
+   * Merge job runner: present on every runner response. When the
    * merge outlives the server's bounded wait the response is the async shape
    * (202): no `success`, and `status` is not yet terminal — poll the job
    * (merge.getJob / merge.waitForJob) until it is.
@@ -812,7 +811,7 @@ export interface MergeExecuteResult {
   publishError?: string;
 }
 
-/** Merge job lifecycle [PCC-3737]. */
+/** Merge job lifecycle. */
 export type MergeJobStatus =
   | 'queued'
   | 'planning'
@@ -832,7 +831,7 @@ export const TERMINAL_MERGE_JOB_STATUSES: readonly MergeJobStatus[] = [
   'cancelled',
 ];
 
-/** Status projection of a merge job [PCC-3737]. */
+/** Status projection of a merge job. */
 export interface MergeJob {
   id: string;
   mergeRequestId: string | null;

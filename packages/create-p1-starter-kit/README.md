@@ -47,7 +47,7 @@ After scaffolding:
    | --- | --- |
    | `PCC_SITE_ID` | Content Cloud site ID |
    | `PCC_TOKEN` | API token for your site |
-   | `NEXT_PUBLIC_CSS_BASE_URL` | CCR API base URL |
+   | `NEXT_PUBLIC_CSS_BASE_URL` | Backend API base URL |
    | `NEXT_PUBLIC_CSS_SITE_ID` | Site identifier (UUID) |
    | `CSS_API_KEY` | Server-side API key |
 

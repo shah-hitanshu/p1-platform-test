@@ -21,7 +21,8 @@
     "provenance": false
   },
   "scripts": {
-    "build": "tsc",
+    "build": "pnpm run clean && tsc --emitDeclarationOnly && tsc --declaration false --declarationMap false --removeComments",
+    "clean": "rm -rf dist *.tsbuildinfo",
     "dev": "tsc --watch",
     "lint": "eslint src test",
     "lint:fix": "eslint src test --fix",

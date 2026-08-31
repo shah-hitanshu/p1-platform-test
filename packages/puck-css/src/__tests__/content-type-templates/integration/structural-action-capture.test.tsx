@@ -217,7 +217,6 @@ describe('DocumentVersion type completeness (Gap 4)', () => {
       branchId: 'branch-1',
       versionNumber: 1,
       snapshot: {},
-      crdtState: null,
       source: 'edit' as const,
       createdById: 'user-1',
       createdByType: 'user' as const,

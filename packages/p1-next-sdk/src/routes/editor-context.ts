@@ -39,7 +39,7 @@ async function fetchCcrQueryDefinitions(request: Request, branchOverride?: strin
     return cssQueriesToDatasourceDefinitions(queries);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    console.warn("[P1] Editor context: CCR query lookup failed:", message);
+    console.warn("[P1] Editor context: query lookup failed:", message);
     return [];
   }
 }

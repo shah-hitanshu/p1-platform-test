@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const appDir = resolve(__dirname, "..");
 
-// PCC-3499 / PCC-3513: Puck's collectStyles() copies every parent
+// Puck's collectStyles() copies every parent
 // <style>/<link> element into the canvas-preview iframe verbatim (there is
 // no exclusion API), and separately its CopyHostStyles helper syncs this
 // document's <body> attributes (including `class`) onto the iframe's own

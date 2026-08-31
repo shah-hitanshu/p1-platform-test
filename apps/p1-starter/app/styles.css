@@ -7,7 +7,7 @@
 @source "../node_modules/@pantheon-systems/puck-css/dist";
 
 /* Scoped via :has() rather than a bare `body {...}` selector so this reset
-   stays out of Puck's canvas-preview iframe (PCC-3499 / PCC-3513).
+   stays out of Puck's canvas-preview iframe.
    Puck's collectStyles() copies every parent <style>/<link> into the canvas
    iframe verbatim (querySelectorAll('style, link[rel="stylesheet"]'), no
    exclusion API) — so a bare `body {...}` rule here would also match inside

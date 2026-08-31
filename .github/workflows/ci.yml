@@ -36,6 +36,14 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Build everything
         run: pnpm exec turbo run build
+      # PCC-3819: catch internal-architecture leaks at PR time, not at release
+      # time. The publish workflow runs the same check as a final gate; the
+      # self-test runs first so a regression in the checker fails the build
+      # instead of silently weakening the check.
+      - name: Public tarballs carry no internal architecture
+        run: |
+          bash .github/scripts/check-npm-leaks.sh --self-test
+          bash .github/scripts/check-npm-leaks.sh
       - name: Every package has a lint and typecheck task
         run: pnpm check:task-coverage
       - name: Typecheck

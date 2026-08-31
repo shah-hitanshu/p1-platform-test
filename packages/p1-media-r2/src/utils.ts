@@ -7,7 +7,7 @@ export interface ImageTransformParams {
 }
 
 /**
- * Merges Cloudflare Images transform params onto a CDN image URL.
+ * Merges image transform params onto a CDN image URL.
  * Preserves any existing params in the URL — e.g. the editor's crop intent
  * (`fit=cover&gravity=auto` for smart crop, `trim.*` for a manual crop).
  *

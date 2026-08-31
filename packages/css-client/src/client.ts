@@ -1,7 +1,7 @@
 /**
- * CCR Client
+ * P1 API Client
  *
- * Main client class for interacting with the Collaborative Content Repository API.
+ * Main client class for interacting with Pantheon's P1 content platform API.
  */
 
 import type { AuthProvider } from './auth.js';
@@ -93,7 +93,7 @@ interface InternalConfig {
 }
 
 /**
- * Client for the Collaborative Content Repository API.
+ * Client for Pantheon's P1 content platform API.
  *
  * @example
  * ```typescript

@@ -11,7 +11,7 @@ import { attachmentBlocker, readyAttachments } from '../lib/attachments/pendingA
 
 export interface UseAgentChatOptions {
   agentUrl: string;
-  /** Durable Object key. Scopes persisted history; changing it switches conversations. */
+  /** Conversation key. Scopes persisted history; changing it switches conversations. */
   agentId: string;
   getContext: () => ChatContext | Promise<ChatContext>;
   /** Called with the path of a page the agent created during a turn. */

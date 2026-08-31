@@ -1,11 +1,11 @@
 /**
  * useResolveContentRole Hook
  *
- * Auto-detects the user's ContentRole by querying the CCR backend's
+ * Auto-detects the user's ContentRole by querying the backend's
  * auth/me endpoint with site context. Falls back to the provided
  * default role if the backend doesn't return role info.
  *
- * CCR backend role mapping:
+ * Backend role mapping:
  * - ADMIN → 'admin'
  * - EDITOR → 'editor'
  * - VIEWER → 'junior-editor' (read-only structural access)
@@ -45,7 +45,7 @@ export interface UseResolveContentRoleReturn {
 }
 
 /**
- * Hook to auto-resolve the user's ContentRole from the CCR backend.
+ * Hook to auto-resolve the user's ContentRole from the backend.
  *
  * Calls GET /api/sites/{siteId}/auth/role (when available) to determine
  * the user's effective role. Falls back to the provided fallbackRole

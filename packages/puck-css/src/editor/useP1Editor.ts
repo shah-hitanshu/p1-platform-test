@@ -46,7 +46,7 @@ export interface UseP1EditorOptions {
   documentPath: string;
   /** Puck component configuration */
   puckConfig: unknown;
-  /** Additional plugins to include after the CCR plugin */
+  /** Additional plugins to include after the P1 plugin */
   additionalPlugins?: Plugin[];
   /**
    * Additional overrides to merge with P1 overrides.
@@ -80,7 +80,7 @@ export interface UseP1EditorOptions {
   liveThumbnailDrawer?: boolean | LiveThumbnailDrawerOptions;
   /** Customization options for overrides */
   overrideOptions?: UseP1OverridesOptions;
-  /** Customization options for the CCR plugin (versions are managed internally) */
+  /** Customization options for the P1 plugin (versions are managed internally) */
   pluginOptions?: Omit<UseP1PluginOptions, 'versions' | 'versionsLoading' | 'selectedVersionId' | 'onVersionSelect'>;
   /** Callback when user selection changes */
   onSelectionChange?: (path: string | null, itemId: string | null) => void;
@@ -98,7 +98,7 @@ export interface PuckProps {
   data: PuckData;
   /** onChange handler wired to context saveData (disabled for historical versions) */
   onChange: (data: unknown) => void;
-  /** Plugin array with CCR plugin first */
+  /** Plugin array with P1 plugin first */
   plugins: Plugin[];
   /** Overrides with header actions */
   overrides: PuckOverrides;
@@ -711,7 +711,7 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
   // cache is only invalidated when component data changes, not when the
   // resolver function changes. Including userRole in the key forces a
   // clean remount with an empty cache when roles switch.
-  const puckKey = `ccr-${ccr.userRole}`;
+  const puckKey = `p1-${ccr.userRole}`;
 
   // Sidebar visibility for the initial mount. puckKey is the dependency on
   // purpose even though it is not read here: a new key remounts Puck, which

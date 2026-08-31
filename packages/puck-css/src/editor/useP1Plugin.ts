@@ -1,7 +1,7 @@
 /**
  * useP1Plugin Hook
  *
- * Creates a referentially stable CCR plugin instance for Puck.
+ * Creates a referentially stable P1 plugin instance for Puck.
  * Internally reads context values and wires them through a Proxy pattern
  * so the plugin object never changes identity, avoiding Puck re-renders.
  */
@@ -107,7 +107,7 @@ export interface UseP1PluginOptions {
 }
 
 /**
- * Creates a referentially stable CCR plugin for Puck.
+ * Creates a referentially stable P1 plugin for Puck.
  *
  * Reads branches, documents, and other state from P1PuckProvider context.
  * The returned plugin object is stable across re-renders — it uses a Proxy

@@ -61,7 +61,7 @@ export interface P1PuckConfig {
 
   /**
    * Enable real-time collaborative editing.
-   * When enabled, changes are synced via WebSocket using Yjs CRDT.
+   * When enabled, changes are synced via WebSocket in real time.
    * @default true
    */
   enableRealtime?: boolean;

@@ -1,7 +1,7 @@
 /**
  * @pantheon-systems/puck-css
  *
- * Puck editor integration with the Collaborative Content Repository.
+ * Puck editor integration with Pantheon's P1 content platform.
  */
 
 // High-level API

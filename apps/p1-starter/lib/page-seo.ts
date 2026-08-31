@@ -37,7 +37,7 @@ const carriesTemplate = (value: unknown): value is string =>
   typeof value === "string" && value.includes("{{");
 
 /**
- * Produces the per-page <head> Metadata for a route (PCC-3407). Title,
+ * Produces the per-page <head> Metadata for a route. Title,
  * description and the free-text metadata fields are template-allowed.
  */
 export async function resolvePageMetadata({

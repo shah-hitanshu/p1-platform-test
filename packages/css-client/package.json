@@ -1,7 +1,7 @@
 {
   "name": "@pantheon-systems/css-client",
   "version": "0.12.0",
-  "description": "TypeScript API client for the Collaborative Content Repository",
+  "description": "TypeScript API client for Pantheon's P1 content platform",
   "publishConfig": {
     "access": "public",
     "registry": "https://registry.npmjs.org/",
@@ -38,7 +38,7 @@
   "scripts": {
     "sync-version": "node scripts/sync-sdk-version.mjs",
     "prebuild": "node scripts/sync-sdk-version.mjs",
-    "build": "pnpm run clean && tsc",
+    "build": "pnpm run clean && tsc --emitDeclarationOnly && tsc --declaration false --declarationMap false --removeComments",
     "clean": "rm -rf dist *.tsbuildinfo",
     "lint": "eslint src",
     "lint:fix": "eslint src --fix",

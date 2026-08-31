@@ -1,5 +1,5 @@
 // Registry sync — pure functions for extracting Puck component descriptors
-// and syncing them to CCR registry documents, with no React dependency.
+// and syncing them to backend registry documents, with no React dependency.
 // Used by the browser useComponentRegistry hook and by headless CI callers
 // (e.g. a customer's sync-puck-registry script) alike.
 

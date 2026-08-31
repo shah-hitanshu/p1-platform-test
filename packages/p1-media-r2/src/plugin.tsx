@@ -7,7 +7,7 @@ import { MediaConfigResolver, type GetAuthToken } from "./puck-css-bridge";
 import type { MediaFieldValue, MetadataFieldDef } from "./types";
 
 export interface MediaPluginOptions {
-  /** The base URL of the Cloudflare Worker media API. Defaults to the production host. */
+  /** The base URL of the media API. Defaults to the production host. */
   workerUrl?: string;
   /**
    * Site identifier used to scope media to a specific site. Defaults to the
@@ -17,7 +17,7 @@ export interface MediaPluginOptions {
   siteId?: string;
   /**
    * Workstream (branch) identifier. Currently accepted for forward-compat but not
-   * read by the Worker for any scoping decision — omit unless a future release
+   * read by the backend for any scoping decision — omit unless a future release
    * documents otherwise.
    */
   workstreamId?: string;
@@ -39,7 +39,7 @@ export interface MediaPluginOptions {
 }
 
 /**
- * Creates a Puck plugin that adds a media library backed by Cloudflare R2 + D1.
+ * Creates a Puck plugin that adds a media library backed by Cloudflare R2.
  * It supports two field modes:
  *   - Basic: text fields matching image/media name patterns are replaced with the
  *     picker and store a clean CDN URL string. Render with `buildImageUrl()`.

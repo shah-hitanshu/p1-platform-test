@@ -1,4 +1,4 @@
-# Optional: syncs this site's Puck component registry to the CCR backend
+# Optional: syncs this site's Puck component registry to the backend
 # headlessly on every push, without anyone needing to open the editor.
 #
 # This file is NOT active until you copy it into .github/workflows/ yourself
@@ -12,11 +12,12 @@
 #   3. Copy this file to .github/workflows/sync-puck-registry.yml.
 #
 # Triggers on push to any branch that touches puck.config.tsx or
-# components/puck/**. The sync script resolves the CCR branch from the pushed
-# git branch's name: the repo's default branch always targets the site's main
-# CCR branch (whatever the git branch is called), any other ref matches a CCR
-# branch by name. A push on a non-default branch with no matching CCR branch
-# is not an error: the script logs a skip and exits 0.
+# components/puck/**. The sync script resolves the target branch from the
+# pushed git branch's name: the repo's default branch always targets the
+# site's main branch (whatever the git branch is called), any other ref
+# matches a branch on the site by name. A push on a non-default branch with
+# no matching branch on the site is not an error: the script logs a skip and
+# exits 0.
 #
 # CSS_DEFAULT_BRANCH defaults to "main" if omitted — repos whose default
 # branch has another name (master, trunk) need the line below (or must set
@@ -33,7 +34,7 @@ on:
   workflow_dispatch:
     inputs:
       branch_id:
-        description: 'CCR branch ID/name to sync against (blank = match the current git branch, else site main)'
+        description: 'Branch ID/name to sync against (blank = match the current git branch, else site main)'
         required: false
         default: ''
 

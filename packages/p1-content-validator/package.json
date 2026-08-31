@@ -1,7 +1,7 @@
 {
   "name": "@pantheon-systems/p1-content-validator",
   "version": "2.1.2",
-  "description": "Validates Puck component edit operations against the CCR component registry",
+  "description": "Validates Puck component edit operations against the P1 component registry",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/pantheon-systems/p1-platform.git",
@@ -20,7 +20,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "pnpm run clean && tsc --emitDeclarationOnly && tsc --declaration false --declarationMap false --removeComments",
     "clean": "rm -rf dist *.tsbuildinfo",
     "lint": "eslint src tests",
     "lint:fix": "eslint src tests --fix",

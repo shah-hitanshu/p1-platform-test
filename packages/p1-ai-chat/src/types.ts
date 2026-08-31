@@ -211,9 +211,9 @@ export interface DraftRequestChannel {
 }
 
 export interface AIChatPluginOptions {
-  /** Base URL of the ChatAgent Cloudflare Worker, e.g. "https://p1-chatbot-agent.workers.dev" */
+  /** Base URL of the chat agent backend, e.g. "https://your-agent-host.example.com" */
   agentUrl: string;
-  /** Returns the Durable Object key. Defaults to `${userId}-${siteId}`. Override to change history scoping. */
+  /** Returns the conversation key. Defaults to `${userId}-${siteId}`. Override to change history scoping. */
   getAgentId?: () => string;
   /**
    * Channel through which the host app can ask the sidebar to draft a page. When provided,

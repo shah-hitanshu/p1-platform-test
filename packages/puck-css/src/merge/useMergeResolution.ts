@@ -3,7 +3,7 @@
  *
  * Central state machine for multi-document merge conflict resolution.
  * Manages document list, per-document strategy selection, cherry-pick
- * state, CRDT preview fetching, navigation, and merge execution.
+ * state, preview fetching, navigation, and merge execution.
  */
 
 import { useState, useCallback, useMemo } from 'react';
@@ -103,7 +103,7 @@ export interface UseMergeResolutionReturn {
 }
 
 // =============================================================================
-// Helper: determine if a conflict type allows cherry-pick / CRDT
+// Helper: determine if a conflict type allows cherry-pick
 // =============================================================================
 
 function isDeleteConflict(conflictType: DocumentConflictType): boolean {
@@ -649,7 +649,7 @@ export function useMergeResolution(
 
         const result = await client.merge.executeRequest(siteId, mergeRequest.id, { resolutions });
 
-        // Merge job runner [PCC-3737]: a large merge outlives the server's
+        // Merge job runner: a large merge outlives the server's
         // bounded wait and returns the async shape — a jobId with no terminal
         // outcome yet. The merge is running server-side regardless of this
         // tab; poll it to completion. waitForJob throws on every non-completed

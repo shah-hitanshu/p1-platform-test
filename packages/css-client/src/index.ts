@@ -1,7 +1,7 @@
 /**
  * @pantheon-systems/css-client
  *
- * TypeScript API client for the Collaborative Content Repository.
+ * TypeScript API client for Pantheon's P1 content platform.
  */
 
 // Main client

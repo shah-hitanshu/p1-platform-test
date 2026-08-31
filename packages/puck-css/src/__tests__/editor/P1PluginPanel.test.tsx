@@ -48,7 +48,6 @@ function makeVersion(overrides: Partial<DocumentVersion> & { id: string; version
     documentId: 'doc-1',
     branchId: 'branch-1',
     snapshot: {},
-    crdtState: null,
     source: 'edit',
     createdById: 'user-1',
     createdByType: 'user',

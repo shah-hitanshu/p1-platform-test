@@ -60,8 +60,8 @@ export function buildValueWithCrop(baseUrl: string, crop: CropMode): string {
 
 /**
  * Builds a value URL carrying a manual crop region. Values are rounded to
- * integers and clamped to a ≥1px region at a non-negative offset — the Worker
- * passes them straight to Cloudflare Images, which rejects degenerate rects.
+ * integers and clamped to a ≥1px region at a non-negative offset — the
+ * backend passes them straight through and rejects degenerate rects.
  */
 export function buildValueWithTrim(baseUrl: string, rect: TrimRect): string {
   const left = Math.max(0, Math.round(rect.left));

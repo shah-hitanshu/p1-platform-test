@@ -2,7 +2,7 @@
  * Template Store Interface
  *
  * Defines the contract for template storage and retrieval.
- * Implementations can use localStorage, CCR documents, or backend API.
+ * Implementations can use localStorage, backend documents, or a backend API.
  */
 
 import type {

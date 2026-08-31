@@ -56,7 +56,7 @@ describe("validateEnv", () => {
   });
 
   it("defaults defaultBranchName to 'main' when CSS_DEFAULT_BRANCH is not set", () => {
-    // Safe because the CCR main content branch is always literally named
+    // Safe because the site's main content branch is always literally named
     // "main": a push override of "main" resolves to the same branch either
     // by name match or by isMain, so the default only adds semantics.
     const result = validateEnv(baseEnv());
@@ -145,8 +145,8 @@ describe("resolveBranchId", () => {
 
 describe("resolveBranchId default-branch semantics", () => {
   // In CI the override is always the pushed git ref's name, so a repo whose
-  // default branch is not literally named "main" would never match the CCR
-  // main branch (whose name is always "main") — the sync silently skips on
+  // default branch is not literally named "main" would never match the
+  // site's main branch (whose name is always "main") — the sync silently skips on
   // every default-branch push. When the caller also supplies the repo's
   // default branch name, an override equal to it must resolve via isMain.
   const branches = [

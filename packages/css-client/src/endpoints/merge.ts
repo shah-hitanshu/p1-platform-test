@@ -186,7 +186,7 @@ export class MergeEndpoint {
   }
 
   /**
-   * Get a merge job's status projection [PCC-3737].
+   * Get a merge job's status projection.
    */
   async getJob(siteId: string, jobId: string): Promise<MergeJob> {
     return this.base.request<MergeJob>(
@@ -196,7 +196,7 @@ export class MergeEndpoint {
   }
 
   /**
-   * Poll a merge job until it reaches a terminal status [PCC-3737].
+   * Poll a merge job until it reaches a terminal status.
    *
    * Resolves with the job when it completes; throws when it ends in any
    * other terminal state (failed, completed_with_errors, blocked_on_conflicts,

@@ -4,10 +4,10 @@
  * Implements the brokered auth flow. Supports two modes:
  *
  * **Proxy mode** (default): calls go to /p1/auth/login and /p1/auth/redeem
- * on the app's own server, which proxies to the CCR backend with the API key.
+ * on the app's own server, which proxies to the backend with the API key.
  *
  * **Direct mode**: when siteApiToken is provided, calls go straight to the
- * CCR backend with a Bearer token. Used for standalone (non-Next.js) apps.
+ * backend with a Bearer token. Used for standalone (non-Next.js) apps.
  *
  * Flow:
  * 1. POST login endpoint → { transactionId, loginUrl }
@@ -108,13 +108,13 @@ function brokerHeaders(config: BrokerAuthConfig): Record<string, string> {
 }
 
 /**
- * Initiates broker logout by calling the CCR backend and returning the Auth0
+ * Initiates broker logout by calling the backend and returning the Auth0
  * logout URL. Does NOT navigate — the caller is responsible for redirecting.
  *
  * Outcomes:
- *   signed_out  — CCR returned a logout URL; caller should navigate there.
+ *   signed_out  — the backend returned a logout URL; caller should navigate there.
  *   no_session  — No stored broker token; nothing to sign out of.
- *   error       — CCR unreachable or returned an error; credentials left intact
+ *   error       — Backend unreachable or returned an error; credentials left intact
  *                 so the caller can retry or fall back gracefully.
  *
  * The broker token is removed from storage only on `signed_out`, after the

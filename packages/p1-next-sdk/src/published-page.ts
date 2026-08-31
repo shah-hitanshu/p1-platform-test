@@ -72,7 +72,7 @@ async function unavailable(
  * Published Puck data for `path`.
  *
  * Memoized with cache(): generateMetadata and the page body both need the same
- * page, and without this every render reads it from Postgres twice.
+ * page, and without this every render reads it from the backend twice.
  */
 export const loadPublishedPage = cache(
   async (path: string): Promise<PublishedPageResult> => {

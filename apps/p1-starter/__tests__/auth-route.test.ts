@@ -14,7 +14,7 @@ describe("auth route does not force re-authentication on every login", () => {
 
   it("does not hardcode an OAuth prompt override", () => {
     // prompt: 'login' forces Google's full re-auth screen on every broker
-    // login, even with a live Google session — see PCC-3391.
+    // login, even with a live Google session.
     expect(content).not.toMatch(/prompt\s*:\s*['"]login['"]/);
   });
 

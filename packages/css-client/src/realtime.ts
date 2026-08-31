@@ -1,8 +1,8 @@
 /**
  * Phase 2.1: RealtimeClient
  *
- * WebSocket-based real-time collaboration client using Yjs CRDT.
- * Provides bidirectional sync between client and DocumentSession Durable Object.
+ * WebSocket-based real-time collaboration client.
+ * Provides bidirectional sync between the client and the server.
  * Uses ReconnectingWebSocket from partysocket for automatic reconnection with exponential backoff.
  */
 
@@ -172,7 +172,7 @@ export interface ConnectionParams {
 }
 
 /**
- * Real-time collaboration client using Yjs CRDT over WebSocket.
+ * Real-time collaboration client over WebSocket.
  * Uses PartySocket for automatic reconnection with exponential backoff.
  *
  * @example
@@ -417,7 +417,7 @@ export class RealtimeClient {
           return;
         }
 
-        // Binary frame: Yjs CRDT update
+        // Binary frame: document update
         const data = event.data as ArrayBuffer;
         const update = new Uint8Array(data);
 
@@ -653,9 +653,9 @@ export class RealtimeClient {
   }
 
   /**
-   * Set pending action metadata to be sent after the next CRDT update.
+   * Set pending action metadata to be sent after the next document update.
    * The metadata is best-effort — if the WebSocket is not open or the
-   * send fails, the CRDT update still goes through without metadata.
+   * send fails, the document update still goes through without metadata.
    *
    * @param meta - Action type and metadata from Puck's onAction callback
    */
@@ -665,7 +665,7 @@ export class RealtimeClient {
 
   /**
    * Send any pending action metadata as a text message and clear it.
-   * Called after a CRDT update is sent to associate the metadata with
+   * Called after a document update is sent to associate the metadata with
    * the most recent edit.
    */
   sendPendingActionMetadata(): void {
@@ -812,10 +812,10 @@ export class RealtimeClient {
   /**
    * Wait for the server to acknowledge that all preceding WebSocket messages
    * have been processed. This uses TCP ordering guarantees: a text frame sent
-   * after binary CRDT updates is guaranteed to arrive after those updates.
+   * after binary document updates is guaranteed to arrive after those updates.
    * The server echoes back a delivery_ack with the matching requestId.
    *
-   * Used before publish to ensure the Durable Object has received and applied
+   * Used before publish to ensure the server has received and applied
    * the latest edits before the HTTP publish request arrives.
    *
    * @returns Promise that resolves when the server confirms delivery
@@ -847,11 +847,11 @@ export class RealtimeClient {
 
   /**
    * Request the server to publish the current document via WebSocket.
-   * TCP ordering guarantees all preceding binary CRDT updates have been
+   * TCP ordering guarantees all preceding binary document updates have been
    * processed before this message is handled, eliminating stale-version races.
    *
-   * The Durable Object handles the entire flow: flush to Postgres, then
-   * call /internal/publish to create the checkpoint.
+   * The server handles the entire flow: persist the document, then create
+   * the checkpoint.
    *
    * @returns Promise that resolves with the publish result
    * @throws Error if not connected or if timeout expires (30 seconds)

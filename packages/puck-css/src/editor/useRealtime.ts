@@ -2,7 +2,7 @@
  * Phase 3.2: useRealtime Hook
  *
  * React hook for real-time collaborative editing with Puck.
- * Manages WebSocket connection and Yjs CRDT synchronization.
+ * Manages WebSocket connection and real-time document synchronization.
  */
 
 import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
@@ -49,7 +49,7 @@ export interface UseRealtimeParams {
    * Initial data to seed the Y.Doc with before connecting.
    * When provided, the Y.Doc will be populated with this data before
    * the WebSocket connects, allowing the server to send only a delta
-   * instead of the full CRDT state. This eliminates the redundant
+   * instead of the full document state. This eliminates the redundant
    * full-doc re-render on page load.
    *
    * Tracked via ref (not in effect deps) to avoid triggering reconnection
@@ -156,7 +156,7 @@ export interface UseRealtimeReturn {
 
   /**
    * Request the server to publish the current document via WebSocket.
-   * The Durable Object handles flush + publish internally, eliminating
+   * The server handles flush + publish internally, eliminating
    * client-side orchestration and race conditions.
    * @returns Promise that resolves with the publish result
    * @throws Error if not connected or if timeout expires
@@ -362,7 +362,7 @@ export function useRealtime(params: UseRealtimeParams): UseRealtimeReturn {
 
     // Seed Y.Doc with initial REST data before connecting.
     // This populates the client's Y.Doc so the server can send a delta
-    // instead of the full CRDT state on initial connect.
+    // instead of the full document state on initial connect.
     // Safe because:
     // - applyLocalChange uses LOCAL_ORIGIN (observer ignores local changes)
     // - this.ws is null at this point (update listener won't try to send)

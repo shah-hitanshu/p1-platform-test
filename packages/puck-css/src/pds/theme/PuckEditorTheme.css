@@ -298,7 +298,7 @@
   overflow: hidden;
 }
 
-/* ── Editor chrome text/background reset (PCC-3456) ──────────────────────
+/* ── Editor chrome text/background reset ──────────────────────
  *
  * Root cause: recent design-library "dark-canon" token waves make the host
  * app's own body dark (e.g. body { color: var(--color-text); background:

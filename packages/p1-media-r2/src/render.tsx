@@ -13,20 +13,17 @@ export interface GetMediaPropsOptions {
   /**
    * The CDN image origin that serves media, e.g.
    * "https://staging.media.p1.pantheon.io". This is the public image host —
-   * NOT the Worker API URL (`…workers.dev`), whose origin would reject every
-   * real image URL.
+   * NOT the content API URL, whose origin would reject every real image URL.
    *
-   * Security (required): a value's `url` is untrusted document content — anyone
-   * who can edit a document, or call the CCR `/edits` API, controls it. Without
-   * an origin check a crafted `https://evil.example/beacon.png` turns every
-   * published render into a visitor-IP exfil beacon (and an SSRF under
-   * server-fetching `next/image`). getMediaProps therefore rejects any url that
-   * is not `https` on this exact origin. If `mediaBaseUrl` is omitted it
+   * Security (required): a value's `url` is untrusted document content —
+   * anyone who can edit a document controls it. getMediaProps rejects any url
+   * that is not `https` on this exact origin, so an edited document can't
+   * point a render at an arbitrary origin. If `mediaBaseUrl` is omitted it
    * **fails closed** (empty src) rather than degrading to an insecure pass-through.
    *
    * Local dev exception: when the configured base is itself `http` on a
-   * loopback host (`localhost`, `127.0.0.1`, `[::1]` — a local `wrangler dev`
-   * worker), same-origin `http` urls are allowed so rich values render locally.
+   * loopback host (`localhost`, `127.0.0.1`, `[::1]`), same-origin `http`
+   * urls are allowed so rich values render locally.
    */
   mediaBaseUrl?: string;
   /** Transform params merged onto the validated URL (width, height, format, quality). */

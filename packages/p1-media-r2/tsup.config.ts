@@ -16,6 +16,11 @@ export default defineConfig([
     noExternal: ["react-image-crop"],
     injectStyle: true,
     banner: { js: '"use client";' },
+    // esbuild inlines full original source into sourcemaps by default, which
+    // would ship every internal comment verbatim regardless of dts/js output.
+    esbuildOptions(options) {
+      options.sourcesContent = false;
+    },
   },
   {
     // Server bundle — only pure utilities safe for React Server Components.
@@ -26,5 +31,8 @@ export default defineConfig([
     splitting: false,
     sourcemap: true,
     external: ["react", "@puckeditor/core"],
+    esbuildOptions(options) {
+      options.sourcesContent = false;
+    },
   },
 ]);

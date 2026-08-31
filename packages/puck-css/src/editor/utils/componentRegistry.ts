@@ -60,15 +60,10 @@ export interface RegistryIndex {
   hashes?: Record<string, string>;
   /**
    * Timestamp of the last full, per-component verification of every hash in
-   * `hashes` against its component document's own stored content (PCC-3430).
-   * The fast path trusts `hashes` without ever reading the documents it
-   * describes — if an entry ever comes to record a hash that doesn't match
-   * its document's real content (e.g. an out-of-band revert the index was
-   * never told about), the fast path has no way to detect this on its own
-   * and would skip forever. Once `verifiedAt` is older than
-   * REGISTRY_VERIFICATION_INTERVAL_MS, the hook forces a real per-component
-   * check instead of trusting `hashes`, bounding how long such a desync can
-   * persist. Carried forward unchanged on fast-path runs; only refreshed
+   * `hashes` against its component document's own stored content.
+   * Once `verifiedAt` is older than REGISTRY_VERIFICATION_INTERVAL_MS, the
+   * hook forces a real per-component check instead of trusting `hashes`.
+   * Carried forward unchanged on fast-path runs; only refreshed
    * when a full per-component verification actually just ran.
    */
   verifiedAt?: string;
@@ -321,8 +316,8 @@ export function extractDescriptors(
 /**
  * Builds the RegistryIndex from a list of extracted descriptors.
  *
- * @param verifiedAt - Pass when a full per-component verification just ran
- *   (PCC-3430), to stamp the index with that confirmation time. Omit to
+ * @param verifiedAt - Pass when a full per-component verification just ran,
+ *   to stamp the index with that confirmation time. Omit to
  *   carry an existing value forward unchanged on a fast-path-only run.
  */
 export function buildRegistryIndex(

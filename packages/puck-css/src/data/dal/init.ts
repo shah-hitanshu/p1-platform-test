@@ -57,7 +57,7 @@ async function doInit(cfg: P1DataConfig): Promise<void> {
   // would be sent as a real branch ref. Normalizing once covers every p1BranchId
   // consumer: the route handler, the pages handler, and published-page.
   const p1BranchId = nonEmpty(cfg.p1BranchId);
-  // Same fallback as createNextConfig/createNextContentClient (PCC-3282):
+  // Same fallback as createNextConfig/createNextContentClient:
   // an unset p1BaseUrl (no CSS_BASE_URL / NEXT_PUBLIC_CSS_BASE_URL) should
   // resolve to the production backend rather than leaving init — and every
   // login/render request that awaits it — broken.

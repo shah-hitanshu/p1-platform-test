@@ -1,7 +1,7 @@
 /**
  * Phase 3.1: Puck-Yjs Binding Utility
  *
- * Bidirectional binding between Puck data and Yjs CRDT.
+ * Bidirectional binding between Puck data and Yjs.
  * Prevents sync loops by using Yjs transaction origins.
  */
 

@@ -37,7 +37,7 @@ export function cssQueriesToDatasourceDefinitions(
     id: `${CSS_QUERY_ID_PREFIX}${query.name}`,
     label: kebabToTitleCase(query.datasource),
     description: `Content query for ${query.datasource} pages`,
-    resolution: "CCR content query (auto-generated from content type template)",
+    resolution: "content query (auto-generated from content type template)",
     fields: RESULT_FIELDS,
   }));
 }

@@ -16,7 +16,7 @@ export interface PerformLogoutConfig {
 
 /**
  * Canonical logout for P1 broker-mode apps. Owns the full sequence:
- *   1. POST to CCR to obtain the Auth0 logout URL (token still present).
+ *   1. POST to the backend to obtain the Auth0 logout URL (token still present).
  *   2. On success: clear broker token (inside brokerLogout) and puck-css keys.
  *   3. Return the outcome — caller navigates on `signed_out`.
  *
