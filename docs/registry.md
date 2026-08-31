@@ -171,13 +171,16 @@ Two details make that work in a monorepo:
 Dev auto-deploys from every push to `main`. Live promotes when a sequential
 `pantheon_live_N` git tag is pushed.
 
-> **Stale CI:** `.github/workflows/registry-release.yml` and
-> `deploy-registry-live.yml` were written for a retired model in which GitHub
-> Actions built the site and pushed the artifact to an orphan `registry-deploy`
-> branch that Pantheon served statically. Pantheon builds from source instead, so
-> that branch is never read and both workflows are dead weight. They are pending
-> removal; do not rely on them, and do not treat the deploy PR they open as a
-> release gate.
+There is **no release-triggered CI for the registry.** Two workflows
+(`registry-release.yml`, `deploy-registry-live.yml`) previously built the site and pushed the artifact
+to an orphan `registry-deploy` branch for Pantheon to serve statically. Pantheon builds from source
+instead, so that branch was never read and both fired on a release event that is no longer part of the
+flow. They were removed on 2026-08-31.
+
+One consequence worth knowing: `verify:registry` no longer runs automatically anywhere. CI runs
+`registry:build`, the catalog tests and typecheck on every PR, but not the full install-37-blocks-into-a-
+bare-app check. Run it by hand before promoting to Live — it is step 3 under
+[Steps to ship a new block version](#steps-to-ship-a-new-block-version).
 
 ### Steps to ship a new block version
 
