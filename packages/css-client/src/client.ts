@@ -21,6 +21,8 @@ import {
   TemplatesEndpoint,
   MigrationConflictsEndpoint,
   QueriesEndpoint,
+  TranslationsEndpoint,
+  RelationsEndpoint,
 } from './endpoints/index.js';
 
 /**
@@ -180,6 +182,16 @@ export class P1Client {
    */
   public readonly queries: QueriesEndpoint;
 
+  /**
+   * Localization operations (create and list translation variants).
+   */
+  public readonly translations: TranslationsEndpoint;
+
+  /**
+   * Relation edges: upstream drift for localization and template derivation.
+   */
+  public readonly relations: RelationsEndpoint;
+
   constructor(config: P1ClientConfig | InternalConfig) {
     // Check if this is an internal config (has baseEndpoint)
     if ('baseEndpoint' in config) {
@@ -222,6 +234,12 @@ export class P1Client {
 
     // Query endpoints
     this.queries = new QueriesEndpoint(this.baseEndpoint);
+
+    // Localization endpoints
+    this.translations = new TranslationsEndpoint(this.baseEndpoint);
+
+    // Relation edges
+    this.relations = new RelationsEndpoint(this.baseEndpoint);
   }
 
   /**

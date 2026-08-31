@@ -103,6 +103,19 @@ export type {
   QueryResultsMeta,
   QueryResults,
   QueryResultsParams,
+  // Localization types
+  LocalizationRelation,
+  CreateTranslationParams,
+  CreateTranslationResult,
+  TranslationVariant,
+  ListTranslationsResult,
+  PropAuthority,
+  AuthorityOverridesMap,
+  AuthorityOverridesResult,
+  // Relation / upstream-diff types
+  ChangeClassification,
+  ChangeSummaryEntry,
+  ChangeSummary,
 } from './types.js';
 
 // Auth utilities

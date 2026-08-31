@@ -75,6 +75,8 @@ export interface Document {
   templateId?: string | null;
   /** Version of the template this document was created from or migrated to */
   templateVersion?: number | null;
+  /** BCP-47 locale tag for a translation variant; absent for a canonical document */
+  locale?: string;
 }
 
 /**
@@ -242,6 +244,138 @@ export interface CreateDocumentParams {
   snapshot?: Record<string, unknown>;
   /** Optional page title seeded into the initial version's root.props.title */
   title?: string;
+}
+
+// =============================================================================
+// Localization
+// =============================================================================
+
+/**
+ * Relationship linking a translation variant to its canonical document.
+ */
+export interface LocalizationRelation {
+  /** The translation variant */
+  derivedDocumentId: string;
+  /** The canonical it was translated from */
+  upstreamDocumentId: string;
+  relationType: 'localization';
+  /** Canonical version the variant is aligned to; null when unpinned */
+  syncedUpstreamVersion: number | null;
+}
+
+/**
+ * Parameters for creating a translation of a canonical document.
+ */
+export interface CreateTranslationParams {
+  siteId: string;
+  branchId: string;
+  /** Canonical document being translated */
+  canonicalDocumentId: string;
+  /** Target BCP-47 locale tag (e.g. "fr-FR") */
+  locale: string;
+  /** Optional explicit path; defaults to `{canonicalPath}.{locale}` server-side */
+  path?: string;
+}
+
+/**
+ * Result of creating a translation variant.
+ */
+export interface CreateTranslationResult {
+  document: Document;
+  version: DocumentVersion;
+  localization: LocalizationRelation;
+}
+
+/**
+ * A translation variant paired with its localization relationship.
+ */
+export interface TranslationVariant {
+  document: Document;
+  localization: LocalizationRelation;
+}
+
+/**
+ * Canonical document and all its translation variants.
+ */
+export interface ListTranslationsResult {
+  canonical: Document;
+  variants: TranslationVariant[];
+}
+
+/**
+ * Whether a translation's prop value is inherited from the canonical
+ * ('canonical') or owned by this translation ('locale').
+ */
+export type PropAuthority = 'canonical' | 'locale';
+
+/**
+ * Per-translation authority overrides, keyed by slot id then prop name. A prop
+ * absent from the map falls back to its slot's default.
+ */
+export type AuthorityOverridesMap = Record<string, Record<string, PropAuthority>>;
+
+/**
+ * A translation's resolved authority, in precedence order: a prop's own override,
+ * then its slot's template default, then `defaultAuthority`.
+ */
+export interface AuthorityOverridesResult {
+  authorityOverrides: AuthorityOverridesMap;
+  /** Per-slot authority declared by the canonical's template, keyed by slot id. */
+  slotDefaults: Record<string, PropAuthority>;
+  /** Authority for a prop named by neither the overrides nor the slot defaults. */
+  defaultAuthority: PropAuthority;
+}
+
+/**
+ * How a single upstream change is classified for reconciliation.
+ * - structural: a slot was added, removed, or moved
+ * - prop: a prop value changed and the page may adopt it
+ * - advisory: the page owns this prop; the change is informational only
+ * - needsTranslation: an upstream text change requires a human translation
+ * - autoApplied: an inherited prop that can be adopted without a decision
+ */
+export type ChangeClassification =
+  | 'structural'
+  | 'prop'
+  | 'advisory'
+  | 'needsTranslation'
+  | 'autoApplied';
+
+/**
+ * A single classified change between a document and its upstream source.
+ */
+export interface ChangeSummaryEntry {
+  classification: ChangeClassification;
+  /** Slot id (Type-uuid) or '__root__' */
+  componentId: string;
+  /** JSON Pointer into the component props; absent for structural changes */
+  propPath?: string;
+  /** Upstream value before the change */
+  upstreamOldValue?: unknown;
+  /** Upstream value after the change */
+  upstreamNewValue?: unknown;
+  /** This document's current value for the prop */
+  documentValue?: unknown;
+  authority?: PropAuthority;
+  translatable?: boolean;
+  structuralKind?: 'added' | 'removed' | 'moved';
+}
+
+/**
+ * Classified summary of how a document has drifted from what it derives from,
+ * covering all upstream drift since the last synced version. Relation-agnostic:
+ * the same shape describes template drift and localization drift.
+ */
+export interface ChangeSummary {
+  relationType: 'template' | 'localization';
+  derivedDocumentId: string;
+  upstreamDocumentId: string;
+  fromVersion: number;
+  toVersion: number;
+  /** Id-keyed structural delta */
+  slotDelta: unknown;
+  changes: ChangeSummaryEntry[];
+  counts: Record<ChangeClassification, number>;
 }
 
 /**

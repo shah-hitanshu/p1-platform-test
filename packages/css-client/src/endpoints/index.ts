@@ -24,3 +24,9 @@ export { MigrationConflictsEndpoint } from './migration-conflicts.js';
 
 // Query endpoints
 export { QueriesEndpoint } from './queries.js';
+
+// Localization endpoints
+export { TranslationsEndpoint } from './translations.js';
+
+// Relation edges (localization + template derivation)
+export { RelationsEndpoint } from './relations.js';
