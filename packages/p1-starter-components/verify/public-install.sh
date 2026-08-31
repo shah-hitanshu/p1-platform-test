@@ -12,7 +12,10 @@ env -u GITHUB_TOKEN -u GH_TOKEN -u NPM_TOKEN \
 node -e "
   const i = require('$WORK/index.json');
   if (!Array.isArray(i.items) || i.items.length < 40) throw new Error('index too small: ' + i.items?.length);
-  if (JSON.stringify(i).includes('\"content\"')) throw new Error('index must not inline content');
+  // Structural, not a substring scan: several items are categorised \"content\",
+  // which a naive JSON.stringify().includes() check reads as inlined file content.
+  const inlined = i.items.filter((x) => (x.files ?? []).some((f) => 'content' in f));
+  if (inlined.length) throw new Error('index inlines content: ' + inlined.map((x) => x.name).join(', '));
   console.log('index OK:', i.name, i.items.length, 'items');
 "
 
