@@ -1,7 +1,8 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
+import { showSuccess } from '../lib/messages.js';
 import { buildTemplate } from './build-template.js';
 
 // One build shared by the whole file: it copies the entire starter app.
@@ -123,5 +124,32 @@ describe('build artifacts', () => {
       .filter((entry) => String(entry).endsWith('.tsbuildinfo'));
 
     expect(stale).toEqual([]);
+  });
+});
+
+// The CLI tells the user which credentials to fill in, so its text is documentation
+// of the template too — and drifts the same way the README did.
+describe('the CLI success message names the credentials the template requires', () => {
+  const nextSteps = () => {
+    const lines = [];
+    const log = vi.spyOn(console, 'log').mockImplementation((...args) => lines.push(args.join(' ')));
+    showSuccess('my-app', '/tmp/my-app', 'npm');
+    log.mockRestore();
+    return lines.join('\n');
+  };
+
+  const envVars = (pattern) => [...read('.env.example').matchAll(pattern)].map((m) => m[1]);
+
+  it('names as required only the variables .env.example leaves uncommented', () => {
+    const active = envVars(/^([A-Z][A-Z0-9_]*)=/gm);
+    const named = [...nextSteps().matchAll(/\b([A-Z][A-Z0-9_]{4,})\b/g)].map((m) => m[1]);
+
+    expect(named).toContain('CSS_API_KEY');
+    expect(named.filter((v) => !active.includes(v))).toEqual([]);
+  });
+
+  it('points at a file the template ships', () => {
+    expect(nextSteps()).toContain('.env.example');
+    expect(exists('.env.example')).toBe(true);
   });
 });

@@ -12,7 +12,7 @@ export function showSuccess(projectName, _projectPath, packageManager) {
   console.log(`  ${pc.cyan('cd')} ${projectName}`);
   console.log(`  ${pc.dim('# Copy .env.example to .env and fill in your credentials:')}`);
   console.log(`  ${pc.cyan('cp')} .env.example .env`);
-  console.log(`  ${pc.dim('# Edit .env with your PCC_SITE_ID and PCC_TOKEN')}\n`);
+  console.log(`  ${pc.dim('# Edit .env with your NEXT_PUBLIC_CSS_SITE_ID and CSS_API_KEY')}\n`);
   const devCmd = packageManager === 'npm' ? 'npm run dev' : `${packageManager} dev`;
   console.log(`  ${pc.dim('# Start the dev server:')}`);
   console.log(`  ${pc.cyan(devCmd)}\n`);

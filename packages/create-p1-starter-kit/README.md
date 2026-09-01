@@ -45,11 +45,11 @@ After scaffolding:
 
    | Variable | Purpose |
    | --- | --- |
-   | `PCC_SITE_ID` | Content Cloud site ID |
-   | `PCC_TOKEN` | API token for your site |
-   | `NEXT_PUBLIC_CSS_BASE_URL` | Backend API base URL |
    | `NEXT_PUBLIC_CSS_SITE_ID` | Site identifier (UUID) |
    | `CSS_API_KEY` | Server-side API key |
+
+   Everything else in `.env.example` is commented out and optional, including the
+   `PCC_SITE_ID`/`PCC_TOKEN` pair for Content Publisher.
 
 2. **Start the dev server:**
 
