@@ -4,6 +4,8 @@ import React from "react";
 import { LDProvider } from "launchdarkly-react-client-sdk";
 import { useP1Auth } from "@pantheon-systems/puck-css";
 
+import { buildFlagContext } from "../lib/chatbot-flag/flag-context";
+
 /**
  * Wraps the editor with a LaunchDarkly client-side provider so the `p1-chatbot`
  * flag can be evaluated at runtime. The client-side ID is public by design.
@@ -28,14 +30,7 @@ export function ChatbotFlagProvider({
   // re-identify on context change. This provider mounts inside <P1App> (after
   // auth), so the authenticated user is available here; the anonymous fallback
   // only applies if it ever renders pre-auth.
-  //
-  // Key on the always-present, stable user id — email is optional on AuthUser, so
-  // keying on it would silently drop emailless users into the anonymous branch and
-  // lose per-user rollout stickiness. (LaunchDarkly also favors a non-PII key.)
-  // Email is kept as a targeting attribute.
-  const context = user
-    ? { kind: "user" as const, key: user.id, email: user.email }
-    : { kind: "user" as const, key: "anonymous", anonymous: true };
+  const context = buildFlagContext(user);
 
   return (
     <LDProvider
