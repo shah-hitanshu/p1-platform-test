@@ -82,6 +82,7 @@ HYPERDRIVE_ID=$(echo "$TF_OUTPUT" | jq -r '.hyperdrive_id.value // empty')
 OAUTH_KV_ID=$(echo "$TF_OUTPUT" | jq -r '.oauth_kv_id.value // empty')
 HYPERDRIVE_NOCACHE_ID=$(echo "$TF_OUTPUT" | jq -r '.hyperdrive_nocache_id.value // empty')
 MCP_OAUTH_KV_ID=$(echo "$TF_OUTPUT" | jq -r '.mcp_oauth_kv_id.value // empty')
+LD_KV_ID=$(echo "$TF_OUTPUT" | jq -r '.ld_flags_kv_id.value // empty')
 
 # Validate we got values
 MISSING=()
@@ -104,6 +105,7 @@ echo -e "  HYPERDRIVE_ID:          ${GREEN}${HYPERDRIVE_ID}${NC}"
 [[ -n "$OAUTH_KV_ID" ]]           && echo -e "  OAUTH_KV_ID:            ${GREEN}${OAUTH_KV_ID}${NC}"
 [[ -n "$HYPERDRIVE_NOCACHE_ID" ]] && echo -e "  HYPERDRIVE_NOCACHE_ID:  ${GREEN}${HYPERDRIVE_NOCACHE_ID}${NC}"
 [[ -n "$MCP_OAUTH_KV_ID" ]]       && echo -e "  MCP_OAUTH_KV_ID:        ${GREEN}${MCP_OAUTH_KV_ID}${NC}"
+[[ -n "$LD_KV_ID" ]]              && echo -e "  LD_KV_ID:               ${GREEN}${LD_KV_ID}${NC}"
 
 # Patch wrangler.jsonc using sed. Each replacement targets a REPLACE_WITH_<ENV>_*
 # placeholder; envs that already hold literal IDs (no placeholder present) are
@@ -120,6 +122,10 @@ WORKER_SED_ARGS=(
   && WORKER_SED_ARGS+=( -e "s/REPLACE_WITH_${PLACEHOLDER_PREFIX}_OAUTH_KV_ID/${OAUTH_KV_ID}/g" )
 [[ -n "$HYPERDRIVE_NOCACHE_ID" ]] \
   && WORKER_SED_ARGS+=( -e "s/REPLACE_WITH_${PLACEHOLDER_PREFIX}_HYPERDRIVE_NOCACHE_ID/${HYPERDRIVE_NOCACHE_ID}/g" )
+# LD_CLIENT_SIDE_ID has no Terraform output — it comes from the LaunchDarkly dashboard
+# and is filled in by hand, so its placeholder deliberately survives a sync.
+[[ -n "$LD_KV_ID" ]] \
+  && WORKER_SED_ARGS+=( -e "s/REPLACE_WITH_${PLACEHOLDER_PREFIX}_LD_KV_ID/${LD_KV_ID}/g" )
 
 sed -i.bak "${WORKER_SED_ARGS[@]}" "$WRANGLER_FILE"
 rm -f "${WRANGLER_FILE}.bak"

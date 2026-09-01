@@ -209,6 +209,11 @@ output "session_kv_id" {
   value       = module.cloudflare.session_kv_id
 }
 
+output "ld_flags_kv_id" {
+  description = "LD_KV namespace ID for wrangler.jsonc (lane-wide, shared by every worker)"
+  value       = module.cloudflare.ld_flags_kv_id
+}
+
 output "queue_id" {
   description = "Sync queue ID"
   value       = module.cloudflare.queue_id

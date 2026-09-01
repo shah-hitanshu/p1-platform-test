@@ -123,6 +123,19 @@ resource "cloudflare_workers_kv_namespace" "oauth_kv" {
   title      = "css-auth-oauth-kv-${var.environment}"
 }
 
+# Flag payloads, written by the LaunchDarkly -> Cloudflare integration rather than by
+# our workers. Deliberately its own namespace: the integration owns the whole key
+# space of whatever it syncs into, so it cannot share with CONFIG_KV or SESSION_KV.
+#
+# One per lane, not one per worker, and named accordingly: the integration is
+# configured per LaunchDarkly environment and writes a single payload key derived
+# from that environment's client-side id, so every worker in the lane reads the same
+# key. A second worker binds this same id rather than provisioning its own.
+resource "cloudflare_workers_kv_namespace" "ld_flags_kv" {
+  account_id = var.cloudflare_account_id
+  title      = "p1-ld-flags-kv-${var.environment}"
+}
+
 # -----------------------------------------------------------------------------
 # Queue (sync decoupling between DOs and PostgreSQL)
 # -----------------------------------------------------------------------------
@@ -230,6 +243,11 @@ output "session_kv_id" {
 output "oauth_kv_id" {
   description = "OAUTH_KV namespace ID (CSS OAuth token storage)"
   value       = cloudflare_workers_kv_namespace.oauth_kv.id
+}
+
+output "ld_flags_kv_id" {
+  description = "LD_KV namespace ID (LaunchDarkly flag payloads; lane-wide, shared by every worker)"
+  value       = cloudflare_workers_kv_namespace.ld_flags_kv.id
 }
 
 output "queue_id" {
