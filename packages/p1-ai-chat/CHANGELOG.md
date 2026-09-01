@@ -1,5 +1,39 @@
 # @pantheon-systems/p1-ai-chat
 
+## 0.6.0
+
+### Minor Changes
+
+- 1a2c908: **[Feature]** The chat panel now takes files: drop, paste or pick a brief or an image and it goes to the agent with your next message.
+
+  ### What Changed
+  - Attach a file by dropping it anywhere on the panel, pasting it, or picking it with the button beside Send. Up to four files per turn.
+  - A document's text goes to the agent as what you are asking for. `.md`, `.txt`, `.csv` and anything `text/*` are read directly, and an `.html` page is read as the text it says rather than as its markup.
+  - An image goes to the agent for it to look at, so you can ask what is wrong with a layout or what a design does. PNG, JPEG, GIF, WebP or AVIF. Nothing is uploaded and no file is kept, so an attached image is not on your site and cannot be placed on a page — add it to the media library for that.
+  - Attached files show above the message box as cards: an image as itself, a document by name and kind. Open one to see exactly what will go to the agent, or take it off before you send.
+  - Anything else is refused on the composer with a sentence saying why, and the turn will not send until you deal with it, so a message never quietly goes without the file you attached. PDF and Word ask you to export to `.md` or paste the text in.
+  - The transcript shows a turn's files as cards rather than pasting a brief in as though you had typed it. Only the names are kept, so reopening the conversation later shows what each turn carried without being able to open it again.
+  - Attaching files needs an up-to-date chat agent behind your `agentUrl`. Against an older one the cards still appear, and the reply simply will not have been given them.
+  - Where the agent runs a model that cannot be shown images, it tells you it has not seen the image and asks you to describe it, rather than describing something it was never given.
+
+### Patch Changes
+
+- 61cb80e: **[Fix]** Public package builds no longer ship internal Jira ticket references, expanded internal service names, or backend implementation details (storage engine, compute primitive, real hostnames) in comments, JSDoc, `package.json` descriptions, or READMEs.
+
+  ### What Changed
+  - `css-client`, `p1-next-sdk`, `puck-css`, `p1-ai-chat`, and `p1-content-validator` now build in two `tsc` passes — one declarations-only, one comment-stripped `.js` — so implementation comments no longer survive into the published `.js`. JSDoc on exported symbols (which intentionally survives, for consumers' IDE tooltips) was hand-edited to drop internal ticket refs and backend rationale.
+  - `p1-media`'s esbuild sourcemaps no longer inline `sourcesContent`; they previously shipped the entire original TypeScript source, comments included, regardless of any `.js`/`.d.ts` cleanup.
+  - `puck-css`'s `files` allowlist no longer includes the bare `src/pds/theme` directory, which was shipping a raw test file and a 200KB generated `.ts` source file alongside the intended theme CSS (already covered by the existing `src/**/*.css` entry).
+  - `create-p1-starter-kit`'s scaffolded template (copied from `apps/p1-starter`) had the same class of ticket-ref comments cleaned, including its example CI workflow.
+  - Package `description` fields and `README.md` files (which npm always publishes regardless of the `files` field) no longer name the internal "CCR"/"Collaborative Content Repository" service.
+  - `puck-css`'s `[ccr-store]` log tag and an internal Puck remount key are renamed (`[p1-store]` / `p1-<role>`); neither is persisted or part of any public contract.
+  - A new CI guardrail (`.github/scripts/check-npm-leaks.sh`, wired into PR CI's hard gates and into `publish.yml`) packs each public package the way `npm publish` would and fails the build if any of these terms reappear. It fails closed — an unreadable tarball or a glob-free `files` entry whose build output is missing is an error, never a pass — and carries a `--self-test` mode, run first in both workflows, that verifies detection against fixtures.
+
+  No public API or runtime behavior change.
+
+  ### Deliberately out of scope
+  - The bare `CCR` service name is deliberately still present in published output — most visibly `puck-css`'s exported `PRODUCTION_BASE_URL` (`https://ccr.p1.pantheon.io`, also referenced in `apps/p1-starter/.env.example`), the live default hostname every unconfigured consumer's SDK talks to, and ~200 local `ccr` variable bindings from `useP1Puck()`. Naming a service is not the leak this fix is about: the guardrail bans the architecture behind it — the expanded "Collaborative Content Repository"/"Collaborative State System" forms, storage engine, CRDT, compute primitive, ticket refs, and `.workers.dev` hostnames. Renaming those bindings is optional cleanup, not a release blocker.
+
 ## 0.5.1
 
 ### Patch Changes
