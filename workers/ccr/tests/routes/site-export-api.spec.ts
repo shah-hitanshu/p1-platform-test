@@ -231,7 +231,7 @@ describe('handleSiteExportRoute', () => {
     expect(typeof (body as Record<string, unknown>).bundleSignature).toBe('string');
   });
 
-  it('excludes _registry/ documents from version selection', async () => {
+  it('excludes _registry/ documents from version selection but keeps datasources and queries', async () => {
     mockGetSite.mockResolvedValueOnce(MOCK_SITE as never);
     mockGetMainBranch.mockResolvedValueOnce(MOCK_MAIN_BRANCH as never);
     mockAssertPermission.mockResolvedValueOnce(undefined);
@@ -239,8 +239,12 @@ describe('handleSiteExportRoute', () => {
     mockListDocuments.mockResolvedValueOnce([
       { id: 'doc-reg', siteId: 'site-1', path: '_registry/schema', createdAt: '' },
       { id: 'doc-2', siteId: 'site-1', path: 'home', createdAt: '' },
+      // Outside _registry/ (migration 068), so they export like user content —
+      // an imported site keeps its List blocks working.
+      { id: 'doc-ds', siteId: 'site-1', path: '_datasources/blog', createdAt: '' },
+      { id: 'doc-q', siteId: 'site-1', path: '_queries/blog', createdAt: '' },
     ] as never);
-    mockSelectVersions.mockResolvedValueOnce([{
+    mockSelectVersions.mockResolvedValue([{
       id: 'v1',
       versionNumber: 1,
       isPublished: false,
@@ -249,7 +253,7 @@ describe('handleSiteExportRoute', () => {
       createdById: 'u1',
       createdByType: 'user',
     }]);
-    mockResolveRefsBatch.mockResolvedValueOnce(new Map([['u1', { type: 'user', email: 'admin@example.com' }]]));
+    mockResolveRefsBatch.mockResolvedValue(new Map([['u1', { type: 'user', email: 'admin@example.com' }]]));
     mockSignR2.mockResolvedValueOnce({ url: 'https://r2.example.com/signed', expiresAt: '2026-06-01T00:00:00Z' });
 
     await handleSiteExportRoute(
@@ -258,9 +262,12 @@ describe('handleSiteExportRoute', () => {
       createEnv(),
     );
 
-    // _registry/ doc should NOT trigger selectVersionsForDocument; only 'home' should
-    expect(mockSelectVersions).toHaveBeenCalledTimes(1);
+    // _registry/ doc should NOT trigger selectVersionsForDocument; everything else should
+    expect(mockSelectVersions).toHaveBeenCalledTimes(3);
     expect(mockSelectVersions).toHaveBeenCalledWith('doc-2', 'main-branch', true);
+    expect(mockSelectVersions).toHaveBeenCalledWith('doc-ds', 'main-branch', true);
+    expect(mockSelectVersions).toHaveBeenCalledWith('doc-q', 'main-branch', true);
+    expect(mockSelectVersions).not.toHaveBeenCalledWith('doc-reg', 'main-branch', true);
   });
 
   // =========================================================================

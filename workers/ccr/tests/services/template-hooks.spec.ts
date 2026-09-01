@@ -10,10 +10,12 @@ import { DuplicateDocumentPathError } from '../../src/services/errors';
 
 vi.mock('../../src/services/datasource-service', () => ({
   createLocalDatasource: vi.fn(),
+  datasourceExists: vi.fn(),
 }));
 
 vi.mock('../../src/services/query-service', () => ({
   createQuery: vi.fn(),
+  queryExists: vi.fn(),
 }));
 
 describe('template-hooks', () => {
@@ -31,7 +33,7 @@ describe('template-hooks', () => {
         document: {
           id: 'doc-ds-1',
           siteId: 'site-1',
-          path: '_registry/datasources/blog',
+          path: '_datasources/blog',
           createdAt: '2026-01-01T00:00:00.000Z',
         },
         version: {
@@ -51,7 +53,7 @@ describe('template-hooks', () => {
         document: {
           id: 'doc-q-1',
           siteId: 'site-1',
-          path: '_registry/queries/blog',
+          path: '_queries/blog',
           createdAt: '2026-01-01T00:00:00.000Z',
         },
         version: {
@@ -107,13 +109,13 @@ describe('template-hooks', () => {
       const queryService = await import('../../src/services/query-service');
 
       vi.mocked(datasourceService.createLocalDatasource).mockRejectedValueOnce(
-        new DuplicateDocumentPathError('_registry/datasources/blog', 'site-1'),
+        new DuplicateDocumentPathError('_datasources/blog', 'site-1'),
       );
       vi.mocked(queryService.createQuery).mockResolvedValueOnce({
         document: {
           id: 'doc-q-1',
           siteId: 'site-1',
-          path: '_registry/queries/blog',
+          path: '_queries/blog',
           createdAt: '2026-01-01T00:00:00.000Z',
         },
         version: {
@@ -156,10 +158,10 @@ describe('template-hooks', () => {
       const queryService = await import('../../src/services/query-service');
 
       vi.mocked(datasourceService.createLocalDatasource).mockRejectedValueOnce(
-        new DuplicateDocumentPathError('_registry/datasources/blog', 'site-1'),
+        new DuplicateDocumentPathError('_datasources/blog', 'site-1'),
       );
       vi.mocked(queryService.createQuery).mockRejectedValueOnce(
-        new DuplicateDocumentPathError('_registry/queries/blog', 'site-1'),
+        new DuplicateDocumentPathError('_queries/blog', 'site-1'),
       );
 
       const result = await onTemplateCreated({
@@ -175,6 +177,37 @@ describe('template-hooks', () => {
       expect(result.errors).toHaveLength(0);
     });
 
+    it('skips creation when the datasource and query are already visible from the branch', async () => {
+      const { onTemplateCreated } = await import('../../src/services/template-hooks');
+      const datasourceService = await import('../../src/services/datasource-service');
+      const queryService = await import('../../src/services/query-service');
+
+      vi.mocked(datasourceService.datasourceExists).mockResolvedValueOnce(true);
+      vi.mocked(queryService.queryExists).mockResolvedValueOnce(true);
+
+      const result = await onTemplateCreated({
+        siteId: 'site-1',
+        branchId: 'branch-1',
+        templateName: 'blog',
+        templateId: 'tpl-uuid-1',
+        createdById: 'user-1',
+        mainBranchId: 'main-1',
+      });
+
+      expect(result.datasourceCreated).toBe(true);
+      expect(result.queryCreated).toBe(true);
+      expect(result.errors).toHaveLength(0);
+
+      expect(datasourceService.datasourceExists).toHaveBeenCalledWith(
+        'site-1', 'branch-1', 'blog', 'main-1',
+      );
+      expect(queryService.queryExists).toHaveBeenCalledWith(
+        'site-1', 'branch-1', 'blog', 'main-1',
+      );
+      expect(datasourceService.createLocalDatasource).not.toHaveBeenCalled();
+      expect(queryService.createQuery).not.toHaveBeenCalled();
+    });
+
     it('should capture non-duplicate errors without throwing', async () => {
       const { onTemplateCreated } = await import('../../src/services/template-hooks');
       const datasourceService = await import('../../src/services/datasource-service');
@@ -186,7 +219,7 @@ describe('template-hooks', () => {
       vi.mocked(queryService.createQuery).mockResolvedValueOnce({
         document: {
           id: 'doc-q-1', siteId: 'site-1',
-          path: '_registry/queries/blog', createdAt: '2026-01-01T00:00:00.000Z',
+          path: '_queries/blog', createdAt: '2026-01-01T00:00:00.000Z',
         },
         version: {
           id: 'ver-q-1', documentId: 'doc-q-1', branchId: 'branch-1',

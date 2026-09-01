@@ -5917,3 +5917,58 @@ and presence paths unchanged. Two client-side fixes ship alongside it:
   removed their upstream photo would have kept showing the old one forever. Providers that carry
   no avatar at all — the Auth0 access-token path — still fall back to the stored value and leave
   it untouched.
+
+## Move datasources and queries out of `_registry/` (PCC-3804, 2026-08-31)
+
+### Problem
+
+A List block bound to a content-type template rendered nothing on the published page
+whenever the template had been created on a workstream branch and merged. `onTemplateCreated`
+writes the template plus a derived datasource and query on the request branch, but merge and
+checkpoint exclude everything under `_registry/` as system-managed except
+`_registry/templates/` — so the template reached main while `_registry/datasources/<name>`
+and `_registry/queries/<name>` never did. The published site reads main, and the missing
+query fails silently (`createCssQueryFetchers` → `[]`, `getResults` → `{}`).
+
+Third instance of the same mechanism (PCC-3430/3434 registry checkpoint desync, PCC-3616
+redirects). PCC-3284 designed datasources/queries as branch-versioned user content; their
+no-merge behaviour was inherited from the path prefix, never designed.
+
+### What changed
+
+- **Storage prefixes**: `_registry/datasources/` → `_datasources/`, `_registry/queries/` →
+  `_queries/`, following the redirects precedent (migration 053). Constants live in
+  `document-types.ts` (`DATASOURCES_PATH_PREFIX`, `QUERIES_PATH_PREFIX`) because the two
+  services reference each other's prefix. Outside `_registry/`, nothing excludes these
+  documents — merge, checkpoint, revert and site export handle them like any user content,
+  with zero changes to merge-execution-service or checkpoint-service.
+- **Migration 068** rewrites `app.documents.path` (and sweeps `app.branch_document_paths`,
+  which postdates 053) for both prefixes. Snapshots are untouched — they cross-reference by
+  bare name, never by document path. Checkpoints need no rewrite: capture never held these
+  docs, and revert resolves paths via a live join.
+- **Auto-generation now checks visibility first**: `onTemplateCreated` accepts `mainBranchId`
+  and skips creating a datasource/query that is already visible from the branch (locally or
+  inherited from main) via new `datasourceExists`/`queryExists`. Without this, a branch
+  creating a template name main already has would write a redundant local version 1 of the
+  shared document row and guarantee a pointless both-modified merge conflict on identical
+  auto-generated content. The `DuplicateDocumentPathError` catch remains as a race backstop.
+
+### Key decisions
+
+- **Move, not another exception.** The `_registry/templates/` exception is duplicated across
+  merge (1 site) and checkpoint (4 SQL/JS sites) and each addition has to hit all of them —
+  PCC-3434 exists because one was missed. Relocation deletes the problem instead of growing
+  the list, and no client code references the literal paths (all consumers use the REST
+  query/datasource endpoints keyed by name; the editor hides all `_`-prefixed paths).
+- **Datasources/queries now appear in merge previews and site exports** — deliberate. They
+  merged invisibly-not-at-all before; export previously dropped them, so imported sites lost
+  their List-block wiring.
+- Remediation for already-broken sites: `POST /api/admin/backfill-datasources` (idempotent,
+  main-only) after deploy; it now also passes `mainBranchId` so re-runs skip cleanly.
+
+### Follow-ups (not in this change)
+
+Registry walk-back for `_registry/templates/` (~50 refs), a write-guard making `_registry/`
+sync-only once templates leave, `_registry/sections/` cleanup (no writer exists anywhere),
+template-delete orphan cleanup (datasource/query survive their template), and server-side
+identical-snapshot conflict auto-resolution (the merge UI already skips identical docs).

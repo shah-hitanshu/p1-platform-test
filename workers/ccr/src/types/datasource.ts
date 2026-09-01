@@ -3,7 +3,7 @@
  *
  * A datasource defines WHERE data comes from — a local content type
  * (template reference) or eventually a remote API endpoint.
- * Stored at `_registry/datasources/{name}`.
+ * Stored at `_datasources/{name}`.
  */
 
 export interface LocalDatasourceSnapshot {

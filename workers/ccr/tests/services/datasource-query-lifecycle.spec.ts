@@ -28,6 +28,7 @@ vi.mock('../../src/services/branch-document-service', () => ({
 vi.mock('../../src/services/document-version-service', () => ({
   getLatestDocumentVersion: vi.fn(),
   getLatestVersionsForDocuments: vi.fn(),
+  getLatestTemplateVersionWithFallback: vi.fn(),
 }));
 
 describe('datasource/query lifecycle', () => {
@@ -38,6 +39,10 @@ describe('datasource/query lifecycle', () => {
     // executeQuery spreads the result.
     const versionService = await import('../../src/services/document-version-service');
     vi.mocked(versionService.getLatestVersionsForDocuments).mockResolvedValue([]);
+    // The real function resolves null when no document exists at the path;
+    // auto-generation's existence pre-check depends on that.
+    const documentService = await import('../../src/services/document-service');
+    vi.mocked(documentService.getDocumentByPath).mockResolvedValue(null);
   });
 
   describe('template creation auto-generation', () => {
@@ -80,13 +85,13 @@ describe('datasource/query lifecycle', () => {
       expect(branchDocService.createDocumentOnBranch).toHaveBeenCalledTimes(2);
 
       const firstCall = vi.mocked(branchDocService.createDocumentOnBranch).mock.calls[0][0];
-      expect(firstCall.path).toBe('_registry/datasources/blog');
+      expect(firstCall.path).toBe('_datasources/blog');
       const dsSnapshot = firstCall.snapshot as unknown as LocalDatasourceSnapshot;
       expect(dsSnapshot.type).toBe('local');
       expect(dsSnapshot.templateId).toBe('tpl-uuid-1');
 
       const secondCall = vi.mocked(branchDocService.createDocumentOnBranch).mock.calls[1][0];
-      expect(secondCall.path).toBe('_registry/queries/blog');
+      expect(secondCall.path).toBe('_queries/blog');
       const qSnapshot = secondCall.snapshot as unknown as QuerySnapshot;
       expect(qSnapshot.datasource).toBe('blog');
       expect(qSnapshot.defaultLimit).toBe(20);
@@ -126,13 +131,13 @@ describe('datasource/query lifecycle', () => {
         .mockResolvedValueOnce({
           id: 'doc-query',
           siteId: 'site-1',
-          path: '_registry/queries/recent-posts',
+          path: '_queries/recent-posts',
           createdAt: '2026-01-01T00:00:00.000Z',
         })
         .mockResolvedValueOnce({
           id: 'doc-ds',
           siteId: 'site-1',
-          path: '_registry/datasources/blog',
+          path: '_datasources/blog',
           createdAt: '2026-01-01T00:00:00.000Z',
         });
 
@@ -239,13 +244,13 @@ describe('datasource/query lifecycle', () => {
         .mockResolvedValueOnce({
           id: 'doc-q',
           siteId: 'site-1',
-          path: '_registry/queries/limited',
+          path: '_queries/limited',
           createdAt: '2026-01-01T00:00:00.000Z',
         })
         .mockResolvedValueOnce({
           id: 'doc-ds',
           siteId: 'site-1',
-          path: '_registry/datasources/blog',
+          path: '_datasources/blog',
           createdAt: '2026-01-01T00:00:00.000Z',
         });
 
@@ -322,13 +327,13 @@ describe('datasource/query lifecycle', () => {
         .mockResolvedValueOnce({
           id: 'dq',
           siteId: 's1',
-          path: '_registry/queries/paginated',
+          path: '_queries/paginated',
           createdAt: '2026-01-01T00:00:00.000Z',
         })
         .mockResolvedValueOnce({
           id: 'dds',
           siteId: 's1',
-          path: '_registry/datasources/events',
+          path: '_datasources/events',
           createdAt: '2026-01-01T00:00:00.000Z',
         });
 
@@ -415,13 +420,13 @@ describe('datasource/query lifecycle', () => {
         .mockResolvedValueOnce({
           id: 'q1',
           siteId: 's1',
-          path: '_registry/queries/recent-posts',
+          path: '_queries/recent-posts',
           createdAt: '2026-01-01T00:00:00.000Z',
         })
         .mockResolvedValueOnce({
           id: 'q2',
           siteId: 's1',
-          path: '_registry/queries/all-posts',
+          path: '_queries/all-posts',
           createdAt: '2026-01-01T00:00:00.000Z',
         });
 
@@ -472,7 +477,7 @@ describe('datasource/query lifecycle', () => {
         document: {
           id: 'd1',
           siteId: 's1',
-          path: '_registry/datasources/blog',
+          path: '_datasources/blog',
           createdAt: '2026-01-01T00:00:00.000Z',
         },
         version: {
@@ -490,7 +495,7 @@ describe('datasource/query lifecycle', () => {
         document: {
           id: 'd2',
           siteId: 's1',
-          path: '_registry/queries/blog',
+          path: '_queries/blog',
           createdAt: '2026-01-01T00:00:00.000Z',
         },
         version: {
@@ -516,8 +521,10 @@ describe('datasource/query lifecycle', () => {
 
       vi.resetAllMocks();
 
+      const documentService = await import('../../src/services/document-service');
+      vi.mocked(documentService.getDocumentByPath).mockResolvedValue(null);
       vi.mocked(branchDocService.createDocumentOnBranch).mockRejectedValueOnce(
-        new DuplicateDocumentPathError('_registry/datasources/blog', 's1'),
+        new DuplicateDocumentPathError('_datasources/blog', 's1'),
       );
 
       const result = await onTemplateCreated({

@@ -329,6 +329,7 @@ async function handleCreateTemplate(
   request: Request,
   siteId: string,
   branchId: string,
+  mainBranchId: string,
   principal: AuthenticatedPrincipal,
 ): Promise<Response> {
   const body = await parseJsonBody<CreateTemplateBody>(request);
@@ -396,6 +397,7 @@ async function handleCreateTemplate(
     templateName: body.name,
     templateId: result.document.id,
     createdById: principal.dbUserId ?? principal.id,
+    mainBranchId,
   });
   if (hookResult.errors.length > 0) {
     console.error('onTemplateCreated partial failure:', hookResult.errors);
@@ -852,7 +854,7 @@ export async function handleTemplateRequest(
       case 'GET':
         return await handleListTemplates(branchId, mainBranchId);
       case 'POST':
-        return await handleCreateTemplate(request, context.siteId, branchId, context.principal);
+        return await handleCreateTemplate(request, context.siteId, branchId, mainBranchId, context.principal);
       default:
         return errorResponse('Method not allowed', 405);
     }

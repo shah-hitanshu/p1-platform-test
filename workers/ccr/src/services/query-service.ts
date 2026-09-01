@@ -1,23 +1,25 @@
 /**
  * Query Service
  *
- * CRUD and execution for query registry documents.
+ * CRUD and execution for query documents.
  * Queries define WHAT to retrieve from a datasource —
- * filters, sort, pagination. Stored at `_registry/queries/{name}`.
+ * filters, sort, pagination. Stored at `_queries/{name}` — outside
+ * `_registry/`, so they branch, merge and checkpoint like the rest
+ * of user content.
  * The View system references queries, not datasources directly.
  */
 
 import type { QuerySnapshot, QuerySortField, ExecuteQueryResult, QueryResultItem } from '../types/query';
 import { parseQuerySnapshot } from '../types/query';
 import type { CreateDocumentOnBranchResult } from './document-types';
+import { QUERIES_PATH_PREFIX } from './document-types';
 import { getDocumentByPath } from './document-service';
 import { listDocumentsOnBranch, countDocumentsOnBranch, createDocumentOnBranch, deleteDocumentOnBranch } from './branch-document-service';
-import { getLatestDocumentVersion, getLatestDocumentVersionWithFallback, getLatestVersionsForDocuments } from './document-version-service';
+import { getLatestDocumentVersion, getLatestDocumentVersionWithFallback, getLatestTemplateVersionWithFallback, getLatestVersionsForDocuments } from './document-version-service';
 import { getDatasource } from './datasource-service';
 import { PAGINATION } from '../routes/validation';
 import { QueryNotFoundError, DatasourceNotFoundError } from './errors';
 
-const QUERY_PATH_PREFIX = '_registry/queries/';
 const NAME_PATTERN = /^[a-zA-Z0-9_-]+$/;
 
 export interface CreateQueryParams {
@@ -52,7 +54,7 @@ export interface ExecuteQueryParams {
 }
 
 function queryPath(name: string): string {
-  return `${QUERY_PATH_PREFIX}${name}`;
+  return `${QUERIES_PATH_PREFIX}${name}`;
 }
 
 export async function getQuery(
@@ -88,7 +90,7 @@ export async function listQueries(
   mainBranchId?: string,
 ): Promise<QuerySnapshot[]> {
   const docs = await listDocumentsOnBranch(branchId, {
-    pathPrefix: QUERY_PATH_PREFIX,
+    pathPrefix: QUERIES_PATH_PREFIX,
     mainBranchId,
   });
   if (docs.length === 0) return [];
@@ -113,6 +115,31 @@ export async function listQueries(
     .map((doc) => versionMap.get(doc.id))
     .filter((v): v is NonNullable<typeof v> => v !== undefined)
     .map((v) => parseQuerySnapshot(v.snapshot));
+}
+
+/**
+ * True when a live (non-tombstoned) query version is visible from this
+ * branch — locally or, when `mainBranchId` is given, inherited from main.
+ * Mirrors `datasourceExists`; see that function for why auto-generation
+ * checks this first.
+ */
+export async function queryExists(
+  siteId: string,
+  branchId: string,
+  name: string,
+  mainBranchId?: string,
+): Promise<boolean> {
+  const doc = await getDocumentByPath(siteId, queryPath(name));
+  if (doc === null) {
+    return false;
+  }
+  // Generic tombstone-aware branch→main fallback, despite the "Template" name.
+  const live = await getLatestTemplateVersionWithFallback(
+    doc.id,
+    branchId,
+    mainBranchId ?? branchId,
+  );
+  return live !== null;
 }
 
 export async function createQuery(

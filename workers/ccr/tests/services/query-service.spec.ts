@@ -2,7 +2,7 @@
  * Query Service Tests
  *
  * Tests for CRUD operations and execution of query registry documents.
- * Queries are stored at `_registry/queries/{name}` and define
+ * Queries are stored at `_queries/{name}` and define
  * WHAT to retrieve from a datasource (filters, sort, pagination).
  */
 
@@ -66,7 +66,7 @@ describe('query-service', () => {
       vi.mocked(docService.getDocumentByPath).mockResolvedValueOnce({
         id: 'doc-q-1',
         siteId: 'site-1',
-        path: '_registry/queries/recent-posts',
+        path: '_queries/recent-posts',
         createdAt: '2026-01-01T00:00:00.000Z',
       });
 
@@ -91,7 +91,7 @@ describe('query-service', () => {
 
       expect(docService.getDocumentByPath).toHaveBeenCalledWith(
         'site-1',
-        '_registry/queries/recent-posts',
+        '_queries/recent-posts',
       );
     });
 
@@ -115,7 +115,7 @@ describe('query-service', () => {
       vi.mocked(docService.getDocumentByPath).mockResolvedValueOnce({
         id: 'doc-q-1',
         siteId: 'site-1',
-        path: '_registry/queries/recent-posts',
+        path: '_queries/recent-posts',
         createdAt: '2026-01-01T00:00:00.000Z',
       });
 
@@ -157,7 +157,7 @@ describe('query-service', () => {
       vi.mocked(docService.getDocumentByPath).mockResolvedValueOnce({
         id: 'doc-q-1',
         siteId: 'site-1',
-        path: '_registry/queries/recent-posts',
+        path: '_queries/recent-posts',
         createdAt: '2026-01-01T00:00:00.000Z',
       });
 
@@ -190,7 +190,7 @@ describe('query-service', () => {
       vi.mocked(docService.getDocumentByPath).mockResolvedValueOnce({
         id: 'doc-q-1',
         siteId: 'site-1',
-        path: '_registry/queries/recent-posts',
+        path: '_queries/recent-posts',
         createdAt: '2026-01-01T00:00:00.000Z',
       });
 
@@ -212,7 +212,7 @@ describe('query-service', () => {
         {
           id: 'doc-q-1',
           siteId: 'site-1',
-          path: '_registry/queries/recent-posts',
+          path: '_queries/recent-posts',
           createdAt: '2026-01-01T00:00:00.000Z',
           inherited: false,
           isPublished: false,
@@ -220,7 +220,7 @@ describe('query-service', () => {
         {
           id: 'doc-q-2',
           siteId: 'site-1',
-          path: '_registry/queries/featured-blogs',
+          path: '_queries/featured-blogs',
           createdAt: '2026-01-02T00:00:00.000Z',
           inherited: false,
           isPublished: false,
@@ -260,7 +260,7 @@ describe('query-service', () => {
 
       expect(branchDocService.listDocumentsOnBranch).toHaveBeenCalledWith(
         'branch-1',
-        expect.objectContaining({ pathPrefix: '_registry/queries/' }),
+        expect.objectContaining({ pathPrefix: '_queries/' }),
       );
     });
 
@@ -277,7 +277,7 @@ describe('query-service', () => {
       expect(branchDocService.listDocumentsOnBranch).toHaveBeenCalledWith(
         'feature-branch-1',
         expect.objectContaining({
-          pathPrefix: '_registry/queries/',
+          pathPrefix: '_queries/',
           mainBranchId: 'main-branch-1',
         }),
       );
@@ -293,7 +293,7 @@ describe('query-service', () => {
         document: {
           id: 'doc-q-new',
           siteId: 'site-1',
-          path: '_registry/queries/recent-posts',
+          path: '_queries/recent-posts',
           createdAt: '2026-01-01T00:00:00.000Z',
         },
         version: {
@@ -318,11 +318,11 @@ describe('query-service', () => {
         createdById: 'system',
       });
 
-      expect(result.document.path).toBe('_registry/queries/recent-posts');
+      expect(result.document.path).toBe('_queries/recent-posts');
 
       const createCall = vi.mocked(branchDocService.createDocumentOnBranch).mock.calls[0];
       const params = createCall[0];
-      expect(params.path).toBe('_registry/queries/recent-posts');
+      expect(params.path).toBe('_queries/recent-posts');
 
       const snapshot = params.snapshot as QuerySnapshot;
       expect(snapshot.name).toBe('recent-posts');
@@ -342,7 +342,7 @@ describe('query-service', () => {
         document: {
           id: 'doc-q-new',
           siteId: 'site-1',
-          path: '_registry/queries/recent-posts',
+          path: '_queries/recent-posts',
           createdAt: '2026-01-01T00:00:00.000Z',
         },
         version: {
@@ -411,7 +411,7 @@ describe('query-service', () => {
         document: {
           id: 'doc-q-new',
           siteId: 'site-1',
-          path: '_registry/queries/recent-posts_v2',
+          path: '_queries/recent-posts_v2',
           createdAt: '2026-01-01T00:00:00.000Z',
         },
         version: {
@@ -436,7 +436,7 @@ describe('query-service', () => {
         createdById: 'user-1',
       });
 
-      expect(result.document.path).toBe('_registry/queries/recent-posts_v2');
+      expect(result.document.path).toBe('_queries/recent-posts_v2');
     });
   });
 
@@ -449,7 +449,7 @@ describe('query-service', () => {
       vi.mocked(docService.getDocumentByPath).mockResolvedValueOnce({
         id: 'doc-q-1',
         siteId: 'site-1',
-        path: '_registry/queries/recent-posts',
+        path: '_queries/recent-posts',
         createdAt: '2026-01-01T00:00:00.000Z',
       });
 
@@ -487,7 +487,7 @@ describe('query-service', () => {
       vi.mocked(docService.getDocumentByPath).mockResolvedValueOnce({
         id: 'doc-q-1',
         siteId: 'site-1',
-        path: '_registry/queries/recent-posts',
+        path: '_queries/recent-posts',
         createdAt: '2026-01-01T00:00:00.000Z',
       });
 
@@ -569,7 +569,7 @@ describe('query-service', () => {
       vi.mocked(docService.getDocumentByPath).mockResolvedValueOnce({
         id: 'doc-q-1',
         siteId: 'site-1',
-        path: '_registry/queries/recent-posts',
+        path: '_queries/recent-posts',
         createdAt: '2026-01-01T00:00:00.000Z',
       });
 
@@ -632,7 +632,7 @@ describe('query-service', () => {
       vi.mocked(docService.getDocumentByPath).mockResolvedValueOnce({
         id: 'doc-q-1',
         siteId: 'site-1',
-        path: '_registry/queries/recent-posts',
+        path: '_queries/recent-posts',
         createdAt: '2026-01-01T00:00:00.000Z',
       });
 
@@ -679,7 +679,7 @@ describe('query-service', () => {
       vi.mocked(docService.getDocumentByPath).mockResolvedValueOnce({
         id: 'doc-q-1',
         siteId: 'site-1',
-        path: '_registry/queries/recent-posts',
+        path: '_queries/recent-posts',
         createdAt: '2026-01-01T00:00:00.000Z',
       });
 
@@ -733,7 +733,7 @@ describe('query-service', () => {
 
       vi.mocked(docService.getDocumentByPath).mockResolvedValueOnce({
         id: 'doc-q-1', siteId: 'site-1',
-        path: '_registry/queries/recent-posts', createdAt: '2026-01-01T00:00:00.000Z',
+        path: '_queries/recent-posts', createdAt: '2026-01-01T00:00:00.000Z',
       });
       vi.mocked(versionService.getLatestDocumentVersionWithFallback).mockResolvedValueOnce({
         version: {
@@ -782,7 +782,7 @@ describe('query-service', () => {
 
       vi.mocked(docService.getDocumentByPath).mockResolvedValueOnce({
         id: 'doc-q-1', siteId: 'site-1',
-        path: '_registry/queries/recent-posts', createdAt: '2026-01-01T00:00:00.000Z',
+        path: '_queries/recent-posts', createdAt: '2026-01-01T00:00:00.000Z',
       });
       vi.mocked(versionService.getLatestDocumentVersion).mockResolvedValueOnce({
         id: 'ver-1', documentId: 'doc-q-1', branchId: 'branch-1',
@@ -823,7 +823,7 @@ describe('query-service', () => {
 
       vi.mocked(docService.getDocumentByPath).mockResolvedValueOnce({
         id: 'doc-q-1', siteId: 'site-1',
-        path: '_registry/queries/recent-posts', createdAt: '2026-01-01T00:00:00.000Z',
+        path: '_queries/recent-posts', createdAt: '2026-01-01T00:00:00.000Z',
       });
       vi.mocked(versionService.getLatestDocumentVersion).mockResolvedValueOnce({
         id: 'ver-1', documentId: 'doc-q-1', branchId: 'branch-1',
@@ -871,7 +871,7 @@ describe('query-service', () => {
 
       vi.mocked(docService.getDocumentByPath).mockResolvedValueOnce({
         id: 'doc-q-1', siteId: 'site-1',
-        path: '_registry/queries/recent-posts', createdAt: '2026-01-01T00:00:00.000Z',
+        path: '_queries/recent-posts', createdAt: '2026-01-01T00:00:00.000Z',
       });
       vi.mocked(versionService.getLatestDocumentVersion).mockResolvedValueOnce({
         id: 'ver-1', documentId: 'doc-q-1', branchId: 'branch-1',
@@ -919,7 +919,7 @@ describe('query-service', () => {
 
       vi.mocked(docService.getDocumentByPath).mockResolvedValueOnce({
         id: 'doc-q-1', siteId: 'site-1',
-        path: '_registry/queries/recent-posts', createdAt: '2026-01-01T00:00:00.000Z',
+        path: '_queries/recent-posts', createdAt: '2026-01-01T00:00:00.000Z',
       });
       vi.mocked(versionService.getLatestDocumentVersion).mockResolvedValueOnce({
         id: 'ver-1', documentId: 'doc-q-1', branchId: 'branch-1',
@@ -960,7 +960,7 @@ describe('query-service', () => {
 
       vi.mocked(docService.getDocumentByPath).mockResolvedValueOnce({
         id: 'doc-q-1', siteId: 'site-1',
-        path: '_registry/queries/recent-posts', createdAt: '2026-01-01T00:00:00.000Z',
+        path: '_queries/recent-posts', createdAt: '2026-01-01T00:00:00.000Z',
       });
       vi.mocked(versionService.getLatestDocumentVersion).mockResolvedValueOnce({
         id: 'ver-1', documentId: 'doc-q-1', branchId: 'branch-1',
@@ -1003,7 +1003,7 @@ describe('query-service', () => {
 
       vi.mocked(docService.getDocumentByPath).mockResolvedValueOnce({
         id: 'doc-q-1', siteId: 'site-1',
-        path: '_registry/queries/recent-posts', createdAt: '2026-01-01T00:00:00.000Z',
+        path: '_queries/recent-posts', createdAt: '2026-01-01T00:00:00.000Z',
       });
       vi.mocked(versionService.getLatestDocumentVersion).mockResolvedValueOnce({
         id: 'ver-1', documentId: 'doc-q-1', branchId: 'branch-1',
@@ -1088,7 +1088,7 @@ describe('query-service', () => {
       const querySnapshot = makeQuerySnapshot(queryOverrides);
       vi.mocked(docService.getDocumentByPath).mockResolvedValueOnce({
         id: 'doc-q-1', siteId: 'site-1',
-        path: '_registry/queries/recent-posts', createdAt: '2026-01-01T00:00:00.000Z',
+        path: '_queries/recent-posts', createdAt: '2026-01-01T00:00:00.000Z',
       });
       vi.mocked(versionService.getLatestDocumentVersion).mockResolvedValueOnce({
         id: 'ver-1', documentId: 'doc-q-1', branchId: 'branch-1',
@@ -1227,7 +1227,7 @@ describe('query-service', () => {
       const querySnapshot = makeQuerySnapshot({ includeMetadata: true });
       vi.mocked(docService.getDocumentByPath).mockResolvedValueOnce({
         id: 'doc-q-1', siteId: 'site-1',
-        path: '_registry/queries/recent-posts', createdAt: '2026-01-01T00:00:00.000Z',
+        path: '_queries/recent-posts', createdAt: '2026-01-01T00:00:00.000Z',
       });
       vi.mocked(versionService.getLatestDocumentVersionWithFallback).mockResolvedValueOnce({
         version: {

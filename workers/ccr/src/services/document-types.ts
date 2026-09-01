@@ -208,6 +208,20 @@ export function isTombstoneRow(row: { is_tombstone?: boolean }): boolean {
 }
 
 // =============================================================================
+// User-content namespace prefixes
+//
+// Datasources and queries are user-derived content (auto-generated from
+// content-type templates) and live OUTSIDE _registry/ so they branch, merge,
+// checkpoint and revert like the rest of user content — the same reason
+// redirects live at _redirects/ (migration 053/068). Shared here rather than
+// per-service because datasource-service and query-service reference each
+// other's prefix.
+// =============================================================================
+
+export const DATASOURCES_PATH_PREFIX = '_datasources/';
+export const QUERIES_PATH_PREFIX = '_queries/';
+
+// =============================================================================
 // write:registry scope helpers (§0)
 //
 // Shared by src/routes/document-api.ts, src/routes/branch-api.ts, and

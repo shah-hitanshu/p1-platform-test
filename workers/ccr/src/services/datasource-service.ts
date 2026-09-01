@@ -1,22 +1,23 @@
 /**
  * Datasource Service
  *
- * CRUD operations for datasource registry documents.
+ * CRUD operations for datasource documents.
  * Datasources define WHERE data comes from — a local content type
  * (template reference) or eventually a remote API endpoint.
- * Stored at `_registry/datasources/{name}`.
+ * Stored at `_datasources/{name}` — outside `_registry/`, so they
+ * branch, merge and checkpoint like the rest of user content.
  */
 
 import type { DatasourceSnapshot, LocalDatasourceSnapshot } from '../types/datasource';
 import { parseDatasourceSnapshot } from '../types/datasource';
 import { parseQuerySnapshot } from '../types/query';
 import type { CreateDocumentOnBranchResult } from './document-types';
+import { DATASOURCES_PATH_PREFIX, QUERIES_PATH_PREFIX } from './document-types';
 import { getDocumentByPath } from './document-service';
 import { listDocumentsOnBranch, createDocumentOnBranch, deleteDocumentOnBranch } from './branch-document-service';
-import { getLatestDocumentVersion, getLatestDocumentVersionWithFallback, getLatestVersionsForDocuments } from './document-version-service';
+import { getLatestDocumentVersion, getLatestDocumentVersionWithFallback, getLatestTemplateVersionWithFallback, getLatestVersionsForDocuments } from './document-version-service';
 import { DatasourceInUseError } from './errors';
 
-const DATASOURCE_PATH_PREFIX = '_registry/datasources/';
 const NAME_PATTERN = /^[a-zA-Z0-9_-]+$/;
 
 export interface CreateLocalDatasourceParams {
@@ -38,7 +39,7 @@ export interface DeleteDatasourceParams {
 }
 
 function datasourcePath(name: string): string {
-  return `${DATASOURCE_PATH_PREFIX}${name}`;
+  return `${DATASOURCES_PATH_PREFIX}${name}`;
 }
 
 export async function getDatasource(
@@ -74,7 +75,7 @@ export async function listDatasources(
   mainBranchId?: string,
 ): Promise<DatasourceSnapshot[]> {
   const docs = await listDocumentsOnBranch(branchId, {
-    pathPrefix: DATASOURCE_PATH_PREFIX,
+    pathPrefix: DATASOURCES_PATH_PREFIX,
     mainBranchId,
   });
   if (docs.length === 0) return [];
@@ -99,6 +100,32 @@ export async function listDatasources(
     .map((doc) => versionMap.get(doc.id))
     .filter((v): v is NonNullable<typeof v> => v !== undefined)
     .map((v) => parseDatasourceSnapshot(v.snapshot));
+}
+
+/**
+ * True when a live (non-tombstoned) datasource version is visible from this
+ * branch — locally or, when `mainBranchId` is given, inherited from main.
+ * Used to skip auto-generation when a branch would otherwise create a
+ * redundant local copy of a datasource main already holds, which would
+ * surface as a pointless merge conflict later.
+ */
+export async function datasourceExists(
+  siteId: string,
+  branchId: string,
+  name: string,
+  mainBranchId?: string,
+): Promise<boolean> {
+  const doc = await getDocumentByPath(siteId, datasourcePath(name));
+  if (doc === null) {
+    return false;
+  }
+  // Generic tombstone-aware branch→main fallback, despite the "Template" name.
+  const live = await getLatestTemplateVersionWithFallback(
+    doc.id,
+    branchId,
+    mainBranchId ?? branchId,
+  );
+  return live !== null;
 }
 
 export async function createLocalDatasource(
@@ -137,7 +164,7 @@ export async function deleteDatasource(
   }
 
   const queryDocs = await listDocumentsOnBranch(params.branchId, {
-    pathPrefix: '_registry/queries/',
+    pathPrefix: QUERIES_PATH_PREFIX,
   });
 
   if (queryDocs.length > 0) {

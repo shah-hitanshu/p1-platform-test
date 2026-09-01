@@ -91,6 +91,7 @@ export async function handleBackfillDatasources(
         templateName,
         templateId: doc.id,
         createdById: principal.dbUserId ?? principal.id,
+        mainBranchId: mainBranch.id,
       });
       for (const err of hookResult.errors) {
         errors.push({

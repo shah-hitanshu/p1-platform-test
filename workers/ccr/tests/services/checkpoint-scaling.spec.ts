@@ -845,6 +845,32 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
       expect(result.documentsSkipped).toBe(1);
     });
 
+    it('keeps datasource and query documents revertible — they live outside _registry/', async () => {
+      // Regression guard: datasources and queries were once stored under
+      // _registry/, where this filter silently kept them out of merge and
+      // revert (migration 068 moved them). They are user-derived content and
+      // must revert like any page.
+      const { revertToCheckpoint } = await import('../../src/services/checkpoint-service');
+      const db = await import('../../src/db');
+
+      const docs = [
+        createMockVersionWithDocument({ document_id: 'doc-1', document_path: 'pages/home' }),
+        createMockVersionWithDocument({ document_id: 'doc-2', document_path: '_datasources/blog' }),
+        createMockVersionWithDocument({ document_id: 'doc-3', document_path: '_queries/blog' }),
+        createMockVersionWithDocument({ document_id: 'doc-4', document_path: '_registry/index' }),
+      ];
+      mockRevertFlow(db, docs, 1);
+
+      const result = await revertToCheckpoint({
+        checkpointId: 'cp-old',
+        createdById: 'user-uuid-001',
+        createdByType: 'user',
+      });
+
+      expect(result.documentsReverted).toBe(3);
+      expect(result.documentsSkipped).toBe(1);
+    });
+
     it('applies the batch threshold to the filtered count, not the raw row count', async () => {
       const { revertToCheckpoint } = await import('../../src/services/checkpoint-service');
       const db = await import('../../src/db');

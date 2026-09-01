@@ -2,7 +2,7 @@
  * Datasource Service Tests
  *
  * Tests for CRUD operations on datasource registry documents.
- * Datasources are stored at `_registry/datasources/{name}` and define
+ * Datasources are stored at `_datasources/{name}` and define
  * WHERE data comes from (a local content type template reference).
  */
 
@@ -49,7 +49,7 @@ describe('datasource-service', () => {
       vi.mocked(docService.getDocumentByPath).mockResolvedValueOnce({
         id: 'doc-ds-1',
         siteId: 'site-1',
-        path: '_registry/datasources/blog',
+        path: '_datasources/blog',
         createdAt: '2026-01-01T00:00:00.000Z',
       });
 
@@ -74,7 +74,7 @@ describe('datasource-service', () => {
 
       expect(docService.getDocumentByPath).toHaveBeenCalledWith(
         'site-1',
-        '_registry/datasources/blog',
+        '_datasources/blog',
       );
     });
 
@@ -97,7 +97,7 @@ describe('datasource-service', () => {
       vi.mocked(docService.getDocumentByPath).mockResolvedValueOnce({
         id: 'doc-ds-1',
         siteId: 'site-1',
-        path: '_registry/datasources/blog',
+        path: '_datasources/blog',
         createdAt: '2026-01-01T00:00:00.000Z',
       });
 
@@ -126,7 +126,7 @@ describe('datasource-service', () => {
       vi.mocked(docService.getDocumentByPath).mockResolvedValueOnce({
         id: 'doc-ds-1',
         siteId: 'site-1',
-        path: '_registry/datasources/blog',
+        path: '_datasources/blog',
         createdAt: '2026-01-01T00:00:00.000Z',
       });
 
@@ -175,7 +175,7 @@ describe('datasource-service', () => {
       vi.mocked(docService.getDocumentByPath).mockResolvedValueOnce({
         id: 'doc-ds-1',
         siteId: 'site-1',
-        path: '_registry/datasources/blog',
+        path: '_datasources/blog',
         createdAt: '2026-01-01T00:00:00.000Z',
       });
 
@@ -208,7 +208,7 @@ describe('datasource-service', () => {
       vi.mocked(docService.getDocumentByPath).mockResolvedValueOnce({
         id: 'doc-ds-1',
         siteId: 'site-1',
-        path: '_registry/datasources/blog',
+        path: '_datasources/blog',
         createdAt: '2026-01-01T00:00:00.000Z',
       });
 
@@ -230,7 +230,7 @@ describe('datasource-service', () => {
         {
           id: 'doc-ds-1',
           siteId: 'site-1',
-          path: '_registry/datasources/blog',
+          path: '_datasources/blog',
           createdAt: '2026-01-01T00:00:00.000Z',
           inherited: false,
           isPublished: false,
@@ -238,7 +238,7 @@ describe('datasource-service', () => {
         {
           id: 'doc-ds-2',
           siteId: 'site-1',
-          path: '_registry/datasources/events',
+          path: '_datasources/events',
           createdAt: '2026-01-02T00:00:00.000Z',
           inherited: false,
           isPublished: false,
@@ -296,7 +296,7 @@ describe('datasource-service', () => {
 
       expect(branchDocService.listDocumentsOnBranch).toHaveBeenCalledWith(
         'branch-1',
-        expect.objectContaining({ pathPrefix: '_registry/datasources/' }),
+        expect.objectContaining({ pathPrefix: '_datasources/' }),
       );
     });
 
@@ -309,7 +309,7 @@ describe('datasource-service', () => {
         {
           id: 'doc-ds-1',
           siteId: 'site-1',
-          path: '_registry/datasources/blog',
+          path: '_datasources/blog',
           createdAt: '2026-01-01T00:00:00.000Z',
           inherited: false,
           isPublished: false,
@@ -336,7 +336,7 @@ describe('datasource-service', () => {
       expect(branchDocService.listDocumentsOnBranch).toHaveBeenCalledWith(
         'feature-branch-1',
         expect.objectContaining({
-          pathPrefix: '_registry/datasources/',
+          pathPrefix: '_datasources/',
           mainBranchId: 'main-branch-1',
         }),
       );
@@ -352,7 +352,7 @@ describe('datasource-service', () => {
         document: {
           id: 'doc-ds-new',
           siteId: 'site-1',
-          path: '_registry/datasources/blog',
+          path: '_datasources/blog',
           createdAt: '2026-01-01T00:00:00.000Z',
         },
         version: {
@@ -378,11 +378,11 @@ describe('datasource-service', () => {
         createdById: 'system',
       });
 
-      expect(result.document.path).toBe('_registry/datasources/blog');
+      expect(result.document.path).toBe('_datasources/blog');
 
       const createCall = vi.mocked(branchDocService.createDocumentOnBranch).mock.calls[0];
       const params = createCall[0];
-      expect(params.path).toBe('_registry/datasources/blog');
+      expect(params.path).toBe('_datasources/blog');
 
       const snapshot = params.snapshot as LocalDatasourceSnapshot;
       expect(snapshot.type).toBe('local');
@@ -433,7 +433,7 @@ describe('datasource-service', () => {
         document: {
           id: 'doc-ds-new',
           siteId: 'site-1',
-          path: '_registry/datasources/blog-posts_v2',
+          path: '_datasources/blog-posts_v2',
           createdAt: '2026-01-01T00:00:00.000Z',
         },
         version: {
@@ -459,7 +459,7 @@ describe('datasource-service', () => {
         createdById: 'user-1',
       });
 
-      expect(result.document.path).toBe('_registry/datasources/blog-posts_v2');
+      expect(result.document.path).toBe('_datasources/blog-posts_v2');
     });
   });
 
@@ -472,7 +472,7 @@ describe('datasource-service', () => {
       vi.mocked(docService.getDocumentByPath).mockResolvedValueOnce({
         id: 'doc-ds-1',
         siteId: 'site-1',
-        path: '_registry/datasources/blog',
+        path: '_datasources/blog',
         createdAt: '2026-01-01T00:00:00.000Z',
       });
 

@@ -2,7 +2,7 @@
  * Query type definitions.
  *
  * A query defines WHAT to retrieve from a datasource —
- * filters, sort, pagination. Stored at `_registry/queries/{name}`.
+ * filters, sort, pagination. Stored at `_queries/{name}`.
  * The View system references queries, not datasources directly.
  */
 

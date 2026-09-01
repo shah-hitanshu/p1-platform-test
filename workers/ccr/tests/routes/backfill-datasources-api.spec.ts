@@ -107,6 +107,7 @@ describe('backfill-datasources-api', () => {
         templateName: 'blog',
         templateId: 'doc-1',
         createdById: 'admin-1',
+        mainBranchId: 'branch-1',
       });
       expect(templateHooks.onTemplateCreated).toHaveBeenCalledWith({
         siteId: 'site-1',
@@ -114,6 +115,7 @@ describe('backfill-datasources-api', () => {
         templateName: 'news',
         templateId: 'doc-2',
         createdById: 'admin-1',
+        mainBranchId: 'branch-1',
       });
     });
 
