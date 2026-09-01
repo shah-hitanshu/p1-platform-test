@@ -14,7 +14,7 @@
     "dev:starter:staging": "dotenv -e .env.staging.local -- turbo run dev --filter=@pantheon-systems/p1-starter",
     "dev:logs": "node scripts/log-sink.mjs",
     "logs:tail": "tail -f .logs/current.ndjson | jq -c '{t:(.ts/1000|strftime(\"%H:%M:%SZ\")),lvl:.level,app:.[\"service.name\"],msg:.msg,trace:(.trace_id//\"\")[0:8],context:.context}'",
-    "build": "if [ -n \"$PANTHEON_ENVIRONMENT\" ]; then turbo run build --filter=@pantheon-systems/p1-registry && mkdir -p .next && cp -r apps/p1-registry/.next/static .next/; else turbo run build; fi",
+    "build": "if [ -n \"$PANTHEON_ENVIRONMENT\" ]; then turbo run build --filter=@pantheon-systems/p1-registry; else turbo run build; fi",
     "lint": "turbo run lint lint:root",
     "lint:root": "eslint scripts e2e eslint.config.js playwright.config.ts vitest.workspace.ts",
     "lint:root:fix": "pnpm lint:root --fix",
