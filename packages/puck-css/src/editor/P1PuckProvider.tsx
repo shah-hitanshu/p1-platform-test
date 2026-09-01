@@ -25,7 +25,7 @@ import { withRetry } from '../core/utils/retry.js';
 import type { UseAgentEditReturn } from '../agent/useAgentEdit.js';
 import type { UseAgentTriggerReturn } from '../agent/useAgentTrigger.js';
 import type { ConflictNotification } from '../merge/components/conflict-notifications/index.js';
-import type { P1FeaturePlugin, P1FeaturePluginDeps } from '../core/plugin-types.js';
+import type { P1FeaturePlugin } from '../core/plugin-types.js';
 import type { P1FeatureConfig } from '../core/featureConfig.js';
 import { resolveFeatureConfig } from '../core/featureConfig.js';
 import type { Template, TemplateSummary } from '../features/content-type-templates/types.js';
@@ -33,7 +33,12 @@ import { createPuckPermissions } from '../features/content-type-templates/permis
 import { useTemplateList } from '../features/content-type-templates/hooks/useTemplateList.js';
 import { presenceIdentityKey } from '../collaboration/utils/presenceIdentity.js';
 import { DEFAULT_CCR_FEATURE_PLUGINS } from './defaultPlugins.js';
-import { resolveActivePlugins, composeProviders } from './composePlugins.js';
+import {
+  resolveActivePlugins,
+  composeProviders,
+  collectPuckPlugins,
+} from './composePlugins.js';
+import { useStablePluginDeps } from './stablePluginDeps.js';
 import { snapshotToPuckData } from './utils/snapshotToPuckData.js';
 import { useDocuments } from './useDocuments.js';
 import { useRealtime } from './useRealtime.js';
@@ -2228,17 +2233,22 @@ function P1PuckProviderInner({
     return resolveActivePlugins(plugins, resolvedFeatureConfig);
   }, [featurePlugins, resolvedFeatureConfig]);
 
-  const pluginDeps: P1FeaturePluginDeps = useMemo(() => ({
+  const pluginDeps = useStablePluginDeps({
     client: userClient,
     siteId,
     branchId,
     userId,
     config: resolvedFeatureConfig,
-  }), [userClient, siteId, branchId, userId, resolvedFeatureConfig]);
+  });
 
   const ComposedPluginProviders = useMemo(
     () => composeProviders(activePlugins, resolvedFeatureConfig, pluginDeps),
     [activePlugins, resolvedFeatureConfig, pluginDeps],
+  );
+
+  const featurePuckPlugins = useMemo(
+    () => collectPuckPlugins(activePlugins, pluginDeps),
+    [activePlugins, pluginDeps],
   );
 
   // =========================================================================
@@ -2339,6 +2349,7 @@ function P1PuckProviderInner({
       dismissConflict,
       // Feature configuration (Phase B.5)
       featureConfig: resolvedFeatureConfig,
+      featurePuckPlugins,
       // Internal: realtime data capture for catch-up (sends missed keystrokes)
       _realtimeDataCaptureRef: enableRealtime ? realtimeDataCaptureRef : null,
       _onRealtimeDataCapture: enableRealtime ? handleRealtimeDataCapture : null,
@@ -2422,6 +2433,7 @@ function P1PuckProviderInner({
       dismissConflict,
       enableRealtime,
       resolvedFeatureConfig,
+      featurePuckPlugins,
       // Content Type Templates
       userRole,
       branchTemplates,

@@ -20,6 +20,7 @@ import type { P1PuckContextValue } from '../core/types.js';
 import { isDocumentGoneError } from '../data/utils.js';
 import { useP1Plugin } from './useP1Plugin.js';
 import { useP1Overrides } from './useP1Overrides.js';
+import { withFreshFieldTypes } from './freshFieldTypes.js';
 import { useComponentRegistry } from './useComponentRegistry.js';
 import { buildThumbnailOverride } from './utils/buildThumbnailOverride.js';
 import { makeEagerVersionHandler } from './utils/makeEagerVersionHandler.js';
@@ -577,13 +578,17 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
     documentSyncStore,
   ]);
 
+  // Feature contributions sit ahead of the consumer's own: a host's panels land
+  // at the end of the rail, and its overrides wrap the features'.
+  const featurePuckPlugins = ccr.featurePuckPlugins;
   const plugins = useMemo(() => {
     const result: Plugin[] = [p1Plugin, documentSyncPlugin];
+    result.push(...featurePuckPlugins);
     if (additionalPluginsRef.current) {
       result.push(...additionalPluginsRef.current);
     }
     return result;
-  }, [p1Plugin, documentSyncPlugin, pluginCount]);
+  }, [p1Plugin, documentSyncPlugin, featurePuckPlugins, pluginCount]);
 
   // =========================================================================
   // Stable onChange (disabled for historical versions, guarded across
@@ -698,7 +703,7 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
         }
       }
     }
-    return merged as PuckOverrides;
+    return withFreshFieldTypes(merged as PuckOverrides);
   }, [p1Overrides]);
 
   // =========================================================================

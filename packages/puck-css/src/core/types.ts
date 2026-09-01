@@ -17,6 +17,7 @@ import type { UseAgentEditReturn } from '../agent/useAgentEdit.js';
 import type { UseAgentTriggerReturn } from '../agent/useAgentTrigger.js';
 import type { ContentRole, Template, TemplateSummary } from '../features/content-type-templates/types.js';
 import type { P1FeatureConfig } from './featureConfig.js';
+import type { PuckContribution } from './plugin-types.js';
 
 /**
  * Save status for auto-save functionality.
@@ -621,6 +622,12 @@ export interface P1PuckContextValue {
    * Derived from the featureConfig prop or existing boolean props.
    */
   featureConfig: Required<P1FeatureConfig>;
+
+  /**
+   * Puck plugin entries contributed by the active feature plugins, in priority
+   * order.
+   */
+  featurePuckPlugins: readonly PuckContribution[];
 
   // =========================================================================
   // Internal: Realtime Data Capture (for PuckDataCapture correction pass)

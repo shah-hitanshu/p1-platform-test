@@ -149,7 +149,7 @@ function createMockClient(): P1Client {
 // Provider Wrapper
 // =============================================================================
 
-function createProviderWrapper(client: P1Client) {
+function createProviderWrapper(client: P1Client, featurePlugins?: unknown[]) {
   return function Wrapper({ children }: { children: React.ReactNode }) {
     return React.createElement(
       P1PuckProvider,
@@ -158,6 +158,7 @@ function createProviderWrapper(client: P1Client) {
         siteId: 'site-1',
         branchId: 'branch-1',
         userId: 'user-789',
+        ...(featurePlugins ? { featurePlugins } : {}),
       },
       children
     );
@@ -302,6 +303,47 @@ describe('useP1Editor', () => {
     expect(result.current.puckProps.plugins[0].name).toBe('css');
     expect(result.current.puckProps.plugins[1].name).toBe('p1-document-sync');
     expect(result.current.puckProps.plugins[2].name).toBe('test-plugin');
+  });
+
+  it('puckProps.plugins should place feature panels ahead of the caller\'s', async () => {
+    const featurePlugin = {
+      name: 'feature',
+      puckPlugins: () => [
+        {
+          name: 'feature-panel',
+          label: 'Feature',
+          icon: null,
+          render: () => React.createElement('div'),
+        },
+      ],
+    };
+    const additionalPlugin = {
+      name: 'test-plugin',
+      label: 'Test',
+      icon: null,
+      render: () => React.createElement('div'),
+    };
+
+    const wrapper = createProviderWrapper(client, [featurePlugin]);
+    const { result } = renderHook(
+      () => useP1Editor({
+        documentPath: '/pages/home',
+        puckConfig: mockPuckConfig,
+        additionalPlugins: [additionalPlugin],
+      }),
+      { wrapper }
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(100);
+    });
+
+    expect(result.current.puckProps.plugins.map((p) => p.name)).toEqual([
+      'css',
+      'p1-document-sync',
+      'feature-panel',
+      'test-plugin',
+    ]);
   });
 
   it('puckProps.overrides should have headerActions', async () => {

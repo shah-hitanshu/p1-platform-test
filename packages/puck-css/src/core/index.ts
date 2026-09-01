@@ -35,7 +35,7 @@ export type { P1FeatureConfig } from './featureConfig.js';
 export { createP1Config, createNextConfig, createNextContentClient } from './config.js';
 export type { P1Config } from './config.js';
 
-export type { P1FeaturePlugin, P1FeaturePluginDeps, PuckPluginDef } from './plugin-types.js';
+export type { P1FeaturePlugin, P1FeaturePluginDeps, PuckPluginDef, PuckContribution } from './plugin-types.js';
 
 export { debounce } from './utils/debounce.js';
 export { throttle } from './utils/throttle.js';

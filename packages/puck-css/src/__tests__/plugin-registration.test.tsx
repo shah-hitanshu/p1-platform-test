@@ -15,7 +15,6 @@ import {
   resolveActivePlugins,
   composeProviders,
   collectPuckPlugins,
-  mergeOverrides,
 } from '../editor/composePlugins.js';
 
 const makeDeps = (overrides?: Partial<P1FeaturePluginDeps>): P1FeaturePluginDeps => ({
@@ -25,34 +24,6 @@ const makeDeps = (overrides?: Partial<P1FeaturePluginDeps>): P1FeaturePluginDeps
   userId: 'user-1',
   config: resolveFeatureConfig({}),
   ...overrides,
-});
-
-// ---------------------------------------------------------------------------
-// B.1: P1FeaturePlugin interface
-// ---------------------------------------------------------------------------
-
-describe('P1FeaturePlugin interface', () => {
-  it('accepts a minimal plugin with just a name', () => {
-    const plugin: P1FeaturePlugin = { name: 'minimal' };
-    expect(plugin.name).toBe('minimal');
-  });
-
-  it('accepts a full plugin with all optional fields', () => {
-    const TestProvider: P1FeaturePlugin['provider'] = ({ children }) => (
-      <div data-testid="test-provider">{children}</div>
-    );
-    const plugin: P1FeaturePlugin = {
-      name: 'full',
-      featureFlags: ['presenceEnabled'],
-      priority: 50,
-      provider: TestProvider,
-      puckPlugins: () => [],
-      puckOverrides: () => ({}),
-    };
-    expect(plugin.name).toBe('full');
-    expect(plugin.priority).toBe(50);
-    expect(plugin.featureFlags).toEqual(['presenceEnabled']);
-  });
 });
 
 // ---------------------------------------------------------------------------
@@ -160,7 +131,7 @@ describe('collectPuckPlugins', () => {
     ];
     const deps = makeDeps();
     const result = collectPuckPlugins(plugins, deps);
-    expect(result.map((p) => p.name)).toEqual(['puck-a', 'puck-b']);
+    expect(result.map((p) => ('name' in p ? p.name : null))).toEqual(['puck-a', 'puck-b']);
   });
 
   it('returns empty array when no plugins provide puck plugins', () => {
@@ -168,56 +139,33 @@ describe('collectPuckPlugins', () => {
     const deps = makeDeps();
     expect(collectPuckPlugins(plugins, deps)).toEqual([]);
   });
-});
 
-describe('mergeOverrides', () => {
-  it('shallow-merges overrides from all plugins', () => {
+  it('carries a plugin\'s puckOverrides as their own entry', () => {
     const plugins: P1FeaturePlugin[] = [
       {
-        name: 'a',
+        name: 'decorator',
         puckOverrides: () => ({
-          header: () => <div>header-a</div>,
-        }),
-      },
-      {
-        name: 'b',
-        puckOverrides: () => ({
-          componentItem: () => <div>item-b</div>,
+          fieldTypes: {
+            text: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
+          },
         }),
       },
     ];
-    const deps = makeDeps();
-    const result = mergeOverrides(plugins, deps);
-    expect(result).toHaveProperty('header');
-    expect(result).toHaveProperty('componentItem');
+    const collected = collectPuckPlugins(plugins, makeDeps());
+
+    expect(collected).toHaveLength(1);
+    expect(collected[0]).toHaveProperty('overrides.fieldTypes.text');
   });
 
-  it('later plugins override earlier plugins for same key', () => {
-    const plugins: P1FeaturePlugin[] = [
-      {
-        name: 'first',
-        puckOverrides: () => ({
-          header: () => <div>first</div>,
-        }),
-      },
-      {
-        name: 'second',
-        puckOverrides: () => ({
-          header: () => <div>second</div>,
-        }),
-      },
-    ];
-    const deps = makeDeps();
-    const result = mergeOverrides(plugins, deps);
-    const Header = result.header as () => React.ReactElement;
-    render(<Header />);
-    expect(screen.getByText('second')).toBeTruthy();
-  });
-
-  it('returns empty object when no plugins provide overrides', () => {
+  it('returns a stable reference when no plugin contributes', () => {
     const plugins: P1FeaturePlugin[] = [{ name: 'plain' }];
-    const deps = makeDeps();
-    expect(mergeOverrides(plugins, deps)).toEqual({});
+
+    // Puck rebuilds every override component when the plugin array's identity
+    // changes, remounting the fields panel. deps carry branchId, so a new array
+    // per branch switch would remount for nothing.
+    expect(collectPuckPlugins(plugins, makeDeps())).toBe(
+      collectPuckPlugins(plugins, makeDeps({ branchId: 'branch-2' })),
+    );
   });
 });
 
