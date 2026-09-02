@@ -366,6 +366,31 @@ importers:
         specifier: ^4.1.0
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@24.13.3)(@vitest/coverage-v8@4.1.10)(happy-dom@20.11.0)(jsdom@30.0.1)(vite@8.0.16(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))
 
+  packages/p1-feature-flags:
+    dependencies:
+      '@launchdarkly/cloudflare-server-sdk':
+        specifier: ^2.7.31
+        version: 2.7.31
+      '@pantheon-systems/p1-telemetry':
+        specifier: workspace:*
+        version: link:../p1-telemetry
+    devDependencies:
+      '@pantheon-systems/eslint-config':
+        specifier: workspace:*
+        version: link:../eslint-config
+      '@types/node':
+        specifier: ^20.19.30
+        version: 20.19.43
+      eslint:
+        specifier: ^9.27.0
+        version: 9.39.5(jiti@2.7.0)(supports-color@10.2.2)
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^4.1.5
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@20.19.43)(@vitest/coverage-v8@4.1.10)(happy-dom@20.11.0)(jsdom@30.0.1)(vite@8.0.16(@types/node@20.19.43)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))
+
   packages/p1-media-r2:
     devDependencies:
       '@pantheon-systems/eslint-config':
@@ -563,6 +588,9 @@ importers:
       '@pantheon-systems/p1-content-validator':
         specifier: workspace:*
         version: link:../../packages/p1-content-validator
+      '@pantheon-systems/p1-feature-flags':
+        specifier: workspace:*
+        version: link:../../packages/p1-feature-flags
       '@pantheon-systems/p1-telemetry':
         specifier: workspace:*
         version: link:../../packages/p1-telemetry
@@ -1665,6 +1693,18 @@ packages:
 
   '@jridgewell/trace-mapping@0.3.9':
     resolution: {integrity: sha512-3Belt6tdc8bPgAtbcmdtNJlirVoTmEb5e2gC94PnkwEW9jI6CAHUeoG85tjWP5WquqfavoMtMwiG4P926ZKKuQ==}
+
+  '@launchdarkly/cloudflare-server-sdk@2.7.31':
+    resolution: {integrity: sha512-u5ilqqvVWrSEkiNN+mZ9fPmH31iXecfL0jpl1NWX5OQv583yOpSfbA4eROIoPdt3zfLJaomuxHSEEfHQi3inSg==}
+
+  '@launchdarkly/js-sdk-common@2.25.2':
+    resolution: {integrity: sha512-l/OJiIGnLS6Qt6J/Lc3KgUXL4vAES5wsxIgNZcw3yCUbDEuTyVR9Qya9Aqy1klg2kF1VsHiY2wvaKimlIZK7+g==}
+
+  '@launchdarkly/js-server-sdk-common-edge@2.6.28':
+    resolution: {integrity: sha512-Az2BLvOrLYn8bS7rzxSMECeVTsUE4MEVDNPzx7dvoajfIG/bnshCyUjfIelDtSqUv9dQvBUryHe9FRrIvp5nkw==}
+
+  '@launchdarkly/js-server-sdk-common@2.20.1':
+    resolution: {integrity: sha512-EJqkXMtr/mIupsBw3PI/nxdmxYPD3kdCwyozgiCz41fG1PXcbT9tlymqNi0znqHGDH99Ru4vSG5YzoP8uqqMZg==}
 
   '@manypkg/find-root@1.1.0':
     resolution: {integrity: sha512-mki5uBvhHzO8kYYix/WRy2WX8S3B5wdVSc9D6KcU5lQNglP2yt58/VfLuAK49glRXChosY8ap2oJ1qgma3GUVA==}
@@ -3291,6 +3331,10 @@ packages:
     resolution: {integrity: sha512-uV2QOWP2nWzsy2aMp8aRibhi9dlzF5Hgh5SHaB9OiTGEyDTiJJyx0uy51QXdyWbtAHNua4XJzUKca3OzKUd3vA==}
     engines: {node: '>= 8'}
 
+  crypto-js@4.2.0:
+    resolution: {integrity: sha512-KALDyEYgpY+Rlob/iriUtjV6d5Eq+Y191A5g4UqLAi8CyGP9N1+FdVbkc1SxKc2r4YAYqG8JzO2KGL+AizD70Q==}
+    deprecated: Active development of CryptoJS has been discontinued. This library is no longer maintained.
+
   css-tree@3.2.1:
     resolution: {integrity: sha512-X7sjQzceUhu1u7Y/ylrRZFU2FS6LRiFVp6rKLPg23y3x3c3DOKAwuXGDp+PAGjh6CSnCjYeAul8pcT8bAl+lSA==}
     engines: {node: ^10 || ^12.20.0 || ^14.13.0 || >=15.0.0}
@@ -4653,6 +4697,10 @@ packages:
   lru-cache@5.1.1:
     resolution: {integrity: sha512-KpNARQA3Iwv+jTA0utUVVbrh+Jlrr1Fv0e56GGzAFOXN7dk/FviaDW8LHmK52DlcH4WP2n6gI8vN1aesBFgo9w==}
 
+  lru-cache@6.0.0:
+    resolution: {integrity: sha512-Jo6dJ04CmSjuznwJSS3pUeWmd/H0ffTlkXXgwZi+eq1UCmqQwCh+eLsYOYCwY991i2Fah4h1BEMCx4qThGbsiA==}
+    engines: {node: '>=10'}
+
   lz-string@1.5.0:
     resolution: {integrity: sha512-h5bgJWpxJNswbU7qCrV0tIKQCaS3blPDrqKWx+QxzuzL1zGUzij9XCWLrSLsJPu5t+eWA/ycetzYAO5IOMcWAQ==}
     hasBin: true
@@ -5594,6 +5642,11 @@ packages:
     resolution: {integrity: sha512-BR7VvDCVHO+q2xBEWskxS6DJE1qRnb7DxzUrogb71CWoSficBxYsiAGd+Kl0mmq/MprG9yArRkyrQxTO6XjMzA==}
     hasBin: true
 
+  semver@7.5.4:
+    resolution: {integrity: sha512-1bCSESV6Pv+i21Hvpxp3Dx+pSD8lIPt8uVjRrxAUt/nbswYc+tK6Y2btiULjd4+fnq15PX+nqQDC7Oft7WkwcA==}
+    engines: {node: '>=10'}
+    hasBin: true
+
   semver@7.8.5:
     resolution: {integrity: sha512-Y7/KDsb8LjooZpwaqGyulO6DQlksgCncchHGk+sZIY4SBvUocMBEFH5Ur1fI4dV+Jvl0w6cjvucaIi40puRioA==}
     engines: {node: '>=10'}
@@ -6402,6 +6455,9 @@ packages:
 
   yallist@3.1.1:
     resolution: {integrity: sha512-a4UGQaWPH59mOXUYnAG2ewncQS4i4F43Tv3JoAM+s2VDAmS9NsK8GpDMLrCHPksFT7h3K6TOoUNn2pb7RoXx4g==}
+
+  yallist@4.0.0:
+    resolution: {integrity: sha512-3wdGidZyq5PB084XLES5TpOSRA3wjXAlIWMhum2kRcv/41Sn2emQ0dycQW4uZXLejwKvg6EsvbdlVL+FYEct7A==}
 
   yaml@2.9.0:
     resolution: {integrity: sha512-2AvhNX3mb8zd6Zy7INTtSpl1F15HW6Wnqj0srWlkKLcpYl/gMIMJiyuGq2KeI2YFxUPjdlB+3Lc10seMLtL4cA==}
@@ -7390,6 +7446,24 @@ snapshots:
     dependencies:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
+
+  '@launchdarkly/cloudflare-server-sdk@2.7.31':
+    dependencies:
+      '@cloudflare/workers-types': 4.20260702.1
+      '@launchdarkly/js-server-sdk-common-edge': 2.6.28
+      crypto-js: 4.2.0
+
+  '@launchdarkly/js-sdk-common@2.25.2': {}
+
+  '@launchdarkly/js-server-sdk-common-edge@2.6.28':
+    dependencies:
+      '@launchdarkly/js-server-sdk-common': 2.20.1
+      crypto-js: 4.2.0
+
+  '@launchdarkly/js-server-sdk-common@2.20.1':
+    dependencies:
+      '@launchdarkly/js-sdk-common': 2.25.2
+      semver: 7.5.4
 
   '@manypkg/find-root@1.1.0':
     dependencies:
@@ -8536,7 +8610,7 @@ snapshots:
       obug: 2.1.4
       std-env: 4.2.0
       tinyrainbow: 3.1.0
-      vitest: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(happy-dom@20.11.0)(jsdom@30.0.1)(vite@8.0.16(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))
+      vitest: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@20.19.43)(@vitest/coverage-v8@4.1.10)(happy-dom@20.11.0)(jsdom@30.0.1)(vite@8.0.16(@types/node@20.19.43)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))
 
   '@vitest/expect@3.2.7':
     dependencies:
@@ -9043,6 +9117,8 @@ snapshots:
       path-key: 3.1.1
       shebang-command: 2.0.0
       which: 2.0.2
+
+  crypto-js@4.2.0: {}
 
   css-tree@3.2.1:
     dependencies:
@@ -10544,6 +10620,10 @@ snapshots:
     dependencies:
       yallist: 3.1.1
 
+  lru-cache@6.0.0:
+    dependencies:
+      yallist: 4.0.0
+
   lz-string@1.5.0: {}
 
   magic-string@0.30.21:
@@ -11846,6 +11926,10 @@ snapshots:
 
   semver@6.3.1: {}
 
+  semver@7.5.4:
+    dependencies:
+      lru-cache: 6.0.0
+
   semver@7.8.5: {}
 
   send@1.2.1(supports-color@10.2.2):
@@ -12967,6 +13051,8 @@ snapshots:
   y18n@5.0.8: {}
 
   yallist@3.1.1: {}
+
+  yallist@4.0.0: {}
 
   yaml@2.9.0:
     optional: true

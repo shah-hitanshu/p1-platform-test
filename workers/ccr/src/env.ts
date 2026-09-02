@@ -100,6 +100,14 @@ export interface Env {
   // KV bindings
   CONFIG_KV: KVNamespace;
   SESSION_KV: KVNamespace;
+  // LaunchDarkly flag payload, kept in sync by the LD -> Cloudflare integration.
+  // Optional: absent locally and in tests, where FLAG_OVERRIDES is used instead.
+  LD_KV?: KVNamespace;
+  // Client-side ID. Public by design and only used to key into LD_KV, so this is a
+  // plain var rather than a secret.
+  LD_CLIENT_SIDE_ID?: string;
+  // JSON object of flag key to boolean, consulted ahead of LaunchDarkly.
+  FLAG_OVERRIDES?: string;
 }
 
 /**

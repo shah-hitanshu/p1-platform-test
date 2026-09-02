@@ -110,6 +110,13 @@ export function ensureLogger(env: TelemetryEnv): P1Logger {
       'migrated_count',
       'execute_kind',
       'execute_path',
+      // Feature flags: which gate resolved, to what, and from where. The edge SDK
+      // sends no analytics events, so LaunchDarkly's dashboard never shows these
+      // flags as evaluated — these fields are the only evidence a gate was read.
+      'flag_key',
+      'flag_value',
+      'flag_source',
+      'flag_reason',
     ],
   });
   return logger;

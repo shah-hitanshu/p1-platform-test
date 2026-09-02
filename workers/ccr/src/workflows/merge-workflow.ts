@@ -19,6 +19,8 @@ import { WorkflowEntrypoint } from 'cloudflare:workers';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import { contextForTask, withRequestContext } from '@pantheon-systems/p1-telemetry';
 import type { Env } from '../env';
+import { P1FeatureFlagService } from '@pantheon-systems/p1-feature-flags';
+
 import { ensureLogger } from '../telemetry';
 import { runWithEnvConnection } from '../db';
 import {
@@ -77,6 +79,9 @@ function withJobConnection<T>(env: Env, fn: () => Promise<T>): Promise<T> {
 export class MergeWorkflow extends WorkflowEntrypoint<Env, MergeWorkflowParams> {
   async run(event: WorkflowEvent<MergeWorkflowParams>, step: WorkflowStep): Promise<void> {
     const logger = ensureLogger(this.env);
+    // A workflow runs in its own isolate, so it initializes its own service — and this is the
+    // entrypoint that executes gated merge work.
+    P1FeatureFlagService.init(this.env);
     const { jobId } = event.payload;
     const pacing = pacingConfig(this.env);
 

@@ -50,6 +50,8 @@ import {
   withRequestContext,
   P1_TELEMETRY_HEADERS,
 } from '@pantheon-systems/p1-telemetry';
+import { P1FeatureFlagService } from '@pantheon-systems/p1-feature-flags';
+
 import { ensureLogger } from './telemetry';
 
 // Queue consumer (Phase 5.1)
@@ -139,6 +141,7 @@ export default {
     }
 
     const logger = ensureLogger(env);
+    P1FeatureFlagService.init(env, ctx);
     const telemetry = contextFromRequest(req, { route: pathPattern });
 
     // Run request with isolated database connection using AsyncLocalStorage
@@ -232,6 +235,8 @@ export default {
    */
   async queue(batch: MessageBatch, env: Env): Promise<void> {
     const logger = ensureLogger(env);
+    // No `ctx` on a queue batch, so no prewarm — the first gate read pays initialization.
+    P1FeatureFlagService.init(env);
 
     // A fresh trace per batch: producers do not yet stamp `taskTraceFields` into the
     // message body, so there is no enqueuing trace to continue. Joining the producer's
@@ -262,6 +267,7 @@ export default {
    */
   scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): void {
     const logger = ensureLogger(env);
+    P1FeatureFlagService.init(env, ctx);
     const telemetry = contextForTask({ route: 'cron:screenshot-refresh' });
 
     ctx.waitUntil(
