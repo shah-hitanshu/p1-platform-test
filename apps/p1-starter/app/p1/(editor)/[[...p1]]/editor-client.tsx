@@ -31,6 +31,7 @@ import "@pantheon-systems/puck-css/pds/styles.css";
 
 import { ChatbotFlagProvider } from "../../../../components/ChatbotFlagProvider";
 import { P1Lockup } from "../../../../components/p1-lockup";
+import styles from "../../../../components/welcome-block.module.css";
 import config from "../../../../puck.config";
 import { shouldShowChatbot, CHATBOT_FLAG_KEY } from "../../../../lib/chatbot-flag/feature-gate";
 import { createGenerateWithAIHandler } from "../../../../lib/chatbot-flag/ai-generate";
@@ -84,33 +85,31 @@ function P1SignInPage() {
   const { login, isLoading, error } = useP1Auth();
 
   return (
-    <div className="w-full max-w-[620px] mx-auto flex flex-col items-center text-center px-8 py-16 font-['Inter',system-ui,sans-serif] text-[#1a1a2e] min-h-screen justify-center">
-      <P1Lockup />
+    <div className={styles.surface}>
+      <div className={styles.inner}>
+        <P1Lockup />
 
-      <h1 className="text-[2.5rem] leading-[1.08] font-semibold m-0 mb-3" style={{ fontSize: '2.5rem' }}>
-        Your Collaborative Website Management Workspace.
-      </h1>
-      <p className="text-base leading-6 text-[#5a5a6e] max-w-[54ch] m-0">
-        Log in to your Pantheon P1 account to edit your P1 powered website.
-        If you don&apos;t have yet a Pantheon P1 account, contact us{" "}
-        <a href="https://pantheon.io/contact-us" className="text-blue-600 underline">here</a>.
-      </p>
-
-      <div className="flex gap-3 mt-8 justify-center">
-        <button
-          className="inline-flex items-center justify-center h-12 px-6 gap-2 rounded-full border border-[#1a1a2e] bg-[#1a1a2e] text-white font-['Inter',system-ui,sans-serif] text-lg font-medium leading-none whitespace-nowrap cursor-pointer transition-colors duration-200 hover:bg-[#2d2d44] hover:border-[#2d2d44] focus-visible:outline focus-visible:outline-1 focus-visible:outline-blue-600 focus-visible:outline-offset-1 disabled:opacity-40 disabled:cursor-not-allowed"
-          onClick={() => void login()}
-          disabled={isLoading}
-        >
-          {isLoading ? "Signing in..." : "Continue"}
-        </button>
-      </div>
-
-      {error && (
-        <p className="mt-4 text-sm text-red-600 bg-red-50 px-3 py-2 rounded-md">
-          {error}
+        <h1 className={styles.heading}>
+          Your Collaborative Website Management Workspace.
+        </h1>
+        <p className={styles.description}>
+          Log in to your Pantheon P1 account to edit your P1 powered website.
+          If you don&apos;t have yet a Pantheon P1 account, contact us{" "}
+          <a href="https://pantheon.io/contact-us" className={styles.link}>here</a>.
         </p>
-      )}
+
+        <div className={styles.actions}>
+          <button
+            className={styles.button}
+            onClick={() => void login()}
+            disabled={isLoading}
+          >
+            {isLoading ? "Signing in..." : "Continue"}
+          </button>
+        </div>
+
+        {error && <p className={styles.error}>{error}</p>}
+      </div>
     </div>
   );
 }
