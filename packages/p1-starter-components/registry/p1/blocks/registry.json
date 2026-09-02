@@ -1,0 +1,19 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry.json",
+  "items": [
+    {
+      "name": "divider",
+      "type": "registry:block",
+      "title": "Divider",
+      "description": "A horizontal rule or dot cluster for separating page sections.",
+      "categories": ["layout"],
+      "files": [
+        {
+          "path": "divider/divider.tsx",
+          "type": "registry:component",
+          "target": "components/puck/blocks/divider/divider.tsx"
+        }
+      ]
+    }
+  ]
+}

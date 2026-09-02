@@ -1,0 +1,53 @@
+{
+  "name": "@pantheon-systems/p1-starter-components",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Puck block library of marketing and editorial components for P1 starter projects",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pantheon-systems/p1-platform.git",
+    "directory": "packages/p1-starter-components"
+  },
+  "scripts": {
+    "clean": "rm -rf storybook-static *.tsbuildinfo node_modules/.vite",
+    "lint": "eslint registry stories .storybook",
+    "lint:fix": "eslint registry stories .storybook --fix",
+    "storybook": "storybook dev -p 6006",
+    "build-storybook": "storybook build",
+    "test": "vitest run --project=unit",
+    "test:storybook": "vitest run --project=storybook",
+    "typecheck": "tsc --noEmit",
+    "registry:build": "shadcn build --output ../../apps/p1-registry/public/r"
+  },
+  "devDependencies": {
+    "isomorphic-dompurify": "^3.18.0",
+    "@pantheon-systems/eslint-config": "workspace:*",
+    "@puckeditor/core": "^0.21.1",
+    "@storybook/addon-a11y": "^10.3.5",
+    "@storybook/addon-docs": "^10.3.5",
+    "@storybook/addon-vitest": "^10.3.5",
+    "@storybook/react": "^10.3.5",
+    "@storybook/react-vite": "^10.3.5",
+    "@tailwindcss/postcss": "^4.2.2",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.5",
+    "@vitest/browser-playwright": "^4.1.5",
+    "autoprefixer": "^10.5.0",
+    "eslint": "^9.27.0",
+    "playwright": "^1.58.0",
+    "postcss": "^8.5.25",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
+    "storybook": "^10.3.5",
+    "tailwindcss": "^4.2.2",
+    "typescript": "^5.9.3",
+    "shadcn": "^4.18.0",
+    "vitest": "^4.1.5"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "license": "MIT"
+}

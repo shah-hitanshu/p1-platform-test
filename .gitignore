@@ -100,3 +100,9 @@ logs/
 # ESLint JSON reports, written per package and converted into sarif/
 eslint-report.json
 /sarif/
+
+# Storybook static build (packages/p1-starter-components)
+storybook-static/
+
+# Generated code-registry JSON (built by shadcn build)
+apps/p1-registry/public/r/

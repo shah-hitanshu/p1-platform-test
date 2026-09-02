@@ -1,0 +1,28 @@
+/* CSS Variables for P1 Components */
+/* Override these in your consuming project to customize the theme */
+
+:root {
+  /* Colors */
+  --p1-primary: #3b82f6;
+  --p1-secondary: #64748b;
+  --p1-success: #10b981;
+  --p1-warning: #f59e0b;
+  --p1-error: #ef4444;
+  --p1-bg-light: #fef3c7;
+  --p1-bg-default: #ffffff;
+  --p1-text: #111827;
+  --p1-text-muted: #6b7280;
+  --p1-border: #e5e7eb;
+
+  /* Spacing */
+  --p1-spacing-xs: 0.25rem;
+  --p1-spacing-sm: 0.5rem;
+  --p1-spacing-md: 1rem;
+  --p1-spacing-lg: 1.5rem;
+  --p1-spacing-xl: 2rem;
+
+  /* Border Radius */
+  --p1-radius-sm: 0.25rem;
+  --p1-radius-md: 0.5rem;
+  --p1-radius-lg: 0.75rem;
+}
