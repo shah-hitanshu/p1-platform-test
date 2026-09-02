@@ -138,6 +138,20 @@ if [[ -n "$MCP_OAUTH_KV_ID" && -f "$MCP_WRANGLER_FILE" ]]; then
   rm -f "${MCP_WRANGLER_FILE}.bak"
 fi
 
+# A placeholder that survives the sync would be committed and deployed as a literal id.
+# Nothing downstream catches that: no CI step runs this script, and `wrangler deploy
+# --dry-run` accepts a placeholder and exits 0. This is the last place that can fail loudly.
+LEFTOVER=$(grep -ho "REPLACE_WITH_${PLACEHOLDER_PREFIX}_[A-Z_]*" "$WRANGLER_FILE" "$MCP_WRANGLER_FILE" 2>/dev/null \
+  | sort -u || true)
+
+if [[ -n "$LEFTOVER" ]]; then
+  echo ""
+  echo -e "${RED}Placeholders still unresolved — Terraform exposed no output for these:${NC}"
+  echo "$LEFTOVER" | sed 's/^/  /'
+  echo -e "${RED}Deploying now would bind them literally. Apply the missing Terraform first.${NC}"
+  exit 1
+fi
+
 echo ""
 echo -e "${GREEN}Successfully synced ${ENV} Terraform outputs to wrangler.jsonc${NC}"
 echo -e "${YELLOW}Review the changes and commit when ready.${NC}"

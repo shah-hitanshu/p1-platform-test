@@ -205,7 +205,17 @@
         "GCP_KMS_KEY_RESOURCE": "projects/pantheon-content-cloud-staging/locations/global/keyRings/p1-auth-broker/cryptoKeys/jwt-mac-signing",
         "CF_ACCOUNT_ID": "69bc76f4866aaaa3400ea7fbbd9d7da2",
         "R2_ACCOUNT_ID": "69bc76f4866aaaa3400ea7fbbd9d7da2",
-        "MERGE_JOB_RUNNER": "false"
+        // LaunchDarkly staging environment. NOT A SECRET: the client-side ID only keys
+        // into LD_KV and cannot read or write anything in LaunchDarkly, so it is checked
+        // in as a var rather than set with `wrangler secret`. The SDK key and the mobile
+        // key on the same dashboard page are credentials and do not belong here.
+        // No Terraform output backs this, so the sync script leaves it alone.
+        "LD_CLIENT_SIDE_ID": "67e2bd97a0bc670d1d4fb735",
+        // Empty in the normal case. This is the deploy-to-recover switch: when
+        // LaunchDarkly is unreachable or serving a value we need off now, putting the
+        // flag key in here and deploying is the only path that does not go through
+        // LaunchDarkly. Local dev sets it too, which is how the suites run with no LD.
+        "FLAG_OVERRIDES": "{}"
       },
       "workflows": [
         { "binding": "MERGE_WORKFLOW", "name": "css-merge-workflow-staging", "class_name": "MergeWorkflow" }
@@ -239,6 +249,12 @@
       "kv_namespaces": [
         { "binding": "CONFIG_KV", "id": "5c7138f8939e408e992d04355fb59429" },
         { "binding": "SESSION_KV", "id": "222a92acfbca49beb6475b43d8092039" },
+        // Written by the LaunchDarkly -> Cloudflare integration for the LD staging
+        // environment. Dedicated namespace: the integration owns the whole key space.
+        // Lane-wide, not ccr's — another worker in this lane binds this same id.
+        // Id comes from the `ld_flags_kv_id` Terraform output; refresh it with
+        // `make tf-sync ENV=staging` rather than by hand.
+        { "binding": "LD_KV", "id": "3f3114ead4e84148b29b2bc8f37b7bf3" }
       ],
       "queues": {
         "producers": [
@@ -284,7 +300,13 @@
         "GCP_KMS_KEY_RESOURCE": "projects/pantheon-content-cloud/locations/global/keyRings/p1-auth-broker/cryptoKeys/jwt-mac-signing",
         "CF_ACCOUNT_ID": "c7357ecc2566ef9d5d555e40fccb3071",
         "R2_ACCOUNT_ID": "c7357ecc2566ef9d5d555e40fccb3071",
-        "MERGE_JOB_RUNNER": "false"
+        // LaunchDarkly production environment. NOT A SECRET, for the reasons in the
+        // staging note above. A different value from staging by necessity: the SDK keys
+        // into LD_KV under the client-side ID, so staging's would read a payload this
+        // namespace does not hold and every flag would fall back.
+        "LD_CLIENT_SIDE_ID": "67e2bd97a0bc670d1d4fb736",
+        // See the staging note above.
+        "FLAG_OVERRIDES": "{}"
         // Genuine secrets (set out-of-band via `wrangler secret put --env production`,
         // see README runbook): INTERNAL_SECRET, AUTH0_CLIENT_SECRET,
         // MAS_GCP_SERVICE_ACCOUNT_KEY, CF_BROWSER_API_TOKEN, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY.
@@ -312,7 +334,10 @@
       ],
       "kv_namespaces": [
         { "binding": "CONFIG_KV", "id": "a4c2726d648449f68de3437b78d0f580" },
-        { "binding": "SESSION_KV", "id": "abf50514ea5140ce8e083d01c1fd3546" },
+        { "binding": "SESSION_KV", "id": "abf50514ea5140ce8e083d01c1fd3546" }
+        // No LD_KV here yet. The production terraform apply is a manual workflow_dispatch and
+        // has not run, so `p1-ld-flags-kv-production` does not exist — a placeholder id would
+        // deploy literally. Add the binding with `make tf-sync ENV=production` once it does.
       ],
       "queues": {
         "producers": [
