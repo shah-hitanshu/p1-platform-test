@@ -53,6 +53,10 @@ import { handleBackfillDatasources } from './backfill-datasources-api';
 import { getMainBranch } from '../services/branch-service';
 import { errorResponse } from '../utils/http-helpers';
 import { resolveBranchRef } from '../utils/branch-ref';
+import {
+  P1FeatureFlagService,
+  P1_FEATURE_FLAG_CONFIGURATIONS,
+} from '@pantheon-systems/p1-feature-flags';
 
 /**
  * Dispatch a parsed route to the appropriate handler.
@@ -242,9 +246,10 @@ export async function dispatchRoute(
         principal,
       });
 
-    case 'merge':
+    case 'merge': {
+      const mergeSiteId = route.params.siteId ?? '';
       return await handleMergeRoutes(request, {
-        siteId: route.params.siteId ?? '',
+        siteId: mergeSiteId,
         operation: ['check', 'execute', 'preview'].includes(route.params.action ?? '')
           ? (route.params.action as 'check' | 'execute' | 'preview')
           : undefined,
@@ -256,11 +261,22 @@ export async function dispatchRoute(
         principal,
         configKV: env.CONFIG_KV,
         documentStateBinding: env.DOCUMENT_STATE,
-        // Merge job runner [PCC-3737]: routes execute through the workflow
-        // when the flag is on and the binding exists.
-        mergeJobRunnerEnabled: env.MERGE_JOB_RUNNER === 'true' && env.MERGE_WORKFLOW !== undefined,
+        // Merge job runner [PCC-3737]: routes execute through the workflow when the flag
+        // is on and the binding exists. The binding is checked first so a lane without
+        // MERGE_WORKFLOW never reaches LaunchDarkly.
+        //
+        // `init` rather than `current`: the bindings are in hand here, and `current` would
+        // serve fallbacks if the entrypoint had not initialized first. It is idempotent per
+        // isolate and compares bindings, so it costs the same.
+        mergeJobRunnerEnabled:
+          env.MERGE_WORKFLOW !== undefined &&
+          (await P1FeatureFlagService.init(env, ctx).isEnabled(
+            P1_FEATURE_FLAG_CONFIGURATIONS.mergeJobRunner,
+            mergeSiteId,
+          )),
         mergeWorkflow: env.MERGE_WORKFLOW,
       });
+    }
 
     case 'grants':
       return await handleGrantRoutes(request, {

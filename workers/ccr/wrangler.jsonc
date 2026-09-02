@@ -107,9 +107,11 @@
     "PRESENCE_TTL_SECONDS": "120",
     // Metrics configuration (disabled by default for local dev)
     "METRICS_ENABLED": "false",
-    // Merge job runner [PCC-3737]: on for local dev; staging/production flip
-    // their own copies when their rollout phase arrives.
-    "MERGE_JOB_RUNNER": "true",
+    // Feature flag overrides, consulted ahead of LaunchDarkly. This is how local dev
+    // and the test suites run without an LD connection; the deployed lanes resolve
+    // these gates from LaunchDarkly and declare their own copy of this var only as a
+    // deploy-to-recover switch.
+    "FLAG_OVERRIDES": "{\"p1-merge-job-runner\": true}",
     // Stamped onto every log line as service.version. CI overrides it with the
     // commit sha; the values here are the fallback for a deploy run by hand.
     "APP_VERSION": "dev",

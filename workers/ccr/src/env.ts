@@ -80,9 +80,9 @@ export interface Env {
   R2_BUNDLES?: R2Bucket;
   R2_BUNDLES_BUCKET?: string;
 
-  // Merge job runner [PCC-3737]: 'true' routes merge execution through the
-  // MergeWorkflow + job ledger; anything else keeps the legacy inline path.
-  MERGE_JOB_RUNNER?: string;
+  // Merge job runner: the `p1-merge-job-runner` flag routes merge execution through
+  // the MergeWorkflow + job ledger; off keeps the legacy inline path. The binding has
+  // to exist either way, and is checked first.
   MERGE_WORKFLOW?: Workflow<{ jobId: string }>;
   // Runner tuning (integers as strings; unset = design defaults). Staging
   // soak turns these knobs without a code change.

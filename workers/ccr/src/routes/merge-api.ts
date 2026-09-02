@@ -546,7 +546,7 @@ async function handleExecuteMergeRequest(
 type ExecuteHandler = (request: Request, context: MergeRouteContext) => Promise<Response>;
 
 /**
- * MERGE_JOB_RUNNER gate: routes merge execution through the workflow-backed
+ * Merge job runner gate: routes merge execution through the workflow-backed
  * runner when the flag and binding are present, else the legacy inline path.
  */
 async function executeThroughConfiguredPath(

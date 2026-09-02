@@ -141,6 +141,8 @@ export default {
     }
 
     const logger = ensureLogger(env);
+    // Passing ctx keeps initialization off the critical path: without it the first merge in a
+    // cold isolate pays the LaunchDarkly initialization wait.
     P1FeatureFlagService.init(env, ctx);
     const telemetry = contextFromRequest(req, { route: pathPattern });
 
