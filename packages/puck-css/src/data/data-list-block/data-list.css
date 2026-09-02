@@ -1,0 +1,314 @@
+/**
+ * DataListBlock presentation styles.
+ *
+ * Plain CSS with semantic, consumer-overridable class names — deliberately no
+ * Tailwind, so rendering never depends on a consumer's utility build scanning
+ * this package. Every colour, space, radius, and type value routes through a
+ * `--p1-datalist-*` property so a host can retheme the block without touching
+ * these rules; each one resolves to the matching PDS token, then to a literal
+ * for hosts that don't load PDS (the published page is one of those).
+ *
+ * Deliberately absent: `font-family`. These components render on the customer's
+ * own site, so type inherits from their page. Pinning it to the PDS font would
+ * also make the editor canvas — where PDS *is* loaded — disagree with the
+ * published page it is previewing.
+ */
+
+.p1-datalist,
+.p1-datalist-cards,
+.p1-datalist-listing,
+.p1-datalist-rows {
+  /* Colour. PDS resolves foreground to two tiers, so subtitle and teaser share
+     `foreground-default-secondary`; they stay separate properties here so a host
+     that wants them distinct can say so. */
+  --p1-datalist-color-text: var(--pds-color-foreground-default, #0f172a);
+  --p1-datalist-color-text-muted: var(--pds-color-foreground-default-secondary, #64748b);
+  --p1-datalist-color-text-body: var(--pds-color-foreground-default-secondary, #475569);
+  --p1-datalist-color-border: var(--pds-color-border-default, #e2e8f0);
+  --p1-datalist-color-surface-muted: var(--pds-color-surface-default-secondary, #f1f5f9);
+  --p1-datalist-color-scrim: rgb(0 0 0 / 0.5);
+  --p1-datalist-color-backdrop-text: var(--pds-color-foreground-reverse, #ffffff);
+
+  /* Space */
+  --p1-datalist-space-item-gap: var(--pds-spacing-m, 1rem);
+  --p1-datalist-space-group-gap: var(--pds-spacing-xl, 1.5rem);
+  --p1-datalist-space-card-padding: var(--pds-spacing-s, 0.75rem);
+  --p1-datalist-space-listing-padding: var(--pds-spacing-m, 1rem);
+  --p1-datalist-space-row-padding: var(--pds-spacing-s, 0.75rem);
+  --p1-datalist-space-row-padding-compact: var(--pds-spacing-2xs, 0.5rem);
+  --p1-datalist-space-row-gap: var(--pds-spacing-s, 0.75rem);
+  --p1-datalist-space-empty-padding: var(--pds-spacing-2xl, 2rem);
+  --p1-datalist-space-text-tight: var(--pds-spacing-4xs, 0.25rem);
+  --p1-datalist-space-text-loose: var(--pds-spacing-2xs, 0.5rem);
+
+  /* Line & radius */
+  --p1-datalist-border-width: var(--pds-border-width-default, 1px);
+  --p1-datalist-border-width-placeholder: var(--pds-border-width-thicker, 2px);
+  --p1-datalist-radius: var(--pds-border-radius-card, 0.5rem);
+  --p1-datalist-radius-thumbnail: var(--pds-border-radius-default, 0.25rem);
+
+  /* Type */
+  --p1-datalist-font-size-s: var(--pds-typography-size-s, 0.875rem);
+  --p1-datalist-font-size-l: var(--pds-typography-size-l, 1.125rem);
+  --p1-datalist-font-size-xl: var(--pds-typography-size-xl, 1.25rem);
+  --p1-datalist-font-weight-bold: var(--pds-typography-fw-bold, 700);
+  --p1-datalist-font-weight-semibold: var(--pds-typography-fw-semibold, 600);
+}
+
+/* ============================================
+   Block shell (heading, groups, empty state)
+   ============================================ */
+
+.p1-datalist__heading {
+  margin: 0 0 var(--p1-datalist-space-item-gap);
+  font-size: var(--p1-datalist-font-size-xl);
+  font-weight: var(--p1-datalist-font-weight-bold);
+  color: var(--p1-datalist-color-text);
+}
+
+.p1-datalist__empty {
+  padding: var(--p1-datalist-space-empty-padding);
+  border: var(--p1-datalist-border-width-placeholder) dashed
+    var(--p1-datalist-color-border);
+  border-radius: var(--p1-datalist-radius);
+  text-align: center;
+  color: var(--p1-datalist-color-text-muted);
+}
+
+.p1-datalist__groups {
+  display: flex;
+  flex-direction: column;
+  gap: var(--p1-datalist-space-group-gap);
+}
+
+.p1-datalist__group-label {
+  margin: 0 0 var(--p1-datalist-space-card-padding);
+  font-size: var(--p1-datalist-font-size-l);
+  font-weight: var(--p1-datalist-font-weight-semibold);
+  color: var(--p1-datalist-color-text-body);
+}
+
+.p1-datalist__more {
+  margin-top: var(--p1-datalist-space-card-padding);
+  font-size: var(--p1-datalist-font-size-s);
+  text-align: center;
+  color: var(--p1-datalist-color-text-muted);
+}
+
+/* ============================================
+   Shared item primitives
+   ============================================ */
+
+.p1-datalist-media {
+  overflow: hidden;
+  background: var(--p1-datalist-color-surface-muted);
+}
+
+.p1-datalist-media__img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.p1-datalist-item__icon {
+  display: inline-block;
+  margin-bottom: var(--p1-datalist-space-text-tight);
+  font-size: var(--p1-datalist-font-size-l);
+}
+
+.p1-datalist-item__title {
+  font-weight: var(--p1-datalist-font-weight-bold);
+  color: var(--p1-datalist-color-text);
+}
+
+.p1-datalist-item__subtitle {
+  margin-top: var(--p1-datalist-space-text-tight);
+  font-size: var(--p1-datalist-font-size-s);
+  color: var(--p1-datalist-color-text-muted);
+}
+
+.p1-datalist-item__teaser {
+  margin-top: var(--p1-datalist-space-text-loose);
+  font-size: var(--p1-datalist-font-size-s);
+  color: var(--p1-datalist-color-text-body);
+}
+
+/* ============================================
+   Grid mode — Cards
+   ============================================ */
+
+.p1-datalist-cards {
+  display: grid;
+  gap: var(--p1-datalist-space-item-gap);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.p1-datalist-cards[data-columns='1'] { grid-template-columns: repeat(1, minmax(0, 1fr)); }
+.p1-datalist-cards[data-columns='2'] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.p1-datalist-cards[data-columns='3'] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.p1-datalist-cards[data-columns='4'] { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.p1-datalist-cards[data-columns='5'] { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.p1-datalist-cards[data-columns='6'] { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+
+.p1-datalist-cards__card {
+  position: relative;
+  overflow: hidden;
+  border: var(--p1-datalist-border-width) solid var(--p1-datalist-color-border);
+  border-radius: var(--p1-datalist-radius);
+}
+
+.p1-datalist-cards__card--horizontal {
+  display: flex;
+}
+
+.p1-datalist-cards__backdrop {
+  position: absolute;
+  inset: 0;
+  background-position: center;
+  background-size: cover;
+}
+
+.p1-datalist-cards__scrim {
+  position: absolute;
+  inset: 0;
+  background: var(--p1-datalist-color-scrim);
+}
+
+.p1-datalist-cards__body {
+  position: relative;
+}
+
+.p1-datalist-cards__body--horizontal {
+  flex: 1;
+  min-width: 0;
+}
+
+.p1-datalist-cards__body--backdrop {
+  z-index: 1;
+  color: var(--p1-datalist-color-backdrop-text);
+}
+
+/* Backdrop cards sit on an image, so the text tokens give way to the
+   overlay colour rather than the surface palette. */
+.p1-datalist-cards__body--backdrop .p1-datalist-item__title,
+.p1-datalist-cards__body--backdrop .p1-datalist-item__subtitle,
+.p1-datalist-cards__body--backdrop .p1-datalist-item__teaser {
+  color: inherit;
+}
+
+.p1-datalist-cards__content {
+  flex: 1;
+  padding: var(--p1-datalist-space-card-padding);
+}
+
+.p1-datalist-cards__media--stacked {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+}
+
+.p1-datalist-cards__media--side {
+  width: 6rem;
+  height: auto;
+  flex-shrink: 0;
+}
+
+/* ============================================
+   List mode — Listing
+   ============================================ */
+
+.p1-datalist-listing {
+  display: flex;
+  flex-direction: column;
+  gap: var(--p1-datalist-space-item-gap);
+}
+
+.p1-datalist-listing--narrow {
+  max-width: 42rem;
+  margin-inline: auto;
+}
+
+.p1-datalist-listing__item {
+  display: flex;
+  overflow: hidden;
+  border: var(--p1-datalist-border-width) solid var(--p1-datalist-color-border);
+  border-radius: var(--p1-datalist-radius);
+}
+
+.p1-datalist-listing__item--reversed {
+  flex-direction: row-reverse;
+}
+
+.p1-datalist-listing__media {
+  width: 12rem;
+  height: auto;
+  flex-shrink: 0;
+}
+
+.p1-datalist-listing__content {
+  flex: 1;
+  padding: var(--p1-datalist-space-listing-padding);
+}
+
+.p1-datalist-listing__content .p1-datalist-item__title {
+  font-size: var(--p1-datalist-font-size-l);
+}
+
+.p1-datalist-listing__content .p1-datalist-item__teaser {
+  font-size: inherit;
+}
+
+/* ============================================
+   Table mode — Rows
+   ============================================ */
+
+.p1-datalist-rows {
+  border: var(--p1-datalist-border-width) solid var(--p1-datalist-color-border);
+  border-radius: var(--p1-datalist-radius);
+}
+
+.p1-datalist-rows__row {
+  display: flex;
+  align-items: center;
+  gap: var(--p1-datalist-space-row-gap);
+  padding: var(--p1-datalist-space-row-padding);
+}
+
+.p1-datalist-rows[data-density='compact'] .p1-datalist-rows__row {
+  padding: var(--p1-datalist-space-row-padding-compact);
+}
+
+.p1-datalist-rows[data-density='compact'] .p1-datalist-rows__content {
+  font-size: var(--p1-datalist-font-size-s);
+}
+
+.p1-datalist-rows__row + .p1-datalist-rows__row {
+  border-top: var(--p1-datalist-border-width) solid
+    var(--p1-datalist-color-border);
+}
+
+.p1-datalist-rows__media {
+  width: 46px;
+  height: 46px;
+  flex-shrink: 0;
+  border-radius: var(--p1-datalist-radius-thumbnail);
+}
+
+.p1-datalist-rows__content {
+  flex: 1;
+  min-width: 0;
+}
+
+.p1-datalist-rows__content .p1-datalist-item__icon {
+  margin-bottom: 0;
+  margin-right: var(--p1-datalist-space-text-tight);
+  font-size: var(--p1-datalist-font-size-s);
+}
+
+.p1-datalist-rows__content .p1-datalist-item__subtitle {
+  margin-top: 0;
+}
+
+.p1-datalist-rows__content .p1-datalist-item__teaser {
+  margin-top: var(--p1-datalist-space-text-tight);
+}

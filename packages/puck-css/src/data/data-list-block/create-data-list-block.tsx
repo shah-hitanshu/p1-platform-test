@@ -14,6 +14,7 @@ import {
 import { applyCollectionOperators, groupItems } from "../collection-operators.js";
 import { builtinModes } from "./builtin-modes.js";
 import { DATA_LIST_FIELD_GROUPS } from "./field-groups.js";
+import "./data-list.css";
 import { isTemplateDatasource, normalizeItems, resolveItemFields, viewExtractKey } from "./utils.js";
 import type {
   CreateDataListBlockOptions,
@@ -332,12 +333,14 @@ export function createDataListBlock(options?: CreateDataListBlockOptions): DataL
       }
     }
 
-    const sectionClass = wrapperClassName || undefined;
+    const sectionClass = wrapperClassName
+      ? `p1-datalist ${wrapperClassName}`
+      : "p1-datalist";
 
     if (!datasourceId) {
       return (
         <section className={sectionClass}>
-          <div className="rounded-lg border-2 border-dashed border-slate-300 p-8 text-center text-slate-500">
+          <div className="p1-datalist__empty">
             Select a datasource to display items
           </div>
         </section>
@@ -362,11 +365,9 @@ export function createDataListBlock(options?: CreateDataListBlockOptions): DataL
       return (
         <section className={sectionClass}>
           {heading && (
-            <h2 className="mb-4 text-xl font-bold text-slate-900">{heading}</h2>
+            <h2 className="p1-datalist__heading">{heading}</h2>
           )}
-          <div className="rounded-lg border-2 border-dashed border-slate-300 p-8 text-center text-slate-500">
-            No items to display
-          </div>
+          <div className="p1-datalist__empty">No items to display</div>
         </section>
       );
     }
@@ -424,13 +425,13 @@ export function createDataListBlock(options?: CreateDataListBlockOptions): DataL
     return (
       <section className={sectionClass}>
         {heading && (
-          <h2 className="mb-4 text-xl font-bold text-slate-900">{heading}</h2>
+          <h2 className="p1-datalist__heading">{heading}</h2>
         )}
         {hasGroups ? (
-          <div className="space-y-6">
+          <div className="p1-datalist__groups">
             {groups.map((group) => (
               <div key={group.label}>
-                <h3 className="mb-3 text-lg font-semibold text-slate-700">
+                <h3 className="p1-datalist__group-label">
                   {group.label}
                 </h3>
                 {renderLayout(resolveGroup(group.items))}
@@ -441,7 +442,7 @@ export function createDataListBlock(options?: CreateDataListBlockOptions): DataL
           renderLayout(resolveGroup(processedItems))
         )}
         {truncated && (
-          <div className="mt-3 text-center text-sm text-slate-400">
+          <div className="p1-datalist__more">
             +{totalBeforeLimit - processedItems.length} more
           </div>
         )}

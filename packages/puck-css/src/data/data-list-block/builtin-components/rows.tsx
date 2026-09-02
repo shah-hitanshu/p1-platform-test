@@ -1,6 +1,7 @@
 "use client";
 
 import type { LayoutProps } from "../types.js";
+import "../data-list.css";
 
 interface RowsProps extends LayoutProps {
   rowDensity: string;
@@ -18,37 +19,36 @@ export function Rows({
   imagePosition,
   imageLoading = "lazy",
 }: RowsProps) {
-  const padding = rowDensity === "compact" ? "p-2" : "p-3";
-  const textSize = rowDensity === "compact" ? "text-sm" : "";
+  const density = rowDensity === "compact" ? "compact" : "comfortable";
   const rowShowImage = imagePosition !== "none";
 
   return (
-    <div className="divide-y divide-slate-200 rounded-lg border border-slate-200">
+    <div className="p1-datalist-rows" data-density={density}>
       {items.map((item, i) => (
-        <div key={i} className={`flex items-center gap-3 ${padding}`}>
+        <div key={i} className="p1-datalist-rows__row">
           {rowShowImage && showImage && item.image && (
-            <div className="h-[46px] w-[46px] flex-shrink-0 overflow-hidden rounded bg-slate-100">
+            <div className="p1-datalist-media p1-datalist-rows__media">
               <img
                 src={item.image}
                 alt={item.title || ""}
                 loading={imageLoading}
                 decoding="async"
-                className="h-full w-full object-cover"
+                className="p1-datalist-media__img"
               />
             </div>
           )}
-          <div className={`min-w-0 flex-1 ${textSize}`}>
+          <div className="p1-datalist-rows__content">
             {showIcon && item.icon && (
-              <span className="mr-1 text-sm">{item.icon}</span>
+              <span className="p1-datalist-item__icon">{item.icon}</span>
             )}
             {showTitle && item.title && (
-              <div className="font-bold text-slate-900">{item.title}</div>
+              <div className="p1-datalist-item__title">{item.title}</div>
             )}
             {showSubtitle && item.subtitle && (
-              <div className="text-sm text-slate-500">{item.subtitle}</div>
+              <div className="p1-datalist-item__subtitle">{item.subtitle}</div>
             )}
             {showTeaser && item.teaser && (
-              <div className="mt-1 text-sm text-slate-600">{item.teaser}</div>
+              <div className="p1-datalist-item__teaser">{item.teaser}</div>
             )}
           </div>
         </div>

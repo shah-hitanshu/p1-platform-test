@@ -99,8 +99,9 @@ describe("Cards", () => {
         imagePosition="backdrop"
       />,
     );
-    const backdrop = container.querySelector("[style]");
+    const backdrop = container.querySelector(".p1-datalist-cards__backdrop");
     expect(backdrop).toBeTruthy();
+    expect((backdrop as HTMLElement).style.backgroundImage).toContain("/img0.png");
   });
 });
 
@@ -150,8 +151,9 @@ describe("Rows", () => {
         imagePosition="left"
       />,
     );
-    const row = container.querySelector("[class*='p-2']");
-    expect(row).toBeTruthy();
+    expect(
+      container.querySelector(".p1-datalist-rows[data-density='compact']"),
+    ).toBeTruthy();
   });
 
   it("applies comfortable styling", () => {
@@ -163,8 +165,9 @@ describe("Rows", () => {
         imagePosition="left"
       />,
     );
-    const row = container.querySelector("[class*='p-3']");
-    expect(row).toBeTruthy();
+    expect(
+      container.querySelector(".p1-datalist-rows[data-density='comfortable']"),
+    ).toBeTruthy();
   });
 });
 
@@ -215,10 +218,10 @@ describe("Listing", () => {
       />,
     );
     const wrapper = container.firstElementChild;
-    expect(wrapper?.className).toContain("max-w-2xl");
+    expect(wrapper?.className).toContain("p1-datalist-listing--narrow");
   });
 
-  it("renders right-positioned images with flex-row-reverse", () => {
+  it("marks right-positioned images as a reversed item", () => {
     const { container } = render(
       <Listing
         items={makeItems(1)}
@@ -227,7 +230,9 @@ describe("Listing", () => {
         imagePosition="right"
       />,
     );
-    const card = container.querySelector("[class*='flex-row-reverse']");
+    const card = container.querySelector(
+      ".p1-datalist-listing__item--reversed",
+    );
     expect(card).toBeTruthy();
   });
 });

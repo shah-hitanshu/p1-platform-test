@@ -1,6 +1,7 @@
 "use client";
 
 import type { LayoutProps } from "../types.js";
+import "../data-list.css";
 
 interface ListingProps extends LayoutProps {
   listingWidth: string;
@@ -18,10 +19,11 @@ export function Listing({
   imagePosition,
   imageLoading = "lazy",
 }: ListingProps) {
-  const widthClass = listingWidth === "narrow" ? "mx-auto max-w-2xl" : "";
+  const widthClass =
+    listingWidth === "narrow" ? " p1-datalist-listing--narrow" : "";
 
   return (
-    <div className={`space-y-4 ${widthClass}`}>
+    <div className={`p1-datalist-listing${widthClass}`}>
       {items.map((item, i) => {
         const hasImage =
           showImage && !!item.image && imagePosition !== "none";
@@ -30,37 +32,35 @@ export function Listing({
         return (
           <div
             key={i}
-            className={`flex overflow-hidden rounded-lg border border-slate-200 ${
-              isReversed ? "flex-row-reverse" : ""
+            className={`p1-datalist-listing__item${
+              isReversed ? " p1-datalist-listing__item--reversed" : ""
             }`}
           >
             {hasImage && (
-              <div className="h-auto w-48 flex-shrink-0 overflow-hidden bg-slate-100">
+              <div className="p1-datalist-media p1-datalist-listing__media">
                 <img
                   src={item.image}
                   alt={item.title || ""}
                   loading={imageLoading}
                   decoding="async"
-                  className="h-full w-full object-cover"
+                  className="p1-datalist-media__img"
                 />
               </div>
             )}
-            <div className="flex-1 p-4">
+            <div className="p1-datalist-listing__content">
               {showIcon && item.icon && (
-                <span className="mb-1 inline-block text-lg">{item.icon}</span>
+                <span className="p1-datalist-item__icon">{item.icon}</span>
               )}
               {showTitle && item.title && (
-                <div className="text-lg font-bold text-slate-900">
-                  {item.title}
-                </div>
+                <div className="p1-datalist-item__title">{item.title}</div>
               )}
               {showSubtitle && item.subtitle && (
-                <div className="mt-1 text-sm text-slate-500">
+                <div className="p1-datalist-item__subtitle">
                   {item.subtitle}
                 </div>
               )}
               {showTeaser && item.teaser && (
-                <div className="mt-2 text-slate-600">{item.teaser}</div>
+                <div className="p1-datalist-item__teaser">{item.teaser}</div>
               )}
             </div>
           </div>
