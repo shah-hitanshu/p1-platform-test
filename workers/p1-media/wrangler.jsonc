@@ -20,7 +20,12 @@
   "observability": {
     "logs": {
       "enabled": true,
-      "invocation_logs": true
+      "invocation_logs": true,
+      "destinations": ["pantheon-grafana-logs"]
+    },
+    "traces": {
+      "enabled": true,
+      "destinations": ["pantheon-grafana-traces"]
     }
   },
 
