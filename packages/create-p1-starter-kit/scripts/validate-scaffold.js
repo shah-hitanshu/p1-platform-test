@@ -142,6 +142,11 @@ console.log(`Working directory: ${workDir}`);
 try {
   run(process.execPath, [path.join(pkgRoot, 'scripts/build-template.js')]);
 
+  // Before the scaffold is even generated: the install below would surface a
+  // workspace specifier, but a monorepo-relative path or an undeclared internal
+  // import only fails later, on a customer's machine.
+  run(process.execPath, [path.join(pkgRoot, 'scripts/lint-template.js')]);
+
   run(
     process.execPath,
     [path.join(pkgRoot, 'index.js'), PROJECT_NAME, '--yes', '--pm', 'pnpm', '--no-git', '--no-install'],

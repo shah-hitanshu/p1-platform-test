@@ -134,7 +134,7 @@ jobs:
   # overrides — which is what a customer gets, but also means an unrelated upstream
   # publish can turn this job red on a PR that changed nothing here.
   scaffold:
-    name: scaffolded project installs, builds, and tests
+    name: scaffolded project lints, installs, builds, and tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -146,6 +146,9 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Build the packages the scaffold consumes
         run: pnpm exec turbo run build --filter='@pantheon-systems/css-client' --filter='@pantheon-systems/puck-css' --filter='@pantheon-systems/p1-next-sdk' --filter='@pantheon-systems/p1-ai-chat' --filter='@pantheon-systems/p1-media'
+      # Also lints the built template before scaffolding: a monorepo-relative path
+      # or an import of an unpublished package installs and builds fine here and
+      # only fails on a customer's machine.
       - name: Scaffold a project and install/build/typecheck/test it against packed tarballs
         run: pnpm --filter @pantheon-systems/create-p1-starter-kit test:scaffold
 

@@ -9,5 +9,14 @@ export default defineConfig({
   plugins: [react()],
   test: {
     environment: "node",
+    // Mirrors the template's own vitest.config.ts, which explains both settings:
+    // the pds-toolkit-react → .css import chain has to go through Vite, and the
+    // first test to trigger that transform needs more than the default 5s.
+    testTimeout: 30_000,
+    server: {
+      deps: {
+        inline: [/@pantheon-systems[/+]puck-css/, /@pantheon-systems[/+]pds-toolkit-react/],
+      },
+    },
   },
 });

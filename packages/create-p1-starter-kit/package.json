@@ -11,7 +11,8 @@
     "clean": "rm -rf template node_modules/.vite",
     "lint": "eslint index.js lib scripts",
     "lint:fix": "eslint index.js lib scripts --fix",
-    "prepublishOnly": "npm run build",
+    "lint:template": "node scripts/lint-template.js",
+    "prepublishOnly": "npm run build && npm run lint:template",
     "test": "vitest run",
     "test:scaffold": "node scripts/validate-scaffold.js"
   },
@@ -49,6 +50,7 @@
     "eslint": "^9.27.0",
     "isomorphic-dompurify": "^3.18.0",
     "react": "^19.2.5",
+    "react-dom": "^19.2.5",
     "vitest": "^4.1.5"
   },
   "dependencies": {

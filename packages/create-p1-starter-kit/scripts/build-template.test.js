@@ -3,7 +3,10 @@ import os from 'os';
 import path from 'path';
 import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
 import { showSuccess } from '../lib/messages.js';
-import { buildTemplate } from './build-template.js';
+import { buildTemplate, findDeadRules, RULES_THAT_MUST_MATCH } from './build-template.js';
+import { lintTemplate } from './lint-template.js';
+
+const pkgRoot = path.resolve(import.meta.dirname, '..');
 
 // One build shared by the whole file: it copies the entire starter app.
 let built;
@@ -151,5 +154,37 @@ describe('the CLI success message names the credentials the template requires', 
   it('points at a file the template ships', () => {
     expect(nextSteps()).toContain('.env.example');
     expect(exists('.env.example')).toBe(true);
+  });
+});
+
+// A skip rule stops matching when the app renames or removes what it was written
+// for, and the template then ships the very file the build meant to withhold.
+describe('dead skip rules', () => {
+  it('reports a rule whose target the app no longer has', () => {
+    const matched = new Set(RULES_THAT_MUST_MATCH);
+    matched.delete('README.md');
+
+    expect(findDeadRules(matched)).toEqual(['README.md']);
+  });
+
+  it('reports nothing when every rule matched', () => {
+    expect(findDeadRules(new Set(RULES_THAT_MUST_MATCH))).toEqual([]);
+  });
+
+  // buildTemplate() in beforeAll would have thrown otherwise, so this pins the
+  // consequence. README.md is the one required rule whose name comes back: the
+  // copy withholds the monorepo's, then template-assets/ overlays the scaffold's.
+  it('kept every withheld file out of the template', () => {
+    const reAddedByAssets = new Set(fs.readdirSync(path.join(pkgRoot, 'template-assets')));
+    const withheld = [...RULES_THAT_MUST_MATCH].filter((rule) => !reAddedByAssets.has(rule));
+
+    expect(withheld).toContain('CHANGELOG.md');
+    expect(withheld.filter((rule) => exists(rule))).toEqual([]);
+  });
+});
+
+describe('template lint', () => {
+  it('finds nothing to report in the built template', () => {
+    expect(lintTemplate(built)).toEqual([]);
   });
 });

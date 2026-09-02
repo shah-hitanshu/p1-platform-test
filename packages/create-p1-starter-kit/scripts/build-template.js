@@ -45,22 +45,54 @@ const SKIP_PATTERNS = new Set([
   'next-env.d.ts',
 ]);
 
-// Tests that resolve puck-css through the monorepo-only vitest aliases in
-// apps/p1-starter/vitest.config.ts, so they cannot run against the published package.
-const SKIP_FILES = new Set([
-  'data-list-block.test.ts',
-  'data-list-block-utils.test.ts',
-  'data-list-block-sub-components.test.tsx',
+// Tests that only make sense inside this repo. Everything else in the app's
+// suite runs verbatim against the published packages a scaffold installs.
+const MONOREPO_ONLY_TESTS = new Set([
   // Asserts the monorepo README against apps/p1-starter. The scaffold ships a
   // different README, covered by this package's own build-template.test.js.
   'readme-accuracy.test.ts',
 ]);
 
+// Skip rules whose target the app always has, so a rule that matches nothing
+// means the app renamed or deleted the file it was written for — and the template
+// is now shipping something the build meant to withhold. That is how a monorepo
+// README and a 466KB tsbuildinfo reached customers. The rest of the skip list is
+// best-effort: developer-local files (.env) and build output (.next, dist) are
+// absent on a clean checkout, so their absence proves nothing.
+export const RULES_THAT_MUST_MATCH = new Set([
+  'node_modules',
+  'README.md',
+  'CHANGELOG.md',
+  ...MONOREPO_ONLY_TESTS,
+]);
+
+const matchedRules = new Set();
+
 function shouldSkip(name) {
   // A .tsbuildinfo is an incremental-build cache keyed to absolute paths inside
   // this monorepo's node_modules — meaningless to a customer, and stale by the
   // time it reaches them. Matched by suffix: the name follows the tsconfig.
-  return SKIP_PATTERNS.has(name) || SKIP_FILES.has(name) || name.endsWith('.tsbuildinfo');
+  if (SKIP_PATTERNS.has(name) || MONOREPO_ONLY_TESTS.has(name)) {
+    matchedRules.add(name);
+    return true;
+  }
+  return name.endsWith('.tsbuildinfo');
+}
+
+export function findDeadRules(matched) {
+  return [...RULES_THAT_MUST_MATCH].filter((rule) => !matched.has(rule));
+}
+
+function assertNoDeadRules() {
+  const dead = findDeadRules(matchedRules);
+
+  if (dead.length > 0) {
+    throw new Error(
+      `These skip rules matched nothing under ${templateSource}: ${dead.join(', ')}. ` +
+      'The app renamed or removed the files they were written for, so the template ' +
+      'is now shipping something the build meant to withhold. Update the rule.'
+    );
+  }
 }
 
 function copyRecursive(src, dest, rootDest) {
@@ -190,7 +222,9 @@ export function buildTemplate(destPath = templateDest) {
   }
 
   console.log('Copying template files...');
+  matchedRules.clear();
   copyRecursive(templateSource, destPath);
+  assertNoDeadRules();
 
   console.log('Transforming package.json...');
   transformPackageJson(destPath);
