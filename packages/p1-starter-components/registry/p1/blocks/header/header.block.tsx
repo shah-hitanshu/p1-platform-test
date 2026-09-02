@@ -1,4 +1,5 @@
 import type { ComponentConfig } from "@puckeditor/core";
+import { defineMeta } from '@/registry/p1/internal/define-meta';
 import { HeaderRender, type HeaderProps, type HeaderLink } from "./header";
 export type { HeaderProps, HeaderLink };
 
@@ -102,3 +103,11 @@ export const HeaderBlock: ComponentConfig<HeaderProps> = {
   },
   render: HeaderRender,
 };
+
+export const meta = defineMeta({
+  title: 'Header',
+  description: 'Site navigation bar with logo, nav links, optional search, and a CTA button in white/light/dark tones; use as the page header/navbar.',
+  categories: ["global"],
+  published: true,
+  registryDependencies: ["@p1/tokens","@p1/internal-icons"],
+});

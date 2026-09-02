@@ -1,25 +1,41 @@
 "use client";
 
-import { RichTextMenu } from "@puckeditor/core";
+import React from "react";
 import type { RichtextField, TextField } from "@puckeditor/core";
+// RichTextMenu is NOT statically imported here. Lazily loading it keeps the
+// @puckeditor/core editor bundle out of any context that only needs the field
+// config (e.g. preview pages, server-side rendering). The editor loads it on
+// first toolbar render, when @puckeditor/core is already present anyway.
 
 import type { FieldAiMeta } from "../editor/utils/componentRegistry";
 
 export type RichtextFieldWithAi = RichtextField & { ai?: FieldAiMeta };
 export type TextFieldWithAi = TextField & { ai?: FieldAiMeta };
 
+const LazyRichTextMenu = React.lazy(() =>
+  import("@puckeditor/core").then(({ RichTextMenu }) => ({
+    default: function DefaultRichTextMenu() {
+      return (
+        <RichTextMenu>
+          <RichTextMenu.Group>
+            <RichTextMenu.Bold />
+            <RichTextMenu.Italic />
+            <RichTextMenu.Underline />
+          </RichTextMenu.Group>
+          <RichTextMenu.Group>
+            <RichTextMenu.BulletList />
+            <RichTextMenu.OrderedList />
+          </RichTextMenu.Group>
+        </RichTextMenu>
+      );
+    },
+  }))
+);
+
 const defaultRichtextMenu: RichtextField["renderMenu"] = () => (
-  <RichTextMenu>
-    <RichTextMenu.Group>
-      <RichTextMenu.Bold />
-      <RichTextMenu.Italic />
-      <RichTextMenu.Underline />
-    </RichTextMenu.Group>
-    <RichTextMenu.Group>
-      <RichTextMenu.BulletList />
-      <RichTextMenu.OrderedList />
-    </RichTextMenu.Group>
-  </RichTextMenu>
+  <React.Suspense fallback={null}>
+    <LazyRichTextMenu />
+  </React.Suspense>
 );
 
 export const richtextField: RichtextFieldWithAi = {

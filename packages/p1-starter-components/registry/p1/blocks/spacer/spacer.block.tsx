@@ -1,4 +1,5 @@
 import type { ComponentConfig } from "@puckeditor/core";
+import { defineMeta } from '@/registry/p1/internal/define-meta';
 import { Spacer, type SpacerProps } from "./spacer";
 export type { SpacerProps };
 
@@ -20,3 +21,10 @@ export const SpacerBlock: ComponentConfig<SpacerProps> = {
   },
   render: Spacer,
 };
+
+export const meta = defineMeta({
+  title: 'Spacer',
+  description: 'Invisible vertical whitespace element in xs–xl sizes; use to add breathing room between blocks.',
+  categories: ["content"],
+  published: true,
+});

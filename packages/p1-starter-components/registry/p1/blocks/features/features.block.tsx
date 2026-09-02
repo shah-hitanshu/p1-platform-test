@@ -1,4 +1,5 @@
 import type { ComponentConfig } from "@puckeditor/core";
+import { defineMeta } from '@/registry/p1/internal/define-meta';
 import { FeatureCardsRender, type FeatureCardsProps, type FeatureCard } from "./features";
 export type { FeatureCardsProps, FeatureCard };
 
@@ -109,3 +110,10 @@ export const FeatureCardsBlock: ComponentConfig<FeatureCardsProps> = {
   },
   render: FeatureCardsRender,
 };
+
+export const meta = defineMeta({
+  title: 'Feature Cards',
+  description: 'Grid of 2–4 feature cards each with eyebrow, title, and body in multiple color schemes and card styles; use for feature lists or benefit grids.',
+  categories: ["value"],
+  published: true,
+});

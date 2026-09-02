@@ -11,6 +11,9 @@ export default tseslint.config(
   {
     files: ['**/*.ts', '**/*.tsx', '**/*.js', '**/*.jsx', '**/*.mjs'],
     plugins: { import: importPlugin },
+    // Packages alias their own source as @/… in tsconfig paths. Without this the
+    // import plugin reads those as third-party and sorts them after relative ones.
+    settings: { 'import/internal-regex': '^@/' },
     languageOptions: {
       ecmaVersion: 'latest',
       sourceType: 'module',
@@ -44,7 +47,12 @@ export default tseslint.config(
       'import/extensions': 'off',
       'import/prefer-default-export': 'off',
       'import/no-unresolved': 'off',
-      'import/order': 'warn',
+      // 'internal' is absent from the rule's default group list, so aliased
+      // imports would otherwise rank below every relative import.
+      'import/order': [
+        'warn',
+        { groups: ['builtin', 'external', 'internal', 'parent', 'sibling', 'index'] },
+      ],
       'import/no-extraneous-dependencies': 'warn',
 
       // General ESLint rules

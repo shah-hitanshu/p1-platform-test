@@ -20,8 +20,6 @@ function safeHref(h: string): string {
   return /^(https?:\/\/|\/|#)/.test(h) ? h : "#";
 }
 
-
-
 export function Btn({ variant = "primary", href, children, className = "" }: BtnProps) {
   const cls = ["p1-btn", className].filter(Boolean).join(" ");
   if (href) {

@@ -1,0 +1,24 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry.json",
+  "items": [
+    {
+      "name": "tokens",
+      "type": "registry:theme",
+      "title": "P1 design tokens",
+      "description": "The P1 marketing token layer: surfaces, accent, spacing, section rhythm, radii and type scale. Values derive from Pantheon Design System v2 with literal fallbacks, so blocks render correctly with or without PDS loaded.",
+      "meta": { "version": "0.1.0" },
+      "files": [
+        { "path": "p1-tokens.css", "type": "registry:file", "target": "app/p1-tokens.css" },
+        { "path": "base.css", "type": "registry:file", "target": "app/p1-base.css" }
+      ],
+      "css": {
+        "@import \"./p1-tokens.css\"": {},
+        "@import \"./p1-base.css\"": {}
+      },
+      "cssVars": {
+        "light": { "p1-accent": "oklch(0.55 0.21 280)" }
+      },
+      "docs": "Both files are yours. Override any --p1-* value in app/p1-tokens.css to retheme every block at once."
+    }
+  ]
+}

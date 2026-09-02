@@ -211,6 +211,14 @@ tags — version history for these packages lives in the source repos.
 The three changesets pending as of activation will produce one Version PR taking the fixed
 group to `0.9.0`, then four GitHub Releases when it's published.
 
+## The code registry (not an npm package)
+
+The P1 block registry (`apps/p1-registry`) is a static site that distributes
+blocks via the shadcn CLI — it is not published to npm and has no changeset
+flow. See [docs/registry.md](registry.md) for the full consuming and releasing
+workflow. In brief: bump `meta.version` in `registry/p1/blocks/registry.json`,
+run `verify:registry`, merge to `main`, and trigger the deploy workflow.
+
 ## Releases for things that aren't npm packages
 
 Every independently deployable piece should have its own GitHub Release. For npm packages

@@ -1,4 +1,5 @@
 import type { ComponentConfig } from "@puckeditor/core";
+import { defineMeta, wireframe } from '@/registry/p1/internal/define-meta';
 import { ImageRender, type ImageProps } from "./image";
 export type { ImageProps };
 
@@ -64,7 +65,7 @@ export const ImageBlock: ComponentConfig<ImageProps> = {
     },
   },
   defaultProps: {
-    src: "https://images.unsplash.com/photo-1559136555-9303baea8ebd?w=1100&q=80",
+    src: wireframe(1100, 619),
     alt: "Editorial photograph",
     width: "contained",
     ratio: "16 / 9",
@@ -75,3 +76,10 @@ export const ImageBlock: ComponentConfig<ImageProps> = {
   },
   render: ImageRender,
 };
+
+export const meta = defineMeta({
+  title: 'Image',
+  description: 'Simple full-bleed or contained image block with aspect ratio, fit, position, radius, and b&w treatment controls; use for standalone images.',
+  categories: ["showcase"],
+  published: true,
+});

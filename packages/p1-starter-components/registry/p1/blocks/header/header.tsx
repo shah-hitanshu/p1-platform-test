@@ -5,8 +5,6 @@ function safeHref(h: string): string {
   return /^(https?:\/\/|\/|#)/.test(h) ? h : "#";
 }
 
-
-
 export interface HeaderLink {
   label: string;
   href: string;

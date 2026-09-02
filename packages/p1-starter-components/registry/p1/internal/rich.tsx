@@ -16,6 +16,9 @@ export interface RichValueProps {
   className?: string;
 }
 
+/** @deprecated Use `p1-rich` className directly. Removed when accordion/rich-text/tabs convert. */
+export const RICH_PROSE = "p1-rich";
+
 export function RichValue({ value, className }: RichValueProps) {
   const cls = ["p1-rich", className].filter(Boolean).join(" ");
   if (value == null || value === "") return null;
