@@ -41,6 +41,7 @@ vi.mock('@puckeditor/core', () => ({
 const mockRestoreVersion = vi.fn();
 
 const mockCcrContext = {
+  featurePuckPlugins: [],
   branchId: 'branch-1',
   siteId: 'site-1',
   currentDocument: { id: 'doc-1', path: '/home', siteId: 'site-1' } as {

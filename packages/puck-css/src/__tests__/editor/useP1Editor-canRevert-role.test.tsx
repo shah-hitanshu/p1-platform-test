@@ -18,6 +18,7 @@ import { renderHook, waitFor } from '@testing-library/react';
 // ---------------------------------------------------------------------------
 
 const mockCcrContext = {
+  featurePuckPlugins: [],
   branchId: 'branch-a',
   loadDocument: vi.fn().mockResolvedValue(undefined),
   documents: [] as { id: string; path: string }[],

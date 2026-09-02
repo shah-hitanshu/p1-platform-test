@@ -45,6 +45,7 @@ const newBranchPage = {
 };
 
 const mockCcrContext = {
+  featurePuckPlugins: [],
   branchId: "branch-old",
   loadDocument: mockLoadDocument,
   documents: [] as unknown[],

@@ -13,6 +13,7 @@ import { renderHook, waitFor, act } from '@testing-library/react';
 const mockLoadDocument = vi.fn<(...args: unknown[]) => Promise<void>>();
 
 const mockCcrContext = {
+  featurePuckPlugins: [],
   branchId: 'branch-a',
   loadDocument: mockLoadDocument,
   documents: [] as {

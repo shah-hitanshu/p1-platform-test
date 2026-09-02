@@ -89,6 +89,7 @@ function createMockContext(overrides: Record<string, unknown> = {}) {
     siteId: 'site-1',
     branchId: 'branch-1',
     userId: 'user-1',
+    featurePuckPlugins: [],
     currentDocument: { id: 'doc-1', path: '/home', siteId: 'site-1', archived: false, createdAt: '', updatedAt: '' },
     currentData: { content: [], root: { props: {} }, zones: {} },
     safeData: { content: [], root: { props: {} }, zones: {} },

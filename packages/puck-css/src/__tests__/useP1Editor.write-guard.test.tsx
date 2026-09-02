@@ -34,6 +34,7 @@ const mockLoadDocument = vi.fn<(...args: unknown[]) => Promise<void>>();
 const mockSaveData = vi.fn();
 
 const mockCcrContext = {
+  featurePuckPlugins: [],
   branchId: "branch-a",
   loadDocument: mockLoadDocument,
   documents: [] as {

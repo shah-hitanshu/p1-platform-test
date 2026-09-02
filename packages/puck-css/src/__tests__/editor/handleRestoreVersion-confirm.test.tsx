@@ -23,6 +23,7 @@ const mockLoadDocument = vi.fn<() => Promise<void>>().mockResolvedValue(undefine
 const mockResumeAutoSave = vi.fn();
 
 const mockCcrContext = {
+  featurePuckPlugins: [],
   branchId: 'branch-a',
   loadDocument: mockLoadDocument,
   documents: [] as { id: string; path: string }[],
