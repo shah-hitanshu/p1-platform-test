@@ -1,0 +1,11 @@
+.p1-button {
+  display: flex;
+}
+
+.p1-button[data-align="left"] {
+  justify-content: flex-start;
+}
+
+.p1-button[data-align="center"] {
+  justify-content: center;
+}

@@ -1,5 +1,5 @@
-import type { ComponentConfig } from "@puckeditor/core";
 import { Icon, type IconName } from "@/registry/p1/internal/icons";
+import "./callout.css";
 
 export interface CalloutProps {
   variant: "note" | "info" | "tip" | "warning";
@@ -7,69 +7,27 @@ export interface CalloutProps {
   body: string;
 }
 
-const VARIANTS: Record<
-  CalloutProps["variant"],
-  { wrap: string; accentBorder: string; chip: string; icon: IconName }
-> = {
-  note: {
-    wrap: "bg-gray-50 border-p1-border",
-    accentBorder: "border-l-p1-text-muted",
-    chip: "bg-gray-200 text-p1-text-muted",
-    icon: "lines",
-  },
-  info: {
-    wrap: "bg-indigo-50 border-indigo-200",
-    accentBorder: "border-l-p1-primary",
-    chip: "bg-indigo-100 text-p1-primary",
-    icon: "info",
-  },
-  tip: {
-    wrap: "bg-emerald-50 border-emerald-200",
-    accentBorder: "border-l-p1-success",
-    chip: "bg-emerald-100 text-p1-success",
-    icon: "lightbulb",
-  },
-  warning: {
-    wrap: "bg-amber-50 border-amber-200",
-    accentBorder: "border-l-p1-warning",
-    chip: "bg-amber-100 text-amber-700",
-    icon: "warning",
-  },
+const ICON_BY_VARIANT: Record<CalloutProps["variant"], IconName> = {
+  note: "lines",
+  info: "info",
+  tip: "lightbulb",
+  warning: "warning",
 };
 
-export const CalloutBlock: ComponentConfig<CalloutProps> = {
-  fields: {
-    variant: {
-      type: "select",
-      options: [
-        { label: "Note", value: "note" },
-        { label: "Info", value: "info" },
-        { label: "Tip", value: "tip" },
-        { label: "Warning", value: "warning" },
-      ],
-    },
-    title: { type: "text", contentEditable: true, visible: false },
-    body: { type: "textarea", contentEditable: true, visible: false },
-  },
-  defaultProps: {
-    variant: "tip",
-    title: "Try this",
-    body: "Make “preview first” the default. Share the link before you publish — reviewers stop guessing and start seeing.",
-  },
-  render: ({ variant, title, body }) => {
-    const v = VARIANTS[variant];
-    return (
-      <div className="mx-auto max-w-3xl px-p1-lg py-p1-sm">
-        <div className={`flex gap-p1-md rounded-p1-md border border-l-4 p-p1-md ${v.wrap} ${v.accentBorder}`}>
-          <div className={`grid h-9 w-9 flex-none place-items-center rounded-full ${v.chip}`}>
-            <Icon name={v.icon} className="h-[18px] w-[18px]" />
+export function CalloutRender({ variant, title, body }: CalloutProps) {
+  return (
+    <div className="p1-callout p1-block" data-variant={variant}>
+      <div className="p1-callout__inner">
+        <div className="p1-callout__box">
+          <div className="p1-callout__icon-wrap" aria-hidden="true">
+            <Icon name={ICON_BY_VARIANT[variant]} className="p1-callout__icon" />
           </div>
-          <div className="min-w-0 flex-1">
-            {title && <div className="mb-1 font-bold text-p1-text">{title}</div>}
-            <p className="m-0 text-[15px] leading-relaxed text-pretty text-p1-text/80">{body}</p>
+          <div className="p1-callout__content">
+            {title && <div className="p1-callout__title">{title}</div>}
+            <p className="p1-callout__body">{body}</p>
           </div>
         </div>
       </div>
-    );
-  },
-};
+    </div>
+  );
+}

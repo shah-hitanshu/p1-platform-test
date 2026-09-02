@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { AccordionBlock, type AccordionProps } from "@/registry/p1/blocks/accordion/accordion";
+import { AccordionBlock, type AccordionProps } from "@/registry/p1/blocks/accordion/accordion.block";
 
 const AccordionWrapper = (props: AccordionProps) => {
   const Component = AccordionBlock.render as React.FC<AccordionProps>;

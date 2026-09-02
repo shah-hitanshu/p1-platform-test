@@ -6,51 +6,51 @@
 import type { Config } from "@puckeditor/core";
 
 // ── Global chrome ──────────────────────────────────────────
-import { HeaderBlock } from "./header/header";
-import { FooterBlock } from "./footer/footer";
+import { HeaderBlock } from "./header/header.block";
+import { FooterBlock } from "./footer/footer.block";
 // ── Attention ──────────────────────────────────────────────
-import { HeroBlock } from "./hero/hero";
-import { AnnouncementBlock } from "./announcement/announcement";
+import { HeroBlock } from "./hero/hero.block";
+import { AnnouncementBlock } from "./announcement/announcement.block";
 // ── Trust ──────────────────────────────────────────────────
-import { LogoCloudBlock } from "./logos/logos";
-import { TestimonialBlock } from "./testimonial/testimonial";
-import { StatsBlock } from "./stats/stats";
-import { TeamGridBlock } from "./team-grid/team-grid";
+import { LogoCloudBlock } from "./logos/logos.block";
+import { TestimonialBlock } from "./testimonial/testimonial.block";
+import { StatsBlock } from "./stats/stats.block";
+import { TeamGridBlock } from "./team-grid/team-grid.block";
 // ── Value ──────────────────────────────────────────────────
-import { FeatureCardsBlock } from "./features/features";
-import { FeatureMediaBlock } from "./feature-media/feature-media";
-import { StepsBlock } from "./steps/steps";
-import { TimelineBlock } from "./timeline/timeline";
+import { FeatureCardsBlock } from "./features/features.block";
+import { FeatureMediaBlock } from "./feature-media/feature-media.block";
+import { StepsBlock } from "./steps/steps.block";
+import { TimelineBlock } from "./timeline/timeline.block";
 // ── Showcase ───────────────────────────────────────────────
-import { CardGridBlock } from "./card-grid/card-grid";
-import { ImageBlock } from "./image/image";
-import { GalleryBlock } from "./gallery/gallery";
+import { CardGridBlock } from "./card-grid/card-grid.block";
+import { ImageBlock } from "./image/image.block";
+import { GalleryBlock } from "./gallery/gallery.block";
 // ── Convert ────────────────────────────────────────────────
-import { PricingBlock } from "./pricing/pricing";
-import { FaqBlock } from "./faq/faq";
-import { LeadCaptureBlock } from "./lead-capture/lead-capture";
-import { CtaBannerBlock } from "./cta/cta";
-import { ComparisonTableBlock } from "./comparison-table/comparison-table";
+import { PricingBlock } from "./pricing/pricing.block";
+import { FaqBlock } from "./faq/faq.block";
+import { LeadCaptureBlock } from "./lead-capture/lead-capture.block";
+import { CtaBannerBlock } from "./cta/cta.block";
+import { ComparisonTableBlock } from "./comparison-table/comparison-table.block";
 // ── Editorial ──────────────────────────────────────────────
-import { ArticleHeaderBlock } from "./article-header/article-header";
-import { RichTextBlock } from "./rich-text/rich-text";
-import { FigureBlock } from "./figure/figure";
-import { PullQuoteBlock } from "./pull-quote/pull-quote";
-import { EmbedBlock } from "./embed/embed";
-import { CalloutBlock } from "./callout/callout";
+import { ArticleHeaderBlock } from "./article-header/article-header.block";
+import { RichTextBlock } from "./rich-text/rich-text.block";
+import { FigureBlock } from "./figure/figure.block";
+import { PullQuoteBlock } from "./pull-quote/pull-quote.block";
+import { EmbedBlock } from "./embed/embed.block";
+import { CalloutBlock } from "./callout/callout.block";
 // ── Layout ─────────────────────────────────────────────────
-import { ColumnsBlock } from "./columns/columns";
-import { ContainerBlock } from "./container/container";
-import { TabsBlock } from "./tabs/tabs";
-import { AccordionBlock } from "./accordion/accordion";
+import { ColumnsBlock } from "./columns/columns.block";
+import { ContainerBlock } from "./container/container.block";
+import { TabsBlock } from "./tabs/tabs.block";
+import { AccordionBlock } from "./accordion/accordion.block";
 // ── Content ────────────────────────────────────────────────
-import { HeadingBlock } from "./heading/heading";
-import { ParagraphBlock } from "./paragraph/paragraph";
-import { QuoteBlock } from "./quote/quote";
-import { ListBlock } from "./list/list";
-import { ButtonBlock } from "./button/button";
-import { DividerBlock } from "./divider/divider";
-import { SpacerBlock } from "./spacer/spacer";
+import { HeadingBlock } from "./heading/heading.block";
+import { ParagraphBlock } from "./paragraph/paragraph.block";
+import { QuoteBlock } from "./quote/quote.block";
+import { ListBlock } from "./list/list.block";
+import { ButtonBlock } from "./button/button.block";
+import { DividerBlock } from "./divider/divider.block";
+import { SpacerBlock } from "./spacer/spacer.block";
 
 // Re-export every component config
 export {

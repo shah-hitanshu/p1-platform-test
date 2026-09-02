@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { CtaBannerBlock, type CtaBannerProps } from "@/registry/p1/blocks/cta/cta";
+import { CtaBannerBlock, type CtaBannerProps } from "@/registry/p1/blocks/cta/cta.block";
 
 const CtaBannerWrapper = (props: CtaBannerProps) => {
   const Component = CtaBannerBlock.render as React.FC<CtaBannerProps>;
@@ -14,7 +14,7 @@ const meta = {
   argTypes: {
     layout: { control: "select", options: ["centered", "split"] },
     align: { control: "radio", options: ["left", "center"] },
-    tone: { control: "select", options: ["yellow", "purple", "dark", "light", "gradient", "outline"] },
+    tone: { control: "select", options: ["yellow", "accent", "dark", "light", "gradient", "outline"] },
     decoration: { control: "select", options: ["none", "glow", "dots"] },
     corners: { control: "select", options: ["square", "soft", "round"] },
     padding: { control: "select", options: ["compact", "regular", "spacious"] },

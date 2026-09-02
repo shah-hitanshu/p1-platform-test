@@ -1,0 +1,85 @@
+.p1-article-header__inner {
+  margin-inline: auto;
+  max-inline-size: var(--p1-container-narrow);
+}
+
+.p1-article-header__category {
+  color: var(--p1-accent);
+  font-size: var(--p1-text-sm);
+  font-weight: var(--p1-weight-bold);
+  letter-spacing: 0.16em;
+  margin-block-end: var(--p1-space-md);
+  text-transform: uppercase;
+}
+
+.p1-article-header__title {
+  font-size: var(--p1-text-3xl);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: var(--p1-leading-tight);
+  margin-block-end: var(--p1-space-md);
+  text-wrap: balance;
+}
+@media (width >= 48rem) {
+  .p1-article-header__title { font-size: var(--p1-text-4xl); }
+}
+
+.p1-article-header__standfirst {
+  color: var(--p1-fg-muted);
+  font-size: var(--p1-text-xl);
+  font-style: italic;
+  line-height: var(--p1-leading-normal);
+  margin-block-end: var(--p1-space-lg);
+  text-wrap: pretty;
+}
+
+.p1-article-header[data-align="center"] .p1-article-header__inner { text-align: center; }
+.p1-article-header[data-align="center"] .p1-article-header__standfirst {
+  margin-inline: auto;
+  max-inline-size: 32rem;
+}
+
+.p1-article-header__byline {
+  align-items: center;
+  display: flex;
+  gap: var(--p1-space-sm);
+}
+.p1-article-header[data-align="center"] .p1-article-header__byline { justify-content: center; }
+
+.p1-article-header__avatar {
+  background: color-mix(in oklch, var(--p1-surface-inverse) 10%, transparent);
+  block-size: 2.75rem;
+  border-radius: var(--p1-radius-pill);
+  flex: none;
+  inline-size: 2.75rem;
+  overflow: hidden;
+}
+.p1-article-header__avatar-img {
+  block-size: 100%;
+  inline-size: 100%;
+  object-fit: cover;
+}
+
+.p1-article-header__author-info { text-align: start; }
+
+.p1-article-header__author-name {
+  color: var(--p1-fg-default);
+  font-weight: var(--p1-weight-bold);
+}
+
+.p1-article-header__meta {
+  color: var(--p1-fg-muted);
+  font-size: var(--p1-text-sm);
+  margin-block-start: 0.125rem;
+}
+
+.p1-article-header__sep {
+  color: var(--p1-border);
+  margin-inline: var(--p1-space-xs);
+}
+
+.p1-article-header__rule {
+  border: 0;
+  border-block-start: 1px solid var(--p1-border);
+  margin-block-start: var(--p1-space-lg);
+}

@@ -1,0 +1,46 @@
+.p1-logo-cloud__inner {
+  margin-inline: auto;
+  max-inline-size: var(--p1-container-default);
+}
+
+.p1-logo-cloud__heading {
+  color: var(--p1-fg-muted);
+  font-size: var(--p1-text-sm);
+  font-weight: var(--p1-weight-bold);
+  letter-spacing: 0.14em;
+  margin-block-end: var(--p1-space-lg);
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.p1-logo-cloud__list {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--p1-space-lg) 3rem;
+  justify-content: center;
+}
+
+.p1-logo-cloud__img {
+  inline-size: auto;
+  max-inline-size: 11.25rem;
+  object-fit: contain;
+}
+
+/* Logo heights */
+.p1-logo-cloud[data-height="small"] .p1-logo-cloud__img { block-size: 1.625rem; }
+.p1-logo-cloud[data-height="medium"] .p1-logo-cloud__img { block-size: 2.375rem; }
+.p1-logo-cloud[data-height="large"] .p1-logo-cloud__img { block-size: 3.25rem; }
+
+/* Mono style */
+.p1-logo-cloud[data-style="mono"] .p1-logo-cloud__img {
+  filter: grayscale(1);
+  opacity: 0.6;
+}
+
+.p1-logo-cloud__placeholder {
+  color: var(--p1-border-strong);
+  font-size: var(--p1-text-xl);
+  font-weight: 800;
+  letter-spacing: 0.05em;
+}

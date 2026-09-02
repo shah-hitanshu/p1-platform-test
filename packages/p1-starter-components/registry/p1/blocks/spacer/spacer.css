@@ -1,0 +1,19 @@
+.p1-spacer[data-size="xs"] {
+  block-size: var(--p1-space-xs);
+}
+
+.p1-spacer[data-size="sm"] {
+  block-size: var(--p1-space-sm);
+}
+
+.p1-spacer[data-size="md"] {
+  block-size: var(--p1-space-lg);
+}
+
+.p1-spacer[data-size="lg"] {
+  block-size: var(--p1-space-xl);
+}
+
+.p1-spacer[data-size="xl"] {
+  block-size: var(--p1-space-2xl);
+}

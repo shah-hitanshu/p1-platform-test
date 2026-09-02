@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { LeadCaptureBlock, type LeadCaptureProps } from "@/registry/p1/blocks/lead-capture/lead-capture";
+import { LeadCaptureBlock, type LeadCaptureProps } from "@/registry/p1/blocks/lead-capture/lead-capture.block";
 
 const LeadCaptureWrapper = (props: LeadCaptureProps) => {
   const Component = LeadCaptureBlock.render as React.FC<LeadCaptureProps>;
@@ -12,7 +12,7 @@ const meta = {
   parameters: { layout: "fullwidth" },
   tags: ["autodocs"],
   argTypes: {
-    tone: { control: "select", options: ["light", "purple", "dark", "yellow"] },
+    tone: { control: "select", options: ["light", "accent", "dark", "yellow"] },
     layout: { control: "radio", options: ["inline", "stacked"] },
   },
 } satisfies Meta<typeof LeadCaptureWrapper>;
@@ -26,9 +26,9 @@ const base: LeadCaptureProps = {
   placeholder: "you@company.com",
   buttonLabel: "Subscribe",
   note: "No spam. Unsubscribe anytime.",
-  tone: "purple",
+  tone: "accent",
   layout: "inline",
 };
 
-export const Purple: Story = { args: { ...base } };
+export const Accent: Story = { args: { ...base } };
 export const LightStacked: Story = { args: { ...base, tone: "light", layout: "stacked" } };

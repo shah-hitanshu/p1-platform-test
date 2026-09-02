@@ -1,0 +1,60 @@
+.p1-paragraph {
+  padding-block: var(--p1-space-sm);
+}
+
+.p1-paragraph__body {
+  max-inline-size: 65ch;
+  text-wrap: pretty;
+  line-height: var(--p1-leading-normal);
+}
+
+.p1-paragraph[data-align="center"] .p1-paragraph__body {
+  margin-inline: auto;
+  text-align: center;
+}
+
+.p1-paragraph[data-align="left"] .p1-paragraph__body {
+  text-align: left;
+}
+
+/* Body style */
+.p1-paragraph[data-style="body"] .p1-paragraph__body {
+  color: var(--p1-fg-muted);
+}
+
+.p1-paragraph[data-style="body"][data-size="small"] .p1-paragraph__body {
+  font-size: var(--p1-text-sm);
+}
+
+.p1-paragraph[data-style="body"][data-size="regular"] .p1-paragraph__body {
+  font-size: var(--p1-text-base);
+}
+
+@media (width >= 48rem) {
+  .p1-paragraph[data-style="body"][data-size="regular"] .p1-paragraph__body {
+    font-size: var(--p1-text-lg);
+  }
+}
+
+.p1-paragraph[data-style="body"][data-size="large"] .p1-paragraph__body {
+  font-size: var(--p1-text-lg);
+}
+
+@media (width >= 48rem) {
+  .p1-paragraph[data-style="body"][data-size="large"] .p1-paragraph__body {
+    font-size: var(--p1-text-xl);
+  }
+}
+
+/* Lead style */
+.p1-paragraph[data-style="lead"] .p1-paragraph__body {
+  font-family: Georgia, serif;
+  font-size: var(--p1-text-xl);
+  color: var(--p1-fg-default);
+}
+
+@media (width >= 48rem) {
+  .p1-paragraph[data-style="lead"] .p1-paragraph__body {
+    font-size: var(--p1-text-2xl);
+  }
+}

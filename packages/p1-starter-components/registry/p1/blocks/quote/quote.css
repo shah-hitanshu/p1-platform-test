@@ -1,0 +1,43 @@
+.p1-quote__blockquote {
+  margin: 0;
+  padding: 0;
+}
+
+.p1-quote__text {
+  color: var(--p1-fg-default);
+  text-wrap: balance;
+}
+
+.p1-quote[data-scale="standard"] .p1-quote__text {
+  font-size: var(--p1-text-xl);
+  line-height: var(--p1-leading-normal);
+  font-style: italic;
+}
+
+@media (width >= 48rem) {
+  .p1-quote[data-scale="standard"] .p1-quote__text {
+    font-size: var(--p1-text-2xl);
+  }
+}
+
+.p1-quote[data-scale="display"] .p1-quote__text {
+  font-size: var(--p1-text-2xl);
+  line-height: var(--p1-leading-tight);
+  font-style: italic;
+  font-weight: var(--p1-weight-bold);
+  letter-spacing: -0.02em;
+}
+
+@media (width >= 48rem) {
+  .p1-quote[data-scale="display"] .p1-quote__text {
+    font-size: var(--p1-text-4xl);
+  }
+}
+
+.p1-quote__cite {
+  display: block;
+  margin-block-start: var(--p1-space-md);
+  font-size: var(--p1-text-sm);
+  font-style: normal;
+  color: var(--p1-fg-muted);
+}

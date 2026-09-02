@@ -1,102 +1,49 @@
+"use client";
 import * as React from "react";
-import type { ComponentConfig } from "@puckeditor/core";
-import { RichValue, RICH_PROSE } from "@/registry/p1/internal/rich";
+import { RichValue } from "@/registry/p1/internal/rich";
+import "./tabs.css";
 
 export interface TabItem {
   label: string;
   body: string;
 }
+
 export interface TabsProps {
   heading: string;
   align: "left" | "center";
   tabs: TabItem[];
 }
 
-const TabsView: React.FC<TabsProps> = ({ heading, align, tabs }) => {
+export function TabsRender({ heading, align, tabs }: TabsProps) {
   const list = tabs || [];
   const [active, setActive] = React.useState(list[0]?.label ?? "");
-  // Clamp to a valid tab if the active label no longer exists after a reorder or delete.
+  // Stay on a valid tab after the author reorders or deletes tabs.
   const activeLabel = list.some((t) => t.label === active) ? active : (list[0]?.label ?? "");
   const i = list.findIndex((t) => t.label === activeLabel);
-  const center = align === "center";
   return (
-    <div className="mx-auto max-w-4xl px-p1-lg py-p1-xl">
-      {heading && (
-        <h2
-          className={`mb-p1-lg text-3xl font-bold tracking-tight text-p1-text md:text-4xl ${
-            center ? "text-center" : "text-left"
-          }`}
-        >
-          {heading}
-        </h2>
-      )}
-      <div
-        className={`mb-p1-lg flex flex-wrap gap-1 border-b border-p1-border ${
-          center ? "justify-center" : "justify-start"
-        }`}
-      >
+    <div className="p1-tabs p1-block" data-align={align}>
+      {heading && <h2 className="p1-tabs__heading">{heading}</h2>}
+      <div className="p1-tabs__bar" role="tablist">
         {list.map((tb, ti) => {
           const on = tb.label === activeLabel;
           return (
             <button
               key={tb.label || ti}
               type="button"
+              role="tab"
+              aria-selected={on}
+              data-active={on ? "true" : undefined}
               onClick={() => setActive(tb.label)}
-              className={`-mb-px border-b-2 px-p1-md py-p1-sm font-bold transition-colors ${
-                on
-                  ? "border-p1-primary text-p1-text"
-                  : "border-transparent text-p1-text-muted hover:text-p1-text"
-              }`}
+              className="p1-tabs__tab"
             >
               {tb.label || `Tab ${ti + 1}`}
             </button>
           );
         })}
       </div>
-      <RichValue value={(list[i] || ({} as TabItem)).body || ""} className={RICH_PROSE} />
+      <div className="p1-tabs__panel" role="tabpanel">
+        <RichValue value={(list[i] ?? ({} as TabItem)).body ?? ""} />
+      </div>
     </div>
   );
-};
-
-export const TabsBlock: ComponentConfig<TabsProps> = {
-  fields: {
-    heading: { type: "text", contentEditable: true, visible: false },
-    align: {
-      type: "radio",
-      options: [
-        { label: "Left", value: "left" },
-        { label: "Center", value: "center" },
-      ],
-    },
-    tabs: {
-      type: "array",
-      arrayFields: {
-        label: { type: "text", contentEditable: true, visible: false },
-        // richtext stays visible in the array-item editor so every tab is
-        // editable; the active tab is also click-to-edit on the canvas.
-        body: { type: "richtext", contentEditable: true },
-      },
-      defaultItemProps: { label: "Tab", body: "<p>Tab content.</p>" },
-      getItemSummary: (item) => item.label || "Tab",
-    },
-  },
-  defaultProps: {
-    heading: "Everything in one workflow",
-    align: "left",
-    tabs: [
-      {
-        label: "Develop",
-        body: "<p>Branch every change into its own <mark>Multidev</mark> environment.</p><ul><li>No more stepping on each other</li><li>Real URLs to share for review</li><li>Merge when it's ready</li></ul>",
-      },
-      {
-        label: "Test",
-        body: "<p>Push to Test with one click and run against <mark>production-like data</mark>.</p><ul><li>Automated visual checks</li><li>Stakeholder sign-off</li><li>Nothing surprises you on Live</li></ul>",
-      },
-      {
-        label: "Launch",
-        body: "<p>Deploy to Live in seconds — and roll back just as fast if you need to.</p><blockquote>Confidence to publish on a Friday afternoon.</blockquote>",
-      },
-    ],
-  },
-  render: (props) => <TabsView {...props} />,
-};
+}

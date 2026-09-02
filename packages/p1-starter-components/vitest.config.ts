@@ -12,7 +12,19 @@ export default defineConfig({
   test: {
     projects: [
       {
-        plugins: [react()],
+        plugins: [
+          react(),
+          // Stub CSS imports so block files that import `./foo.css` (or pull in
+          // pds-toolkit-react/dist/index.css transitively) don't crash Node's
+          // ESM loader, which has no CSS handler.
+          {
+            name: 'stub-css-for-unit-tests',
+            enforce: 'pre' as const,
+            transform(_code: string, id: string) {
+              if (id.endsWith('.css')) return { code: 'export default {};', map: null };
+            },
+          },
+        ],
         resolve: {
           alias: { '@/registry': path.join(dirname, 'registry') },
         },
@@ -20,6 +32,13 @@ export default defineConfig({
           name: 'unit',
           environment: 'node',
           include: ['registry/**/*.test.{ts,tsx}'],
+          server: {
+            deps: {
+              // Force vite (not Node's native ESM) to resolve puck-css and
+              // pds-toolkit-react so the CSS stub plugin above can intercept.
+              inline: [/@pantheon-systems\/puck-css/, /@pantheon-systems\/pds-toolkit-react/],
+            },
+          },
         },
       },
       {

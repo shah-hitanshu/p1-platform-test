@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { CalloutBlock, type CalloutProps } from "@/registry/p1/blocks/callout/callout";
+import { CalloutBlock, type CalloutProps } from "@/registry/p1/blocks/callout/callout.block";
 
 const CalloutWrapper = (props: CalloutProps) => {
   const Component = CalloutBlock.render as React.FC<CalloutProps>;

@@ -1,0 +1,9 @@
+/* Dev aggregate: tokens and shared chrome for Storybook and the catalog app.
+ *
+ * NOT a distributed file. Block CSS is auto-discovered via import.meta.glob
+ * in .storybook/preview.ts — no manual entry needed when adding a block.
+ */
+@import "./p1-tokens.css";
+@import "./base.css";
+@import "../internal/btn.css";
+@import "../internal/rich.css";

@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { TabsBlock, type TabsProps } from "@/registry/p1/blocks/tabs/tabs";
+import { TabsBlock, type TabsProps } from "@/registry/p1/blocks/tabs/tabs.block";
 
 const TabsWrapper = (props: TabsProps) => {
   const Component = TabsBlock.render as React.FC<TabsProps>;

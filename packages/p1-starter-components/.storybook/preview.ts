@@ -1,5 +1,6 @@
 import type { Preview } from '@storybook/react-vite'
 import './preview.css'
+import.meta.glob('../registry/p1/blocks/**/*.css', { eager: true })
 
 const preview: Preview = {
   parameters: {

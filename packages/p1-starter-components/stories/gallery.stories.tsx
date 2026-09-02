@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { GalleryBlock, type GalleryProps } from "@/registry/p1/blocks/gallery/gallery";
+import { GalleryBlock, type GalleryProps } from "@/registry/p1/blocks/gallery/gallery.block";
 
 const GalleryWrapper = (props: GalleryProps) => {
   const Component = GalleryBlock.render as React.FC<GalleryProps>;

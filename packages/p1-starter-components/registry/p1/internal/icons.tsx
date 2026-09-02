@@ -113,6 +113,8 @@ export function Icon({ name, className, strokeWidth = 2 }: IconProps) {
   return (
     <svg
       viewBox="0 0 24 24"
+      width="24"
+      height="24"
       className={className}
       fill="none"
       stroke="currentColor"

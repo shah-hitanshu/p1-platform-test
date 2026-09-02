@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { StatsBlock, type StatsProps } from "@/registry/p1/blocks/stats/stats";
+import { StatsBlock, type StatsProps } from "@/registry/p1/blocks/stats/stats.block";
 
 const StatsWrapper = (props: StatsProps) => {
   const Component = StatsBlock.render as React.FC<StatsProps>;
