@@ -147,10 +147,20 @@ resource "google_storage_bucket_iam_member" "state_bucket" {
 # CI reads the Cloudflare API token from Secret Manager at apply time rather than from a stored
 # GitHub secret. Scoped to this one secret; the binding is additive.
 resource "google_secret_manager_secret_iam_member" "cloudflare_token" {
+  count = var.cloudflare_token_secret_id != "" ? 1 : 0
+
   project   = var.gcp_project
   secret_id = var.cloudflare_token_secret_id
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${google_service_account.github_actions.email}"
+}
+
+# Adding count above re-addressed this resource from [no index] to [0].
+# Without this, Terraform would destroy and recreate the binding on the two
+# existing SAs.
+moved {
+  from = google_secret_manager_secret_iam_member.cloudflare_token
+  to   = google_secret_manager_secret_iam_member.cloudflare_token[0]
 }
 
 resource "google_secret_manager_secret_iam_member" "additional_secrets" {

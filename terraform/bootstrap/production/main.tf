@@ -89,6 +89,23 @@ module "github_actions_plan" {
   state_bucket_role      = "roles/storage.objectViewer"
 }
 
+# ai-review: PR-triggered AI code review. Impersonated by consuming repos'
+# pull_request jobs, so it holds nothing beyond Vertex AI inference —
+# explicitly not the deploy SA's Cloud SQL / KMS / Secret Manager access.
+module "github_actions_ai_review" {
+  source = "../../modules/github-actions-wif"
+
+  environment      = local.environment
+  gcp_project      = local.gcp_project
+  account_id       = "ai-review-github-actions"
+  sa_roles         = ["roles/aiplatform.user"]
+  github_repo      = "p1-platform"
+  additional_repos = []
+
+  # Inference-only identity — no Cloudflare deploy token.
+  cloudflare_token_secret_id = ""
+}
+
 # CCR-owned secrets the deploy workflow reads and pushes as per-worker Wrangler
 # secrets; values are added out of band.
 module "secrets" {
@@ -118,4 +135,9 @@ output "wif_plan_service_account" {
 output "ccr_secret_ids" {
   description = "CCR-owned Secret Manager secret IDs."
   value       = module.secrets.secret_ids
+}
+
+output "ai_review_service_account" {
+  description = "ai-review inference SA. Use as gcp-service-account in the ai-review caller workflow."
+  value       = module.github_actions_ai_review.service_account_email
 }
