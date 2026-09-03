@@ -1,5 +1,104 @@
 # @pantheon-systems/create-p1-starter-kit
 
+## 0.14.0
+
+### Patch Changes
+
+- 45a272d: **[Feature]** `createPublishedPage()` is a new export from `@pantheon-systems/p1-next-sdk/server`. It builds the published-page render pipeline — read, status branch, route templates, datasource resolution, render — so route files don't have to assemble it by hand.
+
+  ### What Changed
+  - The pipeline used to be hand-written in `app/page.tsx` and `app/[...puckPath]/page.tsx`, so every scaffolded project froze a copy of it. Improvements to caching or datasource resolution could never reach a project once it was created. Both starter routes are now shims of under 25 lines.
+  - What genuinely differs per app flows in as options: `Client` (which holds the app's `puck.config`), `Unavailable`, `Fallback` for a home page with no document yet, `fetchers`, `resolveMetadata`, and `titles`.
+  - `internalPathPrefixes` is forwarded to `loadPublishedPage`, so the reserved-namespace denylist stays a single decision.
+  - The home route now resolves CCR query datasources, which only the catch-all did before. A data-bound component on the home page previously rendered against an unresolved context.
+
+  ### Migration / Action Required
+
+  None — existing route files keep working. To adopt it, build the factory once in a shared module and re-export from both routes:
+
+  ```tsx
+  // app/published-pages.tsx
+  export const published = createPublishedPage({
+    Client,
+    Unavailable: ContentUnavailable,
+    Fallback: WelcomeBlock,
+    fetchers: REMOTE_DATASOURCE_FETCHERS,
+    resolveMetadata: resolvePageMetadata,
+    titles: { home: 'My Site' },
+  });
+
+  // app/[...puckPath]/page.tsx
+  export const revalidate = 300;
+  export const generateStaticParams = published.generateStaticParams;
+  export const generateMetadata = published.generateMetadata;
+  export default published.Page;
+  ```
+
+  `revalidate` must stay a literal in the route file. Next.js statically analyzes segment-config exports, so a value re-exported through the factory goes undetected and the route silently loses its revalidation window — the same constraint that keeps `dynamic` in the route file for `createP1Pages`.
+
+- 9e6f679: Fix unreadable sign-in and welcome screens on dark-themed sites. Both screens set a dark
+  foreground but no background of their own, so on a site whose `body` is dark — including one
+  that follows the visitor's OS dark mode — they rendered dark text on a dark background. They
+  now establish their own background alongside the foreground, from a single shared surface
+  definition the two screens have in common.
+- 0fc5140: **[Fix]** The AI chatbot now appears for everyone it has been turned on for. Some accounts were enabled but never saw the chat panel in the editor.
+
+  ### What Changed
+  - The editor now identifies the signed-in user by their account email when checking whether the chatbot is available to them. Accounts that had been given access but saw no chat panel get it on their next editor load.
+  - Nothing to configure: update the scaffold and redeploy.
+
+- 3e32a74: **[Fix]** `loadPublishedPage()` now refuses internal document namespaces itself, so `/_registry/**` and `/_redirects/**` 404 on a published site even when the app's `page.tsx` carries no denylist of its own.
+
+  ### What Changed
+  - The check used to live in the scaffolded catch-all route (`app/[...puckPath]/page.tsx`), duplicated across `generateMetadata` and the page body. That file is forkable user land: a project that rewrote or tidied it exposed every registry and redirect document as a live public page. Like the other invariants in `published-page.ts` — awaited init, miss-versus-outage, aborted prerender — this one belongs in the SDK.
+  - Internal paths report `{ status: "missing" }` without reaching the backend, so the renderer's existing `notFound()` handling covers them with no extra code.
+  - Matching is case-insensitive and on segment boundaries: `/_Redirects/x` is refused (the server lower-cases document paths before lookup, so it resolves the same record), while a real page at `/_registry-guide` still renders.
+  - Scaffolded projects no longer ship `isInternalPath`. Existing projects keep working either way — a leftover local copy is now redundant, not harmful.
+
+  ### Migration / Action Required
+
+  None. To reserve additional namespaces of your own, pass them to `loadPublishedPage`:
+
+  ```ts
+  const result = await loadPublishedPage(path, {
+    internalPathPrefixes: ['/_private'],
+  });
+  ```
+
+  The option adds to the built-in list rather than replacing it, so a short list cannot un-block `/_registry`.
+
+- 104572b: **[Fix]** A scaffolded project's test suite now runs on its own. Its `vitest.config.ts` previously aliased three package specifiers to paths above the project directory, which resolve to nothing outside the repo the template is built from.
+
+  ### What Changed
+  - `vitest.config.ts` no longer contains those aliases. Tests resolve `@pantheon-systems/puck-css` and `@pantheon-systems/pds-toolkit-react` from `node_modules` like any other dependency, so they exercise the published packages rather than stand-ins.
+  - Three list-block test files that depended on those aliases were withheld from the template and are now included. A fresh scaffold runs 29 test files instead of 26.
+
+  ### Migration / Action Required
+
+  Projects scaffolded before this release carry the old config. Replace the `resolve.alias` block in `vitest.config.ts`:
+
+  ```ts
+  // Before
+  resolve: {
+    alias: {
+      "@pantheon-systems/puck-css/fields": resolve(__dirname, "../..", "packages/puck-css/src/data/fields.tsx"),
+      "@pantheon-systems/pds-toolkit-react": resolve(__dirname, "../..", "packages/puck-css/src/__mocks__/@pantheon-systems/pds-toolkit-react.ts"),
+      "@puckeditor/core": resolve(__dirname, "../..", "packages/puck-css/src/__mocks__/@puckeditor/core.ts"),
+    },
+  },
+
+  // After
+  test: {
+    server: {
+      deps: {
+        inline: [/@pantheon-systems[/+]puck-css/, /@pantheon-systems[/+]pds-toolkit-react/],
+      },
+    },
+  },
+  ```
+
+  `inline` is required: `pds-toolkit-react` imports its own stylesheet, and Node's ESM loader cannot load `.css`. Drop the now-unused `import { resolve } from "path"`.
+
 ## 0.13.0
 
 ### Minor Changes

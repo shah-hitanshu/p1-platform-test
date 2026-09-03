@@ -1,5 +1,87 @@
 # @pantheon-systems/puck-css
 
+## 0.14.0
+
+### Minor Changes
+
+- 3e80471: **[Feature]** `brokerLogout()` is a new public export from `@pantheon-systems/css-client`. It asks the backend for the Auth0 logout URL and hands it back, reporting one of three outcomes — it does not navigate.
+
+  **[Fix]** Broker logout now ends the Auth0 session. Previously it only cleared the local token, so the next login signed the same user straight back in without a prompt.
+
+  ### What Changed
+  - A failed logout no longer destroys the token, so it can be retried. The signed-in user's details are kept alongside it, rather than leaving a session that reports as authenticated with nobody attached.
+  - `createBrokerAuth().logout()` performs the redirect for you and returns the same three outcomes. If you call it, you need do nothing.
+  - `performLogout()` from `@pantheon-systems/puck-css` clears local state and returns the outcome, but does **not** redirect — on `signed_out` the caller must navigate to `outcome.logoutUrl`, or the Auth0 session stays alive.
+  - `useP1Auth().logout()` does perform that navigation for you, and now returns the outcome instead of `void`; ignoring the return value still compiles.
+  - Apps mounting `createP1AuthHandler` gain a `logout` route alongside `login` and `redeem`, so logout stays same-origin instead of calling the backend directly.
+  - A logout URL that is not `https:` is now rejected as an error rather than navigated to.
+  - `OAuthSession.logout()` returns the outcome instead of `void`. Calling it and ignoring the result is unchanged; writing your own `OAuthSession` implementation now means returning the outcome from `logout()`.
+
+  ### Migration / Action Required
+
+  Only if you call `brokerLogout()` directly. It returns instead of navigating, so the redirect is yours to perform — and on `signed_out` that navigation is what actually ends the Auth0 session:
+
+  ```ts
+  const outcome = await brokerLogout({ cssBaseUrl });
+
+  switch (outcome.status) {
+    case 'signed_out':
+      // Required. Without this the Auth0 session survives and the next
+      // login signs the same user back in with no prompt.
+      window.location.href = outcome.logoutUrl;
+      break;
+
+    case 'no_session':
+      break; // Nothing to sign out of.
+
+    case 'error':
+      // The token is kept deliberately. Show the message and let the user
+      // retry — clearing local state here renders them signed out while
+      // they still hold a live credential.
+      showError(outcome.message);
+      break;
+  }
+  ```
+
+- 3bbdef5: The DataList block's builtin display components (Grid/Cards, List/Listing, Table/Rows) and the block shell around them no longer render with Tailwind utility classes. They now use semantic `p1-datalist-*` class names from a stylesheet the components import themselves, so correct rendering no longer depends on a consumer's Tailwind build scanning this package's `dist`.
+
+  Every colour, space, radius, border width, font size, and font weight is driven by a `--p1-datalist-*` custom property that resolves to the matching PDS design token, falling back to a literal for hosts that don't load PDS. Hosts can retheme the block by overriding those properties. The components deliberately set no `font-family`, so type inherits from the host page. Layouts are visually unchanged.
+
+- b2a17ba: **[Feature]** Translated pages can now diverge from the page they came from, field by field.
+
+  ### What Changed
+  - Editing a translation, every text field carries a control to break its link to the source page. A broken field keeps whatever the translator types; an unbroken one follows the source. Breaking is reversible: resetting a field puts it back under the source's control and discards the local wording.
+  - Editing a canonical page, every text field carries a control to mark it non-translatable. That holds the field identical across every language version of the page, for things like product names and codes that should not be reworded.
+  - A field's setting comes from the most specific answer available: an explicit choice on the field, otherwise what the page's template declares for that slot, otherwise the site's default. A field nobody has spoken for follows the source page.
+  - The controls reach single-line and multi-line text fields, which is where translatable wording lives; other field types are unaffected for now. They sit on a page's own fields and on the top-level fields of each component. A field nested inside a group or a repeated item follows the field it belongs to, which is where the setting is held.
+
+  The field controls stay out of the way where they do not apply, so fields on a page with nothing to diverge from look as they did before.
+
+- b8bb111: **[Feature]** The editor now tells you when a page does not exist and offers to create it, instead of failing silently.
+
+  ### What Changed
+  - Opening the editor at a path with no page renders a "This page doesn't exist" panel in the canvas — the header, page navigator and side panels stay in place around it. It offers **Create page** to users whose role permits it, and **Open home page** to everyone. It replaces the generic "Choose a page from the menu above" empty state for this case only.
+  - The flow is self-contained: `useP1Editor` creates the page and re-opens it. No wiring is required beyond what an editor already passes.
+  - `useP1Editor` returns `notFound: true` when the path lookup finds no page on the current branch. Previously that case surfaced as a load error. It is reported separately because nothing has failed — the page simply is not there yet. Only the path lookup counts: a 404 from a later call in the same load (a missing version, say) stays an error, so the panel never offers to create a page that already exists. `retry()` is also returned, for consumers rendering their own panel.
+  - `onDocumentNotFound` is unchanged and still takes priority: a callback returning `true` retries the load, and `notFound` stays `false`.
+
+  ### Migration / Action Required
+
+  None. Drop any `onDocumentNotFound` auto-create callback to adopt the new flow.
+
+### Patch Changes
+
+- 43f251c: **[Fix]** The editor no longer loses its data-source registry and route list on every page it opens. A document identifies its page by slug, so reading the open document's path gave the editor `blog` where its own APIs require the page path `/blog` — `/p1/api/editor-context` and `/p1/api/datasources` answered `400 invalid_path` for every page except the site root.
+
+  ### What Changed
+  - `useLiveEditorContext` (and `useLiveRemoteDatasources`, which reads through it) now roots the path it queries with, so `{{ source.field }}` resolution in the canvas, the data-source explorer, and the field-connect sidebar see live data again.
+  - The `path` these hooks return is rooted for the same reason — saving or removing a page-scoped data source posts it back to the API, and those requests were failing too.
+  - Sites whose document paths already carry a leading slash are unaffected.
+
+- Updated dependencies [3e80471]
+- Updated dependencies [b2a17ba]
+  - @pantheon-systems/css-client@0.14.0
+
 ## 0.13.0
 
 ### Minor Changes

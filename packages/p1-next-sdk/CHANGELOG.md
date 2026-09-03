@@ -1,5 +1,117 @@
 # @pantheon-systems/p1-next-sdk
 
+## 0.14.0
+
+### Minor Changes
+
+- 3e80471: **[Feature]** `brokerLogout()` is a new public export from `@pantheon-systems/css-client`. It asks the backend for the Auth0 logout URL and hands it back, reporting one of three outcomes — it does not navigate.
+
+  **[Fix]** Broker logout now ends the Auth0 session. Previously it only cleared the local token, so the next login signed the same user straight back in without a prompt.
+
+  ### What Changed
+  - A failed logout no longer destroys the token, so it can be retried. The signed-in user's details are kept alongside it, rather than leaving a session that reports as authenticated with nobody attached.
+  - `createBrokerAuth().logout()` performs the redirect for you and returns the same three outcomes. If you call it, you need do nothing.
+  - `performLogout()` from `@pantheon-systems/puck-css` clears local state and returns the outcome, but does **not** redirect — on `signed_out` the caller must navigate to `outcome.logoutUrl`, or the Auth0 session stays alive.
+  - `useP1Auth().logout()` does perform that navigation for you, and now returns the outcome instead of `void`; ignoring the return value still compiles.
+  - Apps mounting `createP1AuthHandler` gain a `logout` route alongside `login` and `redeem`, so logout stays same-origin instead of calling the backend directly.
+  - A logout URL that is not `https:` is now rejected as an error rather than navigated to.
+  - `OAuthSession.logout()` returns the outcome instead of `void`. Calling it and ignoring the result is unchanged; writing your own `OAuthSession` implementation now means returning the outcome from `logout()`.
+
+  ### Migration / Action Required
+
+  Only if you call `brokerLogout()` directly. It returns instead of navigating, so the redirect is yours to perform — and on `signed_out` that navigation is what actually ends the Auth0 session:
+
+  ```ts
+  const outcome = await brokerLogout({ cssBaseUrl });
+
+  switch (outcome.status) {
+    case 'signed_out':
+      // Required. Without this the Auth0 session survives and the next
+      // login signs the same user back in with no prompt.
+      window.location.href = outcome.logoutUrl;
+      break;
+
+    case 'no_session':
+      break; // Nothing to sign out of.
+
+    case 'error':
+      // The token is kept deliberately. Show the message and let the user
+      // retry — clearing local state here renders them signed out while
+      // they still hold a live credential.
+      showError(outcome.message);
+      break;
+  }
+  ```
+
+- 45a272d: **[Feature]** `createPublishedPage()` is a new export from `@pantheon-systems/p1-next-sdk/server`. It builds the published-page render pipeline — read, status branch, route templates, datasource resolution, render — so route files don't have to assemble it by hand.
+
+  ### What Changed
+  - The pipeline used to be hand-written in `app/page.tsx` and `app/[...puckPath]/page.tsx`, so every scaffolded project froze a copy of it. Improvements to caching or datasource resolution could never reach a project once it was created. Both starter routes are now shims of under 25 lines.
+  - What genuinely differs per app flows in as options: `Client` (which holds the app's `puck.config`), `Unavailable`, `Fallback` for a home page with no document yet, `fetchers`, `resolveMetadata`, and `titles`.
+  - `internalPathPrefixes` is forwarded to `loadPublishedPage`, so the reserved-namespace denylist stays a single decision.
+  - The home route now resolves CCR query datasources, which only the catch-all did before. A data-bound component on the home page previously rendered against an unresolved context.
+
+  ### Migration / Action Required
+
+  None — existing route files keep working. To adopt it, build the factory once in a shared module and re-export from both routes:
+
+  ```tsx
+  // app/published-pages.tsx
+  export const published = createPublishedPage({
+    Client,
+    Unavailable: ContentUnavailable,
+    Fallback: WelcomeBlock,
+    fetchers: REMOTE_DATASOURCE_FETCHERS,
+    resolveMetadata: resolvePageMetadata,
+    titles: { home: 'My Site' },
+  });
+
+  // app/[...puckPath]/page.tsx
+  export const revalidate = 300;
+  export const generateStaticParams = published.generateStaticParams;
+  export const generateMetadata = published.generateMetadata;
+  export default published.Page;
+  ```
+
+  `revalidate` must stay a literal in the route file. Next.js statically analyzes segment-config exports, so a value re-exported through the factory goes undetected and the route silently loses its revalidation window — the same constraint that keeps `dynamic` in the route file for `createP1Pages`.
+
+- 3e32a74: **[Fix]** `loadPublishedPage()` now refuses internal document namespaces itself, so `/_registry/**` and `/_redirects/**` 404 on a published site even when the app's `page.tsx` carries no denylist of its own.
+
+  ### What Changed
+  - The check used to live in the scaffolded catch-all route (`app/[...puckPath]/page.tsx`), duplicated across `generateMetadata` and the page body. That file is forkable user land: a project that rewrote or tidied it exposed every registry and redirect document as a live public page. Like the other invariants in `published-page.ts` — awaited init, miss-versus-outage, aborted prerender — this one belongs in the SDK.
+  - Internal paths report `{ status: "missing" }` without reaching the backend, so the renderer's existing `notFound()` handling covers them with no extra code.
+  - Matching is case-insensitive and on segment boundaries: `/_Redirects/x` is refused (the server lower-cases document paths before lookup, so it resolves the same record), while a real page at `/_registry-guide` still renders.
+  - Scaffolded projects no longer ship `isInternalPath`. Existing projects keep working either way — a leftover local copy is now redundant, not harmful.
+
+  ### Migration / Action Required
+
+  None. To reserve additional namespaces of your own, pass them to `loadPublishedPage`:
+
+  ```ts
+  const result = await loadPublishedPage(path, {
+    internalPathPrefixes: ['/_private'],
+  });
+  ```
+
+  The option adds to the built-in list rather than replacing it, so a short list cannot un-block `/_registry`.
+
+### Patch Changes
+
+- b8bb111: **[Fix]** Opening the editor at a page that does not exist no longer does nothing.
+
+  ### What Changed
+  - The starter's editor POSTed to `/p1/api/structure/page` when a page was missing. No handler ever served that route, so the request 404'd and the failure was swallowed — navigating to a new editor path silently did nothing. The editor now shows a page-not-found panel in the canvas offering to create the page.
+  - `p1-migrate` strips the dead call. An app that customized the region is left alone and reported, as with the codemod's other edits.
+
+- Updated dependencies [3e80471]
+- Updated dependencies [3bbdef5]
+- Updated dependencies [b2a17ba]
+- Updated dependencies [43f251c]
+- Updated dependencies [b2a17ba]
+- Updated dependencies [b8bb111]
+  - @pantheon-systems/css-client@0.14.0
+  - @pantheon-systems/puck-css@0.14.0
+
 ## 0.13.0
 
 ### Minor Changes
