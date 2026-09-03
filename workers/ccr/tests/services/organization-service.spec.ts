@@ -33,6 +33,8 @@ describe('Agent Politeness Phase 1.3: Organization Service', () => {
     archived_at: string | null;
     /** PCC space this org is linked to; absent/null for P1-only orgs. */
     external_space_id?: string | null;
+    /** The listing user's role in this org; null when they reach it via a site. */
+    member_role?: string | null;
   }
 
   // Helper to create a mock organization row (database format)
@@ -641,6 +643,160 @@ describe('Agent Politeness Phase 1.3: Organization Service', () => {
       expect(result).toHaveLength(1);
       expect(result[0].externalSpaceId).toBeNull();
     });
+
+    // A deactivated member is suspended from the account: canAccessOrganization
+    // refuses them, so listing the org anyway puts an entry in the switcher
+    // whose every scoped request comes back 403.
+    it('requires an active membership, matching canAccessOrganization', async () => {
+      const { getOrganizationsForUser } = await import('../../src/services/organization-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValue({ rows: [] });
+
+      await getOrganizationsForUser('user-uuid-123');
+
+      const [sql] = vi.mocked(db.query).mock.calls[0];
+      expect(sql).toContain('om.is_active = true');
+    });
+
+    // The role has to carry the same filter as the WHERE above. A suspended
+    // admin who still reaches the org through a site grant otherwise comes
+    // back as 'admin', and the dashboard renders tabs that isOrgAdmin 403s.
+    it('reads the role from an active membership only', async () => {
+      const { getOrganizationsForUser } = await import('../../src/services/organization-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValue({ rows: [] });
+
+      await getOrganizationsForUser('user-uuid-123');
+
+      const [sql] = vi.mocked(db.query).mock.calls[0];
+      expect(sql).toContain('mine.is_active = true');
+    });
+
+    // The switcher carries the role so the dashboard can decide, per account,
+    // whether to offer the admin tabs.
+    it('should report the caller\'s role in each organization', async () => {
+      const { getOrganizationsForUser } = await import('../../src/services/organization-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValue({
+        rows: [
+          createMockOrganizationRow({ id: 'org-mine', member_role: 'admin' }),
+          createMockOrganizationRow({ id: 'org-invited', member_role: 'member' }),
+        ],
+      });
+
+      const result = await getOrganizationsForUser('user-uuid-123');
+
+      expect(result.map((org) => org.role)).toEqual(['admin', 'member']);
+    });
+
+    // Reaching an org through a site grant leaves no membership row, so there
+    // is no role — and that must not read as admin.
+    it('should treat a site-role-only organization as member', async () => {
+      const { getOrganizationsForUser } = await import('../../src/services/organization-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValue({
+        rows: [createMockOrganizationRow({ id: 'org-shared', member_role: null })],
+      });
+
+      const result = await getOrganizationsForUser('user-uuid-456');
+
+      expect(result[0].role).toBe('member');
+    });
+  });
+
+  // ===========================================================================
+  // PCC-3479: per-business-account roles
+  // ===========================================================================
+
+  describe('organization roles', () => {
+    it('getOrganizationRole returns the membership role', async () => {
+      const { getOrganizationRole } = await import('../../src/services/organization-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValue({ rows: [{ role: 'admin' }] });
+
+      expect(await getOrganizationRole('org-uuid-123', 'user-uuid-123')).toBe('admin');
+    });
+
+    it('getOrganizationRole returns null without a membership row', async () => {
+      const { getOrganizationRole } = await import('../../src/services/organization-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValue({ rows: [] });
+
+      expect(await getOrganizationRole('org-uuid-123', 'site-only-user')).toBeNull();
+    });
+
+    it('updateOrganizationMember reports null when there is no membership to change', async () => {
+      const { updateOrganizationMember } = await import('../../src/services/organization-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValue({ rows: [], rowCount: 0 });
+
+      expect(
+        await updateOrganizationMember('org-uuid-123', 'site-only-user', { role: 'admin' }),
+      ).toBeNull();
+    });
+
+    // One statement for both columns: a mid-request failure can't leave the
+    // role committed and the active flag not, or the other way round.
+    it('updateOrganizationMember writes role and isActive together', async () => {
+      const { updateOrganizationMember } = await import('../../src/services/organization-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValue({
+        rows: [{ role: 'admin', is_active: false }],
+      });
+
+      expect(
+        await updateOrganizationMember('org-uuid-123', 'user-uuid-123', {
+          role: 'admin',
+          isActive: false,
+        }),
+      ).toEqual({ role: 'admin', isActive: false });
+
+      const [sql, params] = vi.mocked(db.query).mock.calls[0];
+      expect(sql).toContain('SET role');
+      expect(sql).toContain('is_active');
+      expect(params).toEqual(['org-uuid-123', 'user-uuid-123', 'admin', false]);
+    });
+
+    it('countOrganizationAdmins counts only active admin memberships', async () => {
+      const { countOrganizationAdmins } = await import('../../src/services/organization-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValue({ rows: [{ count: '2' }] });
+
+      expect(await countOrganizationAdmins('org-uuid-123')).toBe(2);
+      // A deactivated admin can't administer the account, so counting them
+      // would let the last one who can be demoted or suspended.
+      expect(vi.mocked(db.query).mock.calls[0][0]).toContain('is_active = true');
+    });
+
+    it('countOrganizationMembers counts only active memberships', async () => {
+      const { countOrganizationMembers } = await import('../../src/services/organization-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValue({ rows: [{ count: '1' }] });
+
+      expect(await countOrganizationMembers('org-uuid-123')).toBe(1);
+      expect(vi.mocked(db.query).mock.calls[0][0]).toContain('is_active = true');
+    });
+
+    it('addUserToOrganization defaults a new member to the member role', async () => {
+      const { addUserToOrganization } = await import('../../src/services/organization-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValue({ rows: [{ id: 'membership-id' }] });
+
+      await addUserToOrganization('org-uuid-123', 'user-uuid-123');
+
+      expect(vi.mocked(db.query).mock.calls[0][1]).toContain('member');
+    });
   });
 
   describe('getUserPrimaryOrg', () => {
@@ -691,6 +847,30 @@ describe('Agent Politeness Phase 1.3: Organization Service', () => {
       expect(result).toBeDefined();
       expect(result.name).toBe('Pantheon');
       expect(result.externalSpaceId).toBe('space_abc');
+    });
+
+    // PCC-3479: with self-service onboarding everyone gets an account minted
+    // for them, so the creator has to be able to manage it — otherwise they
+    // could not add a single person to the account they just made. `owner`
+    // rather than `admin` (057): it is also the row owner_email reads, and the
+    // one the roster API refuses to demote or remove.
+    it('should make the creator the owner of the new organization', async () => {
+      const { createOrgForUser } = await import('../../src/services/organization-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query)
+        .mockResolvedValueOnce(undefined as never) // BEGIN
+        .mockResolvedValueOnce({ rows: [createMockOrganizationRow({ id: 'new-org-id' })] }) // INSERT org
+        .mockResolvedValueOnce({ rows: [{ id: 'member-id' }] }) // INSERT membership
+        .mockResolvedValueOnce(undefined as never); // COMMIT
+
+      await createOrgForUser('user-uuid-123', 'user@pantheon.com', 'Pantheon', 'space_abc');
+
+      const membershipCall = vi
+        .mocked(db.query)
+        .mock.calls.find(([sql]) => sql.includes('app.organization_members'));
+
+      expect(membershipCall?.[0]).toContain("'owner'");
     });
 
     it('should derive org name from email domain when spaceName not provided', async () => {
@@ -842,6 +1022,24 @@ describe('Agent Politeness Phase 1.3: Organization Service', () => {
         expect.stringContaining('name = $3'),
         ['org-uuid-123', 'space_abc', 'My Space'],
       );
+    });
+  });
+
+  // Content Publisher skips both the subscription and business-account setup
+  // on a true here, so a home this user cannot reach strands them with neither.
+  describe('isEmailInAnyOrganization', () => {
+    it('counts only memberships and sites the user can actually reach', async () => {
+      const { isEmailInAnyOrganization } = await import('../../src/services/organization-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValue({ rows: [{ found: false }] });
+
+      await isEmailInAnyOrganization('Invitee@Example.COM');
+
+      const [sql, params] = vi.mocked(db.query).mock.calls[0];
+      expect(sql).toContain('om.is_active = true');
+      expect(sql).toContain('s.archived_at IS NULL');
+      expect(params).toEqual(['invitee@example.com']);
     });
   });
 });

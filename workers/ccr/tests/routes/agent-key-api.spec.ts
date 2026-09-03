@@ -8,6 +8,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { readJson } from '../helpers/http';
+import type { RegisteredAgent } from '../../src/types';
 
 // Mock services
 vi.mock('../../src/services/agent-api-key-service', () => ({
@@ -16,10 +17,21 @@ vi.mock('../../src/services/agent-api-key-service', () => ({
   revokeKey: vi.fn(),
 }));
 
-// PCC-3676: key management requires canManageGrants on every site the agent
-// holds a role on. Default: the agent has no roles, so there is nothing to
-// check and the operation is allowed — this keeps the pre-existing happy-path
-// tests (which don't set up roles) valid.
+// Keys belong to an agent, which belongs to a business account, and only an
+// administrator of that account may manage them. Most tests here are about key
+// handling, so default the caller through that gate; the permission blocks opt
+// out explicitly.
+vi.mock('../../src/services/agent-service', () => ({
+  getAgentById: vi.fn(),
+}));
+
+vi.mock('../../src/utils/org-access', () => ({
+  isOrgAdmin: vi.fn(),
+}));
+
+// Key management also requires canManageGrants on every site the agent holds a
+// role on. Default: the agent has no roles, so there is nothing to check and
+// the operation is allowed — which keeps the key-handling tests below valid.
 vi.mock('../../src/services/agent-site-role-service', () => ({
   getRolesForAgent: vi.fn().mockResolvedValue({}),
 }));
@@ -39,10 +51,27 @@ vi.mock('../../src/auth/authorization', async (importActual) => {
   return { ...actual, assertPermission: vi.fn().mockResolvedValue(undefined) };
 });
 
+const AGENT: RegisteredAgent = {
+  id: 'agent-uuid-456',
+  organizationId: 'org-uuid-001',
+  name: 'Test Agent',
+  capabilities: [],
+  status: 'active',
+  settings: {},
+  createdAt: '2026-03-22T10:00:00.000Z',
+  updatedAt: '2026-03-22T10:00:00.000Z',
+};
+
 describe('Agent API Key Routes', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.resetModules();
     vi.clearAllMocks();
+
+    const agentService = await import('../../src/services/agent-service');
+    const orgAccess = await import('../../src/utils/org-access');
+
+    vi.mocked(agentService.getAgentById).mockResolvedValue(AGENT);
+    vi.mocked(orgAccess.isOrgAdmin).mockResolvedValue(true);
   });
 
   const userPrincipal = {
@@ -301,11 +330,7 @@ describe('Agent API Key Routes', () => {
   // Edge cases
   // ===========================================================================
 
-  // ===========================================================================
-  // PCC-3676: key management requires admin on all of the agent's sites
-  // ===========================================================================
-
-  describe('authorization (PCC-3676)', () => {
+  describe('per-site key authorization', () => {
     it('rejects minting a key when the caller does not administer the agent\'s site (403)', async () => {
       const { handleAgentKeyRoutes } = await import('../../src/routes/agent-key-api');
       const keyService = await import('../../src/services/agent-api-key-service');
@@ -521,6 +546,144 @@ describe('Agent API Key Routes', () => {
       expect(response.status).toBe(405);
       const body: { error: string } = await readJson(response);
       expect(body.error).toBe('Method not allowed');
+    });
+  });
+
+  // ===========================================================================
+  // Business account admin requirement (PCC-3479)
+  // ===========================================================================
+
+  describe('business account admin requirement', () => {
+    it('should return 404 when the agent does not exist', async () => {
+      const { handleAgentKeyRoutes } = await import('../../src/routes/agent-key-api');
+      const agentService = await import('../../src/services/agent-service');
+      const keyService = await import('../../src/services/agent-api-key-service');
+
+      vi.mocked(agentService.getAgentById).mockResolvedValue(null);
+
+      const request = new Request('https://api.example.com/api/agents/nope/keys', {
+        method: 'GET',
+      });
+
+      const response = await handleAgentKeyRoutes(request, {
+        agentId: 'nope',
+        principal: userPrincipal,
+      });
+
+      expect(response.status).toBe(404);
+      expect(keyService.listKeys).not.toHaveBeenCalled();
+    });
+
+    it('should refuse a user outside the agent\'s organization (403)', async () => {
+      const { handleAgentKeyRoutes } = await import('../../src/routes/agent-key-api');
+      const keyService = await import('../../src/services/agent-api-key-service');
+      const orgAccess = await import('../../src/utils/org-access');
+
+      // isOrgAdmin is false for an outsider and for a plain member alike, so
+      // one answer covers both and neither learns which they were.
+      vi.mocked(orgAccess.isOrgAdmin).mockResolvedValue(false);
+
+      const request = new Request('https://api.example.com/api/agents/agent-uuid-456/keys', {
+        method: 'GET',
+      });
+
+      const response = await handleAgentKeyRoutes(request, {
+        agentId: 'agent-uuid-456',
+        principal: userPrincipal,
+      });
+
+      expect(response.status).toBe(403);
+      const body: { error: string } = await readJson(response);
+      expect(body.error).toBe('Business account admin access required');
+      expect(keyService.listKeys).not.toHaveBeenCalled();
+    });
+
+    it('should refuse listing keys to a member of the business account (403)', async () => {
+      const { handleAgentKeyRoutes } = await import('../../src/routes/agent-key-api');
+      const keyService = await import('../../src/services/agent-api-key-service');
+      const orgAccess = await import('../../src/utils/org-access');
+
+      vi.mocked(orgAccess.isOrgAdmin).mockResolvedValue(false);
+
+      const request = new Request('https://api.example.com/api/agents/agent-uuid-456/keys', {
+        method: 'GET',
+      });
+
+      const response = await handleAgentKeyRoutes(request, {
+        agentId: 'agent-uuid-456',
+        principal: userPrincipal,
+      });
+
+      expect(response.status).toBe(403);
+      const body: { error: string } = await readJson(response);
+      expect(body.error).toBe('Business account admin access required');
+      expect(keyService.listKeys).not.toHaveBeenCalled();
+    });
+
+    it('should refuse generating a key to a member of the business account (403)', async () => {
+      const { handleAgentKeyRoutes } = await import('../../src/routes/agent-key-api');
+      const keyService = await import('../../src/services/agent-api-key-service');
+      const orgAccess = await import('../../src/utils/org-access');
+
+      vi.mocked(orgAccess.isOrgAdmin).mockResolvedValue(false);
+
+      const request = new Request('https://api.example.com/api/agents/agent-uuid-456/keys', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Sneaky Key' }),
+      });
+
+      const response = await handleAgentKeyRoutes(request, {
+        agentId: 'agent-uuid-456',
+        principal: userPrincipal,
+      });
+
+      expect(response.status).toBe(403);
+      expect(keyService.generateKey).not.toHaveBeenCalled();
+    });
+
+    it('should refuse revoking a key to a member of the business account (403)', async () => {
+      const { handleAgentKeyRoutes } = await import('../../src/routes/agent-key-api');
+      const keyService = await import('../../src/services/agent-api-key-service');
+      const orgAccess = await import('../../src/utils/org-access');
+
+      vi.mocked(orgAccess.isOrgAdmin).mockResolvedValue(false);
+
+      const request = new Request(
+        'https://api.example.com/api/agents/agent-uuid-456/keys/key-uuid-001',
+        { method: 'DELETE' },
+      );
+
+      const response = await handleAgentKeyRoutes(request, {
+        agentId: 'agent-uuid-456',
+        keyId: 'key-uuid-001',
+        principal: userPrincipal,
+      });
+
+      expect(response.status).toBe(403);
+      expect(keyService.revokeKey).not.toHaveBeenCalled();
+    });
+
+    it('should check the agent\'s own organization, not one from the caller', async () => {
+      const { handleAgentKeyRoutes } = await import('../../src/routes/agent-key-api');
+      const orgAccess = await import('../../src/utils/org-access');
+      const keyService = await import('../../src/services/agent-api-key-service');
+
+      vi.mocked(keyService.listKeys).mockResolvedValue([]);
+
+      const request = new Request('https://api.example.com/api/agents/agent-uuid-456/keys', {
+        method: 'GET',
+      });
+
+      await handleAgentKeyRoutes(request, {
+        agentId: 'agent-uuid-456',
+        principal: userPrincipal,
+      });
+
+      expect(orgAccess.isOrgAdmin).toHaveBeenCalledWith(
+        userPrincipal,
+        'org-uuid-001',
+      );
     });
   });
 });

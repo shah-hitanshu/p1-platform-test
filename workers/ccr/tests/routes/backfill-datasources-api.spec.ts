@@ -63,7 +63,7 @@ describe('backfill-datasources-api', () => {
       // Admin check: user count > 0, user is admin
       vi.mocked(db.query)
         .mockResolvedValueOnce({ rows: [{ count: '1' }], command: '', rowCount: 0, oid: 0, fields: [] })
-        .mockResolvedValueOnce({ rows: [{ system_role: 'admin' }], command: '', rowCount: 0, oid: 0, fields: [] })
+        .mockResolvedValueOnce({ rows: [{ system_role: 'superadmin' }], command: '', rowCount: 0, oid: 0, fields: [] })
         // List all active sites
         .mockResolvedValueOnce({
           rows: [
@@ -128,7 +128,7 @@ describe('backfill-datasources-api', () => {
 
       vi.mocked(db.query)
         .mockResolvedValueOnce({ rows: [{ count: '1' }], command: '', rowCount: 0, oid: 0, fields: [] })
-        .mockResolvedValueOnce({ rows: [{ system_role: 'admin' }], command: '', rowCount: 0, oid: 0, fields: [] })
+        .mockResolvedValueOnce({ rows: [{ system_role: 'superadmin' }], command: '', rowCount: 0, oid: 0, fields: [] })
         .mockResolvedValueOnce({ rows: [{ id: 'site-1', name: 'Site One' }], command: '', rowCount: 0, oid: 0, fields: [] });
 
       vi.mocked(branchService.getMainBranch)
@@ -162,7 +162,7 @@ describe('backfill-datasources-api', () => {
 
       vi.mocked(db.query)
         .mockResolvedValueOnce({ rows: [{ count: '1' }], command: '', rowCount: 0, oid: 0, fields: [] })
-        .mockResolvedValueOnce({ rows: [{ system_role: 'admin' }], command: '', rowCount: 0, oid: 0, fields: [] })
+        .mockResolvedValueOnce({ rows: [{ system_role: 'superadmin' }], command: '', rowCount: 0, oid: 0, fields: [] })
         .mockResolvedValueOnce({ rows: [{ id: 'site-1', name: 'Site One' }], command: '', rowCount: 0, oid: 0, fields: [] });
 
       vi.mocked(branchService.getMainBranch)

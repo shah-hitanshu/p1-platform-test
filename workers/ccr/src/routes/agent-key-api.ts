@@ -7,13 +7,26 @@
  * POST   /api/agents/:agentId/keys          - Generate new key
  * GET    /api/agents/:agentId/keys          - List keys
  * DELETE /api/agents/:agentId/keys/:keyId   - Revoke key
+ *
+ * The agent id alone addresses these routes, so the organization it belongs to
+ * has to be looked up before anything else: minting a key is the same
+ * administrative act as registering the agent, so the caller must administer
+ * that business account.
+ *
+ * Administering the account is necessary but not sufficient. A key lets the
+ * bearer act AS the agent, inheriting every site role it holds, and an account
+ * admin is not automatically an admin of the account's sites — so the per-site
+ * checks below still decide.
  */
 
+import { getLogger } from '@pantheon-systems/p1-telemetry';
 import type { AuthenticatedPrincipal } from '../types';
 import { generateKey, listKeys, revokeKey } from '../services/agent-api-key-service';
+import { getAgentById } from '../services/agent-service';
 import { getRolesForAgent } from '../services/agent-site-role-service';
 import { assertPermission, AuthorizationError } from '../auth/authorization';
 import { getMainBranch } from '../services';
+import { isOrgAdmin } from '../utils/org-access';
 
 /**
  * Route context for agent key management endpoints
@@ -50,37 +63,38 @@ export async function handleAgentKeyRoutes(
     return errorResponse('Agent ID is required', 400);
   }
 
-  // Only users can manage agent keys (not agents or service principals).
+  // Only users can manage agent keys (not agents or service principals)
   if (principal.type !== 'user') {
     return errorResponse('Only users can manage agent API keys', 403);
   }
 
   try {
-    // Key-specific operations (DELETE by keyId)
+    const agent = await getAgentById(agentId);
+    if (!agent) {
+      return errorResponse('Agent not found', 404);
+    }
+
+    // isOrgAdmin already requires an active membership row and passes every
+    // superadmin, so it subsumes a separate organization-access check.
+    if (!(await isOrgAdmin(principal, agent.organizationId))) {
+      return errorResponse('Business account admin access required', 403);
+    }
+
     if (keyId !== undefined && keyId !== '') {
       if (method === 'DELETE') {
-        // Revoking a key only REDUCES access, so it must not be blocked by the
-        // all-sites rule that mint/list use — that would stop a site admin from
-        // containing a leaked key when the agent also holds a role on a site
-        // they don't administer. Require admin on ANY one of the agent's sites
-        // (a role-less agent's keys are inert; type===user then suffices).
+        // Revoking only REDUCES access, so it must not be blocked by the
+        // all-sites rule mint and list use — that would stop a site admin
+        // containing a leaked key on a site they administer when the agent
+        // also holds a role elsewhere.
         await assertCanRevokeAgentKey(principal, agentId);
         return await handleRevokeKey(agentId, keyId);
       }
       return errorResponse('Method not allowed', 405);
     }
 
-    // PCC-3676: minting or listing an agent key exposes/creates material that
-    // lets the bearer act AS the agent, inheriting every site role the agent
-    // holds (agent-api-key-provider resolves the key to the union of the
-    // agent's agent_site_roles). So these must never let a caller reach access
-    // they don't already have: require canManageGrants on EVERY site the agent
-    // currently holds a role on. This closes the mint-and-reuse variant —
-    // minting a key for an agent a site admin already gave admin on site X,
-    // then using the key directly — which gating only the grant layer does not
-    // stop. A role-less agent has nothing to protect yet; scoping that (and the
-    // full key lifecycle) to the agent's owner is the org-account model's job,
-    // tracked as follow-up on PCC-3676.
+    // Minting or listing a key creates or exposes material that acts as the
+    // agent, so it must never reach access the caller lacks: require
+    // canManageGrants on every site the agent currently holds a role on.
     await assertCanManageAgentKeys(principal, agentId);
 
     switch (method) {
@@ -95,7 +109,7 @@ export async function handleAgentKeyRoutes(
     if (error instanceof AuthorizationError) {
       return errorResponse(error.message, 403);
     }
-    console.error('Agent Key API error:', error);
+    getLogger().error('Agent Key API error', error instanceof Error ? error : new Error(String(error)), {});
     return errorResponse('Internal server error', 500);
   }
 }
@@ -175,7 +189,12 @@ async function handleGenerateKey(
   agentId: string,
   principal: AuthenticatedPrincipal,
 ): Promise<Response> {
-  const body: unknown = await request.json();
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return errorResponse('Invalid JSON body', 400);
+  }
   const { name } = body as GenerateKeyBody;
 
   if (name === undefined || name.trim() === '') {

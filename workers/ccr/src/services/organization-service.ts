@@ -39,6 +39,39 @@ export interface UpdateOrganizationParams {
 }
 
 /**
+ * A member's role within one business account (PCC-3479).
+ *
+ * Distinct from app.users.system_role, which is platform-wide: administering
+ * the account you set up for yourself must not make you an administrator of
+ * every account you are invited to.
+ */
+export type OrganizationRole = 'owner' | 'admin' | 'member';
+
+/**
+ * The roles that administer a business account.
+ *
+ * `owner` is an admin — the person the account was created for — that the
+ * roster API additionally refuses to demote or remove while they are the last
+ * one. Every admin check must accept both, or the owner of a single-member
+ * account would be locked out of their own roster.
+ */
+export const ORG_ADMIN_ROLES: readonly OrganizationRole[] = ['owner', 'admin'];
+
+/**
+ * Narrows a stored role to OrganizationRole.
+ *
+ * Anything unrecognised reads as plain membership: rows predating 068 carried
+ * no role at all, and a value the CHECK constraint has never allowed should
+ * grant nothing rather than be trusted.
+ */
+function normalizeOrgRole(value: string | null | undefined): OrganizationRole {
+  return value === 'owner' || value === 'admin' ? value : 'member';
+}
+
+/** An organization plus the calling user's role in it. */
+export type OrganizationWithRole = Organization & { role: OrganizationRole };
+
+/**
  * Options for listing organizations.
  */
 export interface ListOrganizationsOptions {
@@ -60,6 +93,8 @@ interface OrganizationRow {
   archived_at: string | null;
   external_space_id?: string | null;
   owner_email?: string | null;
+  /** Only selected by the "organizations I belong to" queries. */
+  member_role?: string | null;
 }
 
 /**
@@ -127,6 +162,18 @@ function mapRowToOrganization(row: OrganizationRow): Organization {
     archivedAt: row.archived_at ?? null,
     externalSpaceId: row.external_space_id ?? null,
     ownerEmail: row.owner_email ?? undefined,
+  };
+}
+
+/**
+ * Maps a row from one of the "organizations I belong to" queries, attaching the
+ * caller's role. A null member_role means they reach the org through a site
+ * role rather than a membership row, which is plain membership.
+ */
+function mapRowToOrganizationWithRole(row: OrganizationRow): OrganizationWithRole {
+  return {
+    ...mapRowToOrganization(row),
+    role: normalizeOrgRole(row.member_role),
   };
 }
 
@@ -524,15 +571,30 @@ function deriveOrgNameFromEmail(email: string): string {
 /**
  * Returns all organizations a user belongs to — via direct membership
  * or via site roles on sites that belong to an organization.
+ *
+ * Each carries the user's role in it. Reaching an org only through a site role
+ * makes you a member of it, never an admin: administering the account is
+ * granted on the account, not inherited from one of its sites.
+ *
+ * Membership must match canAccessOrganization, is_active included, or the
+ * switcher offers an account whose every scoped request comes back 403.
  */
-export async function getOrganizationsForUser(userId: string): Promise<Organization[]> {
+export async function getOrganizationsForUser(userId: string): Promise<OrganizationWithRole[]> {
   const result = await query<OrganizationRow>(`
     SELECT DISTINCT o.id, o.name, o.settings, o.created_at, o.updated_at, o.archived_at,
            o.external_space_id,
-           -- Assumes each org has a single member (Phase 1). Revisit when org membership supports multiple users.
+           (SELECT mine.role FROM app.organization_members mine
+            WHERE mine.organization_id = o.id AND mine.user_id = $1::uuid
+              AND mine.is_active = true) AS member_role,
+           -- The account owner. An account may have several, so this is the
+           -- earliest of them; ordering rather than a WHERE so one whose owner
+           -- rows were deleted out of band still reports an email — its
+           -- earliest member, which is who 068's backfill would name — instead
+           -- of going null.
            (SELECT owner_u.email FROM app.organization_members owner_om
             JOIN app.users owner_u ON owner_u.id = owner_om.user_id
             WHERE owner_om.organization_id = o.id
+            ORDER BY (owner_om.role = 'owner') DESC, owner_om.created_at, owner_om.id
             LIMIT 1) AS owner_email
     FROM app.organizations o
     WHERE o.archived_at IS NULL
@@ -540,6 +602,7 @@ export async function getOrganizationsForUser(userId: string): Promise<Organizat
         EXISTS (
           SELECT 1 FROM app.organization_members om
           WHERE om.organization_id = o.id AND om.user_id = $1::uuid
+            AND om.is_active = true
         )
         OR
         EXISTS (
@@ -551,7 +614,328 @@ export async function getOrganizationsForUser(userId: string): Promise<Organizat
       )
   `, [userId]);
 
-  return result.rows.map(mapRowToOrganization);
+  return result.rows.map(mapRowToOrganizationWithRole);
+}
+
+/**
+ * Returns every non-archived organization, in the same shape as
+ * getOrganizationsForUser (including external_space_id and owner_email so the
+ * frontend can merge them with PCC spaces).
+ *
+ * PCC-3479: backs the superadmin view of the business-account switcher. Every
+ * org comes back as `admin`, because that is what the role means — a superadmin
+ * administers accounts they were never made a member of.
+ */
+export const SWITCHER_ORG_LIMIT = 500;
+
+export async function listAllOrganizationsForSwitcher(
+  limit = SWITCHER_ORG_LIMIT,
+): Promise<OrganizationWithRole[]> {
+  const result = await query<OrganizationRow>(`
+    SELECT o.id, o.name, o.settings, o.created_at, o.updated_at, o.archived_at,
+           o.external_space_id, 'admin' AS member_role,
+           -- The account owner. An account may have several, so this is the
+           -- earliest of them; ordering rather than a WHERE so one whose owner
+           -- rows were deleted out of band still reports an email — its
+           -- earliest member, which is who 068's backfill would name — instead
+           -- of going null.
+           (SELECT owner_u.email FROM app.organization_members owner_om
+            JOIN app.users owner_u ON owner_u.id = owner_om.user_id
+            WHERE owner_om.organization_id = o.id
+            ORDER BY (owner_om.role = 'owner') DESC, owner_om.created_at, owner_om.id
+            LIMIT 1) AS owner_email
+    FROM app.organizations o
+    WHERE o.archived_at IS NULL
+    ORDER BY o.name ASC
+    LIMIT $1
+  `, [limit]);
+
+  return result.rows.map(mapRowToOrganizationWithRole);
+}
+
+/**
+ * A user as seen from inside an organization.
+ */
+export interface OrganizationUser {
+  id: string;
+  email: string;
+  name: string | null;
+  principalId: string | null;
+  authProvider: string | null;
+  /** Platform-wide role. Read-only here; shown so a superadmin is recognizable. */
+  systemRole: string;
+  /**
+   * Role in *this* organization — what the Users tab edits. Site-role-only
+   * users have no membership row and so count as plain members.
+   */
+  role: OrganizationRole;
+  /**
+   * Active in *this* organization's membership row; true for site-role-only
+   * users, who have no such row to deactivate.
+   */
+  isActive: boolean;
+  /**
+   * true when the user is in organization_members; false when they only reach
+   * the org through a site role. Site-role-only users cannot be removed from
+   * the org directly — their access comes from the site grant.
+   */
+  isDirectMember: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Returns every user who belongs to an organization, using the same membership
+ * definition as getOrganizationsForUser (direct membership OR a site role on
+ * one of the org's sites).
+ */
+export async function getUsersForOrganization(organizationId: string): Promise<OrganizationUser[]> {
+  const result = await query<{
+    id: string;
+    email: string;
+    name: string | null;
+    principal_id: string | null;
+    auth_provider: string | null;
+    system_role: string;
+    member_role: string | null;
+    member_is_active: boolean | null;
+    is_direct_member: boolean;
+    created_at: string;
+    updated_at: string;
+  }>(`
+    SELECT DISTINCT
+      u.id, u.email, u.name, u.principal_id, u.auth_provider,
+      u.system_role, u.created_at, u.updated_at,
+      (
+        SELECT direct.role FROM app.organization_members direct
+        WHERE direct.organization_id = $1::uuid AND direct.user_id = u.id
+      ) AS member_role,
+      (
+        SELECT direct.is_active FROM app.organization_members direct
+        WHERE direct.organization_id = $1::uuid AND direct.user_id = u.id
+      ) AS member_is_active,
+      EXISTS (
+        SELECT 1 FROM app.organization_members direct
+        WHERE direct.organization_id = $1::uuid AND direct.user_id = u.id
+      ) AS is_direct_member
+    FROM app.users u
+    WHERE EXISTS (
+        SELECT 1 FROM app.organization_members om
+        WHERE om.organization_id = $1::uuid AND om.user_id = u.id
+      )
+      OR EXISTS (
+        SELECT 1 FROM app.user_site_roles usr
+        INNER JOIN app.sites s ON s.id = usr.site_id
+        WHERE usr.user_id = u.id::text
+          AND s.organization_id = $1::uuid
+          AND s.archived_at IS NULL
+      )
+    ORDER BY u.created_at ASC
+  `, [organizationId]);
+
+  return result.rows.map((row) => ({
+    id: row.id,
+    email: row.email,
+    name: row.name,
+    principalId: row.principal_id,
+    authProvider: row.auth_provider,
+    systemRole: row.system_role,
+    role: normalizeOrgRole(row.member_role),
+    isActive: row.member_is_active ?? true,
+    isDirectMember: row.is_direct_member,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }));
+}
+
+/**
+ * Adds a user to an organization's direct membership.
+ *
+ * @returns true when a membership row was created, false when it already existed
+ * @throws OrganizationNotFoundError if the organization does not exist
+ */
+export async function addUserToOrganization(
+  organizationId: string,
+  userId: string,
+  role: OrganizationRole = 'member',
+): Promise<boolean> {
+  try {
+    const result = await query<{ id: string }>(`
+      INSERT INTO app.organization_members (organization_id, user_id, role)
+      VALUES ($1::uuid, $2::uuid, $3)
+      ON CONFLICT (organization_id, user_id) DO NOTHING
+      RETURNING id
+    `, [organizationId, userId, role]);
+
+    return result.rows.length > 0;
+  } catch (error) {
+    if (isForeignKeyViolation(error)) {
+      throw new OrganizationNotFoundError(organizationId);
+    }
+    throw error;
+  }
+}
+
+/**
+ * The user's role in one organization, or null when they have no membership
+ * row — which includes reaching the org only through a site role.
+ */
+export async function getOrganizationRole(
+  organizationId: string,
+  userId: string,
+): Promise<OrganizationRole | null> {
+  const result = await query<{ role: string }>(
+    'SELECT role FROM app.organization_members WHERE organization_id = $1::uuid AND user_id = $2::uuid',
+    [organizationId, userId],
+  );
+
+  const role = result.rows[0]?.role;
+  if (role === undefined) {
+    return null;
+  }
+  return normalizeOrgRole(role);
+}
+
+/**
+ * Atomically updates the role and/or isActive state of a direct membership row.
+ *
+ * Both columns are written in a single UPDATE so a mid-request failure cannot
+ * leave one committed while the other is not. Omit a field to leave it unchanged.
+ *
+ * @returns the updated values, or null when no membership row was found
+ */
+export async function updateOrganizationMember(
+  organizationId: string,
+  userId: string,
+  fields: { role?: OrganizationRole; isActive?: boolean },
+): Promise<{ role: OrganizationRole; isActive: boolean } | null> {
+  const result = await query<{ role: string; is_active: boolean }>(`
+    UPDATE app.organization_members
+    SET role      = COALESCE($3::text, role),
+        is_active = COALESCE($4, is_active)
+    WHERE organization_id = $1::uuid AND user_id = $2::uuid
+    RETURNING role, is_active
+  `, [
+    organizationId,
+    userId,
+    fields.role ?? null,
+    fields.isActive ?? null,
+  ]);
+
+  const row = result.rows[0];
+  if (row === undefined) return null;
+  return { role: normalizeOrgRole(row.role), isActive: row.is_active };
+}
+
+/**
+ * Whether a user's direct membership in an organization is active, so a
+ * caller who didn't touch isActive in a PATCH can still be told the current
+ * value. Defaults true for a site-role-only user, who has no membership row
+ * to deactivate.
+ */
+export async function isOrganizationMemberActive(
+  organizationId: string,
+  userId: string,
+): Promise<boolean> {
+  const result = await query<{ is_active: boolean }>(
+    'SELECT is_active FROM app.organization_members WHERE organization_id = $1::uuid AND user_id = $2::uuid',
+    [organizationId, userId],
+  );
+
+  return result.rows[0]?.is_active ?? true;
+}
+
+/**
+ * Counts the admins of an organization, so the last one can't be demoted or
+ * removed and leave the account unmanageable.
+ *
+ * The owner counts: they administer the account, and an account whose only
+ * administrator is its owner must not read as having none — that would let the
+ * roster API demote its last real admin on the grounds that nobody was in
+ * charge anyway.
+ *
+ * Only active members count. isOrgAdmin refuses a deactivated one, so counting
+ * them here would let the last admin who can actually administer the account be
+ * demoted on the strength of one who cannot.
+ */
+export async function countOrganizationAdmins(organizationId: string): Promise<number> {
+  const result = await query<{ count: string }>(
+    `SELECT COUNT(*) AS count FROM app.organization_members
+      WHERE organization_id = $1::uuid AND role IN ('admin', 'owner')
+        AND is_active = true`,
+    [organizationId],
+  );
+
+  return parseInt(result.rows[0]?.count ?? '0', 10);
+}
+
+/**
+ * Removes a user's direct membership in an organization.
+ * Site-role-derived access is untouched — revoke the site grant for that.
+ *
+ * @returns true if a membership row was deleted, false if there was none
+ */
+export async function removeUserFromOrganization(
+  organizationId: string,
+  userId: string,
+): Promise<boolean> {
+  const result = await query<{ id: string }>(`
+    DELETE FROM app.organization_members
+    WHERE organization_id = $1::uuid AND user_id = $2::uuid
+    RETURNING id
+  `, [organizationId, userId]);
+
+  return result.rows.length > 0;
+}
+
+/**
+ * Counts active direct members of an organization (used to refuse orphaning an
+ * org). Deactivated members are excluded for the same reason as
+ * countOrganizationAdmins: they cannot reach the account through membership.
+ */
+export async function countOrganizationMembers(organizationId: string): Promise<number> {
+  const result = await query<{ count: string }>(
+    `SELECT COUNT(*) AS count FROM app.organization_members
+      WHERE organization_id = $1::uuid AND is_active = true`,
+    [organizationId],
+  );
+
+  return parseInt(result.rows[0]?.count ?? '0', 10);
+}
+
+/**
+ * PCC-3479: does this email already have a home in P1 — an org membership or a
+ * site role? Content Publisher asks this before provisioning a Stigg
+ * subscription: a user invited into someone else's business account must not be
+ * pushed through business-account setup on first sign-in.
+ *
+ * A bare app.users row is deliberately not enough — a self-service signup with
+ * no org yet still needs the normal setup flow.
+ *
+ * Membership is tested exactly as canAccessOrganization tests it: a suspended
+ * membership or an archived site is not a home the user can actually reach.
+ */
+export async function isEmailInAnyOrganization(email: string): Promise<boolean> {
+  const result = await query<{ found: boolean }>(`
+    SELECT EXISTS (
+      SELECT 1 FROM app.users u
+      WHERE u.email = $1
+        AND u.is_active = true
+        AND (
+          EXISTS (
+            SELECT 1 FROM app.organization_members om
+            WHERE om.user_id = u.id AND om.is_active = true
+          )
+          OR EXISTS (
+            SELECT 1 FROM app.user_site_roles usr
+            INNER JOIN app.sites s ON s.id = usr.site_id
+            WHERE usr.user_id = u.id::text AND s.archived_at IS NULL
+          )
+        )
+    ) AS found
+  `, [email.toLowerCase()]);
+
+  return result.rows[0]?.found ?? false;
 }
 
 /**
@@ -671,9 +1055,13 @@ export async function createOrgForUser(
     }
     const org = mapRowToOrganization(orgRow);
 
+    // The person the account is being set up for owns it (PCC-3479). Without
+    // this a self-service signup would own a business account they cannot add
+    // anyone to. `owner` rather than `admin`: this is the row 068's backfill
+    // would pick, and owner_email reads it directly.
     await query(`
-      INSERT INTO app.organization_members (organization_id, user_id)
-      VALUES ($1, $2::uuid)
+      INSERT INTO app.organization_members (organization_id, user_id, role)
+      VALUES ($1, $2::uuid, 'owner')
     `, [org.id, userId]);
 
     await query('COMMIT');

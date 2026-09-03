@@ -3,8 +3,15 @@
  *
  * REST API endpoints for agent operations.
  * Based on collaborative-state-system-architecture-v2.3.md
+ *
+ * Two levels of access (PCC-3479):
+ *   - roster management (list, register, delete) requires the admin role in
+ *     this organization — not the platform-wide system role
+ *   - a single agent's own record (get, update, status) needs only access to
+ *     the organization, because that is what a running agent calls
  */
 
+import { getLogger } from '@pantheon-systems/p1-telemetry';
 import type { AgentSettings, AgentStatus } from '../types';
 import {
   createAgent,
@@ -17,6 +24,8 @@ import {
   OrganizationNotFoundError,
   HttpError,
 } from '../services';
+import { canAccessOrganization, isOrgAdmin } from '../utils/org-access';
+import type { OrgAccessPrincipal } from '../utils/org-access';
 
 /**
  * Request context for agent routes
@@ -25,10 +34,7 @@ export interface AgentRouteContext {
   organizationId: string;
   agentId?: string;
   subResource?: 'status';
-  principal: {
-    id: string;
-    type: 'user' | 'agent';
-  };
+  principal: OrgAccessPrincipal;
 }
 
 /**
@@ -39,9 +45,13 @@ const VALID_STATUSES: AgentStatus[] = ['active', 'suspended', 'disabled'];
 /**
  * Parse JSON body from request with type assertion
  */
-async function parseJsonBody<T>(request: Request): Promise<T> {
-  const json: unknown = await request.json();
-  return json as T;
+async function parseJsonBody<T>(request: Request): Promise<T | undefined> {
+  try {
+    const json: unknown = await request.json();
+    return json as T;
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -109,7 +119,7 @@ async function handleCreateAgent(
   const body = await parseJsonBody<CreateAgentBody>(request);
 
   // Validate required fields
-  if (body.name === undefined || body.name.trim() === '') {
+  if (body?.name === undefined || body.name.trim() === '') {
     return errorResponse('name is required', 400);
   }
 
@@ -187,6 +197,9 @@ async function handleUpdateAgent(
   }
 
   const body = await parseJsonBody<UpdateAgentBody>(request);
+  if (body === undefined) {
+    return errorResponse('Invalid JSON body', 400);
+  }
 
   const updatedAgent = await updateAgent(context.agentId, {
     name: body.name,
@@ -225,7 +238,7 @@ async function handleUpdateAgentStatus(
   const body = await parseJsonBody<UpdateStatusBody>(request);
 
   // Validate status
-  if (body.status === undefined || !VALID_STATUSES.includes(body.status as AgentStatus)) {
+  if (body?.status === undefined || !VALID_STATUSES.includes(body.status as AgentStatus)) {
     return errorResponse(
       `Invalid status. Must be one of: ${VALID_STATUSES.join(', ')}`,
       400,
@@ -273,9 +286,17 @@ export async function handleAgentRoutes(
   const method = request.method;
 
   try {
+    // PCC-3479: agent routes previously trusted any authenticated caller, so
+    // one organization's agent roster was readable (and writable) by another's.
+    if (!(await canAccessOrganization(context.principal, context.organizationId))) {
+      return errorResponse('Access denied to the specified organization', 403);
+    }
+
     // Handle sub-resource routes (status)
     if (context.subResource === 'status') {
       switch (method) {
+        // PATCH is what the dashboard sends; PUT predates it and still works.
+        case 'PATCH':
         case 'PUT':
           return await handleUpdateAgentStatus(request, context);
         default:
@@ -291,13 +312,25 @@ export async function handleAgentRoutes(
         case 'PATCH':
           return await handleUpdateAgent(request, context);
         case 'DELETE':
+          if (!(await isOrgAdmin(context.principal, context.organizationId))) {
+            return errorResponse('Business account admin access required', 403);
+          }
           return await handleDeleteAgent(context);
         default:
           return errorResponse('Method not allowed', 405);
       }
     }
 
-    // Routes without agentId (collection operations)
+    // Routes without agentId (collection operations). Managing the roster of a
+    // business account's agents is administrative, so both listing and
+    // registering require the admin role *in this organization*. The
+    // single-agent GET, PATCH and status routes stay open to any principal with
+    // access to the organization: that is the surface a running agent uses to
+    // report on and update itself through @pantheon-systems/css-client.
+    if (!(await isOrgAdmin(context.principal, context.organizationId))) {
+      return errorResponse('Business account admin access required', 403);
+    }
+
     switch (method) {
       case 'GET':
         return await handleListAgents(request, context);
@@ -319,7 +352,7 @@ export async function handleAgentRoutes(
     }
 
     // Log and return generic error for unknown errors
-    console.error('Agent API error:', error);
+    getLogger().error('Agent API error', error instanceof Error ? error : new Error(String(error)), {});
     return errorResponse('Internal server error', 500);
   }
 }

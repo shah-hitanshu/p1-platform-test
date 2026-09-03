@@ -489,13 +489,32 @@ export {
   createOrgForUser,
   linkOrgToSpace,
   isUserInOrganization,
+  listAllOrganizationsForSwitcher,
+  SWITCHER_ORG_LIMIT,
+  getUsersForOrganization,
+  addUserToOrganization,
+  removeUserFromOrganization,
+  countOrganizationMembers,
+  countOrganizationAdmins,
+  getOrganizationRole,
+  updateOrganizationMember,
+  isOrganizationMemberActive,
+  isEmailInAnyOrganization,
 } from './organization-service';
 
 export type {
   CreateOrganizationParams,
   UpdateOrganizationParams,
   ListOrganizationsOptions,
+  OrganizationUser,
+  OrganizationRole,
+  OrganizationWithRole,
 } from './organization-service';
+
+// Audit Log Service
+export { recordAuditEntry } from './audit-log-service';
+
+export type { AuditEntry } from './audit-log-service';
 
 // Agent Service
 export {

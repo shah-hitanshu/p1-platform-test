@@ -47,6 +47,13 @@ export interface Env {
   BROKER_JWT_AUDIENCE?: string;
   BROKER_JWT_ISSUER?: string;
 
+  /**
+   * Content Publisher's LaunchDarkly proxy (`POST { feature } -> { value }`),
+   * used to evaluate the P1V0 self-service onboarding gate (PCC-3479).
+   * Unset disables self-service onboarding — the allowlist stays authoritative.
+   */
+  LAUNCHDARKLY_API_URL?: string;
+
   // MAS (Membership Authorization Service) integration
   MAS_ENABLED?: string;
   MAS_BASE_URL?: string;

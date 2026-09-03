@@ -8,12 +8,15 @@
  * Authentication is via X-Internal-Secret header instead of user/agent tokens.
  */
 
+import { timingSafeEqual } from 'node:crypto';
+import { getLogger } from '@pantheon-systems/p1-telemetry';
 import {
   syncCrdtToPostgres,
   loadLatestCrdtState,
 } from '../services/crdt-sync-service';
 import { DocumentNotFoundError, SyncError, HttpError } from '../services/errors';
 import { getSiteAllowedOrigins } from '../services/site-service';
+import { isEmailInAnyOrganization } from '../services/organization-service';
 import {
   createCheckpoint,
   revertToCheckpoint,
@@ -282,7 +285,7 @@ async function handleLoadCrdtState(request: Request): Promise<Response> {
       snapshot: result.snapshot,
     });
   } catch (error) {
-    console.error('Error loading CRDT state:', error);
+    getLogger().error('Error loading CRDT state', error instanceof Error ? error : new Error(String(error)), {});
     return errorResponse('Failed to load CRDT state', 500);
   }
 }
@@ -369,7 +372,7 @@ async function handleInternalPublish(request: Request): Promise<Response> {
 
     return jsonResponse(result);
   } catch (error) {
-    console.error('Internal publish failed:', error);
+    getLogger().error('Internal publish failed', error instanceof Error ? error : new Error(String(error)), {});
     return errorResponse(
       `Publish failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
       500,
@@ -577,7 +580,7 @@ async function handleAgentCheckpointStart(request: Request): Promise<Response> {
     if (error instanceof HttpError) {
       return errorResponse(error.message, error.status);
     }
-    console.error('Error creating agent pre-edit checkpoint:', error);
+    getLogger().error('Error creating agent pre-edit checkpoint', error instanceof Error ? error : new Error(String(error)), {});
     return errorResponse('Failed to create checkpoint', 500);
   }
 }
@@ -625,7 +628,7 @@ async function handleAgentCheckpointComplete(request: Request): Promise<Response
     if (error instanceof HttpError) {
       return errorResponse(error.message, error.status);
     }
-    console.error('Error creating agent post-edit checkpoint:', error);
+    getLogger().error('Error creating agent post-edit checkpoint', error instanceof Error ? error : new Error(String(error)), {});
     return errorResponse('Failed to create checkpoint', 500);
   }
 }
@@ -671,7 +674,7 @@ async function handleAgentCheckpointRollback(request: Request): Promise<Response
     if (error instanceof HttpError) {
       return errorResponse(error.message, error.status);
     }
-    console.error('Error rolling back to checkpoint:', error);
+    getLogger().error('Error rolling back to checkpoint', error instanceof Error ? error : new Error(String(error)), {});
     return errorResponse('Failed to rollback to checkpoint', 500);
   }
 }
@@ -707,6 +710,30 @@ async function handleInternalSiteAuthConfig(
   }
 }
 
+/**
+ * Handle GET /internal/org-membership?email= (PCC-3479)
+ *
+ * Answers one question for Content Publisher: does this email already belong
+ * somewhere in P1 — an organization membership or a site role?
+ *
+ * CP calls this before provisioning a Stigg subscription on first sign-in. A
+ * user who was invited into someone else's business account must not be routed
+ * through business-account setup, and must not get a subscription of their own.
+ */
+async function handleInternalOrgMembership(email: string): Promise<Response> {
+  try {
+    const isMember = await isEmailInAnyOrganization(email);
+
+    return new Response(JSON.stringify({ email: email.toLowerCase(), isMember }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  } catch (error) {
+    getLogger().error('Internal org membership lookup failed', error instanceof Error ? error : new Error(String(error)), {});
+    return errorResponse('Internal server error', 500);
+  }
+}
+
 // =============================================================================
 // Main Route Handler
 // =============================================================================
@@ -728,7 +755,12 @@ export async function handleInternalRoutes(
     return errorResponse('X-Internal-Secret header is required', 401);
   }
 
-  if (providedSecret !== context.internalSecret) {
+  const enc = new TextEncoder();
+  const a = enc.encode(providedSecret);
+  const b = enc.encode(context.internalSecret);
+  const secretsMatch =
+    a.length === b.length && timingSafeEqual(a, b);
+  if (!secretsMatch) {
     return errorResponse('Invalid X-Internal-Secret', 403);
   }
 
@@ -775,6 +807,18 @@ export async function handleInternalRoutes(
       return errorResponse('Method not allowed', 405);
     }
     return handleAgentCheckpointRollback(request);
+  }
+
+  // Organization membership probe (called by Content Publisher's addonapi)
+  if (path === '/internal/org-membership') {
+    if (request.method !== 'GET') {
+      return errorResponse('Method not allowed', 405);
+    }
+    const email = url.searchParams.get('email');
+    if (email === null || email.trim() === '') {
+      return errorResponse('email query parameter is required', 400);
+    }
+    return handleInternalOrgMembership(email.trim());
   }
 
   // Site auth config endpoint (called by CCR Auth Server service binding)

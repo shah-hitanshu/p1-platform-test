@@ -51,6 +51,11 @@ export function parseRoute(path: string): { handler: string; params: RouteParams
     return { handler: 'auth', params: {} };
   }
 
+  // Current user: /api/users/me (the only non-admin route in users-api)
+  if (normalizedPath === '/api/users/me') {
+    return { handler: 'current-user', params: {} };
+  }
+
   // Admin users routes
   const adminUsersMatch = /^\/api\/admin\/users(?:\/([^/]+))?$/.exec(normalizedPath);
   if (adminUsersMatch) {
@@ -1004,6 +1009,18 @@ export function parseRoute(path: string): { handler: string; params: RouteParams
     return {
       handler: 'my-organizations',
       params: {},
+    };
+  }
+
+  // Organization users: /api/organizations/{orgId}/users(/{userId})
+  const orgUsersMatch = /^\/api\/organizations\/([^/]+)\/users(?:\/([^/]+))?$/.exec(normalizedPath);
+  if (orgUsersMatch) {
+    return {
+      handler: 'org-users',
+      params: {
+        organizationId: orgUsersMatch[1],
+        userId: orgUsersMatch[2],
+      },
     };
   }
 

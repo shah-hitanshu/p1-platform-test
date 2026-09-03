@@ -7,6 +7,18 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { readJson } from '../helpers/http';
+import type { RegisteredAgent } from '../../src/types';
+
+// PCC-3479: agent routes are org-scoped now. Access is exercised separately in
+// its own describe block; everything else assumes the caller is a member.
+//
+// Managing the roster additionally needs the admin role within the business
+// account. Most tests here exercise roster management, so default the caller to
+// an admin of it; the permission block below opts out explicitly.
+vi.mock('../../src/utils/org-access', () => ({
+  canAccessOrganization: vi.fn(async () => true),
+  isOrgAdmin: vi.fn(async () => true),
+}));
 
 // Mock the services
 vi.mock('../../src/services', async () => {
@@ -32,7 +44,7 @@ describe('Agent Politeness Phase 1.5: Agent API Routes', () => {
   });
 
   // Helper to create mock agent
-  function createMockAgent(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  function createMockAgent(overrides: Partial<RegisteredAgent> = {}): RegisteredAgent {
     return {
       id: 'agent-uuid-123',
       organizationId: 'org-uuid-123',
@@ -463,6 +475,197 @@ describe('Agent Politeness Phase 1.5: Agent API Routes', () => {
       });
 
       expect(response.status).toBe(404);
+    });
+  });
+
+  // ===========================================================================
+  // PCC-3479: organization scoping
+  // ===========================================================================
+
+  describe('organization access', () => {
+    it('should return 403 when the caller does not belong to the organization', async () => {
+      const { handleAgentRoutes } = await import('../../src/routes/agent-api');
+      const { canAccessOrganization } = await import('../../src/utils/org-access');
+      const services = await import('../../src/services');
+
+      vi.mocked(canAccessOrganization).mockResolvedValueOnce(false);
+
+      const request = new Request(
+        'https://api.example.com/api/organizations/other-org/agents',
+        { method: 'GET' },
+      );
+
+      const response = await handleAgentRoutes(request, {
+        principal: { id: 'user-1', type: 'user' },
+        organizationId: 'other-org',
+      });
+
+      expect(response.status).toBe(403);
+      expect(services.getAgentsByOrganization).not.toHaveBeenCalled();
+    });
+
+    it('should accept PATCH on the status sub-resource', async () => {
+      const { handleAgentRoutes } = await import('../../src/routes/agent-api');
+      const services = await import('../../src/services');
+
+      vi.mocked(services.getAgentById).mockResolvedValueOnce(createMockAgent());
+      vi.mocked(services.updateAgentStatus).mockResolvedValueOnce(
+        createMockAgent({ status: 'suspended' }),
+      );
+
+      const request = new Request(
+        'https://api.example.com/api/organizations/org-uuid-123/agents/agent-uuid-123/status',
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'suspended' }),
+        },
+      );
+
+      const response = await handleAgentRoutes(request, {
+        principal: { id: 'user-1', type: 'user' },
+        organizationId: 'org-uuid-123',
+        agentId: 'agent-uuid-123',
+        subResource: 'status',
+      });
+
+      expect(response.status).toBe(200);
+      const body = await readJson(response);
+      expect(body.status).toBe('suspended');
+    });
+  });
+
+  // ===========================================================================
+  // PCC-3479: only a business account admin manages the agent roster
+  // ===========================================================================
+
+  describe('business account admin requirement', () => {
+    const member = { id: 'user-1', type: 'user' as const };
+
+    it('refuses to list agents for a plain member of the organization', async () => {
+      const { handleAgentRoutes } = await import('../../src/routes/agent-api');
+      const { isOrgAdmin } = await import('../../src/utils/org-access');
+      const services = await import('../../src/services');
+
+      vi.mocked(isOrgAdmin).mockResolvedValueOnce(false);
+
+      const response = await handleAgentRoutes(
+        new Request('https://api.example.com/api/organizations/org-uuid-123/agents', {
+          method: 'GET',
+        }),
+        { principal: member, organizationId: 'org-uuid-123' },
+      );
+
+      expect(response.status).toBe(403);
+      expect(services.getAgentsByOrganization).not.toHaveBeenCalled();
+    });
+
+    // Per business account, not platform-wide: administering one account must
+    // not carry over to the next one the caller happens to belong to.
+    it('checks the admin role against the organization in the path', async () => {
+      const { handleAgentRoutes } = await import('../../src/routes/agent-api');
+      const { isOrgAdmin } = await import('../../src/utils/org-access');
+
+      await handleAgentRoutes(
+        new Request('https://api.example.com/api/organizations/org-uuid-123/agents', {
+          method: 'GET',
+        }),
+        { principal: member, organizationId: 'org-uuid-123' },
+      );
+
+      expect(isOrgAdmin).toHaveBeenCalledWith(member, 'org-uuid-123');
+    });
+
+    it('refuses to register an agent for a plain member of the organization', async () => {
+      const { handleAgentRoutes } = await import('../../src/routes/agent-api');
+      const { isOrgAdmin } = await import('../../src/utils/org-access');
+      const services = await import('../../src/services');
+
+      vi.mocked(isOrgAdmin).mockResolvedValueOnce(false);
+
+      const response = await handleAgentRoutes(
+        new Request('https://api.example.com/api/organizations/org-uuid-123/agents', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: 'Sneaky Agent' }),
+        }),
+        { principal: member, organizationId: 'org-uuid-123' },
+      );
+
+      expect(response.status).toBe(403);
+      expect(services.createAgent).not.toHaveBeenCalled();
+    });
+
+    it('refuses to delete an agent for a plain member of the organization', async () => {
+      const { handleAgentRoutes } = await import('../../src/routes/agent-api');
+      const { isOrgAdmin } = await import('../../src/utils/org-access');
+      const services = await import('../../src/services');
+
+      vi.mocked(isOrgAdmin).mockResolvedValueOnce(false);
+
+      const response = await handleAgentRoutes(
+        new Request(
+          'https://api.example.com/api/organizations/org-uuid-123/agents/agent-uuid-123',
+          { method: 'DELETE' },
+        ),
+        { principal: member, organizationId: 'org-uuid-123', agentId: 'agent-uuid-123' },
+      );
+
+      expect(response.status).toBe(403);
+      expect(services.deleteAgent).not.toHaveBeenCalled();
+    });
+
+    // A running agent reports its own status through this route; gating it on
+    // the admin role would break every agent in the field.
+    it('still lets a non-admin update an agent status', async () => {
+      const { handleAgentRoutes } = await import('../../src/routes/agent-api');
+      const { isOrgAdmin } = await import('../../src/utils/org-access');
+      const services = await import('../../src/services');
+
+      vi.mocked(isOrgAdmin).mockResolvedValueOnce(false);
+      vi.mocked(services.getAgentById).mockResolvedValueOnce(createMockAgent());
+      vi.mocked(services.updateAgentStatus).mockResolvedValueOnce(
+        createMockAgent({ status: 'active' }),
+      );
+
+      const response = await handleAgentRoutes(
+        new Request(
+          'https://api.example.com/api/organizations/org-uuid-123/agents/agent-uuid-123/status',
+          {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: 'active' }),
+          },
+        ),
+        {
+          principal: member,
+          organizationId: 'org-uuid-123',
+          agentId: 'agent-uuid-123',
+          subResource: 'status',
+        },
+      );
+
+      expect(response.status).toBe(200);
+    });
+
+    // Same reasoning: an agent reads and refreshes its own record at runtime.
+    it('still lets a non-admin read a single agent', async () => {
+      const { handleAgentRoutes } = await import('../../src/routes/agent-api');
+      const { isOrgAdmin } = await import('../../src/utils/org-access');
+      const services = await import('../../src/services');
+
+      vi.mocked(isOrgAdmin).mockResolvedValueOnce(false);
+      vi.mocked(services.getAgentById).mockResolvedValueOnce(createMockAgent());
+
+      const response = await handleAgentRoutes(
+        new Request(
+          'https://api.example.com/api/organizations/org-uuid-123/agents/agent-uuid-123',
+          { method: 'GET' },
+        ),
+        { principal: member, organizationId: 'org-uuid-123', agentId: 'agent-uuid-123' },
+      );
+
+      expect(response.status).toBe(200);
     });
   });
 });

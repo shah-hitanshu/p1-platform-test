@@ -9,6 +9,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { getSiteAllowedOrigins } from '../../src/services/site-service';
+import { isEmailInAnyOrganization } from '../../src/services/organization-service';
 import type { Site } from '../../src/types/domain';
 import { readJson } from '../helpers/http';
 import { makePrincipal } from '../helpers/principal';
@@ -23,6 +24,11 @@ vi.mock('../../src/services/crdt-sync-service', () => ({
 // Mock site service
 vi.mock('../../src/services/site-service', () => ({
   getSiteAllowedOrigins: vi.fn(),
+}));
+
+// Mock organization service (used by the org-membership probe)
+vi.mock('../../src/services/organization-service', () => ({
+  isEmailInAnyOrganization: vi.fn(),
 }));
 
 // Mock services barrel (used by site-api.ts) — only for T5 round-trip scenario
@@ -992,6 +998,128 @@ describe('GET /internal/site-auth-config/:siteId', () => {
     const req = makeRequest('site-1', 'wrong-secret');
     const res = await handleInternalRoutes(req, { internalSecret: INTERNAL_SECRET });
     expect(res.status).toBe(403);
+  });
+});
+
+// =============================================================================
+// PCC-3479: organization membership probe (called by Content Publisher)
+// =============================================================================
+
+describe('GET /internal/org-membership', () => {
+  const INTERNAL_SECRET = 'correct-secret';
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  function makeRequest(
+    query: string,
+    { method = 'GET', secret = INTERNAL_SECRET }: { method?: string; secret?: string } = {},
+  ): Request {
+    return new Request(`http://localhost/internal/org-membership${query}`, {
+      method,
+      headers: { 'X-Internal-Secret': secret },
+    });
+  }
+
+  it('reports a user who already belongs to an organization', async () => {
+    const { handleInternalRoutes } = await import('../../src/routes/internal-api');
+    vi.mocked(isEmailInAnyOrganization).mockResolvedValueOnce(true);
+
+    const res = await handleInternalRoutes(makeRequest('?email=invitee@example.com'), {
+      internalSecret: INTERNAL_SECRET,
+    });
+
+    expect(res.status).toBe(200);
+    const body = await readJson(res);
+    expect(body).toEqual({ email: 'invitee@example.com', isMember: true });
+    expect(isEmailInAnyOrganization).toHaveBeenCalledWith('invitee@example.com');
+  });
+
+  it('reports a stranger as not a member', async () => {
+    const { handleInternalRoutes } = await import('../../src/routes/internal-api');
+    vi.mocked(isEmailInAnyOrganization).mockResolvedValueOnce(false);
+
+    const res = await handleInternalRoutes(makeRequest('?email=nobody@example.com'), {
+      internalSecret: INTERNAL_SECRET,
+    });
+
+    expect(res.status).toBe(200);
+    const body = await readJson(res);
+    expect(body).toEqual({ email: 'nobody@example.com', isMember: false });
+  });
+
+  // CP builds the query from whatever casing Auth0 handed it.
+  it('echoes the email lower-cased', async () => {
+    const { handleInternalRoutes } = await import('../../src/routes/internal-api');
+    vi.mocked(isEmailInAnyOrganization).mockResolvedValueOnce(true);
+
+    const res = await handleInternalRoutes(
+      makeRequest('?email=' + encodeURIComponent(' Invitee@Example.COM ')),
+      { internalSecret: INTERNAL_SECRET },
+    );
+
+    const body = await readJson(res);
+    expect(body.email).toBe('invitee@example.com');
+    expect(isEmailInAnyOrganization).toHaveBeenCalledWith('Invitee@Example.COM');
+  });
+
+  it('returns 400 when the email query parameter is missing', async () => {
+    const { handleInternalRoutes } = await import('../../src/routes/internal-api');
+
+    const res = await handleInternalRoutes(makeRequest(''), {
+      internalSecret: INTERNAL_SECRET,
+    });
+
+    expect(res.status).toBe(400);
+    expect(isEmailInAnyOrganization).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 when the email query parameter is blank', async () => {
+    const { handleInternalRoutes } = await import('../../src/routes/internal-api');
+
+    const res = await handleInternalRoutes(makeRequest('?email=%20%20'), {
+      internalSecret: INTERNAL_SECRET,
+    });
+
+    expect(res.status).toBe(400);
+    expect(isEmailInAnyOrganization).not.toHaveBeenCalled();
+  });
+
+  it('returns 405 on a non-GET method', async () => {
+    const { handleInternalRoutes } = await import('../../src/routes/internal-api');
+
+    const res = await handleInternalRoutes(
+      makeRequest('?email=invitee@example.com', { method: 'POST' }),
+      { internalSecret: INTERNAL_SECRET },
+    );
+
+    expect(res.status).toBe(405);
+    expect(isEmailInAnyOrganization).not.toHaveBeenCalled();
+  });
+
+  it('returns 403 when X-Internal-Secret header is wrong', async () => {
+    const { handleInternalRoutes } = await import('../../src/routes/internal-api');
+
+    const res = await handleInternalRoutes(
+      makeRequest('?email=invitee@example.com', { secret: 'wrong-secret' }),
+      { internalSecret: INTERNAL_SECRET },
+    );
+
+    expect(res.status).toBe(403);
+    expect(isEmailInAnyOrganization).not.toHaveBeenCalled();
+  });
+
+  it('returns 500 when the lookup throws', async () => {
+    const { handleInternalRoutes } = await import('../../src/routes/internal-api');
+    vi.spyOn(console, 'error').mockImplementationOnce(() => undefined);
+    vi.mocked(isEmailInAnyOrganization).mockRejectedValueOnce(new Error('DB down'));
+
+    const res = await handleInternalRoutes(makeRequest('?email=invitee@example.com'), {
+      internalSecret: INTERNAL_SECRET,
+    });
+
+    expect(res.status).toBe(500);
   });
 });
 

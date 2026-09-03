@@ -42,6 +42,7 @@ import {
 import { handleInternalRoutes } from './routes/internal-api';
 import { handleBrokerRoutes } from './routes/broker-routes';
 import { getCachedSiteAllowedOrigins } from './services/site-service';
+import { isFeatureFlagEnabled } from './services/feature-flag-service';
 import { stripInboundTrustedHeaders } from './utils/trusted-headers';
 import {
   contextForTask,
@@ -342,7 +343,7 @@ async function handleRequest(
     }
     // Gates user principals only. extractActingUser runs on the dispatched path
     // below, so an agent — which carries no email of its own — no-ops here.
-    const allowlistResult = await gateAndEnrichPrincipal(principal, env);
+    const allowlistResult = await gateAndEnrichPrincipal(request, env, principal);
     if (allowlistResult !== null) {
       return cors(allowlistResult);
     }
@@ -374,7 +375,16 @@ async function handleRequest(
 
   // Internal API endpoints (uses X-Internal-Secret auth, not user/agent tokens)
   if (path.startsWith('/internal/')) {
-    const internalSecret = env.INTERNAL_SECRET ?? 'development-internal-secret';
+    // The local default is a published value, so it must never stand in for a
+    // missing secret in a deployed environment — these routes report on real
+    // users. Unset anywhere but local means the surface is closed.
+    const internalSecret = env.ENVIRONMENT === 'local'
+      ? env.INTERNAL_SECRET ?? 'development-internal-secret'
+      : env.INTERNAL_SECRET;
+    if (internalSecret === undefined || internalSecret === '') {
+      getLogger().error('INTERNAL_SECRET is not configured; refusing /internal/ request', new Error('INTERNAL_SECRET missing'), {});
+      return cors(errorResponse('Internal API not configured', 503));
+    }
     const response = await handleInternalRoutes(request, { internalSecret });
     return cors(response);
   }
@@ -438,10 +448,22 @@ async function handleRequest(
     }
   }
 
-  // Allowlist check: if users table has entries, only listed users can access.
-  const allowlistResult = await gateAndEnrichPrincipal(principal, env);
-  if (allowlistResult !== null) {
-    return cors(allowlistResult);
+  // Access gate: the caller must have a row in app.users.
+  // Skip for mock auth mode (development ergonomics).
+  // Skip for service principals (they authenticate via site API tokens, not user accounts).
+  //
+  // PCC-3190: agent principals carry no email of their own, so the previous
+  // `principal.email !== undefined` guard caused the gate to be skipped
+  // entirely for agent traffic — letting any authenticated Google user
+  // reach handlers via the MCP server's acting-user forwarding without
+  // being checked. When an agent forwards an acting user, treat the acting
+  // user's email as the subject.
+  //
+  // PCC-3479: a missing row is no longer an automatic refusal. A signed-in
+  // user whose P1V0 LaunchDarkly flag is on provisions themselves on the spot.
+  const accessResult = await gateAndEnrichPrincipal(request, env, principal);
+  if (accessResult !== null) {
+    return cors(accessResult);
   }
 
   // Initialize MAS client (undefined when not enabled)
@@ -498,8 +520,91 @@ async function handleRequest(
     if (error instanceof HttpError) {
       return cors(errorResponse(error.message, error.status));
     }
-    console.error('Request handler error:', error);
+    getLogger().error('Request handler error', error instanceof Error ? error : new Error(String(error)), {});
     return cors(errorResponse('Internal server error', 500));
+  }
+}
+
+/** Columns the access gate reads and enriches the principal from. */
+interface AccessUserRow {
+  id: string;
+  principal_id: string | null;
+  system_role: string;
+  is_active: boolean;
+  name: string | null;
+  avatar_url: string | null;
+}
+
+const ACCESS_USER_COLUMNS = 'id, principal_id, system_role, is_active, name, avatar_url';
+
+/**
+ * PCC-3479: self-service onboarding.
+ *
+ * A signed-in user with no app.users row used to be refused outright. Now, if
+ * their P1V0 LaunchDarkly flag is on, they get a row created here and carry on.
+ * Deliberately narrow:
+ *   - user principals only — an agent forwarding an acting user has no token we
+ *     could evaluate the flag against, and must not conjure the user it claims
+ *     to act for.
+ *   - no organization is created. Business accounts come from Content
+ *     Publisher space setup (see linkOrCreateOrgForSpace), and minting one here
+ *     would give every invitee a business account of their own — exactly what
+ *     PCC-3479 removes.
+ *
+ * Returns the new row, or undefined when the flag is off or provisioning failed.
+ */
+async function provisionUserFromFeatureFlag(
+  request: Request,
+  env: Env,
+  principal: AuthenticatedPrincipal,
+  subjectEmail: string,
+): Promise<AccessUserRow | undefined> {
+  if (principal.type !== 'user') {
+    return undefined;
+  }
+
+  const enabled = await isFeatureFlagEnabled(
+    env,
+    request.headers.get('Authorization'),
+    subjectEmail,
+  );
+  if (!enabled) {
+    return undefined;
+  }
+
+  const email = subjectEmail.toLowerCase();
+
+  try {
+    // PCC-3457: stamp the normalized (UUIDv5) principal id, never the raw
+    // OAuth subject — the persistence actor resolver looks this column up by
+    // UUIDv5 (incident PCC-3464).
+    const inserted = await query<AccessUserRow>(
+      `INSERT INTO app.users (email, name, avatar_url, principal_id, auth_provider, system_role, is_active)
+       VALUES ($1, $2, $3, $4, $5, 'member', true)
+       ON CONFLICT (email) DO NOTHING
+       RETURNING ${ACCESS_USER_COLUMNS}`,
+      [
+        email,
+        principal.name ?? null,
+        principal.avatarUrl ?? null,
+        await normalizePrincipalIdForDb(principal.id),
+        principal.authProvider ?? 'unknown',
+      ],
+    );
+
+    if (inserted.rows[0] !== undefined) {
+      return inserted.rows[0];
+    }
+
+    // Lost a race with a concurrent first request — read the winner's row.
+    const existing = await query<AccessUserRow>(
+      `SELECT ${ACCESS_USER_COLUMNS} FROM app.users WHERE email = $1`,
+      [email],
+    );
+    return existing.rows[0];
+  } catch (error) {
+    getLogger().error('Self-service user provisioning failed', error instanceof Error ? error : new Error(String(error)), {});
+    return undefined;
   }
 }
 
@@ -547,16 +652,17 @@ async function assertContentBranchAccess(
 }
 
 /**
- * Applies the allowlist gate and DB name/avatar enrichment, returning an error
- * Response only when the user is not authorized. The gate is skipped for
- * mock-only deployments and for service principals (site API tokens, not users).
+ * Applies the access gate, returning an error Response only when the caller may
+ * not use P1. Skipped for mock-only deployments and for service principals,
+ * which authenticate with site API tokens rather than user accounts.
  */
 async function gateAndEnrichPrincipal(
-  principal: AuthenticatedPrincipal,
+  request: Request,
   env: Env,
+  principal: AuthenticatedPrincipal,
 ): Promise<Response | null> {
   // Agent principals carry no email of their own. When an agent forwards an
-  // acting user, that user's email is the subject the allowlist gates on.
+  // acting user, that user's email is the subject the gate checks.
   const subjectEmail =
     principal.email
     ?? (principal.type === 'agent' ? principal.actingUserEmail : undefined);
@@ -569,12 +675,12 @@ async function gateAndEnrichPrincipal(
     return null;
   }
 
-  return checkUserAllowlist(principal, subjectEmail);
+  return checkUserAccess(request, env, principal, subjectEmail);
 }
 
 /**
- * Check user against allowlist in database.
- * Returns an error response if user is not authorized, or null if authorized.
+ * Decide whether the caller may use P1 at all, and enrich their principal
+ * from app.users. Returns an error response to refuse, or null to continue.
  *
  * `subjectEmail` is the email to check against app.users. For user
  * principals this is principal.email; for agent principals forwarding an
@@ -585,7 +691,9 @@ async function gateAndEnrichPrincipal(
  * principal.id to remain the agent identity. Acting-user permissions
  * are applied per-site via getEffectiveRole's intersection logic.
  */
-async function checkUserAllowlist(
+async function checkUserAccess(
+  request: Request,
+  env: Env,
   principal: AuthenticatedPrincipal,
   subjectEmail: string,
 ): Promise<Response | null> {
@@ -596,19 +704,23 @@ async function checkUserAllowlist(
   );
 
   if (allowlistProbe.rows[0]?.populated === true) {
-    const userResult = await query<{
-      id: string;
-      principal_id: string | null;
-      system_role: string;
-      is_active: boolean;
-      name: string | null;
-      avatar_url: string | null;
-    }>(
-      'SELECT id, principal_id, system_role, is_active, name, avatar_url FROM app.users WHERE email = $1',
+    const userResult = await query<AccessUserRow>(
+      `SELECT ${ACCESS_USER_COLUMNS} FROM app.users WHERE email = $1`,
       [subjectEmail.toLowerCase()],
     );
 
-    const userRow = userResult.rows[0];
+    let userRow: AccessUserRow | undefined = userResult.rows[0];
+
+    // No row at all: the P1V0 flag decides, not the allowlist (PCC-3479).
+    // A row that exists but is deactivated is a deliberate revocation — the
+    // flag must not undo it, so only the absent case falls through here.
+    userRow ??= await provisionUserFromFeatureFlag(
+      request,
+      env,
+      principal,
+      subjectEmail,
+    );
+
     if (userRow?.is_active !== true) {
       return errorResponse('User not authorized', 403);
     }

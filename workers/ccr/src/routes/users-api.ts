@@ -1,16 +1,23 @@
 /**
  * Users API Routes
  *
- * REST API endpoints for managing system-level user allowlist.
- * Supports listing, adding, updating, and removing users.
- * All endpoints require system admin role.
+ * Platform-wide user administration: listing, adding, updating and removing
+ * app.users rows across every organization. Every /api/admin/users endpoint
+ * requires system admin. The one exception is GET /api/users/me, which reports
+ * only on the caller and so is open to any authenticated user.
+ *
+ * PCC-3479: this is *not* the endpoint the dashboard uses to manage a business
+ * account's people — see org-users-api.ts for that. Adding a user here mints an
+ * organization for them; adding one there joins them to an existing
+ * organization. Reach for this one only for platform bootstrapping.
  */
 
 import { getLogger } from '@pantheon-systems/p1-telemetry';
 import type { AuthenticatedPrincipal } from '../types';
 import { query } from '../db';
 import { createOrgForUser } from '../services/organization-service';
-import { isSystemAdmin } from '../utils/admin-check';
+import { recordAuditEntry } from '../services/audit-log-service';
+import { isAdminSystemRole, isSystemAdmin } from '../utils/admin-check';
 import { normalizePrincipalIdForDb } from '../auth/principal-id-normalization';
 
 /**
@@ -66,6 +73,17 @@ interface AddUserBody {
 }
 
 /**
+ * PCC-3479: `superadmin` is assignable only here, on the platform-admin
+ * surface — the org-scoped user API deliberately refuses to grant it.
+ *
+ * The legacy `admin` value is not offered: nothing reads it any more, so
+ * assigning it would grant exactly nothing. Someone who administers a business
+ * account gets organization_members.role = 'admin' in that account, which is a
+ * different question from being Pantheon staff.
+ */
+const VALID_SYSTEM_ROLES = ['member', 'superadmin'];
+
+/**
  * Handle POST /api/admin/users - Add a user to the allowlist
  */
 async function handleAddUser(
@@ -75,7 +93,7 @@ async function handleAddUser(
   const body = await parseJsonBody<AddUserBody>(request);
 
   const systemRole = body.systemRole ?? 'member';
-  const validRoles = ['admin', 'member'];
+  const validRoles = VALID_SYSTEM_ROLES;
   const trimmedEmail = body.email?.trim() ?? '';
 
   const validationErrors: string[] = [];
@@ -102,13 +120,12 @@ async function handleAddUser(
 
   // Bootstrap: if this is the first user being added, auto-add the current
   // principal as admin so they don't get locked out when the allowlist activates.
-  const countResult = await query<{ count: string }>(
-    'SELECT COUNT(*) as count FROM app.users',
+  const countResult = await query<{ populated: boolean }>(
+    'SELECT EXISTS (SELECT 1 FROM app.users) AS populated',
   );
-  const countRow = countResult.rows[0];
-  const currentCount = countRow !== undefined ? parseInt(countRow.count, 10) : 0;
+  const isPopulated = countResult.rows[0]?.populated ?? false;
 
-  if (currentCount === 0 && context.principal.email !== undefined) {
+  if (!isPopulated && context.principal.email !== undefined) {
     const principalEmail = context.principal.email.toLowerCase();
     if (principalEmail !== email) {
       // PCC-3457: stamp the normalized (UUIDv5) form, never a raw OAuth
@@ -116,7 +133,7 @@ async function handleAddUser(
       // UUIDv5 (see auth/principal-id-normalization.ts).
       await query(
         `INSERT INTO app.users (email, principal_id, auth_provider, system_role)
-         VALUES ($1, $2, $3, 'admin')
+         VALUES ($1, $2, $3, 'superadmin')
          ON CONFLICT (email) DO NOTHING`,
         [principalEmail, await normalizePrincipalIdForDb(context.principal.id), context.principal.authProvider ?? 'unknown'],
       );
@@ -159,6 +176,15 @@ async function handleAddUser(
   } catch (orgError) {
     getLogger().error('Auto-create org failed for user', orgError, { user_id: row.id });
   }
+
+  await recordAuditEntry({
+    action: 'user.add',
+    actor: context.principal,
+    targetType: 'user',
+    targetId: row.id,
+    targetLabel: row.email,
+    details: { systemRole: row.system_role },
+  });
 
   return jsonResponse(
     {
@@ -241,7 +267,7 @@ async function handleUpdateUser(
   }
 
   if (body.systemRole !== undefined) {
-    const validRoles = ['admin', 'member'];
+    const validRoles = VALID_SYSTEM_ROLES;
     if (!validRoles.includes(body.systemRole)) {
       return errorResponse(
         `Invalid systemRole. Must be one of: ${validRoles.join(', ')}`,
@@ -286,6 +312,20 @@ async function handleUpdateUser(
     return errorResponse('User not found', 404);
   }
 
+  await recordAuditEntry({
+    action: 'user.update',
+    actor: context.principal,
+    targetType: 'user',
+    targetId: row.id,
+    targetLabel: row.email,
+    // Only the fields the request actually set — an absent key means untouched.
+    details: {
+      ...(body.name !== undefined && { name: row.name }),
+      ...(body.systemRole !== undefined && { systemRole: row.system_role }),
+      ...(body.isActive !== undefined && { isActive: row.is_active }),
+    },
+  });
+
   return jsonResponse({
     id: row.id,
     email: row.email,
@@ -309,8 +349,10 @@ async function handleRemoveUser(
     return errorResponse('userId is required', 400);
   }
 
-  const result = await query(
-    'DELETE FROM app.users WHERE id = $1',
+  // RETURNING email so the audit entry can name who was deleted: the row is
+  // gone afterwards, and the id on its own resolves to nothing.
+  const result = await query<{ email: string }>(
+    'DELETE FROM app.users WHERE id = $1 RETURNING email',
     [context.userId],
   );
 
@@ -318,7 +360,90 @@ async function handleRemoveUser(
     return errorResponse('User not found', 404);
   }
 
+  await recordAuditEntry({
+    action: 'user.remove',
+    actor: context.principal,
+    targetType: 'user',
+    targetId: context.userId,
+    targetLabel: result.rows[0]?.email,
+  });
+
   return new Response(null, { status: 204 });
+}
+
+/**
+ * Handle GET /api/users/me — the caller's own record (PCC-3479).
+ *
+ * Unlike everything else in this file this is open to any authenticated user:
+ * it only ever reports on the caller. No caller yet — the dashboard gates its
+ * admin surfaces on the per-account `role` from /api/organizations/mine.
+ */
+export async function handleCurrentUserRoute(
+  request: Request,
+  context: UsersRouteContext,
+): Promise<Response> {
+  if (request.method !== 'GET') {
+    return errorResponse('Method not allowed', 405);
+  }
+
+  const { principal } = context;
+
+  // Agents and service principals have no app.users row of their own; they are
+  // never business-account admins, so report the shape without a role.
+  if (principal.type !== 'user') {
+    return jsonResponse({
+      id: null,
+      email: principal.email ?? null,
+      name: principal.name ?? null,
+      systemRole: null,
+      isSystemAdmin: false,
+      isActive: true,
+    });
+  }
+
+  try {
+    // The request gate already resolved this row, so prefer what it attached
+    // and only fall back to a query for principals that bypassed enrichment.
+    let row:
+      | {
+          id: string;
+          email: string;
+          name: string | null;
+          system_role: string;
+          is_active: boolean;
+        }
+      | undefined;
+
+    if (principal.dbUserId === undefined || principal.systemRole === undefined) {
+      const result = await query<{
+        id: string;
+        email: string;
+        name: string | null;
+        system_role: string;
+        is_active: boolean;
+      }>(
+        'SELECT id, email, name, system_role, is_active FROM app.users WHERE principal_id = $1',
+        [await normalizePrincipalIdForDb(principal.id)],
+      );
+      row = result.rows[0];
+    }
+
+    const systemRole = row?.system_role ?? principal.systemRole ?? null;
+
+    return jsonResponse({
+      id: row?.id ?? principal.dbUserId ?? null,
+      email: row?.email ?? principal.email ?? null,
+      name: row?.name ?? principal.name ?? null,
+      systemRole,
+      // Precomputed so the frontend never has to keep its own copy of which
+      // roles count as administrative.
+      isSystemAdmin: isAdminSystemRole(systemRole),
+      isActive: row?.is_active ?? true,
+    });
+  } catch (error) {
+    getLogger().error('Current user API error', error instanceof Error ? error : new Error(String(error)), {});
+    return errorResponse('Internal server error', 500);
+  }
 }
 
 /**
@@ -359,7 +484,7 @@ export async function handleUsersRoutes(
         return errorResponse('Method not allowed', 405);
     }
   } catch (error) {
-    console.error('Users API error:', error);
+    getLogger().error('Users API error', error instanceof Error ? error : new Error(String(error)), {});
     return errorResponse('Internal server error', 500);
   }
 }

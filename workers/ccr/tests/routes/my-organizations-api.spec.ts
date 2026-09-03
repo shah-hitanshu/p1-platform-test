@@ -18,8 +18,17 @@ vi.mock('../../src/services', async () => {
     getUserPrimaryOrg: vi.fn(),
     linkOrgToSpace: vi.fn(),
     createOrgForUser: vi.fn(),
+    listAllOrganizationsForSwitcher: vi.fn(),
   };
 });
+
+// PCC-3479: the switcher branches on the caller's system role. Default to an
+// ordinary user; the superadmin tests opt in explicitly.
+vi.mock('../../src/utils/admin-check', () => ({
+  isSuperAdmin: vi.fn(async () => false),
+  isSystemAdmin: vi.fn(async () => false),
+  getSystemRole: vi.fn(async () => 'member'),
+}));
 
 // Mock db (used for the email lookup when creating an org for a user with
 // a primary space but no existing org — see Rule 1 below)
@@ -35,6 +44,7 @@ const mockOrg = {
   updatedAt: '2026-01-01T00:00:00Z',
   archivedAt: null,
   externalSpaceId: 'space_abc',
+  role: 'admin' as const,
 };
 
 describe('linkOrCreateOrgForSpace', () => {
@@ -146,6 +156,20 @@ describe('GET /api/organizations/mine', () => {
       expect(result).toBeDefined();
       expect(result?.handler).toBe('presence');
     });
+
+    it('should parse the org-scoped users collection (PCC-3479)', () => {
+      const result = parseRoute('/api/organizations/org-1/users');
+      expect(result?.handler).toBe('org-users');
+      expect(result?.params.organizationId).toBe('org-1');
+      expect(result?.params.userId).toBeUndefined();
+    });
+
+    it('should parse a single org-scoped user', () => {
+      const result = parseRoute('/api/organizations/org-1/users/user-9');
+      expect(result?.handler).toBe('org-users');
+      expect(result?.params.organizationId).toBe('org-1');
+      expect(result?.params.userId).toBe('user-9');
+    });
   });
 
   describe('handler', () => {
@@ -164,6 +188,7 @@ describe('GET /api/organizations/mine', () => {
           updatedAt: '2026-01-01T00:00:00Z',
           archivedAt: null,
           externalSpaceId: 'space_abc',
+          role: 'admin',
         },
       ]);
 
@@ -282,6 +307,71 @@ describe('GET /api/organizations/mine', () => {
       });
 
       expect(getUserPrimaryOrg).not.toHaveBeenCalled();
+    });
+  });
+
+  // PCC-3479: superadmin is P1-only. Returning every P1 organization here is
+  // what puts them all in the switcher; the frontend still merges in only the
+  // Content Publisher spaces the user genuinely has access to.
+  describe('superadmin', () => {
+    it('returns every organization instead of just the caller\'s', async () => {
+      const { handleMyOrganizationsRoute } = await import(
+        '../../src/routes/my-organizations-api'
+      );
+      const { getOrganizationsForUser, listAllOrganizationsForSwitcher } =
+        await import('../../src/services');
+      const { isSuperAdmin } = await import('../../src/utils/admin-check');
+
+      vi.mocked(isSuperAdmin).mockResolvedValueOnce(true);
+      vi.mocked(listAllOrganizationsForSwitcher).mockResolvedValue([
+        mockOrg,
+        { ...mockOrg, id: 'someone-elses-org', name: 'Someone Else' },
+      ]);
+
+      const request = new Request('http://localhost/api/organizations/mine');
+      const response = await handleMyOrganizationsRoute(request, {
+        principal: {
+          id: 'principal-1',
+          type: 'user' as const,
+          dbUserId: 'root-uuid',
+          systemRole: 'superadmin',
+        },
+      });
+
+      expect(response.status).toBe(200);
+      const body = await response.json<{ organizations: Organization[]; isSystemAdmin: boolean }>();
+      expect(body.organizations).toHaveLength(2);
+      expect(getOrganizationsForUser).not.toHaveBeenCalled();
+      // The entries themselves say role 'admin' either way, so the flag is the
+      // only thing in this payload that distinguishes Pantheon staff.
+      expect(body.isSystemAdmin).toBe(true);
+    });
+
+    it('leaves an ordinary admin scoped to their own organizations', async () => {
+      const { handleMyOrganizationsRoute } = await import(
+        '../../src/routes/my-organizations-api'
+      );
+      const { getOrganizationsForUser, listAllOrganizationsForSwitcher } =
+        await import('../../src/services');
+
+      vi.mocked(getOrganizationsForUser).mockResolvedValue([mockOrg]);
+
+      const request = new Request('http://localhost/api/organizations/mine');
+      const response = await handleMyOrganizationsRoute(request, {
+        principal: {
+          id: 'principal-1',
+          type: 'user' as const,
+          dbUserId: 'user-uuid-123',
+          systemRole: 'admin',
+        },
+      });
+
+      expect(response.status).toBe(200);
+      expect(listAllOrganizationsForSwitcher).not.toHaveBeenCalled();
+      expect(getOrganizationsForUser).toHaveBeenCalledWith('user-uuid-123');
+      // Legacy system_role 'admin' is inert — it is not Pantheon staff.
+      const body = await response.json<{ isSystemAdmin: boolean }>();
+      expect(body.isSystemAdmin).toBe(false);
     });
   });
 });

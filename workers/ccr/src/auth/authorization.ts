@@ -236,8 +236,13 @@ export async function getEffectiveRole(
     );
   }
 
-  // System admins have full access to all sites
-  if (principal.systemRole === 'admin') {
+  // Superadmins have full access to all sites — that is the role's purpose:
+  // Pantheon staff reaching every organization and every site under them.
+  //
+  // PCC-3479: this used to accept the legacy `admin` value too. Administering a
+  // business account is organization_members.role now, and must not carry
+  // access to every site on the platform with it.
+  if (principal.systemRole === 'superadmin') {
     return {
       role: ROLES.ADMIN,
       roleName: 'ADMIN',

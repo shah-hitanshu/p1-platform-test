@@ -100,8 +100,8 @@ describe('Users API Routes', () => {
 
       // Count query: users exist
       vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ count: '1' }] });
-      // Admin check: found with admin role
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ system_role: 'admin' }] });
+      // Admin check: found with the platform admin role
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ system_role: 'superadmin' }] });
       // List query
       vi.mocked(db.query).mockResolvedValueOnce({ rows: [mockUserRow] });
 
@@ -134,7 +134,7 @@ describe('Users API Routes', () => {
             id: 'user-uuid-2',
             email: 'admin@example.com',
             name: 'Admin User',
-            system_role: 'admin',
+            system_role: 'superadmin',
           },
         ],
       });
@@ -153,7 +153,7 @@ describe('Users API Routes', () => {
       expect(body.users).toHaveLength(2);
       expect(body.users[0].email).toBe('test@example.com');
       expect(body.users[0].systemRole).toBe('member');
-      expect(body.users[1].systemRole).toBe('admin');
+      expect(body.users[1].systemRole).toBe('superadmin');
     });
 
     it('should return empty array when no users exist', async () => {
@@ -258,7 +258,7 @@ describe('Users API Routes', () => {
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: 'test@example.com', systemRole: 'superadmin' }),
+          body: JSON.stringify({ email: 'test@example.com', systemRole: 'owner' }),
         },
       );
 
@@ -269,6 +269,43 @@ describe('Users API Routes', () => {
       expect(response.status).toBe(400);
       const body = await readJson(response);
       expect(body.error).toContain('Invalid systemRole');
+    });
+
+    // PCC-3479: superadmin is a P1-only role, assignable only on this
+    // platform-admin surface (the org-scoped user API refuses to grant it).
+    it('should accept the superadmin systemRole', async () => {
+      const { handleUsersRoutes } = await import('../../src/routes/users-api');
+      const db = await import('../../src/db');
+
+      // isSystemAdmin count query: no users (bootstrap)
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ count: '0' }] });
+      // handleAddUser bootstrap count query
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ count: '0' }] });
+      // Auto-insert principal as admin (different email from root@example.com)
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
+      // Duplicate check
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
+      // Insert
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [{ ...mockUserRow, email: 'root@example.com', system_role: 'superadmin' }],
+      });
+
+      const request = new Request(
+        'https://api.example.com/api/admin/users',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: 'root@example.com', systemRole: 'superadmin' }),
+        },
+      );
+
+      const response = await handleUsersRoutes(request, {
+        principal: adminPrincipal,
+      });
+
+      expect(response.status).toBe(201);
+      const body = await readJson(response);
+      expect(body.systemRole).toBe('superadmin');
     });
 
     it('should return 409 when email already exists', async () => {
@@ -312,8 +349,36 @@ describe('Users API Routes', () => {
       vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ count: '0' }] });
       // Update query
       vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [{ ...mockUserRow, system_role: 'admin' }],
+        rows: [{ ...mockUserRow, system_role: 'superadmin' }],
       });
+
+      const request = new Request(
+        'https://api.example.com/api/admin/users/user-uuid-1',
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ systemRole: 'superadmin' }),
+        },
+      );
+
+      const response = await handleUsersRoutes(request, {
+        userId: 'user-uuid-1',
+        principal: adminPrincipal,
+      });
+
+      expect(response.status).toBe(200);
+      const body = await readJson(response);
+      expect(body.systemRole).toBe('superadmin');
+    });
+
+    // PCC-3479: `admin` is legacy — it grants nothing, so it is not offered as
+    // something this surface can assign.
+    it('refuses to assign the retired admin role', async () => {
+      const { handleUsersRoutes } = await import('../../src/routes/users-api');
+      const db = await import('../../src/db');
+
+      // Count query: no users (bootstrap)
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ count: '0' }] });
 
       const request = new Request(
         'https://api.example.com/api/admin/users/user-uuid-1',
@@ -329,9 +394,9 @@ describe('Users API Routes', () => {
         principal: adminPrincipal,
       });
 
-      expect(response.status).toBe(200);
+      expect(response.status).toBe(400);
       const body = await readJson(response);
-      expect(body.systemRole).toBe('admin');
+      expect(body.error).toContain('member, superadmin');
     });
 
     it('should update user active status', async () => {
@@ -651,6 +716,148 @@ describe('Users API Routes', () => {
 
       // User creation should still return 201 even if org creation fails
       expect(response.status).toBe(201);
+    });
+  });
+
+  // ===========================================================================
+  // PCC-3479: GET /api/users/me — what the dashboard gates its admin tabs on
+  // ===========================================================================
+
+  describe('GET /api/users/me', () => {
+    function meRequest(method = 'GET'): Request {
+      return new Request('https://api.example.com/api/users/me', { method });
+    }
+
+    function enriched(
+      overrides: Partial<AuthenticatedPrincipal> = {},
+    ): AuthenticatedPrincipal {
+      return {
+        ...adminPrincipal,
+        dbUserId: 'user-uuid-1',
+        systemRole: 'member',
+        ...overrides,
+      };
+    }
+
+    it('reports a superadmin as a platform admin', async () => {
+      const { handleCurrentUserRoute } = await import('../../src/routes/users-api');
+      const db = await import('../../src/db');
+
+      const response = await handleCurrentUserRoute(meRequest(), {
+        principal: enriched({ systemRole: 'superadmin' }),
+      });
+
+      expect(response.status).toBe(200);
+      const body = await readJson(response);
+      expect(body.systemRole).toBe('superadmin');
+      expect(body.isSystemAdmin).toBe(true);
+      // The request gate already resolved the role, so nothing is re-read.
+      expect(db.query).not.toHaveBeenCalled();
+    });
+
+    // PCC-3479: `admin` is a legacy system_role that nothing reads any more.
+    // A row still carrying it is exactly a member.
+    it('does not count the legacy admin role as a platform admin', async () => {
+      const { handleCurrentUserRoute } = await import('../../src/routes/users-api');
+
+      const response = await handleCurrentUserRoute(meRequest(), {
+        principal: enriched({ systemRole: 'admin' }),
+      });
+
+      const body = await readJson(response);
+      expect(body.systemRole).toBe('admin');
+      expect(body.isSystemAdmin).toBe(false);
+    });
+
+    it('reports a member as not an admin', async () => {
+      const { handleCurrentUserRoute } = await import('../../src/routes/users-api');
+
+      const response = await handleCurrentUserRoute(meRequest(), {
+        principal: enriched(),
+      });
+
+      const body = await readJson(response);
+      expect(body.systemRole).toBe('member');
+      expect(body.isSystemAdmin).toBe(false);
+    });
+
+    it('falls back to a lookup for a principal the gate did not enrich', async () => {
+      const { handleCurrentUserRoute } = await import('../../src/routes/users-api');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [{ ...mockUserRow, system_role: 'superadmin' }],
+      });
+
+      const response = await handleCurrentUserRoute(meRequest(), {
+        principal: adminPrincipal,
+      });
+
+      const body = await readJson(response);
+      expect(db.query).toHaveBeenCalledTimes(1);
+      expect(body.id).toBe('user-uuid-1');
+      expect(body.email).toBe('test@example.com');
+      expect(body.isSystemAdmin).toBe(true);
+    });
+
+    it('reports no role for a user with no row yet', async () => {
+      const { handleCurrentUserRoute } = await import('../../src/routes/users-api');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
+
+      const response = await handleCurrentUserRoute(meRequest(), {
+        principal: adminPrincipal,
+      });
+
+      const body = await readJson(response);
+      expect(body.systemRole).toBeNull();
+      expect(body.isSystemAdmin).toBe(false);
+    });
+
+    it('never treats an agent principal as an admin', async () => {
+      const { handleCurrentUserRoute } = await import('../../src/routes/users-api');
+      const db = await import('../../src/db');
+
+      const response = await handleCurrentUserRoute(meRequest(), {
+        principal: { ...adminPrincipal, type: 'agent', systemRole: 'superadmin' },
+      });
+
+      const body = await readJson(response);
+      expect(body.systemRole).toBeNull();
+      expect(body.isSystemAdmin).toBe(false);
+      expect(db.query).not.toHaveBeenCalled();
+    });
+
+    it('rejects a non-GET method', async () => {
+      const { handleCurrentUserRoute } = await import('../../src/routes/users-api');
+
+      const response = await handleCurrentUserRoute(meRequest('POST'), {
+        principal: enriched(),
+      });
+
+      expect(response.status).toBe(405);
+    });
+
+    it('returns 500 when the lookup throws', async () => {
+      const { handleCurrentUserRoute } = await import('../../src/routes/users-api');
+      const db = await import('../../src/db');
+
+      vi.spyOn(console, 'error').mockImplementationOnce(() => undefined);
+      vi.mocked(db.query).mockRejectedValueOnce(new Error('DB down'));
+
+      const response = await handleCurrentUserRoute(meRequest(), {
+        principal: adminPrincipal,
+      });
+
+      expect(response.status).toBe(500);
+    });
+
+    it('is routed as its own handler, not the admin users one', async () => {
+      const { parseRoute } = await import('../../src/routes/route-parser');
+
+      expect(parseRoute('/api/users/me')?.handler).toBe('current-user');
+      expect(parseRoute('/api/admin/users')?.handler).toBe('admin-users');
     });
   });
 });

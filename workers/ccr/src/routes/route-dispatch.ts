@@ -31,7 +31,8 @@ import { handleMergeRoutes } from './merge-api';
 import { handleGrantRoutes } from './grant-api';
 import { handleCollaboratorRoutes } from './collaborator-api';
 import { handleRolesRoutes } from './roles-api';
-import { handleUsersRoutes } from './users-api';
+import { handleCurrentUserRoute, handleUsersRoutes } from './users-api';
+import { handleOrgUsersRoutes } from './org-users-api';
 import { handleMyOrganizationsRoute } from './my-organizations-api';
 import { handleStructureRoutes } from './structure-api';
 import { handleNodeRoutes } from './node-api';
@@ -286,6 +287,9 @@ export async function dispatchRoute(
         principal,
       });
 
+    case 'current-user':
+      return await handleCurrentUserRoute(request, { principal });
+
     case 'admin-users':
       return await handleUsersRoutes(request, {
         userId: route.params.userId,
@@ -378,15 +382,19 @@ export async function dispatchRoute(
     case 'my-organizations':
       return await handleMyOrganizationsRoute(request, { principal });
 
+    case 'org-users':
+      return await handleOrgUsersRoutes(request, {
+        organizationId: route.params.organizationId ?? '',
+        userId: route.params.userId,
+        principal,
+      });
+
     case 'agents':
       return await handleAgentRoutes(request, {
         organizationId: route.params.organizationId ?? '',
         agentId: route.params.agentId,
         subResource: route.params.subResource as 'status' | undefined,
-        principal: {
-          id: principal.id,
-          type: principal.type === 'service' ? 'user' : principal.type,
-        },
+        principal,
       });
 
     case 'agent-roles':

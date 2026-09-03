@@ -1,5 +1,5 @@
 {
-  "maxErrors": 722,
+  "maxErrors": 708,
   "packages": [
     "workers/ccr"
   ]

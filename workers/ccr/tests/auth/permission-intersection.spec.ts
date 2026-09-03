@@ -193,8 +193,8 @@ describe('Permission Intersection', () => {
       expect(result.roleName).toBe('ADMIN');
     });
 
-    // Test 63: System admin bypasses permission intersection
-    it('should bypass permission intersection for system admin', async () => {
+    // Test 63: Superadmin bypasses permission intersection
+    it('should bypass permission intersection for a superadmin', async () => {
       const { getEffectiveRole } = await import('../../src/auth/authorization');
       const result = await getEffectiveRole(
         {
@@ -202,14 +202,14 @@ describe('Permission Intersection', () => {
           type: 'agent',
           pantheonSiteRoles: {},
           tokenExpiry: '2099-01-01',
-          systemRole: 'admin',
+          systemRole: 'superadmin',
           actingUserEmail: 'user@example.com',
         },
         'site-1',
         'branch-1',
       );
 
-      // System admin gets ADMIN via early return, no queries, no intersection
+      // Superadmin gets ADMIN via early return, no queries, no intersection
       expect(result.roleName).toBe('ADMIN');
     });
   });

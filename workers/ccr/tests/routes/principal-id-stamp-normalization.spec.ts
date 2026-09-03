@@ -297,7 +297,7 @@ describe('principal_id stamp normalization (PCC-3457)', () => {
         // The normalized row exists; only the normalized key can find it.
         return Promise.resolve(
           params?.[0] === expectedKey
-            ? { rows: [{ system_role: 'admin' }] }
+            ? { rows: [{ system_role: 'superadmin' }] }
             : { rows: [] },
         );
       }
