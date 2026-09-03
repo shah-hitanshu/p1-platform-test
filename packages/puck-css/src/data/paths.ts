@@ -71,3 +71,12 @@ export function normalizePath(path: unknown): string | null {
   }
   return normalized;
 }
+
+/**
+ * Add the leading slash that page paths carry everywhere they are validated.
+ * Document records identify a page by its slug alone ("blog"), so a path read
+ * off one has to be converted before it can be used as a page path.
+ */
+export function ensureLeadingSlash(path: string): string {
+  return path.startsWith("/") ? path : `/${path}`;
+}

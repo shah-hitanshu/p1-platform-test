@@ -1,6 +1,7 @@
 "use client";
 
 import { useP1PuckOptional } from "../../../core/P1PuckContext";
+import { ensureLeadingSlash } from "../../../data/paths";
 import type { RouteRow } from "../../../data/page-store";
 import type { RemoteDatasourceDefinition } from "../../../data/remote-datasources/remote-datasource-registry";
 import { useEditorContext } from "./useEditorContext";
@@ -24,7 +25,9 @@ const EMPTY_PREVIEW_PARAMS: Record<string, string> = {};
  */
 export function useLiveEditorContext(fallbackPath: string) {
   const p1Puck = useP1PuckOptional();
-  const path = p1Puck?.currentDocument?.path ?? fallbackPath;
+  // A document record identifies its page by slug ("blog"), while the editor
+  // APIs take a page path ("/blog") and reject anything else.
+  const path = ensureLeadingSlash(p1Puck?.currentDocument?.path ?? fallbackPath);
   const branchId = p1Puck?.branchId;
 
   const { data: editorContext } = useEditorContext(path, branchId);
