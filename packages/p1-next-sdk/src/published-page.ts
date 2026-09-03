@@ -5,9 +5,10 @@
  * invariants that keep public routes cacheable and correct: initialization is
  * awaited per read so a failed cold start can recover, a miss is reported
  * distinctly from an outage so it can become a real 404 instead of a cached
- * 200, and prerendering is aborted rather than baking an empty page into the
- * build. A renderer that gets any of those wrong fails in ways that only show
- * up under CDN caching or a backend blip.
+ * 200, internal document namespaces are refused before they can render as
+ * public pages, and prerendering is aborted rather than baking an empty page
+ * into the build. A renderer that gets any of those wrong fails in ways that
+ * only show up under CDN caching or a backend blip.
  *
  * How a miss is presented — the copy, the styling, the editor links — is the
  * app's business, and stays in the app.
@@ -35,6 +36,37 @@ export type PublishedPageResult =
   | { status: "ok"; data: Data }
   | { status: "missing" }
   | { status: "unavailable" };
+
+/**
+ * Options for a published-page read.
+ */
+export type LoadPublishedPageOptions = {
+  /**
+   * Extra path prefixes to refuse, added to the built-in list rather than
+   * replacing it. Additive on purpose: a site that needs its own internal
+   * namespace should not be able to un-block `/_registry` by supplying a
+   * shorter list.
+   */
+  internalPathPrefixes?: readonly string[];
+};
+
+/**
+ * Document namespaces that live alongside pages but are never routable.
+ */
+const INTERNAL_PATH_PREFIXES = ["/_registry", "/_redirects"];
+
+/**
+ * Lowercased to match the server, which normalizes document paths to lower case
+ * before looking them up — so /_Redirects/x resolves the same record as
+ * /_redirects/x and must be refused just the same.
+ */
+function isInternalPath(path: string, extra?: readonly string[]): boolean {
+  const normalized = path.toLowerCase();
+  return [...INTERNAL_PATH_PREFIXES, ...(extra ?? [])].some((prefix) => {
+    const target = prefix.toLowerCase();
+    return normalized === target || normalized.startsWith(`${target}/`);
+  });
+}
 
 /**
  * Awaited on every read rather than pinned to a module-level promise: the DAL
@@ -69,12 +101,13 @@ async function unavailable(
 }
 
 /**
- * Published Puck data for `path`.
- *
  * Memoized with cache(): generateMetadata and the page body both need the same
- * page, and without this every render reads it from the backend twice.
+ * page, and without this every render reads it from the backend twice. Keyed on
+ * the path alone — cache() compares arguments by identity, so folding the
+ * options object in here would make two callers passing equivalent literals
+ * miss each other and read twice.
  */
-export const loadPublishedPage = cache(
+const readPublishedPage = cache(
   async (path: string): Promise<PublishedPageResult> => {
     try {
       await initP1();
@@ -85,6 +118,22 @@ export const loadPublishedPage = cache(
     }
   },
 );
+
+/**
+ * Published Puck data for `path`.
+ *
+ * Internal namespaces report `missing` without reaching the backend, so a
+ * renderer that carries no denylist of its own still 404s them.
+ */
+export async function loadPublishedPage(
+  path: string,
+  options?: LoadPublishedPageOptions,
+): Promise<PublishedPageResult> {
+  if (isInternalPath(path, options?.internalPathPrefixes)) {
+    return { status: "missing" };
+  }
+  return readPublishedPage(path);
+}
 
 /**
  * Collection template keys for the current render.

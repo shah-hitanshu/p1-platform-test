@@ -51,6 +51,57 @@ describe("loadPublishedPage", () => {
     expect(connection).toHaveBeenCalled();
   });
 
+  // The denylist lives here rather than in the renderer's page.tsx: that file is
+  // forkable user land, so a customer who rewrites it would otherwise publish
+  // every registry and redirect document as a live page.
+  describe("internal paths", () => {
+    it.each([
+      "/_registry",
+      "/_registry/components/Hero",
+      "/_redirects",
+      "/_redirects/old-page",
+      // Lower-cased before matching because the server normalizes document
+      // paths the same way, so this resolves the same record as /_redirects/x.
+      "/_Redirects/old-page",
+    ])("reports %s as missing without reading the backend", async (path) => {
+      expect(await (await load())(path)).toEqual({ status: "missing" });
+      expect(getPage).not.toHaveBeenCalled();
+      expect(ensureInitialized).not.toHaveBeenCalled();
+    });
+
+    // Prefix matching is on segment boundaries, so a real page whose slug merely
+    // starts with a reserved word still renders.
+    it("does not refuse a path that only shares a prefix", async () => {
+      const data = { root: { props: {} }, content: [] };
+      getPage.mockResolvedValue(data);
+      expect(await (await load())("/_registry-guide")).toEqual({
+        status: "ok",
+        data,
+      });
+    });
+
+    it("refuses additional prefixes passed by the caller", async () => {
+      const loadPublishedPage = await load();
+      const options = { internalPathPrefixes: ["/_private"] };
+
+      expect(await loadPublishedPage("/_private/notes", options)).toEqual({
+        status: "missing",
+      });
+      expect(getPage).not.toHaveBeenCalled();
+    });
+
+    // Additive on purpose: a caller supplying its own list must not be able to
+    // un-block the built-in namespaces by omitting them.
+    it("keeps the built-in prefixes when the caller passes its own", async () => {
+      expect(
+        await (await load())("/_registry/components/Hero", {
+          internalPathPrefixes: ["/_private"],
+        }),
+      ).toEqual({ status: "missing" });
+      expect(getPage).not.toHaveBeenCalled();
+    });
+  });
+
   // The DAL clears its own init state on failure so the next call retries.
   // Awaiting a module-level promise instead would pin a failed cold start
   // forever, serving the empty state from every render until the process

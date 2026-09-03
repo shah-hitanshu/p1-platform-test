@@ -54,6 +54,17 @@ describe("catch-all route — missing vs unavailable", () => {
     expect(notFound).not.toHaveBeenCalled();
   });
 
+  // The internal-path denylist (/_registry, /_redirects) lives in the SDK's
+  // loadPublishedPage, not here — this asserts the route hands the path over
+  // instead of re-growing a local copy of the check.
+  it("delegates internal paths to the SDK rather than short-circuiting", async () => {
+    loadPublishedPage.mockResolvedValue({ status: "missing" });
+    await expect(render("_registry", "components", "Hero")).rejects.toThrow(
+      "NEXT_NOT_FOUND",
+    );
+    expect(loadPublishedPage).toHaveBeenCalledWith("/_registry/components/Hero");
+  });
+
   it("renders published content", async () => {
     loadPublishedPage.mockResolvedValue({
       status: "ok",

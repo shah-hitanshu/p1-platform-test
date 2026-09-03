@@ -6,5 +6,6 @@ export { createP1Middleware, type P1MiddlewareConfig } from "./middleware";
 export {
   loadPublishedPage,
   loadRouteTemplateKeys,
+  type LoadPublishedPageOptions,
   type PublishedPageResult,
 } from "./published-page";

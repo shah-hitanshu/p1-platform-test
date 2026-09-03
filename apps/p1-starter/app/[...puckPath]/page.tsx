@@ -23,19 +23,6 @@ import { Client } from "./client";
 
 const getCcrQueryFetchers = cache(() => createCssQueryFetchers());
 
-// Document namespaces that live alongside pages but are never routable.
-const INTERNAL_PATH_PREFIXES = ["/_registry", "/_redirects"];
-
-// Lowercased to match the server, which normalizes document paths to lower case
-// before looking them up — so /_Redirects/x resolves the same record as
-// /_redirects/x and must be refused just the same.
-function isInternalPath(path: string): boolean {
-  const normalized = path.toLowerCase();
-  return INTERNAL_PATH_PREFIXES.some(
-    (prefix) => normalized === prefix || normalized.startsWith(`${prefix}/`),
-  );
-}
-
 /**
  * Backstop only: publishing calls revalidatePath for the affected routes, so
  * cached pages normally refresh the moment their content changes. This bounds
@@ -63,10 +50,6 @@ export async function generateMetadata({
   const { puckPath = [] } = await params;
   const path = pagePathFromCatchAllSegments(puckPath);
 
-  if (isInternalPath(path)) {
-    return { title: "Not Found" };
-  }
-
   const result = await loadPublishedPage(path);
   if (result.status === "missing") return { title: "Not Found" };
   if (result.status === "unavailable") {
@@ -82,10 +65,6 @@ export default async function Page({
 }) {
   const { puckPath = [] } = await params;
   const path = pagePathFromCatchAllSegments(puckPath);
-
-  if (isInternalPath(path)) {
-    notFound();
-  }
 
   const result = await loadPublishedPage(path);
 
