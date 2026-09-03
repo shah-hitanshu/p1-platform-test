@@ -26,8 +26,13 @@ test.describe('P1 Starter - Home Page', () => {
   test('renders the homepage document from the database', async ({ page }) => {
     await page.goto('/');
 
-    // ParagraphBlock renders the description text from the fixture
-    await expect(page.getByText('Build and manage pages with the visual editor')).toBeVisible();
+    // .first(): ParagraphBlock renders the text inside a div.rich-text wrapper
+    // that the client adds on hydration, so the string matches both the wrapper
+    // and its <p>. Without this the assertion is a strict-mode violation as soon
+    // as hydration wins the race — which it does on a warm dev server.
+    await expect(
+      page.getByText('Build and manage pages with the visual editor').first()
+    ).toBeVisible();
   });
 });
 
@@ -63,6 +68,32 @@ test.describe('P1 Starter - Public Pages', () => {
   test('a published page still responds 200', async ({ request }) => {
     const response = await request.get('/contact-us');
     expect(response.status()).toBe(200);
+  });
+});
+
+/**
+ * The fixture seeds a real document at /_registry/components/Hero, so these
+ * assert the denylist rather than mere absence: the backend genuinely holds
+ * that content and the site still must not serve it. The check lives in the
+ * SDK's loadPublishedPage, not in the app's route files.
+ */
+test.describe('P1 Starter - Internal document namespaces', () => {
+  test('a seeded registry document is not routable', async ({ request }) => {
+    const response = await request.get('/_registry/components/Hero');
+    expect(response.status()).toBe(404);
+  });
+
+  test('registry content never reaches the page', async ({ page }) => {
+    await page.goto('/_registry/components/Hero');
+    await expect(page.getByText('INTERNAL REGISTRY DOCUMENT')).toHaveCount(0);
+  });
+
+  // Prefix matching is on segment boundaries: /_registry-guide shares the
+  // reserved word but is a real page, and must still be reachable.
+  test('a page that only shares a prefix is still served', async ({ page }) => {
+    const response = await page.goto('/_registry-guide');
+    expect(response?.status()).toBe(200);
+    await expect(page.getByText('How our registry works')).toBeVisible();
   });
 });
 

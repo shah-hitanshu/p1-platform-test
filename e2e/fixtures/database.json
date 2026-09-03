@@ -1,6 +1,10 @@
 {
   "/": {
-    "root": { "props": { "title": "Welcome to P1" } },
+    "root": {
+      "props": {
+        "title": "Welcome to P1"
+      }
+    },
     "content": [
       {
         "type": "HeadingBlock",
@@ -37,7 +41,11 @@
     "zones": {}
   },
   "/contact-us": {
-    "root": { "props": { "title": "New page" } },
+    "root": {
+      "props": {
+        "title": "New page"
+      }
+    },
     "content": [
       {
         "type": "HeadingBlock",
@@ -45,6 +53,42 @@
           "title": "Heading ee",
           "level": "h1",
           "id": "HeadingBlock-c62993ce-d5db-4172-87bf-4ddfb473f7b4"
+        }
+      }
+    ],
+    "zones": {}
+  },
+  "/_registry/components/Hero": {
+    "root": {
+      "props": {
+        "title": "Hero component definition"
+      }
+    },
+    "content": [
+      {
+        "type": "HeadingBlock",
+        "props": {
+          "title": "INTERNAL REGISTRY DOCUMENT",
+          "level": "h1",
+          "id": "HeadingBlock-registry-leak-canary"
+        }
+      }
+    ],
+    "zones": {}
+  },
+  "/_registry-guide": {
+    "root": {
+      "props": {
+        "title": "Registry guide"
+      }
+    },
+    "content": [
+      {
+        "type": "HeadingBlock",
+        "props": {
+          "title": "How our registry works",
+          "level": "h1",
+          "id": "HeadingBlock-registry-guide"
         }
       }
     ],
