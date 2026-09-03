@@ -22,10 +22,9 @@ export function proxy(request: NextRequest) {
   return response;
 }
 
+// A proxy always runs on Node, so the credentials are read per request rather
+// than snapshotted into the build output. Declaring the runtime here is refused.
 export const config = {
-  // Runs in Node so the credentials are read per request. The edge runtime
-  // snapshots process.env at build time, which would bake them into the output.
-  runtime: 'nodejs',
   // Everything except the registry JSON under /r, which shadcn fetches without
   // credentials, and Next's own static assets.
   matcher: ['/((?!r/|_next/static|_next/image|favicon.ico).*)'],
