@@ -18,6 +18,7 @@ import type { P1PuckConfig, P1PuckContextValue, PuckDataOrigin, SaveStatus, Pres
 import { P1PuckContext } from '../core/P1PuckContext.js';
 import { NotificationProvider, useNotifications } from '../core/NotificationContext.js';
 import { PresenceContext } from '../core/PresenceContext.js';
+import { P1SdkQueryProvider } from '../data/query-provider.js';
 import type { PresenceContextValue } from '../core/PresenceContext.js';
 import { debounce } from '../core/utils/debounce.js';
 import { describeRequestFailure } from '../core/utils/requestError.js';
@@ -2455,10 +2456,12 @@ function P1PuckProviderInner({
   );
 
   return (
-    <P1PuckContext.Provider value={contextValue}>
-      <ComposedPluginProviders>
-        {wrappedChildren}
-      </ComposedPluginProviders>
-    </P1PuckContext.Provider>
+    <P1SdkQueryProvider>
+      <P1PuckContext.Provider value={contextValue}>
+        <ComposedPluginProviders>
+          {wrappedChildren}
+        </ComposedPluginProviders>
+      </P1PuckContext.Provider>
+    </P1SdkQueryProvider>
   );
 }

@@ -14,7 +14,7 @@ export class RelationsEndpoint {
 
   /**
    * Get the classified upstream drift for a document along one relation type.
-   * `documentId` is the source of the relation edge (the current page). Rejects
+   * `documentId` is the derived side of the relation edge (the current page). Rejects
    * with NotFoundError when no edge of that type exists.
    */
   async getUpstreamDiff(

@@ -3,7 +3,7 @@ import type {
   AuthorityDiagnostic,
   ValidateTranslationAuthorityInput,
 } from './types.js';
-import { isAuthority, resolveSlotAuthority } from './localization.js';
+import { isAuthority, resolveSlotAuthority, ROOT_SLOT_ID } from './localization.js';
 import { isPlainObject, resolvePropPath } from './guards.js';
 
 /**
@@ -22,16 +22,32 @@ import { isPlainObject, resolvePropPath } from './guards.js';
  * Resolves the component a prop-path op targets and returns its slot id, or
  * `undefined` when the path does not target a prop on a resolvable component.
  * Authority is keyed by slot id, so a component without one is not judged.
+ *
+ * A path whose only `props` segment is the snapshot root's targets a root prop,
+ * which belongs to no component and is keyed by `ROOT_SLOT_ID`.
  */
 function resolveSlot(
   path: string,
   snapshot: Record<string, unknown>,
 ): { slotId: string; propsIdx: number; parts: string[] } | undefined {
+  const parts = path.split('.');
+  if (parts[0] === 'root' && parts.lastIndexOf('props') === 1) {
+    return { slotId: ROOT_SLOT_ID, propsIdx: 1, parts };
+  }
   const resolved = resolvePropPath(path, snapshot);
   if (resolved === undefined || typeof resolved.component.props.id !== 'string') {
     return undefined;
   }
   return { slotId: resolved.component.props.id, propsIdx: resolved.propsIdx, parts: resolved.parts };
+}
+
+/**
+ * Whether a prop key names content rather than bookkeeping. `id` addresses the
+ * component and an `_` prefix marks editor state, so neither belongs to a
+ * translator and neither is judged.
+ */
+function isContentProp(propName: string): boolean {
+  return propName !== 'id' && !propName.startsWith('_');
 }
 
 export function validateTranslationAuthority(
@@ -95,7 +111,7 @@ export function validateTranslationAuthority(
     if (propsIdx === parts.length - 1) {
       if (!isPlainObject(op.content)) return;
       for (const propName of Object.keys(op.content)) {
-        if (propName === 'id') continue;
+        if (!isContentProp(propName)) continue;
         if (effectiveAuthority(slotId, propName) === 'canonical') {
           flag(opIndex, `${op.path}.${propName}`, slotId, propName);
         }
@@ -105,7 +121,7 @@ export function validateTranslationAuthority(
 
     // Case B: the path targets a single prop — `.props.<name>`.
     const propName = parts[propsIdx + 1];
-    if (propName === 'id') return;
+    if (!isContentProp(propName)) return;
     if (effectiveAuthority(slotId, propName) === 'canonical') {
       flag(opIndex, op.path, slotId, propName);
     }

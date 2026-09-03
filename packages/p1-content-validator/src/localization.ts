@@ -20,6 +20,12 @@ export const AUTHORITIES = ['canonical', 'locale'] as const;
 /** The authority a slot falls back to when the template declares none. */
 export const DEFAULT_AUTHORITY: Authority = 'canonical';
 
+/**
+ * The slot id root props are keyed by. Authority and translatability are keyed by
+ * the slot id of the component owning a prop; root props belong to no component.
+ */
+export const ROOT_SLOT_ID = '__root__';
+
 /** Whether a value is one of the two authorities. */
 export function isAuthority(value: unknown): value is Authority {
   return AUTHORITIES.includes(value as Authority);

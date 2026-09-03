@@ -100,6 +100,7 @@ export function useP1Overrides(options: UseP1OverridesOptions = {}): PuckOverrid
     []
   );
 
+  // Create overrides once with stable proxy options
   const overrides = useMemo(() => createP1Overrides(stableOptions), [stableOptions]);
 
   return overrides;

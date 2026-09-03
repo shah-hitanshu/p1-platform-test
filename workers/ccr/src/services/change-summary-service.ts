@@ -21,6 +21,7 @@
 import {
   resolveTranslatable,
   resolveSlotAuthority,
+  ROOT_SLOT_ID,
   type Authority,
 } from '@pantheon-systems/p1-content-validator';
 import { walkComponents } from './component-identity';
@@ -150,13 +151,21 @@ async function resolveEdge(
   };
 }
 
-/** Indexes a snapshot's component props by slot id, first occurrence winning. */
+/**
+ * Indexes a snapshot's props by slot id, first occurrence winning. Root props
+ * belong to no component and are keyed by `ROOT_SLOT_ID`, the same slot id the
+ * prop diff addresses them with.
+ */
 function indexPropsById(
   snapshot: Record<string, unknown> | null,
 ): Map<string, Record<string, unknown>> {
   const map = new Map<string, Record<string, unknown>>();
   if (snapshot === null) {
     return map;
+  }
+  const rootProps = (snapshot.root as { props?: Record<string, unknown> } | undefined)?.props;
+  if (rootProps !== undefined) {
+    map.set(ROOT_SLOT_ID, rootProps);
   }
   for (const ref of walkComponents(snapshot)) {
     const id = ref.component.props.id;

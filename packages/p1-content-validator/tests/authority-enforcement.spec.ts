@@ -258,4 +258,121 @@ describe('validateTranslationAuthority', () => {
       expect(diagnostics.every((d) => d.slotId === 'Hero-2')).toBe(true);
     });
   });
+
+  describe('a root prop', () => {
+    const withRoot: Record<string, unknown> = {
+      content: [],
+      root: { props: { title: 'Home', description: 'Welcome' } },
+      zones: {},
+    };
+
+    it('judges the write under the root slot id', () => {
+      const { diagnostics } = validateTranslationAuthority({
+        operations: [op('replace', 'root.props.title', 'Accueil')],
+        currentSnapshot: withRoot,
+        templateSnapshot: template({ __root__: 'canonical' }),
+      });
+
+      expect(diagnostics).toHaveLength(1);
+      expect(diagnostics[0].slotId).toBe('__root__');
+      expect(diagnostics[0].propName).toBe('title');
+      expect(diagnostics[0].path).toBe('root.props.title');
+    });
+
+    it('leaves editor bookkeeping on root props unjudged', () => {
+      const { diagnostics } = validateTranslationAuthority({
+        operations: [
+          op('replace', 'root.props._localeTranslatable', { 'Hero-1': { title: false } }),
+          op('replace', 'root.props._pinMap', { 'Hero-1': true }),
+          op('replace', 'root.props._template', { id: 'tpl-1' }),
+        ],
+        currentSnapshot: withRoot,
+        templateSnapshot: template({ __root__: 'canonical' }),
+      });
+
+      expect(diagnostics).toEqual([]);
+    });
+
+    it('leaves bookkeeping unjudged when the whole props object is replaced', () => {
+      const { diagnostics } = validateTranslationAuthority({
+        operations: [
+          op('replace', 'root.props', {
+            id: 'root',
+            title: 'Accueil',
+            _localeTranslatable: { 'Hero-1': { title: false } },
+            _pinMap: { 'Hero-1': true },
+          }),
+        ],
+        currentSnapshot: withRoot,
+        templateSnapshot: template({ __root__: 'canonical' }),
+      });
+
+      // Puck replaces the whole object on any root field edit, so only the
+      // content prop the author actually changed is reported.
+      expect(diagnostics).toHaveLength(1);
+      expect(diagnostics[0].propName).toBe('title');
+    });
+
+    it('leaves a root prop the template hands to the locale alone', () => {
+      const { diagnostics } = validateTranslationAuthority({
+        operations: [op('replace', 'root.props.title', 'Accueil')],
+        currentSnapshot: withRoot,
+        templateSnapshot: template({ __root__: 'locale' }),
+      });
+
+      expect(diagnostics).toEqual([]);
+    });
+
+    it('lets a per-prop override beat the root slot default', () => {
+      const overrides: AuthorityOverrideMap = { __root__: { title: 'locale' } };
+      const { diagnostics } = validateTranslationAuthority({
+        operations: [
+          op('replace', 'root.props.title', 'Accueil'),
+          op('replace', 'root.props.description', 'Bienvenue'),
+        ],
+        currentSnapshot: withRoot,
+        templateSnapshot: template({ __root__: 'canonical' }),
+        authorityOverrides: overrides,
+      });
+
+      expect(diagnostics.map((d) => d.propName)).toEqual(['description']);
+    });
+
+    it('flags each canonical-authority prop in a whole-root-props replace', () => {
+      const { diagnostics } = validateTranslationAuthority({
+        operations: [
+          op('replace', 'root.props', { title: 'Accueil', description: 'Bienvenue' }),
+        ],
+        currentSnapshot: withRoot,
+        templateSnapshot: template({ __root__: 'canonical' }),
+      });
+
+      expect(diagnostics.map((d) => d.propName).sort()).toEqual(['description', 'title']);
+      expect(diagnostics.every((d) => d.slotId === '__root__')).toBe(true);
+      expect(diagnostics.map((d) => d.path).sort()).toEqual([
+        'root.props.description',
+        'root.props.title',
+      ]);
+    });
+
+    it('judges a component held in a root prop against that component', () => {
+      const nestedInRoot: Record<string, unknown> = {
+        content: [],
+        root: {
+          props: {
+            items: [{ type: 'Hero', props: { id: 'Hero-3', title: 'Inner' } }],
+          },
+        },
+        zones: {},
+      };
+      const { diagnostics } = validateTranslationAuthority({
+        operations: [op('replace', 'root.props.items.0.props.title', 'Bonjour')],
+        currentSnapshot: nestedInRoot,
+        templateSnapshot: template({ __root__: 'locale', 'Hero-3': 'canonical' }),
+      });
+
+      expect(diagnostics).toHaveLength(1);
+      expect(diagnostics[0].slotId).toBe('Hero-3');
+    });
+  });
 });

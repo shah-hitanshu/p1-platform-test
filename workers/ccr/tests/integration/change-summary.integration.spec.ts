@@ -426,6 +426,71 @@ describe('Change summary - Integration Tests', () => {
     });
   });
 
+  describe('root prop changes', () => {
+    it('carries the upstream and document values for a root prop change', async () => {
+      const canonical = await createDocumentOnBranch({
+        siteId,
+        branchId,
+        path: 'pages/root-prop',
+        snapshot: {
+          content: [{ type: 'HeadingBlock', props: { id: 'HeadingBlock-r', title: 'Hi' } }],
+          root: { props: { title: 'Canonical v1' } },
+          zones: {},
+        },
+        createdById: TEST_USER_ID,
+        createdByType: 'user',
+      });
+      const translation = await createTranslation({
+        canonicalDocumentId: canonical.document.id,
+        branchId,
+        locale: 'de-DE',
+        createdById: TEST_USER_ID,
+        createdByType: 'user',
+      });
+
+      // The translator gives the root prop their own value, so the document value
+      // is distinguishable from both sides of the upstream diff.
+      await createDocumentVersion({
+        documentId: translation.document.id,
+        branchId,
+        snapshot: {
+          content: [{ type: 'HeadingBlock', props: { id: 'HeadingBlock-r', title: 'Hi' } }],
+          root: { props: { title: 'Übersetzt' } },
+          zones: {},
+        },
+        source: 'edit',
+        createdById: TEST_USER_ID,
+        createdByType: 'user',
+      });
+
+      await createDocumentVersion({
+        documentId: canonical.document.id,
+        branchId,
+        snapshot: {
+          content: [{ type: 'HeadingBlock', props: { id: 'HeadingBlock-r', title: 'Hi' } }],
+          root: { props: { title: 'Canonical v2' } },
+          zones: {},
+        },
+        source: 'edit',
+        createdById: TEST_USER_ID,
+        createdByType: 'user',
+      });
+
+      const summary = await buildChangeSummary({
+        derivedDocumentId: translation.document.id,
+        branchId,
+        relationType: 'localization',
+      });
+
+      expect(summary).not.toBeNull();
+      const entry = findByComponent(summary!, '__root__', '/title');
+      expect(entry).toBeDefined();
+      expect(entry?.upstreamOldValue).toBe('Canonical v1');
+      expect(entry?.upstreamNewValue).toBe('Canonical v2');
+      expect(entry?.documentValue).toBe('Übersetzt');
+    });
+  });
+
   describe('missing edge', () => {
     it('returns null when the document has no edge of the requested relation type', async () => {
       const orphan = await createDocumentOnBranch({

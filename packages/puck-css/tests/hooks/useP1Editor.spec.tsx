@@ -299,10 +299,12 @@ describe('useP1Editor', () => {
       await vi.advanceTimersByTimeAsync(100);
     });
 
-    expect(result.current.puckProps.plugins.length).toBe(3);
+    // The localization plugin contributes an overrides entry.
+    expect(result.current.puckProps.plugins.length).toBe(4);
     expect(result.current.puckProps.plugins[0].name).toBe('css');
     expect(result.current.puckProps.plugins[1].name).toBe('p1-document-sync');
-    expect(result.current.puckProps.plugins[2].name).toBe('test-plugin');
+    expect(result.current.puckProps.plugins[2].overrides).toBeDefined();
+    expect(result.current.puckProps.plugins[3].name).toBe('test-plugin');
   });
 
   it('puckProps.plugins should place feature panels ahead of the caller\'s', async () => {

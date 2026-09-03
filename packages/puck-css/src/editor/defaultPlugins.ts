@@ -1,8 +1,10 @@
 import type { P1FeaturePlugin } from '../core/plugin-types.js';
 import { collaborationPlugin } from '../collaboration/collaborationPlugin.js';
 import { agentPlugin } from '../agent/agentPlugin.js';
+import { localizationPlugin } from '../features/localization/index.js';
 
 export const DEFAULT_CCR_FEATURE_PLUGINS: P1FeaturePlugin[] = [
   collaborationPlugin,
   agentPlugin,
+  localizationPlugin,
 ];

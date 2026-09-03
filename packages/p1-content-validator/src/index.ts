@@ -15,6 +15,7 @@ export {
   isAuthority,
   AUTHORITIES,
   DEFAULT_AUTHORITY,
+  ROOT_SLOT_ID,
 } from './localization.js';
 export type {
   EditOperation,
