@@ -50,6 +50,8 @@ import {
   setAuthorityOverride,
   clearAuthorityOverride,
   resolveSlotAuthorityDefaults,
+  isTombstonedOnBranch,
+  duplicateDocument,
 } from '../services';
 import type { ChangeRelationType } from '../services';
 import { validateBody, validationErrorResponse } from './validation/request-validation';
@@ -79,7 +81,8 @@ export type DocumentRouteAction =
   | 'publish'
   | 'translations'
   | 'upstream-diff'
-  | 'authority-overrides';
+  | 'authority-overrides'
+  | 'copy';
 
 /** The operation a document route path names against a version. */
 export type DocumentVersionAction = 'latest' | 'by-id' | 'restore';
@@ -1193,6 +1196,20 @@ async function handleBranchScopedDocumentRoutes(
     return await handleUpstreamDiff(relationTypeParam, branchId, context.documentId);
   }
 
+  if (context.action === 'copy' && context.documentId !== undefined) {
+    if (method !== 'POST') {
+      return errorResponse('Method not allowed', 405);
+    }
+    await assertPermission(context.principal, context.siteId, branchId, 'canEditDocuments');
+    // Not documentExistsOnBranch: it tests for a version row on this branch, so a
+    // copy-on-write page inherited from main reads as absent. Tenant scope is
+    // checked in the service off the document's own siteId.
+    if (await isTombstonedOnBranch(context.documentId, branchId)) {
+      return errorResponse('Document not found on this branch', 404);
+    }
+    return await handleCopyDocument(request, context, context.documentId, branchId, branch.isMain);
+  }
+
   // Handle authority-overrides: read the per-prop authority map (GET) or set/clear
   // a single (slotId, propName) override (PUT/DELETE) on a translation.
   if (context.action === 'authority-overrides' && context.documentId !== undefined) {
@@ -1369,5 +1386,40 @@ export async function handleDocumentRoutes(
     // Log and return generic error for unknown errors
     getLogger().error('document api error', error);
     return errorResponse('Internal server error', 500);
+  }
+}
+
+async function handleCopyDocument(
+  request: Request,
+  context: DocumentRouteContext,
+  documentId: string,
+  branchId: string,
+  isMain: boolean,
+): Promise<Response> {
+  const body = await parseJsonBody<{ includeChildren?: unknown }>(request);
+
+  if (body.includeChildren !== undefined && typeof body.includeChildren !== 'boolean') {
+    return errorResponse('includeChildren must be a boolean', 400);
+  }
+
+  const mainBranch = isMain ? null : await getMainBranch(context.siteId);
+
+  try {
+    const result = await duplicateDocument({
+      documentId,
+      branchId,
+      siteId: context.siteId,
+      mainBranchId: mainBranch?.id,
+      includeChildren: body.includeChildren === true,
+      createdById: context.principal.dbUserId ?? context.principal.id,
+      createdByType: context.principal.type,
+    });
+    await purgeContentCache({ siteId: context.siteId, branchId });
+    return jsonResponse(result, 201);
+  } catch (error) {
+    if (error instanceof HttpError) {
+      return errorResponse(error.message, error.status);
+    }
+    throw error;
   }
 }

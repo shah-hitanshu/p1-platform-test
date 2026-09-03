@@ -35,6 +35,7 @@ vi.mock('../../src/services/organization-service', () => ({
 vi.mock('../../src/services', () => ({
   createSite: vi.fn(),
   getSite: vi.fn(),
+  getSiteOwner: vi.fn().mockResolvedValue(null),
   updateSite: vi.fn(),
   deleteSite: vi.fn(),
   listSites: vi.fn(),

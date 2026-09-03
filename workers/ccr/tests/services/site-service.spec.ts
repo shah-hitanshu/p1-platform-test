@@ -1551,4 +1551,77 @@ describe('Phase 3.1: Site Service', () => {
       expect(sql).toContain('archived_at IS NOT NULL');
     });
   });
+
+  describe('getSiteOwner', () => {
+    it('returns the owner display name and avatar', async () => {
+      const db = await import('../../src/db');
+      const { getSiteOwner } = await import('../../src/services/site-service');
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [{ owner_name: 'Alice Smith', avatar_url: 'https://example.com/a.png' }],
+        rowCount: 1,
+      });
+
+      await expect(getSiteOwner('site-1')).resolves.toEqual({
+        name: 'Alice Smith',
+        avatarUrl: 'https://example.com/a.png',
+      });
+    });
+
+    it('returns a null avatar when the user has no picture', async () => {
+      const db = await import('../../src/db');
+      const { getSiteOwner } = await import('../../src/services/site-service');
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [{ owner_name: 'Alice Smith', avatar_url: null }],
+        rowCount: 1,
+      });
+
+      await expect(getSiteOwner('site-1')).resolves.toEqual({
+        name: 'Alice Smith',
+        avatarUrl: null,
+      });
+    });
+
+    it('falls back to the email when the user has no name set', async () => {
+      const db = await import('../../src/db');
+      const { getSiteOwner } = await import('../../src/services/site-service');
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [{ owner_name: 'alice@example.com', avatar_url: null }],
+        rowCount: 1,
+      });
+
+      await expect(getSiteOwner('site-1')).resolves.toMatchObject({
+        name: 'alice@example.com',
+      });
+    });
+
+    it('casts users.id to text — the join column is TEXT, not UUID', async () => {
+      const db = await import('../../src/db');
+      const { getSiteOwner } = await import('../../src/services/site-service');
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [], rowCount: 0 });
+
+      await getSiteOwner('site-1');
+
+      const [sql] = vi.mocked(db.query).mock.calls[0];
+      expect(sql).toContain('u.id::text = usr.user_id');
+    });
+
+    it('returns null for a site with no owner row', async () => {
+      const db = await import('../../src/db');
+      const { getSiteOwner } = await import('../../src/services/site-service');
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [], rowCount: 0 });
+
+      await expect(getSiteOwner('site-1')).resolves.toBeNull();
+    });
+
+    it('returns null when the owner grant has no matching user row', async () => {
+      const db = await import('../../src/db');
+      const { getSiteOwner } = await import('../../src/services/site-service');
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [{ owner_name: null, avatar_url: null }],
+        rowCount: 1,
+      });
+
+      await expect(getSiteOwner('site-1')).resolves.toBeNull();
+    });
+  });
 });

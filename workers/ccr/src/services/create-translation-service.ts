@@ -13,26 +13,16 @@ import type { Document } from '../types';
 import { query, withTransaction } from '../db';
 import { getFirstRow } from './checkpoint-mappers';
 import {
-  isUniqueConstraintViolation,
   mapRowToDocument,
   mapRowToDocumentVersion,
   normalizePath,
   validatePath,
 } from './document-types';
-import {
-  DocumentNotFoundError,
-  DuplicateDocumentPathError,
-} from './errors';
-import type {
-  DocumentRow,
-  DocumentVersion,
-  DocumentVersionRow,
-  DocumentWithArchive,
-} from './document-types';
+import { DocumentNotFoundError } from './errors';
+import type { DocumentVersion, DocumentWithArchive } from './document-types';
 import { getDocument } from './document-service';
 import { documentExistsOnBranch } from './branch-document-service';
-import { getLatestDocumentVersion, reconstructVersionSnapshot } from './document-version-service';
-import { enforceUniqueSlotIds } from './slot-id-backstop';
+import { cloneLatestSnapshot, insertDocumentWithVersion } from './document-clone';
 import { createLocalizationEdge, listLocalizationEdgesByUpstreamDocument } from './relations-service';
 import { validateLocale } from './locale';
 import { CanonicalVersionNotFoundError, TranslationAlreadyExistsError } from './errors';
@@ -114,32 +104,16 @@ export async function createTranslation(
     throw new DocumentNotFoundError(params.canonicalDocumentId);
   }
 
-  const latest = await getLatestDocumentVersion(params.canonicalDocumentId, params.branchId);
-  if (latest === null) {
-    throw new CanonicalVersionNotFoundError(params.canonicalDocumentId, params.branchId);
-  }
-  // A diff-only latest version stores no snapshot; rebuild it from the baseline.
-  const storedSnapshot = latest.snapshot as Record<string, unknown> | null | undefined;
-  const sourceSnapshot =
-    storedSnapshot ??
-    (await reconstructVersionSnapshot(
-      params.canonicalDocumentId,
-      params.branchId,
-      latest.versionNumber,
-    ));
-  if (sourceSnapshot === null) {
+  // No fallback to main: a translation is seeded from the canonical as this
+  // branch sees it, and a branch that has never held the canonical has nothing
+  // to translate.
+  const clone = await cloneLatestSnapshot(params.canonicalDocumentId, params.branchId);
+  if (clone === null) {
     throw new CanonicalVersionNotFoundError(params.canonicalDocumentId, params.branchId);
   }
 
   const path = normalizePath(params.path ?? `${canonical.path}.${locale}`);
   validatePath(path);
-
-  // Cloning a valid snapshot leaves every slot id in place; the backstop only
-  // re-mints ids that collide within a single document.
-  const clonedSnapshot = enforceUniqueSlotIds(
-    params.canonicalDocumentId,
-    structuredClone(sourceSnapshot),
-  );
 
   return withTransaction(async () => {
     // A canonical holds at most one translation per locale. No constraint spans
@@ -163,36 +137,20 @@ export async function createTranslation(
       throw new TranslationAlreadyExistsError(params.canonicalDocumentId, locale);
     }
 
-    let documentRow: DocumentRow;
-    try {
-      const docResult = await query<DocumentRow>(
-        `INSERT INTO app.documents (site_id, path, locale)
-         VALUES ($1, $2, $3)
-         RETURNING *`,
-        [canonical.siteId, path, locale],
-      );
-      documentRow = getFirstRow(docResult.rows);
-    } catch (docError) {
-      if (isUniqueConstraintViolation(docError)) {
-        throw new DuplicateDocumentPathError(path, canonical.siteId);
-      }
-      throw docError;
-    }
-
-    const versionResult = await query<DocumentVersionRow>(
-      `INSERT INTO app.document_versions (
-         document_id, branch_id, version_number, snapshot,
-         source, created_by_id, created_by_type
-       )
-       VALUES ($1, $2, 1, $3, 'edit', $4, $5)
-       RETURNING *`,
-      [documentRow.id, params.branchId, clonedSnapshot, params.createdById, params.createdByType],
-    );
+    const { row: documentRow, versionRows } = await insertDocumentWithVersion({
+      siteId: canonical.siteId,
+      path,
+      locale,
+      branchId: params.branchId,
+      snapshot: clone.snapshot,
+      createdById: params.createdById,
+      createdByType: params.createdByType,
+    });
 
     const edge = await createLocalizationEdge({
       derivedDocumentId: documentRow.id,
       upstreamDocumentId: params.canonicalDocumentId,
-      syncedUpstreamVersion: latest.versionNumber,
+      syncedUpstreamVersion: clone.versionNumber,
     });
 
     return {
@@ -200,7 +158,7 @@ export async function createTranslation(
       // no upstream. The edge is the answer, and the response would otherwise
       // report a translation as deriving from nothing.
       document: { ...mapRowToDocument(documentRow), localizedFromId: edge.upstreamDocumentId },
-      version: mapRowToDocumentVersion(getFirstRow(versionResult.rows)),
+      version: mapRowToDocumentVersion(getFirstRow(versionRows)),
       localization: {
         derivedDocumentId: edge.derivedDocumentId,
         upstreamDocumentId: edge.upstreamDocumentId,

@@ -49,6 +49,8 @@ export {
   MergeConflictsError,
   InvalidSlugError,
   InvalidDocumentPathError,
+  DuplicateSubtreeTooLargeError,
+  PathAllocationExhaustedError,
   InvalidAgentParamsError,
   InvalidMergeRequestParamsError,
   InvalidBranchParamsError,
@@ -91,6 +93,7 @@ export {
   archiveSite,
   restoreSite,
   listSites,
+  getSiteOwner,
 } from './site-service';
 
 export type {
@@ -725,3 +728,10 @@ export type { PathChange } from './path-change-service';
 // Move operations
 export { moveDocumentOnBranch } from './branch-document-service';
 export { moveDocumentGlobally } from './document-service';
+
+// Duplicate document
+export { duplicateDocument } from './duplicate-document-service';
+export type {
+  DuplicateDocumentParams,
+  DuplicateDocumentResult,
+} from './duplicate-document-service';

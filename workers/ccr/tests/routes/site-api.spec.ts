@@ -18,6 +18,7 @@ vi.mock('../../src/services', async () => {
     createSite: vi.fn(),
     createMainBranch: vi.fn(),
     getSite: vi.fn(),
+    getSiteOwner: vi.fn().mockResolvedValue(null),
     updateSite: vi.fn(),
     deleteSite: vi.fn(),
     archiveSite: vi.fn(),
@@ -842,6 +843,51 @@ describe('Phase 7.1.1b: Site API Routes', () => {
       expect(response.status).toBe(200);
       const body = await readJson(response);
       expect(body.role).toBe('EDITOR');
+    });
+
+    it('surfaces the owner name and picture', async () => {
+      const { handleSiteRoutes } = await import('../../src/routes/site-api');
+      const services = await import('../../src/services');
+
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce(makeBranch({
+        id: 'main-branch-id',
+        siteId: 'site-1',
+        name: 'main',
+        isMain: true,
+        status: 'active',
+        createdAt: '2026-01-24T10:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+      }));
+      vi.mocked(services.getSite).mockResolvedValueOnce({
+        id: 'site-1',
+        pantheonSiteId: 'pantheon-1',
+        name: 'Marketing Website',
+        allowedOrigins: [],
+        workflowSettings: {
+          mergeApprovalMode: 'required',
+          minApprovers: 2,
+          allowSelfApproval: false,
+          approverMode: 'both',
+          approverMinRole: 'EDITOR',
+        },
+        archivedAt: null,
+        createdAt: '2026-01-24T10:00:00.000Z',
+        updatedAt: '2026-01-24T10:00:00.000Z',
+      });
+      vi.mocked(services.getSiteOwner).mockResolvedValueOnce({
+        name: 'Alice Smith',
+        avatarUrl: 'https://example.com/a.png',
+      });
+
+      const response = await handleSiteRoutes(
+        new Request('https://api.example.com/api/sites/site-1', { method: 'GET' }),
+        { siteId: 'site-1', principal: makePrincipal({ id: 'user-1', type: 'user' }) },
+      );
+
+      const body = await readJson(response);
+      expect(body.ownerName).toBe('Alice Smith');
+      expect(body.ownerAvatarUrl).toBe('https://example.com/a.png');
     });
 
     it('should return 404 for non-existent site', async () => {

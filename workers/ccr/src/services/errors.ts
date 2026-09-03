@@ -393,6 +393,22 @@ export class InvalidDocumentPathError extends HttpError {
   readonly status = 400;
 }
 
+export class DuplicateSubtreeTooLargeError extends HttpError {
+  readonly status = 400;
+
+  constructor(public readonly count: number, public readonly max: number) {
+    super(`Cannot duplicate ${String(count)} descendants; the limit is ${String(max)}`);
+  }
+}
+
+export class PathAllocationExhaustedError extends HttpError {
+  readonly status = 409;
+
+  constructor(public readonly basePath: string) {
+    super(`No free path found for "${basePath}" after 50 attempts`);
+  }
+}
+
 export class InvalidAgentParamsError extends HttpError {
   readonly status = 400;
 }

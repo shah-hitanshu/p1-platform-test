@@ -819,3 +819,26 @@ export async function getCachedSiteAllowedOrigins(siteId: string): Promise<strin
   }
   return origins;
 }
+
+/**
+ * The site owner's display name and picture, or null when no owner grant exists.
+ * Agent-created sites get an 'admin' grant instead, so null is ordinary.
+ */
+export async function getSiteOwner(
+  siteId: string,
+): Promise<{ name: string; avatarUrl: string | null } | null> {
+  const result = await query<{ owner_name: string | null; avatar_url: string | null }>(
+    `SELECT COALESCE(u.name, u.email) AS owner_name, u.avatar_url
+     FROM app.user_site_roles usr
+     LEFT JOIN app.users u ON u.id::text = usr.user_id
+     WHERE usr.site_id = $1 AND usr.role = 'owner'
+     ORDER BY usr.updated_at DESC
+     LIMIT 1`,
+    [siteId],
+  );
+
+  const row = result.rows[0];
+  // The join is LEFT, so a grant naming a user with no row yields a null name.
+  if (row?.owner_name === undefined || row.owner_name === null) return null;
+  return { name: row.owner_name, avatarUrl: row.avatar_url };
+}

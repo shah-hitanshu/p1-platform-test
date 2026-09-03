@@ -79,6 +79,29 @@ function appendPaginationClauses(
 }
 
 /**
+ * Wraps the listing query so last_modified_by_id resolves to a display name
+ * and picture. Only users have a picture — app.agents has no avatar column.
+ * Aliased au/ag because the wrapper already owns `u` and orders on it.
+ */
+function withAuthorName(innerSql: string, orderBy: string): string {
+  return `SELECT u.*,
+      COALESCE(
+        CASE u.last_modified_by_type
+          WHEN 'user'  THEN COALESCE(au.name, au.email)
+          WHEN 'agent' THEN ag.name
+          ELSE 'System'
+        END, 'System') AS last_modified_by_name,
+      CASE u.last_modified_by_type
+        WHEN 'user' THEN au.avatar_url
+        ELSE NULL
+      END AS last_modified_by_avatar_url
+    FROM (${innerSql}) u
+    LEFT JOIN app.users  au ON au.id = u.last_modified_by_id
+    LEFT JOIN app.agents ag ON ag.id = u.last_modified_by_id::text
+    ORDER BY ${orderBy}`;
+}
+
+/**
  * Lists documents that have versions on a specific branch.
  * Excludes documents that have been tombstoned (deleted) on the branch.
  *
@@ -178,7 +201,7 @@ export async function listDocumentsOnBranch(
       sql += ` AND dr.target_document_id = $${String(templateParamIdx)}`;
     }
 
-    sql = `SELECT * FROM (${sql}) u ORDER BY ${outerOrder}`;
+    sql = withAuthorName(sql, outerOrder);
     sql = appendPaginationClauses(sql, params, { limit, offset });
 
     const result = await query<DocumentOnBranchRow>(sql, params);
@@ -220,7 +243,7 @@ export async function listDocumentsOnBranch(
     sql += ` AND dr.target_document_id = $${String(params.length)}`;
   }
 
-  sql = `SELECT * FROM (${sql}) u ORDER BY ${outerOrder}`;
+  sql = withAuthorName(sql, outerOrder);
   sql = appendPaginationClauses(sql, params, { limit, offset });
 
   const result = await query<DocumentOnBranchRow>(sql, params);

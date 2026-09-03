@@ -174,6 +174,17 @@ export function parseRoute(path: string): { handler: string; params: RouteParams
     };
   }
 
+  // /api/sites/{siteId}/branches/{branchId}/documents/{documentId}/copy
+  const copyRe = /^\/api\/sites\/([^/]+)\/branches\/([^/]+)\/documents\/([^/]+)\/copy$/;
+  const copyMatch = copyRe.exec(normalizedPath);
+  if (copyMatch) {
+    const [, siteId, branchId, documentId] = copyMatch;
+    return {
+      handler: 'documents',
+      params: { siteId, branchId, documentId, action: 'copy' },
+    };
+  }
+
   // /api/sites/{siteId}/branches/{branchId}/documents/{documentId}/upstream-diff
   const upstreamDiffRe = /^\/api\/sites\/([^/]+)\/branches\/([^/]+)\/documents\/([^/]+)\/upstream-diff$/;
   const upstreamDiffMatch = upstreamDiffRe.exec(normalizedPath);

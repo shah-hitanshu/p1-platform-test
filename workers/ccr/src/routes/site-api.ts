@@ -21,6 +21,7 @@ import {
   isUserInOrganization,
   DuplicatePantheonSiteIdError,
   HttpError,
+  getSiteOwner,
 } from '../services';
 import { assertPermission, getSiteRole } from '../auth/authorization';
 import type { ScreenshotProducerEnv } from '../queues/screenshot-producer';
@@ -247,9 +248,17 @@ async function handleGetSite(context: SiteRouteContext): Promise<Response> {
     return errorResponse('Site not found', 404);
   }
 
-  const role = await getSiteRole(context.principal, context.siteId);
+  const [role, owner] = await Promise.all([
+    getSiteRole(context.principal, context.siteId),
+    getSiteOwner(context.siteId),
+  ]);
 
-  return jsonResponse({ ...site, role });
+  return jsonResponse({
+    ...site,
+    role,
+    ownerName: owner?.name ?? null,
+    ownerAvatarUrl: owner?.avatarUrl ?? null,
+  });
 }
 
 /**

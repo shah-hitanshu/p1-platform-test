@@ -59,6 +59,8 @@ export interface DocumentOnBranchRow extends DocumentRow {
   latest_version_at: string | null;
   last_modified_by_id: string | null;
   last_modified_by_type: string | null;
+  last_modified_by_name: string | null;
+  last_modified_by_avatar_url: string | null;
 }
 
 /**
@@ -81,6 +83,10 @@ export interface DocumentOnBranch extends DocumentWithArchive {
   updatedAt?: string;
   lastModifiedById?: string;
   lastModifiedByType?: string;
+  /** Display name for lastModifiedById; 'System' for service and system writes. */
+  lastModifiedByName?: string;
+  /** Profile picture for lastModifiedById. Absent for agents and system writes. */
+  lastModifiedByAvatarUrl?: string;
 }
 
 /**
@@ -377,6 +383,12 @@ export function mapRowToDocumentOnBranch(row: DocumentOnBranchRow): DocumentOnBr
   if (row.last_modified_by_type !== null) {
     doc.lastModifiedByType = row.last_modified_by_type;
   }
+  if (row.last_modified_by_name !== null) {
+    doc.lastModifiedByName = row.last_modified_by_name;
+  }
+  if (row.last_modified_by_avatar_url !== null) {
+    doc.lastModifiedByAvatarUrl = row.last_modified_by_avatar_url;
+  }
   return doc;
 }
 
@@ -410,7 +422,7 @@ export function mapRowToDocument(row: DocumentRow): DocumentWithArchive {
 }
 
 // Maximum path length to prevent DoS attacks
-const MAX_PATH_LENGTH = 1024;
+export const MAX_PATH_LENGTH = 1024;
 
 /**
  * Normalizes a document path to a consistent format.

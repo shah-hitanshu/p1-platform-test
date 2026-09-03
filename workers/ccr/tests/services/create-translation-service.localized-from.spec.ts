@@ -17,7 +17,7 @@ vi.mock('../../src/services/document-service', () => ({
 }));
 
 vi.mock('../../src/services/document-version-service', () => ({
-  getLatestDocumentVersion: vi.fn(),
+  getLatestDocumentVersionWithFallback: vi.fn(),
   reconstructVersionSnapshot: vi.fn(),
 }));
 
@@ -49,16 +49,19 @@ async function setupHappyPath(): Promise<void> {
     createdAt: '2026-07-07T10:00:00.000Z',
   });
 
-  vi.mocked(versionService.getLatestDocumentVersion).mockResolvedValue({
-    id: 'canonical-version-4',
-    documentId: CANONICAL_ID,
-    branchId: 'branch-1',
-    versionNumber: 4,
-    snapshot: { content: [], zones: {}, root: { props: {} } },
-    source: 'edit',
-    createdById: 'user-1',
-    createdByType: 'user',
-    createdAt: '2026-07-07T10:00:00.000Z',
+  vi.mocked(versionService.getLatestDocumentVersionWithFallback).mockResolvedValue({
+    version: {
+      id: 'canonical-version-4',
+      documentId: CANONICAL_ID,
+      branchId: 'branch-1',
+      versionNumber: 4,
+      snapshot: { content: [], zones: {}, root: { props: {} } },
+      source: 'edit',
+      createdById: 'user-1',
+      createdByType: 'user',
+      createdAt: '2026-07-07T10:00:00.000Z',
+    },
+    inherited: false,
   } as never);
 
   vi.mocked(db.query)
