@@ -69,6 +69,17 @@ export function canPerformStructuralAction(role: ContentRole): boolean {
 }
 
 /**
+ * Check if a role can create pages.
+ *
+ * Adding a page is structural site editing, not content editing: a junior-editor may
+ * change what is on a page but not what pages exist. Advisory only — the backend
+ * decides, and rejects a write this lets through.
+ */
+export function canCreatePages(role: ContentRole): boolean {
+  return role !== 'junior-editor';
+}
+
+/**
  * Check if a role can edit component props.
  */
 export function canEditProps(role: ContentRole): boolean {

@@ -17,7 +17,8 @@ import { useP1Puck } from '../core/P1PuckContext.js';
 import { useVersions } from '../versioning/useVersions.js';
 import { useP1Auth } from '../auth/index.js';
 import type { P1PuckContextValue } from '../core/types.js';
-import { isDocumentGoneError } from '../data/utils.js';
+import { isDocumentGoneError, isDocumentNotFoundError } from '../data/utils.js';
+import { canCreatePages } from '../features/content-type-templates/permissions/role-permissions.js';
 import { useP1Plugin } from './useP1Plugin.js';
 import { useP1Overrides } from './useP1Overrides.js';
 import { withFreshFieldTypes } from './freshFieldTypes.js';
@@ -142,6 +143,14 @@ export interface UseP1EditorReturn {
   hasContent: boolean;
   /** Error from document loading, if any */
   error: Error | null;
+  /**
+   * The requested path has no document on this branch. Distinct from `error`:
+   * nothing failed, the page simply is not there yet, so the consumer can offer
+   * to create it instead of reporting a fault.
+   */
+  notFound: boolean;
+  /** Re-run the load for the current path — call after creating the missing document. */
+  retry: () => void;
   /** React key — pass directly as `<Puck key={puckKey} {...puckProps} />` to force a clean remount on role change (document switches sync in place) */
   puckKey: string;
   /** Props to spread onto <Puck> */
@@ -154,6 +163,14 @@ export interface UseP1EditorReturn {
    * preview area when the current document does not exist on the selected branch.
    */
   redirectPath: string | null;
+}
+
+/** "/about/our-team" -> "Our team" — a readable default title for a page created from its URL. */
+function titleFromPath(path: string): string {
+  const slug = path.split('/').filter(Boolean).pop();
+  if (!slug) return 'Home';
+  const words = slug.replace(/[-_]+/g, ' ').trim();
+  return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
 /**
@@ -213,6 +230,9 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
   const [needsRedirect, setNeedsRedirect] = useState(false);
+  const [notFound, setNotFound] = useState(false);
+  // Bumped by retry() to re-run the load effect for a path it already settled on.
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const loadedPathRef = useRef<string | null>(null);
   // The branch the loaded document came from. Compared against the current
   // branch to tell a workstream switch from a page switch — derived rather
@@ -241,6 +261,7 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
     let cancelled = false;
     setLoading(true);
     setError(null);
+    setNotFound(false);
 
     ccr.loadDocument(documentPath)
       .then(() => {
@@ -263,7 +284,8 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
           return;
         }
 
-        // Give the consumer a chance to handle the error (e.g. auto-create)
+        // Give the consumer a chance to handle the error (e.g. auto-create). This
+        // fires for any load failure, not just a missing page — three tests pin that.
         if (onDocumentNotFoundRef.current) {
           try {
             const shouldRetry = await onDocumentNotFoundRef.current(documentPath, loadErr);
@@ -283,16 +305,36 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
           }
         }
 
-        // Unload the editor; recovery effect will set an error if no docs exist
-        if (!cancelled) {
-          setNeedsRedirect(true);
+        if (cancelled) return;
+
+        // A path with no document behind it is a state the user can act on, not
+        // a fault: report it separately so the consumer can offer to create the
+        // page rather than showing a load failure.
+        if (isDocumentNotFoundError(loadErr)) {
+          // Nothing settled, so nothing is loaded. Leaving the previous path in the
+          // ref would make the effect early-return when the user navigates back to
+          // it, stranding the panel over an empty canvas.
+          loadedPathRef.current = null;
+          setNotFound(true);
+          setLoading(false);
+          return;
         }
+
+        // Unload the editor; recovery effect will set an error if no docs exist
+        setNeedsRedirect(true);
       });
 
     return () => {
       cancelled = true;
     };
-  }, [documentPath, ccr.branchId, ccr.loadDocument]);
+  }, [documentPath, ccr.branchId, ccr.loadDocument, loadAttempt]);
+
+  // Re-open the current path from scratch. loadedPathRef is cleared so the load
+  // effect does not short-circuit on the path it already settled.
+  const retry = useCallback(() => {
+    loadedPathRef.current = null;
+    setLoadAttempt((n) => n + 1);
+  }, []);
 
   // No branch means nothing can be opened, so an unresolved branch is fatal.
   // Derived rather than copied into state: a retry that clears the failure has
@@ -477,8 +519,26 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
     }
   }, [logout]);
 
+  // The canvas panel for a path with no page. Creating it and re-opening it
+  // both live here, where `createDocument` and `retry` are in scope; the plugin
+  // adds the way home from its own document-select wiring.
+  const pageNotFound = useMemo(
+    () =>
+      notFound
+        ? {
+            canCreate: canCreatePages(ccr.userRole),
+            onCreate: async () => {
+              await ccr.createDocument(documentPath, null, titleFromPath(documentPath));
+              retry();
+            },
+          }
+        : null,
+    [notFound, documentPath, ccr.userRole, ccr.createDocument, retry],
+  );
+
   const p1Plugin = useP1Plugin({
     documentSyncStore,
+    pageNotFound,
     onSelectionChange: handleSelectionChange,
     currentUser: user ? { id: ccr.userId, name: user.name, email: user.email, avatar: user.picture } : undefined,
     onLogout: handleLogout,
@@ -830,6 +890,8 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
     reloading: inFlight && hasContent ? reloadKind : null,
     hasContent,
     error: error ?? branchBootError,
+    notFound,
+    retry,
     puckKey: retained?.puckKey ?? puckKey,
     puckProps: retained?.puckProps ?? puckProps,
     css: ccr,

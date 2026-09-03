@@ -12,7 +12,7 @@ import { useP1Puck } from '../core/P1PuckContext.js';
 import type { SiteMenuItem, CurrentUser } from '../pds/components/P1EditorHeader.js';
 import type { TemplateSummary } from '../features/content-type-templates/types.js';
 import { createP1Plugin } from './plugin/P1Plugin.js';
-import type { P1PluginOptions, PuckPlugin } from './plugin/P1Plugin.js';
+import type { P1PluginOptions, PageNotFoundCanvasState, PuckPlugin } from './plugin/P1Plugin.js';
 import type { DocumentSyncStore } from './plugin/document-sync-plugin.js';
 import { createLogoutStore } from './logout-store.js';
 
@@ -50,6 +50,8 @@ export interface UseP1PluginOptions {
   onGenerateWithAI?: (brief: string, page: { path: string; title: string }) => void;
   /** Show the header's Pantheon AI toggle. Pass the same flag that gates the chat plugin. */
   showAIPanelToggle?: boolean;
+  /** Set by `useP1Editor` when the open path has no page. Not a consumer option. */
+  pageNotFound?: PageNotFoundCanvasState | null;
   /** Callback to delete a document */
   onDocumentDelete?: (documentId: string, path: string) => Promise<void>;
   /** Whether to show presence indicator */
@@ -169,6 +171,14 @@ export function useP1Plugin(options: UseP1PluginOptions = {}): PuckPlugin {
       ? (options.onDocumentCreate ?? ccr.createDocument) : undefined,
     onGenerateWithAI: options.onGenerateWithAI,
     showAIPanelToggle: options.showAIPanelToggle,
+    pageNotFound: options.pageNotFound
+      ? {
+          ...options.pageNotFound,
+          // Deliberately not onDocumentSelect: that is gated on the document browser
+          // and is undefined without it, which would leave the button doing nothing.
+          onOpenHome: () => void (options.onDocumentSelect ?? ccr.loadDocument)('/'),
+        }
+      : null,
     templates: ccr.templates,
     templatesLoading: ccr.templatesLoading,
     onCreateTemplate: ccr.createTemplate,

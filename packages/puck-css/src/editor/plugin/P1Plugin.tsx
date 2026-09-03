@@ -21,6 +21,7 @@ import type {
 import { PanelShell } from '../components/PanelShell.js';
 import { VersionTimeline } from '../components/VersionTimeline.js';
 import { VersionBannerOverride } from '../components/VersionBannerOverride.js';
+import type { PageNotFoundProps } from '../../pds/components/PageNotFound.js';
 import { isMilestone } from '../../versioning/utils/versionKind.js';
 import { dayLabel } from '../../versioning/utils/formatVersionDate.js';
 import { PuckDataSynchronizer } from '../components/PuckDataSynchronizer.js';
@@ -466,6 +467,11 @@ function RealtimeDataCaptureBridge(): React.ReactElement | null {
 }
 
 /**
+ * Everything the canvas panel needs except the way home, which the editor supplies.
+ */
+export type PageNotFoundCanvasState = Omit<PageNotFoundProps, 'onOpenHome'>;
+
+/**
  * Options for creating the P1 Plugin
  */
 export interface P1PluginOptions {
@@ -483,6 +489,11 @@ export interface P1PluginOptions {
   selectedDocumentPath?: string | null;
   /** Callback when a document is selected */
   onDocumentSelect?: (path: string) => void;
+  /**
+   * Set by `useP1Editor` when the open path has no page. Renders the
+   * page-not-found panel in the canvas, leaving the editor chrome in place.
+   */
+  pageNotFound?: PageNotFoundProps | null;
   /** Callback to create a new document */
   onDocumentCreate?: (path: string, template?: TemplateSummary | null, title?: string) => Promise<void>;
   /** Hand a "Generate with AI" brief (+ the new page's path/title) to the chatbot. */
@@ -892,6 +903,7 @@ export function createP1Plugin(options: P1PluginOptions): PuckPlugin {
         onRestoreVersion={stableOptions.onRestoreVersion}
         canRevert={stableOptions.canRevert}
         filteredVersions={filteredVersions}
+        pageNotFound={stableOptions.pageNotFound ?? null}
       >
         {children}
       </VersionBannerOverride>

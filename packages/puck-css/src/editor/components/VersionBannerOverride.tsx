@@ -4,6 +4,7 @@ import { Icon } from '@pantheon-systems/pds-toolkit-react';
 import type { DocumentVersion } from '@pantheon-systems/css-client';
 import { useP1Puck } from '../../core/P1PuckContext.js';
 import { HistoricalVersionBanner } from '../../versioning/components/HistoricalVersionBanner.js';
+import { PageNotFound, type PageNotFoundProps } from '../../pds/components/PageNotFound.js';
 import bannerStyles from '../../versioning/components/HistoricalVersionBanner.module.css';
 
 /**
@@ -48,6 +49,11 @@ export interface VersionBannerOverrideProps {
   canRevert?: boolean;
   /** The currently filtered version list (from the panel filter). Steppers navigate within this list. */
   filteredVersions?: DocumentVersion[];
+  /**
+   * Set when the open path has no page. Takes over the canvas — the chrome
+   * around it stays, so the user can pick another page or create this one.
+   */
+  pageNotFound?: PageNotFoundProps | null;
 }
 
 export function VersionBannerOverride({
@@ -58,6 +64,7 @@ export function VersionBannerOverride({
   onRestoreVersion,
   canRevert = false,
   filteredVersions,
+  pageNotFound,
 }: VersionBannerOverrideProps): React.ReactElement {
   const p1Context = useP1Puck();
   // versions are newest-first from the API; index 0 is always the current (latest) version.
@@ -125,19 +132,29 @@ export function VersionBannerOverride({
               position: 'absolute',
               inset: 0,
               zIndex: 10,
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '1rem',
-              color: 'var(--pds-color-foreground-default-secondary)',
               backgroundColor: 'var(--pds-color-surface-default, white)',
+              ...(pageNotFound
+                ? null
+                : {
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '1rem',
+                    color: 'var(--pds-color-foreground-default-secondary)',
+                  }),
             }}
           >
-            <Icon iconName="userAstronaut" size="3xl" aria-hidden="true" />
-            <p style={{ margin: 0, fontFamily: 'Poppins, sans-serif', fontSize: '1rem' }}>
-              Choose a page from the menu above
-            </p>
+            {pageNotFound ? (
+              <PageNotFound {...pageNotFound} />
+            ) : (
+              <>
+                <Icon iconName="userAstronaut" size="3xl" aria-hidden="true" />
+                <p style={{ margin: 0, fontFamily: 'Poppins, sans-serif', fontSize: '1rem' }}>
+                  Choose a page from the menu above
+                </p>
+              </>
+            )}
           </div>
         )}
       </div>

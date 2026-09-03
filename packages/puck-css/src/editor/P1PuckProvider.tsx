@@ -33,6 +33,7 @@ import type { Template, TemplateSummary } from '../features/content-type-templat
 import { createPuckPermissions } from '../features/content-type-templates/permissions/createPuckPermissions.js';
 import { useTemplateList } from '../features/content-type-templates/hooks/useTemplateList.js';
 import { presenceIdentityKey } from '../collaboration/utils/presenceIdentity.js';
+import { DocumentPathNotFoundError, isNotFoundStatus } from '../data/utils.js';
 import { DEFAULT_CCR_FEATURE_PLUGINS } from './defaultPlugins.js';
 import {
   resolveActivePlugins,
@@ -1198,11 +1199,13 @@ function P1PuckProviderInner({
       commitCurrentData(null, null);
 
       try {
-        const doc = await userClient.documents.getByPath(
-          siteId,
-          path.startsWith('/') ? path.slice(1) : path,
-          branchId,
-        );
+        // Only the path lookup answers "is there a page here?". A 404 from any later
+        // call in this load must not reach the caller as a missing page.
+        const doc = await userClient.documents
+          .getByPath(siteId, path.startsWith('/') ? path.slice(1) : path, branchId)
+          .catch((err: unknown) => {
+            throw isNotFoundStatus(err) ? new DocumentPathNotFoundError(path) : err;
+          });
 
         // Staleness check: a newer loadDocument call has started
         if (thisRequestId !== loadRequestIdRef.current) {

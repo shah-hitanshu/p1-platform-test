@@ -37,37 +37,6 @@ import { shouldShowChatbot, CHATBOT_FLAG_KEY } from "../../../../lib/chatbot-fla
 import { createGenerateWithAIHandler } from "../../../../lib/chatbot-flag/ai-generate";
 import { getDraftRequestChannel } from "../../../../lib/chatbot-flag/draft-request-channel";
 
-const DEFAULT_PAGE_DATA = {
-  root: { props: { title: "New page" } },
-  content: [],
-  zones: {},
-};
-
-const DEFAULT_ROOT_PAGE_DATA = {
-  root: { props: { title: "Welcome | P1 site" } },
-  content: [
-    {
-      type: "P1WelcomeBlock",
-      props: {
-        id: "seed-welcome",
-        heading: "Welcome to your new Pantheon P1 Site.",
-        description: "You just created this new site from Pantheon P1 starter kit, congrats! You'll need a Pantheon P1 user account to edit it and create new pages.",
-        ctaLabel: "Sign-in to P1",
-        ctaHref: "/p1",
-        footnote: "Visit [P1 documentation](https://docs.pantheon.io) for more information.",
-        loggedInHeading: "Welcome to your new Pantheon P1 Site.",
-        loggedInDescription: "You just created this new site from Pantheon P1 starter kit, congrats! Start editing this page or visit the P1 dashboard to manage your site.",
-        loggedInCtaLabel: "Edit this page with P1 Visual Editor",
-        loggedInCtaHref: "/p1",
-        loggedInSecondaryLabel: "Go to P1 Dashboard",
-        loggedInFootnote: "Visit [P1 documentation](https://docs.pantheon.io) for more information.",
-        showLogo: true,
-      },
-    },
-  ],
-  zones: {},
-};
-
 let p1Config: ReturnType<typeof createNextConfig> | null = null;
 let p1ConfigError: string | null = null;
 
@@ -207,7 +176,6 @@ function RoleSwitcher({
 
 function EditorContent({ path }: { path: string }) {
   const router = useRouter();
-  const { getToken } = useP1Auth();
   const { data: editorCtx } = useEditorContext(path);
   const {
     context: remoteDatasourceContext,
@@ -257,27 +225,10 @@ function EditorContent({ path }: { path: string }) {
     [router],
   );
 
-  const handleDocumentNotFound = useCallback(
-    async (docPath: string, _error: Error) => {
-      const initialData = docPath === "/" ? DEFAULT_ROOT_PAGE_DATA : DEFAULT_PAGE_DATA;
-      const token = await getToken();
-      const headers: Record<string, string> = { "Content-Type": "application/json" };
-      if (token) headers["Authorization"] = `Bearer ${token}`;
-      const res = await fetch("/p1/api/structure/page", {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ path: docPath, initialData }),
-      });
-      return res.ok;
-    },
-    [getToken],
-  );
-
   const { loading, reloading, hasContent, error, puckKey, puckProps } = useP1Editor({
     documentPath: path,
     puckConfig: editorConfig,
     additionalPlugins,
-    onDocumentNotFound: handleDocumentNotFound,
     pluginOptions: {
       onDocumentSelect: handleDocumentSelect,
       onGenerateWithAI: createGenerateWithAIHandler(draftRequests, chatbotEnabled),

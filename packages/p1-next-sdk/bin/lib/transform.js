@@ -245,13 +245,112 @@ export function rewriteLoadingOverlay(source) {
   return out;
 }
 
-/** Full editor-client transform: deepen imports, add the named imports, rewrite the signature, adopt the SDK overlay. */
+/**
+ * The auto-create-on-404 behaviour is gone. It POSTed to `/p1/api/structure/page`,
+ * a route no SDK handler ever served, so opening an editor path for a page that
+ * did not exist silently did nothing. The editor now renders a page-not-found
+ * panel in the canvas — chrome and all — offering to create the page, and both
+ * halves of that live in the SDK so they version together. Every trace of the old
+ * client-side half comes out.
+ *
+ * Every anchor has to match: an app already on the SDK flow is left alone, and an
+ * app that edited part of this region keeps its own version rather than being left
+ * with a broken mix of the two.
+ */
+const NOT_FOUND_EDITS = [
+  [
+    `const DEFAULT_PAGE_DATA = {
+  root: { props: { title: "New page" } },
+  content: [],
+  zones: {},
+};
+
+const DEFAULT_ROOT_PAGE_DATA = {
+  root: { props: { title: "Welcome | P1 site" } },
+  content: [
+    {
+      type: "P1WelcomeBlock",
+      props: {
+        id: "seed-welcome",
+        heading: "Welcome to your new Pantheon P1 Site.",
+        description: "You just created this new site from Pantheon P1 starter kit, congrats! You'll need a Pantheon P1 user account to edit it and create new pages.",
+        ctaLabel: "Sign-in to P1",
+        ctaHref: "/p1",
+        footnote: "Visit [P1 documentation](https://docs.pantheon.io) for more information.",
+        loggedInHeading: "Welcome to your new Pantheon P1 Site.",
+        loggedInDescription: "You just created this new site from Pantheon P1 starter kit, congrats! Start editing this page or visit the P1 dashboard to manage your site.",
+        loggedInCtaLabel: "Edit this page with P1 Visual Editor",
+        loggedInCtaHref: "/p1",
+        loggedInSecondaryLabel: "Go to P1 Dashboard",
+        loggedInFootnote: "Visit [P1 documentation](https://docs.pantheon.io) for more information.",
+        showLogo: true,
+      },
+    },
+  ],
+  zones: {},
+};
+
+`,
+    ``,
+  ],
+  [
+    `  const router = useRouter();
+  const { getToken } = useP1Auth();
+`,
+    `  const router = useRouter();
+`,
+  ],
+  [
+    `  const handleDocumentNotFound = useCallback(
+    async (docPath: string, _error: Error) => {
+      const initialData = docPath === "/" ? DEFAULT_ROOT_PAGE_DATA : DEFAULT_PAGE_DATA;
+      const token = await getToken();
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (token) headers["Authorization"] = \`Bearer \${token}\`;
+      const res = await fetch("/p1/api/structure/page", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ path: docPath, initialData }),
+      });
+      return res.ok;
+    },
+    [getToken],
+  );
+
+`,
+    ``,
+  ],
+  [
+    `    additionalPlugins,
+    onDocumentNotFound: handleDocumentNotFound,
+`,
+    `    additionalPlugins,
+`,
+  ],
+];
+
+/** Strip the dead auto-create-on-404 call; the SDK owns the page-not-found flow now. */
+export function rewriteDocumentNotFound(source) {
+  const found = NOT_FOUND_EDITS.filter(([find]) => source.includes(find));
+  if (found.length === 0) return source;
+  if (found.length !== NOT_FOUND_EDITS.length) {
+    throw new BailError(
+      "editor-client.tsx has a partly-customized page-not-found flow; migrate this file by hand.",
+    );
+  }
+  let out = source;
+  for (const [find, replace] of NOT_FOUND_EDITS) out = out.replace(find, replace);
+  return out;
+}
+
+/** Full editor-client transform: deepen imports, add the named imports, rewrite the signature, adopt the SDK overlay and page-not-found flow. */
 export function rewriteEditorClient(source) {
   let out = deepenRelativeImports(source);
   out = addNamedImport(out, "next/navigation", "usePathname", "prepend");
   out = addNamedImport(out, "@pantheon-systems/p1-next-sdk", "editorPagePathFromUrlPath", "append");
   out = rewriteWrapperSignature(out);
   out = rewriteLoadingOverlay(out);
+  out = rewriteDocumentNotFound(out);
   return out;
 }
 

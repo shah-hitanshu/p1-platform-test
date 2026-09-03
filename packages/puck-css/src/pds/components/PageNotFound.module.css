@@ -1,0 +1,51 @@
+/* ============================================================================
+ * PageNotFound — CSS Module
+ *
+ * Canvas state for an editor path with no page behind it. The block is centred
+ * in the canvas but its text is left-aligned, per the design: it reads as a page
+ * about to be authored, not as a centred error dialog.
+ *
+ * Typography is owned by the PDS composite utilities on the elements themselves
+ * (pds-heading-xl / pds-copy-m / pds-copy-s), which set family, size, weight,
+ * line height and letter spacing with !important. Only colour and rhythm here.
+ * ============================================================================ */
+
+.panel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  min-height: 100%;
+  padding: var(--pds-spacing-2xl, 2rem);
+  font-family: var(--pds-typography-ff-default, 'Inter', sans-serif);
+}
+
+.content {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
+  max-width: 40rem;
+}
+
+.heading {
+  margin: 0;
+  color: var(--pds-color-foreground-default, oklch(0.2178 0 0));
+}
+
+.message {
+  margin: var(--pds-spacing-2xs, 0.5rem) 0 0;
+  color: var(--pds-color-foreground-default-secondary, oklch(0.4778 0.0020 247.87));
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--pds-spacing-2xs, 0.5rem);
+  margin-top: var(--pds-spacing-l, 1.25rem);
+}
+
+.error {
+  margin: var(--pds-spacing-s, 0.75rem) 0 0;
+  color: var(--pds-color-status-critical-foreground, oklch(0.4501 0.1581 26.35));
+}
