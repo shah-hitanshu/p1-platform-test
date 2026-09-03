@@ -95,6 +95,31 @@ describe('resolveWorkspaceDeps', () => {
     expect(pkg.dependencies).toEqual({ react: '^19.2.5', '@scope/css-client': '0.9.0' });
   });
 
+  describe('a prerelease workspace version', () => {
+    const prerelease = index({
+      'css-client': { name: '@scope/css-client', version: '0.14.0-canary-20260903120000' },
+    });
+
+    it.each(['workspace:*', 'workspace:^', 'workspace:~'])(
+      'pins %s exactly, so the scaffold cannot resolve to a stable release above it',
+      (specifier) => {
+        const pkg = { dependencies: { '@scope/css-client': specifier } };
+
+        resolveWorkspaceDeps(pkg, prerelease);
+
+        expect(pkg.dependencies['@scope/css-client']).toBe('0.14.0-canary-20260903120000');
+      }
+    );
+
+    it('still carries an explicit range through unchanged', () => {
+      const pkg = { dependencies: { '@scope/css-client': 'workspace:>=0.9.0' } };
+
+      resolveWorkspaceDeps(pkg, prerelease);
+
+      expect(pkg.dependencies['@scope/css-client']).toBe('>=0.9.0');
+    });
+  });
+
   it('fails rather than emitting a specifier no consumer can install', () => {
     const pkg = { dependencies: { '@scope/unpublished': 'workspace:*' } };
 

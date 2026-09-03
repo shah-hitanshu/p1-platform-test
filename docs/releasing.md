@@ -1,16 +1,16 @@
 # Releasing npm packages
 
-Seven packages under `packages/*` publish to npm under `@pantheon-systems`. Releases run
-through [Changesets](https://github.com/changesets/changesets) and two workflows:
+Seven packages under `packages/*` publish to npm under `@pantheon-systems`, through
+[Changesets](https://github.com/changesets/changesets) and three jobs:
 
-| Workflow                                                          | Trigger        | What it does                                                |
-| ----------------------------------------------------------------- | -------------- | ----------------------------------------------------------- |
-| [version-packages.yml](../.github/workflows/version-packages.yml) | push to `main` | opens/updates the "Version Packages" PR. Publishes nothing. |
-| [publish.yml](../.github/workflows/publish.yml)                   | manual         | publishes to npm, tags, cuts releases.                      |
+| Workflow                                                          | Trigger         | Job       | What it does                                                          |
+| ----------------------------------------------------------------- | --------------- | --------- | ---------------------------------------------------------------------- |
+| [version-packages.yml](../.github/workflows/version-packages.yml) | push to `main`  | `version` | opens/updates the "Version Packages" PR. Publishes nothing.           |
+| [publish.yml](../.github/workflows/publish.yml)                   | manual          | `publish` | releases to npm under `latest`, tags, cuts GitHub Releases.           |
+| [publish.yml](../.github/workflows/publish.yml)                   | manual          | `canary`  | publishes a snapshot of `main` under `canary`. No tags, no releases.  |
 
-They're separate files so each has exactly one trigger and one job. There is no manual
-`npm publish` path — publishing authenticates via GitHub OIDC from `publish.yml`, so a
-release always originates from `main`.
+There is no manual `npm publish` path — publishing authenticates via GitHub OIDC from
+`publish.yml`, so anything on npm originated from `main`.
 
 `packages/eslint-config` is `private: true` — it is workspace-internal and never published.
 
@@ -55,12 +55,15 @@ It fails fast if any changesets are still pending, because `changesets/action` t
 version-PR path whenever it finds one — so publishing before step 3 would silently open a PR
 instead of releasing. Merge the Version PR first.
 
-### Why they're two workflows
+### Why versioning and publishing are separate workflows
 
 Publishing on a `workflow_dispatch` rather than on the Version PR merge means a release is
-always an explicit act. Keeping it in its own file means `id-token: write` — the credential
-that can publish to npm — exists only in the workflow you run by hand, and never on a push
-to `main`. Changesets recommends separating version from publish for exactly that reason.
+always an explicit act. Keeping it out of `version-packages.yml` means `id-token: write` —
+the credential that can publish to npm — never exists on a push to `main`. Changesets
+recommends separating version from publish for exactly that reason.
+
+Canary is the one thing that shares `publish.yml`, and only because npm trusted publishing
+keys on the workflow filename. See [Canary builds](#canary-builds).
 
 ## Can I release one package on its own?
 
@@ -171,6 +174,50 @@ doing before the first release of a group: it's how you'd notice, for example, t
 Run it in this order — on its own, `pnpm publish -r --dry-run` reports "no new packages
 that should be published", because every current version is already on the registry. It
 only shows you anything after the version bump.
+
+## Canary builds
+
+All seven publishable packages can go out together under the `canary` dist-tag, built from
+whatever is on `main` at the time. Actions → **Publish to npm** → _Run workflow_ → tick
+**Publish a canary snapshot instead of a release**.
+
+```bash
+pnpm add @pantheon-systems/puck-css@canary
+pnpm create @pantheon-systems/p1-starter-kit@canary
+```
+
+`latest` never moves. A canary version looks like `0.14.0-canary-20260903050112`, and npm
+excludes prereleases from a range unless the range names the same `major.minor.patch` — so
+nothing resolving `^0.13.0` will ever pick one up. Opting in means naming the tag or pinning
+the exact version.
+
+Canaries are not releases and are not supported. There is no CHANGELOG entry, no git tag,
+and no GitHub Release; the version's timestamp is the only record of what went into one.
+
+### How it differs from the release path
+
+The `canary` job runs `changeset version --snapshot canary`, then publishes with
+`--tag canary --no-git-tag`. Nothing is committed — the version bumps, CHANGELOG edits, and
+consumed changeset files live and die in the runner's checkout. Pending changesets are read
+along the way, so a canary reflects the bumps queued for the next release
+(`snapshot.useCalculatedVersion` in [.changeset/config.json](../.changeset/config.json) is
+what makes `0.14.0-canary-…` rather than the default `0.0.0-canary-…`).
+
+Two things the release path gets for free need doing explicitly here:
+
+**Every package is named, every run.** `changeset version --snapshot` only bumps packages
+that have a pending changeset, so packages with nothing queued would keep their last stable
+version and publish nothing. [scripts/write-canary-changeset.ts](../scripts/write-canary-changeset.ts)
+writes one throwaway changeset naming all seven, so `canary` means "main, as of this run"
+for every package.
+
+**Scaffold dependencies pin exactly.** `create-p1-starter-kit` normally rewrites its
+`workspace:*` deps to a caret range so a scaffold picks up patches. Under a prerelease
+version that range would resolve to a stable release above it, and a canary scaffold would
+install stable SDK packages next to the canary kit that generated it. `toPublishedRange`
+in [workspace-deps.js](../packages/create-p1-starter-kit/scripts/workspace-deps.js) emits an
+exact version whenever the workspace version is a prerelease.
+
 
 ## First release from this repo
 

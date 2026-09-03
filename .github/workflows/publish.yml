@@ -1,16 +1,33 @@
 name: Publish to npm
 
-# Manual only. Publishes whatever is on main but not yet on npm — run it after the
-# "Version Packages" PR (opened by version-packages.yml) has been merged.
+# Two publish paths, both from main, both run by hand:
 #
-# Filename must stay publish.yml — it is part of each package's npm
-# trusted-publisher (OIDC) identity. Renaming breaks tokenless publishing until
-# every package's npmjs.com settings are updated to match.
+#   `publish`  a release. Versions come from the merged "Version Packages" PR, and go
+#              out under the `latest` dist-tag, tagged and released.
+#   `canary`   a snapshot of main under the `canary` dist-tag. No commit, no git tag,
+#              no GitHub Release, and `latest` never moves.
+#
+# Both live in this file because npm trusted publishing keys on the workflow filename:
+# each package trusts `publish.yml` and nothing else, so a canary in its own file
+# would fail the OIDC exchange for all seven packages.
+#
+# The trusted-publisher entries must leave the optional environment field unset. It is
+# what lets `publish` sit behind `npm-release`'s required reviewers while `canary`
+# publishes without one; pinning them to `npm-release` would force snapshots through a
+# release approval.
+#
+# Renaming this file breaks tokenless publishing until every package's npmjs.com
+# settings are updated to match.
 #
 # Release flow: docs/releasing.md
 
 on:
   workflow_dispatch:
+    inputs:
+      canary:
+        description: 'Publish a canary snapshot instead of a release'
+        type: boolean
+        default: false
 
 concurrency:
   # Never cancel a run mid-flight: a cancelled publish can leave part of the
@@ -22,6 +39,7 @@ permissions: {}
 
 jobs:
   publish:
+    if: ${{ !inputs.canary }}
     runs-on: ubuntu-latest
     # Add required reviewers to this environment in repo settings — without them
     # a dispatch publishes immediately, with no second pair of eyes.
@@ -91,3 +109,58 @@ jobs:
           fi
           echo "### Published" >> "$GITHUB_STEP_SUMMARY"
           echo "$PACKAGES" | jq -r '.[] | "- `\(.name)@\(.version)`"' >> "$GITHUB_STEP_SUMMARY"
+
+  canary:
+    if: inputs.canary
+    runs-on: ubuntu-latest
+    permissions:
+      # A snapshot pushes no commit and no tag, so this job never needs write access
+      # to the repo.
+      contents: read
+      id-token: write # npm OIDC trusted publishing (no token)
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
+
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+          registry-url: 'https://registry.npmjs.org'
+          scope: '@pantheon-systems'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Must precede the build: it writes the snapshot version into every manifest, and
+      # create-p1-starter-kit reads those manifests to pin the SDK versions its template
+      # installs. Pending changesets are consumed here and never committed.
+      - name: Apply snapshot versions
+        run: pnpm ci:version:canary
+
+      - name: Build publishable packages
+        run: pnpm exec turbo run build --filter='./packages/*'
+
+      # A canary reaches the public registry the same way a release does, so it gets
+      # the same leak gate.
+      - name: Guard against internal-architecture leaks
+        run: |
+          bash .github/scripts/check-npm-leaks.sh --self-test
+          bash .github/scripts/check-npm-leaks.sh
+
+      # Run directly rather than through changesets/action, which cuts a GitHub Release
+      # per published package — seven per run, for builds that are not releases.
+      - name: Publish
+        run: |
+          set -o pipefail
+          pnpm ci:publish:canary | tee publish.log
+
+      - name: Summarize
+        run: |
+          echo '### Published to `canary`' >> "$GITHUB_STEP_SUMMARY"
+          grep -oE '@pantheon-systems/[a-z0-9-]+@[0-9][^ ]*' publish.log \
+            | sort -u | sed 's/^/- `/;s/$/`/' >> "$GITHUB_STEP_SUMMARY"
+          echo >> "$GITHUB_STEP_SUMMARY"
+          echo 'Install with `pnpm add <package>@canary`.' >> "$GITHUB_STEP_SUMMARY"

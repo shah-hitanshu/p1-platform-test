@@ -29,13 +29,24 @@ const WORKSPACE_PROTOCOL = 'workspace:';
 /**
  * `workspace:*` becomes a caret range rather than the exact version pnpm publishes:
  * a scaffold should pick up patches within the minor it was generated against.
+ *
+ * A prerelease version pins exactly instead. npm excludes prereleases from a range
+ * unless the range names the same major.minor.patch, so `^0.14.0-canary-A` resolves
+ * to whatever stable 0.x sits above it — a canary scaffold would install stable SDK
+ * packages beside the canary kit that generated it.
  */
 function toPublishedRange(specifier, version) {
   const suffix = specifier.slice(WORKSPACE_PROTOCOL.length);
 
-  if (suffix === '*' || suffix === '^' || suffix === '') return `^${version}`;
-  if (suffix === '~') return `~${version}`;
+  if (suffix === '*' || suffix === '^' || suffix === '') {
+    return isPrerelease(version) ? version : `^${version}`;
+  }
+  if (suffix === '~') return isPrerelease(version) ? version : `~${version}`;
   return suffix;
+}
+
+function isPrerelease(version) {
+  return version.includes('-');
 }
 
 /**

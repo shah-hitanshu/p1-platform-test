@@ -28,6 +28,8 @@
     "clean": "pnpm -r run clean",
     "ci:version": "changeset version && pnpm --filter @pantheon-systems/css-client sync-version",
     "ci:publish": "changeset publish",
+    "ci:version:canary": "tsx scripts/write-canary-changeset.ts && changeset version --snapshot canary && pnpm --filter @pantheon-systems/css-client sync-version",
+    "ci:publish:canary": "changeset publish --tag canary --no-git-tag",
     "start": "pnpm --filter @pantheon-systems/p1-registry start"
   },
   "devDependencies": {
