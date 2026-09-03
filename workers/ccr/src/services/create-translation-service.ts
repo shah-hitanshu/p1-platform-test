@@ -38,6 +38,16 @@ import { validateLocale } from './locale';
 import { CanonicalVersionNotFoundError, TranslationAlreadyExistsError } from './errors';
 
 /**
+ * How a new translation's content is seeded. `copy` takes the canonical's content
+ * verbatim, to be translated in place, and is the only mode implemented: the
+ * parameter exists so a caller states which it wants rather than relying on the
+ * default meaning what it happens to mean today.
+ */
+export const TRANSLATION_MODES = ['copy'] as const;
+
+export type TranslationMode = (typeof TRANSLATION_MODES)[number];
+
+/**
  * Summary of a localization edge returned alongside a created translation.
  */
 export interface LocalizationEdgeSummary {
@@ -56,6 +66,10 @@ export interface CreateTranslationParams {
   locale: string;
   /** Path for the new translation; defaults to `{canonicalPath}.{locale}`. */
   path?: string;
+  /**
+   * How the locale's content is seeded.
+   */
+  mode?: TranslationMode;
   createdById: string;
   createdByType: 'user' | 'agent' | 'service';
 }
@@ -182,7 +196,10 @@ export async function createTranslation(
     });
 
     return {
-      document: mapRowToDocument(documentRow),
+      // The document insert returns before the edge exists, so the row carries
+      // no upstream. The edge is the answer, and the response would otherwise
+      // report a translation as deriving from nothing.
+      document: { ...mapRowToDocument(documentRow), localizedFromId: edge.upstreamDocumentId },
       version: mapRowToDocumentVersion(getFirstRow(versionResult.rows)),
       localization: {
         derivedDocumentId: edge.derivedDocumentId,

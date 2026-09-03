@@ -53,7 +53,11 @@ import {
 } from '../services';
 import type { ChangeRelationType } from '../services';
 import { validateBody, validationErrorResponse } from './validation/request-validation';
-import { handleAuthorityOverridesValidation } from './validation/document-api.validation';
+import {
+  handleAuthorityOverridesValidation,
+  handleCreateDocumentValidation,
+  handleCreateTranslationValidation,
+} from './validation/document-api.validation';
 import { isChangeRelationType } from '../services/change-summary-service';
 import {
   normalizePath,
@@ -128,6 +132,7 @@ async function parseJsonBody<T>(request: Request): Promise<T> {
 interface CreateDocumentBody {
   path?: string;
   title?: string;
+  locale?: string;
   snapshot?: Record<string, unknown>;
   templateId?: string;
   templateVersion?: number;
@@ -140,14 +145,6 @@ interface CreateDocumentBody {
 interface UpdateDocumentBody {
   path?: string;
   locale?: string | null;
-}
-
-/**
- * Request body for creating a translation of a document
- */
-interface CreateTranslationBody {
-  locale?: string;
-  path?: string;
 }
 
 /**
@@ -414,11 +411,10 @@ async function handleCreateDocumentOnBranch(
   branchId: string,
   principal: AuthenticatedPrincipal,
 ): Promise<Response> {
-  const body = await parseJsonBody<CreateDocumentBody>(request);
-
-  if (body.path === undefined || body.path.trim() === '') {
-    return errorResponse('path is required', 400);
-  }
+  const body = validateBody(
+    handleCreateDocumentValidation.body,
+    await parseJsonBody<unknown>(request),
+  );
 
   // Normalize path using the canonical normalizePath which handles backslashes,
   // multiple slashes, and leading/trailing slash stripping consistently
@@ -495,6 +491,7 @@ async function handleCreateDocumentOnBranch(
     siteId,
     branchId,
     path: body.path,
+    locale: body.locale,
     snapshot: snapshotForCreate,
     templateId: body.templateId,
     templateVersion: resolvedTemplateVersion,
@@ -677,17 +674,17 @@ async function handleCreateTranslation(
   canonicalDocumentId: string,
   principal: AuthenticatedPrincipal,
 ): Promise<Response> {
-  const body = await parseJsonBody<CreateTranslationBody>(request);
-
-  if (body.locale === undefined || body.locale.trim() === '') {
-    return errorResponse('locale is required', 400);
-  }
+  const { locale, path, mode } = validateBody(
+    handleCreateTranslationValidation.body,
+    await parseJsonBody<unknown>(request),
+  );
 
   const result = await createTranslation({
     canonicalDocumentId,
     branchId,
-    locale: body.locale,
-    path: body.path,
+    locale,
+    path,
+    mode,
     createdById: principal.dbUserId ?? principal.id,
     createdByType: principal.type,
   });

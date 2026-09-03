@@ -23,6 +23,31 @@ export const DOCUMENT_WITH_TEMPLATE_COLUMNS =
   'd.*, dr.target_document_id AS template_id, dr.synced_version AS template_version';
 
 /**
+ * LEFT JOIN binding a document (alias `d`) to the localization edge it derives
+ * from, as alias `lr`. A document sources at most one, so this cannot multiply
+ * rows.
+ */
+export const LOCALIZATION_RELATION_JOIN =
+  `LEFT JOIN app.document_relations lr
+     ON lr.source_document_id = d.id AND lr.relation_type = 'localization'`;
+
+/**
+ * Every join a full document read needs, for the columns
+ * {@link DOCUMENT_READ_COLUMNS} names. Use the two together: the columns
+ * reference both aliases.
+ */
+export const DOCUMENT_READ_JOINS = `${TEMPLATE_RELATION_JOIN}
+     ${LOCALIZATION_RELATION_JOIN}`;
+
+/**
+ * Column list selecting a document (alias `d`) with both of its relations
+ * exposed, the shape mapRowToDocument reads: the template it derives from, and
+ * the canonical it is a translation of.
+ */
+export const DOCUMENT_READ_COLUMNS =
+  `${DOCUMENT_WITH_TEMPLATE_COLUMNS}, lr.target_document_id AS localized_from_id`;
+
+/**
  * Columns the document listing reads off a document's latest version, selected
  * inside {@link latestVersionOnBranchJoin}.
  */

@@ -75,8 +75,19 @@ export interface Document {
   templateId?: string | null;
   /** Version of the template this document was created from or migrated to */
   templateVersion?: number | null;
-  /** BCP-47 locale tag for a translation variant; absent for a canonical document */
+  /**
+   * BCP-47 locale tag naming the language this document's content is written in.
+   * A locale labels the language only — a page authored directly in a market
+   * locale carries one and is still a canonical. Read `localizedFromId` to tell
+   * a translation from a canonical.
+   */
   locale?: string;
+  /**
+   * The document this one was localized from, or null when nothing is upstream
+   * of it. Null is the answer for every canonical, including one that carries a
+   * locale.
+   */
+  localizedFromId?: string | null;
 }
 
 /**
@@ -244,6 +255,8 @@ export interface CreateDocumentParams {
   snapshot?: Record<string, unknown>;
   /** Optional page title seeded into the initial version's root.props.title */
   title?: string;
+  /** Optional BCP-47 tag naming the language the page is authored in */
+  locale?: string;
 }
 
 // =============================================================================

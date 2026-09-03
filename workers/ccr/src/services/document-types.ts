@@ -43,6 +43,7 @@ export interface DocumentRow {
   template_id?: string | null;
   template_version?: number | null;
   locale?: string | null;
+  localized_from_id?: string | null;
 }
 
 /**
@@ -108,6 +109,8 @@ export interface CreateDocumentOnBranchParams {
   siteId: string;
   branchId: string;
   path: string;
+  /** The language the document is authored in. Validated and stored canonically. */
+  locale?: string;
   snapshot?: Record<string, unknown>;
   templateId?: string | null;
   templateVersion?: number | null;
@@ -396,6 +399,10 @@ export function mapRowToDocument(row: DocumentRow): DocumentWithArchive {
   if (row.locale !== null && row.locale !== undefined) {
     doc.locale = row.locale;
   }
+  // Always reported, unlike the fields above: a client reads null as "nothing is
+  // upstream of this", so leaving it off would make a canonical indistinguishable
+  // from a response that never carried the field.
+  doc.localizedFromId = row.localized_from_id ?? null;
   if (row.archived_at !== null) {
     doc.archivedAt = row.archived_at;
   }

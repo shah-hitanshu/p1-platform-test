@@ -1236,13 +1236,16 @@ export class McpApiClient {
     siteId: string,
     branchId: string,
     canonicalDocumentId: string,
-    body: { locale: string; path?: string },
+    body: { locale: string; path?: string; mode?: 'copy' },
   ): Promise<Record<string, unknown>> {
     const base = `${this.baseUrl}/api/sites/${siteId}/branches/${branchId}/documents/${canonicalDocumentId}`;
     const url = `${base}/translations`;
     const payload: Record<string, string> = { locale: body.locale };
     if (body.path !== undefined && body.path !== '') {
       payload.path = body.path;
+    }
+    if (body.mode !== undefined) {
+      payload.mode = body.mode;
     }
     const response = await this.doFetch(url, {
       method: 'POST',

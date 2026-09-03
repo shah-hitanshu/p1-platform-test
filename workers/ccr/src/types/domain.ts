@@ -180,8 +180,19 @@ export interface Document {
   templateId?: string;
   /** Version of template this document was created from or last migrated to */
   templateVersion?: number;
-  /** BCP-47 language tag of this variant; absent for a canonical document */
+  /**
+   * BCP-47 language tag naming the language this document's content is written
+   * in. A locale labels the language only: a page authored directly in a market
+   * locale carries one and is still a canonical.
+   */
   locale?: string;
+  /**
+   * The document this one was localized from, or null when nothing is upstream
+   * of it. Read off the localization edge, which is what decides whether a
+   * document is a translation — the pair to `templateId`, which names the same
+   * thing for the template edge.
+   */
+  localizedFromId?: string | null;
 }
 
 /**

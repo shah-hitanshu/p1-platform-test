@@ -182,6 +182,7 @@ export type {
 // Create-translation Service
 export {
   createTranslation,
+  TRANSLATION_MODES,
   listLocaleVariants,
 } from './create-translation-service';
 

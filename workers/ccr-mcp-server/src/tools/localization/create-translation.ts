@@ -16,6 +16,12 @@ const CreateTranslationInputSchema = z.object({
     .string()
     .optional()
     .describe('Optional path for the translation. Defaults to "{canonicalPath}.{locale}".'),
+  mode: z
+    .enum(['copy'])
+    .optional()
+    .describe(
+      'How the locale\'s content is seeded. "copy", the default and currently the only mode, takes the canonical\'s content verbatim to translate in place.',
+    ),
 });
 
 export const createTranslationTool = defineTool({
@@ -26,9 +32,14 @@ export const createTranslationTool = defineTool({
   mutates: true,
   handler: async (ctx, input) => {
     try {
-      const body: { locale: string; path?: string } = { locale: input.locale };
+      const body: { locale: string; path?: string; mode?: 'copy' } = {
+        locale: input.locale,
+      };
       if (input.path !== undefined) {
         body.path = input.path;
+      }
+      if (input.mode !== undefined) {
+        body.mode = input.mode;
       }
       const result = await ctx.apiClient.createTranslation(
         input.site_id,

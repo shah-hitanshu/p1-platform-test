@@ -77,6 +77,7 @@ export class DocumentsEndpoint {
       templateVersion?: number;
       snapshot?: Record<string, unknown>;
       title?: string;
+      locale?: string;
     } = {
       path: params.path,
     };
@@ -92,6 +93,9 @@ export class DocumentsEndpoint {
     }
     if (params.title !== undefined) {
       body.title = params.title;
+    }
+    if (params.locale !== undefined) {
+      body.locale = params.locale;
     }
 
     const response = await this.base.request<{ document: Document }>(

@@ -47,8 +47,9 @@ import {
 } from './errors';
 import type { DocumentOnBranch, MoveResult } from './document-types';
 import {
+  DOCUMENT_READ_JOINS,
   TEMPLATE_RELATION_JOIN,
-  DOCUMENT_WITH_TEMPLATE_COLUMNS,
+  DOCUMENT_READ_COLUMNS,
   LATEST_VERSION_LISTING_COLUMNS,
   latestVersionOnBranchJoin,
   latestPublishOnBranchJoin,
@@ -58,6 +59,7 @@ import {
   branchInheritsFromMain,
 } from './document-queries';
 import { enforceUniqueSlotIds } from './slot-id-backstop';
+import { validateLocale } from './locale';
 import type { CreateDocumentVersionParams } from './document-version-service';
 
 function appendPaginationClauses(
@@ -100,7 +102,7 @@ export async function listDocumentsOnBranch(
     // Copy-on-write query: include documents from branch + inherited from main
     // Includes publish state via a batch LEFT JOIN on checkpoint_documents
     let sql = `
-      SELECT ${DOCUMENT_WITH_TEMPLATE_COLUMNS},
+      SELECT ${DOCUMENT_READ_COLUMNS},
         bdp.path AS branch_path,
         false AS inherited,
         pub.document_version_id AS published_version_id,
@@ -111,7 +113,7 @@ export async function listDocumentsOnBranch(
         top.last_modified_by_id,
         top.last_modified_by_type
       FROM app.documents d
-      ${TEMPLATE_RELATION_JOIN}
+      ${DOCUMENT_READ_JOINS}
       LEFT JOIN app.branch_document_paths bdp
         ON bdp.branch_id = $1 AND bdp.document_id = d.id
       ${latestVersionOnBranchJoin('$1', LATEST_VERSION_LISTING_COLUMNS)}
@@ -143,7 +145,7 @@ export async function listDocumentsOnBranch(
 
       UNION ALL
 
-      SELECT ${DOCUMENT_WITH_TEMPLATE_COLUMNS},
+      SELECT ${DOCUMENT_READ_COLUMNS},
         bdp.path AS branch_path,
         true AS inherited,
         pub.document_version_id AS published_version_id,
@@ -154,7 +156,7 @@ export async function listDocumentsOnBranch(
         top.last_modified_by_id,
         top.last_modified_by_type
       FROM app.documents d
-      ${TEMPLATE_RELATION_JOIN}
+      ${DOCUMENT_READ_JOINS}
       LEFT JOIN app.branch_document_paths bdp
         ON bdp.branch_id = $1 AND bdp.document_id = d.id
       ${latestVersionOnBranchJoin('$2', LATEST_VERSION_LISTING_COLUMNS)}
@@ -187,7 +189,7 @@ export async function listDocumentsOnBranch(
   // Original query: only documents with versions on the branch
   // When called without mainBranchId, the branchId itself is treated as main
   let sql = `
-    SELECT ${DOCUMENT_WITH_TEMPLATE_COLUMNS},
+    SELECT ${DOCUMENT_READ_COLUMNS},
       bdp.path AS branch_path,
       false AS inherited,
       pub.document_version_id AS published_version_id,
@@ -198,7 +200,7 @@ export async function listDocumentsOnBranch(
       top.last_modified_by_id,
       top.last_modified_by_type
     FROM app.documents d
-    ${TEMPLATE_RELATION_JOIN}
+    ${DOCUMENT_READ_JOINS}
     LEFT JOIN app.branch_document_paths bdp
       ON bdp.branch_id = $1 AND bdp.document_id = d.id
     ${latestVersionOnBranchJoin('$1', LATEST_VERSION_LISTING_COLUMNS)}
@@ -787,6 +789,7 @@ export async function createDocumentOnBranch(
 ): Promise<CreateDocumentOnBranchResult> {
   const normalizedPath = normalizePath(params.path);
   validatePath(normalizedPath);
+  const locale = params.locale === undefined ? null : validateLocale(params.locale);
 
   try {
     await query('BEGIN');
@@ -801,14 +804,18 @@ export async function createDocumentOnBranch(
     // instead of an error, which keeps Postgres from logging an ERROR line per
     // attempt and removes the SAVEPOINT round-trips this used to need to
     // recover from the aborted statement.
+    //
+    // On conflict the stored row is read below rather than written to, so a
+    // locale names the language a document is created in and never relabels one
+    // that already exists.
     let insertedRow: DocumentRow | undefined;
     try {
       const docResult = await query<DocumentRow>(
-        `INSERT INTO app.documents (site_id, path)
-         VALUES ($1, $2)
+        `INSERT INTO app.documents (site_id, path, locale)
+         VALUES ($1, $2, $3)
          ON CONFLICT (site_id, path) WHERE archived_at IS NULL DO NOTHING
          RETURNING *`,
-        [params.siteId, normalizedPath],
+        [params.siteId, normalizedPath, locale],
       );
       insertedRow = docResult.rows[0];
     } catch (docError) {
@@ -831,8 +838,8 @@ export async function createDocumentOnBranch(
       }));
     } else {
       const existingResult = await query<DocumentRow>(
-        `SELECT ${DOCUMENT_WITH_TEMPLATE_COLUMNS} FROM app.documents d
-         ${TEMPLATE_RELATION_JOIN}
+        `SELECT ${DOCUMENT_READ_COLUMNS} FROM app.documents d
+         ${DOCUMENT_READ_JOINS}
          WHERE d.site_id = $1 AND d.path = $2 AND d.archived_at IS NULL`,
         [params.siteId, normalizedPath],
       );

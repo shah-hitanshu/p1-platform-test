@@ -25,7 +25,7 @@ import {
   DocumentPathConflictError,
 } from './errors';
 import type { DocumentWithArchive, MoveResult } from './document-types';
-import { TEMPLATE_RELATION_JOIN, DOCUMENT_WITH_TEMPLATE_COLUMNS } from './document-queries';
+import { DOCUMENT_READ_JOINS, DOCUMENT_READ_COLUMNS } from './document-queries';
 import { validateLocale } from './locale';
 import { getMainBranch } from './branch-service';
 import { planMove, assertPathFreeOnBranch, isTombstonedOnBranch } from './branch-document-service';
@@ -140,9 +140,9 @@ export async function createDocument(
  */
 export async function getDocument(documentId: string): Promise<DocumentWithArchive | null> {
   const result = await query<DocumentRow>(
-    `SELECT ${DOCUMENT_WITH_TEMPLATE_COLUMNS}
+    `SELECT ${DOCUMENT_READ_COLUMNS}
      FROM app.documents d
-     ${TEMPLATE_RELATION_JOIN}
+     ${DOCUMENT_READ_JOINS}
      WHERE d.id = $1`,
     [documentId],
   );
@@ -176,9 +176,9 @@ export async function getDocumentByPath(
   // Archived documents with the same path are considered deleted and should not be returned
   if (branchId === undefined) {
     const result = await query<DocumentRow>(
-      `SELECT ${DOCUMENT_WITH_TEMPLATE_COLUMNS}
+      `SELECT ${DOCUMENT_READ_COLUMNS}
        FROM app.documents d
-       ${TEMPLATE_RELATION_JOIN}
+       ${DOCUMENT_READ_JOINS}
        WHERE d.site_id = $1 AND d.path = $2 AND d.archived_at IS NULL
        LIMIT 1`,
       [siteId, normalizedPath],
@@ -196,10 +196,10 @@ export async function getDocumentByPath(
   // that form is unindexable, so it scans the whole site on every lookup and on
   // every 404. This is the hottest query in the system — keep both paths O(1).
   const override = await query<DocumentRow>(
-    `SELECT ${DOCUMENT_WITH_TEMPLATE_COLUMNS}
+    `SELECT ${DOCUMENT_READ_COLUMNS}
      FROM app.branch_document_paths bdp
      JOIN app.documents d ON d.id = bdp.document_id
-     ${TEMPLATE_RELATION_JOIN}
+     ${DOCUMENT_READ_JOINS}
      WHERE bdp.branch_id = $3
        AND bdp.path = $2
        AND d.site_id = $1
@@ -216,9 +216,9 @@ export async function getDocumentByPath(
   // No override claims this path, so the global path answers — unless the
   // document moved away from it on this branch, which the NOT EXISTS excludes.
   const result = await query<DocumentRow>(
-    `SELECT ${DOCUMENT_WITH_TEMPLATE_COLUMNS}
+    `SELECT ${DOCUMENT_READ_COLUMNS}
      FROM app.documents d
-     ${TEMPLATE_RELATION_JOIN}
+     ${DOCUMENT_READ_JOINS}
      WHERE d.site_id = $1
        AND d.path = $2
        AND d.archived_at IS NULL
@@ -336,9 +336,9 @@ export async function updateDocumentFields(
          WHERE id = $${String(values.length)}
          RETURNING *
        )
-       SELECT ${DOCUMENT_WITH_TEMPLATE_COLUMNS}
+       SELECT ${DOCUMENT_READ_COLUMNS}
        FROM upd d
-       ${TEMPLATE_RELATION_JOIN}`,
+       ${DOCUMENT_READ_JOINS}`,
       values,
     );
 
@@ -384,9 +384,9 @@ export async function listDocuments(
 ): Promise<DocumentWithArchive[]> {
   const { limit, offset, pathPrefix, archived } = options;
 
-  let sql = `SELECT ${DOCUMENT_WITH_TEMPLATE_COLUMNS}
+  let sql = `SELECT ${DOCUMENT_READ_COLUMNS}
      FROM app.documents d
-     ${TEMPLATE_RELATION_JOIN}
+     ${DOCUMENT_READ_JOINS}
      WHERE d.site_id = $1`;
   const params: unknown[] = [siteId];
 
@@ -541,9 +541,9 @@ export async function restoreDocument(documentId: string): Promise<DocumentWithA
        WHERE id = $1
        RETURNING *
      )
-     SELECT ${DOCUMENT_WITH_TEMPLATE_COLUMNS}
+     SELECT ${DOCUMENT_READ_COLUMNS}
      FROM upd d
-     ${TEMPLATE_RELATION_JOIN}`,
+     ${DOCUMENT_READ_JOINS}`,
     [documentId],
   );
 
