@@ -1,6 +1,6 @@
 {
   "name": "@pantheon-systems/css-client",
-  "version": "0.12.0",
+  "version": "0.13.0",
   "description": "TypeScript API client for Pantheon's P1 content platform",
   "publishConfig": {
     "access": "public",

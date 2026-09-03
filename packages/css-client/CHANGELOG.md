@@ -1,5 +1,98 @@
 # @pantheon-systems/css-client
 
+## 0.13.0
+
+### Minor Changes
+
+- d194eb4: **[Feature]** `brokerLogout()` is a new public export from `@pantheon-systems/css-client`. It asks the backend for the Auth0 logout URL and hands it back, reporting one of three outcomes — it does not navigate.
+
+  **[Fix]** Broker logout now ends the Auth0 session. Previously it only cleared the local token, so the next login signed the same user straight back in without a prompt.
+
+  ### What Changed
+  - A failed logout no longer destroys the token, so it can be retried. The signed-in user's details are kept alongside it, rather than leaving a session that reports as authenticated with nobody attached.
+  - `createBrokerAuth().logout()` performs the redirect for you and returns the same three outcomes. If you call it, you need do nothing.
+  - `performLogout()` from `@pantheon-systems/puck-css` clears local state and returns the outcome, but does **not** redirect — on `signed_out` the caller must navigate to `outcome.logoutUrl`, or the Auth0 session stays alive.
+  - `useP1Auth().logout()` does perform that navigation for you, and now returns the outcome instead of `void`; ignoring the return value still compiles.
+  - Apps mounting `createP1AuthHandler` gain a `logout` route alongside `login` and `redeem`, so logout stays same-origin instead of calling the backend directly.
+  - A logout URL that is not `https:` is now rejected as an error rather than navigated to.
+  - `OAuthSession.logout()` returns the outcome instead of `void`. Calling it and ignoring the result is unchanged; writing your own `OAuthSession` implementation now means returning the outcome from `logout()`.
+
+  ### Migration / Action Required
+
+  Only if you call `brokerLogout()` directly. It returns instead of navigating, so the redirect is yours to perform — and on `signed_out` that navigation is what actually ends the Auth0 session:
+
+  ```ts
+  const outcome = await brokerLogout({ cssBaseUrl });
+
+  switch (outcome.status) {
+    case 'signed_out':
+      // Required. Without this the Auth0 session survives and the next
+      // login signs the same user back in with no prompt.
+      window.location.href = outcome.logoutUrl;
+      break;
+
+    case 'no_session':
+      break; // Nothing to sign out of.
+
+    case 'error':
+      // The token is kept deliberately. Show the message and let the user
+      // retry — clearing local state here renders them signed out while
+      // they still hold a live credential.
+      showError(outcome.message);
+      break;
+  }
+  ```
+
+- eb0d356: Merge job runner support (PCC-3737): `merge.executeRequest` responses may now carry the async job shape (`jobId`, `status`, counters, `statusUrl`) when a merge outlives the server's bounded wait; new `merge.getJob` and `merge.waitForJob` poll it to a terminal state. The editor's merge-resolution flow polls long-running merges to completion instead of misreading the accepted response as success.
+- eb0d356: Add `merging` to `MergeRequestStatus`: merge requests report this status while the merge job runner is executing them (PCC-3737). Existing statuses are unchanged; clients that switch exhaustively on the status union should handle the new value.
+- 053ca52: Stop sending the full local Yjs history on every WebSocket connect. On first connect
+  the client sends no state vector; the server responds with its full current state and
+  a baseline verdict. On reconnects the client sends only the delta the server is
+  missing. When the server reports the client's lineage has diverged (code 4002), the
+  client fetches fresh content from REST and reconnects with a new Y.Doc — bypassing the
+  union-merge admission path that could otherwise resurrect pre-merge content.
+- 61cb80e: **[Breaking Change]** The `crdtState` field is removed from the `DocumentVersion` type.
+
+  ### What Changed
+  - `DocumentVersion.crdtState` no longer exists. The API stopped returning this field some time ago (its backing storage was removed server-side), so the type was promising a `string | null` value that was always `undefined` at runtime.
+
+  ### Migration / Action Required
+
+  Delete any reference to `version.crdtState` — code that read it was already receiving `undefined`, and object literals typed as `DocumentVersion` no longer need to supply it.
+
+  ```ts
+  // Before
+  const version: DocumentVersion = {
+    id,
+    documentId,
+    branchId,
+    versionNumber,
+    snapshot,
+    crdtState: null /* … */,
+  };
+
+  // After
+  const version: DocumentVersion = { id, documentId, branchId, versionNumber, snapshot /* … */ };
+  ```
+
+### Patch Changes
+
+- 61cb80e: **[Fix]** Public package builds no longer ship internal Jira ticket references, expanded internal service names, or backend implementation details (storage engine, compute primitive, real hostnames) in comments, JSDoc, `package.json` descriptions, or READMEs.
+
+  ### What Changed
+  - `css-client`, `p1-next-sdk`, `puck-css`, `p1-ai-chat`, and `p1-content-validator` now build in two `tsc` passes — one declarations-only, one comment-stripped `.js` — so implementation comments no longer survive into the published `.js`. JSDoc on exported symbols (which intentionally survives, for consumers' IDE tooltips) was hand-edited to drop internal ticket refs and backend rationale.
+  - `p1-media`'s esbuild sourcemaps no longer inline `sourcesContent`; they previously shipped the entire original TypeScript source, comments included, regardless of any `.js`/`.d.ts` cleanup.
+  - `puck-css`'s `files` allowlist no longer includes the bare `src/pds/theme` directory, which was shipping a raw test file and a 200KB generated `.ts` source file alongside the intended theme CSS (already covered by the existing `src/**/*.css` entry).
+  - `create-p1-starter-kit`'s scaffolded template (copied from `apps/p1-starter`) had the same class of ticket-ref comments cleaned, including its example CI workflow.
+  - Package `description` fields and `README.md` files (which npm always publishes regardless of the `files` field) no longer name the internal "CCR"/"Collaborative Content Repository" service.
+  - `puck-css`'s `[ccr-store]` log tag and an internal Puck remount key are renamed (`[p1-store]` / `p1-<role>`); neither is persisted or part of any public contract.
+  - A new CI guardrail (`.github/scripts/check-npm-leaks.sh`, wired into PR CI's hard gates and into `publish.yml`) packs each public package the way `npm publish` would and fails the build if any of these terms reappear. It fails closed — an unreadable tarball or a glob-free `files` entry whose build output is missing is an error, never a pass — and carries a `--self-test` mode, run first in both workflows, that verifies detection against fixtures.
+
+  No public API or runtime behavior change.
+
+  ### Deliberately out of scope
+  - The bare `CCR` service name is deliberately still present in published output — most visibly `puck-css`'s exported `PRODUCTION_BASE_URL` (`https://ccr.p1.pantheon.io`, also referenced in `apps/p1-starter/.env.example`), the live default hostname every unconfigured consumer's SDK talks to, and ~200 local `ccr` variable bindings from `useP1Puck()`. Naming a service is not the leak this fix is about: the guardrail bans the architecture behind it — the expanded "Collaborative Content Repository"/"Collaborative State System" forms, storage engine, CRDT, compute primitive, ticket refs, and `.workers.dev` hostnames. Renaming those bindings is optional cleanup, not a release blocker.
+
 ## 0.12.0
 
 ### Patch Changes

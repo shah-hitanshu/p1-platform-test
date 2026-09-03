@@ -9,4 +9,4 @@
 export const SDK_NAME = 'css-client';
 
 /** Version half of `x-p1-sdk`, matching the published release. */
-export const SDK_VERSION = '0.12.0';
+export const SDK_VERSION = '0.13.0';

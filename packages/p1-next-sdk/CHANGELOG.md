@@ -1,5 +1,93 @@
 # @pantheon-systems/p1-next-sdk
 
+## 0.13.0
+
+### Minor Changes
+
+- d194eb4: **[Feature]** `brokerLogout()` is a new public export from `@pantheon-systems/css-client`. It asks the backend for the Auth0 logout URL and hands it back, reporting one of three outcomes — it does not navigate.
+
+  **[Fix]** Broker logout now ends the Auth0 session. Previously it only cleared the local token, so the next login signed the same user straight back in without a prompt.
+
+  ### What Changed
+  - A failed logout no longer destroys the token, so it can be retried. The signed-in user's details are kept alongside it, rather than leaving a session that reports as authenticated with nobody attached.
+  - `createBrokerAuth().logout()` performs the redirect for you and returns the same three outcomes. If you call it, you need do nothing.
+  - `performLogout()` from `@pantheon-systems/puck-css` clears local state and returns the outcome, but does **not** redirect — on `signed_out` the caller must navigate to `outcome.logoutUrl`, or the Auth0 session stays alive.
+  - `useP1Auth().logout()` does perform that navigation for you, and now returns the outcome instead of `void`; ignoring the return value still compiles.
+  - Apps mounting `createP1AuthHandler` gain a `logout` route alongside `login` and `redeem`, so logout stays same-origin instead of calling the backend directly.
+  - A logout URL that is not `https:` is now rejected as an error rather than navigated to.
+  - `OAuthSession.logout()` returns the outcome instead of `void`. Calling it and ignoring the result is unchanged; writing your own `OAuthSession` implementation now means returning the outcome from `logout()`.
+
+  ### Migration / Action Required
+
+  Only if you call `brokerLogout()` directly. It returns instead of navigating, so the redirect is yours to perform — and on `signed_out` that navigation is what actually ends the Auth0 session:
+
+  ```ts
+  const outcome = await brokerLogout({ cssBaseUrl });
+
+  switch (outcome.status) {
+    case 'signed_out':
+      // Required. Without this the Auth0 session survives and the next
+      // login signs the same user back in with no prompt.
+      window.location.href = outcome.logoutUrl;
+      break;
+
+    case 'no_session':
+      break; // Nothing to sign out of.
+
+    case 'error':
+      // The token is kept deliberately. Show the message and let the user
+      // retry — clearing local state here renders them signed out while
+      // they still hold a live credential.
+      showError(outcome.message);
+      break;
+  }
+  ```
+
+- 356af36: Move the editor's mid-switch waiting state out of the starter app and into the SDK.
+
+  `useP1Editor` now keeps the last props that rendered, so a reload no longer blanks the canvas while the next document arrives, and it reports **why** it is reloading. New `<EditorReloadOverlay>` (backed by `LoadingOverlay` in `puck-css/pds`) renders the wait with the right copy: a workstream switch and a page switch were both announced as "Switching workstream" before, even though only one of them was.
+
+  `useP1Editor` return shape:
+
+  - `loading` now means _nothing to render yet_ — the first document has neither loaded nor failed. It no longer turns on for reloads that happen behind existing content. Callers using `loading` as "a switch is in flight" should read `reloading` instead.
+  - `reloading: 'branch' | 'document' | null` — new.
+  - `hasContent: boolean` — new; whether a document has ever loaded, i.e. whether `puckProps` are worth rendering.
+  - `puckKey` / `puckProps` are retained across a reload rather than following the emptied context.
+
+  The `p1-migrate` codemod adopts the SDK overlay as part of the migration, so a migrated app lands on the same editor page as a freshly scaffolded one. It leaves an app that customized that region alone.
+
+  The reload reason is derived by comparing the branch the loaded document came from against the current branch, rather than latched when the branch changes. A workstream switch commits the branch and the navigation that goes with it in separate renders, so the load effect runs more than once per switch — a one-shot flag was consumed by the first run and every run after it reported a plain page switch.
+
+### Patch Changes
+
+- 61cb80e: **[Fix]** Public package builds no longer ship internal Jira ticket references, expanded internal service names, or backend implementation details (storage engine, compute primitive, real hostnames) in comments, JSDoc, `package.json` descriptions, or READMEs.
+
+  ### What Changed
+  - `css-client`, `p1-next-sdk`, `puck-css`, `p1-ai-chat`, and `p1-content-validator` now build in two `tsc` passes — one declarations-only, one comment-stripped `.js` — so implementation comments no longer survive into the published `.js`. JSDoc on exported symbols (which intentionally survives, for consumers' IDE tooltips) was hand-edited to drop internal ticket refs and backend rationale.
+  - `p1-media`'s esbuild sourcemaps no longer inline `sourcesContent`; they previously shipped the entire original TypeScript source, comments included, regardless of any `.js`/`.d.ts` cleanup.
+  - `puck-css`'s `files` allowlist no longer includes the bare `src/pds/theme` directory, which was shipping a raw test file and a 200KB generated `.ts` source file alongside the intended theme CSS (already covered by the existing `src/**/*.css` entry).
+  - `create-p1-starter-kit`'s scaffolded template (copied from `apps/p1-starter`) had the same class of ticket-ref comments cleaned, including its example CI workflow.
+  - Package `description` fields and `README.md` files (which npm always publishes regardless of the `files` field) no longer name the internal "CCR"/"Collaborative Content Repository" service.
+  - `puck-css`'s `[ccr-store]` log tag and an internal Puck remount key are renamed (`[p1-store]` / `p1-<role>`); neither is persisted or part of any public contract.
+  - A new CI guardrail (`.github/scripts/check-npm-leaks.sh`, wired into PR CI's hard gates and into `publish.yml`) packs each public package the way `npm publish` would and fails the build if any of these terms reappear. It fails closed — an unreadable tarball or a glob-free `files` entry whose build output is missing is an error, never a pass — and carries a `--self-test` mode, run first in both workflows, that verifies detection against fixtures.
+
+  No public API or runtime behavior change.
+
+  ### Deliberately out of scope
+  - The bare `CCR` service name is deliberately still present in published output — most visibly `puck-css`'s exported `PRODUCTION_BASE_URL` (`https://ccr.p1.pantheon.io`, also referenced in `apps/p1-starter/.env.example`), the live default hostname every unconfigured consumer's SDK talks to, and ~200 local `ccr` variable bindings from `useP1Puck()`. Naming a service is not the leak this fix is about: the guardrail bans the architecture behind it — the expanded "Collaborative Content Repository"/"Collaborative State System" forms, storage engine, CRDT, compute primitive, ticket refs, and `.workers.dev` hostnames. Renaming those bindings is optional cleanup, not a release blocker.
+
+- Updated dependencies [d194eb4]
+- Updated dependencies [8916328]
+- Updated dependencies [356af36]
+- Updated dependencies [eb0d356]
+- Updated dependencies [eb0d356]
+- Updated dependencies [61cb80e]
+- Updated dependencies [053ca52]
+- Updated dependencies [f273c53]
+- Updated dependencies [61cb80e]
+  - @pantheon-systems/css-client@0.13.0
+  - @pantheon-systems/puck-css@0.13.0
+
 ## 0.12.0
 
 ### Patch Changes
