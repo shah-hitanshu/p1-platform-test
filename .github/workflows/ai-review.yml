@@ -1,0 +1,19 @@
+name: AI review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+# A reusable workflow cannot hold more permission than its caller.
+# id-token is what makes the Workload Identity exchange work.
+permissions:
+  contents: read
+  pull-requests: write
+  id-token: write
+
+jobs:
+  review:
+    uses: pantheon-systems/ai-review/.github/workflows/review.yml@v1
+    with:
+      gcp-service-account: ai-review-github-actions@pantheon-content-cloud.iam.gserviceaccount.com
+      gcp-project: pantheon-content-cloud
