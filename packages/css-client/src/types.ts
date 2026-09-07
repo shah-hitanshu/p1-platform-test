@@ -32,6 +32,40 @@ export interface Site {
 }
 
 /**
+ * How a visitor is served a page with no version in their locale: `fallback`
+ * serves another locale's version, `localized-only` serves nothing.
+ */
+export type LocalePolicy = 'fallback' | 'localized-only';
+
+/**
+ * The locales a site publishes in. `markets` is ordered, and that order is the
+ * one editors are shown.
+ */
+export interface SiteLocales {
+  markets: string[];
+  policy: LocalePolicy;
+}
+
+/**
+ * A site's settings. Every field is optional: a site sets only what it overrides.
+ */
+export interface SiteSettings {
+  cacheTtlMain?: number;
+  cacheTtlBranch?: number;
+  ogImage?: string;
+  locales?: SiteLocales;
+}
+
+/**
+ * A site's settings, with the number of documents in each configured locale
+ * when the server reports them.
+ */
+export interface SiteSettingsResult {
+  settings: SiteSettings;
+  localeCounts?: Record<string, number>;
+}
+
+/**
  * Branch status values.
  */
 export type BranchStatus = 'active' | 'merged' | 'archived';
@@ -277,6 +311,14 @@ export interface LocalizationRelation {
 }
 
 /**
+ * How a new translation's content is seeded. `copy` takes the canonical's
+ * content verbatim, to be translated in place.
+ */
+export const TRANSLATION_MODES = ['copy'] as const;
+
+export type TranslationMode = (typeof TRANSLATION_MODES)[number];
+
+/**
  * Parameters for creating a translation of a canonical document.
  */
 export interface CreateTranslationParams {
@@ -288,6 +330,11 @@ export interface CreateTranslationParams {
   locale: string;
   /** Optional explicit path; defaults to `{canonicalPath}.{locale}` server-side */
   path?: string;
+  /**
+   * How the new locale's content is seeded. Omit to take the server's default.
+   * An unrecognised mode is refused rather than copied.
+   */
+  mode?: TranslationMode;
 }
 
 /**

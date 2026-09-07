@@ -103,7 +103,13 @@ export type {
   QueryResultsMeta,
   QueryResults,
   QueryResultsParams,
+  // Site settings types
+  LocalePolicy,
+  SiteLocales,
+  SiteSettings,
+  SiteSettingsResult,
   // Localization types
+  TranslationMode,
   LocalizationRelation,
   CreateTranslationParams,
   CreateTranslationResult,

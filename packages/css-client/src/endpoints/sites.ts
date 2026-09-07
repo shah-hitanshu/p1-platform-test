@@ -4,7 +4,7 @@
  * API operations for sites.
  */
 
-import type { Site, PaginationOptions } from '../types.js';
+import type { Site, PaginationOptions, SiteSettingsResult } from '../types.js';
 import { requirePathParams } from '../utils.js';
 import type { BaseEndpoint } from './base.js';
 
@@ -18,6 +18,17 @@ export class SitesEndpoint {
     requirePathParams({ siteId }, 'sites.get');
 
     return this.base.request<Site>(`/api/sites/${siteId}`, {
+      method: 'GET',
+    });
+  }
+
+  /**
+   * Get a site's settings, including the locales it publishes in.
+   */
+  async getSettings(siteId: string): Promise<SiteSettingsResult> {
+    requirePathParams({ siteId }, 'sites.getSettings');
+
+    return this.base.request<SiteSettingsResult>(`/api/sites/${siteId}/settings`, {
       method: 'GET',
     });
   }

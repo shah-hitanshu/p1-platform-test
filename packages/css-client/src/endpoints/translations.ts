@@ -11,6 +11,7 @@ import type {
   CreateTranslationResult,
   ListTranslationsResult,
   PropAuthority,
+  TranslationMode,
 } from '../types.js';
 import type { BaseEndpoint } from './base.js';
 
@@ -21,9 +22,14 @@ export class TranslationsEndpoint {
    * Create a translation of a canonical document in a target locale.
    */
   async create(params: CreateTranslationParams): Promise<CreateTranslationResult> {
-    const body: { locale: string; path?: string } = { locale: params.locale };
+    const body: { locale: string; path?: string; mode?: TranslationMode } = {
+      locale: params.locale,
+    };
     if (params.path !== undefined) {
       body.path = params.path;
+    }
+    if (params.mode !== undefined) {
+      body.mode = params.mode;
     }
 
     return this.base.request<CreateTranslationResult>(
