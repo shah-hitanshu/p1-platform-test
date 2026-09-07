@@ -742,6 +742,12 @@ function P1SubheaderBridgeInner({
     ? async () => { await options.onDocumentDelete?.(currentDocument.id, currentDocument.path); }
     : undefined;
 
+  // Undefined rather than an empty array, so the toolbar spaces and separates a
+  // feature's controls only when there are some.
+  const featureActions = p1Context.featureToolbarActions.length > 0
+    ? p1Context.featureToolbarActions
+    : undefined;
+
   // Compare with Live handler - uses custom callback if provided, otherwise triggers built-in merge review
   const handleCompareWithLive = options.onCompareWithLive ?? (() => {
     showMergeReviewRef.current();
@@ -773,6 +779,7 @@ function P1SubheaderBridgeInner({
           rightPanelVisible={rightPanelVisible}
           onToggleLeftPanel={handleToggleLeftPanel}
           onToggleRightPanel={handleToggleRightPanel}
+          featureActions={featureActions}
           branches={options.branches ?? []}
           currentBranch={options.currentBranch ?? null}
           onSwitchBranch={options.onBranchSwitch ?? (() => {})}

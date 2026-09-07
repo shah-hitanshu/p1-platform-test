@@ -55,6 +55,11 @@ export interface P1EditorSubheaderProps {
   rightPanelVisible?: boolean;
   onToggleLeftPanel?: () => void;
   onToggleRightPanel?: () => void;
+  /**
+   * Controls contributed by feature plugins, placed alongside the document's
+   * own controls. The toolbar does not know what they are.
+   */
+  featureActions?: React.ReactNode;
   // Workstream selector props
   branches: Branch[];
   currentBranch: Branch | null;
@@ -84,6 +89,7 @@ export function P1EditorSubheader({
   rightPanelVisible,
   onToggleLeftPanel,
   onToggleRightPanel,
+  featureActions,
   branches,
   currentBranch,
   onSwitchBranch,
@@ -141,6 +147,15 @@ export function P1EditorSubheader({
           hasBorder={false}
         />
       </div>
+
+      {featureActions !== undefined && featureActions !== null && (
+        <>
+          <div className={styles.divider} aria-hidden="true" />
+          <div className={styles.featureActions} data-testid="toolbar-feature-actions">
+            {featureActions}
+          </div>
+        </>
+      )}
 
       {/* Spacer */}
       <div className={styles.spacer} />

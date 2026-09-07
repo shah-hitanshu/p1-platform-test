@@ -629,6 +629,40 @@ export interface P1PuckContextValue {
    */
   featurePuckPlugins: readonly PuckContribution[];
 
+  /**
+   * Document-toolbar controls contributed by the active feature plugins, in
+   * priority order.
+   */
+  featureToolbarActions: readonly React.ReactNode[];
+
+  /**
+   * Opens a document in the editor: through the app's document handler, which
+   * moves the URL and the page selector along with the canvas, and by loading
+   * in place where the app routes no documents.
+   */
+  openDocument: (path: string) => void;
+
+  /**
+   * Opens the create-page modal, aimed at a market and at the page a new
+   * locale version starts from when either is given.
+   */
+  openCreatePage: (params?: { locale?: string; sourceDocumentId?: string }) => void;
+
+  /**
+   * Fills the slot behind `P1FeaturePluginDeps.openDocument`, whose
+   * implementation is the app's document handler and so sits below this
+   * provider. Returns a function that empties the slot again.
+   */
+  registerDocumentOpener: (open: (path: string) => void) => () => void;
+
+  /**
+   * Fills the slot behind `P1FeaturePluginDeps.openCreatePage`. The editor
+   * header owns the modal, so the header registers the opener.
+   */
+  registerCreatePageOpener: (
+    open: (params?: { locale?: string; sourceDocumentId?: string }) => void,
+  ) => () => void;
+
   // =========================================================================
   // Internal: Realtime Data Capture (for PuckDataCapture correction pass)
   // =========================================================================

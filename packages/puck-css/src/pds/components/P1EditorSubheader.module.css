@@ -41,6 +41,15 @@
   --icon-button-padding: 0.25rem;
 }
 
+/* ── Feature-contributed controls ───────────────────────────────────── */
+
+.featureActions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--pds-spacing-xs, 0.5rem);
+  flex-shrink: 0;
+}
+
 /* ── Spacer ──────────────────────────────────────────────────────────── */
 
 .spacer {

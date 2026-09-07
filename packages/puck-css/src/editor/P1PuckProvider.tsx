@@ -39,8 +39,10 @@ import {
   resolveActivePlugins,
   composeProviders,
   collectPuckPlugins,
+  collectToolbarActions,
 } from './composePlugins.js';
 import { useStablePluginDeps } from './stablePluginDeps.js';
+import { useEditorCapability } from './useEditorCapability.js';
 import { snapshotToPuckData } from './utils/snapshotToPuckData.js';
 import { useDocuments } from './useDocuments.js';
 import { useRealtime } from './useRealtime.js';
@@ -2237,12 +2239,20 @@ function P1PuckProviderInner({
     return resolveActivePlugins(plugins, resolvedFeatureConfig);
   }, [featurePlugins, resolvedFeatureConfig]);
 
+  // Capabilities a feature calls but the layers below this provider carry out:
+  // the app routes documents, and the editor header owns the create-page modal.
+  const documentOpener = useEditorCapability<[string]>();
+  const createPageOpener =
+    useEditorCapability<[{ locale?: string; sourceDocumentId?: string }?]>();
+
   const pluginDeps = useStablePluginDeps({
     client: userClient,
     siteId,
     branchId,
     userId,
     config: resolvedFeatureConfig,
+    openDocument: documentOpener.call,
+    openCreatePage: createPageOpener.call,
   });
 
   const ComposedPluginProviders = useMemo(
@@ -2252,6 +2262,11 @@ function P1PuckProviderInner({
 
   const featurePuckPlugins = useMemo(
     () => collectPuckPlugins(activePlugins, pluginDeps),
+    [activePlugins, pluginDeps],
+  );
+
+  const featureToolbarActions = useMemo(
+    () => collectToolbarActions(activePlugins, pluginDeps),
     [activePlugins, pluginDeps],
   );
 
@@ -2354,6 +2369,11 @@ function P1PuckProviderInner({
       // Feature configuration (Phase B.5)
       featureConfig: resolvedFeatureConfig,
       featurePuckPlugins,
+      featureToolbarActions,
+      openDocument: documentOpener.call,
+      openCreatePage: createPageOpener.call,
+      registerDocumentOpener: documentOpener.register,
+      registerCreatePageOpener: createPageOpener.register,
       // Internal: realtime data capture for catch-up (sends missed keystrokes)
       _realtimeDataCaptureRef: enableRealtime ? realtimeDataCaptureRef : null,
       _onRealtimeDataCapture: enableRealtime ? handleRealtimeDataCapture : null,
@@ -2438,6 +2458,9 @@ function P1PuckProviderInner({
       enableRealtime,
       resolvedFeatureConfig,
       featurePuckPlugins,
+      featureToolbarActions,
+      documentOpener,
+      createPageOpener,
       // Content Type Templates
       userRole,
       branchTemplates,

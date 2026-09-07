@@ -9,6 +9,10 @@ const DEFAULT_PRIORITY = 100;
 // no-contributions case shares one.
 const NO_CONTRIBUTIONS: readonly PuckContribution[] = [];
 
+// Same reason as NO_CONTRIBUTIONS: the header takes this array as a prop, so a
+// fresh identity per render would remount the controls it holds.
+const NO_TOOLBAR_ACTIONS: readonly React.ReactNode[] = [];
+
 export function resolveActivePlugins(
   plugins: P1FeaturePlugin[],
   config: Required<P1FeatureConfig>,
@@ -64,4 +68,26 @@ export function collectPuckPlugins(
     }
   }
   return result.length === 0 ? NO_CONTRIBUTIONS : result;
+}
+
+/**
+ * The toolbar controls the given plugins contribute, in the order the plugins
+ * arrive — pass them already sorted to place them by priority.
+ */
+export function collectToolbarActions(
+  plugins: P1FeaturePlugin[],
+  deps: P1FeaturePluginDeps,
+): readonly React.ReactNode[] {
+  const result: React.ReactNode[] = [];
+  for (const p of plugins) {
+    if (!p.toolbarActions) continue;
+    const action = p.toolbarActions(deps);
+    // A feature that renders nothing still occupies a slot the toolbar would
+    // space and separate, so it is dropped rather than passed along empty.
+    if (action === null || action === undefined || action === false) continue;
+    // Keyed here rather than by the toolbar, which renders the array as given and
+    // has no name to key by.
+    result.push(<React.Fragment key={p.name}>{action}</React.Fragment>);
+  }
+  return result.length === 0 ? NO_TOOLBAR_ACTIONS : result;
 }

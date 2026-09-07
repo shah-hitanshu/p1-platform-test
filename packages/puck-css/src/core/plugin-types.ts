@@ -14,6 +14,16 @@ export interface P1FeaturePluginDeps {
   branchId: string;
   userId: string;
   config: Required<P1FeatureConfig>;
+  /**
+   * Opens a document in the editor. Routing belongs to the app, so this moves
+   * the URL and the page selector along with the canvas.
+   */
+  openDocument: (path: string) => void;
+  /**
+   * Opens the create-page modal, aimed at a market and at the page a new
+   * locale version starts from when either is given.
+   */
+  openCreatePage: (params?: { locale?: string; sourceDocumentId?: string }) => void;
 }
 
 export interface PuckPluginDef {
@@ -37,4 +47,10 @@ export interface P1FeaturePlugin {
   }>;
   puckPlugins?: (deps: P1FeaturePluginDeps) => PuckPluginDef[];
   puckOverrides?: (deps: P1FeaturePluginDeps) => Record<string, unknown>;
+  /**
+   * A control to place in the editor's document toolbar. Returning null
+   * contributes nothing, which is how a feature stays out of the toolbar while
+   * its other slots run.
+   */
+  toolbarActions?: (deps: P1FeaturePluginDeps) => React.ReactNode;
 }

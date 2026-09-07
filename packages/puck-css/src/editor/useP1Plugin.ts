@@ -45,7 +45,12 @@ export interface UseP1PluginOptions {
   /** Override selected document path (e.g., from URL params). Defaults to context currentDocument path. */
   selectedDocumentPath?: string | null;
   /** Callback to create a new document */
-  onDocumentCreate?: (path: string, template?: TemplateSummary | null, title?: string) => Promise<void>;
+  onDocumentCreate?: (
+    path: string,
+    template?: TemplateSummary | null,
+    title?: string,
+    locale?: string,
+  ) => Promise<void>;
   /** Hand a "Generate with AI" brief (+ the new page's path/title) to the chatbot. */
   onGenerateWithAI?: (brief: string, page: { path: string; title: string }) => void;
   /** Show the header's Pantheon AI toggle. Pass the same flag that gates the chat plugin. */
@@ -243,6 +248,19 @@ export function useP1Plugin(options: UseP1PluginOptions = {}): PuckPlugin {
         },
       }),
     []
+  );
+
+  // A feature's control reaches a document the same way the page selector does:
+  // through the app's handler, which moves the URL and the selector along with
+  // the canvas, and by loading in place where the app routes no documents.
+  const openDocument = options.onDocumentSelect ?? ccr.loadDocument;
+  const openDocumentRef = useRef(openDocument);
+  openDocumentRef.current = openDocument;
+
+  const registerDocumentOpener = ccr.registerDocumentOpener;
+  useEffect(
+    () => registerDocumentOpener((path: string) => void openDocumentRef.current(path)),
+    [registerDocumentOpener],
   );
 
   // Create plugin once with stable proxy options

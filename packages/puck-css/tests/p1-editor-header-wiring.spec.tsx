@@ -97,6 +97,7 @@ const mockP1Context = {
   isViewingHistoricalVersion: false,
   returnToLatest: vi.fn(),
   stopAgent: vi.fn(),
+  featureToolbarActions: [],
   sendFocusRegionsViaWs: null,
   _realtimeDataCaptureRef: null,
   _onRealtimeDataCapture: null,
