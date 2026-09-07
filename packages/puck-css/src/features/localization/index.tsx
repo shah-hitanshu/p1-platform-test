@@ -8,6 +8,7 @@
 
 import type { P1FeaturePlugin } from '../../core/plugin-types.js';
 import { buildLocalizationOverrides } from './puck-overrides.js';
+import { LocaleSwitcherControl } from './ui/LocaleSwitcherControl.js';
 
 export type {
   LocalizationRelation,
@@ -22,4 +23,10 @@ export const localizationPlugin: P1FeaturePlugin = {
   name: 'localization',
   priority: 70,
   puckOverrides: (deps) => buildLocalizationOverrides(deps),
+  toolbarActions: (deps) => (
+    <LocaleSwitcherControl
+      openDocument={deps.openDocument}
+      openCreatePage={deps.openCreatePage}
+    />
+  ),
 };

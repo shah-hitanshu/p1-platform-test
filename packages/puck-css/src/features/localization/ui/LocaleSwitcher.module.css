@@ -1,0 +1,215 @@
+/* ============================================================================
+ * LocaleSwitcher — CSS Module
+ *
+ * Trigger and dropdown follow WorkstreamSwitcher (its neighbour in the editor
+ * toolbar); rows follow PageNavigator's, since both list documents to open.
+ * ============================================================================ */
+
+.root {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+/* ------------------------------------------------------------------
+ * Trigger button — current locale, its market badge, and a chevron
+ * ------------------------------------------------------------------ */
+.trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--pds-spacing-2xs, 0.5rem);
+  height: 2rem;
+  padding: 0.5rem 0.64rem;
+  background: transparent;
+  border: 1px solid var(--pds-color-border-input, oklch(0.8853 0 0));
+  border-radius: var(--pds-border-radius-button, 3.5rem);
+  font-family: var(--pds-typography-ff-default, 'Inter', sans-serif);
+  font-size: var(--pds-typography-size-s, 0.875rem);
+  font-weight: var(--pds-typography-fw-medium, 500);
+  color: var(--pds-color-foreground-default, oklch(0.2046 0 0));
+  line-height: 1;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.2s cubic-bezier(0.2, 0, 0, 1),
+              border-color 0.2s cubic-bezier(0.2, 0, 0, 1);
+}
+
+.trigger:hover,
+.trigger[aria-expanded='true'] {
+  background: oklch(0.96 0 0); /* bgSubtle */
+  border-color: oklch(0.75 0 0); /* borderStrong */
+}
+
+.trigger svg {
+  flex: none;
+}
+
+.triggerFailed {
+  border-color: var(--pds-color-status-warning-border, oklch(0.6419 0.1457 55.55));
+  color: var(--pds-color-status-warning-foreground, oklch(0.5658 0.1338 53.43));
+}
+
+.triggerLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--pds-spacing-2xs, 0.5rem);
+}
+
+/* The toolbar runs out of room before the header does: the language name goes
+   first, leaving the globe, the market badge, and the chevron. */
+@media (max-width: 1024px) {
+  .triggerName {
+    display: none;
+  }
+}
+
+/* ------------------------------------------------------------------
+ * Dropdown panel — portal-rendered, positioned with inline style
+ * ------------------------------------------------------------------ */
+.dropdown {
+  display: flex;
+  flex-direction: column;
+  background: var(--pds-color-surface-default, oklch(1 0 0));
+  border: 1px solid oklch(0.96 0 0); /* borderSubtle */
+  border-radius: var(--pds-border-radius-container, 0.375rem);
+  box-shadow: var(
+    --pds-elevation-overlay,
+    0 0 0 1px rgb(0 0 0 / 8%),
+    0 1px 1px 0 rgb(0 0 0 / 2%),
+    0 8px 16px -4px rgb(0 0 0 / 4%),
+    0 24px 32px -8px rgb(0 0 0 / 6%)
+  );
+  overflow: hidden;
+}
+
+.header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.512rem;
+  padding: var(--pds-spacing-xs, 0.625rem);
+  border-bottom: 1px solid oklch(0.96 0 0); /* borderSubtle */
+  background: var(--pds-color-surface-default-secondary, oklch(0.9702 0 0));
+  font-family: var(--pds-typography-ff-default, 'Inter', sans-serif);
+}
+
+.headerTitle {
+  font-size: var(--pds-typography-size-s, 0.875rem);
+  font-weight: var(--pds-typography-fw-semibold, 600);
+  color: var(--pds-color-foreground-default, oklch(0.2046 0 0));
+}
+
+.headerCount {
+  font-size: var(--pds-typography-size-xs, 0.75rem);
+  color: var(--pds-color-foreground-default-secondary, oklch(0.5103 0 0));
+}
+
+/* ------------------------------------------------------------------
+ * Rows — one per locale
+ * ------------------------------------------------------------------ */
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0.41rem;
+  overflow-y: auto;
+  max-height: 360px;
+  flex: 1;
+}
+
+.item {
+  display: flex;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 0.64rem;
+  width: 100%;
+  padding: 0.41rem 0.64rem;
+  background: none;
+  border: none;
+  border-radius: var(--pds-border-radius-default, 0.188rem);
+  font-family: var(--pds-typography-ff-default, 'Inter', sans-serif);
+  font-size: var(--pds-typography-size-s, 0.875rem);
+  color: var(--pds-color-foreground-default, oklch(0.2046 0 0));
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.row:hover {
+  background: var(--pds-color-surface-default-secondary, oklch(0.9702 0 0));
+}
+
+.row[aria-current='true'] {
+  background: var(--pds-color-status-info-background, oklch(0.9683 0.0161 245.08));
+  color: var(--pds-color-interactive-link-default, oklch(0.5558 0.2372 267.79));
+  font-weight: var(--pds-typography-fw-semibold, 600);
+}
+
+/* The market code, on the trigger and at the head of each row. */
+.badge {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  min-width: 1.5rem;
+  height: 1.5rem;
+  padding: 0 0.25rem;
+  border-radius: var(--pds-border-radius-default, 0.188rem);
+  background: var(--pds-color-surface-default-secondary, oklch(0.9702 0 0));
+  color: var(--pds-color-foreground-default-secondary, oklch(0.5103 0 0));
+  font-size: var(--pds-typography-size-xs, 0.75rem);
+  font-weight: var(--pds-typography-fw-semibold, 600);
+  letter-spacing: 0.02em;
+}
+
+.rowText {
+  display: flex;
+  flex-direction: column;
+  gap: 0.0625rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.rowName {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.rowSub {
+  overflow: hidden;
+  font-size: var(--pds-typography-size-xs, 0.75rem);
+  font-weight: var(--pds-typography-fw-regular, 400);
+  color: var(--pds-color-foreground-default-secondary, oklch(0.5103 0 0));
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rtl {
+  padding: 0 0.25rem;
+  border-radius: var(--pds-border-radius-default, 0.188rem);
+  background: var(--pds-color-status-info-background, oklch(0.9683 0.0161 245.08));
+  color: var(--pds-color-interactive-link-default, oklch(0.5558 0.2372 267.79));
+  font-size: var(--pds-typography-size-xs, 0.75rem);
+  font-weight: var(--pds-typography-fw-semibold, 600);
+}
+
+.status {
+  flex: none;
+}
+
+.status :global(.pds-status-indicator__label) {
+  font-size: var(--pds-typography-size-xs, 0.75rem);
+}
+
+.add {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex: none;
+  color: var(--pds-color-interactive-link-default, oklch(0.5558 0.2372 267.79));
+  font-size: var(--pds-typography-size-xs, 0.75rem);
+  font-weight: var(--pds-typography-fw-semibold, 600);
+  white-space: nowrap;
+}

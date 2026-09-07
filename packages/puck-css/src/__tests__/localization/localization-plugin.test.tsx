@@ -25,4 +25,10 @@ describe('localizationPlugin', () => {
     const active = resolveActivePlugins(DEFAULT_CCR_FEATURE_PLUGINS, resolveFeatureConfig({}));
     expect(active.map((p) => p.name)).toContain('localization');
   });
+
+  it('places the locale switcher in the editor toolbar', () => {
+    const deps = {} as Parameters<NonNullable<typeof localizationPlugin.toolbarActions>>[0];
+
+    expect(localizationPlugin.toolbarActions?.(deps)).not.toBeNull();
+  });
 });
