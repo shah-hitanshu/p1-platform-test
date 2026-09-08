@@ -60,6 +60,27 @@ describe('the proxy matcher', () => {
     expect(matches('/r/pricing.json')).toBe(false);
   });
 
+  it('never gates the ACME challenge path', () => {
+    // Let's Encrypt fetches a token from here over plain HTTP to prove we own
+    // the domain. A 401 makes certificate issuance queue forever.
+    expect(matches('/.well-known/acme-challenge/token')).toBe(false);
+    expect(matches('/.well-known/acme-challenge/aBc-123_xYz')).toBe(false);
+  });
+
+  it('opens only the literal ACME path, not one character before it', () => {
+    // An unescaped dot would let any single character stand in for it, opening
+    // a hole the moment a catch-all route exists.
+    expect(matches('/awell-known/x')).toBe(true);
+    expect(matches('/Zwell-known/x')).toBe(true);
+    expect(matches('/well-known/x')).toBe(true);
+  });
+
+  it('gates the rest of /.well-known — only acme-challenge needs opening', () => {
+    expect(matches('/.well-known/security.txt')).toBe(true);
+    expect(matches('/.well-known/openid-configuration')).toBe(true);
+    expect(matches('/.well-known/')).toBe(true);
+  });
+
   it('gates the catalog pages', () => {
     expect(matches('/')).toBe(true);
     expect(matches('/theme')).toBe(true);

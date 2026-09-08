@@ -26,6 +26,12 @@ export function proxy(request: NextRequest) {
 // than snapshotted into the build output. Declaring the runtime here is refused.
 export const config = {
   // Everything except the registry JSON under /r, which shadcn fetches without
-  // credentials, and Next's own static assets.
-  matcher: ['/((?!r/|_next/static|_next/image|favicon.ico).*)'],
+  // credentials, the ACME challenge directory, which Let's Encrypt must read to
+  // issue and renew the certificate, and Next's own static assets. The rest of
+  // /.well-known stays gated — only acme-challenge needs to be reachable.
+  //
+  // The dot is a character class, not an escape: the matcher guard reads this
+  // pattern out of the source text, where a backslash would survive verbatim and
+  // evaluate differently from the runtime string.
+  matcher: ['/((?!r/|[.]well-known/acme-challenge/|_next/static|_next/image|favicon.ico).*)'],
 };
