@@ -100,7 +100,7 @@ module "github_actions_ai_review" {
   account_id       = "ai-review-github-actions"
   sa_roles         = ["roles/aiplatform.user"]
   github_repo      = "p1-platform"
-  additional_repos = []
+  additional_repos = ["pantheon-content-cloud"]
 
   # Inference-only identity — no Cloudflare deploy token.
   cloudflare_token_secret_id = ""
