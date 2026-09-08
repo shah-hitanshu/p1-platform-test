@@ -6,7 +6,8 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "files": [
-    "dist"
+    "dist",
+    "!dist/**/*.map"
   ],
   "exports": {
     ".": {
@@ -21,7 +22,7 @@
     "provenance": false
   },
   "scripts": {
-    "build": "pnpm run clean && tsc --emitDeclarationOnly && tsc --declaration false --declarationMap false --removeComments",
+    "build": "pnpm run clean && tsc --emitDeclarationOnly --declarationMap false && tsc --declaration false --declarationMap false --sourceMap false --removeComments",
     "clean": "rm -rf dist *.tsbuildinfo",
     "dev": "tsc --watch",
     "lint": "eslint src test",

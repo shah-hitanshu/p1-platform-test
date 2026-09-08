@@ -33,12 +33,13 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "!dist/**/*.map"
   ],
   "scripts": {
     "sync-version": "node scripts/sync-sdk-version.mjs",
     "prebuild": "node scripts/sync-sdk-version.mjs",
-    "build": "pnpm run clean && tsc --emitDeclarationOnly && tsc --declaration false --declarationMap false --removeComments",
+    "build": "pnpm run clean && tsc --emitDeclarationOnly --declarationMap false && tsc --declaration false --declarationMap false --sourceMap false --removeComments",
     "clean": "rm -rf dist *.tsbuildinfo",
     "lint": "eslint src",
     "lint:fix": "eslint src --fix",

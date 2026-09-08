@@ -1,5 +1,9 @@
 import { defineConfig } from "tsup";
 
+// No sourcemaps: the TypeScript sources they reference are not in the
+// published tarball (and must not be), so shipped maps only make consumer
+// bundlers warn about missing sources.
+
 export default defineConfig([
   {
     // Client bundle — full package including React components and Context.
@@ -10,17 +14,12 @@ export default defineConfig([
     format: ["cjs", "esm"],
     dts: true,
     splitting: false,
-    sourcemap: true,
+    sourcemap: false,
     clean: true,
     external: ["react", "@puckeditor/core", "@pantheon-systems/puck-css"],
     noExternal: ["react-image-crop"],
     injectStyle: true,
     banner: { js: '"use client";' },
-    // esbuild inlines full original source into sourcemaps by default, which
-    // would ship every internal comment verbatim regardless of dts/js output.
-    esbuildOptions(options) {
-      options.sourcesContent = false;
-    },
   },
   {
     // Server bundle — only pure utilities safe for React Server Components.
@@ -29,10 +28,7 @@ export default defineConfig([
     format: ["cjs", "esm"],
     dts: true,
     splitting: false,
-    sourcemap: true,
+    sourcemap: false,
     external: ["react", "@puckeditor/core"],
-    esbuildOptions(options) {
-      options.sourcesContent = false;
-    },
   },
 ]);
