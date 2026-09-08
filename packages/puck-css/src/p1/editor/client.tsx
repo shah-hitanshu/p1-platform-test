@@ -28,6 +28,7 @@ import { ParagraphBlockIcon } from "./icons/paragraph-block-icon";
 import { QuoteBlockIcon } from "./icons/quote-block-icon";
 import { SpacerBlockIcon } from "./icons/spacer-block-icon";
 import { DataListBlockIcon } from "./icons/data-list-block-icon";
+import styles from "./component-list-item.module.css";
 
 const iconStyle = {
   width: 16,
@@ -62,7 +63,7 @@ function ComponentListItem({
   children: ReactNode;
 }) {
   return (
-    <div className="flex w-full items-center gap-2 [&>*:last-child]:w-full [&>*:last-child]:flex-1">
+    <div className={styles.row}>
       <ComponentListIcon name={name} />
       {children}
     </div>

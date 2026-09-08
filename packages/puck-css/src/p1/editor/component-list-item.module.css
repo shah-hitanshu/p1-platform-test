@@ -1,0 +1,20 @@
+/**
+ * Block-list row in the editor's component drawer: icon, then the label Puck
+ * hands us as children.
+ *
+ * A module, so names are scoped by the bundler and need no `p1-` prefixing.
+ */
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+/* Puck's label is the last child; let it take the remaining width so long
+   block names truncate against the row rather than the icon. */
+.row > *:last-child {
+  flex: 1 1 0%;
+  width: 100%;
+}

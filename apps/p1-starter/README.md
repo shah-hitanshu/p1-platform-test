@@ -79,3 +79,26 @@ puck.config.tsx                 # Puck editor configuration — block registry &
   ```
 
   `title`, `description` and the render wrapper in `root.tsx` are yours to change outright. Replacing `resolveMetadata` entirely replaces the mapping, so a site that wants nothing to do with the shared one can write its own.
+
+## Removing Tailwind
+
+Tailwind is a default for this project's own block layer, not a requirement of
+the platform. `@pantheon-systems/puck-css` styles itself, and blocks installed
+from the P1 registry (`pnpm dlx shadcn@latest add @p1/<name>`) ship their own
+scoped CSS, so nothing outside `components/puck/` depends on it.
+
+To take it out:
+
+1. Restyle the blocks in `components/puck/` — they are the only Tailwind
+   consumers left. Replace the utility classes with your own CSS (or swap the
+   blocks for registry ones), including `blockPaddingClass` in
+   `components/puck/block-padding.ts`.
+2. In `app/styles.css`, delete the `@import "tailwindcss"` and
+   `@plugin "@tailwindcss/typography"` lines, and the SVG rules at the bottom —
+   those exist only to undo Tailwind's preflight inside Puck's UI.
+3. Delete `postcss.config.mjs`.
+4. Drop `tailwindcss`, `@tailwindcss/postcss`, `@tailwindcss/typography`, and
+   `postcss` from `package.json`, then reinstall.
+
+The editor, dashboard, and merge UI are unaffected — they are styled by
+`puck-css` and Pantheon's design-system tokens.
