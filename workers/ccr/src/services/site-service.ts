@@ -75,6 +75,12 @@ export interface ListSitesOptions {
   archived?: boolean;
   /** Filter sites to a specific organization. */
   organizationId?: string;
+  /**
+   * Return every site in `organizationId` rather than only those the principal
+   * holds a role on. Set by the caller that already authorized the principal
+   * for the whole organization; ignored without an `organizationId`.
+   */
+  includeAllOrgSites?: boolean;
 }
 
 /**
@@ -714,12 +720,45 @@ export async function restoreSite(siteId: string): Promise<Site | null> {
  * Lists sites the given principal has access to, with optional pagination.
  */
 export async function listSites(options: ListSitesOptions): Promise<Site[]> {
-  const { limit, offset, principalId, principalType, actingUserId, archived, organizationId } =
-    options;
-  const params: unknown[] = [principalId];
+  const {
+    limit,
+    offset,
+    principalId,
+    principalType,
+    actingUserId,
+    archived,
+    organizationId,
+    includeAllOrgSites,
+  } = options;
+  const params: unknown[] = [];
 
   const archivedFilter =
     archived === true ? ' AND s.archived_at IS NOT NULL' : ' AND s.archived_at IS NULL';
+
+  // A caller already authorized for the whole organization sees all of its
+  // sites. Narrowing by their own site roles would hand a superadmin an empty
+  // list for an account they can administer but were never granted a site in.
+  if (organizationId !== undefined && includeAllOrgSites === true) {
+    params.push(organizationId);
+    let allSitesSql =
+      'SELECT s.* FROM app.sites s WHERE s.organization_id = $1' +
+      archivedFilter +
+      ' ORDER BY s.created_at DESC';
+
+    if (limit !== undefined) {
+      params.push(limit);
+      allSitesSql += ' LIMIT $' + String(params.length);
+    }
+    if (offset !== undefined) {
+      params.push(offset);
+      allSitesSql += ' OFFSET $' + String(params.length);
+    }
+
+    const allSitesResult = await query<SiteRow>(allSitesSql, params);
+    return allSitesResult.rows.map(mapRowToSite);
+  }
+
+  params.push(principalId);
 
   let orgFilter = '';
   if (organizationId !== undefined) {

@@ -47,6 +47,19 @@ vi.mock('../../src/db', () => ({
   query: vi.fn(),
 }));
 
+// Mock the shared org gate. PCC-3874: the org-scoped listing moved off the raw
+// isUserInOrganization membership lookup onto canAccessOrganization, which is
+// where the superadmin bypass lives.
+vi.mock('../../src/utils/org-access', async () => {
+  const actual = await vi.importActual('../../src/utils/org-access');
+  return { ...actual, canAccessOrganization: vi.fn() };
+});
+
+vi.mock('../../src/utils/admin-check', async () => {
+  const actual = await vi.importActual('../../src/utils/admin-check');
+  return { ...actual, isSuperAdmin: vi.fn() };
+});
+
 describe('Phase 7.1.1b: Site API Routes', () => {
   beforeEach(() => {
     vi.resetModules();
@@ -663,20 +676,20 @@ describe('Phase 7.1.1b: Site API Routes', () => {
       it('should allow a user principal that is a member of the organization', async () => {
         const { handleSiteRoutes } = await import('../../src/routes/site-api');
         const services = await import('../../src/services');
+        const orgAccess = await import('../../src/utils/org-access');
 
-        vi.mocked(services.isUserInOrganization).mockResolvedValueOnce(true);
+        vi.mocked(orgAccess.canAccessOrganization).mockResolvedValueOnce(true);
         vi.mocked(services.listSites).mockResolvedValueOnce([]);
 
         const request = new Request('https://api.example.com/api/sites?organizationId=org-1', {
           method: 'GET',
         });
 
-        const response = await handleSiteRoutes(request, {
-          principal: makePrincipal({ id: 'user-1', type: 'user', dbUserId: 'user-uuid-1' }),
-        });
+        const principal = makePrincipal({ id: 'user-1', type: 'user', dbUserId: 'user-uuid-1' });
+        const response = await handleSiteRoutes(request, { principal });
 
         expect(response.status).toBe(200);
-        expect(services.isUserInOrganization).toHaveBeenCalledWith('user-uuid-1', 'org-1');
+        expect(orgAccess.canAccessOrganization).toHaveBeenCalledWith(principal, 'org-1');
         expect(services.listSites).toHaveBeenCalledWith(
           expect.objectContaining({ organizationId: 'org-1' }),
         );
@@ -685,8 +698,9 @@ describe('Phase 7.1.1b: Site API Routes', () => {
       it('should deny a user principal that is not a member of the organization', async () => {
         const { handleSiteRoutes } = await import('../../src/routes/site-api');
         const services = await import('../../src/services');
+        const orgAccess = await import('../../src/utils/org-access');
 
-        vi.mocked(services.isUserInOrganization).mockResolvedValueOnce(false);
+        vi.mocked(orgAccess.canAccessOrganization).mockResolvedValueOnce(false);
 
         const request = new Request('https://api.example.com/api/sites?organizationId=org-1', {
           method: 'GET',
@@ -700,36 +714,44 @@ describe('Phase 7.1.1b: Site API Routes', () => {
         expect(services.listSites).not.toHaveBeenCalled();
       });
 
-      it('should check membership against the resolved acting user, not the agent, for an agent acting on behalf of a user', async () => {
+      it('should still resolve the acting user for the listing when an agent acts on behalf of one', async () => {
         const { handleSiteRoutes } = await import('../../src/routes/site-api');
         const services = await import('../../src/services');
+        const orgAccess = await import('../../src/utils/org-access');
         const db = await import('../../src/db');
 
         // Acting-user email -> app.users.id lookup
         vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ id: 'db-acting-user-id' }] });
-        vi.mocked(services.isUserInOrganization).mockResolvedValueOnce(true);
+        vi.mocked(orgAccess.canAccessOrganization).mockResolvedValueOnce(true);
         vi.mocked(services.listSites).mockResolvedValueOnce([]);
 
         const request = new Request('https://api.example.com/api/sites?organizationId=org-1', {
           method: 'GET',
         });
 
-        const response = await handleSiteRoutes(request, {
-          principal: makePrincipal({
-            id: 'agent-uuid',
-            type: 'agent',
-            actingUserEmail: 'known-user@example.com',
-          }),
+        const principal = makePrincipal({
+          id: 'agent-uuid',
+          type: 'agent',
+          actingUserEmail: 'known-user@example.com',
         });
+        const response = await handleSiteRoutes(request, { principal });
 
         expect(response.status).toBe(200);
-        // Must check the acting user's membership, not the agent's own id.
-        expect(services.isUserInOrganization).toHaveBeenCalledWith('db-acting-user-id', 'org-1');
+        // The gate is handed the whole principal; canAccessOrganization checks the
+        // agent's own org and then falls back to its acting user (org-access.ts).
+        expect(orgAccess.canAccessOrganization).toHaveBeenCalledWith(principal, 'org-1');
+        // The listing is still narrowed to the acting user, not the agent alone.
+        expect(services.listSites).toHaveBeenCalledWith(
+          expect.objectContaining({ actingUserId: 'db-acting-user-id' }),
+        );
       });
 
-      it('should deny an agent with no resolved acting user, without calling isUserInOrganization', async () => {
+      it('should deny an agent with no resolved acting user and no org of its own', async () => {
         const { handleSiteRoutes } = await import('../../src/routes/site-api');
         const services = await import('../../src/services');
+        const orgAccess = await import('../../src/utils/org-access');
+
+        vi.mocked(orgAccess.canAccessOrganization).mockResolvedValueOnce(false);
 
         const request = new Request('https://api.example.com/api/sites?organizationId=org-1', {
           method: 'GET',
@@ -740,8 +762,87 @@ describe('Phase 7.1.1b: Site API Routes', () => {
         });
 
         expect(response.status).toBe(403);
-        expect(services.isUserInOrganization).not.toHaveBeenCalled();
         expect(services.listSites).not.toHaveBeenCalled();
+      });
+
+      it('should let an agent that belongs to the organization list its sites', async () => {
+        const { handleSiteRoutes } = await import('../../src/routes/site-api');
+        const services = await import('../../src/services');
+        const orgAccess = await import('../../src/utils/org-access');
+        const adminCheck = await import('../../src/utils/admin-check');
+
+        // canAccessOrganization passes for an agent whose organizationId matches.
+        vi.mocked(adminCheck.isSuperAdmin).mockResolvedValueOnce(false);
+        vi.mocked(orgAccess.canAccessOrganization).mockResolvedValueOnce(true);
+        vi.mocked(services.listSites).mockResolvedValueOnce([]);
+
+        const request = new Request('https://api.example.com/api/sites?organizationId=org-1', {
+          method: 'GET',
+        });
+
+        const response = await handleSiteRoutes(request, {
+          principal: makePrincipal({ id: 'agent-uuid', type: 'agent' }),
+        });
+
+        expect(response.status).toBe(200);
+        // Agent-in-org access does not widen the listing: the agent still sees
+        // only sites it holds a role on, not every site in the organization.
+        expect(services.listSites).toHaveBeenCalledWith(
+          expect.objectContaining({ organizationId: 'org-1', includeAllOrgSites: false }),
+        );
+      });
+
+      // PCC-3874 / PCC-3872 regression. The switcher offers a superadmin every
+      // organization (listAllOrganizationsForSwitcher), so the sites listing has
+      // to accept the ones they were never made a member of — and then return
+      // that organization's sites rather than only the ones they hold a role on.
+      it('should let a superadmin list an organization they are not a member of', async () => {
+        const { handleSiteRoutes } = await import('../../src/routes/site-api');
+        const services = await import('../../src/services');
+        const orgAccess = await import('../../src/utils/org-access');
+        const adminCheck = await import('../../src/utils/admin-check');
+
+        // Superadmins pass canAccessOrganization without any membership row.
+        vi.mocked(orgAccess.canAccessOrganization).mockResolvedValueOnce(true);
+        vi.mocked(adminCheck.isSuperAdmin).mockResolvedValueOnce(true);
+        vi.mocked(services.listSites).mockResolvedValueOnce([]);
+
+        const request = new Request('https://api.example.com/api/sites?organizationId=org-1', {
+          method: 'GET',
+        });
+
+        const response = await handleSiteRoutes(request, {
+          principal: makePrincipal({ id: 'admin-1', type: 'user', dbUserId: 'admin-uuid-1' }),
+        });
+
+        expect(response.status).toBe(200);
+        expect(services.listSites).toHaveBeenCalledWith(
+          expect.objectContaining({ organizationId: 'org-1', includeAllOrgSites: true }),
+        );
+      });
+
+      it('should not widen the listing past a non-superadmin member of the organization', async () => {
+        const { handleSiteRoutes } = await import('../../src/routes/site-api');
+        const services = await import('../../src/services');
+        const orgAccess = await import('../../src/utils/org-access');
+        const adminCheck = await import('../../src/utils/admin-check');
+
+        vi.mocked(orgAccess.canAccessOrganization).mockResolvedValueOnce(true);
+        vi.mocked(adminCheck.isSuperAdmin).mockResolvedValueOnce(false);
+        vi.mocked(services.listSites).mockResolvedValueOnce([]);
+
+        const request = new Request('https://api.example.com/api/sites?organizationId=org-1', {
+          method: 'GET',
+        });
+
+        const response = await handleSiteRoutes(request, {
+          principal: makePrincipal({ id: 'user-1', type: 'user', dbUserId: 'user-uuid-1' }),
+        });
+
+        expect(response.status).toBe(200);
+        expect(services.listSites).toHaveBeenCalledWith(
+          expect.objectContaining({ organizationId: 'org-1', includeAllOrgSites: false }),
+        );
       });
     });
   });

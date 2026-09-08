@@ -843,6 +843,80 @@ describe('Phase 3.1: Site Service', () => {
       expect(result).toEqual([]);
     });
 
+    // PCC-3874 / PCC-3872 regression. A superadmin holds no site role in an
+    // account they administer, so joining user_site_roles returned an empty
+    // list for every organization the switcher offered them.
+    describe('includeAllOrgSites', () => {
+      it('should list every site in the organization without joining site roles', async () => {
+        const { listSites } = await import('../../src/services/site-service');
+        const db = await import('../../src/db');
+
+        const mockRows = [createMockSiteRow({ id: 'site-1', name: 'Someone Elses Site' })];
+        vi.mocked(db.query).mockResolvedValue({ rows: mockRows });
+
+        const result = await listSites({
+          principalId: 'superadmin-with-no-role-here',
+          organizationId: 'org-1',
+          includeAllOrgSites: true,
+        });
+
+        expect(result).toHaveLength(1);
+        const [sql, params] = vi.mocked(db.query).mock.calls[0];
+        expect(sql).not.toContain('user_site_roles');
+        expect(sql).toContain('s.organization_id = $1');
+        // The principal is not a bind parameter on this path.
+        expect(params).toEqual(['org-1']);
+      });
+
+      it('should still filter by archived status and paginate', async () => {
+        const { listSites } = await import('../../src/services/site-service');
+        const db = await import('../../src/db');
+
+        vi.mocked(db.query).mockResolvedValue({ rows: [] });
+
+        await listSites({
+          principalId: 'admin-1',
+          organizationId: 'org-1',
+          includeAllOrgSites: true,
+          archived: true,
+          limit: 10,
+          offset: 20,
+        });
+
+        const [sql, params] = vi.mocked(db.query).mock.calls[0];
+        expect(sql).toContain('s.archived_at IS NOT NULL');
+        expect(sql).toContain('LIMIT');
+        expect(sql).toContain('OFFSET');
+        expect(params).toEqual(['org-1', 10, 20]);
+      });
+
+      it('should keep the site-role join when the flag is not set', async () => {
+        const { listSites } = await import('../../src/services/site-service');
+        const db = await import('../../src/db');
+
+        vi.mocked(db.query).mockResolvedValue({ rows: [] });
+
+        await listSites({ principalId: 'user-abc', organizationId: 'org-1' });
+
+        const [sql, params] = vi.mocked(db.query).mock.calls[0];
+        expect(sql).toContain('INNER JOIN app.user_site_roles');
+        expect(params).toEqual(['user-abc', 'org-1']);
+      });
+
+      it('should ignore the flag without an organizationId', async () => {
+        const { listSites } = await import('../../src/services/site-service');
+        const db = await import('../../src/db');
+
+        vi.mocked(db.query).mockResolvedValue({ rows: [] });
+
+        await listSites({ principalId: 'admin-1', includeAllOrgSites: true });
+
+        const [sql, params] = vi.mocked(db.query).mock.calls[0];
+        expect(sql).toContain('INNER JOIN app.user_site_roles');
+        expect(params).toEqual(['admin-1']);
+      });
+    });
+
     it('should use DISTINCT to deduplicate multi-source roles', async () => {
       const { listSites } = await import('../../src/services/site-service');
       const db = await import('../../src/db');

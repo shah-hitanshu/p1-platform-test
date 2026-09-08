@@ -18,12 +18,13 @@ import {
   getMainBranch,
   getUserPrimaryOrg,
   linkSiteToOrganization,
-  isUserInOrganization,
   DuplicatePantheonSiteIdError,
   HttpError,
   getSiteOwner,
 } from '../services';
 import { assertPermission, getSiteRole } from '../auth/authorization';
+import { canAccessOrganization } from '../utils/org-access';
+import { isSuperAdmin } from '../utils/admin-check';
 import type { ScreenshotProducerEnv } from '../queues/screenshot-producer';
 import { query } from '../db';
 import { validatePagination, validateAllowedOriginPatterns } from './validation';
@@ -209,14 +210,17 @@ async function handleListSites(
     actingUserId = actingUserRow.id;
   }
 
+  // A superadmin reaches every organization, so the listing must widen with the
+  // gate: passing the org check but still filtering by the caller's own site
+  // roles returns an empty list for an account they can administer.
+  //
+  // isSuperAdmin is checked first so we skip canAccessOrganization for
+  // superadmins (it would return true anyway) and avoid calling isSuperAdmin
+  // twice — canAccessOrganization also calls it internally.
+  let includeAllOrgSites = false;
   if (organizationId !== undefined) {
-    // For an agent acting on behalf of a user, membership is checked
-    // against that acting user, same as the site listing below — an
-    // agent with no resolved acting user has no membership to check.
-    const userIdForOrgCheck = actingUserId ?? context.principal.dbUserId;
-    const hasAccess =
-      userIdForOrgCheck !== undefined && (await isUserInOrganization(userIdForOrgCheck, organizationId));
-    if (!hasAccess) {
+    includeAllOrgSites = await isSuperAdmin(context.principal);
+    if (!includeAllOrgSites && !(await canAccessOrganization(context.principal, organizationId))) {
       return errorResponse('Access denied to the specified organization', 403);
     }
   }
@@ -229,6 +233,7 @@ async function handleListSites(
     actingUserId,
     archived,
     organizationId,
+    includeAllOrgSites,
   });
 
   return jsonResponse({ sites });
