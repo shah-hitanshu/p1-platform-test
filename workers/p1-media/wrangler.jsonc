@@ -11,9 +11,20 @@
     { "type": "Text", "globs": ["**/*.yaml"], "fallthrough": true }
   ],
 
+  // enable_ctx_exports populates the cloudflare:workers exports map (loopback
+  // bindings) that cache/forward.ts and cache/purge.ts depend on; it is flag-gated
+  // until compat date 2025-11-17.
   "compatibility_date": "2024-12-01",
-  "compatibility_flags": ["nodejs_compat"],
+  "compatibility_flags": ["nodejs_compat", "enable_ctx_exports"],
   "account_id": "b64d7635bcad811044d61491827b4040",
+
+  // Workers Caching, enabled only on the CachedImage entrypoint. The default
+  // entrypoint must stay uncached: it is the router, and a cached router would stop
+  // running (auth included). Image responses are invalidated by tag on hard purge
+  // (src/cache/purge.ts).
+  "exports": {
+    "CachedImage": { "type": "worker", "cache": { "enabled": true } }
+  },
 
   // Inherited by every environment. Source maps are what make error stacks
   // resolve to src/ instead of the bundle.

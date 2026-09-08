@@ -1,4 +1,5 @@
 import type { Env } from '../types';
+import { assetIdFromKey, imageCacheTags } from '../cache/image-cache';
 
 const VALID_FIT = new Set(['scale-down', 'contain', 'pad', 'squeeze', 'cover', 'crop', 'aspect-crop']);
 const VALID_GRAVITY_NAMED = new Set(['face', 'left', 'right', 'top', 'bottom', 'center', 'auto', 'entropy']);
@@ -91,17 +92,56 @@ function needsTransform(p: URLSearchParams): boolean {
   return TRANSFORM_PARAMS.some(k => p.has(k));
 }
 
+const MIME_TO_FORMAT_PARAM: Record<string, string> = {
+  'image/jpeg': 'jpeg',
+  'image/png': 'png',
+  'image/gif': 'gif',
+  'image/webp': 'webp',
+  'image/avif': 'avif',
+};
+
+/** Splits an /image/* pathname into siteId + full R2 key, or null when malformed. */
+export function parseImagePath(path: string): { siteId: string; key: string } | null {
+  if (!path.startsWith('/image/')) return null;
+  const key = decodeURIComponent(path.slice('/image/'.length));
+  const slashIndex = key.indexOf('/');
+  if (slashIndex === -1) return null;
+  return { siteId: key.slice(0, slashIndex), key };
+}
+
+/**
+ * The URL a request is cached under. The Workers Caching key is the forwarded URL and
+ * excludes headers, so a format that would be negotiated from `Accept` must be resolved
+ * INTO the URL before forwarding — otherwise one client's avif would be cached under
+ * the bare URL and served to clients that never accepted avif.
+ */
+export function cacheKeyImageUrl(request: Request): string {
+  const url = new URL(request.url);
+  const params = url.searchParams;
+  if (needsTransform(params)) {
+    const requested = params.get('format');
+    if (!requested || requested === 'auto') {
+      const mime = resolveFormat(request.headers.get('Accept'), requested);
+      url.searchParams.set('format', MIME_TO_FORMAT_PARAM[mime] ?? 'jpeg');
+    }
+  }
+  return url.toString();
+}
+
 export async function handleImage(
   request: Request,
   env: Env,
   siteId: string,
   key: string,
 ): Promise<Response> {
-  // Prevent path traversal — key must belong to the requested site
+  // Prevent path traversal — key must belong to the requested site.
+  // Error responses carry no-store: 403/404 are heuristically cacheable statuses, and
+  // this handler now runs behind Workers Caching (entrypoints/cached-image.ts) — a
+  // cached pre-upload 404 would mask the asset after finalize.
   if (!key.startsWith(`${siteId}/`)) {
     return new Response(JSON.stringify({ error: 'Forbidden' }), {
       status: 403,
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
     });
   }
 
@@ -113,13 +153,19 @@ export async function handleImage(
   if (!object) {
     return new Response(JSON.stringify({ error: 'Not found' }), {
       status: 404,
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
     });
   }
 
   const responseHeaders = new Headers();
   responseHeaders.set('Cache-Control', 'public, max-age=31536000, immutable');
   responseHeaders.set('X-Content-Type-Options', 'nosniff');
+  // Purge hook: tags are what a takedown purges by, since transform variants cannot be
+  // enumerated as URLs. Keys that predate the canonical shape get no asset tag.
+  const assetId = assetIdFromKey(key);
+  if (assetId !== null) {
+    responseHeaders.set('Cache-Tag', imageCacheTags(siteId, assetId).join(','));
+  }
 
   let response: Response;
 

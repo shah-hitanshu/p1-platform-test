@@ -7,7 +7,13 @@ import type { Env } from '../types';
 // every reject path also asserts NON-dispatch — a 401/403/404 that still called the
 // handler would be a security hole a status-only assertion cannot catch.
 vi.mock('../auth', () => ({ validateAuth: vi.fn() }));
-vi.mock('../handlers/image', () => ({ handleImage: vi.fn() }));
+// `...actual` keeps the pure route-parsing helpers (parseImagePath, cacheKeyImageUrl)
+// that index.ts and cache/forward.ts call on the /image/* path; only the handler that
+// serves bytes is mocked.
+vi.mock('../handlers/image', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../handlers/image')>();
+  return { ...actual, handleImage: vi.fn() };
+});
 vi.mock('../handlers/list', () => ({ handleList: vi.fn() }));
 vi.mock('../handlers/presign', () => ({ handlePresignUpload: vi.fn(), handlePresignVersion: vi.fn() }));
 vi.mock('../handlers/finalize', () => ({ handleFinalizeUpload: vi.fn(), handleFinalizeVersion: vi.fn() }));
@@ -105,6 +111,29 @@ describe('Worker router', () => {
     const response = await worker.fetch(req('https://w.example.com/image/justkey', {}, false), createEnv());
     expect(response.status).toBe(400);
     expect(handleImage).not.toHaveBeenCalled();
+  });
+
+  it('GET /image/* serves through the CachedImage loopback when the binding exists', async () => {
+    // The stub's exports map (stubs/cloudflare-workers.ts) is empty by default, which is
+    // why the dispatch test above exercises the fail-open direct path.
+    const cfExports = (await import('cloudflare:workers')).exports as unknown as Record<string, unknown>;
+    const fetchSpy = vi.fn(async () => new Response('cached-hit', { status: 200 }));
+    cfExports.CachedImage = { fetch: fetchSpy };
+    try {
+      const response = await worker.fetch(
+        req('https://w.example.com/image/site1/assets/a/x.jpg', {}, false),
+        createEnv(),
+      );
+      expect(response.status).toBe(200);
+      expect(await response.text()).toBe('cached-hit');
+      // CORS is applied by the router on top of the forwarded (cacheable) response.
+      expect(response.headers.get('Access-Control-Allow-Origin')).toBe('*');
+      expect(fetchSpy).toHaveBeenCalled();
+      expect(handleImage).not.toHaveBeenCalled();
+      expect(validateAuth).not.toHaveBeenCalled();
+    } finally {
+      delete cfExports.CachedImage;
+    }
   });
 
   it('GET /media/schema returns the field list WITHOUT auth', async () => {

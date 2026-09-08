@@ -3,7 +3,8 @@ import type { Env } from './types';
 import { ensureLogger } from './telemetry';
 import { validateAuth } from './auth';
 import { METADATA_SCHEMA } from './schema';
-import { handleImage } from './handlers/image';
+import { forwardToCachedImage } from './cache/forward';
+import { handleImage, parseImagePath } from './handlers/image';
 import { handleList } from './handlers/list';
 import { handlePresignUpload, handlePresignVersion } from './handlers/presign';
 import { handleFinalizeUpload, handleFinalizeVersion } from './handlers/finalize';
@@ -12,6 +13,10 @@ import { handlePatch } from './handlers/patch';
 import { handleDelete } from './handlers/delete';
 import { handleReconcile } from './handlers/reconcile';
 import { handleDocsRoute, handleDocsSpecRoute } from './routes/docs-handler';
+
+// Named entrypoint for Workers Caching (wrangler.jsonc `exports`). Must be exported
+// from the main module or the cache config points at nothing.
+export { CachedImage } from './entrypoints/cached-image';
 
 const CORS_HEADERS: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
@@ -112,14 +117,19 @@ async function route(request: Request, env: Env, url: URL): Promise<Response> {
   }
 
   // ----- GET /image/* — public, no auth -----
+  // Served through the CachedImage entrypoint so Workers Caching can answer repeat
+  // requests without invoking handleImage. CORS is applied here, after the forward,
+  // so cached entries store the core response only.
   if (method === 'GET' && path.startsWith('/image/')) {
-    const fullKey = decodeURIComponent(path.slice('/image/'.length));
-    const slashIndex = fullKey.indexOf('/');
-    if (slashIndex === -1) {
+    const parsed = parseImagePath(path);
+    if (parsed === null) {
       return addCorsHeaders(jsonResponse({ error: 'Invalid image path' }, 400));
     }
-    const siteId = fullKey.slice(0, slashIndex);
-    return addCorsHeaders(await handleImage(request, env, siteId, fullKey));
+    const forwarded = await forwardToCachedImage(request);
+    if (forwarded !== null) return addCorsHeaders(forwarded);
+    // Loopback binding unavailable — serve uncached rather than fail (logged in
+    // forwardToCachedImage).
+    return addCorsHeaders(await handleImage(request, env, parsed.siteId, parsed.key));
   }
 
   // ----- GET /media/schema — public field definitions (Pantheon-defined, global) -----
