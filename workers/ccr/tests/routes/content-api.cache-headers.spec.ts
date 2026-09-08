@@ -43,6 +43,7 @@ vi.mock('../../src/services', () => ({
   getSite: mocks.getSite,
   buildPageMetadata: vi.fn().mockReturnValue({}),
   VersionReconstructionError: class VersionReconstructionError extends Error {},
+  reconstructServableVersionSnapshot: vi.fn(),
 }));
 
 vi.mock('../../src/services/site-settings-service', () => ({

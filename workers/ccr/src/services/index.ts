@@ -232,6 +232,7 @@ export {
   getLatestDocumentVersionWithFallback,
   getLatestTemplateVersionWithFallback,
   reconstructVersionSnapshot,
+  replayVersionChain,
   restoreDocumentVersion,
 } from './document-version-service';
 
@@ -240,6 +241,7 @@ export type {
   ListDocumentVersionsOptions,
   DocumentVersionWithFallback,
   RestoreDocumentVersionParams,
+  VersionReplay,
 } from './document-version-service';
 
 // Checkpoint Service

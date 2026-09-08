@@ -40,6 +40,7 @@ import {
   moveDocumentOnBranch,
   moveDocumentGlobally,
   RestoreVersionNotFoundError,
+  VersionReconstructionError,
   publishDocument,
   createTranslation,
   listLocaleVariants,
@@ -866,8 +867,19 @@ async function handleGetDocumentVersionById(
       getLogger().error('version snapshot reconstruction failed', err, {
         document_id: documentId,
         branch_id: branchId,
-        broken_version: version.versionNumber,
+        requested_version: version.versionNumber,
+        broken_version: err instanceof VersionReconstructionError
+          ? err.brokenVersion
+          : version.versionNumber,
+        outcome: err instanceof VersionReconstructionError
+          ? 'reconstruction_unavailable'
+          : 'reconstruction_failed',
       });
+      // This route answers for one named version, so it reports the break
+      // rather than substituting a neighbour the caller did not ask for.
+      if (err instanceof VersionReconstructionError) {
+        return errorResponse(err.message, err.status);
+      }
       return errorResponse('Failed to reconstruct version snapshot', 500);
     }
   }

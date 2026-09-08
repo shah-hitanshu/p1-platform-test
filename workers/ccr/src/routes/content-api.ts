@@ -20,7 +20,8 @@ import {
   getLatestDocumentVersionWithFallback,
   hasTombstoneAfterVersion,
   listDocumentsOnBranch,
-  reconstructVersionSnapshot,
+  replayVersionChain,
+  getDocumentVersionByNumber,
   VersionReconstructionError,
   buildPageMetadata,
   getSite,
@@ -75,6 +76,8 @@ function notFoundResponse(error: string, siteId: string): Response {
 
 import { UUID_RE } from '../utils/branch-ref';
 import type { PageContent } from '../types/page-metadata';
+import type { DocumentVersion } from '../types';
+import type { VersionReplay } from '../services';
 
 /**
  * Resolve the branch from query param or default to main branch.
@@ -151,6 +154,86 @@ export async function handleContentRoutes(
   }
 }
 
+/**
+ * The version a broken chain may be degraded to, or null when there is none.
+ *
+ * The gates above run against the version that was asked for, so a fallback has
+ * to clear them on its own account rather than inherit that verdict. On main
+ * that means only a published version qualifies — serving an unpublished draft
+ * because the publish above it could not be rebuilt would put private content
+ * behind a public `Cache-Control`. A deletion recorded after the candidate also
+ * rules it out, or a break above a tombstone would resurrect the page as it
+ * stood before it was deleted.
+ *
+ * A deletion below the candidate never means the page is gone: the version the
+ * route resolved has already been checked against later tombstones, so one
+ * found here belongs to a delete-then-republish cycle the caller has moved
+ * past. The page is live and only this candidate is too old to stand in for it.
+ *
+ * Refusing is the safe answer, and it is always a refusal rather than a 404:
+ * the caller reports the break instead, which is the behaviour that existed
+ * before degrading was possible at all.
+ */
+async function resolveDegradedVersion(params: {
+  documentId: string;
+  branch: { id: string; isMain: boolean };
+  replay: VersionReplay;
+}): Promise<{ version: DocumentVersion; snapshot: Record<string, unknown> } | null> {
+  const { documentId, branch, replay } = params;
+  if (replay.brokenVersion === undefined) return null;
+  const ceiling = replay.brokenVersion - 1;
+  if (ceiling < 1) return null;
+
+  const candidate = branch.isMain
+    ? await getLatestPublishedDocumentVersion(documentId, branch.id, ceiling)
+    : await getDocumentVersionByNumber(documentId, branch.id, ceiling);
+
+  if (candidate == null || candidate.isTombstone === true) return null;
+
+  if (await hasTombstoneAfterVersion(documentId, branch.id, candidate.versionNumber)) {
+    return null;
+  }
+
+  // Replay already rebuilt the version below the break, so the common case
+  // costs nothing more. A published fallback further down carries its own
+  // pinned snapshot, and only an unpinned older publish needs a second pass.
+  if (candidate.versionNumber === replay.reachedVersion) {
+    return { version: candidate, snapshot: replay.snapshot };
+  }
+  if (candidate.snapshot != null) {
+    return { version: candidate, snapshot: candidate.snapshot };
+  }
+
+  const rebuilt = await replayVersionChain(documentId, branch.id, candidate.versionNumber);
+  if (rebuilt === null || rebuilt.brokenVersion !== undefined) return null;
+  return { version: candidate, snapshot: rebuilt.snapshot };
+}
+
+function logReconstructionFailure(fields: {
+  siteId: string;
+  docPath: string;
+  documentId: string;
+  branchId: string;
+  requestedVersion: number;
+  brokenVersion: number | undefined;
+}): void {
+  getLogger().error(
+    'version reconstruction failed',
+    new VersionReconstructionError(
+      fields.documentId, fields.branchId, fields.requestedVersion, fields.brokenVersion ?? 0,
+    ),
+    {
+      site_id: fields.siteId,
+      doc_path: fields.docPath,
+      document_id: fields.documentId,
+      branch_id: fields.branchId,
+      requested_version: fields.requestedVersion,
+      broken_version: fields.brokenVersion,
+      outcome: 'reconstruction_failed',
+    },
+  );
+}
+
 async function handleGetContent(
   request: Request,
   context: ContentRouteContext,
@@ -220,9 +303,11 @@ async function handleGetContent(
 
   // ETag covers the version and the site's last update, since the payload
   // carries site-derived metadata that changes without a version bump
-  const etag = site === null
-    ? `"v-${version.id}"`
-    : `"v-${version.id}-s-${String(new Date(site.updatedAt).getTime())}"`;
+  const etagFor = (versionId: string): string => site === null
+    ? `"v-${versionId}"`
+    : `"v-${versionId}-s-${String(new Date(site.updatedAt).getTime())}"`;
+
+  const etag = etagFor(version.id);
 
   const ifNoneMatch = request.headers.get('If-None-Match');
   const cacheTag = contentCacheTags({
@@ -245,27 +330,74 @@ async function handleGetContent(
 
   // If snapshot is null (diff-only version), reconstruct from baseline + patches
   let snapshotData = version.snapshot ?? null;
+  let servedVersion = version;
+  let servedEtag = etag;
+
   if (snapshotData === null) {
-    try {
-      snapshotData = await reconstructVersionSnapshot(
-        document.id,
-        branch.id,
-        version.versionNumber,
-      );
-    } catch (error) {
-      if (!(error instanceof VersionReconstructionError)) throw error;
-      // The route is public, so the response stays generic; the identifiers
-      // that pin down which version broke go to the log.
-      getLogger().error('version reconstruction failed', error, {
-        site_id: siteId,
-        doc_path: document.path,
-        document_id: error.documentId,
-        branch_id: error.branchId,
-        requested_version: error.requestedVersion,
-        broken_version: error.brokenVersion,
-        outcome: 'reconstruction_failed',
+    const replay = await replayVersionChain(document.id, branch.id, version.versionNumber);
+    const brokenVersion = replay?.brokenVersion;
+
+    if (replay !== null && brokenVersion === undefined) {
+      snapshotData = replay.snapshot;
+    } else if (replay !== null && brokenVersion !== undefined) {
+      const degraded = await resolveDegradedVersion({
+        documentId: document.id,
+        branch,
+        replay,
       });
-      return errorResponse('Internal server error', 500);
+
+      if (degraded === null) {
+        // Nothing below the break may be served: it is unpublished, deleted
+        // since, or there is no earlier version at all. The route is public, so
+        // the response stays generic; the identifiers go to the log.
+        logReconstructionFailure({
+          siteId,
+          docPath: document.path,
+          documentId: document.id,
+          branchId: branch.id,
+          requestedVersion: version.versionNumber,
+          brokenVersion,
+        });
+        return errorResponse('Internal server error', 500);
+      }
+
+      snapshotData = degraded.snapshot;
+      servedVersion = degraded.version;
+      servedEtag = etagFor(degraded.version.id);
+
+      // Serving behind is the degraded outcome, not the failure one: the page
+      // stays up and the log carries the row that needs repair.
+      getLogger().error(
+        'version reconstruction degraded to an earlier version',
+        new VersionReconstructionError(
+          document.id, branch.id, version.versionNumber, brokenVersion,
+        ),
+        {
+          site_id: siteId,
+          doc_path: document.path,
+          document_id: document.id,
+          branch_id: branch.id,
+          requested_version: version.versionNumber,
+          broken_version: brokenVersion,
+          served_version: degraded.version.versionNumber,
+          outcome: 'reconstruction_degraded',
+        },
+      );
+
+      // The first request taught the client this ETag; without a second
+      // comparison it could never validate, because the check above ran
+      // against the version that could not be rebuilt.
+      if (ifNoneMatch === servedEtag) {
+        return new Response(null, {
+          status: 304,
+          headers: {
+            'ETag': servedEtag,
+            'Cache-Control': contentCacheControl(branch.isMain, ttl),
+            'Cache-Tag': cacheTag,
+            'Vary': 'Accept-Encoding',
+          },
+        });
+      }
     }
   }
 
@@ -277,9 +409,9 @@ async function handleGetContent(
     branchId: branch.id,
     branchName: branch.name,
     isMainBranch: branch.isMain,
-    versionNumber: version.versionNumber,
-    versionCreatedAt: version.createdAt,
-    etag,
+    versionNumber: servedVersion.versionNumber,
+    versionCreatedAt: servedVersion.createdAt,
+    etag: servedEtag,
   };
 
   if (!branch.isMain) {
@@ -292,7 +424,7 @@ async function handleGetContent(
     {
       'Cache-Control': contentCacheControl(branch.isMain, ttl),
       'Cache-Tag': cacheTag,
-      'ETag': etag,
+      'ETag': servedEtag,
       'Vary': 'Accept-Encoding',
     },
   );

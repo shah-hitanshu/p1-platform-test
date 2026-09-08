@@ -29,6 +29,8 @@ vi.mock('../../src/services', async () => {
     hasTombstoneAfterVersion: vi.fn(),
     listDocumentsOnBranch: vi.fn(),
     reconstructVersionSnapshot: vi.fn(),
+    replayVersionChain: vi.fn(),
+    getDocumentVersionByNumber: vi.fn(),
     buildPageMetadata: vi.fn(),
     getSite: vi.fn(),
   };
@@ -633,7 +635,10 @@ describe('Content Delivery API Routes', () => {
       vi.mocked(services.getMainBranch).mockResolvedValue(mockMainBranch);
       vi.mocked(services.getDocumentByPath).mockResolvedValue(mockDocument);
       vi.mocked(services.getLatestPublishedDocumentVersion).mockResolvedValue(mockDiffOnlyVersion);
-      vi.mocked(services.reconstructVersionSnapshot).mockResolvedValue(mockReconstructedSnapshot);
+      vi.mocked(services.replayVersionChain).mockResolvedValue({
+        snapshot: mockReconstructedSnapshot,
+        reachedVersion: 16,
+      });
       setupSettingsMocks(settingsService, 120);
 
       const request = new Request(
@@ -651,7 +656,7 @@ describe('Content Delivery API Routes', () => {
       expect(response.status).toBe(200);
       const body = await readJson(response);
       expect(body.data).toEqual(mockReconstructedSnapshot);
-      expect(services.reconstructVersionSnapshot).toHaveBeenCalledWith(
+      expect(services.replayVersionChain).toHaveBeenCalledWith(
         'doc-uuid-abc',
         'branch-main-uuid',
         16,
@@ -694,9 +699,14 @@ describe('Content Delivery API Routes', () => {
       vi.mocked(services.getMainBranch).mockResolvedValue(mockMainBranch);
       vi.mocked(services.getDocumentByPath).mockResolvedValue(mockDocument);
       vi.mocked(services.getLatestPublishedDocumentVersion).mockResolvedValue(mockDiffOnlyVersion);
-      vi.mocked(services.reconstructVersionSnapshot).mockRejectedValue(
-        new services.VersionReconstructionError('doc-uuid-abc', 'branch-main-uuid', 16, 15),
-      );
+      vi.mocked(services.replayVersionChain).mockResolvedValue({
+        snapshot: mockReconstructedSnapshot,
+        reachedVersion: 14,
+        brokenVersion: 15,
+      });
+      // No published version below the break, so degrading is not available.
+      vi.mocked(services.getLatestPublishedDocumentVersion).mockResolvedValueOnce(mockDiffOnlyVersion);
+      vi.mocked(services.getLatestPublishedDocumentVersion).mockResolvedValueOnce(null);
       setupSettingsMocks(settingsService, 120);
 
       const request = new Request(
@@ -727,6 +737,172 @@ describe('Content Delivery API Routes', () => {
       });
     });
 
+    it('serves the last published version instead of 500 when the chain breaks', async () => {
+      const { handleContentRoutes } = await import('../../src/routes/content-api');
+      const services = await import('../../src/services');
+      const settingsService = await import('../../src/services/site-settings-service');
+
+      const lastGoodVersion: DocumentVersion = {
+        ...mockDiffOnlyVersion,
+        id: 'version-uuid-last-good',
+        versionNumber: 14,
+        createdAt: '2026-03-07T10:00:00.000Z',
+      };
+
+      vi.mocked(services.getMainBranch).mockResolvedValue(mockMainBranch);
+      vi.mocked(services.getDocumentByPath).mockResolvedValue(mockDocument);
+      vi.mocked(services.getLatestPublishedDocumentVersion)
+        .mockResolvedValueOnce(mockDiffOnlyVersion)
+        .mockResolvedValueOnce(lastGoodVersion);
+      vi.mocked(services.hasTombstoneAfterVersion).mockResolvedValue(false);
+      vi.mocked(services.replayVersionChain).mockResolvedValue({
+        snapshot: mockReconstructedSnapshot,
+        reachedVersion: 14,
+        brokenVersion: 15,
+      });
+      setupSettingsMocks(settingsService, 120);
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-uuid-123/content/home',
+        { method: 'GET' },
+      );
+
+      const response = await handleContentRoutes(request, {
+        siteId: 'site-uuid-123',
+        documentPath: 'home',
+        action: 'content',
+        principal: mockServicePrincipal,
+      });
+
+      expect(response.status).toBe(200);
+      const body = await readJson(response);
+      expect(body.data).toEqual(mockReconstructedSnapshot);
+
+      // The payload describes the version actually served, not the one asked for.
+      expect(body.versionNumber).toBe(14);
+      expect(body.versionCreatedAt).toBe('2026-03-07T10:00:00.000Z');
+      expect(body.etag).toContain('version-uuid-last-good');
+      expect(response.headers.get('ETag')).toBe(body.etag);
+
+      // The fallback is drawn from the published set, not from the raw ordinal
+      // below the break, so an unpublished draft can never be served here.
+      expect(services.getLatestPublishedDocumentVersion).toHaveBeenLastCalledWith(
+        'doc-uuid-abc', 'branch-main-uuid', 14,
+      );
+
+      expect(logger.error).toHaveBeenCalledTimes(1);
+      const [msg, , fields] = logger.error.mock.calls[0] as [string, unknown, Record<string, unknown>];
+      expect(msg).toBe('version reconstruction degraded to an earlier version');
+      expect(fields).toMatchObject({
+        requested_version: 16,
+        broken_version: 15,
+        served_version: 14,
+        outcome: 'reconstruction_degraded',
+      });
+    });
+
+    it('validates a conditional request against the degraded version it served', async () => {
+      const { handleContentRoutes } = await import('../../src/routes/content-api');
+      const services = await import('../../src/services');
+      const settingsService = await import('../../src/services/site-settings-service');
+
+      const lastGoodVersion: DocumentVersion = {
+        ...mockDiffOnlyVersion,
+        id: 'version-uuid-last-good',
+        versionNumber: 14,
+      };
+
+      vi.mocked(services.getMainBranch).mockResolvedValue(mockMainBranch);
+      vi.mocked(services.getDocumentByPath).mockResolvedValue(mockDocument);
+      vi.mocked(services.getLatestPublishedDocumentVersion)
+        .mockResolvedValueOnce(mockDiffOnlyVersion)
+        .mockResolvedValueOnce(lastGoodVersion);
+      vi.mocked(services.hasTombstoneAfterVersion).mockResolvedValue(false);
+      vi.mocked(services.replayVersionChain).mockResolvedValue({
+        snapshot: mockReconstructedSnapshot,
+        reachedVersion: 14,
+        brokenVersion: 15,
+      });
+      setupSettingsMocks(settingsService, 120);
+
+      // The ETag a client learned from the degraded 200 above. Compared only
+      // against the requested version's ETag, this could never validate, and
+      // the full body would ship on every request until the data was repaired.
+      const degradedEtag =
+        `"v-version-uuid-last-good-s-${String(new Date(mockSite.updatedAt).getTime())}"`;
+      const request = new Request(
+        'https://api.example.com/api/sites/site-uuid-123/content/home',
+        { method: 'GET', headers: { 'If-None-Match': degradedEtag } },
+      );
+
+      const response = await handleContentRoutes(request, {
+        siteId: 'site-uuid-123',
+        documentPath: 'home',
+        action: 'content',
+        principal: mockServicePrincipal,
+      });
+
+      expect(response.status).toBe(304);
+      expect(response.headers.get('ETag')).toBe(degradedEtag);
+      expect(await response.text()).toBe('');
+    });
+
+    it('refuses to degrade past a deletion, and never reports a live page as deleted', async () => {
+      const { handleContentRoutes } = await import('../../src/routes/content-api');
+      const services = await import('../../src/services');
+      const settingsService = await import('../../src/services/site-settings-service');
+
+      // Delete-then-republish: v5 published, v8 tombstone, v9 recreated, v16
+      // published and live. Replay breaks at v15, so the only publish at or
+      // below v14 is v5 — which predates the deletion.
+      const prePublish: DocumentVersion = {
+        ...mockDiffOnlyVersion,
+        id: 'version-uuid-pre-deletion',
+        versionNumber: 5,
+      };
+
+      vi.mocked(services.getMainBranch).mockResolvedValue(mockMainBranch);
+      vi.mocked(services.getDocumentByPath).mockResolvedValue(mockDocument);
+      vi.mocked(services.getLatestPublishedDocumentVersion)
+        .mockResolvedValueOnce(mockDiffOnlyVersion)
+        .mockResolvedValueOnce(prePublish);
+      // Nothing postdates the live tip; the deletion postdates the candidate.
+      vi.mocked(services.hasTombstoneAfterVersion)
+        .mockResolvedValueOnce(false)
+        .mockResolvedValueOnce(true);
+      vi.mocked(services.replayVersionChain).mockResolvedValue({
+        snapshot: mockReconstructedSnapshot,
+        reachedVersion: 14,
+        brokenVersion: 15,
+      });
+      setupSettingsMocks(settingsService, 120);
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-uuid-123/content/home',
+        { method: 'GET' },
+      );
+
+      const response = await handleContentRoutes(request, {
+        siteId: 'site-uuid-123',
+        documentPath: 'home',
+        action: 'content',
+        principal: mockServicePrincipal,
+      });
+
+      // Refusal, not 404. The page is live — the tip is published and postdates
+      // the deletion — so answering "deleted" would be wrong, and cacheable.
+      expect(response.status).toBe(500);
+      const body = await readJson(response);
+      expect(body.error).toBe('Internal server error');
+      expect(body.error).not.toContain('deleted');
+      // Pre-deletion content must not reach the client either way.
+      expect(JSON.stringify(body)).not.toContain('Rebuilt from diffs');
+
+      const [msg, , fields] = logger.error.mock.calls[0] as [string, unknown, Record<string, unknown>];
+      expect(msg).toBe('version reconstruction failed');
+      expect(fields).toMatchObject({ outcome: 'reconstruction_failed', broken_version: 15 });
+    });
+
     it('should return null data when reconstruction fails for diff-only version', async () => {
       const { handleContentRoutes } = await import('../../src/routes/content-api');
       const services = await import('../../src/services');
@@ -735,7 +911,7 @@ describe('Content Delivery API Routes', () => {
       vi.mocked(services.getMainBranch).mockResolvedValue(mockMainBranch);
       vi.mocked(services.getDocumentByPath).mockResolvedValue(mockDocument);
       vi.mocked(services.getLatestPublishedDocumentVersion).mockResolvedValue(mockDiffOnlyVersion);
-      vi.mocked(services.reconstructVersionSnapshot).mockResolvedValue(null);
+      vi.mocked(services.replayVersionChain).mockResolvedValue(null);
       setupSettingsMocks(settingsService, 120);
 
       const request = new Request(
@@ -773,7 +949,10 @@ describe('Content Delivery API Routes', () => {
         version: featureDiffVersion,
         inherited: false,
       });
-      vi.mocked(services.reconstructVersionSnapshot).mockResolvedValue(mockReconstructedSnapshot);
+      vi.mocked(services.replayVersionChain).mockResolvedValue({
+        snapshot: mockReconstructedSnapshot,
+        reachedVersion: 5,
+      });
       setupSettingsMocks(settingsService, 5);
 
       const request = new Request(
@@ -791,7 +970,7 @@ describe('Content Delivery API Routes', () => {
       expect(response.status).toBe(200);
       const body = await readJson(response);
       expect(body.data).toEqual(mockReconstructedSnapshot);
-      expect(services.reconstructVersionSnapshot).toHaveBeenCalledWith(
+      expect(services.replayVersionChain).toHaveBeenCalledWith(
         'doc-uuid-abc',
         'branch-feature-uuid',
         5,

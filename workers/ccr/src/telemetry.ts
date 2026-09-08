@@ -86,12 +86,14 @@ export function ensureLogger(env: TelemetryEnv): P1Logger {
     dataClass: resolveDataClass(backendUrl(env)),
     sinks: buildSinks(env),
     // Version *numbers* (the allowlist's version_id is the row id): which
-    // version a content read asked for and which one broke reconstructing it.
+    // version a content read asked for, which one broke reconstructing it, and
+    // which one was served in its place when the read degraded.
     // from_path/to_path: a move's endpoints. doc_path holds one path, and a move
     // report is unreadable without both — no worse than doc_path for content.
     allowFields: [
       'requested_version',
       'broken_version',
+      'served_version',
       'from_path',
       'to_path',
       // Baseline gate: why a client's Yjs history was refused, and how far apart

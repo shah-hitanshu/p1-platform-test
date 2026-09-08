@@ -611,8 +611,16 @@ export class MergeExecutionError extends HttpError {
   }
 }
 
+/**
+ * The version exists and the request is well-formed; its stored history just
+ * cannot be replayed, and no retry will change that — hence 422 rather than a
+ * status that invites one.
+ *
+ * Read paths that name a specific version surface this verbatim; the public
+ * content route keeps its own generic 500 rather than echoing identifiers.
+ */
 export class VersionReconstructionError extends HttpError {
-  readonly status = 500;
+  readonly status = 422;
   constructor(
     public readonly documentId: string,
     public readonly branchId: string,

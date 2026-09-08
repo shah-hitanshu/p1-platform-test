@@ -197,6 +197,26 @@ function deepEqual(a: unknown, b: unknown): boolean {
   return aKeys.every(key => deepEqual(aObj[key], bObj[key]));
 }
 
+/**
+ * Compaction leaves every Nth version holding its full snapshot, so a patch
+ * chain never grows without bound.
+ *
+ * Without this, the only permanent baseline below an unpinned version is v1:
+ * replay cost rises with the document's whole edit history, and one damaged row
+ * anywhere below the target makes every version above it unreconstructable.
+ * Retaining the snapshot that compaction would otherwise discard caps replay at
+ * 24 patches and confines a break to the 24 versions above it.
+ *
+ * Retention rather than a fresh write: the row already holds the snapshot at the
+ * moment compaction runs, so keeping it costs nothing and adds no row.
+ */
+const REBASELINE_INTERVAL = 25;
+
+/** Whether a version is a retained baseline that compaction must not strip. */
+function isRebaselineVersion(versionNumber: number): boolean {
+  return versionNumber % REBASELINE_INTERVAL === 0;
+}
+
 // =============================================================================
 // Service Functions
 // =============================================================================
@@ -326,6 +346,7 @@ export async function createDocumentVersion(
     // predates this statement and no race exists.
     const shouldNullPrevious = latestVersion != null
       && latestVersion.versionNumber > 1
+      && !isRebaselineVersion(latestVersion.versionNumber)
       && latestVersion.patch != null
       && forwardPatch != null;
 
@@ -523,7 +544,16 @@ export async function hasTombstoneAfterVersion(
 export async function getLatestPublishedDocumentVersion(
   documentId: string,
   branchId: string,
+  /**
+   * Highest version number to consider. Lets a caller ask for the publish that
+   * preceded a given point without leaving the set this route may serve.
+   */
+  maxVersionNumber?: number,
 ): Promise<DocumentVersion | null> {
+  const params: unknown[] = [documentId, branchId];
+  const ceiling = maxVersionNumber !== undefined
+    ? `AND dv.version_number <= $${String(params.push(maxVersionNumber))}`
+    : '';
   const result = await query<DocumentVersionRow>(
     `SELECT dv.*,
        dv.source_branch_id, dv.source_version_id, dv.published_to_version_id,
@@ -536,9 +566,10 @@ export async function getLatestPublishedDocumentVersion(
        AND dv.branch_id = $2
        AND cp.branch_id = $2
        AND cp.checkpoint_type = 'publish'
+       ${ceiling}
      ORDER BY dv.version_number DESC
      LIMIT 1`,
-    [documentId, branchId],
+    params,
   );
 
   if (result.rows.length === 0) {
@@ -674,12 +705,59 @@ export async function reconstructVersionSnapshot(
   branchId: string,
   versionNumber: number,
 ): Promise<Record<string, unknown> | null> {
+  const replay = await replayVersionChain(documentId, branchId, versionNumber);
+  if (replay === null) return null;
+  if (replay.brokenVersion !== undefined) {
+    throw new VersionReconstructionError(
+      documentId,
+      branchId,
+      versionNumber,
+      replay.brokenVersion,
+      replay.brokenReason,
+    );
+  }
+  return replay.snapshot;
+}
+
+/**
+ * How far a patch chain replayed, and what stopped it.
+ *
+ * `snapshot` is always the content of `reachedVersion`. When replay ran to
+ * completion that is the version asked for; when it stopped short it is the
+ * version immediately below `brokenVersion` — already rebuilt as a by-product
+ * of getting that far, so a caller degrading to it needs no second pass.
+ */
+export interface VersionReplay {
+  snapshot: Record<string, unknown>;
+  reachedVersion: number;
+  brokenVersion?: number;
+  brokenReason?: string;
+}
+
+/**
+ * Replays a version's patch chain from the nearest baseline, stopping at the
+ * first row it cannot apply instead of throwing.
+ *
+ * Reporting the stopping point rather than raising lets a caller decide whether
+ * serving older content is acceptable, and hands it that content already built.
+ * `reconstructVersionSnapshot` is the throwing wrapper for callers that need
+ * the exact version or nothing.
+ *
+ * Returns null when the version or its baseline does not exist.
+ */
+export async function replayVersionChain(
+  documentId: string,
+  branchId: string,
+  versionNumber: number,
+): Promise<VersionReplay | null> {
   // 1. Get the requested version
   const version = await getDocumentVersionByNumber(documentId, branchId, versionNumber);
   if (!version) return null;
 
   // If it's a baseline (has snapshot), return directly
-  if (version.snapshot) return version.snapshot;
+  if (version.snapshot) {
+    return { snapshot: version.snapshot, reachedVersion: versionNumber };
+  }
 
   // 2. Find nearest baseline at or before this version
   const baselineResult = await query<DocumentVersionRow>(
@@ -705,17 +783,17 @@ export async function reconstructVersionSnapshot(
   let snapshot: Record<string, unknown> = typeof baseline.snapshot === 'string'
     ? JSON.parse(baseline.snapshot) as Record<string, unknown>
     : structuredClone(baseline.snapshot);
+  let reachedVersion = baseline.version_number;
   for (const diffRow of diffsResult.rows) {
     // Every row above the baseline has a null snapshot by construction, so one
-    // without a patch cannot be rebuilt. Skipping it would return the content
-    // of an older version under the requested version's number.
+    // without a patch cannot be rebuilt. Continuing past it would return the
+    // content of an older version under the requested version's number.
     if (!diffRow.patch) {
-      throw new VersionReconstructionError(
-        documentId,
-        branchId,
-        versionNumber,
-        diffRow.version_number,
-      );
+      return {
+        snapshot,
+        reachedVersion,
+        brokenVersion: diffRow.version_number,
+      };
     }
     const ops = typeof diffRow.patch === 'string'
       ? JSON.parse(diffRow.patch) as import('fast-json-patch').Operation[]
@@ -723,24 +801,22 @@ export async function reconstructVersionSnapshot(
     try {
       const patchResult = applyPatch(snapshot, ops, false, false);
       snapshot = patchResult.newDocument;
-    } catch (applyError) {
+      reachedVersion = diffRow.version_number;
+    } catch {
       // A stored patch that no longer applies to its predecessor is the same
       // class of chain damage as a missing one. With validation off,
-      // fast-json-patch surfaces it as a raw TypeError — rethrow it typed,
-      // with the broken version named. [PCC-3652]
-      const error = new VersionReconstructionError(
-        documentId,
-        branchId,
-        versionNumber,
-        diffRow.version_number,
-        'holds a patch that does not apply to its predecessor',
-      );
-      error.cause = applyError;
-      throw error;
+      // fast-json-patch surfaces it as a raw TypeError, which says nothing
+      // about which row is at fault.
+      return {
+        snapshot,
+        reachedVersion,
+        brokenVersion: diffRow.version_number,
+        brokenReason: 'holds a patch that does not apply to its predecessor',
+      };
     }
   }
 
-  return snapshot;
+  return { snapshot, reachedVersion };
 }
 
 // =============================================================================
@@ -1035,7 +1111,9 @@ export async function batchSyncToPostgres(
           // own to rebuild from. Pinned or publish-checkpointed rows are never
           // nulled [PCC-3652] — see createDocumentVersion's CTE for why both
           // tests are needed and why the checkpoint filter is publish-only.
-          const shouldNullPrev = prevRow.version_number > 1 && prevRow.patch != null;
+          const shouldNullPrev = prevRow.version_number > 1
+            && !isRebaselineVersion(prevRow.version_number)
+            && prevRow.patch != null;
           await query(
             `WITH update_new AS (
               UPDATE app.document_versions SET patch = $1 WHERE id = $2

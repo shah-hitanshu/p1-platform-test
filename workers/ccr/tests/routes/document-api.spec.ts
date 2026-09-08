@@ -2747,6 +2747,115 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
         expect(services.reconstructVersionSnapshot).toHaveBeenCalledWith('doc-1', 'branch-1', 5);
       });
 
+      it('returns 422 naming the broken version when the chain cannot be replayed', async () => {
+        const { handleDocumentRoutes } = await import(
+          '../../src/routes/document-api'
+        );
+        const services = await import('../../src/services');
+
+        vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
+          id: 'branch-1',
+          siteId: 'site-1',
+          name: 'main',
+          status: 'active',
+          isMain: true,
+          createdById: 'user-1',
+          createdByType: 'user',
+          createdAt: '2026-01-24T10:00:00.000Z',
+          updatedAt: '2026-01-24T10:00:00.000Z',
+        }));
+        vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(true);
+        vi.mocked(services.getDocumentVersion).mockResolvedValueOnce({
+          id: 'version-diff-only',
+          documentId: 'doc-1',
+          branchId: 'branch-1',
+          versionNumber: 5,
+          source: 'edit',
+          createdById: 'user-1',
+          createdByType: 'user',
+          createdAt: '2026-01-24T12:00:00.000Z',
+        });
+        vi.mocked(services.reconstructVersionSnapshot).mockRejectedValueOnce(
+          new services.VersionReconstructionError('doc-1', 'branch-1', 5, 3),
+        );
+
+        const request = new Request(
+          'https://api.example.com/api/sites/site-1/branches/branch-1/documents/doc-1/versions/version-diff-only',
+          { method: 'GET' },
+        );
+
+        const response = await handleDocumentRoutes(request, {
+          siteId: 'site-1',
+          branchId: 'branch-1',
+          documentId: 'doc-1',
+          versionsPath: true,
+          versionAction: 'by-id',
+          versionId: 'version-diff-only',
+          principal: makePrincipal({ id: 'user-1', type: 'user' }),
+        });
+
+        // Not a 500: the version exists, its history just cannot be replayed,
+        // and no retry will change that.
+        expect(response.status).toBe(422);
+        const body = await readJson(response);
+        expect(body.error).toContain('version 3');
+        // The caller asked for one version, so it is told about the break
+        // rather than handed a neighbouring version's content.
+        expect(body.snapshot).toBeUndefined();
+      });
+
+      it('still returns 500 when reconstruction fails for an unexpected reason', async () => {
+        const { handleDocumentRoutes } = await import(
+          '../../src/routes/document-api'
+        );
+        const services = await import('../../src/services');
+
+        vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
+          id: 'branch-1',
+          siteId: 'site-1',
+          name: 'main',
+          status: 'active',
+          isMain: true,
+          createdById: 'user-1',
+          createdByType: 'user',
+          createdAt: '2026-01-24T10:00:00.000Z',
+          updatedAt: '2026-01-24T10:00:00.000Z',
+        }));
+        vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(true);
+        vi.mocked(services.getDocumentVersion).mockResolvedValueOnce({
+          id: 'version-diff-only',
+          documentId: 'doc-1',
+          branchId: 'branch-1',
+          versionNumber: 5,
+          source: 'edit',
+          createdById: 'user-1',
+          createdByType: 'user',
+          createdAt: '2026-01-24T12:00:00.000Z',
+        });
+        vi.mocked(services.reconstructVersionSnapshot).mockRejectedValueOnce(
+          new Error('connection reset'),
+        );
+
+        const request = new Request(
+          'https://api.example.com/api/sites/site-1/branches/branch-1/documents/doc-1/versions/version-diff-only',
+          { method: 'GET' },
+        );
+
+        const response = await handleDocumentRoutes(request, {
+          siteId: 'site-1',
+          branchId: 'branch-1',
+          documentId: 'doc-1',
+          versionsPath: true,
+          versionAction: 'by-id',
+          versionId: 'version-diff-only',
+          principal: makePrincipal({ id: 'user-1', type: 'user' }),
+        });
+
+        expect(response.status).toBe(500);
+        const body = await readJson(response);
+        expect(body.error).toBe('Failed to reconstruct version snapshot');
+      });
+
       it('should not call reconstructVersionSnapshot when version has a snapshot', async () => {
         const { handleDocumentRoutes } = await import(
           '../../src/routes/document-api'
@@ -3129,6 +3238,42 @@ describe('Phase 7.1.1b: Document CRUD API Routes', () => {
       });
 
       expect(response.status).toBe(404);
+    });
+
+    it('returns 422 rather than 500 when the version to restore cannot be rebuilt', async () => {
+      const { handleDocumentRoutes } = await import('../../src/routes/document-api');
+      const services = await import('../../src/services');
+
+      vi.mocked(services.getBranch).mockResolvedValueOnce(makeBranch({
+        id: 'branch-1', siteId: 'site-1', name: 'main', status: 'active',
+        isMain: true, createdById: 'user-1', createdByType: 'user',
+        createdAt: '2026-01-24T10:00:00.000Z', updatedAt: '2026-01-24T10:00:00.000Z',
+      }));
+      vi.mocked(services.documentExistsOnBranch).mockResolvedValue(true);
+      vi.mocked(services.restoreDocumentVersion).mockRejectedValue(
+        new services.VersionReconstructionError('doc-1', 'branch-1', 9, 7),
+      );
+
+      const request = new Request(
+        'https://api.example.com/api/sites/site-1/branches/branch-1/documents/doc-1/versions/old-version-uuid/restore',
+        { method: 'POST' },
+      );
+
+      const response = await handleDocumentRoutes(request, {
+        siteId: 'site-1',
+        branchId: 'branch-1',
+        documentId: 'doc-1',
+        versionId: 'old-version-uuid',
+        versionsPath: true,
+        versionAction: 'restore',
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
+      });
+
+      // Restoring a version the user did not choose would be worse than
+      // refusing, so this reports the break instead of substituting one.
+      expect(response.status).toBe(422);
+      const body = await readJson(response);
+      expect(body.error).toContain('version 7');
     });
 
     it('should return 405 for GET requests to the restore endpoint', async () => {
