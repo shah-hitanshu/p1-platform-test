@@ -1,10 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
-vi.mock("../lib/remote-datasource-fetchers", () => ({
-  REMOTE_DATASOURCE_FETCHERS: {},
-}));
-
-vi.mock("@pantheon-systems/p1-next-sdk/server", () => ({
+vi.mock("../published-page", () => ({
   loadRouteTemplateKeys: vi.fn().mockResolvedValue([]),
 }));
 
@@ -16,7 +12,7 @@ vi.mock("@pantheon-systems/puck-css/server", () => ({
   ),
 }));
 
-import { resolvePageMetadata } from "../lib/page-seo";
+import { resolvePageMetadata } from "../resolve-page-metadata";
 
 /**
  * `root.props._meta` reaches <head> through resolvePageMetadata.

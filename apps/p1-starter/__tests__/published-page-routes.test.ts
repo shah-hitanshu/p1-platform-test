@@ -32,7 +32,6 @@ vi.mock("@pantheon-systems/p1-next-sdk/server", () => ({
 vi.mock("../lib/remote-datasource-fetchers", () => ({
   REMOTE_DATASOURCE_FETCHERS: [],
 }));
-vi.mock("../lib/page-seo", () => ({ resolvePageMetadata: vi.fn() }));
 
 vi.mock("../app/[...puckPath]/client", () => ({ Client: () => null }));
 vi.mock("../components/puck/welcome-block-render", () => ({

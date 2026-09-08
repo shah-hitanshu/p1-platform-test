@@ -1,24 +1,14 @@
 import type { Metadata } from "next";
-import { OG_TYPES, TWITTER_CARDS } from "./seo-metadata.consts";
+import {
+  OG_TYPES,
+  TWITTER_CARDS,
+  type PageMetaFields,
+} from "@pantheon-systems/puck-css/seo";
+
+export type { PageMetaFields };
 
 /**
- * Authored page metadata, stored at `root.props._meta`. Empty means inherit: a
- * blank field resolves from the page's own title/description at render time
- * rather than having been copied when the page was created.
- */
-export interface PageMetaFields {
-  ogTitle?: string;
-  ogDescription?: string;
-  ogType?: string;
-  ogImage?: string;
-  ogLocale?: string;
-  twitterCard?: string;
-  twitterTitle?: string;
-  twitterImage?: string;
-}
-
-/**
- * Site-wide fallbacks from the backend's SeoMetadata payload, for the fields a
+ * Site-wide fallbacks from the site's SeoMetadata payload, for the fields a
  * site can sensibly default. They resolve below the page's own values.
  */
 export interface SiteMetaDefaults {
@@ -27,9 +17,9 @@ export interface SiteMetaDefaults {
 }
 
 /**
- * Head-side metadata inputs. Title, description, and canonical are derived
- * client-side (root props, request path); siteName and the site defaults arrive
- * from the backend's SeoMetadata payload.
+ * Head-side metadata inputs. Title, description, and canonical are derived from
+ * the page (root props, request path); siteName and the site defaults arrive
+ * from the site's SeoMetadata payload.
  */
 export interface PageHeadMetadata {
   title?: string;
@@ -62,7 +52,7 @@ function compact<T extends object>(value: T): T {
 }
 
 /**
- * Maps head metadata to the page's <head> Metadata. Next replaces (not
+ * Maps head metadata to the page's `<head>` Metadata. Next replaces (not
  * deep-merges) a page's openGraph over the layout's, so og:type and the env
  * og:site_name fallback must be declared here. A relative canonical is emitted
  * only when NEXT_PUBLIC_SITE_URL is configured to resolve it — otherwise Next

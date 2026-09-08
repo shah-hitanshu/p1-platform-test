@@ -62,3 +62,20 @@ puck.config.tsx                 # Puck editor configuration — block registry &
 - **Add blocks** — Create a new component in `components/puck/`, then register it in `puck.config.tsx`
 - **Add datasources** — Add a `RemoteDatasourceDefinition` to `REMOTE_DATASOURCE_REGISTRY` in `lib/remote-datasources.ts`, with its fetcher in `lib/remote-datasource-fetchers.ts`, to make external data available to block fields via `{{ datasource.field }}` expressions
 - **Change styling** — The project uses Tailwind CSS v4; edit `app/styles.css` or individual block components
+- **Add page metadata fields** — The Social & sharing group comes from `createSeoRootFields()` in `components/puck/root.tsx`, and `<head>` tags are built by the SDK's `resolvePageMetadata`. To add a field of your own, merge it onto the group and emit its value with `transform`, which receives the authored values with `{{ }}` already resolved:
+
+  ```tsx
+  // components/puck/root.tsx
+  const seo = createSeoRootFields(rootProps);
+  seo._meta.objectFields.keywords = { type: "text", label: "keywords" };
+
+  // app/published-pages.tsx
+  resolveMetadata: (args) =>
+    resolvePageMetadata({
+      ...args,
+      fetchers: REMOTE_DATASOURCE_FETCHERS,
+      transform: (metadata, { meta }) => ({ ...metadata, keywords: meta.keywords }),
+    }),
+  ```
+
+  `title`, `description` and the render wrapper in `root.tsx` are yours to change outright. Replacing `resolveMetadata` entirely replaces the mapping, so a site that wants nothing to do with the shared one can write its own.

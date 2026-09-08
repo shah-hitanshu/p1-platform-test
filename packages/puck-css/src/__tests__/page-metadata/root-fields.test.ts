@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { puckRoot } from "../components/puck/root";
+import { createSeoRootFields } from "../../data/page-metadata";
 
 /**
- * The fixed page-metadata field set on the Puck root config.
+ * The fixed page-metadata field set for a Puck root config.
  *
  * Values live at `root.props._meta` in the page snapshot — branch-scoped,
  * versioned and autosaved for free. The field set itself is fixed: no
- * admin-defined fields, no template or site tiers. `resolveFields` varies only
- * the placeholders (see puck-root-guidance), never which fields exist.
+ * admin-defined fields, no template or site tiers. Passing root props varies
+ * only the placeholders (see root-field-guidance), never which fields exist.
  *
  * Fields are declared flat inside one `_meta` object field. Grouping them
  * (SEO / Open Graph / Twitter) would mean nesting object fields, which deepens
@@ -20,10 +20,10 @@ type ObjectField = {
   objectFields: Record<string, { type: string; label?: string }>;
 };
 
-const metaField = (puckRoot.fields as Record<string, unknown>)._meta as ObjectField;
+const metaField = createSeoRootFields()._meta as ObjectField;
 
-// ogType and twitterCard are selects: their vocabulary is fixed by what Next
-// accepts for the tag. See puck-root-selects.
+// ogType and twitterCard are selects: their vocabulary is fixed by what the
+// head tags accept. See root-field-selects.
 const EXPECTED_FIELDS: Record<string, string> = {
   ogTitle: "text",
   ogDescription: "textarea",
@@ -35,7 +35,7 @@ const EXPECTED_FIELDS: Record<string, string> = {
   twitterImage: "text",
 };
 
-describe("puckRoot._meta field set", () => {
+describe("createSeoRootFields — _meta field set", () => {
   it("is a single object field", () => {
     expect(metaField).toBeDefined();
     expect(metaField.type).toBe("object");
@@ -76,7 +76,7 @@ describe("puckRoot._meta field set", () => {
   });
 
   it("names the group for what it holds, matching the prototype", () => {
-    expect((metaField as { label?: string }).label).toBe("Social & sharing");
+    expect(metaField.label).toBe("Social & sharing");
   });
 
   it("omits ogUrl — the canonical URL is derived from the request", () => {
@@ -87,16 +87,7 @@ describe("puckRoot._meta field set", () => {
     expect(metaField.objectFields.twitterCard).toBeDefined();
   });
 
-  it("keeps the existing title and description fields", () => {
-    const fields = puckRoot.fields as Record<string, { type: string }>;
-    expect(fields.title?.type).toBe("text");
-    expect(fields.description?.type).toBe("textarea");
-  });
-
-  it("adds no _meta default, so no page is seeded with boilerplate metadata", () => {
-    // Empty-means-inherit (Q1): an unset field falls back at render time. A
-    // default here would freeze a value into every new page's snapshot, and
-    // would need adding to the DEFAULT_EDITOR_TITLE-style boilerplate filter.
-    expect(puckRoot.defaultProps).not.toHaveProperty("_meta");
+  it("contributes only _meta, so a root config keeps its own fields", () => {
+    expect(Object.keys(createSeoRootFields())).toEqual(["_meta"]);
   });
 });

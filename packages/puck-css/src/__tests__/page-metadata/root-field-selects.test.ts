@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { puckRoot } from "../components/puck/root";
-import { OG_TYPES, TWITTER_CARDS } from "../lib/seo-metadata.consts";
+import {
+  createSeoRootFields,
+  OG_TYPES,
+  TWITTER_CARDS,
+} from "../../data/page-metadata";
 
 /**
  * The two metadata fields with a fixed vocabulary are dropdowns.
  *
- * Their options come from the same lists `buildPageMetadata` validates against,
- * so an option cannot drift from what actually reaches the tag.
+ * Their options come from the same lists the head-metadata renderer validates
+ * against, so an option cannot drift from what actually reaches the tag.
  *
  * The default option's value is empty rather than the default itself. Storing
  * `website` on every page would freeze it there, and a page holding an explicit
@@ -20,14 +23,10 @@ type Field = {
 };
 type ObjectField = { type: string; objectFields: Record<string, Field> };
 
-const staticMeta = (puckRoot.fields as Record<string, unknown>)._meta as ObjectField;
+const staticMeta = createSeoRootFields()._meta as ObjectField;
 
-const resolve = (props: Record<string, unknown>) => {
-  const resolveFields = puckRoot.resolveFields as (
-    data: { props: Record<string, unknown> },
-  ) => Record<string, unknown>;
-  return (resolveFields({ props })._meta as ObjectField).objectFields;
-};
+const resolve = (props: Record<string, unknown>) =>
+  (createSeoRootFields(props)._meta as ObjectField).objectFields;
 
 const values = (field?: Field) => field?.options?.map((option) => option.value) ?? [];
 
@@ -65,7 +64,7 @@ describe("fixed-vocabulary metadata fields", () => {
   });
 
   it("names the default card style, which depends on whether there is an image", () => {
-    // buildPageMetadata picks summary_large_image when an image is present and
+    // The renderer picks summary_large_image when an image is present and
     // summary when it is not, so the label has to follow the image field.
     const withImage = resolve({ _meta: { ogImage: "https://cdn.example/card.png" } });
     const without = resolve({});

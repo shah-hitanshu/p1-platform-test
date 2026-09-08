@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { buildPageMetadata } from "../lib/seo-metadata";
+import { buildPageMetadata } from "../page-metadata";
 
 /**
  * Authored page metadata (`root.props._meta`) rendered into <head>.

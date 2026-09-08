@@ -15,3 +15,15 @@ export {
   type LoadPublishedPageOptions,
   type PublishedPageResult,
 } from "./published-page";
+export {
+  buildPageMetadata,
+  type PageHeadMetadata,
+  type PageMetaFields,
+  type SiteMetaDefaults,
+} from "./page-metadata";
+export {
+  resolvePageMetadata,
+  type ResolvePageMetadataOptions,
+  type PageMetadataContext,
+  type AuthoredPageMeta,
+} from "./resolve-page-metadata";

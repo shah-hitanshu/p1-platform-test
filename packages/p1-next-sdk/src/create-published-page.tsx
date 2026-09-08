@@ -53,6 +53,7 @@ import {
   loadRouteTemplateKeys,
   type PublishedPageResult,
 } from "./published-page";
+import { resolvePageMetadata } from "./resolve-page-metadata";
 
 /**
  * Describes the rendered document to the render client, which uses it for the
@@ -93,6 +94,11 @@ export type CreatePublishedPageConfig = {
   /**
    * Turns published page data into <head> metadata. Called only for a page that
    * actually resolved; the miss and outage titles come from `titles`.
+   *
+   * Defaults to the SDK's own resolver, which maps the stored root props
+   * (`_seo`, `_meta`) onto the head tags using `fetchers` for `{{ }}`
+   * resolution. Pass one to replace that mapping — to add tags on top of it,
+   * call `resolvePageMetadata` with its `transform` option.
    */
   resolveMetadata?: (args: {
     pageData: Data;
@@ -116,7 +122,8 @@ export function createPublishedPage(config: CreatePublishedPageConfig) {
     Unavailable,
     Fallback,
     fetchers = [],
-    resolveMetadata,
+    resolveMetadata = ({ pageData, path }) =>
+      resolvePageMetadata({ pageData, path, fetchers }),
     titles,
     internalPathPrefixes,
   } = config;
@@ -169,9 +176,7 @@ export function createPublishedPage(config: CreatePublishedPageConfig) {
     if (result.status === "unavailable") {
       return { title: titles?.unavailable ?? "Temporarily unavailable" };
     }
-    return resolveMetadata
-      ? resolveMetadata({ pageData: result.data, path })
-      : {};
+    return resolveMetadata({ pageData: result.data, path });
   }
 
   /**

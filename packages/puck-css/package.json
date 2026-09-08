@@ -28,6 +28,9 @@
       ],
       "fields": [
         "./dist/data/fields.d.ts"
+      ],
+      "seo": [
+        "./dist/data/page-metadata/index.d.ts"
       ]
     }
   },
@@ -74,6 +77,11 @@
       "types": "./dist/pds/index.d.ts"
     },
     "./pds/styles.css": "./src/pds/theme/PuckEditorTheme.css",
+    "./seo": {
+      "types": "./dist/data/page-metadata/index.d.ts",
+      "import": "./dist/data/page-metadata/index.js",
+      "default": "./dist/data/page-metadata/index.js"
+    },
     "./fields": {
       "import": "./dist/data/fields.js",
       "default": "./dist/data/fields.js",

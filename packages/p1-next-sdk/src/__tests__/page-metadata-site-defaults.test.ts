@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildPageMetadata } from "../lib/seo-metadata";
+import { buildPageMetadata } from "../page-metadata";
 
 /**
  * Site-level social defaults, delivered on the content payload alongside

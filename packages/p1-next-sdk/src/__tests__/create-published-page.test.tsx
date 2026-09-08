@@ -26,6 +26,7 @@ vi.mock("../published-page", () => ({ loadPublishedPage, loadRouteTemplateKeys }
 vi.mock("../css-query-fetchers", () => ({ createCssQueryFetchers }));
 vi.mock("next/navigation", () => ({ notFound }));
 vi.mock("@pantheon-systems/puck-css/server", () => ({
+  resolveStringTemplates: vi.fn(),
   loadRemoteDatasourceContext,
   resolveDataTemplates,
   extractReferencedDatasourceIds: vi.fn().mockReturnValue(["ds-1"]),
@@ -136,6 +137,18 @@ describe("createPublishedPage", () => {
       loadPublishedPage.mockResolvedValue({ status: "ok", data: pageData });
       expect(await build().generateMetadata(params("contact"))).toEqual({
         title: "Page /contact",
+      });
+    });
+
+    // Metadata behaviour is the SDK's, so a scaffold picks up changes to it on a
+    // package upgrade rather than carrying its own copy of the mapping.
+    it("maps the stored root props itself when no resolver is given", async () => {
+      loadPublishedPage.mockResolvedValue({ status: "ok", data: pageData });
+      const published = createPublishedPage({ Client, Unavailable, Fallback });
+
+      expect(await published.generateMetadata(params("contact"))).toMatchObject({
+        title: "Contact",
+        openGraph: { title: "Contact" },
       });
     });
 

@@ -1,10 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
-vi.mock("../lib/remote-datasource-fetchers", () => ({
-  REMOTE_DATASOURCE_FETCHERS: {},
-}));
-
-vi.mock("@pantheon-systems/p1-next-sdk/server", () => ({
+vi.mock("../published-page", () => ({
   loadRouteTemplateKeys: vi.fn().mockResolvedValue([]),
 }));
 
@@ -19,7 +15,7 @@ vi.mock("@pantheon-systems/puck-css/server", () => ({
 }));
 
 import * as puckServer from "@pantheon-systems/puck-css/server";
-import { resolvePageMetadata } from "../lib/page-seo";
+import { resolvePageMetadata } from "../resolve-page-metadata";
 
 /**
  * `{{ }}` interpolation on the metadata fields.
@@ -81,6 +77,26 @@ describe("resolvePageMetadata — {{ }} in _meta", () => {
 
     expect(og(meta).images).toBe("https://cdn.example/widgets.png");
     expect(tw(meta).images).toBe("https://cdn.example/widgets-x.png");
+  });
+
+  it("resolves a field the site added to the group", async () => {
+    // The stored shape is extensible: a site can add its own field, and it
+    // templates like the built-in free-text ones. The resolved value reaches
+    // <head> through transform.
+    let resolved: Record<string, unknown> | undefined;
+    await resolvePageMetadata({
+      pageData: pageWithRootProps({
+        title: "Q3",
+        _meta: { keywords: "{{ slug }}, launch" },
+      }),
+      path: "/q3",
+      transform: (metadata, context) => {
+        resolved = context.meta;
+        return metadata;
+      },
+    });
+
+    expect(resolved?.keywords).toBe("widgets, launch");
   });
 
   it("leaves the fixed-vocabulary fields alone", async () => {

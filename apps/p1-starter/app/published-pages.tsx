@@ -9,7 +9,6 @@
 import { createPublishedPage } from "@pantheon-systems/p1-next-sdk/server";
 import { REMOTE_DATASOURCE_FETCHERS } from "../lib/remote-datasource-fetchers";
 import { ContentUnavailable } from "../components/content-unavailable";
-import { resolvePageMetadata } from "../lib/page-seo";
 import { Client } from "./[...puckPath]/client";
 import { WelcomeBlock } from "./welcome-block";
 
@@ -18,6 +17,5 @@ export const published = createPublishedPage({
   Unavailable: ContentUnavailable,
   Fallback: WelcomeBlock,
   fetchers: REMOTE_DATASOURCE_FETCHERS,
-  resolveMetadata: resolvePageMetadata,
   titles: { home: "P1 Starter Kit" },
 });
