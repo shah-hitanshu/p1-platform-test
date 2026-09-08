@@ -53,6 +53,7 @@ vi.mock('../../src/services', async () => {
 
 vi.mock('../../src/auth/authorization', () => ({
   assertPermission: vi.fn(),
+  assertSiteBinding: vi.fn(),
   getEffectiveRole: vi.fn(),
   AuthorizationError: class AuthorizationError extends Error {
     override name = 'AuthorizationError';

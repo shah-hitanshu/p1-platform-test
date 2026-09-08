@@ -70,7 +70,7 @@ import {
 import { resolveBranchRef } from '../utils/branch-ref';
 import { buildDocumentSkeletonFromTemplate } from '../services/document-skeleton';
 import { applyTitleToSnapshot } from '../services/document-title';
-import { assertPermission, getEffectiveRole } from '../auth/authorization';
+import { assertPermission, assertSiteBinding, getEffectiveRole } from '../auth/authorization';
 import { templateMetadata } from './template-api';
 import { validatePagination } from './validation';
 import { purgeContentCache, purgeDeletedDocument } from '../cache/purge';
@@ -972,6 +972,20 @@ async function handleDocumentVersionRoutes(
 ): Promise<Response> {
   const method = request.method;
 
+  // Authorization first. The existence and copy-on-write lookups below are
+  // three queries a caller who is going to be refused should not pay for, and
+  // whose answer leaks whether a document is on a branch that caller cannot
+  // see: a 403 for a document that is there and a 404 for one that isn't told
+  // them apart. Both are now a 403, which is also what every sibling handler
+  // in this file does. The branch itself is still resolved by the caller,
+  // before this, because that is what makes a branch outside the site a 404
+  // rather than a 403.
+  if (method === 'GET') {
+    await assertPermission(context.principal, context.siteId, branchId, 'canView');
+  } else if (method === 'POST') {
+    await assertPermission(context.principal, context.siteId, branchId, 'canEditDocuments');
+  }
+
   // Check if document exists on branch (local versions)
   const exists = await documentExistsOnBranch(documentId, branchId);
   if (!exists) {
@@ -992,13 +1006,6 @@ async function handleDocumentVersionRoutes(
     } else {
       return errorResponse('Document not found on this branch', 404);
     }
-  }
-
-  // Authorization for version routes
-  if (method === 'GET') {
-    await assertPermission(context.principal, context.siteId, branchId, 'canView');
-  } else if (method === 'POST') {
-    await assertPermission(context.principal, context.siteId, branchId, 'canEditDocuments');
   }
 
   // GET /versions/latest
@@ -1280,6 +1287,12 @@ export async function handleDocumentRoutes(
   const method = request.method;
 
   try {
+    // This gate and the scope guard below it both settle from the principal
+    // and the route parameters alone, so both run ahead of the branch lookup
+    // that opens every path from here: a request refused on site binding or
+    // scope costs no query at all.
+    assertSiteBinding(context.principal, context.siteId);
+
     // This gate does not check whether some OTHER scope on the same token
     // independently authorizes the request (contrast branch-api.ts's
     // equivalent guard, which does via isAllowedByAnotherScope) — safe only

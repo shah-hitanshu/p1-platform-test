@@ -379,6 +379,37 @@ export async function hasPermission(
 }
 
 /**
+ * The half of authorization that needs no database state: whether this
+ * principal is entitled to ask about this site at all.
+ *
+ * Split out so a handler can refuse a request before spending a branch or
+ * document lookup on it. A service token is bound to one site and the route
+ * names the site being asked about, so that comparison is settled from the
+ * principal alone. Nothing is deniable this cheaply for a user or an agent:
+ * their role lives in the database, and the JWT-embedded role is only a
+ * fallback the database can override upward — those callers pass through here
+ * and are decided by assertPermission.
+ *
+ * index.ts checks the same binding on the way in. Route handlers are exported
+ * and reachable without it, so this re-checks rather than assumes, the same way
+ * assertPermission always has.
+ *
+ * @throws AuthorizationError if the principal is bound to a different site
+ */
+export function assertSiteBinding(
+  principal: AuthenticatedPrincipal,
+  siteId: string,
+): void {
+  if (principal.type === 'service' && !hasServicePermission(principal, siteId)) {
+    throw new AuthorizationError(
+      `Service token is not bound to site ${siteId}.`,
+      'canView',
+      'NO_ACCESS',
+    );
+  }
+}
+
+/**
  * Asserts that a principal has a specific permission on a branch.
  * Throws AuthorizationError if the permission is not granted.
  *
@@ -411,13 +442,7 @@ export async function assertPermission(
   masClient?: MASClient,
 ): Promise<void> {
   if (principal.type === 'service') {
-    if (!hasServicePermission(principal, siteId)) {
-      throw new AuthorizationError(
-        `Service token is not bound to site ${siteId}.`,
-        'canView',
-        'NO_ACCESS',
-      );
-    }
+    assertSiteBinding(principal, siteId);
     if (!(await branchBelongsToSite(branchId, siteId))) {
       throw new AuthorizationError(
         `Branch ${branchId} does not belong to site ${siteId}.`,
