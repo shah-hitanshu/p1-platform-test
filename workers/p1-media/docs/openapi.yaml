@@ -22,7 +22,9 @@ info:
     caches forever; nothing is ever re-uploaded or duplicated for a different size.
 
     `DELETE` is a **soft delete** — the asset is hidden from listings but its bytes keep
-    serving, so already-published pages don't break.
+    serving, so already-published pages don't break. The separate, operator-only
+    `POST /media/{assetId}/purge` is the hard-delete path for legal takedowns: bytes,
+    rows, and edge-cache entries all go.
 
     ## Authentication
 
@@ -349,6 +351,115 @@ paths:
   # ===========================================================================
   # Media — presigned direct-to-R2 upload (replacement version)
   # ===========================================================================
+  /media/{assetId}/purge:
+    post:
+      summary: Hard-purge an asset (legal takedown)
+      description: |
+        **Destructive and irreversible.** Deletes every version's bytes from R2, removes
+        the asset and version rows (so `GET /image/*` 404s every key), purges the edge
+        cache by tag, and records an audit row of who purged what and when. This is the
+        compliance path for DMCA / illegal-content / PII / GDPR-erasure requests; the
+        reversible `DELETE /media/{assetId}` soft delete stays the normal path.
+
+        Operator-only: authenticated by the `X-Purge-Token` header, **not** the bearer
+        flow — no site token can invoke it. Attribution (`requestedBy`, `reason`) is
+        caller-supplied and recorded verbatim; its integrity rests on custody of the
+        token, not on verification of the body.
+
+        Retryable and idempotent: a repeat call after success answers 200 with
+        `alreadyPurged: true`; after a `partial` failure the same call resumes the work.
+
+        **Coverage limits, stated honestly:** the tag purge evicts every cached
+        transform variant at the edge, but copies already downloaded by browsers cannot
+        be recalled within their `max-age` (up to one year). The load-bearing guarantee
+        is that the origin 404s from this call onward.
+      operationId: purgeMediaAsset
+      tags: [Media]
+      security: [{ purgeToken: [] }]
+      parameters:
+        - $ref: '#/components/parameters/assetIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [requestedBy, reason]
+              properties:
+                requestedBy:
+                  type: string
+                  minLength: 1
+                  maxLength: 200
+                  description: Who asked for the takedown (email or service name).
+                requestedByType:
+                  type: string
+                  enum: [user, agent, system]
+                  default: user
+                reason:
+                  type: string
+                  minLength: 1
+                  maxLength: 1000
+                  description: Free text — legal/ticket reference (e.g. "DMCA LEGAL-1234").
+      responses:
+        '200':
+          description: >-
+            Purge completed (or had already completed — `alreadyPurged: true`). A failed
+            or skipped cache purge still returns 200 with `cachePurge` set accordingly:
+            the destruction has committed and the origin already 404s. Re-running an
+            already-completed purge re-attempts the cache purge, so a failed cache step
+            is recovered by calling the endpoint again.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  purgeId: { type: string }
+                  assetId: { type: string }
+                  siteId: { type: string, nullable: true }
+                  status: { type: string, enum: [completed] }
+                  alreadyPurged: { type: boolean }
+                  r2Deleted: { type: integer }
+                  r2Failed: { type: integer }
+                  versionsDeleted: { type: integer }
+                  cachePurge: { type: string, enum: [success, skipped, failed] }
+        '400':
+          description: Invalid request body. Every problem is reported at once in `errors`.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error, errors]
+                properties:
+                  error: { type: string }
+                  errors:
+                    type: array
+                    items: { type: string }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500':
+          description: >-
+            Partial or failed purge — some bytes or rows may remain (`status: partial`).
+            Never treat as done; retry the same call. The audit row records exactly what
+            survived.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  purgeId: { type: string }
+                  assetId: { type: string }
+                  siteId: { type: string, nullable: true }
+                  status: { type: string, enum: [partial] }
+                  r2Deleted: { type: integer }
+                  r2Failed: { type: integer }
+                  versionsDeleted: { type: integer }
+        '503':
+          description: PURGE_ADMIN_TOKEN is not configured in this environment (fails closed).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
   /media/{assetId}/versions/presign:
     post:
       summary: Mint a presigned upload URL for a replacement version
@@ -434,6 +545,15 @@ components:
       type: http
       scheme: bearer
       description: CCR-issued bearer token. Validated server-side against `GET {CCR_BASE_URL}/api/sites/{siteId}` (`canView`).
+    purgeToken:
+      type: apiKey
+      in: header
+      name: X-Purge-Token
+      description: >-
+        Operator secret for the hard-purge endpoint (`wrangler secret put
+        PURGE_ADMIN_TOKEN`). Deliberately separate from the site-scoped bearer flow:
+        takedowns are operator/legal actions, not customer self-service. When the secret
+        is not configured in an environment the endpoint answers 503 (fails closed).
 
   # ---------------------------------------------------------------------------
   # Parameters

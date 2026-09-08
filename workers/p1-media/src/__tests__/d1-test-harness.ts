@@ -9,7 +9,17 @@
 // and honour the immutable conditional put; the mock models both.
 
 import { DatabaseSync } from 'node:sqlite';
-import migrationSql from '../../migrations/0001_init_assets.sql?raw';
+// Every shipped migration, discovered at transform time and applied in filename
+// order — the same order `wrangler d1 migrations apply` uses. A new migration file
+// is picked up automatically; nothing to maintain here.
+const migrationsByPath = import.meta.glob('../../migrations/*.sql', {
+  query: '?raw',
+  import: 'default',
+  eager: true,
+}) as Record<string, string>;
+const MIGRATIONS = Object.keys(migrationsByPath)
+  .sort()
+  .map((path) => migrationsByPath[path]);
 import type { Env, MediaAsset } from '../types';
 import { buildKey, finalizeAssetCreation } from '../store';
 
@@ -182,7 +192,7 @@ export interface TestHarness {
  */
 export function createTestHarness(opts: { bucketPageSize?: number } = {}): TestHarness {
   const db = new DatabaseSync(':memory:');
-  db.exec(migrationSql);
+  for (const migration of MIGRATIONS) db.exec(migration);
   const bucket = createMockBucket({ pageSize: opts.bucketPageSize });
 
   const env: Env = {

@@ -317,16 +317,19 @@ jobs:
           secrets: |-
             cf_token:${{ vars.GCP_PROJECT_ID }}/P1_CF_DEPLOY_TOKEN
 
-      # R2 S3-API credentials for presigned-upload signing — pushed onto the
-      # WORKER ITSELF as persistent secrets (it signs presigned PUT URLs at
-      # request time), distinct from the ephemeral CF deploy token above.
-      - name: Fetch R2 API credentials
+      # Worker-persistent secrets, distinct from the ephemeral CF deploy token above:
+      # R2 S3-API credentials (presigned PUT URL signing at request time) and the
+      # operator token gating the hard-purge endpoint. NOTE get-secretmanager-secrets
+      # fails the job on a missing secret name, so MEDIA_WORKER_PURGE_ADMIN_TOKEN must
+      # exist in the staging AND production GCP projects before this list references it.
+      - name: Fetch worker secrets
         id: r2_secrets
         uses: google-github-actions/get-secretmanager-secrets@bc9c54b29fdffb8a47776820a7d26e77b379d262 # v3.0.0
         with:
           secrets: |-
             r2_access_key_id:${{ vars.GCP_PROJECT_ID }}/MEDIA_WORKER_R2_ACCESS_KEY_ID
             r2_secret_access_key:${{ vars.GCP_PROJECT_ID }}/MEDIA_WORKER_R2_SECRET_ACCESS_KEY
+            purge_admin_token:${{ vars.GCP_PROJECT_ID }}/MEDIA_WORKER_PURGE_ADMIN_TOKEN
 
       # Additive-only D1 schema migrations; safe ahead of the new worker code.
       # Requires the CF token to carry D1 edit scope.
@@ -342,17 +345,19 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ steps.secrets.outputs.cf_token }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
 
-      - name: Push R2 credentials to the Worker
+      - name: Push worker secrets
         if: ${{ needs.config.outputs.dry_run != 'true' }}
         run: |
           echo -n "$R2_ACCESS_KEY_ID" | pnpm exec wrangler secret put R2_ACCESS_KEY_ID --env ${{ needs.config.outputs.environment }}
           echo -n "$R2_SECRET_ACCESS_KEY" | pnpm exec wrangler secret put R2_SECRET_ACCESS_KEY --env ${{ needs.config.outputs.environment }}
+          echo -n "$PURGE_ADMIN_TOKEN" | pnpm exec wrangler secret put PURGE_ADMIN_TOKEN --env ${{ needs.config.outputs.environment }}
         working-directory: workers/p1-media
         env:
           CLOUDFLARE_API_TOKEN: ${{ steps.secrets.outputs.cf_token }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
           R2_ACCESS_KEY_ID: ${{ steps.r2_secrets.outputs.r2_access_key_id }}
           R2_SECRET_ACCESS_KEY: ${{ steps.r2_secrets.outputs.r2_secret_access_key }}
+          PURGE_ADMIN_TOKEN: ${{ steps.r2_secrets.outputs.purge_admin_token }}
 
       - name: Deploy
         run: >

@@ -21,7 +21,18 @@ export interface Env extends TelemetryEnv {
   // nothing) unless this is literally the string "false" — unset/misconfigured
   // must fail safe. See handlers/reconcile.ts.
   RECONCILE_DRY_RUN?: string;
+  // Operator secret gating POST /media/:assetId/purge (`wrangler secret put`, never
+  // committed). Optional so the unset case is a type-level possibility: purge-auth.ts
+  // fails closed (503) when it is missing or blank.
+  PURGE_ADMIN_TOKEN?: string;
 }
+
+/**
+ * Who performed an action: a human, an agent acting for one, or the system itself.
+ * Mirrors CCR's actor idiom (created_by_type CHECK constraints) and the purge_audit
+ * CHECK in migration 0002.
+ */
+export type PrincipalType = 'user' | 'agent' | 'system';
 
 // ---------------------------------------------------------------------------
 // D1 row shapes (snake_case — as stored)

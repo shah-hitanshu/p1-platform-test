@@ -26,3 +26,9 @@ declare module '*.sql?raw' {
   const content: string;
   export default content;
 }
+
+// Vite's import.meta.glob — tsconfig pins `types` to workers-types, so vite/client's
+// declaration isn't in scope. Only the narrow shape the harness uses.
+interface ImportMeta {
+  glob(pattern: string, options: { query: string; import: string; eager: true }): Record<string, unknown>;
+}

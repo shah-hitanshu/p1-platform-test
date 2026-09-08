@@ -11,6 +11,7 @@ import { handleFinalizeUpload, handleFinalizeVersion } from './handlers/finalize
 import { handleGetAsset } from './handlers/get';
 import { handlePatch } from './handlers/patch';
 import { handleDelete } from './handlers/delete';
+import { handlePurge } from './handlers/purge';
 import { handleReconcile } from './handlers/reconcile';
 import { handleDocsRoute, handleDocsSpecRoute } from './routes/docs-handler';
 
@@ -58,6 +59,7 @@ function sanitizeRoutePattern(path: string): string {
     if (rest === 'presign' || rest === 'finalize') return `/media/${rest}`;
     if (rest.endsWith('/versions/presign')) return '/media/:assetId/versions/presign';
     if (rest.endsWith('/versions/finalize')) return '/media/:assetId/versions/finalize';
+    if (rest.endsWith('/purge')) return '/media/:assetId/purge';
     return '/media/:assetId';
   }
   return '/unmatched';
@@ -168,6 +170,16 @@ async function route(request: Request, env: Env, url: URL): Promise<Response> {
       const auth = await authenticate(request, env, url);
       if (auth instanceof Response) return addCorsHeaders(auth);
       return addCorsHeaders(await handleFinalizeUpload(request, env, auth));
+    }
+
+    // POST /media/:assetId/purge — HARD purge for legal takedowns. Operator-only:
+    // deliberately does NOT go through authenticate() (no siteId, no CCR bearer
+    // token) — the gate is the PURGE_ADMIN_TOKEN check inside handlePurge, so a
+    // site-scoped bearer token can never authorize a purge. See handlers/purge.ts.
+    if (method === 'POST' && rest.endsWith('/purge')) {
+      const assetId = rest.slice(0, -'/purge'.length);
+      if (!isValidId(assetId)) return addCorsHeaders(jsonResponse({ error: 'Not found' }, 404));
+      return addCorsHeaders(await handlePurge(request, env, assetId));
     }
 
     // POST /media/:assetId/versions/presign, /versions/finalize

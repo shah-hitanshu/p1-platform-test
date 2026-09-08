@@ -276,7 +276,7 @@ metadata safe is stamping the schema version into each placement (req. R12).
 | `POST /media/:assetId/versions`   | new — replacement bytes → new immutable version; **server-generated `versionId`, conditional write** (req. R2) |
 | `PATCH /media/:assetId`           | new — update metadata defaults; per-field length + field-count caps (req. R6). **Add `PATCH` to CORS `Access-Control-Allow-Methods`** (currently `GET, POST, DELETE, OPTIONS` — preflight fails otherwise) |
 | `GET /media/schema`               | new — metadata field schema                                |
-| `DELETE /media/:assetId`          | **soft delete** (`deleted_at`) for the normal case; a separate hard-purge path is required for takedown (req. R4) |
+| `DELETE /media/:assetId`          | **soft delete** (`deleted_at`) for the normal case; `POST /media/:assetId/purge` (operator-only) is the takedown hard delete (req. R4) |
 | `GET /image/*` (public)           | unchanged; public-by-URL, immutable cache headers          |
 
 **Every `…/:assetId` route MUST enforce ownership (req. R0)**: `validateAuth` only
@@ -433,16 +433,19 @@ pre-existing in the shipped worker and now in scope.
   `current_version` bump; `IMAGES.info()` dimension capture is best-effort (try/catch,
   nullable width/height) and never fails the upload; a failed D1 write leaves a harmless
   invisible orphan (swept by R8), never a phantom row.
-- **R4 — Takedown path (a present gap, gates immutable reliance).** [inherited + new] Not
-  just future-design: `image.ts:108` **already** serves every object with
-  `max-age=31536000, immutable` in production, so a takedown today cannot be honored within
-  the cache window even after the R2 object is deleted. → v1 needs a hard-purge (delete R2
-  object + rows; serving 404s the key) plus a cache-purge-by-URL step, and it should gate
-  further reliance on immutable caching. Two specifics: (a) confirm which CDN fronts the
-  live path — p1 public hostnames serve via the **GCP content LB**, so the purge likely
-  targets GCP Cloud CDN, not Cloudflare; (b) purge stops origin/CDN serving but **cannot
-  recall already-cached browser copies** within `max-age` — that latency is inherent, state
-  it honestly.
+- **R4 — Takedown path.** [addressed — PCC-3386] `POST /media/:assetId/purge`
+  (operator-token gated) deletes every version's bytes + rows so `/image/*` 404s, purges
+  the edge cache by tag, and writes a `purge_audit` row. The open question "which CDN
+  fronts the live path" was resolved by inspection: the GCP content LB fronts
+  `media.p1.pantheon.io` but has **Cloud CDN off** (a pass-through to the worker's
+  `workers.dev` origin via an internet NEG), and no Cloudflare zone exists on any P1
+  account — so the cache layer is **Workers Caching** on the worker itself (zoneless,
+  same mechanism as CCR's content cache), enabled together with the purge path. Residual
+  limits, stated honestly: (a) purge-by-tag covers every transform variant, which
+  purge-by-URL structurally could not; (b) purge stops origin/edge serving but **cannot
+  recall already-cached browser copies** within `max-age` — the load-bearing guarantee is
+  the origin 404. Deferred: user-facing tombstone image; `Vary: Accept` on the fail-open
+  direct-serve path.
 - **R5 — Idempotent one-time migration.** [new] Deterministic assetId from `r2_key`,
   `INSERT OR IGNORE`, legacy-prefix-only enumeration, run before the consumer flip (R1). A
   small job at current volume. Deterministic keying also enables the optional
@@ -527,9 +530,9 @@ pre-existing in the shipped worker and now in scope.
    bulk-changeset flow — which requires `props.id`-based edit targeting and a run manifest
    (R8) as preconditions, not a CCR search.
 
-**Independent of the above:** the takedown/hard-purge path (R4, PCC-3386) addresses a
-*present* production gap (immutable headers are already live) and can proceed in parallel;
-it should land before we lean further on immutable caching.
+**Independent of the above:** the takedown/hard-purge path (R4, PCC-3386) shipped as
+`POST /media/:assetId/purge` together with edge caching (Workers Caching + tag purge),
+closing the present production gap the immutable headers created.
 
 ## Decided (was open)
 
@@ -543,9 +546,9 @@ it should land before we lean further on immutable caching.
   when it does.
 - **"Update usages"**: enumerate-and-scan via existing CCR document/edit/merge APIs
   (see mechanics above). No CCR search exists; agent-driven via P1 MCP tools for v1.
-- **Delete**: soft delete is the normal-case default. A hard-purge path (with cache
-  purge) is nonetheless required in v1 for legal takedown (R4) — that is not a DAM
-  feature. What stays deferred: a user-facing tombstone/"gone" placeholder image.
+- **Delete**: soft delete is the normal-case default. The hard-purge path (with tag-based
+  cache purge and an audit trail) shipped for legal takedown (R4, PCC-3386) — that is not
+  a DAM feature. What stays deferred: a user-facing tombstone/"gone" placeholder image.
 - **Alt at upload**: v1 nudges (non-blocking prompt in upload flow + visible
   "missing alt" indicator in the library); never hard-required.
 - **Search**: v1 is `LIKE` over filename + alt (indexed scope: site_id). Upgrade to

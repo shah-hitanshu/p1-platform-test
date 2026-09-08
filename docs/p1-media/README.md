@@ -38,7 +38,7 @@ immutable version and repoints the asset's `current_version` — old versions ar
 overwritten. The Worker returns an asset record (`MediaAsset`) whose `url` is a CDN
 delivery URL for the current version.
 
-**Read/delivery path (this repo):** The same Worker's `/image/*` route serves and transforms images on demand using the Cloudflare Images binding. Transformations — resize, format conversion, smart crop, face-aware crop, blur, brightness, contrast, and more — are applied at request time based on URL query params. Responses carry `Cache-Control: public, max-age=31536000, immutable` so browsers and the Cloudflare CDN cache each unique URL.
+**Read/delivery path (this repo):** The same Worker's `/image/*` route serves and transforms images on demand using the Cloudflare Images binding. Transformations — resize, format conversion, smart crop, face-aware crop, blur, brightness, contrast, and more — are applied at request time based on URL query params. Responses carry `Cache-Control: public, max-age=31536000, immutable` and are cached at Cloudflare's edge by **Workers Caching** (a `CachedImage` entrypoint with `cache.enabled`; the mechanism is zoneless and works on `workers.dev` — CCR's content cache uses the same one). Requests reach the worker through the GCP content LB (`media.p1.pantheon.io` → internet-NEG → `workers.dev`; Cloud CDN is off on that backend, so the LB is a pass-through, not a cache). Each response carries `site:{siteId},asset:{assetId}` `Cache-Tag`s so a takedown can purge every cached variant by tag.
 
 ```
                           ┌── R2 bucket        (immutable version bytes)
@@ -58,7 +58,7 @@ Editor uploads → Worker ──┤
 
 Images are never re-uploaded or duplicated for different sizes — only the original bytes are stored per version. The Images binding bills per transformation request; browser and CDN caching via the `Cache-Control` header avoids redundant calls for the same URL.
 
-> **Production upgrade path (PCC-3277):** The Images binding is account-based and works on Workers-only accounts. When P1 zones are provisioned, this should migrate to `cf.image` (zone-level transforms) for CDN-edge execution and built-in tiered caching. Migration scope: `worker/src/handlers/image.ts` only.
+> **Production upgrade path (PCC-3277):** The Images binding is account-based and works on Workers-only accounts. When P1 zones are provisioned, this could migrate to `cf.image` (zone-level transforms) for CDN-edge execution. Note the tiered-caching half of that motivation is superseded: Workers Caching (above) provides edge caching without a zone, and no Cloudflare zone currently exists on any P1 account. Migration scope: `worker/src/handlers/image.ts` only.
 
 ### Asset model & workstream semantics
 
@@ -71,9 +71,39 @@ identity (`assetId`); each upload or replacement creates an immutable `versionId
   (the `workstreamId` query param is accepted for backward compatibility and ignored).
 - **Immutable version URLs** cache indefinitely and never need invalidation.
 - **`DELETE` is a soft delete** — the asset is hidden from the library but its bytes keep
-  serving, so already-published pages don't break. A hard-purge path for legal takedown
-  is tracked separately (**PCC-3386**); it is required because the `immutable` cache
-  headers mean a deleted object otherwise keeps serving for up to a year.
+  serving, so already-published pages don't break. The hard-delete path for legal
+  takedowns is `POST /media/{assetId}/purge` (PCC-3386) — see the takedown runbook below.
+
+### Takedown runbook (hard purge, PCC-3386)
+
+For DMCA / illegal-content / PII / GDPR-erasure requests. **Destructive and
+irreversible**: deletes every version's bytes from R2, removes the D1 rows so
+`GET /image/*` 404s, purges the edge cache by tag, and records an audit row.
+
+```
+curl -sS -X POST "https://media.p1.pantheon.io/media/{assetId}/purge" \
+  -H "X-Purge-Token: $PURGE_ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"requestedBy":"you@pantheon.io","reason":"DMCA takedown LEGAL-1234"}'
+```
+
+- **The token** is the `PURGE_ADMIN_TOKEN` worker secret, sourced from GCP Secret
+  Manager (`MEDIA_WORKER_PURGE_ADMIN_TOKEN` in the environment's project) and pushed by
+  the deploy workflow. It is the entire gate — site bearer tokens cannot invoke this
+  endpoint — so treat custody accordingly. `requestedBy`/`reason` are recorded verbatim
+  and unverified; the audit's integrity rests on who holds the token.
+- **Verify** by fetching a previously-served `/image/…` URL (with its transform params):
+  it must 404. Re-running the same purge answers `200 {"alreadyPurged": true}`.
+- **Read the audit:**
+  `pnpm exec wrangler d1 execute p1-media-prod --env production --remote --command "SELECT * FROM purge_audit ORDER BY requested_at DESC LIMIT 5"`
+- **On `status: "partial"` (HTTP 500)**: some bytes or rows survived — the audit row's
+  counts say which. Retry the same call until `completed`; deletes are idempotent. Do
+  not rely on the reconcile cron as the backstop: it runs in permanent dry-run
+  (`RECONCILE_DRY_RUN`) and would only log the orphans.
+- **Inherent limit, state it to legal honestly**: the purge evicts the origin and
+  Cloudflare's edge (all transform variants, via `Cache-Tag`), but copies a browser
+  already downloaded live out their `max-age` (up to one year) on that device. The
+  guarantee is that nothing serves from us from the moment the call returns.
 
 ### Auth
 

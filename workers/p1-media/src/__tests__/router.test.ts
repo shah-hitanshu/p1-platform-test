@@ -20,6 +20,7 @@ vi.mock('../handlers/finalize', () => ({ handleFinalizeUpload: vi.fn(), handleFi
 vi.mock('../handlers/get', () => ({ handleGetAsset: vi.fn() }));
 vi.mock('../handlers/patch', () => ({ handlePatch: vi.fn() }));
 vi.mock('../handlers/delete', () => ({ handleDelete: vi.fn() }));
+vi.mock('../handlers/purge', () => ({ handlePurge: vi.fn() }));
 vi.mock('../handlers/reconcile', () => ({ handleReconcile: vi.fn() }));
 
 import worker from '../index';
@@ -31,6 +32,7 @@ import { handleFinalizeUpload, handleFinalizeVersion } from '../handlers/finaliz
 import { handleGetAsset } from '../handlers/get';
 import { handlePatch } from '../handlers/patch';
 import { handleDelete } from '../handlers/delete';
+import { handlePurge } from '../handlers/purge';
 import { handleReconcile } from '../handlers/reconcile';
 import { METADATA_SCHEMA } from '../schema';
 
@@ -58,7 +60,7 @@ const anyHandlerCalled = () =>
   [
     handleImage, handleList, handlePresignUpload,
     handleFinalizeUpload, handlePresignVersion, handleFinalizeVersion, handleGetAsset,
-    handlePatch, handleDelete,
+    handlePatch, handleDelete, handlePurge,
   ].some((h) => vi.mocked(h).mock.calls.length > 0);
 
 describe('Worker router', () => {
@@ -74,6 +76,7 @@ describe('Worker router', () => {
     vi.mocked(handleGetAsset).mockResolvedValue(new Response('get', { status: 200 }));
     vi.mocked(handlePatch).mockResolvedValue(new Response('patch', { status: 200 }));
     vi.mocked(handleDelete).mockResolvedValue(new Response('delete', { status: 200 }));
+    vi.mocked(handlePurge).mockResolvedValue(new Response('purge', { status: 200 }));
   });
 
   // ---- CORS / OPTIONS ----
@@ -348,6 +351,53 @@ describe('Worker router', () => {
   it('DELETE /media/:assetId dispatches to handleDelete with (env, siteId, assetId)', async () => {
     await worker.fetch(req('https://w.example.com/media/asset-1?siteId=site1', { method: 'DELETE' }), createEnv());
     expect(handleDelete).toHaveBeenCalledWith(expect.anything(), 'site1', 'asset-1');
+  });
+
+  // ---- POST /media/:assetId/purge (operator-only; must never touch site auth) ----
+
+  it('POST /media/:assetId/purge dispatches to handlePurge WITHOUT calling validateAuth', async () => {
+    // No bearer token and no siteId on purpose: the purge path is gated inside the
+    // handler by the operator secret, never by the site-scoped CCR check.
+    const request = req('https://w.example.com/media/asset-1/purge', { method: 'POST' }, false);
+    const response = await worker.fetch(request, createEnv());
+    expect(response.status).toBe(200);
+    expect(handlePurge).toHaveBeenCalledWith(request, expect.anything(), 'asset-1');
+    expect(validateAuth).not.toHaveBeenCalled();
+  });
+
+  it('a site-scoped bearer token on the purge route still never reaches validateAuth', async () => {
+    await worker.fetch(req('https://w.example.com/media/asset-1/purge?siteId=site1', { method: 'POST' }), createEnv());
+    expect(handlePurge).toHaveBeenCalled();
+    expect(validateAuth).not.toHaveBeenCalled();
+  });
+
+  it('POST /media//purge (empty assetId) returns 404 without dispatch', async () => {
+    const response = await worker.fetch(req('https://w.example.com/media//purge', { method: 'POST' }, false), createEnv());
+    expect(response.status).toBe(404);
+    expect(anyHandlerCalled()).toBe(false);
+  });
+
+  it('GET and DELETE on /media/:assetId/purge return 404 without auth or dispatch', async () => {
+    // Non-POST falls through to the :assetId branch, where the embedded slash fails
+    // isValidId before authenticate() runs.
+    for (const method of ['GET', 'DELETE']) {
+      const response = await worker.fetch(req('https://w.example.com/media/asset-1/purge', { method }, false), createEnv());
+      expect(response.status).toBe(404);
+    }
+    expect(validateAuth).not.toHaveBeenCalled();
+    expect(anyHandlerCalled()).toBe(false);
+  });
+
+  it('POST /media/purge (an asset literally named "purge") is NOT the purge route', async () => {
+    const response = await worker.fetch(req('https://w.example.com/media/purge?siteId=site1', { method: 'POST' }), createEnv());
+    expect(response.status).toBe(405); // generic :assetId branch: authenticated, then method not allowed
+    expect(handlePurge).not.toHaveBeenCalled();
+  });
+
+  it('a traversal-shaped assetId on the purge route is rejected before dispatch', async () => {
+    const response = await worker.fetch(req('https://w.example.com/media/a..b/purge', { method: 'POST' }, false), createEnv());
+    expect(response.status).toBe(404);
+    expect(anyHandlerCalled()).toBe(false);
   });
 
   it('an assetId containing a slash is rejected with 404, before auth or dispatch', async () => {
