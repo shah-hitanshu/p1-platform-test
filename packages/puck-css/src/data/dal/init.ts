@@ -80,8 +80,9 @@ async function doInit(cfg: P1DataConfig): Promise<void> {
   });
 
   // Content client for published-only reads on public pages.
-  // No branchId: the content delivery API defaults to main, and passing
-  // ?branch= would cause a 403 for read:published tokens (mainBranchOnly enforcement).
+  // No branchId: the content delivery API defaults to main, which is the only
+  // branch a published read wants, and naming it explicitly would only buy a
+  // branch lookup on every public page render.
   const contentClient = new P1ContentClientCtor({
     baseUrl: p1BaseUrl,
     apiToken: cfg.p1ApiKey ?? "",

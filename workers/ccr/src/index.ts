@@ -16,7 +16,7 @@ import { AuthorizationError, hasPermission } from './auth/authorization';
 import { resolveBranch } from './routes/content-api';
 import type { MASClient } from './services/mas-client';
 import { HttpError } from './services/errors';
-import { isServicePrincipalAllowed } from './auth/service-principal';
+import { servicePrincipalScopeDecision } from './auth/service-principal';
 import { extractActingUser } from './auth/acting-user';
 import { normalizePrincipalIdForDb } from './auth/principal-id-normalization';
 
@@ -434,17 +434,17 @@ async function handleRequest(
     if (route.params.siteId === undefined) {
       return cors(errorResponse('Service principals can only access site-scoped routes', 403));
     }
-    // Determine if the request targets the main branch for scope enforcement.
-    // If ?branch= is present, assume non-main (conservative for read:published).
-    // If absent, the route handler will default to main branch.
-    const requestUrl = new URL(request.url);
-    const branchParam = requestUrl.searchParams.get('branch');
-    const branchIsMain = branchParam === null || branchParam === '' ? undefined : false;
-    const scopeCheck = isServicePrincipalAllowed(
-      principal, route.params.siteId, request.method, route.handler, branchIsMain,
+    const decision = servicePrincipalScopeDecision(
+      principal, route.params.siteId, request.method, route.handler,
     );
-    if (!scopeCheck.allowed) {
-      return cors(errorResponse(scopeCheck.reason ?? 'Access denied', 403));
+    if (decision.outcome === 'denied') {
+      return cors(errorResponse(decision.reason, 403));
+    }
+    if (decision.outcome === 'requires-main-branch') {
+      const denied = await assertServiceTokenOnMainBranch(request, route.params.siteId, route.handler);
+      if (denied !== null) {
+        return cors(denied);
+      }
     }
   }
 
@@ -606,6 +606,70 @@ async function provisionUserFromFeatureFlag(
     getLogger().error('Self-service user provisioning failed', error instanceof Error ? error : new Error(String(error)), {});
     return undefined;
   }
+}
+
+/**
+ * The main-branch half of service-principal scope enforcement [PCC-3898].
+ *
+ * `?branch=` carries either a UUID or a branch name, so the parameter's text
+ * alone cannot say whether it names main: the previous rule of "any value is
+ * non-main" denied `?branch=main` on published content a read:published token
+ * is entitled to. Resolving the ref costs a branch lookup, so this runs only
+ * for the one decision that turns on the answer — a token whose every matching
+ * clause is main-branch-only. A request refused on site, method, or handler
+ * never reaches it, and neither does one a branch-agnostic scope already
+ * allows.
+ *
+ * An absent parameter still means main (the handlers default to it) and costs
+ * no query. resolveBranch is the content handler's own resolver, so
+ * enforcement and serving agree on which branch a ref names.
+ *
+ * An unresolvable ref is refused with the same 403 as a real non-main branch,
+ * not a 404: a published-only token has no business distinguishing a branch
+ * that exists from one that doesn't (branch names carry ticket ids and
+ * unreleased campaign names — see the PCC-3676 gate below for the same
+ * reasoning), and neither ref names main, so the refusal is true either way.
+ */
+async function assertServiceTokenOnMainBranch(
+  request: Request,
+  siteId: string,
+  routeHandler: string,
+): Promise<Response | null> {
+  const branchRef = new URL(request.url).searchParams.get('branch');
+  if (branchRef === null || branchRef === '') {
+    return null;
+  }
+
+  let branch: { id: string; name: string; isMain: boolean } | null;
+  try {
+    branch = await resolveBranch(request, siteId);
+  } catch (error) {
+    // This runs outside handleRequest's try, so an escaping throw would reach
+    // the fetch() boundary and be logged as an alerting `unhandled` failure. A
+    // lookup that didn't answer is not a policy decision — report it as one
+    // server error instead of turning it into a denial.
+    getLogger().error(
+      'branch resolution for service token scope check failed',
+      error instanceof Error ? error : new Error(String(error)),
+      { site_id: siteId, outcome: 'error' },
+    );
+    return errorResponse('Internal server error', 500);
+  }
+
+  if (branch?.isMain === true) {
+    return null;
+  }
+
+  getLogger().info('service token denied on non-main branch', {
+    site_id: siteId,
+    branch_id: branch?.id,
+    outcome: 'denied',
+  });
+  return errorResponse(
+    `Insufficient scope for this operation: ${request.method} on '${routeHandler}' is limited to `
+    + 'the main branch by the scopes on this token',
+    403,
+  );
 }
 
 /**

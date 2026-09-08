@@ -104,45 +104,65 @@ export const SCOPE_RULES: Record<string, ScopeRule[]> = {
 };
 
 /**
- * Check if a service principal is allowed to perform the requested operation.
+ * The part of a scope check that needs no branch lookup.
  *
- * Non-service principals always pass through (enforcement is handled
- * by the existing authorization system for users and agents).
+ * Split out from isServicePrincipalAllowed so a caller can tell the two kinds
+ * of refusal apart before paying for a branch resolution: 'denied' is settled
+ * by site, method, and handler alone, and only 'requires-main-branch' depends
+ * on which branch the request targets.
+ */
+export type ScopeDecision =
+  | { outcome: 'allowed' }
+  | { outcome: 'requires-main-branch' }
+  | { outcome: 'denied'; reason: string };
+
+function insufficientScopeReason(
+  scopes: string[],
+  method: string,
+  routeHandler: string,
+): string {
+  return `Insufficient scope for this operation: ${method} on '${routeHandler}' is not permitted by the scopes on this token (${scopes.length > 0 ? scopes.join(', ') : 'none'})`;
+}
+
+/**
+ * Decide what a service principal's scopes allow, without consulting a branch.
+ *
+ * Returns 'requires-main-branch' when every clause that matched the method and
+ * handler is main-branch-only — the one case where the answer depends on which
+ * branch the request targets, and so the only case worth a database query.
  *
  * @param principal - The authenticated principal
  * @param requestSiteId - The site ID from the request path
  * @param method - The HTTP method
  * @param routeHandler - The route handler name (defaults to 'content' for backward compatibility)
- * @param branchIsMain - Whether the target branch is main (undefined treated as main for backward compatibility)
  */
-export function isServicePrincipalAllowed(
+export function servicePrincipalScopeDecision(
   principal: AuthenticatedPrincipal,
   requestSiteId: string,
   method: string,
   routeHandler = 'content',
-  branchIsMain?: boolean,
-): ServicePrincipalCheck {
+): ScopeDecision {
   // Only enforce for service principals
   if (principal.type !== 'service') {
-    return { allowed: true };
+    return { outcome: 'allowed' };
   }
 
   // Service principals must have a siteId
   if (principal.siteId === undefined || principal.siteId === '') {
-    return { allowed: false, reason: 'Service principal has no bound site' };
+    return { outcome: 'denied', reason: 'Service principal has no bound site' };
   }
 
   // Site scoping: principal can only access its bound site
   if (principal.siteId !== requestSiteId) {
     return {
-      allowed: false,
+      outcome: 'denied',
       reason: `Service principal is bound to site ${principal.siteId}, cannot access site ${requestSiteId}`,
     };
   }
 
   // Scope enforcement: check if ANY scope allows the operation
   const scopes = principal.scopes ?? [];
-  const effectiveBranchIsMain = branchIsMain ?? true;
+  let mainBranchWouldAllow = false;
 
   for (const scope of scopes) {
     const rules = SCOPE_RULES[scope];
@@ -161,18 +181,65 @@ export function isServicePrincipalAllowed(
         continue;
       }
 
-      // Check branch constraint
-      if (rule.mainBranchOnly === true && !effectiveBranchIsMain) {
+      // Defer the branch-constrained clauses: an unconditional clause later in
+      // the list still allows the operation outright, and only when none does
+      // is the branch worth resolving.
+      if (rule.mainBranchOnly === true) {
+        mainBranchWouldAllow = true;
         continue;
       }
 
       // This clause allows the operation
-      return { allowed: true };
+      return { outcome: 'allowed' };
     }
   }
 
+  if (mainBranchWouldAllow) {
+    return { outcome: 'requires-main-branch' };
+  }
+
   return {
-    allowed: false,
-    reason: `Insufficient scope for this operation: ${method} on '${routeHandler}' is not permitted by the scopes on this token (${scopes.length > 0 ? scopes.join(', ') : 'none'})`,
+    outcome: 'denied',
+    reason: insufficientScopeReason(scopes, method, routeHandler),
   };
+}
+
+/**
+ * Check if a service principal is allowed to perform the requested operation.
+ *
+ * Non-service principals always pass through (enforcement is handled
+ * by the existing authorization system for users and agents).
+ *
+ * Callers that can resolve the target branch should prefer
+ * servicePrincipalScopeDecision, which says whether the branch matters before
+ * the lookup is paid for.
+ *
+ * @param principal - The authenticated principal
+ * @param requestSiteId - The site ID from the request path
+ * @param method - The HTTP method
+ * @param routeHandler - The route handler name (defaults to 'content' for backward compatibility)
+ * @param branchIsMain - Whether the target branch is main (undefined treated as main for backward compatibility)
+ */
+export function isServicePrincipalAllowed(
+  principal: AuthenticatedPrincipal,
+  requestSiteId: string,
+  method: string,
+  routeHandler = 'content',
+  branchIsMain?: boolean,
+): ServicePrincipalCheck {
+  const decision = servicePrincipalScopeDecision(principal, requestSiteId, method, routeHandler);
+
+  switch (decision.outcome) {
+    case 'allowed':
+      return { allowed: true };
+    case 'denied':
+      return { allowed: false, reason: decision.reason };
+    case 'requires-main-branch':
+      return (branchIsMain ?? true)
+        ? { allowed: true }
+        : {
+          allowed: false,
+          reason: insufficientScopeReason(principal.scopes ?? [], method, routeHandler),
+        };
+  }
 }
