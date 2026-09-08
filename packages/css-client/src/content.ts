@@ -7,9 +7,11 @@
  */
 
 import { P1ApiError } from './errors.js';
+import { resolveBaseUrl } from './constants.js';
 
 export interface P1ContentClientConfig {
-  baseUrl: string;
+  /** Base URL of the API. Defaults to the production backend when unset or blank. */
+  baseUrl?: string;
   apiToken: string;
   siteId: string;
   branchId?: string;
@@ -83,7 +85,7 @@ export class P1ContentClient {
   private branchId?: string;
 
   constructor(config: P1ContentClientConfig) {
-    this.baseUrl = trimTrailingSlashes(config.baseUrl);
+    this.baseUrl = trimTrailingSlashes(resolveBaseUrl(config.baseUrl));
     this.apiToken = config.apiToken;
     this.siteId = config.siteId;
     this.branchId = config.branchId;

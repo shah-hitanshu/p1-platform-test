@@ -43,6 +43,7 @@ vi.mock('@pantheon-systems/css-client', () => ({
       return Promise.resolve(mockPages.get(path) || null);
     });
   },
+  PRODUCTION_BASE_URL: 'https://ccr.p1.pantheon.io',
 }));
 
 vi.mock('../../data/dal/index', () => ({

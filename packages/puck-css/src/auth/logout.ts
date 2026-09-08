@@ -5,7 +5,13 @@ import { DEFAULT_TOKEN_KEY, P1_LOGGED_IN_KEY } from './storage-keys.js';
 export type { LogoutOutcome };
 
 export interface PerformLogoutConfig {
-  cssBaseUrl: string;
+  /**
+   * Base URL of the API. Defaults to the production backend when unset or
+   * blank — brokerLogout (from @pantheon-systems/css-client) owns that
+   * fallback, so it's applied consistently for every caller, not just this
+   * function.
+   */
+  cssBaseUrl?: string;
   siteApiToken?: string;
   /**
    * The puck-css token key, matching P1AuthProvider's `tokenStorageKey` prop.

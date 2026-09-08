@@ -70,7 +70,7 @@ export function P1EditWidget({ route }: { route: string }) {
     runWidgetLogout({
       logout: () =>
         performLogout({
-          cssBaseUrl: process.env.NEXT_PUBLIC_CSS_BASE_URL ?? "http://localhost:8787",
+          cssBaseUrl: process.env.NEXT_PUBLIC_CSS_BASE_URL,
         }),
       navigate: (url) => {
         window.location.href = url;

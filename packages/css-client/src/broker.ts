@@ -19,6 +19,7 @@
 import type { OAuthSession, OAuthUserInfo } from './oauth.js';
 import { isTokenExpiredOrExpiring, extractUserInfo } from './jwt-utils.js';
 import { sleep, trimTrailingSlash } from './utils.js';
+import { resolveBaseUrl } from './constants.js';
 
 export interface BrokerAuthConfig {
   cssBaseUrl: string;
@@ -37,7 +38,8 @@ export interface BrokerRedeemResult {
 }
 
 export interface BrokerLogoutConfig {
-  cssBaseUrl: string;
+  /** Base URL of the API. Defaults to the production backend when unset or blank. */
+  cssBaseUrl?: string;
   siteApiToken?: string;
   storageKey?: string;
 }
@@ -95,7 +97,7 @@ function brokerEndpoint(config: BrokerAuthConfig, action: 'login' | 'redeem'): s
 
 function brokerLogoutEndpoint(config: BrokerLogoutConfig): string {
   if (config.siteApiToken) {
-    return `${trimTrailingSlash(config.cssBaseUrl)}/broker/logout`;
+    return `${trimTrailingSlash(resolveBaseUrl(config.cssBaseUrl))}/broker/logout`;
   }
   return `${PROXY_PATH}/logout`;
 }

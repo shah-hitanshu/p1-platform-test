@@ -6,6 +6,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { P1ContentClient } from '../src/content.js';
 import type { PageContent, SeoMetadata, RedirectInfo } from '../src/content.js';
 import { P1ApiError } from '../src/errors.js';
+import { PRODUCTION_BASE_URL } from '../src/constants.js';
 
 // Mock fetch globally
 const mockFetch = vi.fn();
@@ -47,6 +48,40 @@ describe('P1ContentClient', () => {
 
       expect(mockFetch).toHaveBeenCalledWith(
         'http://localhost:8787/api/sites/site-123/content-pages',
+        expect.any(Object),
+      );
+    });
+
+    it('defaults to PRODUCTION_BASE_URL when baseUrl is omitted', async () => {
+      const client = new P1ContentClient({ apiToken, siteId });
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ pages: [], branchId: 'b1', branchName: 'main', isMainBranch: true }),
+      });
+
+      await client.getPagePaths();
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        `${PRODUCTION_BASE_URL}/api/sites/site-123/content-pages`,
+        expect.any(Object),
+      );
+    });
+
+    it('defaults to PRODUCTION_BASE_URL when baseUrl is blank', async () => {
+      const client = new P1ContentClient({ baseUrl: '   ', apiToken, siteId });
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ pages: [], branchId: 'b1', branchName: 'main', isMainBranch: true }),
+      });
+
+      await client.getPagePaths();
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        `${PRODUCTION_BASE_URL}/api/sites/site-123/content-pages`,
         expect.any(Object),
       );
     });

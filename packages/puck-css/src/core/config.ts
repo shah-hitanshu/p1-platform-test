@@ -1,4 +1,4 @@
-import { P1ContentClient } from '@pantheon-systems/css-client';
+import { P1ContentClient, PRODUCTION_BASE_URL } from '@pantheon-systems/css-client';
 import type { AuthMode } from '../auth/P1AuthProvider.js';
 import type { ContentRole } from '../features/content-type-templates/types.js';
 
@@ -16,7 +16,12 @@ export interface P1Config {
   userRole?: ContentRole;
 }
 
-export const PRODUCTION_BASE_URL = 'https://ccr.p1.pantheon.io';
+// Re-exported for existing consumers (createNextConfig below, dal/init.ts,
+// auth-handler.ts). @pantheon-systems/css-client is the single source of
+// truth for this constant — P1ContentClient and brokerLogout default to it
+// internally too, so a consumer that constructs either directly doesn't
+// need this re-export at all.
+export { PRODUCTION_BASE_URL };
 
 const VALID_AUTH_MODES: AuthMode[] = ['mock', 'broker'];
 const DEFAULT_AUTH_MODE: AuthMode = 'broker';

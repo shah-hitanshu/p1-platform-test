@@ -1,9 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const mockGetRedirect = vi.fn();
+const mockClientCtor = vi.fn();
 
 vi.mock("@pantheon-systems/css-client/content", () => ({
   P1ContentClient: class MockP1ContentClient {
+    constructor(opts: unknown) {
+      mockClientCtor(opts);
+    }
     getRedirect = mockGetRedirect;
   },
 }));
@@ -25,6 +29,7 @@ import { createP1Middleware } from "../middleware";
 describe("createP1Middleware", () => {
   beforeEach(() => {
     mockGetRedirect.mockReset();
+    mockClientCtor.mockReset();
   });
 
   const config = {
@@ -185,5 +190,16 @@ describe("createP1Middleware", () => {
     expect(result.type).toBe("redirect");
     expect(result.url).toBe("https://example.com/landing");
     expect(result.status).toBe(301);
+  });
+
+  it("passes cssBaseUrl through to P1ContentClient unmodified, applying no default of its own", () => {
+    createP1Middleware({ apiToken: "test-token", siteId: "site-1" });
+
+    // P1ContentClient (@pantheon-systems/css-client) owns the unset/blank ->
+    // production-backend default; this middleware just forwards whatever it
+    // was given, including undefined.
+    expect(mockClientCtor).toHaveBeenCalledWith(
+      expect.objectContaining({ baseUrl: undefined }),
+    );
   });
 });

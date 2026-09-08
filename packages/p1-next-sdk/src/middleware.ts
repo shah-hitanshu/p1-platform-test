@@ -2,7 +2,13 @@ import { P1ContentClient } from "@pantheon-systems/css-client/content";
 import { NextResponse } from "next/server";
 
 export interface P1MiddlewareConfig {
-  cssBaseUrl: string;
+  /**
+   * Base URL of the API. Defaults to the production backend when unset or
+   * blank — P1ContentClient (from @pantheon-systems/css-client) owns that
+   * fallback, so it's applied consistently for every consumer that
+   * constructs one, not just this middleware.
+   */
+  cssBaseUrl?: string;
   apiToken: string;
   siteId: string;
 }

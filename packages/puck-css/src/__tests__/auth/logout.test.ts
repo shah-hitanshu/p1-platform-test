@@ -73,4 +73,15 @@ describe('performLogout', () => {
       siteApiToken: 'sat_abc',
     });
   });
+
+  it('passes cssBaseUrl through to brokerLogout unmodified, applying no default of its own', async () => {
+    brokerLogout.mockResolvedValue({ status: 'no_session' });
+
+    await performLogout({});
+
+    // brokerLogout (@pantheon-systems/css-client) owns the unset/blank ->
+    // production-backend default; performLogout just forwards whatever it
+    // was given, including a config with no cssBaseUrl at all.
+    expect(brokerLogout).toHaveBeenCalledWith({});
+  });
 });

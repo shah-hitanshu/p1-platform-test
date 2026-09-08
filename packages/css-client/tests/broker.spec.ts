@@ -10,6 +10,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createBrokerAuth, brokerLogout, hasPendingBrokerLogin, redeemPendingBrokerLogin } from '../src/broker.js';
 import { createOAuthAuthProvider } from '../src/oauth.js';
 import type { BrokerAuthConfig } from '../src/broker.js';
+import { PRODUCTION_BASE_URL } from '../src/constants.js';
 
 const localStorageMock = (() => {
   let store: Record<string, string> = {};
@@ -1426,6 +1427,32 @@ describe('brokerLogout()', () => {
     await brokerLogout({ cssBaseUrl: 'https://css-api.example.com', siteApiToken: 'tok_abc' });
     const [url] = mockFetch.mock.calls[0];
     expect(url).toBe('https://css-api.example.com/broker/logout');
+  });
+
+  // Direct mode (siteApiToken set) is the only branch that reads cssBaseUrl
+  // at all — proxy mode always posts to the app's own /p1/auth/logout, so
+  // these exercise the branch where an unset/blank value would otherwise
+  // reach the network as a literal empty string.
+  it('falls back to PRODUCTION_BASE_URL when cssBaseUrl is omitted (direct mode)', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ logoutUrl: 'https://auth0.example.com/v2/logout' }),
+    });
+
+    await brokerLogout({ siteApiToken: 'tok_abc' });
+    const [url] = mockFetch.mock.calls[0];
+    expect(url).toBe(`${PRODUCTION_BASE_URL}/broker/logout`);
+  });
+
+  it('falls back to PRODUCTION_BASE_URL when cssBaseUrl is blank (direct mode)', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ logoutUrl: 'https://auth0.example.com/v2/logout' }),
+    });
+
+    await brokerLogout({ cssBaseUrl: '   ', siteApiToken: 'tok_abc' });
+    const [url] = mockFetch.mock.calls[0];
+    expect(url).toBe(`${PRODUCTION_BASE_URL}/broker/logout`);
   });
 });
 

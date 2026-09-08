@@ -8,6 +8,9 @@
 export { P1Client } from './client.js';
 export type { P1ClientConfig } from './client.js';
 
+// Shared constants
+export { PRODUCTION_BASE_URL } from './constants.js';
+
 // Types
 export type {
   // Core domain types

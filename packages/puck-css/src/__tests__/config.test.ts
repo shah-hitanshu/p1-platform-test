@@ -3,7 +3,7 @@ import { createP1Config, createNextConfig, createNextContentClient, PRODUCTION_B
 
 vi.mock('@pantheon-systems/css-client', () => {
   const MockP1ContentClient = vi.fn();
-  return { P1ContentClient: MockP1ContentClient };
+  return { P1ContentClient: MockP1ContentClient, PRODUCTION_BASE_URL: 'https://ccr.p1.pantheon.io' };
 });
 
 describe('PRODUCTION_BASE_URL', () => {

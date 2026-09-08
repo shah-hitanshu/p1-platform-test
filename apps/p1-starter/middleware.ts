@@ -1,7 +1,7 @@
 import { createP1Middleware } from "@pantheon-systems/p1-next-sdk/server";
 
 const p1Middleware = createP1Middleware({
-  cssBaseUrl: process.env.NEXT_PUBLIC_CSS_BASE_URL ?? "http://localhost:8787",
+  cssBaseUrl: process.env.NEXT_PUBLIC_CSS_BASE_URL,
   apiToken: process.env.CSS_API_KEY ?? "",
   siteId: process.env.NEXT_PUBLIC_CSS_SITE_ID ?? "",
 });
