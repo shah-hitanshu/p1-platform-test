@@ -11,7 +11,8 @@
     { "type": "Text", "globs": ["**/*.yaml"], "fallthrough": true }
   ],
 
-  "compatibility_date": "2024-01-01",
+  "compatibility_date": "2024-12-01",
+  "compatibility_flags": ["nodejs_compat"],
   "account_id": "b64d7635bcad811044d61491827b4040",
 
   // Inherited by every environment. Source maps are what make error stacks
@@ -57,7 +58,11 @@
     "R2_BUCKET_NAME": "p1-media-local",
     // Orphan-reconcile Cron Trigger: log candidates only, delete nothing, until an
     // operator explicitly flips this to "false" per environment after eyeballing logs.
-    "RECONCILE_DRY_RUN": "true"
+    "RECONCILE_DRY_RUN": "true",
+    // Telemetry lane + level (see src/telemetry.ts). Named environments REPLACE
+    // `vars` rather than inherit, so each env block carries its own copies.
+    "ENVIRONMENT": "local",
+    "LOG_LEVEL": "debug"
   },
 
   // Images binding — remote: true so local dev uses real Cloudflare Images (supports fit, gravity, etc.).
@@ -93,7 +98,9 @@
         "MAX_UPLOAD_BYTES": "10485760",
         "R2_ACCOUNT_ID": "69bc76f4866aaaa3400ea7fbbd9d7da2",
         "R2_BUCKET_NAME": "p1-media-staging",
-        "RECONCILE_DRY_RUN": "true"
+        "RECONCILE_DRY_RUN": "true",
+        "ENVIRONMENT": "staging",
+        "LOG_LEVEL": "warn"
       },
       // Orphan-reconcile job. Hourly is plenty given the 24h age threshold — this
       // isn't time-sensitive, it just bounds how long abandoned uploads sit in R2.
@@ -120,7 +127,9 @@
         "MAX_UPLOAD_BYTES": "10485760",
         "R2_ACCOUNT_ID": "c7357ecc2566ef9d5d555e40fccb3071",
         "R2_BUCKET_NAME": "p1-media-prod",
-        "RECONCILE_DRY_RUN": "true"
+        "RECONCILE_DRY_RUN": "true",
+        "ENVIRONMENT": "production",
+        "LOG_LEVEL": "warn"
       },
       "triggers": { "crons": ["0 * * * *"] }
     }

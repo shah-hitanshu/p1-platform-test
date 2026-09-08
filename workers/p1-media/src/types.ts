@@ -1,4 +1,8 @@
-export interface Env {
+import type { TelemetryEnv } from './telemetry';
+
+// Telemetry bindings (ENVIRONMENT, LOG_LEVEL, APP_VERSION, P1_LOG_SINK, CCR_BASE_URL)
+// come from TelemetryEnv so the logger's env contract is declared once, in telemetry.ts.
+export interface Env extends TelemetryEnv {
   MEDIA_BUCKET: R2Bucket;
   MEDIA_DB: D1Database;
   CCR_BASE_URL: string;

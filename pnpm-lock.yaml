@@ -890,6 +890,9 @@ importers:
 
   workers/p1-media:
     dependencies:
+      '@pantheon-systems/p1-telemetry':
+        specifier: workspace:*
+        version: link:../../packages/p1-telemetry
       aws4fetch:
         specifier: ^1.0.20
         version: 1.0.20

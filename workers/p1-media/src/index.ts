@@ -1,4 +1,6 @@
+import { contextFromRequest, withRequestContext } from '@pantheon-systems/p1-telemetry';
 import type { Env } from './types';
+import { ensureLogger } from './telemetry';
 import { validateAuth } from './auth';
 import { METADATA_SCHEMA } from './schema';
 import { handleImage } from './handlers/image';
@@ -38,6 +40,30 @@ function isValidId(id: string): boolean {
   return !!id && !id.includes('/') && !id.includes('..') && !/\s/.test(id);
 }
 
+
+/** Route paths for the media worker can include customer-provided values, this ensures we never unintentionally log customer data */
+function sanitizeRoutePattern(path: string): string {
+  if (path === '/docs' || path === '/docs/') return '/docs';
+  if (path === '/docs/openapi.yaml') return '/docs/openapi.yaml';
+  if (path.startsWith('/image/')) return '/image/*';
+  if (path === '/media/schema') return '/media/schema';
+  if (path === '/media') return '/media';
+  if (path.startsWith('/media/')) {
+    const rest = path.slice('/media/'.length);
+    if (rest === 'presign' || rest === 'finalize') return `/media/${rest}`;
+    if (rest.endsWith('/versions/presign')) return '/media/:assetId/versions/presign';
+    if (rest.endsWith('/versions/finalize')) return '/media/:assetId/versions/finalize';
+    return '/media/:assetId';
+  }
+  return '/unmatched';
+}
+
+function withRequestId(response: Response, requestId: string): Response {
+  const wrapped = new Response(response.body, response);
+  wrapped.headers.set('x-p1-request-id', requestId);
+  return wrapped;
+}
+
 function hasBearerToken(request: Request): boolean {
   const auth = request.headers.get('Authorization');
   return !!auth && auth.startsWith('Bearer ');
@@ -72,110 +98,139 @@ async function authenticate(request: Request, env: Env, url: URL): Promise<strin
   return siteId;
 }
 
+/** Routing. Throws propagate to the boundary in `fetch`, which maps them to a 500. */
+async function route(request: Request, env: Env, url: URL): Promise<Response> {
+  const path = url.pathname;
+  const method = request.method;
+
+  // ----- GET /docs, /docs/openapi.yaml — public API reference (Swagger UI) -----
+  if (method === 'GET' && (path === '/docs' || path === '/docs/')) {
+    return addCorsHeaders(handleDocsRoute(request));
+  }
+  if (method === 'GET' && path === '/docs/openapi.yaml') {
+    return addCorsHeaders(handleDocsSpecRoute(request));
+  }
+
+  // ----- GET /image/* — public, no auth -----
+  if (method === 'GET' && path.startsWith('/image/')) {
+    const fullKey = decodeURIComponent(path.slice('/image/'.length));
+    const slashIndex = fullKey.indexOf('/');
+    if (slashIndex === -1) {
+      return addCorsHeaders(jsonResponse({ error: 'Invalid image path' }, 400));
+    }
+    const siteId = fullKey.slice(0, slashIndex);
+    return addCorsHeaders(await handleImage(request, env, siteId, fullKey));
+  }
+
+  // ----- GET /media/schema — public field definitions (Pantheon-defined, global) -----
+  if (method === 'GET' && path === '/media/schema') {
+    return addCorsHeaders(
+      new Response(JSON.stringify(METADATA_SCHEMA), {
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+  }
+
+  // ----- /media — list (GET); uploads go through /media/presign+finalize -----
+  if (path === '/media') {
+    if (method === 'GET') {
+      const auth = await authenticate(request, env, url);
+      if (auth instanceof Response) return addCorsHeaders(auth);
+      return addCorsHeaders(await handleList(request, env, auth));
+    }
+    return addCorsHeaders(jsonResponse({ error: 'Method not allowed' }, 405));
+  }
+
+  // ----- /media/:assetId (+ /versions/presign, /versions/finalize) -----
+  if (path.startsWith('/media/')) {
+    const rest = decodeURIComponent(path.slice('/media/'.length));
+
+    // POST /media/presign, POST /media/finalize — exact-match literal routes.
+    // Handled before the generic /media/:assetId fallback below: single-segment
+    // names like "presign"/"finalize" would otherwise pass isValidId and be
+    // treated as an assetId.
+    if (method === 'POST' && rest === 'presign') {
+      const auth = await authenticate(request, env, url);
+      if (auth instanceof Response) return addCorsHeaders(auth);
+      return addCorsHeaders(await handlePresignUpload(request, env, auth));
+    }
+    if (method === 'POST' && rest === 'finalize') {
+      const auth = await authenticate(request, env, url);
+      if (auth instanceof Response) return addCorsHeaders(auth);
+      return addCorsHeaders(await handleFinalizeUpload(request, env, auth));
+    }
+
+    // POST /media/:assetId/versions/presign, /versions/finalize
+    if (method === 'POST' && rest.endsWith('/versions/presign')) {
+      const assetId = rest.slice(0, -'/versions/presign'.length);
+      if (!isValidId(assetId)) return addCorsHeaders(jsonResponse({ error: 'Not found' }, 404));
+      const auth = await authenticate(request, env, url);
+      if (auth instanceof Response) return addCorsHeaders(auth);
+      return addCorsHeaders(await handlePresignVersion(request, env, auth, assetId));
+    }
+    if (method === 'POST' && rest.endsWith('/versions/finalize')) {
+      const assetId = rest.slice(0, -'/versions/finalize'.length);
+      if (!isValidId(assetId)) return addCorsHeaders(jsonResponse({ error: 'Not found' }, 404));
+      const auth = await authenticate(request, env, url);
+      if (auth instanceof Response) return addCorsHeaders(auth);
+      return addCorsHeaders(await handleFinalizeVersion(request, env, auth, assetId));
+    }
+
+    const assetId = rest;
+    if (!isValidId(assetId)) return addCorsHeaders(jsonResponse({ error: 'Not found' }, 404));
+
+    const auth = await authenticate(request, env, url);
+    if (auth instanceof Response) return addCorsHeaders(auth);
+
+    if (method === 'GET') return addCorsHeaders(await handleGetAsset(env, auth, assetId));
+    if (method === 'PATCH') return addCorsHeaders(await handlePatch(request, env, auth, assetId));
+    if (method === 'DELETE') return addCorsHeaders(await handleDelete(env, auth, assetId));
+    return addCorsHeaders(jsonResponse({ error: 'Method not allowed' }, 405));
+  }
+
+  return addCorsHeaders(jsonResponse({ error: 'Not found' }, 404));
+}
+
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  // ctx is optional so unit tests can invoke the handler bare; the runtime always
+  // passes it, and flush is a no-op under the console-only sink tests run with.
+  async fetch(request: Request, env: Env, ctx?: ExecutionContext): Promise<Response> {
     if (request.method === 'OPTIONS') {
       return new Response(null, { status: 204, headers: CORS_HEADERS });
     }
 
+    const logger = ensureLogger(env);
     const url = new URL(request.url);
-    const path = url.pathname;
-    const method = request.method;
+    const telemetry = contextFromRequest(request, { route: sanitizeRoutePattern(url.pathname) });
 
-    try {
-      // ----- GET /docs, /docs/openapi.yaml — public API reference (Swagger UI) -----
-      if (method === 'GET' && (path === '/docs' || path === '/docs/')) {
-        return addCorsHeaders(handleDocsRoute(request));
-      }
-      if (method === 'GET' && path === '/docs/openapi.yaml') {
-        return addCorsHeaders(handleDocsSpecRoute(request));
-      }
-
-      // ----- GET /image/* — public, no auth -----
-      if (method === 'GET' && path.startsWith('/image/')) {
-        const fullKey = decodeURIComponent(path.slice('/image/'.length));
-        const slashIndex = fullKey.indexOf('/');
-        if (slashIndex === -1) {
-          return addCorsHeaders(jsonResponse({ error: 'Invalid image path' }, 400));
-        }
-        const siteId = fullKey.slice(0, slashIndex);
-        return addCorsHeaders(await handleImage(request, env, siteId, fullKey));
-      }
-
-      // ----- GET /media/schema — public field definitions (Pantheon-defined, global) -----
-      if (method === 'GET' && path === '/media/schema') {
-        return addCorsHeaders(
-          new Response(JSON.stringify(METADATA_SCHEMA), {
-            headers: { 'Content-Type': 'application/json' },
-          }),
+    return withRequestContext(telemetry, async () => {
+      try {
+        return withRequestId(await route(request, env, url), telemetry.requestId);
+      } catch (err) {
+        // Nothing below this caught it, so it's a boundary failure — alert on
+        // `unhandled=true` rather than on every error-level line.
+        logger.unhandled('unhandled fetch error', err, {
+          'http.request.method': request.method,
+          'http.route': sanitizeRoutePattern(url.pathname),
+        });
+        return withRequestId(
+          addCorsHeaders(jsonResponse({ error: 'Internal server error' }, 500)),
+          telemetry.requestId,
         );
+      } finally {
+        // Drains the local ndjson sink when `P1_LOG_SINK` is set; a no-op when console
+        // is the only sink. Under `waitUntil` so it cannot delay the response.
+        ctx?.waitUntil(logger.flush());
       }
-
-      // ----- /media — list (GET); uploads go through /media/presign+finalize -----
-      if (path === '/media') {
-        if (method === 'GET') {
-          const auth = await authenticate(request, env, url);
-          if (auth instanceof Response) return addCorsHeaders(auth);
-          return addCorsHeaders(await handleList(request, env, auth));
-        }
-        return addCorsHeaders(jsonResponse({ error: 'Method not allowed' }, 405));
-      }
-
-      // ----- /media/:assetId (+ /versions/presign, /versions/finalize) -----
-      if (path.startsWith('/media/')) {
-        const rest = decodeURIComponent(path.slice('/media/'.length));
-
-        // POST /media/presign, POST /media/finalize — exact-match literal routes.
-        // Handled before the generic /media/:assetId fallback below: single-segment
-        // names like "presign"/"finalize" would otherwise pass isValidId and be
-        // treated as an assetId.
-        if (method === 'POST' && rest === 'presign') {
-          const auth = await authenticate(request, env, url);
-          if (auth instanceof Response) return addCorsHeaders(auth);
-          return addCorsHeaders(await handlePresignUpload(request, env, auth));
-        }
-        if (method === 'POST' && rest === 'finalize') {
-          const auth = await authenticate(request, env, url);
-          if (auth instanceof Response) return addCorsHeaders(auth);
-          return addCorsHeaders(await handleFinalizeUpload(request, env, auth));
-        }
-
-        // POST /media/:assetId/versions/presign, /versions/finalize
-        if (method === 'POST' && rest.endsWith('/versions/presign')) {
-          const assetId = rest.slice(0, -'/versions/presign'.length);
-          if (!isValidId(assetId)) return addCorsHeaders(jsonResponse({ error: 'Not found' }, 404));
-          const auth = await authenticate(request, env, url);
-          if (auth instanceof Response) return addCorsHeaders(auth);
-          return addCorsHeaders(await handlePresignVersion(request, env, auth, assetId));
-        }
-        if (method === 'POST' && rest.endsWith('/versions/finalize')) {
-          const assetId = rest.slice(0, -'/versions/finalize'.length);
-          if (!isValidId(assetId)) return addCorsHeaders(jsonResponse({ error: 'Not found' }, 404));
-          const auth = await authenticate(request, env, url);
-          if (auth instanceof Response) return addCorsHeaders(auth);
-          return addCorsHeaders(await handleFinalizeVersion(request, env, auth, assetId));
-        }
-
-        const assetId = rest;
-        if (!isValidId(assetId)) return addCorsHeaders(jsonResponse({ error: 'Not found' }, 404));
-
-        const auth = await authenticate(request, env, url);
-        if (auth instanceof Response) return addCorsHeaders(auth);
-
-        if (method === 'GET') return addCorsHeaders(await handleGetAsset(env, auth, assetId));
-        if (method === 'PATCH') return addCorsHeaders(await handlePatch(request, env, auth, assetId));
-        if (method === 'DELETE') return addCorsHeaders(await handleDelete(env, auth, assetId));
-        return addCorsHeaders(jsonResponse({ error: 'Method not allowed' }, 405));
-      }
-
-      return addCorsHeaders(jsonResponse({ error: 'Not found' }, 404));
-    } catch (err) {
-      console.error(`fetch: unhandled error on ${method} ${path}`, err);
-      return addCorsHeaders(jsonResponse({ error: 'Internal server error' }, 500));
-    }
+    });
   },
 
-  async scheduled(_controller: ScheduledController, env: Env): Promise<void> {
-    await handleReconcile(env);
+  async scheduled(_controller: ScheduledController, env: Env, ctx?: ExecutionContext): Promise<void> {
+    const logger = ensureLogger(env);
+    try {
+      await handleReconcile(env);
+    } finally {
+      ctx?.waitUntil(logger.flush());
+    }
   },
 } satisfies ExportedHandler<Env>;

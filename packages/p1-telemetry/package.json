@@ -6,7 +6,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./sinks/http": "./src/sinks/http.ts"
+    "./sinks/http": "./src/sinks/http.ts",
+    "./worker": "./src/worker.ts"
   },
   "scripts": {
     "lint": "eslint src tests",
