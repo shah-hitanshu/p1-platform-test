@@ -1220,6 +1220,7 @@ describe('Phase 1.3: Core TypeScript Types', () => {
           settings: {},
           createdAt: '2024-01-01T00:00:00Z',
           updatedAt: '2024-01-01T00:00:00Z',
+          isGlobal: false,
         };
         assertType<RegisteredAgent>(agent);
         expect(agent.status).toBe('active');
@@ -1236,6 +1237,7 @@ describe('Phase 1.3: Core TypeScript Types', () => {
           settings: {},
           createdAt: '2024-01-01T00:00:00Z',
           updatedAt: '2024-01-01T00:00:00Z',
+          isGlobal: false,
         };
         assertType<RegisteredAgent>(agent);
         expect(agent.description).toBe('Handles content updates');

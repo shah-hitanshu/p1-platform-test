@@ -29,6 +29,21 @@ vi.mock('../../src/services/checkpoint-publish', () => ({
   publishDocument: vi.fn().mockResolvedValue({ checkpoint: { id: 'cp1' } }),
 }));
 
+// listSites asks whether an agent principal is global before it builds the
+// sites query, so the sites query is not necessarily the first call.
+function sitesQueryCall(calls: readonly (readonly unknown[])[]): {
+  sql: string;
+  params: unknown[];
+} {
+  for (const call of calls) {
+    const [sql, params] = call;
+    if (typeof sql === 'string' && sql.includes('app.sites')) {
+      return { sql, params: (params as unknown[] | undefined) ?? [] };
+    }
+  }
+  throw new Error('listSites issued no query against app.sites');
+}
+
 describe('Phase 3.1: Site Service', () => {
   beforeEach(() => {
     vi.resetAllMocks();
@@ -937,7 +952,7 @@ describe('Phase 3.1: Site Service', () => {
 
       await listSites({ principalId: 'agent-abc', principalType: 'agent' });
 
-      const sql = vi.mocked(db.query).mock.calls[0][0];
+      const { sql } = sitesQueryCall(vi.mocked(db.query).mock.calls);
       expect(sql).toContain('INNER JOIN app.agent_site_roles');
       expect(sql).toContain('revoked_at IS NULL');
       expect(db.query).toHaveBeenCalledWith(
@@ -954,10 +969,69 @@ describe('Phase 3.1: Site Service', () => {
 
       await listSites({ principalId: 'agent-abc', principalType: 'agent', limit: 10, offset: 20 });
 
-      const sql = vi.mocked(db.query).mock.calls[0][0];
+      const { sql } = sitesQueryCall(vi.mocked(db.query).mock.calls);
       expect(sql).toContain('INNER JOIN app.agent_site_roles');
       expect(sql).toContain('LIMIT');
       expect(sql).toContain('OFFSET');
+    });
+
+    // A global agent's implicit access is delegated from the acting user, so its
+    // listing is that user's sites rather than its own grants.
+    it('lists by the acting user, not the agent grant, for a global agent', async () => {
+      const { listSites } = await import('../../src/services/site-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [{ is_global: true }] })
+        .mockResolvedValue({ rows: [] });
+
+      await listSites({
+        principalId: 'agent-abc',
+        principalType: 'agent',
+        actingUserId: 'db-user-xyz',
+      });
+
+      const { sql, params } = sitesQueryCall(vi.mocked(db.query).mock.calls);
+      expect(sql).not.toContain('app.agent_site_roles');
+      expect(sql).toContain('INNER JOIN app.user_site_roles');
+      expect(params).toContain('db-user-xyz');
+      expect(params).not.toContain('agent-abc');
+    });
+
+    // Without an acting user there is nothing to bound the widening, so it must
+    // not happen at all — one key would otherwise enumerate every site.
+    it('does not widen for a global agent with no acting user', async () => {
+      const { listSites } = await import('../../src/services/site-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValue({ rows: [] });
+
+      await listSites({ principalId: 'agent-abc', principalType: 'agent' });
+
+      const { sql, params } = sitesQueryCall(vi.mocked(db.query).mock.calls);
+      expect(sql).toContain('INNER JOIN app.agent_site_roles');
+      expect(params).toContain('agent-abc');
+    });
+
+    it('numbers the org and acting-user placeholders independently', async () => {
+      const { listSites } = await import('../../src/services/site-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [{ is_global: true }] })
+        .mockResolvedValue({ rows: [] });
+
+      await listSites({
+        principalId: 'agent-abc',
+        principalType: 'agent',
+        actingUserId: 'db-user-xyz',
+        organizationId: 'org-1',
+      });
+
+      const { sql, params } = sitesQueryCall(vi.mocked(db.query).mock.calls);
+      expect(sql).toContain('s.organization_id = $1');
+      expect(sql).toContain('usr.user_id = $2');
+      expect(params).toEqual(['org-1', 'db-user-xyz']);
     });
 
     // ---------------------------------------------------------------------
@@ -978,8 +1052,7 @@ describe('Phase 3.1: Site Service', () => {
           actingUserId: 'db-user-xyz',
         });
 
-        const sql = vi.mocked(db.query).mock.calls[0][0];
-        const params = vi.mocked(db.query).mock.calls[0][1];
+        const { sql, params } = sitesQueryCall(vi.mocked(db.query).mock.calls);
 
         // Both joins must be present so the result intersects agent + user roles.
         expect(sql).toContain('INNER JOIN app.agent_site_roles');
@@ -1000,7 +1073,7 @@ describe('Phase 3.1: Site Service', () => {
           principalType: 'agent',
         });
 
-        const sql = vi.mocked(db.query).mock.calls[0][0];
+        const { sql } = sitesQueryCall(vi.mocked(db.query).mock.calls);
 
         // Legacy agent calls (no acting user) keep the original SQL shape so
         // direct agent traffic continues to work as before.
@@ -1044,7 +1117,7 @@ describe('Phase 3.1: Site Service', () => {
           offset: 20,
         });
 
-        const sql = vi.mocked(db.query).mock.calls[0][0];
+        const { sql } = sitesQueryCall(vi.mocked(db.query).mock.calls);
         expect(sql).toContain('INNER JOIN app.agent_site_roles');
         expect(sql).toContain('INNER JOIN app.user_site_roles');
         expect(sql).toContain('LIMIT');
@@ -1063,7 +1136,7 @@ describe('Phase 3.1: Site Service', () => {
           actingUserId: 'db-user-xyz',
         });
 
-        const sql = vi.mocked(db.query).mock.calls[0][0];
+        const { sql } = sitesQueryCall(vi.mocked(db.query).mock.calls);
         // The revoked_at filter must remain even with the user join, otherwise
         // revoked agent grants could come back through the intersection.
         expect(sql).toContain('revoked_at IS NULL');

@@ -17,12 +17,12 @@ import type {
   AuthenticatedPrincipal,
   RoleName,
   RolePermissions,
-  AgentSiteRole,
   PantheonRole,
 } from '../types';
 import { query } from '../db';
 import { ROLES, mapPantheonRole, mapAgentRole, maxRole, minRole } from './roles';
 import type { MASClient } from '../services/mas-client';
+import { resolveAgentSiteRole } from '../services/agent-site-role-service';
 import { HttpError } from '../services/errors';
 
 /**
@@ -46,6 +46,16 @@ export class AuthorizationError extends HttpError {
   ) {
     super(message);
   }
+}
+
+/**
+ * Whether an agent principal is forwarding an acting user, whose own access
+ * bounds what the agent may do.
+ */
+export function hasActingUser(principal: AuthenticatedPrincipal): boolean {
+  return principal.type === 'agent'
+    && principal.actingUserEmail !== undefined
+    && principal.actingUserEmail !== '';
 }
 
 /**
@@ -77,19 +87,31 @@ export async function getSiteRole(
   masClient?: MASClient,
 ): Promise<RoleName> {
   if (principal.type === 'agent') {
-    // Query agent_site_roles table. The revoked_at filter is load-bearing:
-    // without it a revoked grant still authorizes, and since grantRole's
-    // ON CONFLICT is partial (WHERE revoked_at IS NULL), revoked rows can pile
-    // up beside the one active row, making an unfiltered rows[0] order-dependent.
-    // The partial unique index guarantees at most one active row [PCC-3676].
-    const result = await query<{ role: AgentSiteRole }>(
-      `SELECT role FROM app.agent_site_roles
-       WHERE agent_id = $1 AND site_id = $2 AND revoked_at IS NULL`,
-      [principal.id, siteId],
+    // Resolved through the same function the site agent-access list reads, so a
+    // global agent's implicit access authorizes exactly as it is displayed. That
+    // implicit access needs an acting user to bound it; an explicit grant does not.
+    const resolved = await resolveAgentSiteRole(
+      principal.id,
+      siteId,
+      hasActingUser(principal),
     );
 
-    if (result.rows[0]) {
-      return mapAgentRole(result.rows[0].role);
+    if (resolved !== null) {
+      const agentRole = mapAgentRole(resolved.role);
+
+      // Bound the delegated role here rather than only in getEffectiveRole:
+      // this function is exported and read directly, so the bound cannot
+      // depend on the entry point. minRole makes the later intersection a
+      // no-op. An explicit grant is standalone authority and stays as-is.
+      if (resolved.implicit && principal.actingUserEmail !== undefined) {
+        const actingUserSiteRole = await getActingUserSiteRole(
+          principal.actingUserEmail,
+          siteId,
+        );
+        return minRole(agentRole, actingUserSiteRole);
+      }
+
+      return agentRole;
     }
   } else if (masClient && isPantheonUser(principal)) {
     // Dual-source resolution for Pantheon users with MAS
@@ -282,7 +304,7 @@ export async function getEffectiveRole(
   // When an agent acts on behalf of a user, the effective role is
   // min(agentEffectiveRole, actingUserSiteRole) to prevent privilege escalation.
   let finalRoleName = effectiveRoleName;
-  if (principal.type === 'agent' && principal.actingUserEmail !== undefined && principal.actingUserEmail !== '') {
+  if (hasActingUser(principal) && principal.actingUserEmail !== undefined) {
     const actingUserSiteRole = await getActingUserSiteRole(principal.actingUserEmail, siteId);
     finalRoleName = minRole(effectiveRoleName, actingUserSiteRole);
   }

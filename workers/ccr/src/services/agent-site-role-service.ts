@@ -20,6 +20,12 @@ export interface GrantRoleParams {
   grantedBy: string;
 }
 
+export interface ResolvedAgentSiteRole {
+  role: 'viewer' | 'editor' | 'admin';
+  /** True when the role comes from the global flag rather than a grant row. */
+  implicit: boolean;
+}
+
 export interface AgentSiteRole {
   id: string;
   agentId: string;
@@ -28,6 +34,7 @@ export interface AgentSiteRole {
   grantedBy: string;
   grantedAt: string;
   revokedAt: string | null;
+  isGlobal: boolean;
 }
 
 interface RoleRow {
@@ -38,6 +45,7 @@ interface RoleRow {
   created_by_id: string;
   created_at: string;
   revoked_at: string | null;
+  is_global: boolean;
 }
 
 // =============================================================================
@@ -52,6 +60,9 @@ const ROLE_MAP: Record<string, PantheonRole> = {
   admin: 'admin',
 };
 
+// Access level a global agent holds on a site it was never explicitly granted.
+const DEFAULT_GLOBAL_AGENT_ROLE: 'viewer' | 'editor' | 'admin' = 'editor';
+
 // =============================================================================
 // Helpers
 // =============================================================================
@@ -65,6 +76,7 @@ function mapRowToRole(row: RoleRow): AgentSiteRole {
     grantedBy: row.created_by_id,
     grantedAt: row.created_at,
     revokedAt: row.revoked_at,
+    isGlobal: row.is_global,
   };
 }
 
@@ -168,23 +180,99 @@ export async function listRoles(agentId: string): Promise<AgentSiteRole[]> {
 }
 
 /**
- * List active (non-revoked) agent roles for a site.
- * Joins with agents table to include agent name.
+ * List active (non-revoked) agent roles for a site, always including global
+ * agents. Global agents appear even without an explicit grant so they show
+ * as non-removable system entries in the UI.
  */
 export async function listRolesBySite(siteId: string): Promise<(AgentSiteRole & { agentName: string })[]> {
   const result = await query<RoleRow & { agent_name: string }>(
-    `SELECT r.*, a.name AS agent_name
+    `-- Explicitly granted roles for non-global agents
+     SELECT r.id::text, r.agent_id::text, r.site_id, r.role, r.created_by_id, r.created_at, r.revoked_at,
+            a.name AS agent_name, FALSE AS is_global
      FROM app.agent_site_roles r
      JOIN app.agents a ON a.id = r.agent_id
-     WHERE r.site_id = $1 AND r.revoked_at IS NULL
-     ORDER BY r.created_at DESC`,
-    [siteId],
+     WHERE r.site_id = $1 AND r.revoked_at IS NULL AND a.is_global = FALSE
+
+     UNION ALL
+
+     -- Global agents always appear; use their explicit role if one exists,
+     -- otherwise the default system access level.
+     SELECT COALESCE(r.id::text, a.id::text) AS id,
+            a.id AS agent_id,
+            $1::uuid AS site_id,
+            COALESCE(r.role, $2) AS role,
+            COALESCE(r.created_by_id, '') AS created_by_id,
+            COALESCE(r.created_at, a.created_at) AS created_at,
+            NULL AS revoked_at,
+            a.name AS agent_name,
+            TRUE AS is_global
+     FROM app.agents a
+     LEFT JOIN app.agent_site_roles r
+       ON r.agent_id = a.id AND r.site_id = $1 AND r.revoked_at IS NULL
+     WHERE a.is_global = TRUE AND a.status = 'active'
+
+     ORDER BY is_global DESC, created_at DESC`,
+    [siteId, DEFAULT_GLOBAL_AGENT_ROLE],
   );
 
   return result.rows.map((row) => ({
     ...mapRowToRole(row),
     agentName: row.agent_name,
   }));
+}
+
+/**
+ * The role an agent holds on a site: its explicit grant, or the default level
+ * when the agent is global. Authorization and the site agent-access list both
+ * read this, so the two cannot drift apart.
+ *
+ * `allowImplicit` is the acting user's presence. A global agent's implicit
+ * access is delegated authority — without an acting user to bound it, one key
+ * would carry the default role on every site on the platform. An explicit grant
+ * row still authorizes on its own, as it did before the flag existed.
+ *
+ * `implicit` says which of the two it was, so a caller can bound the delegated
+ * case against the acting user without narrowing a real grant.
+ */
+export async function resolveAgentSiteRole(
+  agentId: string,
+  siteId: string,
+  allowImplicit: boolean,
+): Promise<ResolvedAgentSiteRole | null> {
+  // Revoked grants must not authorize; the partial unique index guarantees at
+  // most one active row per agent and site.
+  const result = await query<{ role: 'viewer' | 'editor' | 'admin'; implicit: boolean }>(
+    `SELECT COALESCE(r.role, $3) AS role, r.id IS NULL AS implicit
+     FROM app.agents a
+     LEFT JOIN app.agent_site_roles r
+       ON r.agent_id = a.id AND r.site_id = $2 AND r.revoked_at IS NULL
+     WHERE a.id = $1
+       AND (r.id IS NOT NULL
+            OR ($4 AND a.is_global = TRUE AND a.status = 'active'))
+     LIMIT 1`,
+    [agentId, siteId, DEFAULT_GLOBAL_AGENT_ROLE, allowImplicit],
+  );
+
+  const row = result.rows[0];
+  return row ? { role: row.role, implicit: row.implicit } : null;
+}
+
+/**
+ * Whether the id belongs to an active global agent, whose implicit access
+ * cannot be revoked. An explicit grant row stays revocable and drops the agent
+ * back to that implicit default.
+ *
+ * Status is checked here because nothing upstream does: a suspended agent still
+ * authenticates, so a status-blind read would let it keep enumerating sites.
+ */
+export async function isGlobalAgentId(id: string): Promise<boolean> {
+  const result = await query<{ is_global: boolean }>(
+    `SELECT is_global FROM app.agents
+     WHERE id = $1 AND is_global = TRUE AND status = 'active'`,
+    [id],
+  );
+
+  return result.rows[0]?.is_global === true;
 }
 
 /**

@@ -102,6 +102,7 @@ interface MockAgent {
   settings: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
+  isGlobal: boolean;
 }
 
 /**
@@ -118,6 +119,7 @@ function createMockAgent(status: 'active' | 'suspended' | 'disabled', id = 'agen
     settings: {},
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
+    isGlobal: false,
   };
 }
 

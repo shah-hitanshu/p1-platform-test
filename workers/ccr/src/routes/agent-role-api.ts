@@ -11,6 +11,7 @@
 
 import type { AuthenticatedPrincipal } from '../types';
 import { grantRole, listRoles, revokeRole, getAgentSiteRoleById } from '../services/agent-site-role-service';
+import { getAgentById } from '../services/agent-service';
 import { assertPermission, hasPermission, AuthorizationError } from '../auth/authorization';
 import { getMainBranch } from '../services';
 
@@ -119,8 +120,19 @@ async function handleGrantRole(
   }
   await assertPermission(principal, siteId, mainBranch.id, 'canManageGrants');
 
+  // A global agent already reaches every site, so an explicit grant would only
+  // add a row that raises its access above the system default. Resolve the agent
+  // rather than trusting the id, and grant to the id that resolved.
+  const agent = await getAgentById(agentId);
+  if (agent === null) {
+    return errorResponse('Agent not found', 404);
+  }
+  if (agent.isGlobal) {
+    return errorResponse('Cannot grant a site role to a system agent', 403);
+  }
+
   const result = await grantRole({
-    agentId,
+    agentId: agent.id,
     siteId,
     role: role as 'viewer' | 'editor' | 'admin',
     grantedBy: principal.dbUserId ?? principal.id,

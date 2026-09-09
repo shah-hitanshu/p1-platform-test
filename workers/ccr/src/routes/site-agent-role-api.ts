@@ -11,7 +11,13 @@
  */
 
 import type { AuthenticatedPrincipal } from '../types';
-import { grantRole, listRolesBySite, revokeRoleBySite } from '../services/agent-site-role-service';
+import {
+  grantRole,
+  isGlobalAgentId,
+  listRolesBySite,
+  revokeRoleBySite,
+} from '../services/agent-site-role-service';
+import { getAgentById } from '../services/agent-service';
 import { assertPermission, AuthorizationError } from '../auth/authorization';
 import { GRANTABLE_AGENT_ROLES } from '../auth/role-catalog';
 import { getMainBranch } from '../services';
@@ -117,8 +123,19 @@ async function handleGrantRole(
     return errorResponse('role must be one of: viewer, editor, admin', 400);
   }
 
+  // A global agent already reaches every site, so an explicit grant would only
+  // add a row that raises its access above the system default. Resolve the agent
+  // rather than trusting the id, and grant to the id that resolved.
+  const agent = await getAgentById(agentId);
+  if (agent === null) {
+    return errorResponse('Agent not found', 404);
+  }
+  if (agent.isGlobal) {
+    return errorResponse('Cannot grant a site role to a system agent', 403);
+  }
+
   const result = await grantRole({
-    agentId,
+    agentId: agent.id,
     siteId,
     role: role as 'viewer' | 'editor' | 'admin',
     grantedBy: principal.dbUserId ?? principal.id,
@@ -136,6 +153,12 @@ async function handleRevokeRole(
   siteId: string,
   roleId: string,
 ): Promise<Response> {
+  // Only the implicit access is non-removable: a global agent with no explicit
+  // grant is listed under its own agent id, which is what arrives here.
+  if (await isGlobalAgentId(roleId)) {
+    return errorResponse('Cannot revoke access for a system agent', 403);
+  }
+
   const revoked = await revokeRoleBySite(roleId, siteId);
 
   if (!revoked) {

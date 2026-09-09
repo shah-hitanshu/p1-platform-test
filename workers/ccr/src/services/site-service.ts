@@ -12,7 +12,7 @@ import { query } from '../db';
 import { createMainBranch, clearBranchCache } from './branch-service';
 import { createDocumentOnBranch } from './branch-document-service';
 import { publishDocument } from './checkpoint-publish';
-import { grantRole as grantAgentRole } from './agent-site-role-service';
+import { grantRole as grantAgentRole, isGlobalAgentId } from './agent-site-role-service';
 import { grantRole as grantUserRole } from './user-site-role-service';
 import { getFirstRow } from '../db/helpers';
 import { requestSiteScreenshot, type ScreenshotProducerEnv } from '../queues/screenshot-producer';
@@ -758,7 +758,17 @@ export async function listSites(options: ListSitesOptions): Promise<Site[]> {
     return allSitesResult.rows.map(mapRowToSite);
   }
 
-  params.push(principalId);
+  // A global agent reaches every site, so its own grants do not narrow the
+  // listing. The acting user's access does, and is required: without it one key
+  // would enumerate every site on the platform.
+  const agentIsGlobal =
+    principalType === 'agent'
+    && actingUserId !== undefined
+    && (await isGlobalAgentId(principalId));
+
+  if (!agentIsGlobal) {
+    params.push(principalId);
+  }
 
   let orgFilter = '';
   if (organizationId !== undefined) {
@@ -767,7 +777,19 @@ export async function listSites(options: ListSitesOptions): Promise<Site[]> {
   }
 
   let sql: string;
-  if (principalType === 'agent') {
+  if (agentIsGlobal) {
+    // Delegated authority: the result is the acting user's own sites, so it can
+    // never exceed what that user could see directly.
+    params.push(actingUserId);
+    sql =
+      'SELECT DISTINCT s.* FROM app.sites s' +
+      ' INNER JOIN app.user_site_roles usr ON usr.site_id = s.id' +
+      ' WHERE usr.user_id = $' +
+      String(params.length) +
+      archivedFilter +
+      orgFilter +
+      ' ORDER BY s.created_at DESC';
+  } else if (principalType === 'agent') {
     // PCC-3190: when an agent acts on behalf of a user, intersect with
     // the user's site roles so the result never leaks beyond what the
     // acting user could see directly. The revoked_at filter on the agent

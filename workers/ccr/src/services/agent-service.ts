@@ -70,6 +70,7 @@ interface AgentRow {
   capabilities: string[];
   status: AgentStatus;
   settings: AgentSettings | string;
+  is_global: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -115,6 +116,7 @@ function mapRowToAgent(row: AgentRow): RegisteredAgent {
     capabilities: row.capabilities,
     status: row.status,
     settings: parseSettings(row.settings),
+    isGlobal: row.is_global,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -183,10 +185,12 @@ export async function createAgent(params: CreateAgentParams): Promise<Registered
     const sql = hasCustomId
       ? `INSERT INTO app.agents (id, organization_id, name, description, capabilities, settings)
          VALUES ($1, $2, $3, $4, $5, $6)
-         RETURNING id, organization_id, name, description, capabilities, status, settings, created_at, updated_at`
+         RETURNING id, organization_id, name, description, capabilities, status,
+                 settings, is_global, created_at, updated_at`
       : `INSERT INTO app.agents (organization_id, name, description, capabilities, settings)
          VALUES ($1, $2, $3, $4, $5)
-         RETURNING id, organization_id, name, description, capabilities, status, settings, created_at, updated_at`;
+         RETURNING id, organization_id, name, description, capabilities, status,
+                 settings, is_global, created_at, updated_at`;
 
     const queryParams = hasCustomId
       ? [
@@ -231,17 +235,40 @@ export async function createAgent(params: CreateAgentParams): Promise<Registered
 }
 
 /**
+ * A uuid-shaped id in canonical lowercase-hyphenated form, which is what the
+ * agents table stores and what a uuid column canonicalizes an id to on write.
+ * Any other id is returned unchanged.
+ */
+function canonicalAgentId(id: string): string {
+  const hex = id.replace(/[{}-]/g, '').toLowerCase();
+  if (!/^[0-9a-f]{32}$/.test(hex)) {
+    return id;
+  }
+  return [
+    hex.slice(0, 8),
+    hex.slice(8, 12),
+    hex.slice(12, 16),
+    hex.slice(16, 20),
+    hex.slice(20),
+  ].join('-');
+}
+
+/**
  * Gets an agent by ID.
+ *
+ * A differently-spelled uuid resolves to the same agent, so a guard that reads
+ * this cannot be spelled around while the write path canonicalizes.
  *
  * @param id - Agent ID
  * @returns The agent or null if not found
  */
 export async function getAgentById(id: string): Promise<RegisteredAgent | null> {
   const result = await query<AgentRow>(`
-    SELECT id, organization_id, name, description, capabilities, status, settings, created_at, updated_at
+    SELECT id, organization_id, name, description, capabilities, status,
+           settings, is_global, created_at, updated_at
     FROM app.agents
     WHERE id = $1
-  `, [id]);
+  `, [canonicalAgentId(id)]);
 
   const row = result.rows[0];
   if (!row) {
@@ -263,7 +290,8 @@ export async function getAgentByName(
   name: string,
 ): Promise<RegisteredAgent | null> {
   const result = await query<AgentRow>(`
-    SELECT id, organization_id, name, description, capabilities, status, settings, created_at, updated_at
+    SELECT id, organization_id, name, description, capabilities, status,
+           settings, is_global, created_at, updated_at
     FROM app.agents
     WHERE organization_id = $1 AND name = $2
   `, [organizationId, name]);
@@ -333,7 +361,8 @@ export async function updateAgent(
       UPDATE app.agents
       SET ${updates.join(', ')}
       WHERE id = $${String(paramIndex)}
-      RETURNING id, organization_id, name, description, capabilities, status, settings, created_at, updated_at
+      RETURNING id, organization_id, name, description, capabilities, status,
+                 settings, is_global, created_at, updated_at
     `, values);
 
     const row = result.rows[0];
@@ -365,7 +394,8 @@ export async function updateAgentStatus(
     UPDATE app.agents
     SET status = $1, updated_at = NOW()
     WHERE id = $2
-    RETURNING id, organization_id, name, description, capabilities, status, settings, created_at, updated_at
+    RETURNING id, organization_id, name, description, capabilities, status,
+                 settings, is_global, created_at, updated_at
   `, [status, id]);
 
   const row = result.rows[0];
@@ -404,7 +434,8 @@ export async function listAgents(
   const { limit = 100, offset = 0, status } = options;
 
   let sql = `
-    SELECT id, organization_id, name, description, capabilities, status, settings, created_at, updated_at
+    SELECT id, organization_id, name, description, capabilities, status,
+           settings, is_global, created_at, updated_at
     FROM app.agents
   `;
   const params: unknown[] = [];
@@ -439,9 +470,10 @@ export async function getAgentsByOrganization(
   const { status } = options;
 
   let sql = `
-    SELECT id, organization_id, name, description, capabilities, status, settings, created_at, updated_at
+    SELECT id, organization_id, name, description, capabilities, status,
+           settings, is_global, created_at, updated_at
     FROM app.agents
-    WHERE organization_id = $1
+    WHERE (organization_id = $1 OR is_global = true)
   `;
   const params: unknown[] = [organizationId];
   const paramIndex = 2;

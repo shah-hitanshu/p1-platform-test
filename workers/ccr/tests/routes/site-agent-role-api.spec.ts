@@ -13,6 +13,11 @@ vi.mock('../../src/services/agent-site-role-service', () => ({
   grantRole: vi.fn(),
   listRolesBySite: vi.fn().mockResolvedValue([]),
   revokeRoleBySite: vi.fn().mockResolvedValue(true),
+  isGlobalAgentId: vi.fn().mockResolvedValue(false),
+}));
+
+vi.mock('../../src/services/agent-service', () => ({
+  getAgentById: vi.fn().mockResolvedValue({ id: 'agent-uuid-456', isGlobal: false }),
 }));
 
 vi.mock('../../src/services', () => ({
@@ -68,6 +73,7 @@ describe('Site Agent Role Routes — authorization (PCC-3676)', () => {
     vi.mocked(roleService.grantRole).mockResolvedValue({
       id: 'role-1', agentId: 'agent-uuid-456', siteId: 'site-uuid-100',
       role: 'admin', grantedBy: 'db-user-uuid-123', grantedAt: '2026-08-19T00:00:00.000Z', revokedAt: null,
+      isGlobal: false,
     });
 
     const response = await handleSiteAgentRoleRoutes(grantRequest(), {
@@ -111,6 +117,89 @@ describe('Site Agent Role Routes — authorization (PCC-3676)', () => {
 
     expect(response.status).toBe(403);
     expect(roleService.listRolesBySite).not.toHaveBeenCalled();
+  });
+
+  // A global agent's access is implicit on every site, so granting it an
+  // explicit role would raise it above the system default — and the revoke
+  // below deliberately refuses to take that row away again.
+  it('rejects a grant to a global agent (403)', async () => {
+    const { handleSiteAgentRoleRoutes } = await import('../../src/routes/site-agent-role-api');
+    const roleService = await import('../../src/services/agent-site-role-service');
+    const agentService = await import('../../src/services/agent-service');
+    vi.mocked(agentService.getAgentById).mockResolvedValue({
+      id: 'agent-uuid-456',
+      isGlobal: true,
+    } as Awaited<ReturnType<typeof agentService.getAgentById>>);
+
+    const response = await handleSiteAgentRoleRoutes(grantRequest(), {
+      siteId: 'site-uuid-100',
+      principal: adminUser,
+    });
+
+    expect(response.status).toBe(403);
+    expect(roleService.grantRole).not.toHaveBeenCalled();
+  });
+
+  it('refuses a grant when the agent id names no agent (404)', async () => {
+    const { handleSiteAgentRoleRoutes } = await import('../../src/routes/site-agent-role-api');
+    const roleService = await import('../../src/services/agent-site-role-service');
+    const agentService = await import('../../src/services/agent-service');
+    vi.mocked(agentService.getAgentById).mockResolvedValue(null);
+
+    const response = await handleSiteAgentRoleRoutes(grantRequest(), {
+      siteId: 'site-uuid-100',
+      principal: adminUser,
+    });
+
+    // agent_site_roles has no foreign key on agent_id, so an unresolved id
+    // would otherwise create a grant row for an agent that does not exist.
+    expect(response.status).toBe(404);
+    expect(roleService.grantRole).not.toHaveBeenCalled();
+  });
+
+  it('grants to the id the agent resolved under, not the id as spelled', async () => {
+    const { handleSiteAgentRoleRoutes } = await import('../../src/routes/site-agent-role-api');
+    const roleService = await import('../../src/services/agent-site-role-service');
+    const agentService = await import('../../src/services/agent-service');
+    vi.mocked(agentService.getAgentById).mockResolvedValue({
+      id: 'agent-uuid-456',
+      isGlobal: false,
+    } as Awaited<ReturnType<typeof agentService.getAgentById>>);
+    vi.mocked(roleService.grantRole).mockResolvedValue({
+      id: 'role-1', agentId: 'agent-uuid-456', siteId: 'site-uuid-100',
+      role: 'admin', grantedBy: 'db-user-uuid-123', grantedAt: '2026-08-19T00:00:00.000Z',
+      revokedAt: null, isGlobal: false,
+    });
+
+    const response = await handleSiteAgentRoleRoutes(
+      new Request('https://api.example.com/api/sites/site-uuid-100/agent-roles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agentId: 'AGENT-UUID-456', role: 'admin' }),
+      }),
+      { siteId: 'site-uuid-100', principal: adminUser },
+    );
+
+    expect(response.status).toBe(201);
+    expect(roleService.grantRole).toHaveBeenCalledWith(
+      expect.objectContaining({ agentId: 'agent-uuid-456' }),
+    );
+  });
+
+  it('rejects a revoke of a global agent\'s implicit access (403)', async () => {
+    const { handleSiteAgentRoleRoutes } = await import('../../src/routes/site-agent-role-api');
+    const roleService = await import('../../src/services/agent-site-role-service');
+    vi.mocked(roleService.isGlobalAgentId).mockResolvedValue(true);
+
+    const response = await handleSiteAgentRoleRoutes(
+      new Request('https://api.example.com/api/sites/site-uuid-100/agent-roles/agent-uuid-456', {
+        method: 'DELETE',
+      }),
+      { siteId: 'site-uuid-100', roleId: 'agent-uuid-456', principal: adminUser },
+    );
+
+    expect(response.status).toBe(403);
+    expect(roleService.revokeRoleBySite).not.toHaveBeenCalled();
   });
 
   it('rejects a revoke without canManageGrants (403)', async () => {

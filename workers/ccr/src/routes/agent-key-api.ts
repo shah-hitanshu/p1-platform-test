@@ -27,6 +27,8 @@ import { getRolesForAgent } from '../services/agent-site-role-service';
 import { assertPermission, AuthorizationError } from '../auth/authorization';
 import { getMainBranch } from '../services';
 import { isOrgAdmin } from '../utils/org-access';
+import { isSuperAdmin } from '../utils/admin-check';
+import type { RegisteredAgent } from '../types';
 
 /**
  * Route context for agent key management endpoints
@@ -95,7 +97,7 @@ export async function handleAgentKeyRoutes(
     // Minting or listing a key creates or exposes material that acts as the
     // agent, so it must never reach access the caller lacks: require
     // canManageGrants on every site the agent currently holds a role on.
-    await assertCanManageAgentKeys(principal, agentId);
+    await assertCanManageAgentKeys(principal, agent);
 
     switch (method) {
       case 'POST':
@@ -140,9 +142,23 @@ async function agentRoleSiteBranches(
  */
 async function assertCanManageAgentKeys(
   principal: AuthenticatedPrincipal,
-  agentId: string,
+  agent: RegisteredAgent,
 ): Promise<void> {
-  for (const { siteId, branchId } of await agentRoleSiteBranches(agentId)) {
+  // A global agent's access is implicit, so it holds no role rows to check and
+  // the per-site rule below would pass having checked nothing. Its key reaches
+  // every site, so only a superadmin may mint or list one.
+  if (agent.isGlobal) {
+    if (!(await isSuperAdmin(principal))) {
+      throw new AuthorizationError(
+        'Superadmin access required to manage keys for a system agent',
+        'canManageGrants',
+        'NO_ACCESS',
+      );
+    }
+    return;
+  }
+
+  for (const { siteId, branchId } of await agentRoleSiteBranches(agent.id)) {
     await assertPermission(principal, siteId, branchId, 'canManageGrants');
   }
 }

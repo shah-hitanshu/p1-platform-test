@@ -47,6 +47,7 @@ describe('Agent Politeness Phase 7.2: Agent Status Middleware', () => {
         settings: {},
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
+        isGlobal: false,
       });
 
       const { checkAgentStatus } = await import(
@@ -77,6 +78,7 @@ describe('Agent Politeness Phase 7.2: Agent Status Middleware', () => {
         settings: {},
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
+        isGlobal: false,
       });
 
       const { checkAgentStatus } = await import(
@@ -107,6 +109,7 @@ describe('Agent Politeness Phase 7.2: Agent Status Middleware', () => {
         settings: {},
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
+        isGlobal: false,
       });
 
       const { checkAgentStatus } = await import(

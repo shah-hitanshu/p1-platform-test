@@ -55,6 +55,7 @@ describe('Agent Politeness Phase 1.5: Agent API Routes', () => {
       settings: {},
       createdAt: '2026-01-26T12:00:00.000Z',
       updatedAt: '2026-01-26T12:00:00.000Z',
+      isGlobal: false,
       ...overrides,
     };
   }

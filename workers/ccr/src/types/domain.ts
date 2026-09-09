@@ -98,6 +98,7 @@ export interface RegisteredAgent {
   capabilities: string[];
   status: AgentStatus;
   settings: AgentSettings;
+  isGlobal: boolean;
   createdAt: string;
   updatedAt: string;
 }

@@ -390,6 +390,7 @@ describe('Phase 3.3: Presence Rollup Optimization (PresenceManager DO)', () => {
         settings: {},
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
+        isGlobal: false,
       });
 
       const site1 = createMockSite({ id: 'site-1', name: 'Site 1' });
@@ -465,6 +466,7 @@ describe('Phase 3.3: Presence Rollup Optimization (PresenceManager DO)', () => {
         settings: {},
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
+        isGlobal: false,
       });
 
       vi.mocked(organizationService.getSitesByOrganization).mockResolvedValue([

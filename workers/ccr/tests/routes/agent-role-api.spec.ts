@@ -26,6 +26,10 @@ vi.mock('../../src/services/agent-site-role-service', () => ({
   }),
 }));
 
+vi.mock('../../src/services/agent-service', () => ({
+  getAgentById: vi.fn().mockResolvedValue({ id: 'agent-uuid-456', isGlobal: false }),
+}));
+
 // PCC-3676: grant/revoke now require canManageGrants on the target site.
 vi.mock('../../src/services', () => ({
   getMainBranch: vi.fn().mockResolvedValue({
@@ -99,6 +103,7 @@ describe('Agent Site Role Routes', () => {
         grantedBy: 'db-user-uuid-123',
         grantedAt: '2026-03-22T10:00:00.000Z',
         revokedAt: null,
+        isGlobal: false,
       });
 
       const request = new Request('https://api.example.com/api/agents/agent-uuid-456/roles', {
@@ -132,6 +137,32 @@ describe('Agent Site Role Routes', () => {
         role: 'editor',
         grantedBy: 'db-user-uuid-123',
       });
+    });
+
+    // The site-scoped route is not the only way in: this one takes siteId from
+    // the body, so it needs the same guard against granting a global agent.
+    it('rejects a grant to a global agent (403)', async () => {
+      const { handleAgentRoleRoutes } = await import('../../src/routes/agent-role-api');
+      const roleService = await import('../../src/services/agent-site-role-service');
+      const agentService = await import('../../src/services/agent-service');
+      vi.mocked(agentService.getAgentById).mockResolvedValue({
+        id: 'agent-uuid-456',
+        isGlobal: true,
+      } as Awaited<ReturnType<typeof agentService.getAgentById>>);
+
+      const request = new Request('https://api.example.com/api/agents/agent-uuid-456/roles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ siteId: 'site-uuid-100', role: 'admin' }),
+      });
+
+      const response = await handleAgentRoleRoutes(request, {
+        agentId: 'agent-uuid-456',
+        principal: userPrincipal,
+      });
+
+      expect(response.status).toBe(403);
+      expect(roleService.grantRole).not.toHaveBeenCalled();
     });
 
     it('should return 400 when siteId is missing', async () => {
@@ -248,6 +279,7 @@ describe('Agent Site Role Routes', () => {
           grantedBy: 'db-user-uuid-123',
           grantedAt: '2026-03-22T10:00:00.000Z',
           revokedAt: null,
+          isGlobal: false,
         },
         {
           id: 'role-uuid-002',
@@ -257,6 +289,7 @@ describe('Agent Site Role Routes', () => {
           grantedBy: 'db-user-uuid-123',
           grantedAt: '2026-03-22T11:00:00.000Z',
           revokedAt: null,
+          isGlobal: false,
         },
       ]);
 
@@ -287,10 +320,12 @@ describe('Agent Site Role Routes', () => {
         {
           id: 'role-uuid-001', agentId: 'agent-uuid-456', siteId: 'site-uuid-100',
           role: 'editor', grantedBy: 'db-user-uuid-123', grantedAt: '2026-03-22T10:00:00.000Z', revokedAt: null,
+          isGlobal: false,
         },
         {
           id: 'role-uuid-002', agentId: 'agent-uuid-456', siteId: 'site-uuid-200',
           role: 'viewer', grantedBy: 'db-user-uuid-123', grantedAt: '2026-03-22T11:00:00.000Z', revokedAt: null,
+          isGlobal: false,
         },
       ]);
       // Caller administers site-uuid-100 but not site-uuid-200 → only the first

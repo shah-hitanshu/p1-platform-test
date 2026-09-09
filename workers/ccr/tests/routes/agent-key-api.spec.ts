@@ -29,6 +29,10 @@ vi.mock('../../src/utils/org-access', () => ({
   isOrgAdmin: vi.fn(),
 }));
 
+vi.mock('../../src/utils/admin-check', () => ({
+  isSuperAdmin: vi.fn().mockResolvedValue(false),
+}));
+
 // Key management also requires canManageGrants on every site the agent holds a
 // role on. Default: the agent has no roles, so there is nothing to check and
 // the operation is allowed — which keeps the key-handling tests below valid.
@@ -60,6 +64,7 @@ const AGENT: RegisteredAgent = {
   settings: {},
   createdAt: '2026-03-22T10:00:00.000Z',
   updatedAt: '2026-03-22T10:00:00.000Z',
+  isGlobal: false,
 };
 
 describe('Agent API Key Routes', () => {
@@ -69,9 +74,11 @@ describe('Agent API Key Routes', () => {
 
     const agentService = await import('../../src/services/agent-service');
     const orgAccess = await import('../../src/utils/org-access');
+    const adminCheck = await import('../../src/utils/admin-check');
 
     vi.mocked(agentService.getAgentById).mockResolvedValue(AGENT);
     vi.mocked(orgAccess.isOrgAdmin).mockResolvedValue(true);
+    vi.mocked(adminCheck.isSuperAdmin).mockResolvedValue(false);
   });
 
   const userPrincipal = {
@@ -329,6 +336,84 @@ describe('Agent API Key Routes', () => {
   // ===========================================================================
   // Edge cases
   // ===========================================================================
+
+  // A global agent holds no role rows, so the per-site rule below has nothing to
+  // check and would pass having checked nothing — while the key it mints reaches
+  // every site.
+  describe('keys for a global agent', () => {
+    it('rejects minting for a global agent when the caller is not a superadmin (403)', async () => {
+      const { handleAgentKeyRoutes } = await import('../../src/routes/agent-key-api');
+      const keyService = await import('../../src/services/agent-api-key-service');
+      const agentService = await import('../../src/services/agent-service');
+      const roleService = await import('../../src/services/agent-site-role-service');
+
+      vi.mocked(agentService.getAgentById).mockResolvedValue({ ...AGENT, isGlobal: true });
+      // Deliberately empty, which is what makes the per-site rule vacuous here.
+      vi.mocked(roleService.getRolesForAgent).mockResolvedValue({});
+
+      const request = new Request('https://api.example.com/api/agents/agent-uuid-456/keys', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'system key' }),
+      });
+
+      const response = await handleAgentKeyRoutes(request, {
+        agentId: 'agent-uuid-456',
+        principal: userPrincipal,
+      });
+
+      expect(response.status).toBe(403);
+      expect(keyService.generateKey).not.toHaveBeenCalled();
+    });
+
+    it('rejects listing keys for a global agent to a non-superadmin (403)', async () => {
+      const { handleAgentKeyRoutes } = await import('../../src/routes/agent-key-api');
+      const keyService = await import('../../src/services/agent-api-key-service');
+      const agentService = await import('../../src/services/agent-service');
+
+      vi.mocked(agentService.getAgentById).mockResolvedValue({ ...AGENT, isGlobal: true });
+
+      const response = await handleAgentKeyRoutes(
+        new Request('https://api.example.com/api/agents/agent-uuid-456/keys'),
+        { agentId: 'agent-uuid-456', principal: userPrincipal },
+      );
+
+      expect(response.status).toBe(403);
+      expect(keyService.listKeys).not.toHaveBeenCalled();
+    });
+
+    it('allows a superadmin to mint for a global agent (201)', async () => {
+      const { handleAgentKeyRoutes } = await import('../../src/routes/agent-key-api');
+      const keyService = await import('../../src/services/agent-api-key-service');
+      const agentService = await import('../../src/services/agent-service');
+      const adminCheck = await import('../../src/utils/admin-check');
+
+      vi.mocked(agentService.getAgentById).mockResolvedValue({ ...AGENT, isGlobal: true });
+      vi.mocked(adminCheck.isSuperAdmin).mockResolvedValue(true);
+      vi.mocked(keyService.generateKey).mockResolvedValue({
+        key: 'aak_ok',
+        metadata: {
+          id: 'key-1', agentId: 'agent-uuid-456', prefix: 'aak_ok12', name: 'ok',
+          createdBy: 'db-user-uuid-123', createdAt: '2026-08-19T00:00:00.000Z',
+          lastUsedAt: null, revokedAt: null,
+        },
+      });
+
+      const request = new Request('https://api.example.com/api/agents/agent-uuid-456/keys', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'ok' }),
+      });
+
+      const response = await handleAgentKeyRoutes(request, {
+        agentId: 'agent-uuid-456',
+        principal: userPrincipal,
+      });
+
+      expect(response.status).toBe(201);
+      expect(keyService.generateKey).toHaveBeenCalled();
+    });
+  });
 
   describe('per-site key authorization', () => {
     it('rejects minting a key when the caller does not administer the agent\'s site (403)', async () => {
