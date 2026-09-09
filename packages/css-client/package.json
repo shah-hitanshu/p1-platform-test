@@ -17,12 +17,12 @@
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
     },
     "./content": {
-      "import": "./dist/content.js",
-      "types": "./dist/content.d.ts"
+      "types": "./dist/content.d.ts",
+      "import": "./dist/content.js"
     }
   },
   "typesVersions": {

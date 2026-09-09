@@ -36,45 +36,45 @@
   },
   "exports": {
     ".": {
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
-      "default": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "default": "./dist/index.js"
     },
     "./config": {
+      "types": "./dist/config.d.ts",
       "import": "./dist/config.js",
-      "default": "./dist/config.js",
-      "types": "./dist/config.d.ts"
+      "default": "./dist/config.js"
     },
     "./utils/path": {
+      "types": "./dist/utils/path.d.ts",
       "import": "./dist/utils/path.js",
-      "default": "./dist/utils/path.js",
-      "types": "./dist/utils/path.d.ts"
+      "default": "./dist/utils/path.js"
     },
     "./styles.css": "./src/styles.css",
     "./server": {
+      "types": "./dist/server.d.ts",
       "import": "./dist/server.js",
-      "default": "./dist/server.js",
-      "types": "./dist/server.d.ts"
+      "default": "./dist/server.js"
     },
     "./registry-sync": {
+      "types": "./dist/registry-sync.d.ts",
       "import": "./dist/registry-sync.js",
-      "default": "./dist/registry-sync.js",
-      "types": "./dist/registry-sync.d.ts"
+      "default": "./dist/registry-sync.js"
     },
     "./auth-gate": {
+      "types": "./dist/auth/AuthGate.d.ts",
       "import": "./dist/auth/AuthGate.js",
-      "default": "./dist/auth/AuthGate.js",
-      "types": "./dist/auth/AuthGate.d.ts"
+      "default": "./dist/auth/AuthGate.js"
     },
     "./connectable": {
+      "types": "./dist/editor/components/connectable.d.ts",
       "import": "./dist/editor/components/connectable.js",
-      "default": "./dist/editor/components/connectable.js",
-      "types": "./dist/editor/components/connectable.d.ts"
+      "default": "./dist/editor/components/connectable.js"
     },
     "./pds": {
+      "types": "./dist/pds/index.d.ts",
       "import": "./dist/pds/index.js",
-      "default": "./dist/pds/index.js",
-      "types": "./dist/pds/index.d.ts"
+      "default": "./dist/pds/index.js"
     },
     "./pds/styles.css": "./src/pds/theme/PuckEditorTheme.css",
     "./seo": {
@@ -83,14 +83,14 @@
       "default": "./dist/data/page-metadata/index.js"
     },
     "./fields": {
+      "types": "./dist/data/fields.d.ts",
       "import": "./dist/data/fields.js",
-      "default": "./dist/data/fields.js",
-      "types": "./dist/data/fields.d.ts"
+      "default": "./dist/data/fields.js"
     },
     "./routes": {
+      "types": "./dist/data/route-templates.d.ts",
       "import": "./dist/data/route-templates.js",
-      "default": "./dist/data/route-templates.js",
-      "types": "./dist/data/route-templates.d.ts"
+      "default": "./dist/data/route-templates.js"
     }
   },
   "files": [
