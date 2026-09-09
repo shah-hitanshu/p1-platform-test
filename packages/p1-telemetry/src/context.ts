@@ -52,6 +52,20 @@ export interface RequestContext {
   /** Caller-supplied app identifier from `x-p1-client-id`. */
   clientId?: string;
   /**
+   * The tenant this request addresses, taken from the route parameters rather than the
+   * route label — `http.route` is normalized to `/api/sites/:id` on purpose and cannot
+   * carry it. Absent on requests that name no site.
+   */
+  siteId?: string;
+  /**
+   * What kind of caller this is — a signed-in person, an agent on its own key, a service
+   * on a site token. Known only after authentication, so it is absent from lines emitted
+   * before it: see {@link enrichContext}.
+   */
+  principalType?: string;
+  /** Which provider validated the credential, e.g. `auth0`, `agent_key`, `site_token`. */
+  authProvider?: string;
+  /**
    * Per-sink line buffers, keyed by `Sink.id`. Async sinks batch here rather than in
    * module scope so concurrent requests cannot interleave, and so a buffer cannot
    * outlive the request whose `waitUntil` is meant to flush it.
@@ -127,9 +141,10 @@ export const P1_TELEMETRY_HEADERS = {
 } as const;
 
 /**
- * Caps for untrusted input. These headers come from arbitrary clients and are echoed
- * into log lines and onto outbound requests, so they're bounded and character-checked
- * before being stored. Correlation ids are debugging aids, never authorization claims.
+ * Caps for untrusted input. These values come from arbitrary clients — request headers,
+ * and path segments the caller controls — and are echoed into log lines and onto
+ * outbound requests, so they're bounded and character-checked before being stored.
+ * Correlation ids are debugging aids, never authorization claims.
  *
  * `traceparent`/`tracestate` are absent from this list on purpose — the propagator
  * validates those to the spec, which is stricter than anything here.
@@ -140,8 +155,12 @@ const SAFE_ID = /^[A-Za-z0-9._:-]+$/;
 // No whitespace: a label like `p1-next-sdk/0.8.0` never needs it.
 const SAFE_LABEL = /^[A-Za-z0-9._:/@-]+$/;
 
-function safeHeader(value: string | null, max: number, pattern: RegExp): string | undefined {
-  if (value === null) return undefined;
+function safeLabel(
+  value: string | null | undefined,
+  max: number,
+  pattern: RegExp,
+): string | undefined {
+  if (value === null || value === undefined) return undefined;
   const trimmed = value.trim();
   if (trimmed.length === 0 || trimmed.length > max) return undefined;
   return pattern.test(trimmed) ? trimmed : undefined;
@@ -163,6 +182,19 @@ const headersGetter = {
 export interface ContextFromRequestOptions {
   /** Normalized low-cardinality route, e.g. `/api/sites/:id`. */
   route?: string;
+  /**
+   * The site this request addresses, from the caller's own route parsing. Bounded and
+   * character-checked here like the header-derived labels: a path segment is arbitrary
+   * on a malformed request, and a value that fails the check is dropped rather than
+   * logged.
+   */
+  siteId?: string;
+  /**
+   * This service's own name, used as `clientId` when the caller supplied none. An
+   * inbound `x-p1-client-id` still wins — that names the application the request
+   * originated from, which is more informative than the hop it arrived through.
+   */
+  clientId?: string;
   /** 0–1 trace sampling rate. Defaults to 1. */
   sampleRate?: number;
 }
@@ -181,7 +213,7 @@ export function contextFromRequest(
   );
   const traceId = parent?.traceId ?? newTraceId();
   const sdk = parseSdkHeader(
-    safeHeader(request.headers.get(P1_TELEMETRY_HEADERS.sdk), LABEL_MAX, SAFE_LABEL),
+    safeLabel(request.headers.get(P1_TELEMETRY_HEADERS.sdk), LABEL_MAX, SAFE_LABEL),
   );
 
   return {
@@ -194,16 +226,15 @@ export function contextFromRequest(
     sampled: parent ? isSampled(parent.traceFlags) : true,
     tracestate: parent?.traceState,
     requestId:
-      safeHeader(request.headers.get(P1_TELEMETRY_HEADERS.requestId), ID_MAX, SAFE_ID) ??
+      safeLabel(request.headers.get(P1_TELEMETRY_HEADERS.requestId), ID_MAX, SAFE_ID) ??
       crypto.randomUUID(),
     route: options.route,
     sdkName: sdk.name,
     sdkVersion: sdk.version,
-    clientId: safeHeader(
-      request.headers.get(P1_TELEMETRY_HEADERS.clientId),
-      LABEL_MAX,
-      SAFE_LABEL,
-    ),
+    clientId:
+      safeLabel(request.headers.get(P1_TELEMETRY_HEADERS.clientId), LABEL_MAX, SAFE_LABEL) ??
+      safeLabel(options.clientId, LABEL_MAX, SAFE_LABEL),
+    siteId: safeLabel(options.siteId, ID_MAX, SAFE_ID),
     buffers: new Map(),
   };
 }
@@ -237,6 +268,32 @@ export function contextForTask(options: ContextForTaskOptions): RequestContext {
     route: options.route,
     buffers: new Map(),
   };
+}
+
+/**
+ * Add what authentication learned to the active context, so the rest of the request's
+ * lines can say who was calling.
+ *
+ * This is the one thing the request context cannot be built with. Authentication does
+ * network and database work, and running it up front — before routing has established
+ * that the request even needs a principal — would put that on the path of every health
+ * check and preflight. So the context is minted without it and gains it afterwards.
+ *
+ * Lines emitted before this call carry neither field. That is the honest record: at that
+ * point the caller genuinely was not known.
+ *
+ * Values are bounded and character-checked like every other label, and a field already
+ * set is not overwritten — a request authenticates once, and a second caller reaching
+ * this would mean something has gone wrong upstream that a silent relabel would hide.
+ */
+export function enrichContext(fields: {
+  principalType?: string;
+  authProvider?: string;
+}): void {
+  const context = currentContext();
+  if (context === undefined) return;
+  context.principalType ??= safeLabel(fields.principalType, LABEL_MAX, SAFE_LABEL);
+  context.authProvider ??= safeLabel(fields.authProvider, LABEL_MAX, SAFE_LABEL);
 }
 
 const headersSetter = {

@@ -42,7 +42,8 @@ const DEFAULT_ALLOWED: readonly string[] = [
   // ---------------------------------------------------------------------------
   // identity / addressing
   'site_id', 'branch_id', 'document_id', 'doc_path', 'version_id', 'checkpoint_id',
-  'template_id', 'session_id', 'principal_id', 'principal_type', 'agent_id', 'slot_id',
+  'template_id', 'session_id', 'principal_id', 'principal_type', 'auth_provider',
+  'agent_id', 'slot_id',
   'merge_request_id', 'queue', 'message_id',
   // routing / edge
   'status_class', 'origin', 'cf_ray', 'colo', 'country',

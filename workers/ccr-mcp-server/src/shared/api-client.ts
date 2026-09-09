@@ -14,6 +14,7 @@ import {
   type ComponentSchema,
   type TemplateSnapshot,
 } from '@pantheon-systems/p1-content-validator';
+import { outboundHeaders } from '@pantheon-systems/p1-telemetry';
 import { getBackendBreaker } from '../circuit-breaker.js';
 import type { McpApiClientConfig, ActingUser } from './types.js';
 
@@ -413,12 +414,19 @@ export class McpApiClient {
    * A user request carries the Auth0 access token as Authorization: Bearer.
    * An agent request carries the agent API key as X-API-Key; the backend
    * resolves the agent from the key, so no actor id is fabricated when absent.
+   *
+   * `outboundHeaders()` carries the trace across the hop, so a tool call and the backend
+   * work it causes land in one trace instead of two unrelated roots. It also names this
+   * worker in `x-p1-client-id`, which is the only thing that can: on the OAuth path we
+   * authenticate as the human, so the backend sees an ordinary Auth0 user principal and
+   * has no way to tell an MCP tool call from someone clicking in the editor.
    */
   private getHeaders(): Record<string, string> {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       'X-Actor-Type':
         this.accessToken !== undefined && this.accessToken !== '' ? 'user' : 'agent',
+      ...outboundHeaders(),
     };
 
     if (this.agentId !== undefined && this.agentId !== '') {

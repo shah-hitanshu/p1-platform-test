@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   contextForTask,
   contextFromRequest,
+  enrichContext,
   outboundHeaders,
   taskTraceFields,
   withRequestContext,
@@ -313,6 +314,133 @@ describe('contextFromRequest', () => {
     // and back onto outbound headers.
     expect(context.sdkName).toBeUndefined();
     expect(context.clientId).toBeUndefined();
+  });
+});
+
+/**
+ * The site id is the one label that does not come from a header — the caller parses it
+ * out of the path — so it gets the same bounding and character check as the rest rather
+ * than being trusted straight into a log field.
+ */
+describe('site_id', () => {
+  it('carries the caller-parsed site on every line of the request', () => {
+    const { logger, lines } = makeLogger();
+    withRequestContext(
+      contextFromRequest(new Request('https://example.com/api/sites/abc-123/branches'), {
+        route: '/api/sites/:id/branches',
+        siteId: 'abc-123',
+      }),
+      () => {
+        logger.info('first');
+        logger.warn('second');
+      },
+    );
+    expect(lines.map((line) => line.site_id)).toEqual(['abc-123', 'abc-123']);
+  });
+
+  it('leaves the field off a request that names no site', () => {
+    const { logger, lines } = makeLogger();
+    withRequestContext(
+      contextFromRequest(new Request('https://example.com/health'), { route: '/health' }),
+      () => logger.info('probe'),
+    );
+    expect(lines[0]).not.toHaveProperty('site_id');
+  });
+
+  it('drops a malformed path segment rather than logging it', () => {
+    for (const segment of ['has space', 'nested/segment', 'x'.repeat(65), '', '   ']) {
+      expect(
+        contextFromRequest(new Request('https://example.com/'), { siteId: segment }).siteId,
+      ).toBeUndefined();
+    }
+  });
+
+  it('does not put the site id into http.route', () => {
+    const { logger, lines } = makeLogger();
+    withRequestContext(
+      contextFromRequest(new Request('https://example.com/api/sites/abc-123'), {
+        route: '/api/sites/:id',
+        siteId: 'abc-123',
+      }),
+      () => logger.info('probe'),
+    );
+    expect(lines[0]?.['http.route']).toBe('/api/sites/:id');
+  });
+});
+
+/**
+ * Who was calling is not knowable when the context is minted — authentication runs later
+ * and does real work. These pin the half-request behaviour that follows from that.
+ */
+describe('enrichContext', () => {
+  it('labels every line emitted after authentication, and none before', () => {
+    const { logger, lines } = makeLogger();
+    withRequestContext(contextFromRequest(new Request('https://example.com/api/sites')), () => {
+      logger.info('before auth');
+      enrichContext({ principalType: 'agent', authProvider: 'agent_key' });
+      logger.info('after auth');
+    });
+
+    expect(lines[0]).not.toHaveProperty('principal_type');
+    expect(lines[0]).not.toHaveProperty('auth_provider');
+    expect(lines[1]?.principal_type).toBe('agent');
+    expect(lines[1]?.auth_provider).toBe('agent_key');
+  });
+
+  it('does not let a second call relabel a request that already authenticated', () => {
+    const context = contextFromRequest(new Request('https://example.com/'));
+    withRequestContext(context, () => {
+      enrichContext({ principalType: 'user', authProvider: 'auth0' });
+      enrichContext({ principalType: 'agent', authProvider: 'agent_key' });
+    });
+
+    expect(context.principalType).toBe('user');
+    expect(context.authProvider).toBe('auth0');
+  });
+
+  it('drops an unsafe value rather than logging it', () => {
+    const context = contextFromRequest(new Request('https://example.com/'));
+    withRequestContext(context, () => {
+      enrichContext({ principalType: 'has space', authProvider: 'x'.repeat(200) });
+    });
+
+    expect(context.principalType).toBeUndefined();
+    expect(context.authProvider).toBeUndefined();
+  });
+
+  it('is a no-op outside a request rather than throwing', () => {
+    expect(() => {
+      enrichContext({ principalType: 'user' });
+    }).not.toThrow();
+  });
+});
+
+/**
+ * A service that calls another needs to name itself, or the callee sees only the
+ * credential — which on a delegated-auth hop is the end user's, not the caller's.
+ */
+describe('service self-identification', () => {
+  it('falls back to the service name when the caller sent no client id', () => {
+    const context = contextFromRequest(new Request('https://example.com/'), {
+      clientId: 'ccr-mcp-server',
+    });
+    expect(context.clientId).toBe('ccr-mcp-server');
+  });
+
+  it('prefers the inbound client id, which names where the request actually started', () => {
+    const context = contextFromRequest(
+      new Request('https://example.com/', { headers: { 'x-p1-client-id': 'acme-storefront' } }),
+      { clientId: 'ccr-mcp-server' },
+    );
+    expect(context.clientId).toBe('acme-storefront');
+  });
+
+  it('propagates the name onto the next hop', () => {
+    const context = contextFromRequest(new Request('https://example.com/'), {
+      clientId: 'ccr-mcp-server',
+    });
+    const headers = withRequestContext(context, () => outboundHeaders());
+    expect(headers['x-p1-client-id']).toBe('ccr-mcp-server');
   });
 });
 

@@ -47,6 +47,7 @@ import { stripInboundTrustedHeaders } from './utils/trusted-headers';
 import {
   contextForTask,
   contextFromRequest,
+  enrichContext,
   getLogger,
   withRequestContext,
   P1_TELEMETRY_HEADERS,
@@ -145,7 +146,15 @@ export default {
     // Passing ctx keeps initialization off the critical path: without it the first merge in a
     // cold isolate pays the LaunchDarkly initialization wait.
     P1FeatureFlagService.init(env, ctx);
-    const telemetry = contextFromRequest(req, { route: pathPattern });
+    // Parsed rather than pulled off the path with a regex of its own: the router already
+    // knows which routes carry a site and where, and `pathPattern` has had the id
+    // normalized out of it by the time it exists. handleRequest parses again — the
+    // function is a pure regex chain, and threading the result through the /internal and
+    // /broker branches that run before it buys nothing.
+    const telemetry = contextFromRequest(req, {
+      route: pathPattern,
+      siteId: parseRoute(path)?.params.siteId,
+    });
 
     // Run request with isolated database connection using AsyncLocalStorage
     // This ensures concurrent requests don't interfere with each other's connections
@@ -419,6 +428,11 @@ async function handleRequest(
   if (!principal) {
     return cors(errorResponse('Authentication required', 401));
   }
+
+  // What kind of caller this is is only knowable here, so every line from this point on
+  // gains it. It is derived from the credential we just validated rather than claimed by
+  // the caller, which is what makes it worth grouping on.
+  enrichContext({ principalType: principal.type, authProvider: principal.authProvider });
 
   // Extract acting-user identity from agent requests (MCP server forwarding)
   const actingUser = extractActingUser(request.headers, principal);

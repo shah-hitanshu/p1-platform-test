@@ -473,7 +473,13 @@ export default {
     // everything below it, including /mcp, so a context established here covers the whole
     // request tree.
     const logger = ensureLogger(env);
-    const telemetry = contextFromRequest(request, { route: routePattern(url.pathname) });
+    const telemetry = contextFromRequest(request, {
+      route: routePattern(url.pathname),
+      // Names this worker on its own lines and, via outboundHeaders(), on the backend
+      // requests it makes — which on the OAuth path is the only thing separating an MCP
+      // tool call from a browser one, since both authenticate as the same person.
+      clientId: 'ccr-mcp-server',
+    });
 
     return withRequestContext(telemetry, async () => {
       try {

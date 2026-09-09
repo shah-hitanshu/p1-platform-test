@@ -20,6 +20,7 @@ export {
   contextForTask,
   contextFromRequest,
   currentContext,
+  enrichContext,
   installContextManager,
   outboundHeaders,
   taskTraceFields,

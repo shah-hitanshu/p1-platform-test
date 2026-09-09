@@ -78,6 +78,42 @@ describe('McpApiClient', () => {
       expect(options.headers['X-Actor-Id']).toBe('agent-uuid-1');
     });
 
+    /**
+     * The backend cannot derive either of these. On the OAuth path we authenticate as
+     * the human, so a tool call is indistinguishable from a browser click without the
+     * client id; and a fresh trace per hop would leave the backend work this causes in
+     * a separate trace from the tool call that caused it.
+     */
+    it('carries the trace and names this worker on the hop to the backend', async () => {
+      const { contextFromRequest, withRequestContext } = await import(
+        '@pantheon-systems/p1-telemetry'
+      );
+      const { McpApiClient } = await import('../../src/shared/api-client.js');
+      const client = new McpApiClient(defaultConfig);
+      const telemetry = contextFromRequest(new Request('https://mcp.example.com/mcp'), {
+        clientId: 'ccr-mcp-server',
+      });
+
+      mockFetch.mockResolvedValueOnce(createMockResponse(true, { sites: [], total: 0 }));
+      await withRequestContext(telemetry, async () => client.listSites());
+
+      const [, options] = mockFetch.mock.calls[0];
+      expect(options.headers['x-p1-client-id']).toBe('ccr-mcp-server');
+      expect(options.headers['x-p1-request-id']).toBe(telemetry.requestId);
+      expect(options.headers.traceparent).toContain(telemetry.traceId);
+    });
+
+    it('sends no correlation headers outside a request, rather than inventing a trace', async () => {
+      const { McpApiClient } = await import('../../src/shared/api-client.js');
+      const client = new McpApiClient(defaultConfig);
+
+      mockFetch.mockResolvedValueOnce(createMockResponse(true, { sites: [], total: 0 }));
+      await client.listSites();
+
+      const [, options] = mockFetch.mock.calls[0];
+      expect(options.headers.traceparent).toBeUndefined();
+    });
+
     // Agent pass-through: the caller's key is forwarded and no actor id is
     // fabricated; the backend derives the agent identity from the key.
     it('forwards the caller key with no fabricated actor id when agentId is absent', async () => {

@@ -80,6 +80,19 @@ export interface LogLine {
   sdk_version?: string;
   /** Caller-supplied app identifier from `x-p1-client-id`. */
   client_id?: string;
+  /**
+   * The tenant the request addressed. Promoted out of `context` so it is present on
+   * every line of a request without each call site remembering to pass it, and because
+   * `http.route` is normalized and cannot carry it.
+   */
+  site_id?: string;
+  /**
+   * What kind of caller this is — a signed-in person, an agent on its own key, a service
+   * on a site token. Absent on lines emitted before authentication ran.
+   */
+  principal_type?: string;
+  /** Which provider validated the credential, e.g. `auth0`, `agent_key`, `site_token`. */
+  auth_provider?: string;
   /** Present only when a global error boundary reported it — nothing caught it. */
   unhandled?: true;
   err?: SerializedError;

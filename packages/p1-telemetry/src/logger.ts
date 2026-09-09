@@ -213,6 +213,9 @@ export class P1Logger {
       if (context.sdkName) line.sdk_name = context.sdkName;
       if (context.sdkVersion) line.sdk_version = context.sdkVersion;
       if (context.clientId) line.client_id = context.clientId;
+      if (context.siteId) line.site_id = context.siteId;
+      if (context.principalType) line.principal_type = context.principalType;
+      if (context.authProvider) line.auth_provider = context.authProvider;
     }
 
     if (unhandled) line.unhandled = true;
