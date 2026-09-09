@@ -90,6 +90,19 @@ export const Switch = (props: Record<string, unknown>) => {
 };
 
 export const Icon = () => null;
+// iconList stub: the real package exports the names it ships, and
+// componentIconName reads it to avoid resolving to a glyph this version
+// dropped. Covers every name the repo asks for; tests that need a different
+// icon set (a renamed or removed glyph) mock the module themselves.
+export const iconList = [
+  'angleDown', 'angleLeft', 'angleRight', 'anglesLeft', 'billboard',
+  'bracketRight', 'circleNotch', 'code', 'codeBranch', 'command', 'expand',
+  'folderTree', 'globe', 'grid', 'house', 'image', 'inputText', 'link',
+  'memo', 'minus', 'plus', 'quotesLeft', 'rectangleList', 'robot',
+  'rotateClock', 'rotateLeft', 'rotateRight', 'sitemap', 'sparkles',
+  'squareDashed', 'squareMinus', 'table', 'tableRows', 'text',
+  'triangleExclamation', 'trash', 'userAstronaut', 'video', 'xmark',
+];
 // Spinner stub: mirrors the real component's aria-hidden wrapper so a11y assertions hold
 export const Spinner = (props: Record<string, unknown>) => {
   return React.createElement('span', {

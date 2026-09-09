@@ -34,6 +34,7 @@ vi.mock('@pantheon-systems/pds-toolkit-react', async () => {
   const ReactMod = await import('react');
   return {
     Icon: () => null,
+    iconList: ['link', 'squareDashed', 'text', 'image', 'grid', 'trash'],
     IconButton: ({ onClick, ariaLabel }: any) =>
       ReactMod.createElement('button', { onClick, 'aria-label': ariaLabel }),
   };

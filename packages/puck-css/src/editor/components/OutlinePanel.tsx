@@ -11,6 +11,7 @@ import { createUsePuck } from '@puckeditor/core';
 import { Icon } from '@pantheon-systems/pds-toolkit-react';
 import { useP1PuckOptional } from '../../core/P1PuckContext.js';
 import { GripHandleIcon } from '../icons/index.js';
+import { SafeIcon } from '../../pds/components/SafeIcon.js';
 import { DraggableRow } from './DraggableRow.js';
 import { PanelShell } from './PanelShell.js';
 import { PreviewPanelOverlay } from './PreviewPanelOverlay.js';
@@ -20,6 +21,11 @@ import { useDragReorder } from './useDragReorder.js';
 import styles from './OutlinePanel.module.css';
 
 const usePuckOutline = createUsePuck();
+
+function BlockIcon({ type, label }: { type: string; label?: string }): React.ReactElement | null {
+  const iconName = getIconForComponent(type, label);
+  return iconName ? <SafeIcon iconName={iconName} size="s" /> : null;
+}
 
 export function OutlinePanel(): React.ReactElement {
   const p1Puck = useP1PuckOptional();
@@ -91,7 +97,7 @@ export function OutlinePanel(): React.ReactElement {
                   <GripHandleIcon />
                 </span>
                 <span className={styles.icon} aria-hidden="true">
-                  <Icon iconName={getIconForComponent(row.type, row.label) as never} size="s" />
+                  <BlockIcon type={row.type} label={row.label} />
                 </span>
                 <span className={styles.label}>{row.label}</span>
                 <button
