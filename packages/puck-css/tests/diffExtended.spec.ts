@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * Extended Diff Utility Tests
  *
@@ -5,16 +6,16 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import type { PuckData } from '@pantheon-systems/css-client';
 import {
   diffPuckDataWithPositions,
   diffProps,
   getReorderedComponents,
 } from '../src/versioning/utils/diff.js';
-import type { PuckData } from '@pantheon-systems/css-client';
 
 describe('diffPuckDataWithPositions', () => {
   const createPuckData = (
-    content: Array<{ type: string; id: string; props?: Record<string, unknown> }>
+    content: { type: string; id: string; props?: Record<string, unknown> }[]
   ): PuckData => ({
     content: content.map((c) => ({
       type: c.type,
@@ -224,7 +225,7 @@ describe('diffProps', () => {
 
 describe('getReorderedComponents', () => {
   const createPuckData = (
-    content: Array<{ type: string; id: string }>
+    content: { type: string; id: string }[]
   ): PuckData => ({
     content: content.map((c) => ({
       type: c.type,

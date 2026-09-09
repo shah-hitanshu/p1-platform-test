@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * Localization Feature Plugin Tests
  *

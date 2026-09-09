@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * Tests for getInitials — the collaborator-avatar label.
  *

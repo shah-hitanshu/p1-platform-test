@@ -1,3 +1,4 @@
+// @vitest-environment node
 import type { Data } from "@puckeditor/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 

@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * Tests for selectHeaderCollaborators — the presence → header-avatars selector.
  *

@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * This package shipped five files styled with Tailwind utility classes while
  * declaring no Tailwind dependency. They rendered only because the starter's

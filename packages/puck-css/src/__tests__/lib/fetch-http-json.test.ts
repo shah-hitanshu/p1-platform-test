@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it, vi } from 'vitest';
 
 import { fetchHttpJsonRemoteDatasource } from '../../data/remote-datasources/fetch-http-json';

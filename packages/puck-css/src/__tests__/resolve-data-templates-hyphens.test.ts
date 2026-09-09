@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, it, expect } from "vitest";
 import type { Data } from "@puckeditor/core";
 import { resolveDataTemplates } from "../data/resolve-data-templates.js";

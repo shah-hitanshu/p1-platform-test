@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from 'vitest';
 
 import { toText, TEMPLATE_FUNCTIONS } from '../../data/template-functions';

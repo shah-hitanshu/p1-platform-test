@@ -1,12 +1,13 @@
+// @vitest-environment node
 /**
  * Utils Tests
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import type { PuckData } from '@pantheon-systems/css-client';
 import { debounce } from '../src/core/utils/debounce.js';
 import { withRetry } from '../src/core/utils/retry.js';
 import { diffPuckData, getChangedComponents, countChanges } from '../src/versioning/utils/diff.js';
-import type { PuckData } from '@pantheon-systems/css-client';
 
 describe('debounce', () => {
   beforeEach(() => {
@@ -124,7 +125,7 @@ describe('withRetry', () => {
 });
 
 describe('diffPuckData', () => {
-  const createPuckData = (content: Array<{ type: string; id: string }>): PuckData => ({
+  const createPuckData = (content: { type: string; id: string }[]): PuckData => ({
     content: content.map((c) => ({
       type: c.type,
       props: { id: c.id },

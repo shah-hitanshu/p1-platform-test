@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * The document-sync plugin pushes freshly loaded document data into Puck via
  * setHistories, which runs walkAppState and reads data.root.props. During a

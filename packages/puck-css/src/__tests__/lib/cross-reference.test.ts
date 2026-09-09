@@ -1,3 +1,4 @@
+// @vitest-environment node
 import type { Config, Data } from '@puckeditor/core';
 import { describe, expect, it } from 'vitest';
 

@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, it, expect } from "vitest";
 import { builtinModes } from "../data/data-list-block/builtin-modes.js";
 

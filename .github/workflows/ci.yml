@@ -75,10 +75,30 @@ jobs:
         run: pnpm exec turbo run lint lint:root
       # @p1/agent asserts the pre-PCC-3239 slot-ID semantics against an
       # unreleased workspace validator; the fix is cross-team, not ours.
+      # puck-css has its own job below: its suite and ccr-worker's are each
+      # several minutes on a 4-vCPU runner and starve each other when co-run.
       - name: Test
-        run: pnpm exec turbo run test --filter='!@p1/agent' --concurrency=4
+        run: pnpm exec turbo run test --filter='!@p1/agent' --filter='!@pantheon-systems/puck-css' --concurrency=4
       - name: Test type errors stay at or below the committed ceiling
         run: pnpm check:typecheck-tests
+
+  # Hard gate, split out of `verify` so the repo's largest suite gets a runner
+  # to itself instead of contending with ccr-worker for the same four vCPUs.
+  test-puck-css:
+    name: test puck-css (hard gate)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build puck-css dependencies
+        run: pnpm exec turbo run build --filter='@pantheon-systems/puck-css^...'
+      - name: Test
+        run: pnpm exec turbo run test --filter='@pantheon-systems/puck-css'
 
   # Warnings are not a hard gate, so they need somewhere to be visible other
   # than a log nobody reads. Code scanning annotates them on the lines a PR

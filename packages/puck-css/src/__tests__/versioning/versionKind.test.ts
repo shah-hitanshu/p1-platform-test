@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, it, expect } from 'vitest';
 import type { DocumentVersion } from '@pantheon-systems/css-client';
 import { versionKinds, isMilestone } from '../../versioning/utils/versionKind.js';

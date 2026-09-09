@@ -1,6 +1,8 @@
 import { fileURLToPath } from 'node:url';
 import { defineConfig, Plugin } from 'vitest/config';
 
+const isCI = Boolean(process.env.CI);
+
 const yamlRawPlugin: Plugin = {
   name: 'yaml-raw',
   transform(code, id) {
@@ -20,6 +22,11 @@ export default defineConfig({
 
     // Environment
     environment: 'node',
+
+    // Vitest sizes its pool at `cores - 1`, assuming it owns the machine; in CI
+    // turbo runs four packages at once on a 4-vCPU runner, so four such pools
+    // oversubscribe it and every worker slows down.
+    maxWorkers: isCI ? 2 : undefined,
 
     // Global test APIs (describe, it, expect)
     globals: false,

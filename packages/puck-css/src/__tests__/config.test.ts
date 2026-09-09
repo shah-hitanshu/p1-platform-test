@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createP1Config, createNextConfig, createNextContentClient, PRODUCTION_BASE_URL } from '../core/config.js';
 

@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * Auto-save Pause Tests
  *

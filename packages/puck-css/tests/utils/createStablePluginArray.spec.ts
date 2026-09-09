@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * createStablePluginArray Tests (TDD)
  *

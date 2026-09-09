@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * Focus Region Map Utility Tests (TDD)
  *

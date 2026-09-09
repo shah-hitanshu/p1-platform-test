@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * templateFromRegistryPath — resolves the template being edited from a document
  * path so the fields override can switch the right sidebar into "Template" mode.

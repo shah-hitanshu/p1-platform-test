@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * Role Permissions Tests
  *

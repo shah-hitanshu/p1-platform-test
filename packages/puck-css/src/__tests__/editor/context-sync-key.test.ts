@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * ContextSyncBridge and DocumentSync are two independent mechanisms that both
  * push whole documents into a live Puck instance. Now that Puck survives

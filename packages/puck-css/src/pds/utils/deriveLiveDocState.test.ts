@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * Tests for deriveLiveDocState — the Live-only publish-state mapping.
  *

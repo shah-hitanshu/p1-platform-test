@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * Content Type Templates - Feature Config Tests
  *

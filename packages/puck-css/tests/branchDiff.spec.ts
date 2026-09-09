@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * Branch Diff Utility Tests (TDD - Phase 4)
  *
@@ -171,12 +172,12 @@ describe('createBranchDocumentComparison', () => {
 });
 
 describe('createBranchMergeComparison', () => {
-  const documents: Array<{
+  const documents: {
     documentId: string;
     documentPath: string;
     sourceSnapshot: unknown;
     targetSnapshot: unknown;
-  }> = [
+  }[] = [
     {
       documentId: 'doc-1',
       documentPath: '/pages/home',

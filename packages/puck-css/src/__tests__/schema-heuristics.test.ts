@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, it, expect } from "vitest";
 import type { RemoteDatasourceFieldDoc } from "../data/remote-datasources/remote-datasource-registry.js";
 import {

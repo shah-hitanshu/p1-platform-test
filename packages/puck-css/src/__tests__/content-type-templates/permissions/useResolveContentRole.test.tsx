@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, it, expect } from 'vitest';
 import { mapCssRoleToContentRole } from '../../../features/content-type-templates/permissions/useResolveContentRole.js';
 

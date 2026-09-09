@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, it, expect } from "vitest";
 import { cssQueriesToDatasourceDefinitions, CSS_QUERY_ID_PREFIX } from "../../data/css-queries/css-query-registry";
 

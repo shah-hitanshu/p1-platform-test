@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * Version snapshots are typed as objects but the backend sometimes returns
  * them as a JSON string. If that string reaches currentData/safeData unparsed,

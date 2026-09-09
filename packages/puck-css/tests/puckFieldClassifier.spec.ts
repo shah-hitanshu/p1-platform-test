@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * Puck Field Classifier Tests (TDD - Phase 3c)
  *
