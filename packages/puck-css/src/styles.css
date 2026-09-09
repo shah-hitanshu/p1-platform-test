@@ -2665,78 +2665,27 @@
 }
 
 /* =============================================================================
-   Puck nav: PDS icon-only tabs
-   Replaces the default Puck icon+label nav tabs with PDS-style icon-only tabs.
+   Puck nav: icon-only tabs
 
-   Nav order (Puck internals: built-ins first, then user plugins in array order):
-     nth-child(1) blocksPlugin  → Grid icon        (targeted by .lucide-hammer)
-     nth-child(2) outlinePlugin → rectangleList     (targeted by .lucide-layers)
-     nth-child(3) CSS plugin    → rotateClock       (React NavIcon in CSSPlugin)
-     nth-child(4) AI plugin     → sparkles          (targeted by nth-child)
-     nth-child(5) PCC plugin    → fileLines         (targeted by nth-child)
+   Puck renders each tab as icon + text label; the rail is icon-only, so the
+   labels are hidden here. PuckEditorTheme.css re-shows them as hover tooltips.
 
-   The positional slots only apply when the tab has no PDS icon of its own — the
-   rail reorders whenever a plugin gains or loses `render`, so a slot may hold a
-   plugin that already ships its icon, and painting over it would double up.
+   Icons are NOT set here. Our own plugins pass a React `icon`, and the two
+   tabs Puck builds itself (Blocks, Outline) are restyled in PuckEditorTheme.css
+   by the lucide class their icon ships with. Nothing keys off tab position:
+   the rail reorders whenever a plugin gains or loses `render`, so an
+   `nth-child` rule silently paints whichever plugin happens to land in that
+   slot — which is exactly how the Data sources tab ended up wearing the AI
+   sparkles icon.
    ============================================================================= */
 
-/* 1. Hide all text labels.
-      Puck renders the label as <span class=""> (empty class, not a named CSS module
-      class), so we target the second/last span child of the NavItem-link div. */
+/* Hide all text labels.
+   Puck renders the label as <span class=""> (empty class, not a named CSS module
+   class), so we target the second/last span child of the NavItem-link div. */
 [class*='NavItem-link'] > span[class=''],
 [class*='NavItem-link'] > span:not([class]) {
   display: none;
 }
-
-/* 2. Shared pseudo-element for injected SVG icons */
-[class*='NavItem-linkIcon']:has(svg.lucide-hammer)::after,
-[class*='NavItem-linkIcon']:has(svg.lucide-layers)::after,
-[class*='Nav-list'] > li:nth-child(4) [class*='NavItem-linkIcon']:not(:has(.pds-icon))::after,
-[class*='Nav-list'] > li:nth-child(5) [class*='NavItem-linkIcon']:not(:has(.pds-icon))::after {
-  content: '';
-  display: block;
-  width: 20px;
-  height: 20px;
-  background-repeat: no-repeat;
-  background-size: contain;
-  background-position: center;
-}
-
-/* 3. Hide original icons for replaced tabs */
-svg.lucide-hammer,
-svg.lucide-layers {
-  display: none;
-}
-
-[class*='Nav-list'] > li:nth-child(4) [class*='NavItem-linkIcon']:not(:has(.pds-icon)) > *,
-[class*='Nav-list'] > li:nth-child(5) [class*='NavItem-linkIcon']:not(:has(.pds-icon)) > * {
-  display: none;
-}
-
-/* 4. Inject replacement icons (Font Awesome 6 Pro paths) */
-
-/* blocksPlugin → fa-grid */
-[class*='NavItem-linkIcon']:has(svg.lucide-hammer)::after {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 448 512'%3E%3Cpath fill='%23374151' d='M0 64C0 46.3 14.3 32 32 32l48 0c17.7 0 32 14.3 32 32l0 48c0 17.7-14.3 32-32 32l-48 0c-17.7 0-32-14.3-32-32L0 64zM0 232c0-17.7 14.3-32 32-32l48 0c17.7 0 32 14.3 32 32l0 48c0 17.7-14.3 32-32 32l-48 0c-17.7 0-32-14.3-32-32l0-48zM112 400l0 48c0 17.7-14.3 32-32 32l-48 0c-17.7 0-32-14.3-32-32l0-48c0-17.7 14.3-32 32-32l48 0c17.7 0 32 14.3 32 32zM168 64c0-17.7 14.3-32 32-32l48 0c17.7 0 32 14.3 32 32l0 48c0 17.7-14.3 32-32 32l-48 0c-17.7 0-32-14.3-32-32l0-48zM280 232l0 48c0 17.7-14.3 32-32 32l-48 0c-17.7 0-32-14.3-32-32l0-48c0-17.7 14.3-32 32-32l48 0c17.7 0 32 14.3 32 32zM168 400c0-17.7 14.3-32 32-32l48 0c17.7 0 32 14.3 32 32l0 48c0 17.7-14.3 32-32 32l-48 0c-17.7 0-32-14.3-32-32l0-48zM448 64l0 48c0 17.7-14.3 32-32 32l-48 0c-17.7 0-32-14.3-32-32l0-48c0-17.7 14.3-32 32-32l48 0c17.7 0 32 14.3 32 32zM336 232c0-17.7 14.3-32 32-32l48 0c17.7 0 32 14.3 32 32l0 48c0 17.7-14.3 32-32 32l-48 0c-17.7 0-32-14.3-32-32l0-48zM448 400l0 48c0 17.7-14.3 32-32 32l-48 0c-17.7 0-32-14.3-32-32l0-48c0-17.7 14.3-32 32-32l48 0c17.7 0 32 14.3 32 32z'/%3E%3C/svg%3E");
-}
-
-/* outlinePlugin → fa-rectangle-list */
-[class*='NavItem-linkIcon']:has(svg.lucide-layers)::after {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Cpath fill='%23374151' d='M64 64C28.7 64 0 92.7 0 128L0 384c0 35.3 28.7 64 64 64l384 0c35.3 0 64-28.7 64-64l0-256c0-35.3-28.7-64-64-64L64 64zm96 256a32 32 0 1 1 -64 0 32 32 0 1 1 64 0zm-32-96a32 32 0 1 1 0-64 32 32 0 1 1 0 64zm120-56l144 0c13.3 0 24 10.7 24 24s-10.7 24-24 24l-144 0c-13.3 0-24-10.7-24-24s10.7-24 24-24zm0 128l144 0c13.3 0 24 10.7 24 24s-10.7 24-24 24l-144 0c-13.3 0-24-10.7-24-24s10.7-24 24-24z'/%3E%3C/svg%3E");
-}
-
-/* AI plugin (4th) → fa-sparkles */
-[class*='Nav-list'] > li:nth-child(4) [class*='NavItem-linkIcon']:not(:has(.pds-icon))::after {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 576 512'%3E%3Cpath fill='%23374151' d='M391.5 53.2c-4.5 1.7-7.5 6-7.5 10.8s3 9.1 7.5 10.8L448 96 469.2 152.5c1.7 4.5 6 7.5 10.8 7.5s9.1-3 10.8-7.5L512 96 568.5 74.8c4.5-1.7 7.5-6 7.5-10.8s-3-9.1-7.5-10.8L512 32 490.8-24.5c-1.7-4.5-6-7.5-10.8-7.5s-9.1 3-10.8 7.5L448 32 391.5 53.2zm-185 20.1c-2.6-5.7-8.3-9.3-14.5-9.3s-11.9 3.6-14.5 9.3l-53.1 115-115 53.1C3.6 244.1 0 249.8 0 256s3.6 11.9 9.3 14.5l115 53.1 53.1 115c2.6 5.7 8.3 9.3 14.5 9.3s11.9-3.6 14.5-9.3l53.1-115 115-53.1c5.7-2.6 9.3-8.3 9.3-14.5s-3.6-11.9-9.3-14.5l-115-53.1-53.1-115zM416 416l-56.5 21.2c-4.5 1.7-7.5 6-7.5 10.8s3 9.1 7.5 10.8L416 480 437.2 536.5c1.7 4.5 6 7.5 10.8 7.5s9.1-3 10.8-7.5L480 480 536.5 458.8c4.5-1.7 7.5-6 7.5-10.8s-3-9.1-7.5-10.8L480 416 458.8 359.5c-1.7-4.5-6-7.5-10.8-7.5s-9.1 3-10.8 7.5L416 416z'/%3E%3C/svg%3E");
-}
-
-/* PCC plugin (5th) → fa-file-lines */
-[class*='Nav-list'] > li:nth-child(5) [class*='NavItem-linkIcon']:not(:has(.pds-icon))::after {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 384 512'%3E%3Cpath fill='%23374151' d='M0 64C0 28.7 28.7 0 64 0L213.5 0c17 0 33.3 6.7 45.3 18.7L365.3 125.3c12 12 18.7 28.3 18.7 45.3L384 448c0 35.3-28.7 64-64 64L64 512c-35.3 0-64-28.7-64-64L0 64zm208-5.5l0 93.5c0 13.3 10.7 24 24 24L325.5 176 208 58.5zM120 256c-13.3 0-24 10.7-24 24s10.7 24 24 24l144 0c13.3 0 24-10.7 24-24s-10.7-24-24-24l-144 0zm0 96c-13.3 0-24 10.7-24 24s10.7 24 24 24l144 0c13.3 0 24-10.7 24-24s-10.7-24-24-24l-144 0z'/%3E%3C/svg%3E");
-}
-
-/* 5. Nav tooltips are handled purely by PuckEditorTheme.css — Puck's own
-      _NavItem-linkLabel_ spans are restyled as hover tooltips. */
 
 /* ============================================
    Template Selector

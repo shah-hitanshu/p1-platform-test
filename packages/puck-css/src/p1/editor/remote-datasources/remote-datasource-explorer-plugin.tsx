@@ -2,7 +2,6 @@
 
 import type { Plugin } from "@puckeditor/core";
 
-import { Icon } from "@pantheon-systems/pds-toolkit-react";
 import { isCanonicalTemplatePath } from "../../../data/route-templates";
 import { useLiveRemoteDatasources } from "../hooks/useLiveRemoteDatasources";
 import {
@@ -64,13 +63,18 @@ function DatasourceSkeleton() {
   );
 }
 
-const dbIconSvg = (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M12 4c4.4 0 8 1.3 8 3s-3.6 3-8 3-8-1.3-8-3 3.6-3 8-3z" />
-    <path d="M4 7v10c0 1.7 3.6 3 8 3s8-1.3 8-3V7" />
-    <path d="M20 12c0 1.7-3.6 3-8 3s-8-1.3-8-3" />
-  </svg>
-);
+/** viewBox is inset to the artwork's own bounds so the cylinder carries the same
+ *  optical weight as the PDS-masked rail icons beside it, which fill 20 of their
+ *  24 units; `display: block` drops the inline baseline gap those masks lack. */
+function DbIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="1.2 1.2 21.6 21.6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: "block" }}>
+      <path d="M12 4c4.4 0 8 1.3 8 3s-3.6 3-8 3-8-1.3-8-3 3.6-3 8-3z" />
+      <path d="M4 7v10c0 1.7 3.6 3 8 3s8-1.3 8-3V7" />
+      <path d="M20 12c0 1.7-3.6 3-8 3s-8-1.3-8-3" />
+    </svg>
+  );
+}
 
 function RemoteDatasourceExplorerPanel({
   initialPath,
@@ -173,7 +177,7 @@ function RemoteDatasourceExplorerPanel({
                     flexShrink: 0,
                   }}
                 >
-                  {dbIconSvg}
+                  <DbIcon />
                 </span>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <span style={{ display: "block" }}>{def.label}</span>
@@ -320,7 +324,7 @@ export function createRemoteDatasourceExplorerPlugin(options: {
   return {
     name: "datasource-explorer",
     label: "Data sources",
-    icon: <Icon iconName="server" />,
+    icon: <DbIcon size={20} />,
     render: () => <RemoteDatasourceExplorerPanel initialPath={options.editorPath} />,
   };
 }

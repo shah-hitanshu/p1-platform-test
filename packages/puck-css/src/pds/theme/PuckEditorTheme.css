@@ -178,12 +178,13 @@
   --puck-color-azure-04: var(--pds-color-foreground-default, #23232d);
 }
 
-/* Replace Blocks nav icon with PDSv2 "grid" */
-.puck-editor-theme [class*="_NavItem_"][class*="_NavItem--"]:nth-child(1) [class*="_NavItem-linkIcon_"] svg,
-.puck-editor-theme [class*="_NavItem_"]:not([class*="active"]):nth-child(1) [class*="_NavItem-linkIcon_"] svg {
+/* Replace Blocks nav icon with PDSv2 "grid".
+   Matched on the lucide class Puck's own icon ships with, not on tab position —
+   the rail reorders as plugins gain or lose `render`. */
+.puck-editor-theme [class*="_NavItem-linkIcon_"]:has(svg.lucide-hammer) svg {
   display: none;
 }
-.puck-editor-theme [class*="_NavItem_"]:nth-child(1) [class*="_NavItem-linkIcon_"]::after {
+.puck-editor-theme [class*="_NavItem-linkIcon_"]:has(svg.lucide-hammer)::after {
   content: '';
   display: block;
   width: 20px;
@@ -256,11 +257,11 @@
   display: none;
 }
 
-/* Replace Outline nav icon with PDSv2 "listCheck" */
-.puck-editor-theme [class*="_NavItem_"]:nth-child(2) [class*="_NavItem-linkIcon_"] svg {
+/* Replace Outline nav icon with PDSv2 "listCheck". Matched on lucide class, not position. */
+.puck-editor-theme [class*="_NavItem-linkIcon_"]:has(svg.lucide-layers) svg {
   display: none;
 }
-.puck-editor-theme [class*="_NavItem_"]:nth-child(2) [class*="_NavItem-linkIcon_"]::after {
+.puck-editor-theme [class*="_NavItem-linkIcon_"]:has(svg.lucide-layers)::after {
   content: '';
   display: block;
   width: 20px;
