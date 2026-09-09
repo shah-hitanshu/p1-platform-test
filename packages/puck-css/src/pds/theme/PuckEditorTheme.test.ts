@@ -136,6 +136,21 @@ describe('PuckEditorTheme.css', () => {
     });
   });
 
+  describe('field controls', () => {
+    it('clears the PDS control height on Puck select fields', () => {
+      const css = readThemeCSS();
+      // PDS styles the bare `select` element with a 32px height sized for its
+      // own padding. Puck's field CSS adds 24px of vertical padding and
+      // box-sizing: border-box but sets no height, and since the PDS rule is in
+      // @layer pds-v2 the two combine rather than one winning — leaving a 6px
+      // content box that clips the value text. PDS leaves input/textarea
+      // heights alone, so selects are the only control that clips.
+      expect(css).toMatch(
+        /\.puck-editor-theme select\[class\*="_Input-input_"\]\s*\{[^}]*height:\s*auto[^}]*\}/,
+      );
+    });
+  });
+
   describe('typography mappings', () => {
     it('maps --puck-font-family to PDS default font family', () => {
       const css = readThemeCSS();

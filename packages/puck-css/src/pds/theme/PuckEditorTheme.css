@@ -109,6 +109,20 @@
      states inherited from Puck's nav CSS continue to work. */
 }
 
+/* ── Puck select fields: drop PDS's fixed control height ────────────────────
+   PDS styles the bare `select` element with height: var(--pds-spacing-input-height-s)
+   (32px), sized for its own padding. Puck's field CSS sets padding: 12px 15px
+   and box-sizing: border-box but declares no height, and because the PDS rule
+   lives in @layer pds-v2 while Puck's is unlayered, the two combine instead of
+   one winning: the select keeps PDS's 32px while taking Puck's 24px of vertical
+   padding, leaving a 6px content box for a 16px line box. The value text
+   overflows and Chrome clips it at the top. PDS leaves bare `input`/`textarea`
+   heights alone, which is why only selects clip. height: auto lets the select
+   size from its padding like the text fields beside it. */
+.puck-editor-theme select[class*="_Input-input_"] {
+  height: auto;
+}
+
 /* ── PDS Button border-radius fix ──────────────────────────────────────── */
 /* PDS v2 alpha Button component hardcodes border-radius: .1875rem instead
    of using var(--pds-border-radius-button). Override so buttons get the
