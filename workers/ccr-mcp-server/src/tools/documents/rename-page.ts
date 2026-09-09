@@ -13,7 +13,7 @@ const RenamePageInputSchema = z.object({
 
 export const renamePageTool = defineTool({
   description:
-    "Change a page's path. This is site-scoped: the new path applies across the site, not only on your working branch. Errors if another document already occupies the new path.",
+    "Change a page's path. This is site-scoped: the new path applies across the site, not only on your working workstream. Errors if another document already occupies the new path.",
   inputSchema: RenamePageInputSchema,
   annotations: { title: 'Rename page', destructiveHint: false, idempotentHint: true },
   mutates: true,

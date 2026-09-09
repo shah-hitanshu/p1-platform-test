@@ -14,7 +14,7 @@ const ExecuteMergeInputSchema = MergeBranchesInputSchema.extend({
 
 export const executeMergeTool = defineTool({
   description:
-    'Merge a source branch into a target branch. Hard to reverse — confirm with the user before merging into main. Long merges return a jobId to poll with get_merge_job.',
+    'Merge a source workstream into a target workstream. Hard to reverse — confirm with the user before merging into main. Long merges return a jobId to poll with get_merge_job.',
   inputSchema: ExecuteMergeInputSchema,
   annotations: { title: 'Execute merge', destructiveHint: true },
   mutates: true,

@@ -24,7 +24,7 @@ export const ConflictStrategyEnum = z.enum(['take-source', 'take-target', 'manua
 export const ConflictResolutionSchema = z.object({
   document_id: z.string().describe('The document ID (UUID) with the conflict'),
   strategy: ConflictStrategyEnum.describe(
-    'take-source keeps the source branch version, take-target keeps the target version, '
+    'take-source keeps the source workstream version, take-target keeps the target version, '
     + 'manual supplies a merged snapshot.',
   ),
   resolved_snapshot: z
@@ -39,8 +39,8 @@ export const SiteIdInputSchema = z.object({
 
 export const MergeBranchesInputSchema = z.object({
   site_id: z.string().describe('The site ID (UUID from list_sites)'),
-  source_branch_id: z.string().describe('The branch ID (UUID) holding the changes to merge'),
-  target_branch_id: z.string().describe('The branch ID (UUID) to merge into'),
+  source_branch_id: z.string().describe('The workstream ID (UUID) holding the changes to merge'),
+  target_branch_id: z.string().describe('The workstream ID (UUID) to merge into'),
 });
 
 export const MergeRequestIdInputSchema = z.object({

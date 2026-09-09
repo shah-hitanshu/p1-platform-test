@@ -78,6 +78,15 @@ async function rateLimitPreCheck(
   return verdict.allowed ? null : formatRateLimitError(toolName, verdict.scope);
 }
 
+const SERVER_INSTRUCTIONS = [
+  'Isolated lines of work on a site are called workstreams. Several tool names and',
+  'parameters still spell this "branch" (list_branches, create_branch, branch_id,',
+  'source_branch_id) — those spellings are fixed and must be sent exactly as named,',
+  'but they identify a workstream. Always say "workstream" when talking to the user,',
+  'including in questions, option lists and summaries, so the wording matches the',
+  'dashboard the user works in.',
+].join(' ');
+
 export function createMcpServer(config: McpHandlerConfig): McpServer {
   const apiClient = new McpApiClient({
     baseUrl: config.baseUrl,
@@ -89,10 +98,13 @@ export function createMcpServer(config: McpHandlerConfig): McpServer {
     enableValidation: true,
   });
 
-  const server = new McpServer({
-    name: config.serverName,
-    version: config.serverVersion,
-  });
+  const server = new McpServer(
+    {
+      name: config.serverName,
+      version: config.serverVersion,
+    },
+    { instructions: SERVER_INSTRUCTIONS },
+  );
 
   // PCC-3189: pass actingUser so handlers can attribute edit-session calls
   // to a real human (trigger='human_requested' + requestedById) instead of

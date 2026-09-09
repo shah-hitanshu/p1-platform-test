@@ -4,7 +4,7 @@ import { DocumentScopedInputSchema } from './shared-schemas.js';
 
 export const listDocumentVersionsTool = defineTool({
   description:
-    "List a document's version history on a branch, newest first. Use this to find the version_id to inspect with get_document_version or roll back to with restore_document_version.",
+    "List a document's version history on a workstream, newest first. Use this to find the version_id to inspect with get_document_version or roll back to with restore_document_version.",
   inputSchema: DocumentScopedInputSchema,
   annotations: { title: 'List document versions', readOnlyHint: true },
   mutates: false,

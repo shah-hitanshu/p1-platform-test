@@ -4,7 +4,7 @@ import { BranchScopedInputSchema } from './shared-schemas.js';
 
 export const listTemplatesTool = defineTool({
   description:
-    'List available templates on a branch. Returns template metadata including id, name, label, description, and deprecation status. Use this to discover available templates before calling create_page with template_id.',
+    'List available templates on a workstream. Returns template metadata including id, name, label, description, and deprecation status. Use this to discover available templates before calling create_page with template_id.',
   inputSchema: BranchScopedInputSchema,
   annotations: { title: 'List templates', readOnlyHint: true },
   mutates: false,
@@ -13,7 +13,7 @@ export const listTemplatesTool = defineTool({
       const templates = await ctx.apiClient.listTemplates(input.site_id, input.branch_id);
 
       if (templates.length === 0) {
-        return formatResult('No templates found on this branch.');
+        return formatResult('No templates found on this workstream.');
       }
 
       const templateLines = templates.map((template) => {
@@ -26,7 +26,7 @@ export const listTemplatesTool = defineTool({
         return `- ${template.name} (${label})${deprecatedNote}${descriptionNote}\n  template_id: ${template.id}`;
       });
 
-      return formatResult(`Templates available on this branch (${String(templates.length)} total):\n${templateLines.join('\n')}`);
+      return formatResult(`Templates available on this workstream (${String(templates.length)} total):\n${templateLines.join('\n')}`);
     } catch (error) {
       return formatError(error);
     }

@@ -10,7 +10,7 @@ const CreateMergeRequestInputSchema = MergeBranchesInputSchema.extend({
 
 export const createMergeRequestTool = defineTool({
   description:
-    'Open a merge request proposing that a source branch be merged into a target branch, for human review before it lands. Use this instead of execute_merge when the work should be approved by a person first.',
+    'Open a merge request proposing that a source workstream be merged into a target workstream, for human review before it lands. Use this instead of execute_merge when the work should be approved by a person first.',
   inputSchema: CreateMergeRequestInputSchema,
   annotations: { title: 'Create merge request', destructiveHint: false, idempotentHint: false },
   mutates: true,

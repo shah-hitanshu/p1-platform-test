@@ -4,7 +4,7 @@ import { BranchScopedInputSchema } from './shared-schemas.js';
 
 export const listQueriesTool = defineTool({
   description:
-    'List all queries on a branch. Queries define WHAT to retrieve from a datasource (filters, sort, pagination). Use get_query_results to retrieve results.',
+    'List all queries on a workstream. Queries define WHAT to retrieve from a datasource (filters, sort, pagination). Use get_query_results to retrieve results.',
   inputSchema: BranchScopedInputSchema,
   annotations: { title: 'List queries', readOnlyHint: true },
   mutates: false,
@@ -12,7 +12,7 @@ export const listQueriesTool = defineTool({
     try {
       const result = await ctx.apiClient.listQueries(input.site_id, input.branch_id);
       if (result.queries.length === 0) {
-        return formatResult('No queries found on this branch.');
+        return formatResult('No queries found on this workstream.');
       }
       const formatted = result.queries
         .map((q: Record<string, unknown>) => {

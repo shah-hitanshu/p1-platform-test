@@ -12,14 +12,14 @@ const UpdateSiteSettingsInputSchema = z.object({
     .nullable()
     .optional()
     .describe(
-      'Seconds to cache published pages on the main branch. 1 to 86400 (one day). Pass null to restore the default of 60.',
+      'Seconds to cache published pages on the main workstream. 1 to 86400 (one day). Pass null to restore the default of 60.',
     ),
   cache_ttl_branch: z
     .number()
     .nullable()
     .optional()
     .describe(
-      'Seconds to cache pages on non-main branches. 1 to 86400. Pass null to restore the default of 5.',
+      'Seconds to cache pages on non-main workstreams. 1 to 86400. Pass null to restore the default of 5.',
     ),
   og_image: z
     .string()

@@ -4,9 +4,9 @@ import { BranchIdInputSchema } from './shared-schemas.js';
 
 export const getBranchTool = defineTool({
   description:
-    "Get a single branch's details: name, status, description, source branch, and timestamps. Use this to check a branch's current state before updating, archiving, or merging it.",
+    "Get a single workstream's details: name, status, description, source workstream, and timestamps. Use this to check a workstream's current state before updating, archiving, or merging it.",
   inputSchema: BranchIdInputSchema,
-  annotations: { title: 'Get branch', readOnlyHint: true },
+  annotations: { title: 'Get workstream', readOnlyHint: true },
   mutates: false,
   handler: async (ctx, input) => {
     try {

@@ -4,7 +4,7 @@ import { MergeRequestIdInputSchema } from './shared-schemas.js';
 
 export const getMergeRequestTool = defineTool({
   description:
-    "Get a single merge request's details, including its source and target branches and current status.",
+    "Get a single merge request's details, including its source and target workstreams and current status.",
   inputSchema: MergeRequestIdInputSchema,
   annotations: { title: 'Get merge request', readOnlyHint: true },
   mutates: false,

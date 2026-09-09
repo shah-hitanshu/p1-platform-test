@@ -4,7 +4,7 @@ import { BranchScopedInputSchema } from './shared-schemas.js';
 
 export const listDatasourcesTool = defineTool({
   description:
-    'List all datasources on a branch. Datasources define WHERE data comes from (content type templates). Auto-generated when templates are created.',
+    'List all datasources on a workstream. Datasources define WHERE data comes from (content type templates). Auto-generated when templates are created.',
   inputSchema: BranchScopedInputSchema,
   annotations: { title: 'List datasources', readOnlyHint: true },
   mutates: false,
@@ -12,7 +12,7 @@ export const listDatasourcesTool = defineTool({
     try {
       const result = await ctx.apiClient.listDatasources(input.site_id, input.branch_id);
       if (result.datasources.length === 0) {
-        return formatResult('No datasources found on this branch.');
+        return formatResult('No datasources found on this workstream.');
       }
       const formatted = result.datasources
         .map((ds: Record<string, unknown>) => {

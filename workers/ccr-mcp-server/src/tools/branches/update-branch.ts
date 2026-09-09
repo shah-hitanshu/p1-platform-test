@@ -5,9 +5,9 @@ import { BranchStatusEnum } from './shared-schemas.js';
 
 const UpdateBranchInputSchema = z.object({
   site_id: z.string().describe('The site ID (UUID from list_sites)'),
-  branch_id: z.string().describe('The branch ID (UUID from list_branches, NOT the name)'),
-  name: z.string().min(1).optional().describe('New branch name. Must be unique within the site.'),
-  description: z.string().optional().describe('New one-line description for the branch.'),
+  branch_id: z.string().describe('The workstream ID (UUID from list_branches, NOT the name)'),
+  name: z.string().min(1).optional().describe('New workstream name. Must be unique within the site.'),
+  description: z.string().optional().describe('New one-line description for the workstream.'),
   status: BranchStatusEnum.optional().describe(
     'New lifecycle status: active, review, merged, or archived.',
   ),
@@ -15,9 +15,9 @@ const UpdateBranchInputSchema = z.object({
 
 export const updateBranchTool = defineTool({
   description:
-    "Update a branch's name, description, or lifecycle status. Provide at least one of name, description, or status. Status moves a branch through its lifecycle (active → review → merged → archived). Renaming must keep the name unique within the site.",
+    "Update a workstream's name, description, or lifecycle status. Provide at least one of name, description, or status. Status moves a workstream through its lifecycle (active → review → merged → archived). Renaming must keep the name unique within the site.",
   inputSchema: UpdateBranchInputSchema,
-  annotations: { title: 'Update branch', destructiveHint: false, idempotentHint: true },
+  annotations: { title: 'Update workstream', destructiveHint: false, idempotentHint: true },
   mutates: true,
   handler: async (ctx, input) => {
     try {
@@ -32,7 +32,7 @@ export const updateBranchTool = defineTool({
       if (input.status !== undefined) body.status = input.status;
 
       const branch = await ctx.apiClient.updateBranch(input.site_id, input.branch_id, body);
-      return formatResult({ message: `Branch "${branch.name}" updated.`, ...branch });
+      return formatResult({ message: `Workstream "${branch.name}" updated.`, ...branch });
     } catch (error) {
       return formatError(error);
     }

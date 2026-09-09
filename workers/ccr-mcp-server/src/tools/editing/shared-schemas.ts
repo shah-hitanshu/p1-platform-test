@@ -2,7 +2,7 @@ import z from 'zod';
 
 export const DocumentOnBranchInputSchema = z.object({
   site_id: z.string().describe('The site ID (UUID)'),
-  branch_id: z.string().describe('The branch ID (UUID from list_branches)'),
+  branch_id: z.string().describe('The workstream ID (UUID from list_branches)'),
   document_path: z.string().describe('The document path'),
 });
 

@@ -32,7 +32,7 @@ const CreateSiteInputSchema = z.object({
 
 export const createSiteTool = defineTool({
   description:
-    'Create a new site, provisioned with a "main" branch and a welcome page at "/". Requires an authenticated user session; agent API keys cannot create sites.',
+    'Create a new site, provisioned with a "main" workstream and a welcome page at "/". Requires an authenticated user session; agent API keys cannot create sites.',
   inputSchema: CreateSiteInputSchema,
   annotations: { title: 'Create site', destructiveHint: false, idempotentHint: false },
   mutates: true,
@@ -67,7 +67,7 @@ export const createSiteTool = defineTool({
       return formatResult(
         `Created site "${site.name}".\n`
           + `  site_id: ${site.id}\n`
-          + '\nThe site is ready to use: a "main" branch exists and a welcome page is seeded at "/". '
+          + '\nThe site is ready to use: a "main" workstream exists and a welcome page is seeded at "/". '
           + 'Call list_branches to get the main branch_id, then list_documents or create_page to start authoring.',
       );
     } catch (error) {

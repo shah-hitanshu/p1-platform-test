@@ -29,7 +29,7 @@ export function formatSiteSettings(result: {
   const lines = [
     'Site settings',
     `  cache TTL (main): ${String(s.cacheTtlMain ?? '(default)')}s`,
-    `  cache TTL (branch): ${String(s.cacheTtlBranch ?? '(default)')}s`,
+    `  cache TTL (workstream): ${String(s.cacheTtlBranch ?? '(default)')}s`,
     `  og:image: ${s.ogImage ?? '(not set)'}`,
     `  og:locale: ${s.ogLocale ?? '(not set)'}`,
   ];

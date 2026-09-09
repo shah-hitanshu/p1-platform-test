@@ -93,6 +93,26 @@ destructive enough to confirm with the user first.
 
 When moving a tool, copy its description verbatim rather than retyping it.
 
+#### Say "workstream", never "branch"
+
+The dashboard calls an isolated line of work a **workstream**, so every string a
+user can end up reading says workstream: `description`, every `.describe()`,
+`annotations.title`, and any prose in a `formatResult`. The wire contract keeps
+the older spelling — tool names (`list_branches`), parameter keys (`branch_id`,
+`source_branch_id`) and response keys (`branchId`) are unchanged, and
+`SERVER_INSTRUCTIONS` in `mcp-handler.ts` tells the client the two name the same
+thing.
+
+`tests/shared/terminology.spec.ts` enforces this across three surfaces: the tool
+`description`, every `.describe()` in the schema (recursing through arrays,
+wrappers and nested objects, so `ConflictResolutionSchema.strategy` is covered),
+and the prose a handler actually returns — it runs every handler against an
+empty and a populated backend. What it deliberately does **not** check is
+backend data passed through a `formatResult`: wire keys like `branchId`, and
+values such as a workstream a user chose to name "branch", are not ours to
+rename. So the handler check reads plain-string results whole and, in a JSON
+result, only `message` fields.
+
 ### Shared schema fragments
 
 Domains keep a local `shared-schemas.ts` for the shapes their own tools reuse

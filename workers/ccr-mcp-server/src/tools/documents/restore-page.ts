@@ -12,7 +12,7 @@ const RestorePageInputSchema = z.object({
 
 export const restorePageTool = defineTool({
   description:
-    'Restore a previously archived page. This is site-scoped: it acts on the document record across the site, not on a single branch. Errors if the page does not exist or is not archived.',
+    'Restore a previously archived page. This is site-scoped: it acts on the document record across the site, not on a single workstream. Errors if the page does not exist or is not archived.',
   inputSchema: RestorePageInputSchema,
   annotations: { title: 'Restore page', destructiveHint: false, idempotentHint: true },
   mutates: true,
