@@ -89,6 +89,7 @@ const translationResult: CreateTranslationResult = {
     derivedDocumentId: 'doc-fr',
     upstreamDocumentId: CANONICAL_ID,
     relationType: 'localization' as const,
+    syncedUpstreamVersionId: 'version-canonical-3',
     syncedUpstreamVersion: 3,
   },
 };

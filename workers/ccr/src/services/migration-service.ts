@@ -648,6 +648,18 @@ export async function extractUpstreamDelta(
   const fromSnapshot = await reconstructVersionSnapshot(upstreamDocumentId, branchId, fromVersion);
   const toSnapshot = await reconstructVersionSnapshot(upstreamDocumentId, branchId, toVersion);
 
+  return buildUpstreamDelta(fromSnapshot, toSnapshot);
+}
+
+/**
+ * The same delta between two snapshots already in hand. A caller that resolved
+ * its starting point by version identity has no version number to reconstruct
+ * from, since the pinned version may live on another branch.
+ */
+export function buildUpstreamDelta(
+  fromSnapshot: Record<string, unknown> | null,
+  toSnapshot: Record<string, unknown> | null,
+): UpstreamDelta {
   // A from-version without a content array predates the content-shape
   // conversion. Diffing a manifest against the content shape would read every
   // component as added; the conversion is a representation change, so the

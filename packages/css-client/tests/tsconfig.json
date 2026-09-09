@@ -1,0 +1,13 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    // Test fixtures index into arrays and records they just built. Requiring a
+    // guard on every one buys nothing — the assertion that follows is the check.
+    "noUncheckedIndexedAccess": false,
+    "rootDir": ".."
+  },
+  // The package config excludes tests so the build never emits them; exclude
+  // beats include, so it has to be narrowed here.
+  "exclude": ["node_modules", "dist"],
+  "include": ["**/*.ts", "../src/**/*.ts"]
+}

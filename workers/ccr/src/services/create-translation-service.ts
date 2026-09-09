@@ -23,6 +23,7 @@ import type { DocumentVersion, DocumentWithArchive } from './document-types';
 import { getDocument } from './document-service';
 import { documentExistsOnBranch } from './branch-document-service';
 import { cloneLatestSnapshot, insertDocumentWithVersion } from './document-clone';
+import { findMainBranchId } from './template-read';
 import { createLocalizationEdge, listLocalizationEdgesByUpstreamDocument } from './relations-service';
 import { validateLocale } from './locale';
 import { CanonicalVersionNotFoundError, TranslationAlreadyExistsError } from './errors';
@@ -45,6 +46,7 @@ export interface LocalizationEdgeSummary {
   upstreamDocumentId: string;
   relationType: 'localization';
   syncedUpstreamVersion: number | null;
+  syncedUpstreamVersionId: string | null;
 }
 
 /**
@@ -90,7 +92,7 @@ export { InvalidLocaleError } from './errors';
  *
  * @throws InvalidLocaleError if the locale is malformed
  * @throws DocumentNotFoundError if the canonical does not exist
- * @throws CanonicalVersionNotFoundError if the canonical has no version on the branch
+ * @throws CanonicalVersionNotFoundError if the canonical has no version on the branch or on main
  * @throws TranslationAlreadyExistsError if the locale already exists for the canonical
  * @throws DuplicateDocumentPathError if a document already occupies the translation path
  */
@@ -104,10 +106,14 @@ export async function createTranslation(
     throw new DocumentNotFoundError(params.canonicalDocumentId);
   }
 
-  // No fallback to main: a translation is seeded from the canonical as this
-  // branch sees it, and a branch that has never held the canonical has nothing
-  // to translate.
-  const clone = await cloneLatestSnapshot(params.canonicalDocumentId, params.branchId);
+  // A branch holds no version of a page it has not edited, so main is offered as
+  // the fallback: the translation is seeded from the canonical the branch serves.
+  const mainBranchId = await findMainBranchId(params.branchId);
+  const clone = await cloneLatestSnapshot(
+    params.canonicalDocumentId,
+    params.branchId,
+    mainBranchId ?? params.branchId,
+  );
   if (clone === null) {
     throw new CanonicalVersionNotFoundError(params.canonicalDocumentId, params.branchId);
   }
@@ -151,6 +157,7 @@ export async function createTranslation(
       derivedDocumentId: documentRow.id,
       upstreamDocumentId: params.canonicalDocumentId,
       syncedUpstreamVersion: clone.versionNumber,
+      syncedUpstreamVersionId: clone.versionId,
     });
 
     return {
@@ -164,6 +171,7 @@ export async function createTranslation(
         upstreamDocumentId: edge.upstreamDocumentId,
         relationType: 'localization',
         syncedUpstreamVersion: edge.syncedUpstreamVersion,
+        syncedUpstreamVersionId: edge.syncedUpstreamVersionId,
       },
     };
   });
@@ -204,6 +212,7 @@ export async function listLocaleVariants(
         upstreamDocumentId: edge.upstreamDocumentId,
         relationType: 'localization',
         syncedUpstreamVersion: edge.syncedUpstreamVersion,
+        syncedUpstreamVersionId: edge.syncedUpstreamVersionId,
       },
     });
   }

@@ -14,6 +14,12 @@
  *    change is classified by the translation's effective authority for the
  *    slot/prop and the canonical's per-prop translatability.
  *
+ * The two relation types name their starting point differently. A template edge
+ * pins a version number, read against whichever branch holds the template. A
+ * localization edge pins a version's identity, so it resolves the same on every
+ * branch — a number would name a different version, or none, off the branch that
+ * recorded it.
+ *
  * @see workers/src/services/migration-service.ts (shared diff core)
  * @see packages/p1-content-validator/src/localization.ts (resolvers)
  */
@@ -24,12 +30,18 @@ import {
   ROOT_SLOT_ID,
   type Authority,
 } from '@pantheon-systems/p1-content-validator';
+import type { DocumentVersion } from '../types/domain';
 import { walkComponents } from './component-identity';
 import { getDocument } from './document-service';
-import { getLatestDocumentVersion } from './document-version-service';
+import {
+  getDocumentVersion,
+  getLatestDocumentVersion,
+  getLatestDocumentVersionWithFallback,
+  reconstructVersionSnapshot,
+} from './document-version-service';
 import type { DocumentWithArchive } from './document-types';
 import { findMainBranchId, getLatestSnapshot, resolveTemplateReadBranch } from './template-read';
-import { extractUpstreamDelta } from './migration-service';
+import { buildUpstreamDelta, extractUpstreamDelta } from './migration-service';
 import {
   getEdgeByDerivedDocument,
   getLocalizationEdgeByDerivedDocument,
@@ -99,8 +111,18 @@ export interface ChangeSummary {
   relationType: ChangeRelationType;
   derivedDocumentId: string;
   upstreamDocumentId: string;
+  /**
+   * The number of the version the comparison starts from, on the branch that
+   * holds that version. For a localization edge the pinned version may live on
+   * another branch, so this and `toVersion` can be numbered against different
+   * histories; `fromVersionId` is the handle that compares across branches.
+   */
   fromVersion: number;
   toVersion: number;
+  /** Identity of the version the comparison starts from; null on a template edge. */
+  fromVersionId: string | null;
+  /** Identity of the version the comparison runs to, the upstream's current one. */
+  toVersionId: string;
   slotDelta: SlotDelta;
   changes: ChangeSummaryEntry[];
   counts: Record<ChangeClassification, number>;
@@ -121,6 +143,8 @@ export interface BuildChangeSummaryParams {
 interface UpstreamEdge {
   upstreamDocumentId: string;
   syncedUpstreamVersion: number | null;
+  /** Set on a localization edge, which pins by identity rather than by number. */
+  syncedUpstreamVersionId: string | null;
   metadata: Record<string, unknown>;
 }
 
@@ -136,6 +160,7 @@ async function resolveEdge(
     return {
       upstreamDocumentId: edge.upstreamDocumentId,
       syncedUpstreamVersion: edge.syncedUpstreamVersion,
+      syncedUpstreamVersionId: edge.syncedUpstreamVersionId,
       metadata: edge.metadata,
     };
   }
@@ -147,6 +172,7 @@ async function resolveEdge(
   return {
     upstreamDocumentId: templateEdge.upstreamDocumentId,
     syncedUpstreamVersion: templateEdge.syncedUpstreamVersion,
+    syncedUpstreamVersionId: null,
     metadata: {},
   };
 }
@@ -244,6 +270,115 @@ function classifyLocalizationProp(
   return { classification, authority, translatable };
 }
 
+/** An upstream's current version, and the branch its history is read from. */
+interface UpstreamVersion {
+  version: DocumentVersion;
+  branchId: string;
+}
+
+/**
+ * A template's current version: the branch's own when it holds one, otherwise
+ * main's, which a branch that has not edited the template inherits.
+ */
+async function resolveTemplateUpstreamVersion(
+  templateId: string,
+  branchId: string,
+  mainBranchId: string | undefined,
+): Promise<UpstreamVersion | null> {
+  const readBranchId = await resolveTemplateReadBranch(templateId, branchId, mainBranchId);
+  const version = await getLatestDocumentVersion(templateId, readBranchId);
+  return version === null ? null : { version, branchId: readBranchId };
+}
+
+/**
+ * A canonical's current version as a branch sees it: the branch's own when it has
+ * edited the page, otherwise the version it inherits from main, which is main's
+ * latest published rather than its latest draft.
+ */
+async function resolveCanonicalUpstreamVersion(
+  canonicalId: string,
+  branchId: string,
+  mainBranchId: string | undefined,
+): Promise<UpstreamVersion | null> {
+  const latest = await getLatestDocumentVersionWithFallback(
+    canonicalId,
+    branchId,
+    mainBranchId ?? branchId,
+  );
+  if (latest === null) {
+    return null;
+  }
+  return {
+    version: latest.version,
+    branchId: latest.inherited && mainBranchId !== undefined ? mainBranchId : branchId,
+  };
+}
+
+/**
+ * Where a comparison starts. A null `fromVersionId` means the start is named by
+ * a number on the branch being read, which the caller reconstructs; an id names
+ * the version itself, and `snapshot` is the content to diff forward from.
+ * `pinnedBranchId` is the branch that version lives on, so a caller can tell
+ * whether `fromVersion` shares a numbering sequence with the version it reads.
+ */
+interface ComparisonStart {
+  fromVersion: number;
+  fromVersionId: string | null;
+  pinnedBranchId: string | null;
+  snapshot: Record<string, unknown> | null;
+}
+
+/**
+ * Resolves the version a derived document's comparison measures from.
+ *
+ * A template edge pins by number, read against whichever branch holds the
+ * template. A localization edge pins by identity, so the pinned version is read
+ * wherever it lives — the branch that created the translation, which need not be
+ * the branch the translation is being read on.
+ *
+ * A localization edge with nothing pinned, or one whose pinned version has since
+ * been removed, measures from the upstream's current version, which yields an
+ * empty delta rather than a comparison against a guessed starting point.
+ */
+async function resolveComparisonStart(
+  edge: UpstreamEdge,
+  relationType: ChangeRelationType,
+  toVersion: number,
+): Promise<ComparisonStart> {
+  const unpinned = {
+    fromVersion: toVersion,
+    fromVersionId: null,
+    pinnedBranchId: null,
+    snapshot: null,
+  };
+
+  if (relationType !== 'localization') {
+    return { ...unpinned, fromVersion: edge.syncedUpstreamVersion ?? toVersion };
+  }
+
+  if (edge.syncedUpstreamVersionId === null) {
+    return unpinned;
+  }
+
+  const pinned = await getDocumentVersion(edge.syncedUpstreamVersionId);
+  if (pinned === null) {
+    return unpinned;
+  }
+
+  const snapshot = pinned.snapshot ?? await reconstructVersionSnapshot(
+    pinned.documentId,
+    pinned.branchId,
+    pinned.versionNumber,
+  );
+
+  return {
+    fromVersion: pinned.versionNumber,
+    fromVersionId: pinned.id,
+    pinnedBranchId: pinned.branchId,
+    snapshot,
+  };
+}
+
 /**
  * Builds the classified change summary for a derived document against its
  * upstream edge of the given relation type. Returns null when there is nothing
@@ -269,31 +404,54 @@ export async function buildChangeSummary(
 
   const mainBranchId = params.mainBranchId ?? (await findMainBranchId(branchId));
 
-  // A template upstream lives on whichever branch holds it; a canonical upstream
-  // is a page, read on the derived document's own branch.
-  const upstreamBranchId =
-    relationType === 'template'
-      ? await resolveTemplateReadBranch(edge.upstreamDocumentId, branchId, mainBranchId)
-      : branchId;
+  // The upstream's current state, as the branch being read sees it. A template
+  // lives on whichever branch holds it. A canonical is an ordinary page, so a
+  // branch that has not edited it sees the version it inherits from main.
+  const current = relationType === 'template'
+    ? await resolveTemplateUpstreamVersion(edge.upstreamDocumentId, branchId, mainBranchId)
+    : await resolveCanonicalUpstreamVersion(edge.upstreamDocumentId, branchId, mainBranchId);
 
   // A tombstone is the newest version of a document deleted on the branch it is read
   // from. It reads as absent rather than as content to diff, matching how a template
   // deleted on a branch resolves to nothing instead of falling back to main.
-  const latestUpstream = await getLatestDocumentVersion(edge.upstreamDocumentId, upstreamBranchId);
-  if (latestUpstream === null || latestUpstream.isTombstone === true) {
+  if (current === null || current.version.isTombstone === true) {
     return null;
   }
-  const toVersion = latestUpstream.versionNumber;
-  // A null pin means the derived document is not aligned to a specific upstream
-  // version; diffing the upstream against itself yields an empty delta.
-  const fromVersion = edge.syncedUpstreamVersion ?? toVersion;
+  const upstreamBranchId = current.branchId;
+  const toVersion = current.version.versionNumber;
 
-  const upstream = await extractUpstreamDelta(
-    edge.upstreamDocumentId,
-    upstreamBranchId,
-    fromVersion,
-    toVersion,
-  );
+  const start = await resolveComparisonStart(edge, relationType, toVersion);
+  const { fromVersion, fromVersionId } = start;
+
+  // A pin ahead of the version this branch serves, on the same history: the
+  // translation was made from a draft that the branch cannot see. Diffing from it
+  // would run backwards and report the superseded content as a change to apply.
+  if (start.pinnedBranchId === upstreamBranchId && fromVersion > toVersion) {
+    return {
+      relationType,
+      derivedDocumentId,
+      upstreamDocumentId: edge.upstreamDocumentId,
+      fromVersion,
+      toVersion,
+      fromVersionId,
+      toVersionId: current.version.id,
+      slotDelta: { added: [], removed: [], moved: [], templateIds: [] },
+      changes: [],
+      counts: emptyCounts(),
+    };
+  }
+
+  const upstream = fromVersionId === null
+    ? await extractUpstreamDelta(
+      edge.upstreamDocumentId,
+      upstreamBranchId,
+      fromVersion,
+      toVersion,
+    )
+    : buildUpstreamDelta(
+      start.snapshot,
+      await reconstructVersionSnapshot(edge.upstreamDocumentId, upstreamBranchId, toVersion),
+    );
 
   const fromUpstreamProps = indexPropsById(upstream.fromSnapshot);
   const derivedProps = indexPropsById(await getLatestSnapshot(derivedDocumentId, branchId));
@@ -367,6 +525,8 @@ export async function buildChangeSummary(
     upstreamDocumentId: edge.upstreamDocumentId,
     fromVersion,
     toVersion,
+    fromVersionId,
+    toVersionId: current.version.id,
     slotDelta: upstream.slotDelta,
     changes,
     counts,

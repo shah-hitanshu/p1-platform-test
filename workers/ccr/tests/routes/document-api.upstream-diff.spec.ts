@@ -93,6 +93,8 @@ const summary = {
   upstreamDocumentId: '33333333-3333-3333-3333-333333333333',
   fromVersion: 1,
   toVersion: 2,
+  fromVersionId: null,
+  toVersionId: '44444444-4444-4444-4444-444444444444',
   slotDelta: { added: [], removed: [], moved: [], templateIds: [] },
   changes: [],
   counts: { structural: 0, prop: 0, advisory: 0, needsTranslation: 0, autoApplied: 0 },

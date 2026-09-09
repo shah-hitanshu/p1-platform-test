@@ -7,10 +7,13 @@
  * so those reads and the edge write live here.
  *
  * A 'localization' edge points from a localized document (derived) to the
- * canonical it derives from (upstream). synced_version records the canonical
- * version the translation is aligned to.
+ * canonical it derives from (upstream). synced_version_id records the canonical
+ * version the translation is aligned to, by identity: version numbers restart on
+ * every branch, so a number read on another branch names a different version or
+ * none. Template edges pin by synced_version instead.
  *
  * @see workers/src/db/migrations/042_document_relations.sql
+ * @see workers/src/db/migrations/073_localization_synced_version_id.sql
  */
 
 import { query } from '../db';
@@ -34,6 +37,8 @@ export interface DocumentRelation {
   upstreamDocumentId: string;
   relationType: 'template' | 'localization';
   syncedUpstreamVersion: number | null;
+  /** The pinned upstream version by identity, which resolves on any branch. */
+  syncedUpstreamVersionId: string | null;
   metadata: Record<string, unknown>;
   createdAt: string;
 }
@@ -44,6 +49,7 @@ interface DocumentRelationRow {
   target_document_id: string;
   relation_type: 'template' | 'localization';
   synced_version: number | null;
+  synced_version_id: string | null;
   metadata: Record<string, unknown>;
   created_at: string;
 }
@@ -55,6 +61,7 @@ export interface CreateLocalizationEdgeParams {
   derivedDocumentId: string;
   upstreamDocumentId: string;
   syncedUpstreamVersion: number | null;
+  syncedUpstreamVersionId: string | null;
 }
 
 export type { Authority };
@@ -87,6 +94,7 @@ function mapRowToRelation(row: DocumentRelationRow): DocumentRelation {
     upstreamDocumentId: row.target_document_id,
     relationType: row.relation_type,
     syncedUpstreamVersion: row.synced_version,
+    syncedUpstreamVersionId: row.synced_version_id,
     metadata: row.metadata,
     createdAt: row.created_at,
   };
@@ -245,21 +253,13 @@ export async function listDriftCandidates(
        ${inherits ? publishedOnBranchJoin('pub_d', 'd', '$5') : ''}
       WHERE dr.relation_type = $1
         -- Pinned to nothing, so the diff would run the upstream against itself.
-        AND dr.synced_version IS NOT NULL
-        -- A localization edge is pinned to its canonical on this branch: equal to
-        -- the newest version there means nothing to take, and no version there at all
-        -- makes MAX null, which drops the row. A template edge is pinned to a
-        -- version in whichever branch holds the template, so only the pinning above
-        -- is checked here.
-        AND (
-          $1::text <> 'localization'
-          OR dr.synced_version <> (
-            SELECT MAX(dv.version_number)
-              FROM app.document_versions dv
-             WHERE dv.document_id = dr.target_document_id
-               AND dv.branch_id = $2
-          )
-        )
+        -- A localization edge pins by version identity, a template edge by number.
+        -- Whether a pinned document has actually drifted is settled by the
+        -- comparison, which resolves either pin without consulting this branch.
+        AND CASE WHEN $1::text = 'localization'
+                 THEN dr.synced_version_id IS NOT NULL
+                 ELSE dr.synced_version IS NOT NULL
+            END
         AND d.archived_at IS NULL
         AND ${visibleOnBranch('d', inherits ? 'pub_d' : null, '$2', '$5')}
       ORDER BY COALESCE(bdp.path, d.path) ASC
@@ -354,10 +354,15 @@ export async function createLocalizationEdge(
 ): Promise<DocumentRelation> {
   const result = await query<DocumentRelationRow>(
     `INSERT INTO app.document_relations
-       (source_document_id, target_document_id, relation_type, synced_version)
-     VALUES ($1, $2, 'localization', $3)
+       (source_document_id, target_document_id, relation_type, synced_version, synced_version_id)
+     VALUES ($1, $2, 'localization', $3, $4)
      RETURNING *`,
-    [params.derivedDocumentId, params.upstreamDocumentId, params.syncedUpstreamVersion],
+    [
+      params.derivedDocumentId,
+      params.upstreamDocumentId,
+      params.syncedUpstreamVersion,
+      params.syncedUpstreamVersionId,
+    ],
   );
   return mapRowToRelation(getFirstRow(result.rows));
 }

@@ -306,8 +306,14 @@ export interface LocalizationRelation {
   /** The canonical it was translated from */
   upstreamDocumentId: string;
   relationType: 'localization';
-  /** Canonical version the variant is aligned to; null when unpinned */
+  /**
+   * Number of the canonical version the variant is aligned to, on the branch
+   * holding that version; null when unpinned. Compare alignment with
+   * `syncedUpstreamVersionId`, which identifies the version on any branch.
+   */
   syncedUpstreamVersion: number | null;
+  /** The canonical version the variant is aligned to; null when unpinned */
+  syncedUpstreamVersionId: string | null;
 }
 
 /**
@@ -430,8 +436,18 @@ export interface ChangeSummary {
   relationType: 'template' | 'localization';
   derivedDocumentId: string;
   upstreamDocumentId: string;
+  /**
+   * Number of the version the comparison starts from, on the branch holding
+   * that version. For localization drift that branch may differ from the one
+   * being read, so this and `toVersion` can count different histories; compare
+   * with `fromVersionId`.
+   */
   fromVersion: number;
   toVersion: number;
+  /** The version the comparison starts from; null for template drift */
+  fromVersionId: string | null;
+  /** The version the comparison runs to, the source's current one */
+  toVersionId: string;
   /** Id-keyed structural delta */
   slotDelta: unknown;
   changes: ChangeSummaryEntry[];

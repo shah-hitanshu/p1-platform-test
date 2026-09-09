@@ -4,8 +4,9 @@
  * Exercises translation creation against a real PostgreSQL database: cloning a
  * canonical document into a locale variant preserves component slot ids exactly,
  * records a localization edge pinned to the canonical's current version, rejects
- * a second translation in a locale that already exists, and lists a canonical's
- * locale variants.
+ * a second translation in a locale that already exists, lists a canonical's
+ * locale variants, and inherits main's content on a branch that holds no version
+ * of the canonical.
  *
  * Prerequisites:
  * - PostgreSQL running: docker start css-postgres
@@ -18,8 +19,13 @@ import { setDatabaseInstance } from '../../src/db';
 import { createRealDatabaseConnection } from '../helpers/database';
 
 import { createSite } from '../../src/services/site-service';
-import { createDocumentOnBranch } from '../../src/services/branch-document-service';
+import { createBranch } from '../../src/services/branch-service';
+import {
+  createDocumentOnBranch,
+  documentExistsOnBranch,
+} from '../../src/services/branch-document-service';
 import { getDocument } from '../../src/services/document-service';
+import { publishDocument } from '../../src/services/checkpoint-publish';
 import {
   createTranslation,
   listLocaleVariants,
@@ -218,6 +224,73 @@ describe('Create-translation service - Integration Tests', () => {
           createdByType: 'user',
         }),
       ).rejects.toThrow(DocumentNotFoundError);
+    });
+  });
+
+  describe('Creating a translation on a branch holding no version of the canonical', () => {
+    let canonicalId: string;
+    let featureBranchId: string;
+    let result: Awaited<ReturnType<typeof createTranslation>>;
+
+    beforeAll(async () => {
+      const canonical = await createDocumentOnBranch({
+        siteId,
+        branchId,
+        path: 'pages/inherited',
+        snapshot: makeSnapshot([HEADING, CTA]),
+        createdById: TEST_USER_ID,
+        createdByType: 'user',
+      });
+      canonicalId = canonical.document.id;
+
+      await publishDocument({
+        siteId,
+        branchId,
+        documentId: canonicalId,
+        createdById: TEST_USER_ID,
+        createdByType: 'user',
+      });
+
+      const branch = await createBranch({
+        siteId,
+        name: `inherit-${String(Date.now())}`,
+        sourceBranchId: branchId,
+        createdById: TEST_USER_ID,
+        createdByType: 'user',
+      });
+      featureBranchId = branch.id;
+
+      result = await createTranslation({
+        canonicalDocumentId: canonicalId,
+        branchId: featureBranchId,
+        locale: 'it-IT',
+        createdById: TEST_USER_ID,
+        createdByType: 'user',
+      });
+    });
+
+    it('seeds the translation from the content the branch serves', () => {
+      expect(extractComponentIds(result.version.snapshot)).toEqual([
+        'HeadingBlock-1',
+        'ButtonBlock-1',
+      ]);
+    });
+
+    it('pins the translation to a canonical version main holds', async () => {
+      expect(result.localization.syncedUpstreamVersionId).not.toBeNull();
+
+      const pinned = await sql`
+        SELECT document_id, branch_id
+          FROM app.document_versions
+         WHERE id = ${result.localization.syncedUpstreamVersionId}
+      `;
+      expect(pinned[0].document_id).toBe(canonicalId);
+      expect(pinned[0].branch_id).toBe(branchId);
+    });
+
+    it('authors the translation on the branch alone', async () => {
+      expect(await documentExistsOnBranch(result.document.id, featureBranchId)).toBe(true);
+      expect(await documentExistsOnBranch(result.document.id, branchId)).toBe(false);
     });
   });
 });

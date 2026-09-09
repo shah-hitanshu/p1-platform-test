@@ -69,6 +69,7 @@ const translationResult: CreateTranslationResult = {
     upstreamDocumentId: CANONICAL_ID,
     relationType: 'localization',
     syncedUpstreamVersion: 4,
+    syncedUpstreamVersionId: 'version-canonical-4',
   },
 };
 

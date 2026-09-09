@@ -1,6 +1,8 @@
 {
-  "maxErrors": 708,
+  "maxErrors": 827,
   "packages": [
-    "workers/ccr"
+    "workers/ccr",
+    "workers/ccr-mcp-server",
+    "packages/css-client"
   ]
 }

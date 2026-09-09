@@ -7,7 +7,11 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { P1Client } from '../src/client.js';
-import type { LocalizationRelation } from '../src/types.js';
+import type {
+  CreateTranslationResult,
+  ListTranslationsResult,
+  LocalizationRelation,
+} from '../src/types.js';
 
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
@@ -29,7 +33,7 @@ describe('P1Client translations', () => {
     const siteId = 'site-1';
     const branchId = 'branch-1';
 
-    const createResponse = {
+    const createResponse: CreateTranslationResult = {
       document: {
         id: 'doc-fr',
         siteId,
@@ -45,7 +49,6 @@ describe('P1Client translations', () => {
         branchId,
         versionNumber: 1,
         snapshot: { content: [], root: {} },
-        crdtState: null,
         source: 'initial',
         createdById: 'user-1',
         createdByType: 'user',
@@ -56,6 +59,7 @@ describe('P1Client translations', () => {
         upstreamDocumentId: canonicalDocumentId,
         relationType: 'localization',
         syncedUpstreamVersion: 1,
+        syncedUpstreamVersionId: 'ver-canonical-1',
       },
     };
 
@@ -121,7 +125,7 @@ describe('P1Client translations', () => {
       const branchId = 'branch-1';
       const canonicalDocumentId = 'doc-canonical';
 
-      const listResponse = {
+      const listResponse: ListTranslationsResult = {
         canonical: {
           id: canonicalDocumentId,
           siteId,
@@ -146,6 +150,7 @@ describe('P1Client translations', () => {
               upstreamDocumentId: canonicalDocumentId,
               relationType: 'localization',
               syncedUpstreamVersion: 1,
+              syncedUpstreamVersionId: 'ver-canonical-1',
             },
           },
         ],
@@ -178,13 +183,14 @@ describe('P1Client translations', () => {
   describe('LocalizationRelation contract', () => {
     it('names the variant as derived, the canonical as upstream, and allows an unpinned version', () => {
       // A "back to the original" link follows upstreamDocumentId; a document is a
-      // translation when it appears as derivedDocumentId. syncedUpstreamVersion is null
-      // null until the variant is pinned to a version of the canonical.
+      // translation when it appears as derivedDocumentId. Both pin fields are null
+      // until the variant is pinned to a version of the canonical.
       const unbound: LocalizationRelation = {
         derivedDocumentId: 'doc-fr',
         upstreamDocumentId: 'doc-canonical',
         relationType: 'localization',
         syncedUpstreamVersion: null,
+        syncedUpstreamVersionId: null,
       };
 
       expect(unbound.derivedDocumentId).toBe('doc-fr');

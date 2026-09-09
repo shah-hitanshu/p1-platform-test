@@ -25,13 +25,20 @@ vi.mock('../../src/services/branch-document-service', () => ({
   documentExistsOnBranch: vi.fn(),
 }));
 
+vi.mock('../../src/services/template-read', () => ({
+  findMainBranchId: vi.fn(async () => undefined),
+}));
+
 vi.mock('../../src/services/relations-service', () => ({
-  createLocalizationEdge: vi.fn(async () => ({
-    derivedDocumentId: 'doc-translation',
-    upstreamDocumentId: 'doc-canonical',
-    relationType: 'localization',
-    syncedUpstreamVersion: 4,
-  })),
+  createLocalizationEdge: vi.fn(
+    async (params: { syncedUpstreamVersion: number; syncedUpstreamVersionId: string | null }) => ({
+      derivedDocumentId: 'doc-translation',
+      upstreamDocumentId: 'doc-canonical',
+      relationType: 'localization',
+      syncedUpstreamVersion: params.syncedUpstreamVersion,
+      syncedUpstreamVersionId: params.syncedUpstreamVersionId,
+    }),
+  ),
   listLocalizationEdgesByUpstreamDocument: vi.fn(async () => []),
 }));
 
@@ -128,5 +135,21 @@ describe('createTranslation result', () => {
     });
 
     expect(result.document.localizedFromId).toBe(result.localization.upstreamDocumentId);
+  });
+
+  it('pins the edge to the identity of the canonical version it cloned', async () => {
+    const { createTranslation } = await import('../../src/services/create-translation-service');
+    await setupHappyPath();
+
+    const result = await createTranslation({
+      canonicalDocumentId: CANONICAL_ID,
+      branchId: 'branch-1',
+      locale: 'fr-FR',
+      createdById: 'user-1',
+      createdByType: 'user',
+    });
+
+    expect(result.localization.syncedUpstreamVersionId).toBe('canonical-version-4');
+    expect(result.localization.syncedUpstreamVersion).toBe(4);
   });
 });

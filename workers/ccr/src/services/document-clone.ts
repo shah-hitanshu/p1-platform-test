@@ -15,10 +15,12 @@ import {
 import { enforceUniqueSlotIds } from './slot-id-backstop';
 import { DuplicateDocumentPathError } from './errors';
 
-/** A cloned snapshot, and the version number it was taken from. */
+/** A cloned snapshot, and the version it was taken from. */
 export interface ClonedSnapshot {
   snapshot: Record<string, unknown>;
   versionNumber: number;
+  /** The source version's id, which names it on whichever branch holds it. */
+  versionId: string;
 }
 
 /**
@@ -59,6 +61,7 @@ export async function cloneLatestSnapshot(
   return {
     snapshot: enforceUniqueSlotIds(documentId, structuredClone(source)),
     versionNumber: latest.version.versionNumber,
+    versionId: latest.version.id,
   };
 }
 

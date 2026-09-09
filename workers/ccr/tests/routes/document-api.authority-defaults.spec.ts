@@ -104,6 +104,7 @@ const localizationEdge = {
   upstreamDocumentId: CANONICAL_ID,
   relationType: 'localization' as const,
   syncedUpstreamVersion: 3,
+  syncedUpstreamVersionId: null,
   metadata: {},
   createdAt: '2026-01-24T11:00:00.000Z',
 };
