@@ -25,6 +25,7 @@ import {
   getDatasourceContext,
   getRoutes,
   postPublish,
+  postRevalidate,
   postResolvePreview,
   postPreviewMeta,
   postRemoteDatasources,
@@ -99,6 +100,10 @@ export function createP1Handler(opts: P1HandlerConfig) {
     if (action === "publish")
       return withAuth(request, () =>
         postPublish(request, { publicPageSegment: opts.publicPageSegment }),
+      );
+    if (action === "revalidate")
+      return withAuth(request, () =>
+        postRevalidate(request, { publicPageSegment: opts.publicPageSegment }),
       );
     if (action === "resolve-preview") return postResolvePreview(request);
     if (action === "preview-meta") return postPreviewMeta(request);

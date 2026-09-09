@@ -9,6 +9,7 @@ export { getEditorContext } from "./routes/editor-context";
 export { getDatasourceContext } from "./routes/datasource-context";
 export { getRemoteDatasources, postRemoteDatasources, deleteRemoteDatasources } from "./routes/remote-datasources-api";
 export { postPublish } from "./routes/publish";
+export { postRevalidate } from "./routes/revalidate";
 export { postResolvePreview } from "./routes/resolve-preview";
 export { postPreviewMeta } from "./routes/preview-meta";
 export { getRoutes } from "./routes/routes-api";

@@ -26,6 +26,7 @@ import { useComponentRegistry } from './useComponentRegistry.js';
 import { buildThumbnailOverride } from './utils/buildThumbnailOverride.js';
 import { makeEagerVersionHandler } from './utils/makeEagerVersionHandler.js';
 import { restoreDocumentVersion } from './utils/restoreDocumentVersion.js';
+import { revalidatePublishedRoute } from './utils/revalidatePublishedRoute.js';
 import { initialPanelUi } from './useResponsivePanels.js';
 import {
   createDocumentSyncStore,
@@ -221,7 +222,7 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
   } = options;
 
   const ccr = useP1Puck();
-  const { user, logout } = useP1Auth();
+  const { user, logout, getToken } = useP1Auth();
 
   // =========================================================================
   // Document Loading
@@ -480,9 +481,13 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
       const checkpoint = await ccr.publishDocument();
       needsVersionRef.current = true;
       void refreshVersions();
+      // Awaited, not fired and forgotten: until it returns, the public route can
+      // still be serving the render cached before this publish — including the
+      // "no such page" one cached at a path whose page has only just been created.
+      await revalidatePublishedRoute(documentPath, getToken);
       consumerOnPublishSuccessRef.current?.(checkpoint);
     },
-    [ccr, refreshVersions],
+    [ccr, refreshVersions, documentPath, getToken],
   );
 
   const canRevert =

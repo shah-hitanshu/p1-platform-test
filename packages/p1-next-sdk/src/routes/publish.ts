@@ -1,22 +1,12 @@
-import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
 import type { Data } from "@puckeditor/core";
 
-import {
-  isRouteTemplatePath,
-  normalizePath,
-  listOverridePathsForBase,
-  persistPublishedPage,
-} from "@pantheon-systems/puck-css/server";
+import { normalizePath, persistPublishedPage } from "@pantheon-systems/puck-css/server";
+
+import { DEFAULT_PUBLIC_PAGE_SEGMENT, revalidatePublishedPath } from "./revalidate";
 
 export { postPublish as POST };
-
-/**
- * Dynamic segment rendering public pages, as Next.js names it for
- * revalidatePath. Overridable for an app whose catch-all directory is not
- * `[...puckPath]`.
- */
-export const DEFAULT_PUBLIC_PAGE_SEGMENT = "/[...puckPath]";
+export { DEFAULT_PUBLIC_PAGE_SEGMENT };
 
 export async function postPublish(
   request: Request,
@@ -30,19 +20,7 @@ export async function postPublish(
   }
 
   await persistPublishedPage(path, payload.data);
-  revalidatePath(path);
-
-  if (isRouteTemplatePath(path)) {
-    for (const p of await listOverridePathsForBase(path)) {
-      revalidatePath(p);
-    }
-    // Instance URLs that resolve by template fall-through alone (/jedi/5 against
-    // /jedi/:id) have no store entry, so listOverridePathsForBase cannot
-    // enumerate them. Invalidating the catch-all segment is the only way to
-    // reach them; without it they serve pre-edit content until revalidate
-    // expires.
-    revalidatePath(publicPageSegment, "page");
-  }
+  await revalidatePublishedPath(path, publicPageSegment);
 
   return NextResponse.json({ status: "ok" });
 }
