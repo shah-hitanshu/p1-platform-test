@@ -23,6 +23,29 @@ env:
   TURBO_TELEMETRY_DISABLED: '1'
 
 jobs:
+  # Which of the expensive jobs below can this change actually reach? Detected
+  # once, so those jobs stay a single `if` each. `turbo ls --affected` does the
+  # package-graph work, so no list here has to track a dependency closure. The
+  # checkout is depth 2 — the merge commit plus its first parent, which on a
+  # pull request is the base branch — because this repo's full history is
+  # ~1.8 GiB and fetching it would cost more than the jobs being skipped.
+  changes:
+    name: which jobs can this change reach?
+    runs-on: ubuntu-latest
+    outputs:
+      starter-components: ${{ steps.scope.outputs.starter-components }}
+      e2e: ${{ steps.scope.outputs.e2e }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 2
+      # The self-test runs first so a regression in the checker fails the build
+      # instead of silently skipping a job, as check-npm-leaks.sh already does.
+      - id: scope
+        run: |
+          bash .github/scripts/ci-affected.sh --self-test
+          bash .github/scripts/ci-affected.sh
+
   verify:
     name: build / typecheck / lint / test (hard gates)
     runs-on: ubuntu-latest
@@ -154,6 +177,8 @@ jobs:
 
   e2e:
     name: playwright e2e (starter app vs mock backend)
+    needs: changes
+    if: needs.changes.outputs.e2e == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -176,6 +201,8 @@ jobs:
 
   starter-components:
     name: starter-components (storybook + registry build)
+    needs: changes
+    if: needs.changes.outputs.starter-components == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -186,8 +213,12 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       # Chromium is installed here and not in `verify` so the repo's main
-      # gate keeps its current runtime.
-      - run: pnpm exec playwright install --with-deps chromium
+      # gate keeps its current runtime. No `--with-deps`: it runs `apt-get
+      # update` across every repo configured on the runner, and a bad index on
+      # Google's preinstalled Chrome repo has failed this step for reasons that
+      # have nothing to do with the PR. The e2e job launches Chromium on the
+      # same image without it.
+      - run: pnpm exec playwright install chromium
       - name: Build starter-components dependencies
         run: pnpm exec turbo run build --filter='@pantheon-systems/p1-starter-components^...'
       - name: Render every story
