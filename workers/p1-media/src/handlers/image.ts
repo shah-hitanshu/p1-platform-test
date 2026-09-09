@@ -1,5 +1,6 @@
 import type { Env } from '../types';
 import { assetIdFromKey, imageCacheTags } from '../cache/image-cache';
+import { ALLOWED_MIME_TYPES } from '../upload-shared';
 
 const VALID_FIT = new Set(['scale-down', 'contain', 'pad', 'squeeze', 'cover', 'crop', 'aspect-crop']);
 const VALID_GRAVITY_NAMED = new Set(['face', 'left', 'right', 'top', 'bottom', 'center', 'auto', 'entropy']);
@@ -154,6 +155,23 @@ export async function handleImage(
     return new Response(JSON.stringify({ error: 'Not found' }), {
       status: 404,
       headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
+    });
+  }
+
+  // This route is unauthenticated and the branch below echoes the stored Content-Type
+  // verbatim, so stored text would execute on *.pantheon.io — the same reason
+  // ALLOWED_MIME_TYPES excludes SVG. This gates the types chat adds, not chat itself: a
+  // chat-attached image is served here like any library asset, because CDN_BASE_URL points
+  // at this route and every asset response carries that url. Untyped objects keep serving
+  // (see finalize). 404 not 403, per R0.
+  const storedType = object.httpMetadata?.contentType;
+  if (storedType !== undefined && !ALLOWED_MIME_TYPES.has(storedType)) {
+    // get() opened the body and nothing will read it. Test doubles have no cancel().
+    const cancel = (object.body as unknown as { cancel?: () => Promise<void> }).cancel;
+    if (typeof cancel === 'function') await cancel.call(object.body).catch(() => {});
+    return new Response(JSON.stringify({ error: 'Not found' }), {
+      status: 404,
+      headers: { 'Content-Type': 'application/json' },
     });
   }
 

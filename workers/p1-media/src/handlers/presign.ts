@@ -2,12 +2,20 @@ import type { Env } from '../types';
 import { validateMetadata } from '../schema';
 import { sanitizeFilename, buildKey, assertOwnedAsset, NotFoundError } from '../store';
 import { createPresignedPutUrl } from '../r2-presign';
-import { ALLOWED_MIME_TYPES, DEFAULT_MAX_UPLOAD_BYTES, jsonError } from '../upload-shared';
+import {
+  DEFAULT_MAX_UPLOAD_BYTES,
+  allowlistFor,
+  isAssetOrigin,
+  jsonError,
+  unsupportedTypeMessage,
+  type AssetOrigin,
+} from '../upload-shared';
 
 interface PresignRequestBody {
   filename?: unknown;
   contentType?: unknown;
   size?: unknown;
+  origin?: unknown;
   metadata?: Record<string, unknown>;
 }
 
@@ -25,6 +33,7 @@ export async function parsePresignRequest(
   | {
       filename: string;
       contentType: string;
+      origin: AssetOrigin;
       metadata?: Record<string, string>;
     }
 > {
@@ -37,8 +46,14 @@ export async function parsePresignRequest(
 
   const maxBytes = parseInt(env.MAX_UPLOAD_BYTES ?? '', 10) || DEFAULT_MAX_UPLOAD_BYTES;
 
-  if (typeof body.contentType !== 'string' || !ALLOWED_MIME_TYPES.has(body.contentType)) {
-    return jsonError('Only image files are accepted (png, jpeg, gif, webp, avif)', 415);
+  // Absent means 'library': an existing caller gets the same gate and the same 415 text.
+  if (body.origin !== undefined && !isAssetOrigin(body.origin)) {
+    return jsonError('Unknown origin', 400);
+  }
+  const origin: AssetOrigin = body.origin ?? 'library';
+
+  if (typeof body.contentType !== 'string' || !allowlistFor(origin).has(body.contentType)) {
+    return jsonError(unsupportedTypeMessage(origin), 415);
   }
 
   if (typeof body.size !== 'number' || !(body.size > 0)) {
@@ -62,7 +77,7 @@ export async function parsePresignRequest(
     metadata = body.metadata as Record<string, string>;
   }
 
-  return { filename, contentType: body.contentType, metadata };
+  return { filename, contentType: body.contentType, origin, metadata };
 }
 
 /** POST /media/presign — mints a new asset's first version. */
@@ -90,6 +105,12 @@ export async function handlePresignVersion(
 ): Promise<Response> {
   const parsed = await parsePresignRequest(request, env);
   if (parsed instanceof Response) return parsed;
+
+  // Chat has no replace-a-version flow, and one would put a text version on a library
+  // asset: promote inspects an asset once and never re-gates it.
+  if (parsed.origin === 'chat') {
+    return jsonError('Chat uploads cannot replace an existing asset version', 400);
+  }
 
   try {
     await assertOwnedAsset(env, siteId, assetId);

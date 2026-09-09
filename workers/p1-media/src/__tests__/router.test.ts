@@ -21,7 +21,9 @@ vi.mock('../handlers/get', () => ({ handleGetAsset: vi.fn() }));
 vi.mock('../handlers/patch', () => ({ handlePatch: vi.fn() }));
 vi.mock('../handlers/delete', () => ({ handleDelete: vi.fn() }));
 vi.mock('../handlers/purge', () => ({ handlePurge: vi.fn() }));
-vi.mock('../handlers/reconcile', () => ({ handleReconcile: vi.fn() }));
+vi.mock('../handlers/content', () => ({ handleGetContent: vi.fn() }));
+vi.mock('../handlers/promote', () => ({ handlePromote: vi.fn() }));
+vi.mock('../handlers/reconcile', () => ({ handleReconcile: vi.fn(), sweepExpiredChatAssets: vi.fn() }));
 
 import worker from '../index';
 import { validateAuth } from '../auth';
@@ -33,7 +35,9 @@ import { handleGetAsset } from '../handlers/get';
 import { handlePatch } from '../handlers/patch';
 import { handleDelete } from '../handlers/delete';
 import { handlePurge } from '../handlers/purge';
-import { handleReconcile } from '../handlers/reconcile';
+import { handleGetContent } from '../handlers/content';
+import { handlePromote } from '../handlers/promote';
+import { handleReconcile, sweepExpiredChatAssets } from '../handlers/reconcile';
 import { METADATA_SCHEMA } from '../schema';
 
 function createEnv(): Env {
@@ -60,7 +64,7 @@ const anyHandlerCalled = () =>
   [
     handleImage, handleList, handlePresignUpload,
     handleFinalizeUpload, handlePresignVersion, handleFinalizeVersion, handleGetAsset,
-    handlePatch, handleDelete, handlePurge,
+    handlePatch, handleDelete, handlePurge, handleGetContent, handlePromote,
   ].some((h) => vi.mocked(h).mock.calls.length > 0);
 
 describe('Worker router', () => {
@@ -77,6 +81,8 @@ describe('Worker router', () => {
     vi.mocked(handlePatch).mockResolvedValue(new Response('patch', { status: 200 }));
     vi.mocked(handleDelete).mockResolvedValue(new Response('delete', { status: 200 }));
     vi.mocked(handlePurge).mockResolvedValue(new Response('purge', { status: 200 }));
+    vi.mocked(handleGetContent).mockResolvedValue(new Response('content', { status: 200 }));
+    vi.mocked(handlePromote).mockResolvedValue(new Response('promote', { status: 200 }));
   });
 
   // ---- CORS / OPTIONS ----
@@ -238,6 +244,26 @@ describe('Worker router', () => {
     expect(handleDelete).not.toHaveBeenCalled();
   });
 
+  // Clearing a conversation purges its uploads through this route. The narrowing is what
+  // stops it reaching an image the user has added to their media library.
+  it('DELETE /media/:id/chat narrows the delete to a chat upload', async () => {
+    await worker.fetch(
+      req('https://w.example.com/media/asset-1/chat?siteId=site1', { method: 'DELETE' }),
+      createEnv(),
+    );
+    expect(handleDelete).toHaveBeenCalledWith(expect.anything(), 'site1', 'asset-1', true);
+  });
+
+  it('DELETE /media/:id is never narrowed by a query parameter', async () => {
+    await worker.fetch(
+      req('https://w.example.com/media/asset-1?siteId=site1&origin=chat', { method: 'DELETE' }),
+      createEnv(),
+    );
+    // Not `true`. The flag form is what an older worker would silently ignore, so it must
+    // not be a way to ask for narrowing here either.
+    expect(handleDelete).toHaveBeenCalledWith(expect.anything(), 'site1', 'asset-1', false);
+  });
+
   it('POST /media/presign returns 401 with no bearer, without dispatching', async () => {
     const response = await worker.fetch(
       req('https://w.example.com/media/presign?siteId=site1', { method: 'POST' }, false),
@@ -348,9 +374,9 @@ describe('Worker router', () => {
     expect(handlePatch).toHaveBeenCalledWith(request, expect.anything(), 'site1', 'asset-1');
   });
 
-  it('DELETE /media/:assetId dispatches to handleDelete with (env, siteId, assetId)', async () => {
+  it('DELETE /media/:assetId dispatches to handleDelete as the library delete', async () => {
     await worker.fetch(req('https://w.example.com/media/asset-1?siteId=site1', { method: 'DELETE' }), createEnv());
-    expect(handleDelete).toHaveBeenCalledWith(expect.anything(), 'site1', 'asset-1');
+    expect(handleDelete).toHaveBeenCalledWith(expect.anything(), 'site1', 'asset-1', false);
   });
 
   // ---- POST /media/:assetId/purge (operator-only; must never touch site auth) ----
@@ -425,10 +451,89 @@ describe('Worker router', () => {
 
   // ---- scheduled (Cron Trigger) ----
 
+  // ---- /media/:assetId/content and /promote ----
+  // Both must match ahead of the generic /media/:assetId fallback, which runs
+  // isValidId and rejects anything still carrying a slash.
+
+  it('GET /media/:assetId/content dispatches with the authenticated siteId', async () => {
+    const response = await worker.fetch(
+      req('https://w.example.com/media/asset-1/content?siteId=site1&width=144'),
+      createEnv(),
+    );
+    expect(response.status).toBe(200);
+    // The URL goes through too: ?width= is read off it, so a router that dropped it would
+    // silently serve full-size originals to every transcript card.
+    expect(handleGetContent).toHaveBeenCalledWith(
+      expect.anything(), 'site1', 'asset-1',
+      expect.objectContaining({ searchParams: expect.anything() }),
+    );
+    expect(vi.mocked(handleGetContent).mock.calls[0][3].searchParams.get('width')).toBe('144');
+    expect(handleGetAsset).not.toHaveBeenCalled();
+  });
+
+  it('POST /media/:assetId/promote dispatches with the authenticated siteId', async () => {
+    const response = await worker.fetch(
+      req('https://w.example.com/media/asset-1/promote?siteId=site1', { method: 'POST' }),
+      createEnv(),
+    );
+    expect(response.status).toBe(200);
+    expect(handlePromote).toHaveBeenCalledWith(
+      expect.anything(), expect.anything(), 'site1', 'asset-1',
+    );
+  });
+
+  it('returns 401 on /content with no bearer token, without dispatching', async () => {
+    const response = await worker.fetch(
+      req('https://w.example.com/media/asset-1/content?siteId=site1', {}, false),
+      createEnv(),
+    );
+    expect(response.status).toBe(401);
+    expect(handleGetContent).not.toHaveBeenCalled();
+  });
+
+  it('returns 403 on /promote when auth denies, without dispatching', async () => {
+    vi.mocked(validateAuth).mockResolvedValue(false);
+    const response = await worker.fetch(
+      req('https://w.example.com/media/asset-1/promote?siteId=site1', { method: 'POST' }),
+      createEnv(),
+    );
+    expect(response.status).toBe(403);
+    expect(handlePromote).not.toHaveBeenCalled();
+  });
+
+  it('does not treat /content as an assetId on the wrong method', async () => {
+    const response = await worker.fetch(
+      req('https://w.example.com/media/asset-1/content?siteId=site1', { method: 'POST' }),
+      createEnv(),
+    );
+    expect(response.status).toBe(404);
+    expect(anyHandlerCalled()).toBe(false);
+  });
+
   it('scheduled() dispatches to handleReconcile with the env', async () => {
     const env = createEnv();
     const controller = { scheduledTime: Date.now(), cron: '0 * * * *', noRetry: vi.fn() };
     await worker.scheduled!(controller as unknown as ScheduledController, env);
     expect(handleReconcile).toHaveBeenCalledWith(env);
+  });
+
+  // Order is load-bearing: handleReconcile snapshots asset_versions up front, so the
+  // retention sweep must finish deleting rows before that snapshot is taken.
+  it('runs the chat retention sweep before the orphan reconcile', async () => {
+    const env = createEnv();
+    const order: string[] = [];
+    vi.mocked(sweepExpiredChatAssets).mockImplementation(async () => {
+      order.push('sweep');
+      return { candidates: 0, deleted: 0, deferred: 0, failed: 0, dryRun: true };
+    });
+    vi.mocked(handleReconcile).mockImplementation(async () => {
+      order.push('reconcile');
+      return { candidates: 0, deleted: 0, dryRun: true };
+    });
+
+    const controller = { scheduledTime: Date.now(), cron: '0 * * * *', noRetry: vi.fn() };
+    await worker.scheduled!(controller as unknown as ScheduledController, env);
+
+    expect(order).toEqual(['sweep', 'reconcile']);
   });
 });

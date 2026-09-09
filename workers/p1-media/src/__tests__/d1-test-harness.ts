@@ -22,6 +22,7 @@ const MIGRATIONS = Object.keys(migrationsByPath)
   .map((path) => migrationsByPath[path]);
 import type { Env, MediaAsset } from '../types';
 import { buildKey, finalizeAssetCreation } from '../store';
+import type { AssetOrigin } from '../upload-shared';
 
 // ---------------------------------------------------------------------------
 // D1Database adapter over node:sqlite
@@ -237,6 +238,7 @@ export async function seedAsset(
     body?: string;
     metadata?: Record<string, string>;
     createdBy?: string;
+    origin?: AssetOrigin;
   },
 ): Promise<MediaAsset> {
   const assetId = crypto.randomUUID();
@@ -256,5 +258,6 @@ export async function seedAsset(
     height: overrides.height,
     metadata: overrides.metadata,
     createdBy: overrides.createdBy,
+    ...(overrides.origin ? { origin: overrides.origin } : {}),
   });
 }

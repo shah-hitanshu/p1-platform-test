@@ -60,7 +60,8 @@ describe('buildListQuery', () => {
   it('omits the search clause entirely when no term is given', () => {
     const { sql, params } = buildListQuery({ siteId: 'site-1', limit: 50 });
     expect(sql).not.toContain('LIKE');
-    expect(params).toEqual(['site-1', 50]);
+    // 'library' is the origin filter, bound immediately after the site.
+    expect(params).toEqual(['site-1', 'library', 50]);
   });
 
   it('parameterizes the search term with an escaped, lowercased LIKE on filename, alt, and metadata values', () => {
@@ -79,7 +80,20 @@ describe('buildListQuery', () => {
     // R11: the wildcards the user typed are escaped inside the BOUND param — never
     // interpolated into the SQL — and the term is lowercased for case-insensitive match.
     const expectedLike = '%50\\%\\_off%';
-    expect(params).toEqual(['site-1', expectedLike, expectedLike, expectedLike, 10]);
+    expect(params).toEqual(['site-1', 'library', expectedLike, expectedLike, expectedLike, 10]);
+  });
+
+  // The default is the whole backward-compatibility argument for
+  // GET /media — an omitted origin can only ever mean 'library'.
+  it('defaults the origin filter to library when none is given', () => {
+    const { sql, params } = buildListQuery({ siteId: 'site-1', limit: 50 });
+    expect(sql).toContain('a.origin = ?');
+    expect(params[1]).toBe('library');
+  });
+
+  it('binds an explicit origin instead', () => {
+    const { params } = buildListQuery({ siteId: 'site-1', limit: 50, origin: 'chat' });
+    expect(params[1]).toBe('chat');
   });
 
   it('lowercases the search term so matching is case-insensitive', () => {
@@ -163,6 +177,9 @@ function baseRow(overrides: Partial<AssetRow & AssetVersionRow> = {}): AssetRow 
     created_at: '2025-01-01T00:00:00Z',
     created_by: null,
     deleted_at: null,
+    origin: 'library',
+    from_chat: 0,
+    expires_at: null,
     version_id: 'v1',
     r2_key: 's1/assets/a1/v1-photo.jpg',
     content_type: 'image/jpeg',

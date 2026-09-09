@@ -12,7 +12,9 @@ import { handleGetAsset } from './handlers/get';
 import { handlePatch } from './handlers/patch';
 import { handleDelete } from './handlers/delete';
 import { handlePurge } from './handlers/purge';
-import { handleReconcile } from './handlers/reconcile';
+import { handleReconcile, sweepExpiredChatAssets } from './handlers/reconcile';
+import { handleGetContent } from './handlers/content';
+import { handlePromote } from './handlers/promote';
 import { handleDocsRoute, handleDocsSpecRoute } from './routes/docs-handler';
 
 // Named entrypoint for Workers Caching (wrangler.jsonc `exports`). Must be exported
@@ -60,6 +62,9 @@ function sanitizeRoutePattern(path: string): string {
     if (rest.endsWith('/versions/presign')) return '/media/:assetId/versions/presign';
     if (rest.endsWith('/versions/finalize')) return '/media/:assetId/versions/finalize';
     if (rest.endsWith('/purge')) return '/media/:assetId/purge';
+    if (rest.endsWith('/content')) return '/media/:assetId/content';
+    if (rest.endsWith('/promote')) return '/media/:assetId/promote';
+    if (rest.endsWith('/chat')) return '/media/:assetId/chat';
     return '/media/:assetId';
   }
   return '/unmatched';
@@ -198,6 +203,34 @@ async function route(request: Request, env: Env, url: URL): Promise<Response> {
       return addCorsHeaders(await handleFinalizeVersion(request, env, auth, assetId));
     }
 
+    // Before the generic fallback below, which runs isValidId and so rejects any
+    // path still carrying a slash.
+    if (method === 'GET' && rest.endsWith('/content')) {
+      const assetId = rest.slice(0, -'/content'.length);
+      if (!isValidId(assetId)) return addCorsHeaders(jsonResponse({ error: 'Not found' }, 404));
+      const auth = await authenticate(request, env, url);
+      if (auth instanceof Response) return addCorsHeaders(auth);
+      return addCorsHeaders(await handleGetContent(env, auth, assetId, url));
+    }
+    if (method === 'POST' && rest.endsWith('/promote')) {
+      const assetId = rest.slice(0, -'/promote'.length);
+      if (!isValidId(assetId)) return addCorsHeaders(jsonResponse({ error: 'Not found' }, 404));
+      const auth = await authenticate(request, env, url);
+      if (auth instanceof Response) return addCorsHeaders(auth);
+      return addCorsHeaders(await handlePromote(request, env, auth, assetId));
+    }
+    // A path, not a `?origin=chat` flag: a worker predating this 404s on the extra
+    // segment (isValidId rejects the slash) instead of silently doing an unscoped
+    // delete. The caller is the agent clearing a conversation, so failing closed there
+    // costs a retry; failing open removes images the user added to their library.
+    if (method === 'DELETE' && rest.endsWith('/chat')) {
+      const assetId = rest.slice(0, -'/chat'.length);
+      if (!isValidId(assetId)) return addCorsHeaders(jsonResponse({ error: 'Not found' }, 404));
+      const auth = await authenticate(request, env, url);
+      if (auth instanceof Response) return addCorsHeaders(auth);
+      return addCorsHeaders(await handleDelete(env, auth, assetId, true));
+    }
+
     const assetId = rest;
     if (!isValidId(assetId)) return addCorsHeaders(jsonResponse({ error: 'Not found' }, 404));
 
@@ -206,7 +239,8 @@ async function route(request: Request, env: Env, url: URL): Promise<Response> {
 
     if (method === 'GET') return addCorsHeaders(await handleGetAsset(env, auth, assetId));
     if (method === 'PATCH') return addCorsHeaders(await handlePatch(request, env, auth, assetId));
-    if (method === 'DELETE') return addCorsHeaders(await handleDelete(env, auth, assetId));
+    // Explicitly unnarrowed: only the /chat path above may restrict a delete.
+    if (method === 'DELETE') return addCorsHeaders(await handleDelete(env, auth, assetId, false));
     return addCorsHeaders(jsonResponse({ error: 'Method not allowed' }, 405));
   }
 
@@ -250,7 +284,22 @@ export default {
   async scheduled(_controller: ScheduledController, env: Env, ctx?: ExecutionContext): Promise<void> {
     const logger = ensureLogger(env);
     try {
-      await handleReconcile(env);
+      // Retention first: handleReconcile snapshots asset_versions up front, so rows
+      // removed after that point would leave it working from a stale set.
+      //
+      // Isolated because they share one invocation but nothing else. Either throwing
+      // took the other down for that tick, and the cron is hourly, so a persistent
+      // fault in one silently retired the other.
+      try {
+        await sweepExpiredChatAssets(env);
+      } catch (err) {
+        logger.error('chat retention sweep failed, leaving the orphan job to run', err);
+      }
+      try {
+        await handleReconcile(env);
+      } catch (err) {
+        logger.error('orphan reconcile failed', err);
+      }
     } finally {
       ctx?.waitUntil(logger.flush());
     }

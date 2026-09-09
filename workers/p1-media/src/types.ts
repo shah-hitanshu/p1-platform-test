@@ -1,4 +1,5 @@
 import type { TelemetryEnv } from './telemetry';
+import type { AssetOrigin } from './upload-shared';
 
 // Telemetry bindings (ENVIRONMENT, LOG_LEVEL, APP_VERSION, P1_LOG_SINK, CCR_BASE_URL)
 // come from TelemetryEnv so the logger's env contract is declared once, in telemetry.ts.
@@ -50,6 +51,11 @@ export interface AssetRow {
   created_at: string;
   created_by: string | null;
   deleted_at: string | null;
+  origin: AssetOrigin;
+  /** Set only for origin='chat'. NULL means the asset does not expire. */
+  expires_at: string | null;
+  /** 1 if the asset was uploaded through chat. Survives a promote, unlike `origin`. */
+  from_chat: number;
 }
 
 export interface AssetVersionRow {
@@ -88,4 +94,9 @@ export interface MediaAsset {
   metadata: Record<string, string>; // flat; includes alt when set
   metaSchemaVersion?: number;
   createdAt?: string;
+  /**
+   * Emitted only when it isn't 'library'. Picker versions pinned on npm and the agent's
+   * list_media tool both parse this response, so a library asset must not gain a field.
+   */
+  origin?: Exclude<AssetOrigin, 'library'>;
 }

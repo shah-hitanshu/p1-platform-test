@@ -3,6 +3,9 @@ import { handleImage } from '../handlers/image';
 import { handlePresignUpload, handlePresignVersion } from '../handlers/presign';
 import { handleFinalizeUpload, handleFinalizeVersion } from '../handlers/finalize';
 import { handleGetAsset } from '../handlers/get';
+import { handleList } from '../handlers/list';
+import { handleGetContent } from '../handlers/content';
+import { handlePromote } from '../handlers/promote';
 import { handlePatch } from '../handlers/patch';
 import { handleDelete } from '../handlers/delete';
 import type { Env, MediaAsset } from '../types';
@@ -21,7 +24,9 @@ vi.mock('../store', async (importOriginal) => {
     finalizeVersionAdd: vi.fn(),
     assertOwnedAsset: vi.fn(),
     getAsset: vi.fn(),
+    getStoredAsset: vi.fn(),
     listAssets: vi.fn(),
+    promoteAsset: vi.fn(),
     updateAssetMetadata: vi.fn(),
     softDeleteAsset: vi.fn(),
   };
@@ -32,6 +37,9 @@ import {
   finalizeVersionAdd,
   assertOwnedAsset,
   getAsset,
+  getStoredAsset,
+  listAssets,
+  promoteAsset,
   updateAssetMetadata,
   softDeleteAsset,
   NotFoundError,
@@ -831,5 +839,683 @@ describe('handlePatch', () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual(SAMPLE_ASSET);
     expect(updateAssetMetadata).toHaveBeenCalledWith(expect.anything(), 'site1', 'asset-1', { alt: 'x', caption: null });
+  });
+});
+
+// Chat origin. The load-bearing property: a caller that has never heard
+// of `origin` behaves exactly as before — same gate, same 415 text, same stored row.
+
+describe('presign origin', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(createPresignedPutUrl).mockResolvedValue({
+      uploadUrl: 'https://example.r2.cloudflarestorage.com/signed',
+      expiresAt: '2026-01-01T00:05:00Z',
+    });
+  });
+
+  it('treats an absent origin as library, with the same 415 text as before', async () => {
+    const response = await handlePresignUpload(
+      presignRequest({ filename: 'brief.md', contentType: 'text/markdown', size: 12 }),
+      createStoreEnv(),
+      'site1',
+    );
+    expect(response.status).toBe(415);
+    expect(await response.json()).toEqual({
+      error: 'Only image files are accepted (png, jpeg, gif, webp, avif)',
+    });
+  });
+
+  it('accepts text for a chat upload', async () => {
+    for (const contentType of ['text/plain', 'text/markdown', 'text/csv', 'text/html']) {
+      const response = await handlePresignUpload(
+        presignRequest({ filename: 'brief.md', contentType, size: 12, origin: 'chat' }),
+        createStoreEnv(),
+        'site1',
+      );
+      expect(response.status).toBe(200);
+    }
+  });
+
+  it('still refuses SVG for a chat upload', async () => {
+    const response = await handlePresignUpload(
+      presignRequest({ filename: 'evil.svg', contentType: 'image/svg+xml', size: 5, origin: 'chat' }),
+      createStoreEnv(),
+      'site1',
+    );
+    expect(response.status).toBe(415);
+  });
+
+  it('rejects an unrecognised origin rather than falling back to library', async () => {
+    const response = await handlePresignUpload(
+      presignRequest({ filename: 'p.png', contentType: 'image/png', size: 5, origin: 'libary' }),
+      createStoreEnv(),
+      'site1',
+    );
+    expect(response.status).toBe(400);
+    expect(createPresignedPutUrl).not.toHaveBeenCalled();
+  });
+
+  it('refuses a chat origin on the add-version path', async () => {
+    const response = await handlePresignVersion(
+      presignRequest({ filename: 'p.png', contentType: 'image/png', size: 5, origin: 'chat' }),
+      createStoreEnv(),
+      'site1',
+      'asset-1',
+    );
+    expect(response.status).toBe(400);
+    expect(createPresignedPutUrl).not.toHaveBeenCalled();
+  });
+});
+
+describe('finalize origin', () => {
+  const TEXT_KEY = 'site1/assets/asset-1/version-1-brief.md';
+
+  beforeEach(() => vi.clearAllMocks());
+
+  function textBucket() {
+    return createMockR2Bucket({
+      [TEXT_KEY]: {
+        body: 'hello', httpMetadata: { contentType: 'text/markdown' }, size: 5, uploaded: new Date(),
+      },
+    });
+  }
+
+  it('passes the origin through to the store', async () => {
+    const env = { ...createStoreEnv(), MEDIA_BUCKET: textBucket() };
+    vi.mocked(finalizeAssetCreation).mockResolvedValue(SAMPLE_ASSET);
+
+    await handleFinalizeUpload(
+      finalizeRequest({ assetId: 'asset-1', versionId: 'version-1', filename: 'brief.md', origin: 'chat' }),
+      env,
+      'site1',
+    );
+
+    expect(finalizeAssetCreation).toHaveBeenCalledWith(env, expect.objectContaining({ origin: 'chat' }));
+  });
+
+  it('re-gates the type R2 actually recorded against the declared origin', async () => {
+    // The dangerous direction: presigned as chat (text allowed), finalized as
+    // library — which would put a .md in every site's picker.
+    const env = { ...createStoreEnv(), MEDIA_BUCKET: textBucket() };
+
+    const response = await handleFinalizeUpload(
+      finalizeRequest({ assetId: 'asset-1', versionId: 'version-1', filename: 'brief.md', origin: 'library' }),
+      env,
+      'site1',
+    );
+
+    expect(response.status).toBe(415);
+    expect(finalizeAssetCreation).not.toHaveBeenCalled();
+  });
+
+  it('does not probe a text upload for dimensions', async () => {
+    const images = { info: vi.fn() } as unknown as ImagesBinding;
+    const bucket = textBucket();
+    const env = { ...createStoreEnv(images), MEDIA_BUCKET: bucket };
+    vi.mocked(finalizeAssetCreation).mockResolvedValue(SAMPLE_ASSET);
+
+    await handleFinalizeUpload(
+      finalizeRequest({ assetId: 'asset-1', versionId: 'version-1', filename: 'brief.md', origin: 'chat' }),
+      env,
+      'site1',
+    );
+
+    expect(images.info).not.toHaveBeenCalled();
+    expect(bucket.get).not.toHaveBeenCalled();
+  });
+
+  it('rejects an unrecognised origin', async () => {
+    const env = { ...createStoreEnv(), MEDIA_BUCKET: textBucket() };
+    const response = await handleFinalizeUpload(
+      finalizeRequest({ assetId: 'asset-1', versionId: 'version-1', filename: 'brief.md', origin: 'nope' }),
+      env,
+      'site1',
+    );
+    expect(response.status).toBe(400);
+    expect(finalizeAssetCreation).not.toHaveBeenCalled();
+  });
+
+  // The type gate must reject only a type it can READ and disallow. R2 recording no
+  // content type is not reachable through a presigned PUT (Content-Type is signed
+  // with allHeaders), so failing closed here would only ever break an upload that
+  // works today — the same rule /image/* follows.
+  it('finalizes an object whose content type R2 did not record, and still probes it', async () => {
+    const images = { info: vi.fn().mockResolvedValue({ width: 8, height: 8 }) } as unknown as ImagesBinding;
+    const bucket = createMockR2Bucket({
+      [FINALIZE_KEY]: { body: 'bytes', size: 10, uploaded: new Date() },
+    });
+    const env = { ...createStoreEnv(images), MEDIA_BUCKET: bucket };
+    vi.mocked(finalizeAssetCreation).mockResolvedValue(SAMPLE_ASSET);
+
+    const response = await handleFinalizeUpload(
+      finalizeRequest({ assetId: 'asset-1', versionId: 'version-1', filename: 'photo.png' }),
+      env,
+      'site1',
+    );
+
+    expect(response.status).toBe(201);
+    expect(images.info).toHaveBeenCalled();
+    expect(finalizeAssetCreation).toHaveBeenCalledWith(
+      env,
+      expect.objectContaining({ contentType: 'application/octet-stream' }),
+    );
+  });
+});
+
+// /image/* is unauthenticated and echoes the stored Content-Type verbatim, so a
+// stored text/html would execute on *.pantheon.io — the hazard SVG is excluded for.
+
+describe('handleImage content-type gate', () => {
+  const KEY = 'site1/assets/a/v1-brief.html';
+
+  it('404s a stored text/html object rather than serving it as html', async () => {
+    const bucket = createMockR2Bucket({
+      [KEY]: {
+        body: '<script>alert(1)</script>',
+        httpMetadata: { contentType: 'text/html' },
+        size: 25,
+        uploaded: new Date(),
+      },
+    });
+    const response = await handleImage(
+      createRequest(`https://worker.example.com/image/${KEY}`),
+      createEnv(bucket),
+      'site1',
+      KEY,
+    );
+
+    expect(response.status).toBe(404);
+    expect(response.headers.get('Content-Type')).toBe('application/json');
+  });
+
+  it('404s text even when transform params would otherwise route it through Images', async () => {
+    const images = createImagesMock();
+    const bucket = createMockR2Bucket({
+      [KEY]: { body: 'plain', httpMetadata: { contentType: 'text/plain' }, size: 5, uploaded: new Date() },
+    });
+    const response = await handleImage(
+      createRequest(`https://worker.example.com/image/${KEY}?width=100`),
+      createEnv(bucket, images),
+      'site1',
+      KEY,
+    );
+
+    expect(response.status).toBe(404);
+    expect(images.input).not.toHaveBeenCalled();
+  });
+
+  it('still serves an object whose content type R2 did not record', async () => {
+    const untyped = 'site1/assets/a/v1-legacy.jpg';
+    const bucket = createMockR2Bucket({
+      [untyped]: { body: 'raw-bytes', size: 9, uploaded: new Date() },
+    });
+    const response = await handleImage(
+      createRequest(`https://worker.example.com/image/${untyped}`),
+      createEnv(bucket),
+      'site1',
+      untyped,
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Content-Type')).toBe('application/octet-stream');
+  });
+});
+
+// GET /media must not be steerable off the library. The default lives in
+// buildListQuery, but only holds while no caller can override it: a `?origin=`
+// passthrough here would hand chat files to the picker in every site on the package.
+
+describe('handleList origin', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(listAssets).mockResolvedValue([]);
+  });
+
+  it('never asks the store for a non-library origin', async () => {
+    await handleList(
+      createRequest('https://worker.example.com/media?siteId=site1'),
+      createStoreEnv(),
+      'site1',
+    );
+    expect(listAssets).toHaveBeenCalledWith(
+      expect.anything(),
+      'site1',
+      expect.not.objectContaining({ origin: expect.anything() }),
+    );
+  });
+
+  it('ignores an origin query param rather than passing it through', async () => {
+    await handleList(
+      createRequest('https://worker.example.com/media?siteId=site1&origin=chat'),
+      createStoreEnv(),
+      'site1',
+    );
+    const opts = vi.mocked(listAssets).mock.calls[0][2];
+    expect(opts?.origin).toBeUndefined();
+  });
+});
+
+describe('handleFinalizeVersion origin', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('gates on the library set regardless of an origin in the body', async () => {
+    const key = 'site1/assets/asset-1/version-2-brief.md';
+    const bucket = createMockR2Bucket({
+      [key]: { body: 'text', httpMetadata: { contentType: 'text/markdown' }, size: 4, uploaded: new Date() },
+    });
+    const env = { ...createStoreEnv(), MEDIA_BUCKET: bucket };
+
+    const response = await handleFinalizeVersion(
+      new Request('https://worker.example.com/media/asset-1/versions/finalize?siteId=site1', {
+        method: 'POST',
+        body: JSON.stringify({ versionId: 'version-2', filename: 'brief.md', origin: 'chat' }),
+        headers: { 'Content-Type': 'application/json' },
+      }),
+      env,
+      'site1',
+      'asset-1',
+    );
+
+    expect(response.status).toBe(415);
+    expect(finalizeVersionAdd).not.toHaveBeenCalled();
+  });
+});
+
+// A chat attachment as getAsset returns it: text, expiring, not in the library.
+const CHAT_TEXT_ASSET: MediaAsset = {
+  assetId: 'chat-1',
+  versionId: 'ver-1',
+  url: 'https://cdn.example.com/p1/site1/assets/chat-1/ver-1-brief.md',
+  filename: 'brief.md',
+  contentType: 'text/markdown',
+  size: 12,
+  metadata: {},
+  origin: 'chat',
+};
+
+function contentUrl(query = ''): URL {
+  return new URL(`https://worker.example.com/media/chat-1/content?siteId=site1${query}`);
+}
+
+/** An Images binding whose transform succeeds, and a record of what it was asked for. */
+function stubImages(): { images: Env['IMAGES']; calls: { width?: number }[] } {
+  const calls: { width?: number }[] = [];
+  const images = {
+    input: () => ({
+      transform: (options: { width?: number }) => {
+        calls.push(options);
+        return {
+          output: () => Promise.resolve({
+            image: () => 'resized-bytes',
+            contentType: () => 'image/webp',
+          }),
+        };
+      },
+    }),
+  } as unknown as Env['IMAGES'];
+  return { images, calls };
+}
+
+const CHAT_IMAGE_ASSET: MediaAsset = { ...CHAT_TEXT_ASSET, contentType: 'image/png' };
+
+describe('handleGetContent', () => {
+  const KEY = 'site1/assets/chat-1/ver-1-brief.md';
+
+  beforeEach(() => vi.clearAllMocks());
+
+  it('404s an asset that is not the authenticated site\'s, without touching R2', async () => {
+    const bucket = createMockR2Bucket({});
+    vi.mocked(getStoredAsset).mockResolvedValue(null);
+
+    const response = await handleGetContent({ ...createStoreEnv(), MEDIA_BUCKET: bucket }, 'site1', 'chat-1', contentUrl());
+
+    expect(response.status).toBe(404);
+    expect(bucket.get).not.toHaveBeenCalled();
+  });
+
+  it('serves a stored .html as text/plain with nosniff', async () => {
+    const htmlAsset: MediaAsset = { ...CHAT_TEXT_ASSET, filename: 'page.html', contentType: 'text/html' };
+    const bucket = createMockR2Bucket({
+      'site1/assets/chat-1/ver-1-page.html': {
+        body: '<script>alert(1)</script>', httpMetadata: { contentType: 'text/html' }, size: 25, uploaded: new Date(),
+      },
+    });
+    vi.mocked(getStoredAsset).mockResolvedValue({
+      asset: htmlAsset,
+      r2Key: 'site1/assets/chat-1/ver-1-page.html',
+      deleted: false,
+    });
+
+    const response = await handleGetContent({ ...createStoreEnv(), MEDIA_BUCKET: bucket }, 'site1', 'chat-1', contentUrl());
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Content-Type')).toBe('text/plain; charset=utf-8');
+    expect(response.headers.get('X-Content-Type-Options')).toBe('nosniff');
+  });
+
+  it('never lets an authenticated response into a shared cache', async () => {
+    const bucket = createMockR2Bucket({
+      [KEY]: { body: 'hi', httpMetadata: { contentType: 'text/markdown' }, size: 2, uploaded: new Date() },
+    });
+    vi.mocked(getStoredAsset).mockResolvedValue({ asset: CHAT_TEXT_ASSET, r2Key: KEY, deleted: false });
+
+    const response = await handleGetContent({ ...createStoreEnv(), MEDIA_BUCKET: bucket }, 'site1', 'chat-1', contentUrl());
+
+    expect(response.headers.get('Cache-Control')).toContain('private');
+  });
+
+  it('serves an image with its own type', async () => {
+    const imageAsset: MediaAsset = { ...CHAT_TEXT_ASSET, filename: 'shot.png', contentType: 'image/png' };
+    const bucket = createMockR2Bucket({
+      'site1/assets/chat-1/ver-1-shot.png': {
+        body: 'bytes', httpMetadata: { contentType: 'image/png' }, size: 5, uploaded: new Date(),
+      },
+    });
+    vi.mocked(getStoredAsset).mockResolvedValue({
+      asset: imageAsset,
+      r2Key: 'site1/assets/chat-1/ver-1-shot.png',
+      deleted: false,
+    });
+
+    const response = await handleGetContent({ ...createStoreEnv(), MEDIA_BUCKET: bucket }, 'site1', 'chat-1', contentUrl());
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Content-Type')).toBe('image/png');
+  });
+
+  // Reads the key D1 recorded rather than recomposing it from the asset's fields, so
+  // a key that predates any change to buildKey's format still resolves.
+  // The transcript paints a 72px card, so pulling the full original for every restored
+  // image card is the thing this parameter exists to avoid.
+  it('resizes an image when width is asked for', async () => {
+    const bucket = createMockR2Bucket({
+      [KEY]: { body: 'png', httpMetadata: { contentType: 'image/png' }, size: 3, uploaded: new Date() },
+    });
+    vi.mocked(getStoredAsset).mockResolvedValue({ asset: CHAT_IMAGE_ASSET, r2Key: KEY, deleted: false });
+    const { images, calls } = stubImages();
+
+    const response = await handleGetContent(
+      { ...createStoreEnv(), MEDIA_BUCKET: bucket, IMAGES: images }, 'site1', 'chat-1', contentUrl('&width=144'),
+    );
+
+    expect(response.status).toBe(200);
+    expect(calls).toEqual([{ width: 144 }]);
+    expect(response.headers.get('Content-Type')).toBe('image/webp');
+  });
+
+  // Local dev runs a reduced Images binding; a card that renders the original beats one
+  // that renders nothing.
+  it('falls back to the original when the transform fails', async () => {
+    const bucket = createMockR2Bucket({
+      [KEY]: { body: 'png', httpMetadata: { contentType: 'image/png' }, size: 3, uploaded: new Date() },
+    });
+    vi.mocked(getStoredAsset).mockResolvedValue({ asset: CHAT_IMAGE_ASSET, r2Key: KEY, deleted: false });
+    const images = {
+      input: () => ({ transform: () => ({ output: () => Promise.reject(new Error('unsupported')) }) }),
+    } as unknown as Env['IMAGES'];
+
+    const response = await handleGetContent(
+      { ...createStoreEnv(), MEDIA_BUCKET: bucket, IMAGES: images }, 'site1', 'chat-1', contentUrl('&width=144'),
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Content-Type')).toBe('image/png');
+  });
+
+  // Text has nothing to resize, and handing it to the Images binding would 500 a read
+  // that works today.
+  it('ignores width on a text attachment', async () => {
+    const bucket = createMockR2Bucket({
+      [KEY]: { body: 'hi', httpMetadata: { contentType: 'text/markdown' }, size: 2, uploaded: new Date() },
+    });
+    vi.mocked(getStoredAsset).mockResolvedValue({ asset: CHAT_TEXT_ASSET, r2Key: KEY, deleted: false });
+    const { images, calls } = stubImages();
+
+    const response = await handleGetContent(
+      { ...createStoreEnv(), MEDIA_BUCKET: bucket, IMAGES: images }, 'site1', 'chat-1', contentUrl('&width=144'),
+    );
+
+    expect(calls).toEqual([]);
+    expect(response.headers.get('Content-Type')).toBe('text/plain; charset=utf-8');
+  });
+
+  it('caps an absurd width rather than passing it through', async () => {
+    const bucket = createMockR2Bucket({
+      [KEY]: { body: 'png', httpMetadata: { contentType: 'image/png' }, size: 3, uploaded: new Date() },
+    });
+    vi.mocked(getStoredAsset).mockResolvedValue({ asset: CHAT_IMAGE_ASSET, r2Key: KEY, deleted: false });
+    const { images, calls } = stubImages();
+
+    await handleGetContent(
+      { ...createStoreEnv(), MEDIA_BUCKET: bucket, IMAGES: images }, 'site1', 'chat-1', contentUrl('&width=99999'),
+    );
+
+    expect(calls).toEqual([{ width: 512 }]);
+  });
+
+  it('fetches the stored key even when it differs from what buildKey would derive', async () => {
+    const storedKey = 'site1/assets/chat-1/legacy-layout.md';
+    const bucket = createMockR2Bucket({
+      [storedKey]: { body: 'hi', httpMetadata: { contentType: 'text/markdown' }, size: 2, uploaded: new Date() },
+    });
+    vi.mocked(getStoredAsset).mockResolvedValue({ asset: CHAT_TEXT_ASSET, r2Key: storedKey, deleted: false });
+
+    const response = await handleGetContent({ ...createStoreEnv(), MEDIA_BUCKET: bucket }, 'site1', 'chat-1', contentUrl());
+
+    expect(response.status).toBe(200);
+    expect(bucket.get).toHaveBeenCalledWith(storedKey);
+  });
+});
+
+function promoteRequest(body?: unknown): Request {
+  return new Request('https://worker.example.com/media/chat-1/promote?siteId=site1', {
+    method: 'POST',
+    ...(body === undefined
+      ? {}
+      : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
+  });
+}
+
+// The one point a chat upload can reach a customer's DAM.
+describe('handlePromote', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  /** The row as the store hands it back. */
+  const stored = (asset: MediaAsset, deleted = false) =>
+    vi.mocked(getStoredAsset).mockResolvedValue({ asset, r2Key: 'site1/assets/chat-1/v1-shot.png', deleted });
+
+  // Every other way into the library collects alt at upload; an image that arrives from
+  // chat without it is the accessibility hole this closes.
+  it('stores the metadata it was given, in the promoting write', async () => {
+    stored({ ...CHAT_TEXT_ASSET, contentType: 'image/png' });
+    vi.mocked(promoteAsset).mockResolvedValue({ ...CHAT_TEXT_ASSET, contentType: 'image/png' });
+
+    const response = await handlePromote(
+      promoteRequest({ metadata: { alt: 'A pink shoe', caption: 'Puzzle' } }),
+      createStoreEnv(), 'site1', 'chat-1',
+    );
+
+    expect(response.status).toBe(200);
+    expect(promoteAsset).toHaveBeenCalledWith(
+      expect.anything(), 'site1', 'chat-1', { alt: 'A pink shoe', caption: 'Puzzle' },
+    );
+  });
+
+  // An untouched form field posts "", and storing that is not the same as leaving alt unset.
+  it('drops blank fields rather than storing them', async () => {
+    stored({ ...CHAT_TEXT_ASSET, contentType: 'image/png' });
+    vi.mocked(promoteAsset).mockResolvedValue({ ...CHAT_TEXT_ASSET, contentType: 'image/png' });
+
+    await handlePromote(
+      promoteRequest({ metadata: { alt: 'Shoe', caption: '   ', credit: '' } }),
+      createStoreEnv(), 'site1', 'chat-1',
+    );
+
+    expect(promoteAsset).toHaveBeenCalledWith(expect.anything(), 'site1', 'chat-1', { alt: 'Shoe' });
+  });
+
+  // Re-adding an image the library deleted opens an empty form, because the record route
+  // hides a deleted row. Treating that emptiness as the whole truth erased the alt text the
+  // asset was first added with — silently, as part of an action that reads as additive.
+  it('layers the submitted fields over what the asset already carries', async () => {
+    const withDetails: MediaAsset = {
+      ...CHAT_IMAGE_ASSET,
+      metadata: { alt: 'A pink shoe', caption: 'Puzzle' },
+    };
+    stored({ ...withDetails, origin: undefined }, true);
+    vi.mocked(promoteAsset).mockResolvedValue(withDetails);
+
+    await handlePromote(
+      promoteRequest({ metadata: { alt: 'A red shoe', caption: '' } }),
+      createStoreEnv(), 'site1', 'chat-1',
+    );
+
+    expect(promoteAsset).toHaveBeenCalledWith(
+      expect.anything(), 'site1', 'chat-1', { alt: 'A red shoe', caption: 'Puzzle' },
+    );
+  });
+
+  // The same erasure by the shortest route: every field left alone.
+  it('changes no details when the form is submitted blank', async () => {
+    const withDetails: MediaAsset = { ...CHAT_IMAGE_ASSET, metadata: { alt: 'A pink shoe' } };
+    stored({ ...withDetails, origin: undefined }, true);
+    vi.mocked(promoteAsset).mockResolvedValue(withDetails);
+
+    await handlePromote(
+      promoteRequest({ metadata: { alt: '', caption: '' } }), createStoreEnv(), 'site1', 'chat-1',
+    );
+
+    expect(promoteAsset).toHaveBeenCalledWith(
+      expect.anything(), 'site1', 'chat-1', { alt: 'A pink shoe' },
+    );
+  });
+
+  // A chat upload carries no details, so there is nothing to layer over and nothing to write.
+  it('passes no metadata when neither the form nor the asset has any', async () => {
+    stored(CHAT_IMAGE_ASSET);
+    vi.mocked(promoteAsset).mockResolvedValue(CHAT_IMAGE_ASSET);
+
+    await handlePromote(
+      promoteRequest({ metadata: { alt: '' } }), createStoreEnv(), 'site1', 'chat-1',
+    );
+
+    expect(promoteAsset).toHaveBeenCalledWith(expect.anything(), 'site1', 'chat-1', undefined);
+  });
+
+  it('rejects a field the schema does not advertise, without promoting', async () => {
+    stored({ ...CHAT_TEXT_ASSET, contentType: 'image/png' });
+
+    const response = await handlePromote(
+      promoteRequest({ metadata: { havoc: 'x' } }), createStoreEnv(), 'site1', 'chat-1',
+    );
+
+    expect(response.status).toBe(400);
+    expect(promoteAsset).not.toHaveBeenCalled();
+  });
+
+  // The type gate has to run even when the body is well-formed, or metadata becomes a way
+  // to walk a .md into the picker.
+  it('still refuses text when metadata is supplied', async () => {
+    stored(CHAT_TEXT_ASSET);
+
+    const response = await handlePromote(
+      promoteRequest({ metadata: { alt: 'nope' } }), createStoreEnv(), 'site1', 'chat-1',
+    );
+
+    expect(response.status).toBe(415);
+    expect(promoteAsset).not.toHaveBeenCalled();
+  });
+
+  it('refuses to promote text, and does not write', async () => {
+    stored(CHAT_TEXT_ASSET);
+
+    const response = await handlePromote(promoteRequest(), createStoreEnv(), 'site1', 'chat-1');
+
+    expect(response.status).toBe(415);
+    expect(promoteAsset).not.toHaveBeenCalled();
+  });
+
+  it('promotes an image', async () => {
+    const imageAsset: MediaAsset = { ...CHAT_TEXT_ASSET, contentType: 'image/png' };
+    stored(imageAsset);
+    const { origin: _dropped, ...promotedShape } = imageAsset;
+    vi.mocked(promoteAsset).mockResolvedValue(promotedShape);
+
+    const response = await handlePromote(promoteRequest(), createStoreEnv(), 'site1', 'chat-1');
+
+    expect(response.status).toBe(200);
+    // Undefined, not {}: a promote carrying no metadata leaves what the asset already has.
+    expect(promoteAsset).toHaveBeenCalledWith(expect.anything(), 'site1', 'chat-1', undefined);
+    expect((await response.json() as MediaAsset).origin).toBeUndefined();
+  });
+
+  it('is idempotent on an already-promoted asset rather than erroring', async () => {
+    const libraryAsset: MediaAsset = { ...CHAT_TEXT_ASSET, contentType: 'image/png', origin: undefined };
+    stored(libraryAsset);
+
+    const response = await handlePromote(promoteRequest(), createStoreEnv(), 'site1', 'chat-1');
+
+    expect(response.status).toBe(200);
+    expect(promoteAsset).not.toHaveBeenCalled();
+  });
+
+  // The client offers the form whenever its membership lookup fails, so someone can type
+  // details against an asset that is already in the library. Short-circuiting on "already
+  // promoted" reported success and dropped what they wrote.
+  it('records details submitted against an already-promoted asset', async () => {
+    const libraryAsset: MediaAsset = {
+      ...CHAT_TEXT_ASSET, contentType: 'image/png', origin: undefined,
+      metadata: { alt: 'Saved by the first promote' },
+    };
+    stored(libraryAsset);
+    vi.mocked(promoteAsset).mockResolvedValue({ ...libraryAsset, metadata: { alt: 'Typed later' } });
+
+    const response = await handlePromote(
+      promoteRequest({ metadata: { alt: 'Typed later' } }), createStoreEnv(), 'site1', 'chat-1',
+    );
+
+    expect(response.status).toBe(200);
+    expect(promoteAsset).toHaveBeenCalledWith(
+      expect.anything(), 'site1', 'chat-1', { alt: 'Typed later' },
+    );
+  });
+
+  // The other half: a bare retry still short-circuits, which is what the early return is for.
+  it('does not re-write an already-promoted asset when no details came with the retry', async () => {
+    stored({ ...CHAT_TEXT_ASSET, contentType: 'image/png', origin: undefined });
+
+    const response = await handlePromote(
+      promoteRequest({ metadata: {} }), createStoreEnv(), 'site1', 'chat-1',
+    );
+
+    expect(response.status).toBe(200);
+    expect(promoteAsset).not.toHaveBeenCalled();
+  });
+
+  it('404s an asset that is not the authenticated site\'s', async () => {
+    vi.mocked(getStoredAsset).mockResolvedValue(null);
+
+    const response = await handlePromote(promoteRequest(), createStoreEnv(), 'site1', 'chat-1');
+
+    expect(response.status).toBe(404);
+    expect(promoteAsset).not.toHaveBeenCalled();
+  });
+
+  // Deleting takes an image out of the library, not out of the conversation that uploaded
+  // it — so the chat can put it back, and that is a real write, not the no-op above.
+  it('adds back an image the library has deleted', async () => {
+    const removed: MediaAsset = { ...CHAT_TEXT_ASSET, contentType: 'image/png', origin: undefined };
+    stored(removed, true);
+    vi.mocked(promoteAsset).mockResolvedValue(removed);
+
+    const response = await handlePromote(
+      promoteRequest({ metadata: { alt: 'Back again' } }), createStoreEnv(), 'site1', 'chat-1',
+    );
+
+    expect(response.status).toBe(200);
+    expect(promoteAsset).toHaveBeenCalledWith(
+      expect.anything(), 'site1', 'chat-1', { alt: 'Back again' },
+    );
   });
 });

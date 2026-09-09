@@ -271,6 +271,116 @@ paths:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
 
   # ===========================================================================
+  # Media — chat attachment content and promotion
+  # ===========================================================================
+  /media/{assetId}/content:
+    get:
+      summary: Download an asset's bytes
+      description: >-
+        Authenticated, site-scoped read of the stored file. This is how a chat
+        attachment is reopened — unlike `/image/{key}`, which is public and serves
+        images only, this route requires a bearer token and so can serve text.
+
+
+        Anything that is not a known image type is served as
+        `text/plain; charset=utf-8` regardless of how it was stored, with `nosniff`.
+        A chat attachment may be `.html`, and echoing that type would let it execute
+        on the media origin. Responses are `Cache-Control: private` — never a shared
+        cache, since access is per-user.
+      operationId: getMediaContent
+      tags: [Media]
+      parameters:
+        - $ref: '#/components/parameters/siteIdParam'
+        - $ref: '#/components/parameters/assetIdParam'
+        - name: width
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 512 }
+          description: >-
+            Resize an image to this width, capped at 512 — enough for a retina transcript
+            card, and deliberately not the general-purpose transform `/image/{key}` offers.
+            Ignored for anything that is not a known image type. A transform failure falls
+            back to the original bytes rather than erroring.
+      responses:
+        '200':
+          description: The file. Text is always `text/plain`; images keep their own type.
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404':
+          description: >-
+            No such asset for this site, or its bytes are gone. Expiry is not checked
+            on read: a chat attachment past its retention keeps serving until the
+            retention sweep collects it, and 404s from then on.
+
+  /media/{assetId}/chat:
+    delete:
+      summary: Soft-delete an asset, but only while it is still a chat upload
+      description: >-
+        What clearing a conversation calls. An asset promoted into the library 404s instead,
+        so clearing a conversation cannot remove an image the user added to their library.
+
+
+        A separate path rather than a flag on `DELETE /media/{assetId}`: a worker predating
+        this route 404s on the extra segment, where an ignored query parameter would have
+        silently widened the delete to the whole asset.
+      operationId: deleteChatMediaAsset
+      tags: [Media]
+      parameters:
+        - $ref: '#/components/parameters/siteIdParam'
+        - $ref: '#/components/parameters/assetIdParam'
+      responses:
+        '200':
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404':
+          description: No such chat upload for this site — absent, foreign, or already promoted.
+
+  /media/{assetId}/promote:
+    post:
+      summary: Add a chat attachment to the media library
+      description: >-
+        Flips `origin` from `chat` to `library` and clears the expiry, so the asset
+        stops being swept and starts appearing in `GET /media`. A metadata update, not
+        a copy: the assetId, versionId, URL and stored bytes are all unchanged.
+
+
+        Images only, checked against the library's allowlist rather than the wider set
+        chat accepts — the picker and its render helpers assume an image, so a promoted
+        text file would be a permanently unrenderable library entry. Promoting an asset
+        already in the library succeeds and changes nothing. One that was in the library
+        and has since been deleted is a real write: the deletion is cleared and the asset
+        returns, because the conversation that uploaded it keeps its reference and is the
+        only route back. Submitted metadata is layered over whatever the asset already
+        carries, so a field left blank is not erased.
+      operationId: promoteMediaAsset
+      tags: [Media]
+      parameters:
+        - $ref: '#/components/parameters/siteIdParam'
+        - $ref: '#/components/parameters/assetIdParam'
+      responses:
+        '200':
+          description: The asset, now a library asset.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MediaAsset' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '415':
+          description: Not an image — only image assets can enter the media library.
+
+  # ===========================================================================
   # Media — single asset
   # ===========================================================================
   /media/{assetId}:
@@ -328,7 +438,12 @@ paths:
 
     delete:
       summary: Soft-delete an asset
-      description: Hidden from listings; bytes keep serving (already-published pages don't break).
+      description: >-
+        Hidden from listings; bytes keep serving (already-published pages don't break).
+
+
+        Deletes whatever the asset is now. To delete only while it is still a chat upload,
+        use `DELETE /media/{assetId}/chat`.
       operationId: deleteMediaAsset
       tags: [Media]
       parameters:
@@ -699,7 +814,24 @@ components:
           description: Gets sanitized server-side — the response's filename may differ from what you sent.
         contentType:
           type: string
-          enum: [image/png, image/jpeg, image/gif, image/webp, image/avif]
+          description: >-
+            Must be in the allowlist for this request's `origin`. Signed into the
+            presigned URL, so the PUT's Content-Type header has to match it exactly.
+          enum:
+            [image/png, image/jpeg, image/gif, image/webp, image/avif,
+             text/plain, text/markdown, text/csv, text/html]
+        origin:
+          type: string
+          enum: [library, chat]
+          default: library
+          description: >-
+            Where the asset comes from, which decides what it may contain.
+            `library` (the default, and what an omitted value means) accepts the
+            five image types only, and the asset appears in GET /media.
+            `chat` additionally accepts the four text types, is excluded from
+            GET /media, and expires 30 days after upload unless promoted.
+            Rejected with 400 on the version-replacement path — chat assets have
+            no replace flow. An unrecognised value is a 400, not a fallback.
         size:
           type: integer
           minimum: 1
@@ -737,6 +869,14 @@ components:
         assetId: { type: string, format: uuid, description: From the presign response. }
         versionId: { type: string, format: uuid, description: From the presign response. }
         filename: { type: string, description: Resend the exact filename the presign response returned. }
+        origin:
+          type: string
+          enum: [library, chat]
+          default: library
+          description: >-
+            Must match the origin sent to presign. Nothing is persisted between the
+            two calls, so finalize re-checks the type R2 actually recorded against
+            this origin's allowlist and returns 415 on a mismatch.
         metadata:
           type: object
           additionalProperties: { type: string, maxLength: 2000 }
@@ -769,6 +909,13 @@ components:
           description: Immutable CDN URL for the current version.
         filename: { type: string }
         contentType: { type: string, example: image/jpeg }
+        origin:
+          type: string
+          enum: [chat]
+          description: >-
+            Present only for a chat upload. A library asset omits the field entirely
+            rather than sending "library", so its response is byte-identical to what
+            this endpoint returned before origins existed.
         size: { type: integer, description: Bytes }
         width: { type: integer }
         height: { type: integer }

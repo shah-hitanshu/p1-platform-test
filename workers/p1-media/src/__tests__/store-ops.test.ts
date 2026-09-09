@@ -4,13 +4,21 @@ import {
   finalizeAssetCreation,
   finalizeVersionAdd,
   getAsset,
+  getStoredAsset,
   listAssets,
   updateAssetMetadata,
   softDeleteAsset,
+  softDeleteChatAsset,
+  promoteAsset,
+  findExpiredChatAssets,
+  hardDeleteChatAsset,
   buildKey,
   NotFoundError,
 } from '../store';
-import { createTestHarness, countRows, seedAsset } from './d1-test-harness';
+import { sweepExpiredChatAssets } from '../handlers/reconcile';
+import { handlePromote } from '../handlers/promote';
+import type { Env } from '../types';
+import { createTestHarness, countRows, seedAsset, type MockBucket } from './d1-test-harness';
 
 // ===========================================================================
 // Store composite operations — the R2+D1 writes that store.test.ts deliberately
@@ -442,6 +450,32 @@ describe('updateAssetMetadata', () => {
 // softDeleteAsset
 // ---------------------------------------------------------------------------
 
+describe('getStoredAsset', () => {
+  // Deleting removes an asset from the library. The conversation that uploaded it holds
+  // its own reference and goes on reading it — that is what the content route serves.
+  it('still returns an asset the library has deleted, flagged as such', async () => {
+    const { env, bucket } = createTestHarness();
+    const asset = await seedAsset(env, bucket, { siteId: 's1', filename: 'p.png' });
+    await softDeleteAsset(env, 's1', asset.assetId);
+
+    const stored = await getStoredAsset(env, 's1', asset.assetId);
+
+    expect(stored?.deleted).toBe(true);
+    expect(stored?.r2Key).toBeTruthy();
+    // While every library-facing read still treats it as gone.
+    expect(await getAsset(env, 's1', asset.assetId)).toBeNull();
+    expect(await listAssets(env, 's1')).toHaveLength(0);
+  });
+
+  it('R0: will not hand a soft-deleted asset to another site', async () => {
+    const { env, bucket } = createTestHarness();
+    const asset = await seedAsset(env, bucket, { siteId: 's1', filename: 'p.png' });
+    await softDeleteAsset(env, 's1', asset.assetId);
+
+    expect(await getStoredAsset(env, 'OTHER', asset.assetId)).toBeNull();
+  });
+});
+
 describe('softDeleteAsset', () => {
   it('stamps deleted_at, hides the asset from listings, and returns true', async () => {
     const { env, db, bucket } = createTestHarness();
@@ -467,5 +501,320 @@ describe('softDeleteAsset', () => {
     const asset = await seedAsset(env, bucket, { siteId: 's1', filename: 'p.png' });
     expect(await softDeleteAsset(env, 's1', asset.assetId)).toBe(true);
     expect(await softDeleteAsset(env, 's1', asset.assetId)).toBe(false);
+  });
+});
+
+// Origin and retention against the real engine with both migrations
+// applied: the backfill and the default are the migration's behaviour, not ours,
+// and a mock would just return whatever we told it to.
+
+describe('asset origin', () => {
+  it('backfills a row written without an origin to library', async () => {
+    const { env, db } = createTestHarness();
+
+    // Deliberately the pre-origin INSERT, column-for-column: this is what a
+    // rolled-back Worker would emit against a migrated database.
+    db.prepare(
+      'INSERT INTO assets (asset_id, site_id, filename, current_version, created_at) VALUES (?, ?, ?, ?, ?)',
+    ).run('legacy-1', 'site-1', 'old.png', 'v1', '2025-01-01T00:00:00Z');
+    db.prepare(
+      'INSERT INTO asset_versions (version_id, asset_id, r2_key, content_type) VALUES (?, ?, ?, ?)',
+    ).run('v1', 'legacy-1', 'site-1/assets/legacy-1/v1-old.png', 'image/png');
+
+    const row = db.prepare('SELECT origin, expires_at FROM assets WHERE asset_id = ?').get('legacy-1');
+    expect(row).toEqual({ origin: 'library', expires_at: null });
+
+    // And it lists, which is the property that actually matters: the new filter
+    // must not hide assets that predate the column.
+    const listed = await listAssets(env, 'site-1');
+    expect(listed.map((a) => a.assetId)).toContain('legacy-1');
+  });
+
+  it('excludes chat uploads from the library listing but keeps them addressable by id', async () => {
+    const { env, bucket } = createTestHarness();
+    const libraryAsset = await seedAsset(env, bucket, { siteId: 'site-1', filename: 'photo.png' });
+    const chatAsset = await seedAsset(env, bucket, {
+      siteId: 'site-1', filename: 'brief.md', contentType: 'text/markdown', origin: 'chat',
+    });
+
+    const listed = await listAssets(env, 'site-1');
+    expect(listed.map((a) => a.assetId)).toEqual([libraryAsset.assetId]);
+
+    // Not hidden, just not in the library — the content route reads it this way.
+    expect(await getAsset(env, 'site-1', chatAsset.assetId)).not.toBeNull();
+  });
+
+  it('omits origin from a library asset and reports it on a chat one', async () => {
+    const { env, bucket } = createTestHarness();
+    const libraryAsset = await seedAsset(env, bucket, { siteId: 'site-1', filename: 'photo.png' });
+    const chatAsset = await seedAsset(env, bucket, {
+      siteId: 'site-1', filename: 'brief.md', contentType: 'text/markdown', origin: 'chat',
+    });
+
+    // A library response must be byte-identical to what it was before origins: pinned
+    // npm picker versions parse this, and list_media hands it verbatim to a model.
+    expect('origin' in libraryAsset).toBe(false);
+    expect(chatAsset.origin).toBe('chat');
+  });
+
+  it('stamps a chat upload with a 30-day expiry and leaves library assets unexpiring', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-03-01T00:00:00.000Z'));
+    const { env, bucket, db } = createTestHarness();
+
+    const libraryAsset = await seedAsset(env, bucket, { siteId: 'site-1', filename: 'photo.png' });
+    const chatAsset = await seedAsset(env, bucket, {
+      siteId: 'site-1', filename: 'brief.md', contentType: 'text/markdown', origin: 'chat',
+    });
+
+    const read = (id: string) =>
+      db.prepare('SELECT expires_at FROM assets WHERE asset_id = ?').get(id) as { expires_at: string | null };
+
+    expect(read(chatAsset.assetId).expires_at).toBe('2026-03-31T00:00:00.000Z');
+    expect(read(libraryAsset.assetId).expires_at).toBeNull();
+  });
+});
+
+// Promotion and retention. Both turn on SQL guards (origin, expiry) that a
+// mock cannot exercise, and the sweep is the only path that deletes user bytes.
+
+// Clearing a conversation purges what it uploaded. An image the user has since added to
+// their media library is no longer that, and losing it to an unrelated action is not a
+// deletion they asked for.
+describe('softDeleteChatAsset', () => {
+  it('drops a chat upload', async () => {
+    const { env, bucket } = createTestHarness();
+    const chat = await seedAsset(env, bucket, { siteId: 'site-1', filename: 'a.png', origin: 'chat' });
+
+    expect(await softDeleteChatAsset(env, 'site-1', chat.assetId)).toBe(true);
+  });
+
+  it('leaves an image the user added to the library exactly where it is', async () => {
+    const { env, bucket } = createTestHarness();
+    const chat = await seedAsset(env, bucket, {
+      siteId: 'site-1', filename: 'shot.png', origin: 'chat', contentType: 'image/png',
+    });
+    await promoteAsset(env, 'site-1', chat.assetId, { alt: 'A pink shoe' });
+
+    expect(await softDeleteChatAsset(env, 'site-1', chat.assetId)).toBe(false);
+    expect((await listAssets(env, 'site-1')).map((a) => a.assetId)).toContain(chat.assetId);
+  });
+
+  it('will not reach another site\'s asset', async () => {
+    const { env, bucket } = createTestHarness();
+    const chat = await seedAsset(env, bucket, { siteId: 'site-1', filename: 'a.png', origin: 'chat' });
+
+    expect(await softDeleteChatAsset(env, 'site-2', chat.assetId)).toBe(false);
+  });
+});
+
+describe('promoteAsset', () => {
+  it('flips origin and clears the expiry without moving bytes', async () => {
+    const { env, bucket, db } = createTestHarness();
+    const chat = await seedAsset(env, bucket, {
+      siteId: 'site-1', filename: 'shot.png', origin: 'chat',
+    });
+    const keysBefore = [...bucket._keys];
+
+    const promoted = await promoteAsset(env, 'site-1', chat.assetId);
+
+    expect(promoted?.origin).toBeUndefined();
+    expect([...bucket._keys]).toEqual(keysBefore);
+    const row = db.prepare('SELECT origin, expires_at FROM assets WHERE asset_id = ?').get(chat.assetId);
+    expect(row).toEqual({ origin: 'library', expires_at: null });
+
+    // And it is now in the library listing, which is the point of promoting.
+    expect((await listAssets(env, 'site-1')).map((a) => a.assetId)).toContain(chat.assetId);
+  });
+
+  // A chat transcript keeps its reference after the library drops the asset, so adding it
+  // back is the one write that must reach a soft-deleted row.
+  it('adds back an asset the library deleted, clearing the deletion', async () => {
+    const { env, bucket, db } = createTestHarness();
+    const chat = await seedAsset(env, bucket, {
+      siteId: 'site-1', filename: 'shot.png', origin: 'chat',
+    });
+    await promoteAsset(env, 'site-1', chat.assetId);
+    await softDeleteAsset(env, 'site-1', chat.assetId);
+
+    const restored = await promoteAsset(env, 'site-1', chat.assetId, { alt: 'Back again' });
+
+    expect(restored).not.toBeNull();
+    const row = db.prepare('SELECT deleted_at, alt FROM assets WHERE asset_id = ?').get(chat.assetId);
+    expect(row).toEqual({ deleted_at: null, alt: 'Back again' });
+    expect((await listAssets(env, 'site-1')).map((a) => a.assetId)).toContain(chat.assetId);
+  });
+
+  // Promote is the only route that clears deleted_at, and it takes any asset id the site
+  // token can name. Without the from_chat guard this call is an undelete for the whole
+  // library — a takedown could be reversed by anyone who kept the id.
+  it('will not raise a deleted library asset that never came from chat', async () => {
+    const { env, bucket, db } = createTestHarness();
+    const library = await seedAsset(env, bucket, {
+      siteId: 'site-1', filename: 'shot.png', contentType: 'image/png',
+    });
+    await softDeleteAsset(env, 'site-1', library.assetId);
+
+    expect(await promoteAsset(env, 'site-1', library.assetId)).toBeNull();
+
+    const row = db.prepare('SELECT deleted_at FROM assets WHERE asset_id = ?').get(library.assetId);
+    expect((row as { deleted_at: string | null }).deleted_at).not.toBeNull();
+    expect((await listAssets(env, 'site-1')).map((a) => a.assetId)).not.toContain(library.assetId);
+  });
+
+  // End-to-end through the real SQL, because the wipe this guards against was invisible at
+  // the store layer: promoteAsset was handed {} and did exactly what it was told.
+  it('keeps the details of an image re-added through the handler with a blank form', async () => {
+    const { env, bucket, db } = createTestHarness();
+    const chat = await seedAsset(env, bucket, {
+      siteId: 'site-1', filename: 'shot.png', origin: 'chat', contentType: 'image/png',
+    });
+    const promote = (metadata: Record<string, string>) =>
+      handlePromote(
+        new Request(`https://w.test/media/${chat.assetId}/promote?siteId=site-1`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ metadata }),
+        }),
+        env, 'site-1', chat.assetId,
+      );
+
+    await promote({ alt: 'A pink shoe', caption: 'Puzzle' });
+    await softDeleteAsset(env, 'site-1', chat.assetId);
+    await promote({ alt: '', caption: '' });
+
+    const row = db.prepare('SELECT alt, metadata FROM assets WHERE asset_id = ?').get(chat.assetId);
+    expect(row).toEqual({ alt: 'A pink shoe', metadata: '{"caption":"Puzzle"}' });
+  });
+
+  it('will not promote another site\'s asset', async () => {
+    const { env, bucket } = createTestHarness();
+    const chat = await seedAsset(env, bucket, { siteId: 'site-1', filename: 'a.png', origin: 'chat' });
+    expect(await promoteAsset(env, 'site-2', chat.assetId)).toBeNull();
+  });
+});
+
+describe('chat retention sweep', () => {
+  async function seedExpired(env: Env, bucket: MockBucket, siteId = 'site-1') {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
+    const asset = await seedAsset(env, bucket, { siteId, filename: 'old.md', contentType: 'text/markdown', origin: 'chat' });
+    vi.setSystemTime(new Date('2026-03-01T00:00:00.000Z')); // well past 30 days
+    return asset;
+  }
+
+  it('finds an aged-out chat upload and a cleared one, but not a live one', async () => {
+    const { env, bucket } = createTestHarness();
+    const expired = await seedExpired(env, bucket);
+    const live = await seedAsset(env, bucket, { siteId: 'site-1', filename: 'new.md', contentType: 'text/markdown', origin: 'chat' });
+    const cleared = await seedAsset(env, bucket, { siteId: 'site-1', filename: 'gone.md', contentType: 'text/markdown', origin: 'chat' });
+    await softDeleteAsset(env, 'site-1', cleared.assetId);
+
+    const found = (await findExpiredChatAssets(env, new Date().toISOString(), 100)).assets.map((a) => a.assetId);
+
+    expect(found).toContain(expired.assetId);
+    expect(found).toContain(cleared.assetId); // clearing a conversation needs no new endpoint
+    expect(found).not.toContain(live.assetId);
+  });
+
+  it('never collects a library asset, even one carrying a stray expiry', async () => {
+    const { env, bucket, db } = createTestHarness();
+    const library = await seedAsset(env, bucket, { siteId: 'site-1', filename: 'keep.png' });
+    db.prepare('UPDATE assets SET expires_at = ? WHERE asset_id = ?').run('2020-01-01T00:00:00.000Z', library.assetId);
+
+    const found = await findExpiredChatAssets(env, new Date().toISOString(), 100);
+    expect(found).toEqual({ assets: [], total: 0 });
+  });
+
+  it('deletes nothing while RECONCILE_DRY_RUN is unset', async () => {
+    const { env, bucket } = createTestHarness();
+    const expired = await seedExpired(env, bucket);
+
+    const result = await sweepExpiredChatAssets(env);
+
+    expect(result).toEqual({ candidates: 1, deleted: 0, deferred: 0, failed: 0, dryRun: true });
+    expect(await getAsset(env, 'site-1', expired.assetId)).not.toBeNull();
+    expect(bucket._keys.size).toBe(1);
+  });
+
+  it('removes both D1 rows and the R2 object when armed', async () => {
+    const { env, bucket, db } = createTestHarness();
+    const expired = await seedExpired(env, bucket);
+
+    const result = await sweepExpiredChatAssets({ ...env, RECONCILE_DRY_RUN: 'false' });
+
+    expect(result).toEqual({ candidates: 1, deleted: 1, deferred: 0, failed: 0, dryRun: false });
+    expect(countRows(db, 'assets')).toBe(0);
+    expect(countRows(db, 'asset_versions')).toBe(0);
+    expect(bucket._keys.size).toBe(0);
+    expect(expired.assetId).toBeTruthy();
+  });
+
+  it('caps deletions per run and reports what it deferred', async () => {
+    const { env, bucket, db } = createTestHarness();
+    const total = 201; // one past MAX_CHAT_DELETIONS_PER_RUN
+    for (let i = 0; i < total; i++) {
+      const key = `site-1/assets/a${i}/v1-old.md`;
+      await bucket.put(key, 'x', { httpMetadata: { contentType: 'text/markdown' } });
+      db.prepare(
+        'INSERT INTO assets (asset_id, site_id, filename, current_version, created_at, origin, expires_at) ' +
+          "VALUES (?, 'site-1', 'old.md', 'v1', '2026-01-01T00:00:00Z', 'chat', '2026-01-31T00:00:00Z')",
+      ).run(`a${i}`);
+      db.prepare('INSERT INTO asset_versions (version_id, asset_id, r2_key, content_type) VALUES (?, ?, ?, ?)')
+        .run('v1', `a${i}`, key, 'text/markdown');
+    }
+
+    const result = await sweepExpiredChatAssets({ ...env, RECONCILE_DRY_RUN: 'false' });
+
+    expect(result.candidates).toBe(total);
+    expect(result.deleted).toBe(200);
+    expect(result.deferred).toBe(1);
+    // The remainder is still there for the next run, not silently dropped.
+    expect(countRows(db, 'assets')).toBe(1);
+  });
+
+  // One unreachable object used to abort the invocation, taking the orphan reconcile job
+  // down with it. The cron is hourly, so a persistent fault retired both jobs silently.
+  it('keeps going when one asset fails to delete, and reports it', async () => {
+    const { env, bucket, db } = createTestHarness();
+    await seedExpired(env, bucket);
+    const second = await seedExpired(env, bucket);
+    const realDelete = bucket.delete.bind(bucket);
+    let calls = 0;
+    bucket.delete = async (key: string) => {
+      calls += 1;
+      if (calls === 1) throw new Error('R2 unavailable');
+      return realDelete(key);
+    };
+
+    const result = await sweepExpiredChatAssets({ ...env, RECONCILE_DRY_RUN: 'false' });
+
+    expect(result.candidates).toBe(2);
+    expect(result.deleted).toBe(1);
+    expect(result.failed).toBe(1);
+    expect(second.assetId).toBeTruthy();
+    // Its row is already gone, so this sweep never sees it again; the bytes are left for
+    // handleReconcile to collect as an orphan.
+    expect(countRows(db, 'assets')).toBe(0);
+    expect(bucket._keys.size).toBe(1);
+  });
+
+  // The sweep selects, then deletes. A promote landing in between must win: the
+  // asset is now a library asset and its bytes are load-bearing.
+  it('leaves an asset promoted between select and delete completely intact', async () => {
+    const { env, bucket, db } = createTestHarness();
+    const expired = await seedExpired(env, bucket);
+
+    const candidates = await findExpiredChatAssets(env, new Date().toISOString(), 100);
+    expect(candidates.assets).toHaveLength(1);
+
+    await promoteAsset(env, 'site-1', expired.assetId);
+
+    expect(await hardDeleteChatAsset(env, expired.assetId)).toBe(false);
+    expect(countRows(db, 'assets')).toBe(1);
+    // The guard has to hold on BOTH statements — losing the versions row would leave
+    // an asset that getAsset can no longer join, i.e. silently unreadable.
+    expect(countRows(db, 'asset_versions')).toBe(1);
+    expect(await getAsset(env, 'site-1', expired.assetId)).not.toBeNull();
   });
 });
