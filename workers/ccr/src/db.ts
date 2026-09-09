@@ -22,6 +22,7 @@
 import postgres from 'postgres';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { resolveConnection } from './db/resolve-connection';
+import { CLIENT_TIMEOUT_MESSAGE, classifyQueryFailure } from './db/query-failure';
 import { getLogger } from '@pantheon-systems/p1-telemetry';
 
 /**
@@ -237,17 +238,18 @@ async function runSqlUnsafe<T = Record<string, unknown>>(
   let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
   const timeoutPromise = new Promise<never>((_resolve, reject) => {
     timeoutHandle = setTimeout(() => {
-      reject(new Error('Database query timed out after 20 seconds'));
+      reject(new Error(CLIENT_TIMEOUT_MESSAGE));
     }, QUERY_TIMEOUT_MS);
   });
   let result: Awaited<typeof queryPromise>;
   try {
     result = await Promise.race([queryPromise, timeoutPromise]);
   } catch (error) {
-    // Operation and table only — never the statement text or parameters, either of
-    // which can carry customer content.
+    // Operation, table and a closed-vocabulary reason only — never the statement text,
+    // parameters, or the error message, any of which can carry customer content.
     getLogger().warn('query failed', {
       ...describeQuery(sqlQuery),
+      ...classifyQueryFailure(error),
       duration_ms: Date.now() - startedAt,
       timed_out: Date.now() - startedAt >= QUERY_TIMEOUT_MS,
       'error.type': error instanceof Error ? error.name : 'unknown',
