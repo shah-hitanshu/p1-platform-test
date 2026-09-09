@@ -391,3 +391,30 @@
 .puck-editor-theme [class*="_RichTextEditor-menu_"] {
   background: var(--puck-color-white);
 }
+
+/* ── PDS toast token bridge ───────────────────────────────────────────────
+ *
+ * Newer PDS builds style the toast card off a `--pds-color-toast-*` token
+ * family (background, foreground, action, and one icon token per status)
+ * that pds-core.css does not define. puck-css adopts a pinned pds-core
+ * snapshot (pds-core-content.ts), so an app that resolves a PDS whose
+ * component CSS is ahead of that snapshot gets dead var() references:
+ * `background-color: var(--pds-color-toast-background)` leaves the confirm
+ * toast fully transparent over the editor toolbar, and the status icon
+ * falls back to inherited grey. Bridging to the tokens pds-core does define
+ * makes the toast render correctly on either side of that rename.
+ *
+ * Scoped to `.pds-toaster` — the class PDS puts on the toast container —
+ * rather than `.puck-editor-theme` like every other rule here, because the
+ * Toaster is portalled to document.body (see P1Plugin.tsx) and never sits
+ * inside the theme wrapper. `.pds-toaster` exists only in editor chrome, so
+ * the copy Puck makes of this stylesheet still never matches in the canvas. */
+.pds-toaster {
+  --pds-color-toast-background: var(--pds-color-surface-default);
+  --pds-color-toast-foreground: var(--pds-color-foreground-default);
+  --pds-color-toast-action: var(--pds-color-foreground-default-secondary);
+  --pds-color-toast-info-icon: var(--pds-color-status-info-fill);
+  --pds-color-toast-success-icon: var(--pds-color-status-success-fill);
+  --pds-color-toast-warning-icon: var(--pds-color-status-warning-fill);
+  --pds-color-toast-critical-icon: var(--pds-color-status-critical-fill);
+}

@@ -195,6 +195,22 @@ describe('PuckEditorTheme.css', () => {
       );
     });
 
+    it('bridges the --pds-color-toast-* tokens so the confirm toast stays opaque', () => {
+      const css = readThemeCSS();
+      // Newer PDS builds paint the toast card from --pds-color-toast-background
+      // and its status icon from --pds-color-toast-<status>-icon, neither of
+      // which the pinned pds-core snapshot defines. An undefined background-color
+      // computes to transparent, leaving the publish-confirm toast see-through
+      // over the editor toolbar. The bridge must sit on .pds-toaster, not
+      // .puck-editor-theme, because the Toaster is portalled to document.body.
+      expect(css).toMatch(
+        /\.pds-toaster\s*\{[^}]*--pds-color-toast-background:\s*var\(--pds-color-surface-default\)[^}]*\}/,
+      );
+      expect(css).toMatch(
+        /\.pds-toaster\s*\{[^}]*--pds-color-toast-warning-icon:\s*var\(--pds-color-status-warning-fill\)[^}]*\}/,
+      );
+    });
+
     it('does not use a bare body selector, which would leak into the preview iframe', () => {
       const css = readThemeCSS();
       // The preview iframe renders its own <body>. Because this stylesheet is a
