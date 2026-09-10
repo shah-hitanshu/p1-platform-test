@@ -91,7 +91,12 @@ curl -sS -X POST "https://media.p1.pantheon.io/media/{assetId}/purge" \
   Manager (`MEDIA_WORKER_PURGE_ADMIN_TOKEN` in the environment's project) and pushed by
   the deploy workflow. It is the entire gate — site bearer tokens cannot invoke this
   endpoint — so treat custody accordingly. `requestedBy`/`reason` are recorded verbatim
-  and unverified; the audit's integrity rests on who holds the token.
+  and unverified; the audit's integrity rests on who holds the token. The container is
+  created by `terraform/bootstrap/<env>`; each environment gets its own value, added out
+  of band and never round-tripped through a laptop file:
+  `openssl rand -base64 32 | tr -d '\n' | gcloud secrets versions add MEDIA_WORKER_PURGE_ADMIN_TOKEN --project=<project> --data-file=-`.
+  Rotating is the same command — a new version, then re-run **Deploy Workers** for that
+  environment to push it to the worker.
 - **Verify** by fetching a previously-served `/image/…` URL (with its transform params):
   it must 404. Re-running the same purge answers `200 {"alreadyPurged": true}`.
 - **Read the audit:**

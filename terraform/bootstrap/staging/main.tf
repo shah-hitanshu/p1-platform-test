@@ -99,6 +99,7 @@ module "secrets" {
     "CCR_MCP_AUTH0_CLIENT_SECRET",
     "CCR_MCP_STATE_SIGNING_SECRET",
     "CCR_BACKEND_AUTH0_CLIENT_SECRET",
+    "MEDIA_WORKER_PURGE_ADMIN_TOKEN",
   ]
   accessor_members = [
     "serviceAccount:${module.github_actions_wif.service_account_email}",
