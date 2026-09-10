@@ -121,21 +121,25 @@ export function createDataListBlock(options?: CreateDataListBlockOptions): DataL
       togglePropName: "showTitle",
       required: true,
       typeHint: "string",
+      autoMapRole: "title",
     }),
     subtitleField: createSchemaSelectField({
       label: "Subtitle",
       togglePropName: "showSubtitle",
       typeHint: "string",
+      autoMapRole: "subtitle",
     }),
     teaserField: createSchemaSelectField({
       label: "Teaser",
       togglePropName: "showTeaser",
       typeHint: "rich text",
+      autoMapRole: "teaser",
     }),
     imageField: createSchemaSelectField({
       label: "Image",
       togglePropName: "showImage",
       typeHint: "image",
+      autoMapRole: "image",
     }),
     imagePosition: createImagePositionField({
       label: "Image position",
@@ -151,6 +155,7 @@ export function createDataListBlock(options?: CreateDataListBlockOptions): DataL
       label: "Icon",
       togglePropName: "showIcon",
       typeHint: "icon",
+      autoMapRole: "icon",
     }),
 
     // Layout & Style

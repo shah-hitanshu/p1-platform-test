@@ -707,4 +707,64 @@ describe('SchemaSelectField', () => {
       expect(options.length).toBe(4); // None + 3 fallback
     });
   });
+
+  describe('autoMapRole option (PCC-3836)', () => {
+    function renderWithAutoMap(
+      value: string | undefined,
+      onChange: (v: string) => void,
+    ) {
+      mockSelectedItem = {
+        type: 'DataListBlock',
+        props: { id: 'DL-1', datasourceId: 'swapi_list' },
+      };
+      const fieldDef = createSchemaSelectField({
+        label: 'Title field',
+        autoMapRole: 'title',
+      });
+      return render(
+        <DatasourceRegistryProvider registry={REGISTRY}>
+          {fieldDef.render({
+            field: fieldDef,
+            name: 'titleField',
+            id: 'field-titleField',
+            label: fieldDef.label,
+            value: value as unknown as string,
+            onChange,
+          })}
+        </DatasourceRegistryProvider>,
+      );
+    }
+
+    it('shows the auto-mapped field, not "None", when the value is unset (undefined)', () => {
+      renderWithAutoMap(undefined, vi.fn());
+
+      const select = screen.getByRole('combobox') as HTMLSelectElement;
+      // "name" matches the title heuristic among swapi_list's fields.
+      expect(select.value).toBe('{{ item.name }}');
+    });
+
+    it('still shows "None" when the user has explicitly chosen it (empty string)', () => {
+      renderWithAutoMap('', vi.fn());
+
+      const select = screen.getByRole('combobox') as HTMLSelectElement;
+      expect(select.value).toBe('');
+    });
+
+    it('shows an explicitly chosen field over the auto-mapped one', () => {
+      renderWithAutoMap('{{ item.height }}', vi.fn());
+
+      const select = screen.getByRole('combobox') as HTMLSelectElement;
+      expect(select.value).toBe('{{ item.height }}');
+    });
+
+    it('does not change onChange behavior: selecting None stores ""', () => {
+      const onChange = vi.fn();
+      renderWithAutoMap(undefined, onChange);
+
+      const select = screen.getByRole('combobox');
+      fireEvent.change(select, { target: { value: '' } });
+
+      expect(onChange).toHaveBeenCalledWith('');
+    });
+  });
 });

@@ -3,6 +3,7 @@
 import { type ReactElement } from "react";
 import { createUsePuck, FieldLabel } from "@puckeditor/core";
 import { Select } from "@pantheon-systems/pds-toolkit-react";
+import { autoMapFields, type FieldRole } from "../schema-heuristics.js";
 import { useDatasourceRegistry, useDatasourceData } from "./datasource-select-field.js";
 
 const usePuckState = createUsePuck();
@@ -28,6 +29,31 @@ interface SchemaSelectFieldOptions {
   togglePropName?: string;
   required?: boolean;
   typeHint?: string;
+  /**
+   * When set, an unset value (`undefined` — never chosen by the user) is
+   * displayed as the field auto-mapping would resolve it, instead of as
+   * "None". A user picking "None" explicitly still stores `""` and is
+   * displayed as "None", since that is a deliberate choice to disable the
+   * mapping.
+   */
+  autoMapRole?: FieldRole;
+}
+
+/**
+ * Resolves what the select should show as selected: the stored value when
+ * one has been chosen (including an explicit "" for "None"), otherwise the
+ * field the auto-mapping heuristic would pick, so the sidebar reflects the
+ * mapping actually in effect rather than a misleading "None".
+ */
+function computeDisplayValue(
+  rawValue: string | undefined,
+  availableFields: { path: string; description: string }[],
+  autoMapRole: FieldRole | undefined,
+): string {
+  if (rawValue !== undefined) return rawValue;
+  if (!autoMapRole || availableFields.length === 0) return "";
+  const mapped = autoMapFields(availableFields)[autoMapRole];
+  return mapped ? `{{ item.${mapped} }}` : "";
 }
 
 export function extractFieldPaths(
@@ -71,6 +97,7 @@ export function createSchemaSelectField(
   const togglePropName = options?.togglePropName;
   const required = options?.required ?? false;
   const typeHint = options?.typeHint;
+  const autoMapRole = options?.autoMapRole;
 
   return {
     type: "custom" as const,
@@ -80,12 +107,13 @@ export function createSchemaSelectField(
         <SchemaSelectFieldInner
           id={id}
           label={fieldLabel}
-          value={value ?? ""}
+          rawValue={value}
           onChange={onChange}
           readOnly={readOnly}
           datasourcePropName={datasourcePropName}
           fallbackFields={fallbackFields}
           togglePropName={togglePropName}
+          autoMapRole={autoMapRole}
         />
       );
 
@@ -114,21 +142,23 @@ export function createSchemaSelectField(
 function SchemaSelectFieldInner({
   id,
   label,
-  value,
+  rawValue,
   onChange,
   readOnly,
   datasourcePropName,
   fallbackFields,
   togglePropName,
+  autoMapRole,
 }: {
   id: string;
   label: string;
-  value: string;
+  rawValue: string | undefined;
   onChange: (value: string) => void;
   readOnly?: boolean;
   datasourcePropName: string;
   fallbackFields?: { path: string; description: string }[];
   togglePropName?: string;
+  autoMapRole?: FieldRole;
 }) {
   const selectedItem = usePuckState((s) => s.selectedItem) as {
     type: string;
@@ -245,6 +275,11 @@ function SchemaSelectFieldInner({
           value: `{{ item.${f.path} }}`,
         })),
       ];
+      const fallbackDisplayValue = computeDisplayValue(
+        rawValue,
+        fallbackFields,
+        autoMapRole,
+      );
       return (
         <div className="p1-schema-select-row">
           <div className="p1-schema-select-row__control">
@@ -252,7 +287,7 @@ function SchemaSelectFieldInner({
               id={id}
               label={label}
               showLabel={false}
-              value={value}
+              value={fallbackDisplayValue}
               options={fallbackOptions}
               onOptionSelect={(opt) => onChange(opt.value)}
               disabled={readOnly}
@@ -268,7 +303,7 @@ function SchemaSelectFieldInner({
         <div className="p1-schema-select-row__control">
           <input
             type="text"
-            value={value}
+            value={rawValue ?? ""}
             onChange={(e) => onChange(e.target.value)}
             disabled={readOnly}
             placeholder="{{ item.fieldName }}"
@@ -287,6 +322,8 @@ function SchemaSelectFieldInner({
     })),
   ];
 
+  const displayValue = computeDisplayValue(rawValue, fields, autoMapRole);
+
   return (
     <div className="p1-schema-select-row">
       <div className="p1-schema-select-row__control">
@@ -294,7 +331,7 @@ function SchemaSelectFieldInner({
           id={id}
           label={label}
           showLabel={false}
-          value={value}
+          value={displayValue}
           options={selectOptions}
           onOptionSelect={(opt) => onChange(opt.value)}
           disabled={readOnly}
