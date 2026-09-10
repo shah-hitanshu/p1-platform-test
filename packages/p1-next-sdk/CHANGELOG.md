@@ -1,5 +1,108 @@
 # @pantheon-systems/p1-next-sdk
 
+## 0.15.0
+
+### Minor Changes
+
+- aa9979e: **[Fix]** Publishing now invalidates the public route it changed, so a page reaches the site immediately instead of waiting out the app's revalidate window.
+
+  ### What Changed
+  - The editor publishes to the backend directly, so nothing in the request path told the Next.js app that one of its cached renders had gone out of date. The public page segment is statically renderable, so the app kept serving what it had — for up to `revalidate` seconds, and with a `stale-while-revalidate` window that lets a CDN in front of it serve the same stale render for far longer.
+  - The case that made this visible: a path requested before its page existed has a `notFound()` render cached against it. Creating and publishing that page left the cached 404 in place, so a page that had published correctly, and was listed in the site structure, was not reachable on the site.
+  - `createP1Handler` gains a `revalidate` POST action (`POST /p1/api/revalidate` with `{ path }`), auth-wrapped like `publish`. It only invalidates — the content is already in the backend, and re-persisting it here would give one page two write paths.
+  - `useP1Editor` calls it after a successful publish, awaited before `onPublishSuccess` fires: until it returns, the public route can still be serving pre-publish content. A failed invalidation is reported as a stale route, never as a failed publish — the publish has already committed by then.
+  - Route-template fan-out (overrides plus the public catch-all segment, for instance URLs that resolve by template fall-through) is shared with the `publish` action rather than duplicated, so the two cannot drift.
+
+  ### Migration / Action Required
+
+  None for apps whose P1 handler is mounted at `/p1/api` from `createP1Handler` — the new action is served automatically and the editor calls it on its own.
+
+  An app that renders public pages from a segment other than `[...puckPath]` should already be passing `publicPageSegment` to `createP1Handler`; the new action honors the same option.
+
+- 0d89bb0: **[Feature]** The SEO layer moves out of the template: metadata resolution into `@pantheon-systems/p1-next-sdk/server`, the editor field definitions into `@pantheon-systems/puck-css/seo`.
+
+  ### What Changed
+  - `resolvePageMetadata()` and `buildPageMetadata()` are new exports from `@pantheon-systems/p1-next-sdk/server`. They map the stored root props (`_seo`, `_meta`) onto Next's `Metadata` — a mapping coupled to those shapes, not to a site's branding, so a copy in every scaffold could only fall behind them. The app's datasource fetcher registry is injected as `fetchers`, and `transform` gets the last word on the emitted metadata for tags a site wants to add or override — it receives the page and the authored values with any `{{ }}` already resolved, so a site can emit a tag from a field it added without resolving templates itself.
+  - `createPublishedPage()` now defaults `resolveMetadata` to that resolver, passing the `fetchers` it already holds. Metadata behaviour therefore arrives with a package upgrade. Passing `resolveMetadata` still replaces the mapping outright.
+  - `createSeoRootFields()` is a new export from `@pantheon-systems/puck-css/seo` (`src/data/page-metadata/`), along with `OG_TYPES`, `TWITTER_CARDS`, `DEFAULT_EDITOR_ROOT_TITLE` and the `PageMetaFields` type. It returns the `_meta` object field — the dropdown vocabularies, the help text, and the placeholders showing what an empty field inherits. puck-css owns the shape stored at `root.props._meta`, so the fields that write it now version with it.
+  - **The stored `_meta` shape stays extensible.** Every field in the group templates except `ogType` and `twitterCard`, whose values are checked against a union — so a field a site adds to the group gets `{{ }}` resolution like the built-in ones, and reaches `<head>` through `transform`. Previously the templated fields were a fixed list, which is why extending the group is worth a mention: nothing about it is closed.
+  - `@pantheon-systems/puck-css/seo` is its own entry point rather than part of the `/fields` barrel: `/fields` is a client module, and a Puck config is also evaluated on the server.
+  - The starter's `lib/page-seo.ts`, `lib/seo-metadata.ts` and `lib/seo-metadata.consts.ts` are gone, and `components/puck/root.tsx` is down to its own title, description, and render wrapper. Rendered tags are unchanged — the suites that pinned them moved into the packages alongside the code.
+
+  ### Migration / Action Required
+
+  None — an app that passes its own `resolveMetadata` keeps working. To hand the metadata layer over to the packages, delete the local copies and compose the field set:
+
+  ```tsx
+  // app/published-pages.tsx — drop resolveMetadata entirely
+  export const published = createPublishedPage({
+    Client,
+    Unavailable: ContentUnavailable,
+    Fallback: WelcomeBlock,
+    fetchers: REMOTE_DATASOURCE_FETCHERS,
+  });
+
+  // components/puck/root.tsx
+  import { createSeoRootFields, DEFAULT_EDITOR_ROOT_TITLE } from '@pantheon-systems/puck-css/seo';
+
+  const buildFields = (rootProps?: Record<string, unknown>) => ({
+    title: { type: 'text' as const },
+    description: { type: 'textarea' as const },
+    ...createSeoRootFields(rootProps),
+  });
+
+  export const puckRoot = {
+    fields: buildFields(),
+    resolveFields: (data) => buildFields(data.props ?? {}),
+    defaultProps: { title: DEFAULT_EDITOR_ROOT_TITLE },
+    render: ({ children }) => <div className="font-sans antialiased">{children}</div>,
+  };
+  ```
+
+  To keep site-specific tags on top of the shared mapping, wrap the resolver rather than replacing it:
+
+  ```tsx
+  resolveMetadata: (args) =>
+    resolvePageMetadata({
+      ...args,
+      fetchers: REMOTE_DATASOURCE_FETCHERS,
+      transform: (metadata, { meta }) => ({ ...metadata, keywords: meta.keywords }),
+    }),
+  ```
+
+  The starter's README documents that seam under Customization, alongside adding a field to the group itself.
+
+### Patch Changes
+
+- 2790711: **[Fix]** `createP1Middleware` no longer requires a `cssBaseUrl` — an omitted or blank value now defaults to the production CCR backend, matching every other config path.
+
+  ### What Changed
+  - `P1MiddlewareConfig.cssBaseUrl` is now optional. Leaving `NEXT_PUBLIC_CSS_BASE_URL` unset, or set but blank, connects the middleware to the production backend instead of failing to connect at all.
+
+- c9e7068: **[Fix]** A new project's first `npm test` no longer prints a wall of "Sourcemap for ... points to missing source files" warnings.
+
+  ### What Changed
+  - The published packages no longer ship sourcemaps. The maps referenced TypeScript sources that are not part of the published package, so bundlers warned about every one of them. Tests and builds were unaffected — the warnings were only noise.
+  - Nothing to configure: update your dependencies and the warnings are gone.
+
+- Updated dependencies [2790711]
+- Updated dependencies [34b32da]
+- Updated dependencies [791e6a0]
+- Updated dependencies [4eca2a7]
+- Updated dependencies [34b32da]
+- Updated dependencies [c9e7068]
+- Updated dependencies [2f64e8a]
+- Updated dependencies [aa9979e]
+- Updated dependencies [ac9d7b5]
+- Updated dependencies [0d89bb0]
+- Updated dependencies [d0206d2]
+- Updated dependencies [64ac89e]
+- Updated dependencies [2790711]
+- Updated dependencies [998cd5b]
+- Updated dependencies [d0206d2]
+  - @pantheon-systems/css-client@0.15.0
+  - @pantheon-systems/puck-css@0.15.0
+
 ## 0.14.0
 
 ### Minor Changes

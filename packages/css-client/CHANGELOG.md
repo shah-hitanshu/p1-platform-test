@@ -1,5 +1,35 @@
 # @pantheon-systems/css-client
 
+## 0.15.0
+
+### Minor Changes
+
+- d0206d2: **[Added]** Read a site's settings, including the locales it publishes in.
+
+  ### What Changed
+  - `client.sites.getSettings(siteId)` returns the site's settings and, when the server reports them, the number of documents in each configured locale.
+  - `settings.locales` names the site's markets in the order editors should see them, along with the policy for serving a page that has no version in a visitor's locale.
+
+- d0206d2: **[Added]** Name how a new locale version's content is seeded.
+
+  ### What Changed
+  - `client.translations.create()` accepts a `mode`. `copy` brings the source page's content across to translate in place, and is the only mode available; omit it to take the server's default.
+  - A mode the server does not implement is refused rather than quietly copied, so a caller asking for content the backend cannot produce learns so.
+
+### Patch Changes
+
+- 2790711: **[Fix]** `P1ContentClient` and `brokerLogout` no longer require a base URL — an omitted or blank value now defaults to the production CCR backend, so every consumer that constructs one gets the safe default automatically instead of having to apply its own.
+
+  ### What Changed
+  - `P1ContentClientConfig.baseUrl` and `BrokerLogoutConfig.cssBaseUrl` are now optional. Leaving either unset, or set but blank, resolves against the production backend instead of failing to connect.
+  - `PRODUCTION_BASE_URL` is now exported from the package root, alongside its existing exports.
+
+- c9e7068: **[Fix]** A new project's first `npm test` no longer prints a wall of "Sourcemap for ... points to missing source files" warnings.
+
+  ### What Changed
+  - The published packages no longer ship sourcemaps. The maps referenced TypeScript sources that are not part of the published package, so bundlers warned about every one of them. Tests and builds were unaffected — the warnings were only noise.
+  - Nothing to configure: update your dependencies and the warnings are gone.
+
 ## 0.14.0
 
 ### Minor Changes

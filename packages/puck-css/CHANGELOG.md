@@ -1,5 +1,174 @@
 # @pantheon-systems/puck-css
 
+## 0.15.0
+
+### Minor Changes
+
+- 34b32da: **[Added]** A feature plugin can ask the editor to open a document or start a new page.
+
+  ### What Changed
+  - `deps.openDocument(path)` moves the editor to another document. Where the host handles document selection the URL and the page selector move with the canvas; where it does not, the document loads in place.
+  - `deps.openCreatePage({ locale, sourceDocumentId })` opens the create-page modal, aimed at a locale and at the page a new version starts from.
+  - Both are safe to call and safe to hold in a dependency array for the editor's lifetime. Until the editor fills them they do nothing, so a plugin needs no check of its own.
+
+- 791e6a0: **[Added]** The editor toolbar names the market a page belongs to and lists the site's others.
+
+  ### What Changed
+  - The localization feature contributes a control to the document toolbar showing the open page's market, with every market the site publishes in beneath it.
+  - A market holding a version of the page opens it; a market holding none offers to create one.
+  - The list reads the same wherever in a page's locale set the editor is standing, because a version resolves up to its canonical before the list is built.
+  - Markets are named in their own language and in English, so a tag is never the only label a reader gets. A page carrying no locale reads `Unset`.
+  - A locale a document carries but the site no longer configures is still listed, after the configured markets, so a version that exists stays reachable.
+  - The control stays away until a page is open, rather than naming a market it has no page to measure against.
+  - Where the site's locales cannot be read, the control says so and offers another go. A site that publishes in nothing and a request that failed no longer look alike.
+  - Where two pages carry the same locale, both are listed and each names its own page, so neither is left unreachable and the rows can be told apart.
+
+- 4eca2a7: **[Feature]** Create a page in one of a site's markets, or bring an existing page into a market.
+
+  ### What Changed
+  - The create-page modal takes a market for a new page. The field is bounded to the site's locale registry and searchable by native name, English name and tag, so `Deutsch`, `German` and `de` all reach the same market. Carrying no market is the field's empty state rather than a row in the list, and clearing the field returns to it.
+  - A fifth starting point brings an existing page into a market as a version of it, seeded from a copy of the page's current content. The editor lands on the new version once it exists.
+  - A control elsewhere in the editor can open this flow already aimed at a market and at the page a version starts from, so a market settled before the modal opened is carried into it.
+  - Where the site's locales cannot be read, the translate flow says so and offers another go rather than reporting that the site has no markets configured.
+
+  ### Host-side change to be aware of
+
+  `onDocumentCreate` takes a fourth argument: `(path, template?, title?, locale?)`. `locale` is the market a new page is created in.
+
+  A host that implements the callback with three parameters keeps compiling and keeps working, but **drops the market silently** — pages created through the modal's locale field come out untagged, with no error raised anywhere. If your host forwards these arguments on, widen it to pass the fourth through:
+
+  ```ts
+  onDocumentCreate={(path, template, title, locale) =>
+    createDocument(path, template, title, locale)
+  }
+  ```
+
+- 34b32da: **[Added]** A feature plugin can place a control in the editor's document toolbar.
+
+  ### What Changed
+  - `P1FeaturePlugin.toolbarActions` returns a control to render in the toolbar above the canvas. Returning nothing contributes nothing, so a feature can stay out of the toolbar while its other slots run.
+  - Controls are placed in plugin priority order, so a site composing several features gets the same toolbar every time.
+
+- aa9979e: **[Fix]** Publishing now invalidates the public route it changed, so a page reaches the site immediately instead of waiting out the app's revalidate window.
+
+  ### What Changed
+  - The editor publishes to the backend directly, so nothing in the request path told the Next.js app that one of its cached renders had gone out of date. The public page segment is statically renderable, so the app kept serving what it had — for up to `revalidate` seconds, and with a `stale-while-revalidate` window that lets a CDN in front of it serve the same stale render for far longer.
+  - The case that made this visible: a path requested before its page existed has a `notFound()` render cached against it. Creating and publishing that page left the cached 404 in place, so a page that had published correctly, and was listed in the site structure, was not reachable on the site.
+  - `createP1Handler` gains a `revalidate` POST action (`POST /p1/api/revalidate` with `{ path }`), auth-wrapped like `publish`. It only invalidates — the content is already in the backend, and re-persisting it here would give one page two write paths.
+  - `useP1Editor` calls it after a successful publish, awaited before `onPublishSuccess` fires: until it returns, the public route can still be serving pre-publish content. A failed invalidation is reported as a stale route, never as a failed publish — the publish has already committed by then.
+  - Route-template fan-out (overrides plus the public catch-all segment, for instance URLs that resolve by template fall-through) is shared with the `publish` action rather than duplicated, so the two cannot drift.
+
+  ### Migration / Action Required
+
+  None for apps whose P1 handler is mounted at `/p1/api` from `createP1Handler` — the new action is served automatically and the editor calls it on its own.
+
+  An app that renders public pages from a segment other than `[...puckPath]` should already be passing `publicPageSegment` to `createP1Handler`; the new action honors the same option.
+
+- 0d89bb0: **[Feature]** The SEO layer moves out of the template: metadata resolution into `@pantheon-systems/p1-next-sdk/server`, the editor field definitions into `@pantheon-systems/puck-css/seo`.
+
+  ### What Changed
+  - `resolvePageMetadata()` and `buildPageMetadata()` are new exports from `@pantheon-systems/p1-next-sdk/server`. They map the stored root props (`_seo`, `_meta`) onto Next's `Metadata` — a mapping coupled to those shapes, not to a site's branding, so a copy in every scaffold could only fall behind them. The app's datasource fetcher registry is injected as `fetchers`, and `transform` gets the last word on the emitted metadata for tags a site wants to add or override — it receives the page and the authored values with any `{{ }}` already resolved, so a site can emit a tag from a field it added without resolving templates itself.
+  - `createPublishedPage()` now defaults `resolveMetadata` to that resolver, passing the `fetchers` it already holds. Metadata behaviour therefore arrives with a package upgrade. Passing `resolveMetadata` still replaces the mapping outright.
+  - `createSeoRootFields()` is a new export from `@pantheon-systems/puck-css/seo` (`src/data/page-metadata/`), along with `OG_TYPES`, `TWITTER_CARDS`, `DEFAULT_EDITOR_ROOT_TITLE` and the `PageMetaFields` type. It returns the `_meta` object field — the dropdown vocabularies, the help text, and the placeholders showing what an empty field inherits. puck-css owns the shape stored at `root.props._meta`, so the fields that write it now version with it.
+  - **The stored `_meta` shape stays extensible.** Every field in the group templates except `ogType` and `twitterCard`, whose values are checked against a union — so a field a site adds to the group gets `{{ }}` resolution like the built-in ones, and reaches `<head>` through `transform`. Previously the templated fields were a fixed list, which is why extending the group is worth a mention: nothing about it is closed.
+  - `@pantheon-systems/puck-css/seo` is its own entry point rather than part of the `/fields` barrel: `/fields` is a client module, and a Puck config is also evaluated on the server.
+  - The starter's `lib/page-seo.ts`, `lib/seo-metadata.ts` and `lib/seo-metadata.consts.ts` are gone, and `components/puck/root.tsx` is down to its own title, description, and render wrapper. Rendered tags are unchanged — the suites that pinned them moved into the packages alongside the code.
+
+  ### Migration / Action Required
+
+  None — an app that passes its own `resolveMetadata` keeps working. To hand the metadata layer over to the packages, delete the local copies and compose the field set:
+
+  ```tsx
+  // app/published-pages.tsx — drop resolveMetadata entirely
+  export const published = createPublishedPage({
+    Client,
+    Unavailable: ContentUnavailable,
+    Fallback: WelcomeBlock,
+    fetchers: REMOTE_DATASOURCE_FETCHERS,
+  });
+
+  // components/puck/root.tsx
+  import { createSeoRootFields, DEFAULT_EDITOR_ROOT_TITLE } from '@pantheon-systems/puck-css/seo';
+
+  const buildFields = (rootProps?: Record<string, unknown>) => ({
+    title: { type: 'text' as const },
+    description: { type: 'textarea' as const },
+    ...createSeoRootFields(rootProps),
+  });
+
+  export const puckRoot = {
+    fields: buildFields(),
+    resolveFields: (data) => buildFields(data.props ?? {}),
+    defaultProps: { title: DEFAULT_EDITOR_ROOT_TITLE },
+    render: ({ children }) => <div className="font-sans antialiased">{children}</div>,
+  };
+  ```
+
+  To keep site-specific tags on top of the shared mapping, wrap the resolver rather than replacing it:
+
+  ```tsx
+  resolveMetadata: (args) =>
+    resolvePageMetadata({
+      ...args,
+      fetchers: REMOTE_DATASOURCE_FETCHERS,
+      transform: (metadata, { meta }) => ({ ...metadata, keywords: meta.keywords }),
+    }),
+  ```
+
+  The starter's README documents that seam under Customization, alongside adding a field to the group itself.
+
+### Patch Changes
+
+- c9e7068: **[Fix]** A new project's first `npm test` no longer prints a wall of "Sourcemap for ... points to missing source files" warnings.
+
+  ### What Changed
+  - The published packages no longer ship sourcemaps. The maps referenced TypeScript sources that are not part of the published package, so bundlers warned about every one of them. Tests and builds were unaffected — the warnings were only noise.
+  - Nothing to configure: update your dependencies and the warnings are gone.
+
+- 2f64e8a: **[Fix]** The publish and delete confirmation toasts no longer render with a transparent background.
+
+  ### What Changed
+  - Recent design-system builds paint the toast card from a `--pds-color-toast-*` custom-property family (background, foreground, action, and one icon colour per status) that the design-system core stylesheet this package pins does not define. An undefined `background-color` computes to `transparent`, so the "Publish directly to live site?" confirmation showed the editor toolbar straight through it — its Confirm/Cancel buttons overlapping the branch selector and Publish button — and the warning icon fell back to inherited grey instead of amber.
+  - Those properties are now bridged to the tokens the pinned core stylesheet does define, so the toasts render opaquely against either naming.
+
+  ### Migration / Action Required
+
+  None.
+
+- ac9d7b5: **[Fix]** The editor's block drawer now renders correctly in projects that don't use Tailwind CSS.
+
+  ### What Changed
+  - The block-drawer rows were styled with Tailwind utility classes while this package declares no Tailwind dependency. They only rendered because the scaffold's stylesheet extended Tailwind's scan into this package, so a project that removed Tailwind lost layout inside the editor itself — icons and labels stacked instead of sitting on one row.
+  - Every component here now ships its own styles, so nothing in this package depends on the consumer's Tailwind build.
+
+  ### Migration / Action Required
+
+  None. Projects scaffolded from the starter kit can now remove the
+  `@source "../node_modules/@pantheon-systems/puck-css/dist";` line from
+  `app/styles.css`; new scaffolds no longer include it.
+
+- 64ac89e: Fix an editor crash when the installed `pds-toolkit-react` is missing an icon the outline panel asks for.
+
+  `Icon` dereferences its glyph entry without a guard, so an icon name the installed version does not ship throws during render rather than rendering nothing. The outline panel passed a keyword-derived name straight through, so a block whose icon had been renamed or removed unmounted the whole editor — and it repeated on every load of any document containing that block, leaving the page unopenable.
+
+  Icon names now resolve against the set `pds-toolkit-react` reports it ships, preferring a shipped alternative (`link` → `linkSimple`) and rendering no icon when it ships none. `SafeIcon` additionally contains any such throw so a missing glyph can never cost more than itself.
+
+- 2790711: **[Fix]** `performLogout` no longer requires a `cssBaseUrl` — an omitted value now defaults to the production CCR backend, matching every other config path.
+
+  ### What Changed
+  - `PerformLogoutConfig.cssBaseUrl` is now optional. When omitted, logout resolves against the production backend instead of requiring the caller to supply a value.
+
+- 998cd5b: **[Fix]** Select field values in the editor field panel are no longer clipped.
+
+  ### What Changed
+  - The value text in a closed `select` field — such as `og:type` in the page metadata panel — had the top of its glyphs cut off. PDS styles the bare `select` element with a fixed control height while Puck's field CSS adds its own vertical padding and sets no height; because the PDS rule is layered, the two combined instead of one winning, leaving a content box too short for the line of text. Selects now size from their padding like the text fields beside them, so the value renders fully and every select field matches the height of its neighbours.
+
+- Updated dependencies [2790711]
+- Updated dependencies [c9e7068]
+- Updated dependencies [d0206d2]
+- Updated dependencies [d0206d2]
+  - @pantheon-systems/css-client@0.15.0
+
 ## 0.14.0
 
 ### Minor Changes
