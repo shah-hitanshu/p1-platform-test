@@ -13,6 +13,7 @@ import { makeBranch } from '../helpers/branch';
 import { makePrincipal } from '../helpers/principal';
 import { readJson } from '../helpers/http';
 import type { DocumentRouteContext } from '../../src/routes/document-api';
+import type { DocumentWithArchive } from '../../src/services';
 
 vi.mock('../../src/services', async () => {
   const actual = await vi.importActual('../../src/services');
@@ -38,6 +39,7 @@ vi.mock('../../src/services', async () => {
     listDocumentsOnBranch: vi.fn(),
     createDocumentOnBranch: vi.fn(),
     documentExistsOnBranch: vi.fn(),
+    isTombstonedOnBranch: vi.fn(),
     deleteDocumentOnBranch: vi.fn(),
     getLatestDocumentVersion: vi.fn(),
     getLatestDocumentVersionWithFallback: vi.fn(),
@@ -93,6 +95,10 @@ const overridesJson = {
   'HeadingBlock-1': { title: 'locale' },
   'ImageBlock-1': { alt: 'canonical' },
 };
+
+function documentOnSite(siteId: string): DocumentWithArchive {
+  return { id: TRANSLATION_ID, siteId } as unknown as DocumentWithArchive;
+}
 
 function authorityOverridesUrl(): string {
   return `https://api.example.com/api/sites/site-1/branches/branch-1/documents/${TRANSLATION_ID}/authority-overrides`;
@@ -162,7 +168,8 @@ describe('GET authority-overrides', () => {
     const auth = await import('../../src/auth/authorization');
 
     vi.mocked(services.getBranch).mockResolvedValueOnce(featureBranch);
-    vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(true);
+    vi.mocked(services.getDocument).mockResolvedValueOnce(documentOnSite('site-1'));
+    vi.mocked(services.isTombstonedOnBranch).mockResolvedValueOnce(false);
     vi.mocked(services.getLocalizationEdgeByDerivedDocument).mockResolvedValueOnce(localizationEdge);
     vi.mocked(services.getAuthorityOverrides).mockResolvedValueOnce(overridesMap);
 
@@ -186,7 +193,8 @@ describe('GET authority-overrides', () => {
     const services = await import('../../src/services');
 
     vi.mocked(services.getBranch).mockResolvedValueOnce(featureBranch);
-    vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(true);
+    vi.mocked(services.getDocument).mockResolvedValueOnce(documentOnSite('site-1'));
+    vi.mocked(services.isTombstonedOnBranch).mockResolvedValueOnce(false);
     vi.mocked(services.getLocalizationEdgeByDerivedDocument).mockResolvedValueOnce(localizationEdge);
     vi.mocked(services.getAuthorityOverrides).mockResolvedValueOnce(new Map());
 
@@ -205,12 +213,13 @@ describe('authority-overrides document guards', () => {
   });
 
   for (const method of METHODS) {
-    it(`answers ${method} with 404 when the document is not on this branch`, async () => {
+    it(`answers ${method} with 404 when the document is deleted on this branch`, async () => {
       const { handleDocumentRoutes } = await import('../../src/routes/document-api');
       const services = await import('../../src/services');
 
       vi.mocked(services.getBranch).mockResolvedValueOnce(featureBranch);
-      vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(false);
+      vi.mocked(services.getDocument).mockResolvedValueOnce(documentOnSite('site-1'));
+      vi.mocked(services.isTombstonedOnBranch).mockResolvedValueOnce(true);
 
       const response = await handleDocumentRoutes(requestByMethod[method](), context);
 
@@ -221,12 +230,46 @@ describe('authority-overrides document guards', () => {
       expect(services.clearAuthorityOverride).not.toHaveBeenCalled();
     });
 
+    it(`answers ${method} with 404 when the document belongs to another site`, async () => {
+      const { handleDocumentRoutes } = await import('../../src/routes/document-api');
+      const services = await import('../../src/services');
+
+      vi.mocked(services.getBranch).mockResolvedValueOnce(featureBranch);
+      vi.mocked(services.getDocument).mockResolvedValueOnce(documentOnSite('site-2'));
+
+      const response = await handleDocumentRoutes(requestByMethod[method](), context);
+
+      expect(response.status).toBe(404);
+      expect(services.getLocalizationEdgeByDerivedDocument).not.toHaveBeenCalled();
+      expect(services.getAuthorityOverrides).not.toHaveBeenCalled();
+      expect(services.setAuthorityOverride).not.toHaveBeenCalled();
+      expect(services.clearAuthorityOverride).not.toHaveBeenCalled();
+    });
+
+    it(`answers ${method} on a translation the branch inherits from main`, async () => {
+      const { handleDocumentRoutes } = await import('../../src/routes/document-api');
+      const services = await import('../../src/services');
+
+      vi.mocked(services.getBranch).mockResolvedValueOnce(featureBranch);
+      vi.mocked(services.getDocument).mockResolvedValueOnce(documentOnSite('site-1'));
+      vi.mocked(services.isTombstonedOnBranch).mockResolvedValueOnce(false);
+      vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(false);
+      vi.mocked(services.getLocalizationEdgeByDerivedDocument)
+        .mockResolvedValueOnce(localizationEdge);
+      vi.mocked(services.getAuthorityOverrides).mockResolvedValueOnce(overridesMap);
+
+      const response = await handleDocumentRoutes(requestByMethod[method](), context);
+
+      expect(response.status).toBe(200);
+    });
+
     it(`answers ${method} with 404 when the document is not a translation`, async () => {
       const { handleDocumentRoutes } = await import('../../src/routes/document-api');
       const services = await import('../../src/services');
 
       vi.mocked(services.getBranch).mockResolvedValueOnce(featureBranch);
-      vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(true);
+      vi.mocked(services.getDocument).mockResolvedValueOnce(documentOnSite('site-1'));
+      vi.mocked(services.isTombstonedOnBranch).mockResolvedValueOnce(false);
       vi.mocked(services.getLocalizationEdgeByDerivedDocument).mockResolvedValueOnce(null);
 
       const response = await handleDocumentRoutes(requestByMethod[method](), context);
@@ -250,7 +293,8 @@ describe('PUT authority-overrides (set)', () => {
     const auth = await import('../../src/auth/authorization');
 
     vi.mocked(services.getBranch).mockResolvedValueOnce(featureBranch);
-    vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(true);
+    vi.mocked(services.getDocument).mockResolvedValueOnce(documentOnSite('site-1'));
+    vi.mocked(services.isTombstonedOnBranch).mockResolvedValueOnce(false);
     vi.mocked(services.getLocalizationEdgeByDerivedDocument).mockResolvedValueOnce(localizationEdge);
     vi.mocked(services.setAuthorityOverride).mockResolvedValueOnce();
     vi.mocked(services.getAuthorityOverrides).mockResolvedValueOnce(new Map([['HeadingBlock-1', new Map([['title', 'locale']])]]));
@@ -283,7 +327,8 @@ describe('PUT authority-overrides (set)', () => {
     const services = await import('../../src/services');
 
     vi.mocked(services.getBranch).mockResolvedValueOnce(featureBranch);
-    vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(true);
+    vi.mocked(services.getDocument).mockResolvedValueOnce(documentOnSite('site-1'));
+    vi.mocked(services.isTombstonedOnBranch).mockResolvedValueOnce(false);
     vi.mocked(services.getLocalizationEdgeByDerivedDocument).mockResolvedValueOnce(localizationEdge);
     vi.mocked(services.setAuthorityOverride).mockResolvedValueOnce();
     vi.mocked(services.getAuthorityOverrides).mockResolvedValueOnce(new Map([['HeadingBlock-1', new Map([['title', 'canonical']])]]));
@@ -302,7 +347,8 @@ describe('PUT authority-overrides (set)', () => {
     const services = await import('../../src/services');
 
     vi.mocked(services.getBranch).mockResolvedValueOnce(featureBranch);
-    vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(true);
+    vi.mocked(services.getDocument).mockResolvedValueOnce(documentOnSite('site-1'));
+    vi.mocked(services.isTombstonedOnBranch).mockResolvedValueOnce(false);
     vi.mocked(services.getLocalizationEdgeByDerivedDocument).mockResolvedValueOnce(localizationEdge);
 
     const response = await handleDocumentRoutes(
@@ -320,7 +366,8 @@ describe('PUT authority-overrides (set)', () => {
     const { AuthorityOverrideLimitError, MAX_OVERRIDE_ENTRIES } = await import('../../src/services');
 
     vi.mocked(services.getBranch).mockResolvedValueOnce(featureBranch);
-    vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(true);
+    vi.mocked(services.getDocument).mockResolvedValueOnce(documentOnSite('site-1'));
+    vi.mocked(services.isTombstonedOnBranch).mockResolvedValueOnce(false);
     vi.mocked(services.getLocalizationEdgeByDerivedDocument).mockResolvedValueOnce(localizationEdge);
     vi.mocked(services.setAuthorityOverride).mockRejectedValueOnce(
       new AuthorityOverrideLimitError(TRANSLATION_ID, MAX_OVERRIDE_ENTRIES),
@@ -349,7 +396,8 @@ describe('DELETE authority-overrides (clear)', () => {
     const auth = await import('../../src/auth/authorization');
 
     vi.mocked(services.getBranch).mockResolvedValueOnce(featureBranch);
-    vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(true);
+    vi.mocked(services.getDocument).mockResolvedValueOnce(documentOnSite('site-1'));
+    vi.mocked(services.isTombstonedOnBranch).mockResolvedValueOnce(false);
     vi.mocked(services.getLocalizationEdgeByDerivedDocument).mockResolvedValueOnce(localizationEdge);
     vi.mocked(services.clearAuthorityOverride).mockResolvedValueOnce();
     vi.mocked(services.getAuthorityOverrides).mockResolvedValueOnce(new Map());
@@ -381,7 +429,8 @@ describe('DELETE authority-overrides (clear)', () => {
     const services = await import('../../src/services');
 
     vi.mocked(services.getBranch).mockResolvedValueOnce(featureBranch);
-    vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(true);
+    vi.mocked(services.getDocument).mockResolvedValueOnce(documentOnSite('site-1'));
+    vi.mocked(services.isTombstonedOnBranch).mockResolvedValueOnce(false);
     vi.mocked(services.getLocalizationEdgeByDerivedDocument).mockResolvedValueOnce(localizationEdge);
     vi.mocked(services.clearAuthorityOverride).mockResolvedValueOnce();
     vi.mocked(services.getAuthorityOverrides).mockResolvedValueOnce(new Map());
@@ -444,7 +493,8 @@ describe('authority-overrides key validation', () => {
 
   function primeTranslation(services: typeof import('../../src/services')): void {
     vi.mocked(services.getBranch).mockResolvedValue(featureBranch);
-    vi.mocked(services.documentExistsOnBranch).mockResolvedValue(true);
+    vi.mocked(services.getDocument).mockResolvedValue(documentOnSite('site-1'));
+    vi.mocked(services.isTombstonedOnBranch).mockResolvedValue(false);
     vi.mocked(services.getLocalizationEdgeByDerivedDocument).mockResolvedValue(localizationEdge);
   }
 

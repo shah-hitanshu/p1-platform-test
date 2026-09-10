@@ -26,7 +26,7 @@ import {
 import { getFirstRow } from './checkpoint-mappers';
 import { isAuthority } from '@pantheon-systems/p1-content-validator';
 import type { Authority } from '@pantheon-systems/p1-content-validator';
-import { AuthorityOverrideLimitError } from './errors';
+import { AuthorityOverrideLimitError, UpstreamResolutionLimitError } from './errors';
 
 /**
  * An edge between two documents in app.document_relations.
@@ -78,6 +78,35 @@ export type AuthorityOverrides = Map<string, Map<string, Authority>>;
 
 /** The same overrides as stored and served, nested plain objects. */
 export type AuthorityOverridesJson = Record<string, Record<string, Authority>>;
+
+/**
+ * What one of a translation's props was last reconciled against: a fingerprint of
+ * the canonical value someone settled the change on, and when they settled it.
+ * The change stays settled while the canonical still holds that value.
+ */
+export interface UpstreamResolution {
+  hash: string;
+  at: string;
+}
+
+/**
+ * Each of a translation's reconciled props on one branch, keyed by slot id then
+ * the JSON Pointer the change was reported at. An entry means someone settled
+ * that change, whether by taking the canonical value, rewriting it, or dismissing
+ * it. The absence of an entry means the change has never been reconciled.
+ *
+ * Held per branch, unlike `AuthorityOverrides`: reconciling on one branch settles
+ * nothing on another, whose translation has not received the work. A branch with
+ * no row of its own reads main's, on the same terms it reads main's content.
+ *
+ * Keyed by pointer rather than by top-level prop name, also unlike
+ * `AuthorityOverrides`: authority belongs to a field as authored, while a
+ * resolution settles one reported change, and a change is reported per pointer.
+ */
+export type UpstreamResolutions = Map<string, Map<string, UpstreamResolution>>;
+
+/** The same resolutions as stored and served, nested plain objects. */
+export type UpstreamResolutionsJson = Record<string, Record<string, UpstreamResolution>>;
 
 /**
  * The keys this service writes into a localization edge's `metadata` JSONB. The
@@ -367,27 +396,30 @@ export async function createLocalizationEdge(
   return mapRowToRelation(getFirstRow(result.rows));
 }
 
+/** The key the authority map lives under; interpolated into the statements below. */
+const AUTHORITY_KEY = 'authorityOverrides';
+
 /**
- * Reads the override map off an edge's metadata. `LocalizationEdgeMetadata` states
- * what this service writes; the column can hold anything, so both the nesting and
- * the stored authorities are proven here rather than asserted. A prop storing
- * anything other than an authority is dropped, leaving it on its slot default.
+ * Reads a nested slot-then-prop map, keeping only the props whose value `isValue`
+ * proves. Both the nesting and the leaves are proven rather than asserted, since
+ * the JSONB holding them takes any shape; a prop storing something else is
+ * dropped, which leaves it on whatever the absence of an entry means for that map.
  */
-export function authorityOverridesFromMetadata(
-  metadata: Record<string, unknown>,
-): AuthorityOverrides {
-  const overrides = metadata.authorityOverrides;
-  if (typeof overrides !== 'object' || overrides === null || Array.isArray(overrides)) {
+function propMapFromStored<T>(
+  stored: unknown,
+  isValue: (value: unknown) => value is T,
+): Map<string, Map<string, T>> {
+  if (typeof stored !== 'object' || stored === null || Array.isArray(stored)) {
     return new Map();
   }
 
-  const parsed: AuthorityOverrides = new Map();
-  for (const [slotId, props] of Object.entries(overrides as Record<string, unknown>)) {
+  const parsed = new Map<string, Map<string, T>>();
+  for (const [slotId, props] of Object.entries(stored as Record<string, unknown>)) {
     if (typeof props !== 'object' || props === null || Array.isArray(props)) {
       continue;
     }
-    const propEntries = Object.entries(props).filter(
-      (entry): entry is [string, Authority] => isAuthority(entry[1]),
+    const propEntries = Object.entries(props).filter((entry): entry is [string, T] =>
+      isValue(entry[1]),
     );
     parsed.set(slotId, new Map(propEntries));
   }
@@ -395,14 +427,50 @@ export function authorityOverridesFromMetadata(
 }
 
 /**
- * The overrides as stored in JSONB and served over the API. `Object.fromEntries`
+ * One per-prop map as stored in JSONB and served over the API. `Object.fromEntries`
  * defines own properties, so a slot id of `__proto__` lands as an entry instead of
  * reassigning the prototype.
  */
+function propMapToJson<T>(map: Map<string, Map<string, T>>): Record<string, Record<string, T>> {
+  return Object.fromEntries([...map].map(([slotId, props]) => [slotId, Object.fromEntries(props)]));
+}
+
+export function authorityOverridesFromMetadata(
+  metadata: Record<string, unknown>,
+): AuthorityOverrides {
+  return propMapFromStored(metadata[AUTHORITY_KEY], isAuthority);
+}
+
 export function authorityOverridesToJson(overrides: AuthorityOverrides): AuthorityOverridesJson {
-  return Object.fromEntries(
-    [...overrides].map(([slotId, props]) => [slotId, Object.fromEntries(props)]),
-  );
+  return propMapToJson(overrides);
+}
+
+/**
+ * A resolution is a fingerprint of the canonical value and the time it was settled,
+ * so anything without both is not one. A dropped entry reads as unresolved, which
+ * leaves the change listed as outstanding rather than hiding it.
+ */
+function isUpstreamResolution(value: unknown): value is UpstreamResolution {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return false;
+  }
+  const { hash, at } = value as Record<string, unknown>;
+  return typeof hash === 'string' && hash.length > 0 && typeof at === 'string' && at.length > 0;
+}
+
+/**
+ * The stored resolutions map, keeping only the props holding a resolution. A prop
+ * storing anything else is dropped, which reads as unresolved and leaves the
+ * change listed.
+ */
+function resolutionsFromJson(stored: unknown): UpstreamResolutions {
+  return propMapFromStored(stored, isUpstreamResolution);
+}
+
+export function upstreamResolutionsToJson(
+  resolutions: UpstreamResolutions,
+): UpstreamResolutionsJson {
+  return propMapToJson(resolutions);
 }
 
 /**
@@ -435,9 +503,43 @@ export async function getAuthorityOverride(
 }
 
 /**
- * The edge's `metadata`, its `authorityOverrides`, and one slot's map, each read
- * straight off the row being updated and each falling back to an empty object when
- * what is stored is not one.
+ * What each of a translation's props was last reconciled against on this branch,
+ * nested by slot id then the pointer the change was reported at. Empty when
+ * nothing has been reconciled there.
+ *
+ * A branch with no row of its own reads main's, since it is serving main's
+ * translation until it edits it — the branch would otherwise report as outstanding
+ * work already done to the very content it shows. `mainBranchId` is the branch to
+ * inherit from, and passing it for main itself changes nothing.
+ */
+export async function getUpstreamResolutions(
+  derivedDocumentId: string,
+  branchId: string,
+  mainBranchId?: string,
+): Promise<UpstreamResolutions> {
+  const inheritsFromMain = mainBranchId !== undefined && mainBranchId !== branchId;
+  const result = inheritsFromMain
+    ? await query<{ resolutions: UpstreamResolutionsJson }>(
+      `SELECT resolutions FROM app.document_relation_branch_resolutions
+        WHERE source_document_id = $1 AND relation_type = 'localization'
+          AND branch_id IN ($2, $3)
+        ORDER BY (branch_id = $2) DESC
+        LIMIT 1`,
+      [derivedDocumentId, branchId, mainBranchId],
+    )
+    : await query<{ resolutions: UpstreamResolutionsJson }>(
+      `SELECT resolutions FROM app.document_relation_branch_resolutions
+        WHERE source_document_id = $1 AND relation_type = 'localization' AND branch_id = $2`,
+      [derivedDocumentId, branchId],
+    );
+  const stored = result.rows[0]?.resolutions;
+  return stored === undefined ? new Map() : resolutionsFromJson(stored);
+}
+
+/**
+ * The edge's `metadata`, one of its per-prop maps, and one slot within that map,
+ * each read straight off the row being updated and each falling back to an empty
+ * object when what is stored is not one. `$2` names the slot.
  *
  * These must stay direct references to `metadata`, not a CTE or sub-select. Under
  * READ COMMITTED a statement that waits on a concurrently updated row re-evaluates
@@ -446,30 +548,106 @@ export async function getAuthorityOverride(
  */
 const STORED_METADATA = `(CASE WHEN jsonb_typeof(metadata) = 'object'
        THEN metadata ELSE '{}'::jsonb END)`;
-const STORED_OVERRIDES = `(CASE WHEN jsonb_typeof(metadata -> 'authorityOverrides') = 'object'
-       THEN metadata -> 'authorityOverrides' ELSE '{}'::jsonb END)`;
-const STORED_SLOT = `(CASE WHEN jsonb_typeof(metadata -> 'authorityOverrides' -> $2::text) = 'object'
-       THEN metadata -> 'authorityOverrides' -> $2::text ELSE '{}'::jsonb END)`;
+
+const STORED_AUTHORITY = `(CASE WHEN jsonb_typeof(metadata -> '${AUTHORITY_KEY}') = 'object'
+       THEN metadata -> '${AUTHORITY_KEY}' ELSE '{}'::jsonb END)`;
+
+const STORED_AUTHORITY_SLOT =
+  `(CASE WHEN jsonb_typeof(metadata -> '${AUTHORITY_KEY}' -> $2::text) = 'object'
+       THEN metadata -> '${AUTHORITY_KEY}' -> $2::text ELSE '{}'::jsonb END)`;
 
 /**
- * Ceiling on how many (slotId, propName) entries one translation's authority map
- * holds. Each entry is a key pair in the localization edge's metadata JSONB, so
- * without a ceiling a client could grow one row without limit.
+ * Ceiling on how many (slotId, propName) entries one of a translation's per-prop
+ * maps holds. Each entry is a key pair in the localization edge's metadata JSONB,
+ * so without a ceiling a client could grow one row without limit.
  */
 export const MAX_OVERRIDE_ENTRIES = 1000;
 
 /**
- * Sets the authority override for one (slotId, propName) on a translation,
- * breaking that prop's inheritance from its slot's template default. Overwrites
- * any existing override for the key and leaves every other prop, slot, and
- * metadata key as it found them. A no-op when the document has no localization edge.
+ * Writes one (slotId, propName) entry into a per-prop map and reports what the row
+ * ended up holding for that key, leaving every other prop, slot, and metadata key
+ * as it found them. `stored` is null when the row holds no entry for the key, and
+ * `hasEdge` is false when the document has no localization edge.
  *
  * One statement, so concurrent writes to the same edge resolve per prop rather
  * than per map: the loser of a race is the prop, not everything the winner read.
  * The same statement enforces `MAX_OVERRIDE_ENTRIES`, so the ceiling holds under a
- * race: a new entry beyond it leaves the stored map untouched and raises
- * `AuthorityOverrideLimitError`. Replacing an entry already in the map is always
- * allowed, since it does not grow the map.
+ * race: a new entry beyond it leaves the stored map untouched, which the caller
+ * sees as a `stored` that does not match what it asked for. Replacing an entry
+ * already in the map is always allowed, since it does not grow the map.
+ */
+async function setAuthorityEntry(
+  derivedDocumentId: string,
+  slotId: string,
+  propName: string,
+  value: string,
+): Promise<{ hasEdge: boolean; stored: string | null }> {
+  const map = STORED_AUTHORITY;
+  const slot = STORED_AUTHORITY_SLOT;
+  const result = await query<{ stored: string | null }>(
+    `UPDATE app.document_relations
+        SET metadata = CASE
+              WHEN COALESCE(${slot} ? $3::text, false)
+                OR (
+                  SELECT COUNT(*)
+                    FROM jsonb_each(${map}) slot,
+                         jsonb_each(slot.value) prop
+                ) < $5
+              THEN ${STORED_METADATA} || jsonb_build_object(
+                     '${AUTHORITY_KEY}',
+                     ${map} || jsonb_build_object(
+                       $2::text,
+                       ${slot} || jsonb_build_object($3::text, $4::text)
+                     )
+                   )
+              ELSE metadata
+            END
+      WHERE source_document_id = $1 AND relation_type = 'localization'
+      RETURNING metadata -> '${AUTHORITY_KEY}' -> $2::text ->> $3::text AS stored`,
+    [derivedDocumentId, slotId, propName, value, MAX_OVERRIDE_ENTRIES],
+  );
+  if (result.rows.length === 0) {
+    return { hasEdge: false, stored: null };
+  }
+  return { hasEdge: true, stored: getFirstRow(result.rows).stored };
+}
+
+/**
+ * Removes one (slotId, propName) entry from a per-prop map, pruning the slot entry
+ * once its last prop is removed. Removing an absent entry leaves the map as it was.
+ * A no-op when the document has no localization edge.
+ *
+ * One statement, on the same terms as `setAuthorityEntry`.
+ */
+async function clearAuthorityEntry(
+  derivedDocumentId: string,
+  slotId: string,
+  propName: string,
+): Promise<void> {
+  const map = STORED_AUTHORITY;
+  const slot = STORED_AUTHORITY_SLOT;
+  await query(
+    `UPDATE app.document_relations
+        SET metadata = ${STORED_METADATA} || jsonb_build_object(
+              '${AUTHORITY_KEY}',
+              CASE WHEN (${slot} - $3::text) = '{}'::jsonb
+                   THEN ${map} - $2::text
+                   ELSE ${map} || jsonb_build_object(
+                          $2::text,
+                          ${slot} - $3::text
+                        )
+              END
+            )
+      WHERE source_document_id = $1 AND relation_type = 'localization'`,
+    [derivedDocumentId, slotId, propName],
+  );
+}
+
+/**
+ * Sets the authority override for one (slotId, propName) on a translation,
+ * breaking that prop's inheritance from its slot's template default. Overwrites
+ * any existing override for the key. A no-op when the document has no
+ * localization edge.
  *
  * @throws AuthorityOverrideLimitError when the map is full and the key is new
  */
@@ -479,63 +657,278 @@ export async function setAuthorityOverride(
   propName: string,
   authority: Authority,
 ): Promise<void> {
-  const result = await query<{ stored: string | null }>(
-    `UPDATE app.document_relations
-        SET metadata = CASE
-              WHEN COALESCE(${STORED_SLOT} ? $3::text, false)
-                OR (
-                  SELECT COUNT(*)
-                    FROM jsonb_each(${STORED_OVERRIDES}) slot,
-                         jsonb_each(slot.value) prop
-                ) < $5
-              THEN ${STORED_METADATA} || jsonb_build_object(
-                     'authorityOverrides',
-                     ${STORED_OVERRIDES} || jsonb_build_object(
-                       $2::text,
-                       ${STORED_SLOT} || jsonb_build_object($3::text, $4::text)
-                     )
-                   )
-              ELSE metadata
-            END
-      WHERE source_document_id = $1 AND relation_type = 'localization'
-      RETURNING metadata -> 'authorityOverrides' -> $2::text ->> $3::text AS stored`,
-    [derivedDocumentId, slotId, propName, authority, MAX_OVERRIDE_ENTRIES],
+  const { hasEdge, stored } = await setAuthorityEntry(
+    derivedDocumentId,
+    slotId,
+    propName,
+    authority,
   );
-  // No row means no localization edge, which is not this function's business.
-  if (result.rows.length === 0) {
+  // No edge means no localization edge, which is not this function's business.
+  if (!hasEdge) {
     return;
   }
-  if (getFirstRow(result.rows).stored !== authority) {
+  if (stored !== authority) {
     throw new AuthorityOverrideLimitError(derivedDocumentId, MAX_OVERRIDE_ENTRIES);
   }
 }
 
 /**
  * Clears the authority override for one (slotId, propName), restoring the prop to
- * its slot's template default. Prunes the slot entry once its last prop override
- * is removed. Clearing an absent override leaves the map as it was. A no-op when
- * the document has no localization edge.
- *
- * One statement, on the same terms as `setAuthorityOverride`.
+ * its slot's template default. Clearing an absent override leaves the map as it
+ * was. A no-op when the document has no localization edge.
  */
 export async function clearAuthorityOverride(
   derivedDocumentId: string,
   slotId: string,
   propName: string,
 ): Promise<void> {
-  await query(
-    `UPDATE app.document_relations
-        SET metadata = ${STORED_METADATA} || jsonb_build_object(
-              'authorityOverrides',
-              CASE WHEN (${STORED_SLOT} - $3::text) = '{}'::jsonb
-                   THEN ${STORED_OVERRIDES} - $2::text
-                   ELSE ${STORED_OVERRIDES} || jsonb_build_object(
-                          $2::text,
-                          ${STORED_SLOT} - $3::text
-                        )
-              END
-            )
-      WHERE source_document_id = $1 AND relation_type = 'localization'`,
-    [derivedDocumentId, slotId, propName],
+  await clearAuthorityEntry(derivedDocumentId, slotId, propName);
+}
+
+/** One reported change, named the way the change summary reports it. */
+export interface UpstreamResolutionTarget {
+  slotId: string;
+  propPath: string;
+}
+
+/**
+ * One reported change and a fingerprint of the canonical value it was settled
+ * against. Each target carries its own, since a batch settles changes to several
+ * props and every prop holds a different value.
+ */
+export interface UpstreamResolutionEntry extends UpstreamResolutionTarget {
+  hash: string;
+}
+
+/**
+ * The object at `source`, or empty when what is stored there is not one. The
+ * column takes any JSON, so every level a statement walks is proven this way
+ * before it is walked: a slot holding a scalar would otherwise make the merge and
+ * the prune both raise, leaving a row no request could repair.
+ */
+function jsonObject(source: string): string {
+  return `(CASE WHEN jsonb_typeof(${source}) = 'object' THEN ${source} ELSE '{}'::jsonb END)`;
+}
+
+/**
+ * The map at `source` merged with the batch at `$3`, slot by slot, so props the
+ * batch does not name stay where they were.
+ */
+function mergedWithBatch(source: string): string {
+  return `(
+  SELECT COALESCE(jsonb_object_agg(m.slot, m.props), '{}'::jsonb) FROM (
+    SELECT COALESCE(stored.key, batch.key) AS slot,
+           COALESCE(${jsonObject('stored.value')}, '{}'::jsonb)
+             || COALESCE(batch.value, '{}'::jsonb) AS props
+      FROM jsonb_each(${jsonObject(source)}) stored
+      FULL OUTER JOIN jsonb_each($3::jsonb) batch ON batch.key = stored.key
+  ) m)`;
+}
+
+/**
+ * The map at `source` minus the props the batch at `$3` names, dropping a slot
+ * left with none.
+ */
+function prunedByBatch(source: string): string {
+  return `(
+  SELECT COALESCE(jsonb_object_agg(m.slot, m.props), '{}'::jsonb) FROM (
+    SELECT stored.key AS slot,
+           ${jsonObject('stored.value')} - (
+             SELECT COALESCE(array_agg(p.path), ARRAY[]::text[])
+               FROM jsonb_array_elements_text(
+                      COALESCE($3::jsonb -> stored.key, '[]'::jsonb)
+                    ) AS p(path)
+           ) AS props
+      FROM jsonb_each(${jsonObject(source)}) stored
+  ) m WHERE m.props <> '{}'::jsonb)`;
+}
+
+/** How many entries the map at `source` holds, counted over every slot. */
+function entryCount(source: string): string {
+  return `(SELECT COUNT(*) FROM jsonb_each(${source}) slot, jsonb_each(slot.value) prop)`;
+}
+
+/**
+ * The map a branch inherits: main's, named by the branch parameter at
+ * `branchParam`. Empty on main, and empty when main holds none.
+ */
+function inheritedMap(branchParam: string): string {
+  return `COALESCE((
+    SELECT i.resolutions FROM app.document_relation_branch_resolutions i
+     WHERE i.source_document_id = $1 AND i.relation_type = 'localization'
+       AND i.branch_id = ${branchParam}
+  ), '{}'::jsonb)`;
+}
+
+/** The row being updated on a conflict; `r` is the conflict target. */
+const STORED_RESOLUTIONS = 'r.resolutions';
+
+/**
+ * The batch as `{slotId: {propPath: {hash, at}}}`, passed as an object rather than
+ * a JSON string: a string bound to a `jsonb` parameter arrives as a jsonb string
+ * scalar, which `jsonb_each` cannot walk.
+ *
+ * Every entry in one batch shares `at`, so the changes settled together read as
+ * one act of reconciling.
+ *
+ * Null-prototype objects throughout: a slot or prop named `__proto__` is a key
+ * here, and assigning one on an ordinary object sets the prototype instead.
+ */
+function resolutionBatch(
+  entries: UpstreamResolutionEntry[],
+  at: string,
+): Record<string, Record<string, UpstreamResolution>> {
+  const batch = Object.create(null) as Record<string, Record<string, UpstreamResolution>>;
+  for (const entry of entries) {
+    const slot = batch[entry.slotId] ?? (Object.create(null) as Record<string, UpstreamResolution>);
+    slot[entry.propPath] = { hash: entry.hash, at };
+    batch[entry.slotId] = slot;
+  }
+  return batch;
+}
+
+/** The batch as `{slotId: [propPath]}`, on the same terms. */
+function clearBatch(targets: UpstreamResolutionTarget[]): Record<string, string[]> {
+  const batch = Object.create(null) as Record<string, string[]>;
+  for (const target of targets) {
+    batch[target.slotId] = [...(batch[target.slotId] ?? []), target.propPath];
+  }
+  return batch;
+}
+
+/**
+ * Records that the changes reported at `targets` on a translation were reconciled
+ * against the canonical values `entries` fingerprint, on this branch. Overwrites
+ * any earlier resolution for a target, so reconciling a change again re-points its
+ * mark, and leaves every other prop and slot as it found them.
+ *
+ * A branch writing for the first time carries main's marks over, so settling one
+ * change on a branch does not hide the rest of the work main had already done to
+ * the translation the branch is serving. `mainBranchId` is the branch to inherit
+ * from; main itself inherits nothing.
+ *
+ * The row holds the map it inherited as `inherited`, so its own map is that
+ * baseline plus the batch that created it. Where the ceiling holds a first write to
+ * the batch alone, the baseline is empty, keeping the row equal to its baseline
+ * plus that batch.
+ *
+ * One statement for the whole batch, so the row is written once however many
+ * changes were settled, and concurrent writes resolve per prop rather than per map.
+ * The same statement enforces `MAX_OVERRIDE_ENTRIES` over the result, so a batch
+ * that would carry the map past the ceiling leaves it untouched rather than landing
+ * in part, and a first write whose inherited map would breach it carries the batch
+ * alone.
+ *
+ * A no-op when the document has no localization edge, so no resolutions are held
+ * for a document that derives from nothing.
+ *
+ * @throws UpstreamResolutionLimitError when the batch would exceed the ceiling
+ */
+export async function setUpstreamResolutions(
+  derivedDocumentId: string,
+  branchId: string,
+  entries: UpstreamResolutionEntry[],
+  mainBranchId?: string,
+): Promise<UpstreamResolutions> {
+  if (entries.length === 0) {
+    return getUpstreamResolutions(derivedDocumentId, branchId, mainBranchId);
+  }
+  const seeded = mergedWithBatch(inheritedMap('$5'));
+  const seededFits = `${entryCount(seeded)} <= $4`;
+  const merged = mergedWithBatch(STORED_RESOLUTIONS);
+  const at = new Date().toISOString();
+  const result = await query<{ stored: UpstreamResolutionsJson }>(
+    `INSERT INTO app.document_relation_branch_resolutions AS r
+       (source_document_id, relation_type, branch_id, resolutions, inherited)
+     SELECT $1, 'localization', $2,
+            CASE WHEN ${seededFits} THEN ${seeded} ELSE $3::jsonb END,
+            CASE WHEN ${seededFits} THEN ${inheritedMap('$5')} ELSE '{}'::jsonb END
+      WHERE EXISTS (
+        SELECT 1 FROM app.document_relations
+         WHERE source_document_id = $1 AND relation_type = 'localization'
+      )
+     ON CONFLICT (source_document_id, relation_type, branch_id)
+     DO UPDATE SET
+       resolutions = CASE
+         WHEN ${entryCount(merged)} <= $4
+         THEN ${merged}
+         ELSE r.resolutions
+       END,
+       updated_at = NOW()
+     RETURNING resolutions AS stored`,
+    [
+      derivedDocumentId,
+      branchId,
+      resolutionBatch(entries, at),
+      MAX_OVERRIDE_ENTRIES,
+      mainBranchId ?? branchId,
+    ],
   );
+  const stored = result.rows[0]?.stored;
+  if (stored === undefined) {
+    return new Map();
+  }
+  const resolutions = resolutionsFromJson(stored);
+  const landed = entries.every(
+    (entry) => resolutions.get(entry.slotId)?.get(entry.propPath)?.hash === entry.hash,
+  );
+  if (!landed) {
+    throw new UpstreamResolutionLimitError(derivedDocumentId, MAX_OVERRIDE_ENTRIES);
+  }
+  return resolutions;
+}
+
+/**
+ * Clears the resolutions at `targets`, returning those changes to the outstanding
+ * list. A target with no resolution leaves the map as it was, and a slot left with
+ * no resolutions is dropped.
+ *
+ * A branch clearing an inherited mark takes main's map over minus what it cleared,
+ * so the change returns to the list on this branch alone. Clearing a mark the
+ * branch does not hold either way leaves it with no map of its own, so it goes on
+ * reading main's rather than being cut off from resolutions main records later.
+ * The row holds the map it inherited as `inherited`, so its own map is that
+ * baseline minus what the clear removed.
+ *
+ * Unlike recording, this is not held to the canonical still holding the slot: a
+ * resolution left behind by a slot that has gone can still be cleared.
+ */
+export async function clearUpstreamResolutions(
+  derivedDocumentId: string,
+  branchId: string,
+  targets: UpstreamResolutionTarget[],
+  mainBranchId?: string,
+): Promise<UpstreamResolutions> {
+  if (targets.length === 0) {
+    return getUpstreamResolutions(derivedDocumentId, branchId, mainBranchId);
+  }
+  const inherited = inheritedMap('$4');
+  const result = await query<{ stored: UpstreamResolutionsJson }>(
+    `INSERT INTO app.document_relation_branch_resolutions AS r
+       (source_document_id, relation_type, branch_id, resolutions, inherited)
+     SELECT $1, 'localization', $2, ${prunedByBatch(inherited)}, ${inherited}
+      WHERE EXISTS (
+        SELECT 1 FROM app.document_relations
+         WHERE source_document_id = $1 AND relation_type = 'localization'
+      )
+        AND (
+          EXISTS (
+            SELECT 1 FROM app.document_relation_branch_resolutions own
+             WHERE own.source_document_id = $1 AND own.relation_type = 'localization'
+               AND own.branch_id = $2
+          )
+          OR ${prunedByBatch(inherited)} <> ${jsonObject(inherited)}
+        )
+     ON CONFLICT (source_document_id, relation_type, branch_id)
+     DO UPDATE SET
+       resolutions = ${prunedByBatch(STORED_RESOLUTIONS)}, updated_at = NOW()
+     RETURNING resolutions AS stored`,
+    [derivedDocumentId, branchId, clearBatch(targets), mainBranchId ?? branchId],
+  );
+  const stored = result.rows[0]?.stored;
+  // Nothing was written when the clear names no resolution this branch holds, so
+  // the resolutions in force are still whatever it reads.
+  return stored === undefined
+    ? getUpstreamResolutions(derivedDocumentId, branchId, mainBranchId)
+    : resolutionsFromJson(stored);
 }

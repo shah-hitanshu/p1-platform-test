@@ -42,12 +42,14 @@ import {
 import type { DocumentWithArchive } from './document-types';
 import { findMainBranchId, getLatestSnapshot, resolveTemplateReadBranch } from './template-read';
 import { buildUpstreamDelta, extractUpstreamDelta } from './migration-service';
+import { fingerprintValue } from '../utils/value-fingerprint';
 import {
   getEdgeByDerivedDocument,
   getLocalizationEdgeByDerivedDocument,
   authorityOverridesFromMetadata,
+  getUpstreamResolutions,
 } from './relations-service';
-import type { AuthorityOverrides } from './relations-service';
+import type { AuthorityOverrides, UpstreamResolutions } from './relations-service';
 import { resolveCanonicalTemplateSnapshot } from './localization-enforcement-service';
 import type { SlotDelta } from './slot-delta';
 
@@ -99,13 +101,21 @@ export interface ChangeSummaryEntry {
   translatable?: boolean;
   /** The structural operation; set on structural entries only. */
   structuralKind?: 'added' | 'removed' | 'moved';
+  /**
+   * When this prop was reconciled. Set only while that resolution still covers the
+   * change; a prop the canonical has moved since reads as outstanding again.
+   * Localization prop entries only.
+   */
+  resolvedAt?: string;
 }
 
 /**
  * The classified drift of a derived document against its upstream edge.
  * `slotDelta` is the raw id-keyed structural delta (superset-compatible with the
  * dashboard's `CssMigrationPreview.templateDelta`); `changes` is the per-change
- * classified view; `counts` tallies each bucket.
+ * classified view, holding the resolved changes only when they were asked for;
+ * `counts` tallies each bucket over `changes`. `resolvedCount` counts the changes
+ * a resolution covers whether or not they are listed.
  */
 export interface ChangeSummary {
   relationType: ChangeRelationType;
@@ -126,6 +136,7 @@ export interface ChangeSummary {
   slotDelta: SlotDelta;
   changes: ChangeSummaryEntry[];
   counts: Record<ChangeClassification, number>;
+  resolvedCount: number;
 }
 
 export interface BuildChangeSummaryParams {
@@ -137,6 +148,11 @@ export interface BuildChangeSummaryParams {
    * spare the lookup when summarising many documents on one branch.
    */
   mainBranchId?: string;
+  /**
+   * List the changes a resolution covers alongside the outstanding ones. Off by
+   * default, so a caller asking what is left to reconcile gets that.
+   */
+  includeResolved?: boolean;
 }
 
 /** An edge reduced to the fields a change summary needs. */
@@ -182,7 +198,7 @@ async function resolveEdge(
  * belong to no component and are keyed by `ROOT_SLOT_ID`, the same slot id the
  * prop diff addresses them with.
  */
-function indexPropsById(
+export function indexPropsById(
   snapshot: Record<string, unknown> | null,
 ): Map<string, Record<string, unknown>> {
   const map = new Map<string, Record<string, unknown>>();
@@ -207,7 +223,10 @@ function unescapePointerSegment(segment: string): string {
 }
 
 /** Reads a value at a JSON Pointer (e.g. `/title`, `/badge/label`) within props. */
-function readAtPointer(props: Record<string, unknown> | undefined, pointer: string): unknown {
+export function readAtPointer(
+  props: Record<string, unknown> | undefined,
+  pointer: string,
+): unknown {
   if (props === undefined) {
     return undefined;
   }
@@ -242,11 +261,43 @@ function emptyCounts(): Record<ChangeClassification, number> {
   return { structural: 0, prop: 0, advisory: 0, needsTranslation: 0, autoApplied: 0 };
 }
 
+/**
+ * What a prop's recorded resolution is judged against: the canonical's props as
+ * they stand now, which is the value each resolution's fingerprint is compared to.
+ */
+interface ResolutionContext {
+  resolutions: UpstreamResolutions;
+  toProps: Map<string, Record<string, unknown>>;
+}
+
 /** Context a localization prop change is classified against. */
 interface LocalizationContext {
   canonicalSnapshot: Record<string, unknown> | null;
   templateSnapshot: Record<string, unknown> | undefined;
   authorityOverrides: AuthorityOverrides;
+  resolution: ResolutionContext;
+}
+
+/**
+ * When the change at one pointer was reconciled, or undefined while the change is
+ * outstanding.
+ *
+ * A resolution stands while the canonical still holds the value it was settled
+ * against. A canonical that has moved that prop since reads as outstanding again,
+ * and one that has moved it back reads as settled, since the translation is aligned
+ * to that very value.
+ */
+async function readResolution(
+  context: ResolutionContext,
+  componentId: string,
+  propPath: string,
+): Promise<string | undefined> {
+  const resolution = context.resolutions.get(componentId)?.get(propPath);
+  if (resolution === undefined) {
+    return undefined;
+  }
+  const now = readAtPointer(context.toProps.get(componentId), propPath);
+  return (await fingerprintValue(now)) === resolution.hash ? resolution.at : undefined;
 }
 
 function classifyLocalizationProp(
@@ -438,6 +489,7 @@ export async function buildChangeSummary(
       slotDelta: { added: [], removed: [], moved: [], templateIds: [] },
       changes: [],
       counts: emptyCounts(),
+      resolvedCount: 0,
     };
   }
 
@@ -466,11 +518,16 @@ export async function buildChangeSummary(
         mainBranchId,
       ),
       authorityOverrides: authorityOverridesFromMetadata(edge.metadata),
+      resolution: {
+        resolutions: await getUpstreamResolutions(derivedDocumentId, branchId, mainBranchId),
+        toProps: indexPropsById(upstream.toSnapshot),
+      },
     };
   }
 
   const changes: ChangeSummaryEntry[] = [];
   const counts = emptyCounts();
+  let resolvedCount = 0;
 
   const pushStructural = (componentId: string, kind: 'added' | 'removed' | 'moved'): void => {
     changes.push({ classification: 'structural', componentId, structuralKind: kind });
@@ -504,14 +561,28 @@ export async function buildChangeSummary(
       };
 
       if (localizationContext !== null) {
+        const propName = topLevelPropName(op.path);
         const { classification, authority, translatable } = classifyLocalizationProp(
           patch.componentId,
-          topLevelPropName(op.path),
+          propName,
           localizationContext,
         );
         entry.classification = classification;
         entry.authority = authority;
         entry.translatable = translatable;
+
+        const resolved = await readResolution(
+          localizationContext.resolution,
+          patch.componentId,
+          op.path,
+        );
+        if (resolved !== undefined) {
+          entry.resolvedAt = resolved;
+          resolvedCount++;
+          if (params.includeResolved !== true) {
+            continue;
+          }
+        }
       }
 
       counts[entry.classification]++;
@@ -530,5 +601,6 @@ export async function buildChangeSummary(
     slotDelta: upstream.slotDelta,
     changes,
     counts,
+    resolvedCount,
   };
 }

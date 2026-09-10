@@ -51,6 +51,10 @@ import {
   setAuthorityOverride,
   clearAuthorityOverride,
   resolveSlotAuthorityDefaults,
+  getUpstreamResolutions,
+  upstreamResolutionsToJson,
+  setUpstreamResolutions,
+  clearUpstreamResolutions,
   isTombstonedOnBranch,
   duplicateDocument,
 } from '../services';
@@ -60,8 +64,17 @@ import {
   handleAuthorityOverridesValidation,
   handleCreateDocumentValidation,
   handleCreateTranslationValidation,
+  handleUpstreamResolutionsValidation,
 } from './validation/document-api.validation';
-import { isChangeRelationType } from '../services/change-summary-service';
+import {
+  indexPropsById,
+  isChangeRelationType,
+  readAtPointer,
+} from '../services/change-summary-service';
+import { extractComponentIds } from '../services/component-identity';
+import { findMainBranchId } from '../services/template-read';
+import { fingerprintValue } from '../utils/value-fingerprint';
+import { ROOT_SLOT_ID } from '@pantheon-systems/p1-content-validator';
 import {
   normalizePath,
   isRegistryWritePath,
@@ -83,6 +96,7 @@ export type DocumentRouteAction =
   | 'translations'
   | 'upstream-diff'
   | 'authority-overrides'
+  | 'upstream-resolutions'
   | 'copy';
 
 /** The operation a document route path names against a version. */
@@ -718,11 +732,13 @@ async function handleUpstreamDiff(
   relationType: ChangeRelationType,
   branchId: string,
   documentId: string,
+  includeResolved: boolean,
 ): Promise<Response> {
   const summary = await buildChangeSummary({
     derivedDocumentId: documentId,
     branchId,
     relationType,
+    includeResolved,
   });
 
   if (summary === null) {
@@ -730,6 +746,141 @@ async function handleUpstreamDiff(
   }
 
   return jsonResponse(summary);
+}
+
+/**
+ * Whether a translation can be reconciled on this branch. A branch holds no
+ * version of a page it has not edited, serving main's, so a missing version reads
+ * as present rather than absent; only an explicit tombstone means gone. The site
+ * is checked here because that is what a version row on the branch used to imply.
+ */
+async function isReconcilableOnBranch(
+  documentId: string,
+  branchId: string,
+  siteId: string,
+): Promise<boolean> {
+  const document = await getDocument(documentId);
+  if (document?.siteId !== siteId) {
+    return false;
+  }
+  return !(await isTombstonedOnBranch(documentId, branchId));
+}
+
+/**
+ * Handles the upstream-resolution routes on a translation:
+ * - GET returns the full per-prop resolution map.
+ * - PUT records a batch of (slotId, propPath) changes as reconciled against the
+ *   canonical version the body names, whose values the records fingerprint.
+ * - DELETE clears a batch, returning those changes to the outstanding list.
+ *
+ * The document must be a translation (the derived side of a localization edge);
+ * otherwise the route 404s.
+ */
+async function handleUpstreamResolutions(
+  request: Request,
+  documentId: string,
+  branchId: string,
+): Promise<Response> {
+  const edge = await getLocalizationEdgeByDerivedDocument(documentId);
+  if (edge === null) {
+    return errorResponse('Document is not a translation', 404);
+  }
+
+  // A branch serves main's translation until it edits it, so its resolutions read
+  // and write against main's until it has some of its own.
+  const mainBranchId = await findMainBranchId(branchId);
+
+  if (request.method === 'GET') {
+    return jsonResponse({
+      upstreamResolutions: upstreamResolutionsToJson(
+        await getUpstreamResolutions(documentId, branchId, mainBranchId),
+      ),
+    });
+  }
+
+  const body = await parseJsonBody<unknown>(request);
+
+  if (request.method === 'DELETE') {
+    const { targets } = validateBody(handleUpstreamResolutionsValidation.delete, body);
+    return jsonResponse({
+      upstreamResolutions: upstreamResolutionsToJson(
+        await clearUpstreamResolutions(documentId, branchId, targets, mainBranchId),
+      ),
+    });
+  }
+
+  const { targets, upstreamVersionId } = validateBody(
+    handleUpstreamResolutionsValidation.put,
+    body,
+  );
+
+  // The canonical as this branch reads it: its own version once it has edited the
+  // canonical, otherwise the one it inherits from main.
+  const current = await getLatestDocumentVersionWithFallback(
+    edge.upstreamDocumentId,
+    branchId,
+    mainBranchId ?? branchId,
+  );
+  if (current === null || current.version.isTombstone === true) {
+    return errorResponse('Canonical document has no live version on this branch', 409);
+  }
+
+  // The version named is the state the caller settled against, so its values are
+  // what the resolutions fingerprint. Any version of the canonical is one the
+  // caller could have been shown, main's included, but a version of some other
+  // document names no value to settle.
+  const settledAgainst = await getDocumentVersion(upstreamVersionId);
+  if (settledAgainst?.documentId !== edge.upstreamDocumentId) {
+    return errorResponse('upstreamVersionId is not a version of this canonical', 400);
+  }
+
+  // Only a slot the canonical still holds can be reconciled, which keeps the map
+  // bounded by live content. A DELETE is not held to this, so a resolution left
+  // behind by a slot that has since gone can still be cleared.
+  const namedSlots = targets
+    .map((target) => target.slotId)
+    .filter((slotId) => slotId !== ROOT_SLOT_ID);
+  let currentSnapshot: Record<string, unknown> | null = null;
+  if (namedSlots.length > 0) {
+    // The version the branch reads, not the newest on the branch holding it: a
+    // branch inherits main's latest published version, so an unpublished draft
+    // there must not decide what this branch may reconcile.
+    currentSnapshot = await reconstructVersionSnapshot(
+      edge.upstreamDocumentId,
+      current.version.branchId,
+      current.version.versionNumber,
+    );
+    const liveSlots = new Set(extractComponentIds(currentSnapshot));
+    const missing = namedSlots.find((slotId) => !liveSlots.has(slotId));
+    if (missing !== undefined) {
+      return errorResponse(`The canonical document holds no slot "${missing}"`, 400);
+    }
+  }
+
+  // Settling against the version just read is the ordinary case, and then the
+  // snapshot above is the one to fingerprint.
+  const settledSnapshot = upstreamVersionId === current.version.id && currentSnapshot !== null
+    ? currentSnapshot
+    : await reconstructVersionSnapshot(
+      edge.upstreamDocumentId,
+      settledAgainst.branchId,
+      settledAgainst.versionNumber,
+    );
+  const settledProps = indexPropsById(settledSnapshot);
+  const entries = await Promise.all(
+    targets.map(async (target) => ({
+      ...target,
+      hash: await fingerprintValue(
+        readAtPointer(settledProps.get(target.slotId), target.propPath),
+      ),
+    })),
+  );
+
+  return jsonResponse({
+    upstreamResolutions: upstreamResolutionsToJson(
+      await setUpstreamResolutions(documentId, branchId, entries, mainBranchId),
+    ),
+  });
 }
 
 /**
@@ -1208,11 +1359,33 @@ async function handleBranchScopedDocumentRoutes(
     if (!isChangeRelationType(relationTypeParam)) {
       return errorResponse('relationType must be one of: template, localization', 400);
     }
-    const exists = await documentExistsOnBranch(context.documentId, branchId);
-    if (!exists) {
+    if (!(await isReconcilableOnBranch(context.documentId, branchId, context.siteId))) {
       return errorResponse('Document not found on this branch', 404);
     }
-    return await handleUpstreamDiff(relationTypeParam, branchId, context.documentId);
+    return await handleUpstreamDiff(
+      relationTypeParam,
+      branchId,
+      context.documentId,
+      new URL(request.url).searchParams.get('includeResolved') === 'true',
+    );
+  }
+
+  // Handle upstream-resolutions: read which of a translation's props have been
+  // reconciled (GET), or record/clear one (PUT/DELETE).
+  if (context.action === 'upstream-resolutions' && context.documentId !== undefined) {
+    if (method !== 'GET' && method !== 'PUT' && method !== 'DELETE') {
+      return errorResponse('Method not allowed', 405);
+    }
+    await assertPermission(
+      context.principal,
+      context.siteId,
+      branchId,
+      method === 'GET' ? 'canView' : 'canEditDocuments',
+    );
+    if (!(await isReconcilableOnBranch(context.documentId, branchId, context.siteId))) {
+      return errorResponse('Document not found on this branch', 404);
+    }
+    return await handleUpstreamResolutions(request, context.documentId, branchId);
   }
 
   if (context.action === 'copy' && context.documentId !== undefined) {
@@ -1241,8 +1414,7 @@ async function handleBranchScopedDocumentRoutes(
       branchId,
       method === 'GET' ? 'canView' : 'canEditDocuments',
     );
-    const exists = await documentExistsOnBranch(context.documentId, branchId);
-    if (!exists) {
+    if (!(await isReconcilableOnBranch(context.documentId, branchId, context.siteId))) {
       return errorResponse('Document not found on this branch', 404);
     }
     return await handleAuthorityOverrides(request, context.documentId, branchId);

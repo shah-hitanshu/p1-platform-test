@@ -572,6 +572,16 @@ export class AuthorityOverrideLimitError extends HttpError {
   }
 }
 
+export class UpstreamResolutionLimitError extends HttpError {
+  readonly status = 400;
+  constructor(
+    public readonly derivedDocumentId: string,
+    limit: number,
+  ) {
+    super(`A translation holds at most ${String(limit)} upstream resolutions.`);
+  }
+}
+
 export class SchemaValidationError extends HttpError {
   readonly status = 400;
   constructor(

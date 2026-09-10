@@ -10,6 +10,7 @@ import { makeBranch } from '../helpers/branch';
 import { makePrincipal } from '../helpers/principal';
 import { readJson } from '../helpers/http';
 import type { DocumentRouteContext } from '../../src/routes/document-api';
+import type { DocumentWithArchive } from '../../src/services/document-types';
 
 vi.mock('../../src/services', () => ({
   getBranch: vi.fn(),
@@ -27,6 +28,7 @@ vi.mock('../../src/services', () => ({
   listDocumentsOnBranch: vi.fn(),
   createDocumentOnBranch: vi.fn(),
   documentExistsOnBranch: vi.fn(),
+  isTombstonedOnBranch: vi.fn(),
   deleteDocumentOnBranch: vi.fn(),
   getLatestDocumentVersion: vi.fn(),
   getLatestDocumentVersionWithFallback: vi.fn(),
@@ -98,7 +100,13 @@ const summary = {
   slotDelta: { added: [], removed: [], moved: [], templateIds: [] },
   changes: [],
   counts: { structural: 0, prop: 0, advisory: 0, needsTranslation: 0, autoApplied: 0 },
+  resolvedCount: 0,
 };
+
+/** The document the route's gate reads, belonging to the site named. */
+function documentOnSite(siteId: string): DocumentWithArchive {
+  return { id: DOC_ID, siteId } as unknown as DocumentWithArchive;
+}
 
 function upstreamDiffRequest(query = ''): Request {
   return new Request(
@@ -142,7 +150,8 @@ describe('GET upstream-diff', () => {
     const services = await import('../../src/services');
 
     vi.mocked(services.getBranch).mockResolvedValueOnce(featureBranch);
-    vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(true);
+    vi.mocked(services.getDocument).mockResolvedValueOnce(documentOnSite('site-1'));
+    vi.mocked(services.isTombstonedOnBranch).mockResolvedValueOnce(false);
     vi.mocked(services.buildChangeSummary).mockResolvedValueOnce(summary);
 
     const response = await handleDocumentRoutes(
@@ -166,7 +175,8 @@ describe('GET upstream-diff', () => {
     const services = await import('../../src/services');
 
     vi.mocked(services.getBranch).mockResolvedValueOnce(featureBranch);
-    vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(true);
+    vi.mocked(services.getDocument).mockResolvedValueOnce(documentOnSite('site-1'));
+    vi.mocked(services.isTombstonedOnBranch).mockResolvedValueOnce(false);
     vi.mocked(services.buildChangeSummary).mockResolvedValueOnce(summary);
 
     const response = await handleDocumentRoutes(upstreamDiffRequest(), context);
@@ -176,12 +186,43 @@ describe('GET upstream-diff', () => {
     expect(callArg?.relationType).toBe('localization');
   });
 
+  it('asks for outstanding changes only when includeResolved is absent', async () => {
+    const { handleDocumentRoutes } = await import('../../src/routes/document-api');
+    const services = await import('../../src/services');
+
+    vi.mocked(services.getBranch).mockResolvedValueOnce(featureBranch);
+    vi.mocked(services.getDocument).mockResolvedValueOnce(documentOnSite('site-1'));
+    vi.mocked(services.isTombstonedOnBranch).mockResolvedValueOnce(false);
+    vi.mocked(services.buildChangeSummary).mockResolvedValueOnce(summary);
+
+    await handleDocumentRoutes(upstreamDiffRequest(), context);
+
+    const callArg = vi.mocked(services.buildChangeSummary).mock.calls[0]?.[0];
+    expect(callArg?.includeResolved).toBe(false);
+  });
+
+  it('asks for the reconciled changes too when includeResolved is set', async () => {
+    const { handleDocumentRoutes } = await import('../../src/routes/document-api');
+    const services = await import('../../src/services');
+
+    vi.mocked(services.getBranch).mockResolvedValueOnce(featureBranch);
+    vi.mocked(services.getDocument).mockResolvedValueOnce(documentOnSite('site-1'));
+    vi.mocked(services.isTombstonedOnBranch).mockResolvedValueOnce(false);
+    vi.mocked(services.buildChangeSummary).mockResolvedValueOnce(summary);
+
+    await handleDocumentRoutes(upstreamDiffRequest('?includeResolved=true'), context);
+
+    const callArg = vi.mocked(services.buildChangeSummary).mock.calls[0]?.[0];
+    expect(callArg?.includeResolved).toBe(true);
+  });
+
   it('passes the template relation through when requested', async () => {
     const { handleDocumentRoutes } = await import('../../src/routes/document-api');
     const services = await import('../../src/services');
 
     vi.mocked(services.getBranch).mockResolvedValueOnce(featureBranch);
-    vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(true);
+    vi.mocked(services.getDocument).mockResolvedValueOnce(documentOnSite('site-1'));
+    vi.mocked(services.isTombstonedOnBranch).mockResolvedValueOnce(false);
     vi.mocked(services.buildChangeSummary).mockResolvedValueOnce({
       ...summary,
       relationType: 'template',
@@ -212,12 +253,13 @@ describe('GET upstream-diff', () => {
     expect(services.buildChangeSummary).not.toHaveBeenCalled();
   });
 
-  it('returns 404 when the document is not on this branch', async () => {
+  it('returns 404 when the document is deleted on this branch', async () => {
     const { handleDocumentRoutes } = await import('../../src/routes/document-api');
     const services = await import('../../src/services');
 
     vi.mocked(services.getBranch).mockResolvedValueOnce(featureBranch);
-    vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(false);
+    vi.mocked(services.getDocument).mockResolvedValueOnce(documentOnSite('site-1'));
+    vi.mocked(services.isTombstonedOnBranch).mockResolvedValueOnce(true);
 
     const response = await handleDocumentRoutes(upstreamDiffRequest(), context);
 
@@ -225,12 +267,40 @@ describe('GET upstream-diff', () => {
     expect(services.buildChangeSummary).not.toHaveBeenCalled();
   });
 
+  it('returns 404 when the document belongs to another site', async () => {
+    const { handleDocumentRoutes } = await import('../../src/routes/document-api');
+    const services = await import('../../src/services');
+
+    vi.mocked(services.getBranch).mockResolvedValueOnce(featureBranch);
+    vi.mocked(services.getDocument).mockResolvedValueOnce(documentOnSite('site-2'));
+
+    const response = await handleDocumentRoutes(upstreamDiffRequest(), context);
+
+    expect(response.status).toBe(404);
+    expect(services.buildChangeSummary).not.toHaveBeenCalled();
+  });
+
+  it('reports on a document the branch inherits, holding no version of its own', async () => {
+    const { handleDocumentRoutes } = await import('../../src/routes/document-api');
+    const services = await import('../../src/services');
+
+    vi.mocked(services.getBranch).mockResolvedValueOnce(featureBranch);
+    vi.mocked(services.getDocument).mockResolvedValueOnce(documentOnSite('site-1'));
+    vi.mocked(services.isTombstonedOnBranch).mockResolvedValueOnce(false);
+    vi.mocked(services.buildChangeSummary).mockResolvedValueOnce(summary);
+
+    const response = await handleDocumentRoutes(upstreamDiffRequest(), context);
+
+    expect(response.status).toBe(200);
+  });
+
   it('returns 404 when the document has no edge of the requested relation type', async () => {
     const { handleDocumentRoutes } = await import('../../src/routes/document-api');
     const services = await import('../../src/services');
 
     vi.mocked(services.getBranch).mockResolvedValueOnce(featureBranch);
-    vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(true);
+    vi.mocked(services.getDocument).mockResolvedValueOnce(documentOnSite('site-1'));
+    vi.mocked(services.isTombstonedOnBranch).mockResolvedValueOnce(false);
     vi.mocked(services.buildChangeSummary).mockResolvedValueOnce(null);
 
     const response = await handleDocumentRoutes(upstreamDiffRequest(), context);

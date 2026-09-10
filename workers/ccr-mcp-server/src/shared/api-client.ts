@@ -164,6 +164,11 @@ export interface CreateDocumentParams {
   templateVersion?: number;
 }
 
+/** Response shape of every upstream-resolutions request on a translation. */
+export interface UpstreamResolutionsResponse {
+  upstreamResolutions: Record<string, Record<string, { hash: string; at: string }>>;
+}
+
 /** Response shape of the authority-overrides read on a translation. */
 export interface TranslationAuthority {
   authorityOverrides: Record<string, Record<string, Authority>>;
@@ -1306,14 +1311,56 @@ export class McpApiClient {
     branchId: string,
     documentId: string,
     relationType: 'template' | 'localization',
+    includeResolved = false,
   ): Promise<Record<string, unknown>> {
     const base = `${this.baseUrl}/api/sites/${siteId}/branches/${branchId}/documents/${documentId}`;
-    const url = `${base}/upstream-diff?relationType=${encodeURIComponent(relationType)}`;
+    const query = new URLSearchParams({ relationType });
+    if (includeResolved) {
+      query.set('includeResolved', 'true');
+    }
+    const url = `${base}/upstream-diff?${query.toString()}`;
     const response = await this.doFetch(url, {
       method: 'GET',
       headers: this.getHeaders(),
     });
     return this.handleResponse<Record<string, unknown>>(response);
+  }
+
+  /**
+   * Records that reported changes on a translation have been reconciled against
+   * their canonical, or clears those records so the changes are reported again.
+   * `upstreamVersionId` names the canonical version the caller was shown, whose
+   * values the records are taken against.
+   */
+  async setUpstreamResolutions(
+    siteId: string,
+    branchId: string,
+    documentId: string,
+    targets: { slotId: string; propPath: string }[],
+    resolved: boolean,
+    upstreamVersionId?: string,
+  ): Promise<UpstreamResolutionsResponse> {
+    const base = `${this.baseUrl}/api/sites/${siteId}/branches/${branchId}/documents/${documentId}`;
+    const response = await this.doFetch(`${base}/upstream-resolutions`, {
+      method: resolved ? 'PUT' : 'DELETE',
+      headers: this.getHeaders(),
+      body: JSON.stringify(resolved ? { targets, upstreamVersionId } : { targets }),
+    });
+    return this.handleResponse<UpstreamResolutionsResponse>(response);
+  }
+
+  /** Which of a translation's props have been reconciled, and against what value. */
+  async getUpstreamResolutions(
+    siteId: string,
+    branchId: string,
+    documentId: string,
+  ): Promise<UpstreamResolutionsResponse> {
+    const base = `${this.baseUrl}/api/sites/${siteId}/branches/${branchId}/documents/${documentId}`;
+    const response = await this.doFetch(`${base}/upstream-resolutions`, {
+      method: 'GET',
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse<UpstreamResolutionsResponse>(response);
   }
 
   async canAgentEdit(request: CanAgentEditRequest): Promise<CanAgentEditResponse> {

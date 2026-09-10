@@ -488,7 +488,11 @@ function setNestedValue(obj: Record<string, unknown>, path: string, value: unkno
 // Prop Patch Extraction
 // =============================================================================
 
-function deepEqual(a: unknown, b: unknown): boolean {
+/**
+ * Structural equality by value, the same comparison the prop diff uses to decide
+ * whether a prop moved.
+ */
+export function deepEqual(a: unknown, b: unknown): boolean {
   if (a === b) return true;
   if (a === null || b === null) return false;
   if (typeof a !== typeof b) return false;

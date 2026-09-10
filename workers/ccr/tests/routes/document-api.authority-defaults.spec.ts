@@ -11,6 +11,7 @@ import { makeBranch } from '../helpers/branch';
 import { makePrincipal } from '../helpers/principal';
 import { readJson } from '../helpers/http';
 import type { DocumentRouteContext } from '../../src/routes/document-api';
+import type { DocumentWithArchive } from '../../src/services';
 
 vi.mock('../../src/services', () => ({
   getBranch: vi.fn(),
@@ -37,6 +38,7 @@ vi.mock('../../src/services', () => ({
   listDocumentsOnBranch: vi.fn(),
   createDocumentOnBranch: vi.fn(),
   documentExistsOnBranch: vi.fn(),
+  isTombstonedOnBranch: vi.fn(),
   deleteDocumentOnBranch: vi.fn(),
   getLatestDocumentVersion: vi.fn(),
   getLatestDocumentVersionWithFallback: vi.fn(),
@@ -136,7 +138,10 @@ async function callRoute(request: Request): Promise<Response> {
 async function primeTranslation(defaults = slotDefaults): Promise<void> {
   const services = await import('../../src/services');
   vi.mocked(services.getBranch).mockResolvedValueOnce(featureBranch);
-  vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(true);
+  vi.mocked(services.getDocument).mockResolvedValueOnce(
+    { id: TRANSLATION_ID, siteId: 'site-1' } as unknown as DocumentWithArchive,
+  );
+  vi.mocked(services.isTombstonedOnBranch).mockResolvedValueOnce(false);
   vi.mocked(services.getLocalizationEdgeByDerivedDocument).mockResolvedValueOnce(localizationEdge);
   vi.mocked(services.getAuthorityOverrides).mockResolvedValueOnce(overridesMap);
   vi.mocked(services.resolveSlotAuthorityDefaults).mockResolvedValueOnce({

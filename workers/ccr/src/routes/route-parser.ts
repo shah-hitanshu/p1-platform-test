@@ -207,6 +207,17 @@ export function parseRoute(path: string): { handler: string; params: RouteParams
     };
   }
 
+  // /api/sites/{siteId}/branches/{branchId}/documents/{documentId}/upstream-resolutions
+  const upstreamResolutionsRe = /^\/api\/sites\/([^/]+)\/branches\/([^/]+)\/documents\/([^/]+)\/upstream-resolutions$/;
+  const upstreamResolutionsMatch = upstreamResolutionsRe.exec(normalizedPath);
+  if (upstreamResolutionsMatch) {
+    const [, siteId, branchId, documentId] = upstreamResolutionsMatch;
+    return {
+      handler: 'documents',
+      params: { siteId, branchId, documentId, action: 'upstream-resolutions' },
+    };
+  }
+
   // Document version routes (must come before branch-scoped document routes)
   // /api/sites/{siteId}/branches/{branchId}/documents/{documentId}/versions/latest
   const versionLatestRe = /^\/api\/sites\/([^/]+)\/branches\/([^/]+)\/documents\/([^/]+)\/versions\/latest$/;

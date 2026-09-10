@@ -24,6 +24,42 @@ const overrideTarget = z.object({
   propName: overrideKey('propName'),
 });
 
+/**
+ * Ceiling on how many changes one request settles, so a single statement stays
+ * bounded and a first write cannot reach `MAX_OVERRIDE_ENTRIES`.
+ */
+const MAX_RESOLUTION_TARGETS = 100;
+
+const resolutionTargets = z
+  .array(
+    z.object({
+      slotId: overrideKey('slotId'),
+      propPath: overrideKey('propPath'),
+    }),
+  )
+  .min(1, 'targets must name at least one change')
+  .max(
+    MAX_RESOLUTION_TARGETS,
+    `targets must name at most ${String(MAX_RESOLUTION_TARGETS)} changes`,
+  );
+
+export const handleUpstreamResolutionsValidation = {
+  /**
+   * Recording names the changes to settle and the canonical version the caller was
+   * shown them at. The version comes from the request so that what gets settled is
+   * the state the caller saw: a change the canonical made after that stays
+   * outstanding. It names the version by identity, which resolves the same read
+   * from any branch — a branch that has not edited the canonical is shown the
+   * version it inherits from main.
+   */
+  put: z.object({
+    targets: resolutionTargets,
+    upstreamVersionId: z.uuid({ error: 'upstreamVersionId must name a version' }),
+  }),
+  /** Clearing names only the changes, since no version is being recorded. */
+  delete: z.object({ targets: resolutionTargets }),
+};
+
 export const handleCreateDocumentValidation = {
   /**
    * Creating a document names a path, and optionally the language its content is

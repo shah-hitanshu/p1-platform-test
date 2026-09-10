@@ -169,6 +169,10 @@ export {
   setAuthorityOverride,
   MAX_OVERRIDE_ENTRIES,
   clearAuthorityOverride,
+  getUpstreamResolutions,
+  upstreamResolutionsToJson,
+  setUpstreamResolutions,
+  clearUpstreamResolutions,
 } from './relations-service';
 
 export type {
@@ -180,6 +184,10 @@ export type {
   Authority,
   AuthorityOverrides,
   AuthorityOverridesJson,
+  UpstreamResolution,
+  UpstreamResolutions,
+  UpstreamResolutionsJson,
+  UpstreamResolutionEntry,
 } from './relations-service';
 
 // Create-translation Service

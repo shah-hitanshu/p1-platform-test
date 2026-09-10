@@ -15,18 +15,27 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type postgres from 'postgres';
 import { setDatabaseInstance } from '../../src/db';
-import { createRealDatabaseConnection } from '../helpers/database';
+import { createRealDatabaseConnection, deleteSiteCascade } from '../helpers/database';
 
 import { createSite } from '../../src/services/site-service';
 import { createDocumentOnBranch } from '../../src/services/branch-document-service';
 import { createDocumentVersion } from '../../src/services/document-version-service';
 import { createTranslation } from '../../src/services/create-translation-service';
-import { setAuthorityOverride } from '../../src/services/relations-service';
+import {
+  setAuthorityOverride,
+  setUpstreamResolutions,
+} from '../../src/services/relations-service';
 import {
   buildChangeSummary,
+  indexPropsById,
+  readAtPointer,
   type ChangeSummary,
   type ChangeSummaryEntry,
 } from '../../src/services/change-summary-service';
+import { createBranch } from '../../src/services/branch-service';
+import { publishDocument } from '../../src/services/checkpoint-publish';
+import { getLatestSnapshot } from '../../src/services/template-read';
+import { fingerprintValue } from '../../src/utils/value-fingerprint';
 
 const TEST_USER_ID = '77777777-7777-7777-7777-777777777777';
 const SITE_PREFIX = 'change-summary-test';
@@ -71,20 +80,8 @@ describe('Change summary - Integration Tests', () => {
   });
 
   afterAll(async () => {
-    try {
-      await sql`DELETE FROM app.document_relations WHERE source_document_id IN (
-        SELECT id FROM app.documents WHERE site_id = ${siteId}
-      )`;
-      await sql`DELETE FROM app.document_versions WHERE document_id IN (
-        SELECT id FROM app.documents WHERE site_id = ${siteId}
-      )`;
-      await sql`DELETE FROM app.documents WHERE site_id = ${siteId}`;
-      await sql`DELETE FROM app.branches WHERE site_id = ${siteId}`;
-      await sql`DELETE FROM app.sites WHERE id = ${siteId}`;
-      await sql`DELETE FROM app.users WHERE id = ${TEST_USER_ID}`;
-    } catch {
-      // Ignore cleanup errors
-    }
+    await deleteSiteCascade(sql, siteId);
+    await sql`DELETE FROM app.users WHERE id = ${TEST_USER_ID}`;
     await sql.end();
     setDatabaseInstance(null);
   });
@@ -488,6 +485,207 @@ describe('Change summary - Integration Tests', () => {
       expect(entry?.upstreamOldValue).toBe('Canonical v1');
       expect(entry?.upstreamNewValue).toBe('Canonical v2');
       expect(entry?.documentValue).toBe('Übersetzt');
+    });
+  });
+
+  describe('resolved changes', () => {
+    const SLOT = 'HeadingBlock-res';
+
+    function snapshotWith(title: string, subtitle: string): Record<string, unknown> {
+      return {
+        content: [{ type: 'HeadingBlock', props: { id: SLOT, title, subtitle } }],
+        root: { props: {} },
+        zones: {},
+      };
+    }
+
+    /** A canonical at v1 and a translation of it, pinned to that version. */
+    async function setup(path: string): Promise<{ canonicalId: string; translationId: string }> {
+      const canonical = await createDocumentOnBranch({
+        siteId,
+        branchId,
+        path,
+        snapshot: snapshotWith('Title v1', 'Sub v1'),
+        createdById: TEST_USER_ID,
+        createdByType: 'user',
+      });
+      const translation = await createTranslation({
+        canonicalDocumentId: canonical.document.id,
+        branchId,
+        locale: 'de-DE',
+        createdById: TEST_USER_ID,
+        createdByType: 'user',
+      });
+      return { canonicalId: canonical.document.id, translationId: translation.document.id };
+    }
+
+    async function publish(canonicalId: string, snapshot: Record<string, unknown>): Promise<void> {
+      await createDocumentVersion({
+        documentId: canonicalId,
+        branchId,
+        snapshot,
+        source: 'edit',
+        createdById: TEST_USER_ID,
+        createdByType: 'user',
+      });
+    }
+
+    const summarise = async (
+      translationId: string,
+      includeResolved?: boolean,
+    ): Promise<ChangeSummary> => {
+      const summary = await buildChangeSummary({
+        derivedDocumentId: translationId,
+        branchId,
+        relationType: 'localization',
+        includeResolved,
+      });
+      expect(summary).not.toBeNull();
+      return summary!;
+    };
+
+    /**
+     * Settles a change against the canonical's value as it stands, which is what
+     * the route does with the version the caller was shown.
+     */
+    const settle = async (
+      translationId: string,
+      canonicalId: string,
+      propPath: string,
+      on = branchId,
+    ): Promise<void> => {
+      const props = indexPropsById(await getLatestSnapshot(canonicalId, branchId)).get(SLOT);
+      await setUpstreamResolutions(
+        translationId,
+        on,
+        [{ slotId: SLOT, propPath, hash: await fingerprintValue(readAtPointer(props, propPath)) }],
+        branchId,
+      );
+    };
+
+    it('omits a change its resolution covers and counts it apart', async () => {
+      const { canonicalId, translationId } = await setup('pages/res-omit');
+      await publish(canonicalId, snapshotWith('Title v2', 'Sub v1'));
+
+      const before = await summarise(translationId);
+      expect(findByComponent(before, SLOT, '/title')).toBeDefined();
+      expect(before.resolvedCount).toBe(0);
+
+      await settle(translationId, canonicalId, '/title');
+
+      const after = await summarise(translationId);
+      expect(findByComponent(after, SLOT, '/title')).toBeUndefined();
+      expect(after.resolvedCount).toBe(1);
+      expect(after.counts.needsTranslation).toBe(0);
+    });
+
+    it('lists a resolved change on request, with the time it was resolved', async () => {
+      const { canonicalId, translationId } = await setup('pages/res-include');
+      await publish(canonicalId, snapshotWith('Title v2', 'Sub v1'));
+      const before = Date.now();
+      await settle(translationId, canonicalId, '/title');
+
+      const summary = await summarise(translationId, true);
+      const resolvedAt = findByComponent(summary, SLOT, '/title')?.resolvedAt ?? '';
+      expect(Date.parse(resolvedAt)).toBeGreaterThanOrEqual(before);
+      expect(summary.counts.needsTranslation).toBe(1);
+      expect(summary.resolvedCount).toBe(1);
+    });
+
+    it('holds a resolution while the canonical leaves that prop alone', async () => {
+      const { canonicalId, translationId } = await setup('pages/res-sibling');
+      await publish(canonicalId, snapshotWith('Title v2', 'Sub v1'));
+      await settle(translationId, canonicalId, '/title');
+
+      await publish(canonicalId, snapshotWith('Title v2', 'Sub v3'));
+
+      const summary = await summarise(translationId);
+      expect(findByComponent(summary, SLOT, '/title')).toBeUndefined();
+      expect(findByComponent(summary, SLOT, '/subtitle')).toBeDefined();
+      expect(summary.resolvedCount).toBe(1);
+    });
+
+    it('returns a change to the list once the canonical moves that prop again', async () => {
+      const { canonicalId, translationId } = await setup('pages/res-removed');
+      await publish(canonicalId, snapshotWith('Title v2', 'Sub v1'));
+      await settle(translationId, canonicalId, '/title');
+      await publish(canonicalId, snapshotWith('Title v3', 'Sub v1'));
+
+      const summary = await summarise(translationId);
+      const entry = findByComponent(summary, SLOT, '/title');
+      expect(entry).toBeDefined();
+      expect(entry?.resolvedAt).toBeUndefined();
+      expect(summary.resolvedCount).toBe(0);
+    });
+
+    it('holds a resolution the canonical moves away from and back to', async () => {
+      const { canonicalId, translationId } = await setup('pages/res-revert');
+      await publish(canonicalId, snapshotWith('Title v2', 'Sub v1'));
+      await settle(translationId, canonicalId, '/title');
+
+      await publish(canonicalId, snapshotWith('Title v3', 'Sub v1'));
+      expect(findByComponent(await summarise(translationId), SLOT, '/title')).toBeDefined();
+
+      await publish(canonicalId, snapshotWith('Title v2', 'Sub v1'));
+
+      // The translation is aligned to the value the canonical holds again, so there
+      // is nothing left to reconcile.
+      const summary = await summarise(translationId);
+      expect(findByComponent(summary, SLOT, '/title')).toBeUndefined();
+      expect(summary.resolvedCount).toBe(1);
+    });
+
+    it("reads main's resolutions on a branch that has settled nothing", async () => {
+      const { canonicalId, translationId } = await setup('pages/res-inherit');
+      await publish(canonicalId, snapshotWith('Title v2', 'Sub v1'));
+      await settle(translationId, canonicalId, '/title');
+
+      // A branch reads the canonical it inherits from main's published version, so
+      // there has to be one for the branch to have anything to compare.
+      await publishDocument({
+        siteId,
+        branchId,
+        documentId: canonicalId,
+        createdById: TEST_USER_ID,
+        createdByType: 'user',
+      });
+      const other = await createBranch({
+        siteId,
+        name: `res-inherit-${String(Date.now())}`,
+        sourceBranchId: branchId,
+        createdById: TEST_USER_ID,
+        createdByType: 'user',
+      });
+
+      const summary = await buildChangeSummary({
+        derivedDocumentId: translationId,
+        branchId: other.id,
+        relationType: 'localization',
+      });
+
+      expect(findByComponent(summary!, SLOT, '/title')).toBeUndefined();
+      expect(summary?.resolvedCount).toBe(1);
+    });
+
+    it('leaves a structural change listed', async () => {
+      const { canonicalId, translationId } = await setup('pages/res-structural');
+      await publish(canonicalId, {
+        content: [
+          { type: 'HeadingBlock', props: { id: SLOT, title: 'Title v1', subtitle: 'Sub v1' } },
+          { type: 'TextBlock', props: { id: 'TextBlock-new', body: 'Added' } },
+        ],
+        root: { props: {} },
+        zones: {},
+      });
+      await setUpstreamResolutions(
+        translationId,
+        branchId,
+        [{ slotId: 'TextBlock-new', propPath: '/body', hash: await fingerprintValue('Added') }],
+      );
+
+      const summary = await summarise(translationId);
+      expect(findByComponent(summary, 'TextBlock-new')?.structuralKind).toBe('added');
+      expect(summary.counts.structural).toBe(1);
     });
   });
 
