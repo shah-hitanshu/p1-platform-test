@@ -1,5 +1,7 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": { "noEmit": true, "rootDir": "." },
-  "include": ["test/**/*", "vitest.setup.ts"]
+  // `include` replaces the base's, so the CSS-module declaration has to be named again —
+  // without it, a component a test imports fails on its own stylesheet import.
+  "include": ["test/**/*", "vitest.setup.ts", "src/css-modules.d.ts"]
 }

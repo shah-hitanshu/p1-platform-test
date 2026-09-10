@@ -160,7 +160,9 @@ export function setPendingPage(
 }
 
 export function makeId(): string {
-  return Math.random().toString(36).slice(2, 9);
+  // getRandomValues, not randomUUID: the latter needs a secure context, and this package
+  // ships to hosts we don't control.
+  return Array.from(crypto.getRandomValues(new Uint32Array(2)), n => n.toString(36)).join('');
 }
 
 /** Refusals carry nothing to a turn, so the file cap does not bound them. */
@@ -214,6 +216,11 @@ export function clearAttachments(state: ChatSessionState, ids: string[]): ChatSe
   return kept.length === state.attachments.length ? state : { ...state, attachments: kept };
 }
 
+/** A stored file reference, as narrow as the path segment it becomes. */
+function isAssetId(value: unknown): value is string {
+  return typeof value === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(value);
+}
+
 /** Map a replayed turn into the UI message shape. Restored tool calls already ran, so 'done'. */
 function restoredToChatMessage(m: RestoredMessage): ChatMessage {
   const id = makeId();
@@ -242,7 +249,13 @@ function restoredToChatMessage(m: RestoredMessage): ChatMessage {
             typeof a === 'object' && a !== null &&
             (a.kind === 'image' || a.kind === 'document') &&
             typeof a.filename === 'string' && a.filename !== '')
-        .map(a => ({ kind: a.kind, filename: a.filename }))
+        .map(a => ({
+          kind: a.kind,
+          filename: a.filename,
+          // Re-checked against the sender's own shape: this is where the value becomes a
+          // request path segment.
+          ...(isAssetId(a.assetId) ? { assetId: a.assetId } : {}),
+        }))
     : [];
   return {
     id,
@@ -320,9 +333,9 @@ export function beginTurn(
   state: ChatSessionState,
   text: string,
   assistantId: string,
-  meta?: { origin?: MessageOrigin; files?: AttachedFile[] },
+  meta?: { origin?: MessageOrigin; files?: AttachedFile[]; userId?: string },
 ): ChatSessionState {
-  const { origin, files } = meta ?? {};
+  const { origin, files, userId } = meta ?? {};
   return {
     ...state,
     isLoading: true,
@@ -331,7 +344,7 @@ export function beginTurn(
     messages: [
       ...state.messages,
       {
-        id: makeId(),
+        id: userId ?? makeId(),
         role: 'user',
         content: text,
         ...(files?.length ? { attachments: files } : {}),
@@ -339,6 +352,22 @@ export function beginTurn(
       },
       { id: assistantId, role: 'assistant', content: '', isStreaming: true },
     ],
+  };
+}
+
+/**
+ * Replace one turn's file cards. The cards go up as soon as the turn is sent and gain the
+ * reference that makes them reopenable a moment later, once the files have been kept.
+ */
+export function setTurnFiles(
+  state: ChatSessionState,
+  messageId: string,
+  files: AttachedFile[],
+): ChatSessionState {
+  if (!state.messages.some(m => m.id === messageId)) return state;
+  return {
+    ...state,
+    messages: state.messages.map(m => (m.id === messageId ? { ...m, attachments: files } : m)),
   };
 }
 

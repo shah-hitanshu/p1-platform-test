@@ -20,24 +20,28 @@ export type Attachment =
       filename: string;
       /** The file's text, which the agent reads as the brief for this turn. */
       text: string;
+      /** Where the original file was stored, when storing it succeeded. */
+      assetId?: string;
     }
   | {
       kind: 'image';
       filename: string;
       /** Inline rather than a link: the gateway refuses to fetch an image for us. */
       dataUrl: string;
+      assetId?: string;
     };
 
 /**
  * A file named on a turn in the transcript. `dataUrl`/`text` are present only for a turn sent
- * in this session: the agent stores what a turn's files were called and never the files, so a
- * replayed turn has the name and nothing to open.
+ * in this session; a replayed turn carries `assetId` instead, which is how its file is fetched
+ * back. A turn from before files were kept has neither and cannot be reopened.
  */
 export interface AttachedFile {
   kind: Attachment['kind'];
   filename: string;
   dataUrl?: string;
   text?: string;
+  assetId?: string;
 }
 
 /**
@@ -213,6 +217,14 @@ export interface DraftRequestChannel {
 export interface AIChatPluginOptions {
   /** Base URL of the chat agent backend, e.g. "https://your-agent-host.example.com" */
   agentUrl: string;
+  /**
+   * Base URL of the media API, so attached files are kept and can be reopened after a reload.
+   * Falls back to `NEXT_PUBLIC_MEDIA_WORKER_URL` (the same variable `@pantheon-systems/p1-media`
+   * reads) when omitted. Unlike that package, there is no further production-host default here:
+   * without either, attachments still work but do not outlive the tab — a wrong value would
+   * store people's files in another environment, so silence is the safer failure.
+   */
+  mediaWorkerUrl?: string;
   /** Returns the conversation key. Defaults to `${userId}-${siteId}`. Override to change history scoping. */
   getAgentId?: () => string;
   /**
@@ -284,8 +296,11 @@ export type RestoredPart =
 export interface RestoredMessage {
   role: 'user' | 'assistant';
   content: string;
-  /** What this turn's files were called. Names only: no file is stored, so none comes back. */
-  attachments?: { kind: Attachment['kind']; filename: string }[];
+  /**
+   * What this turn's files were called, and where each was kept. The file itself never comes
+   * back on this frame; `assetId` is how the panel fetches it on demand.
+   */
+  attachments?: { kind: Attachment['kind']; filename: string; assetId?: string }[];
   /** Ordered parts. Canonical when present; absent from a Worker predating them. */
   parts?: RestoredPart[];
   /** Flat call list, used when `parts` is absent. */

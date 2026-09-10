@@ -1,4 +1,6 @@
 import type {
+  AttachedFile,
+  Attachment,
   ChatContext,
   PendingAttachment,
   SendMessageOptions,
@@ -7,6 +9,12 @@ import type {
 import { AttachmentError, NO_IMAGE_DECODER } from '../attachments/attachmentError.js';
 import { htmlToText, truncateBrief } from '../attachments/briefText.js';
 import { checkAttachment } from '../attachments/checkAttachment.js';
+import {
+  finalizeChatUpload,
+  presignAndPut,
+  type MediaTarget,
+  type PresignedChatUpload,
+} from '../attachments/mediaApi.js';
 import { MAX_ATTACHMENTS, isHtmlFile } from '../attachments/fileRules.js';
 import {
   EMPTY_STATE,
@@ -27,6 +35,7 @@ import {
   markReconnecting,
   normalizeDocumentPath,
   removeAttachment,
+  setTurnFiles,
   removeFromWriteSet,
   resolveAttachment,
   restoreHistory,
@@ -93,6 +102,17 @@ interface ChatSession {
   onPageCreated: ((path: string) => void) | null;
   /** Injected by the view, so the conversation store touches no browser imaging API. */
   prepareImage: ((file: File) => Promise<string>) | null;
+  /** Base URL of the media API. Null disables keeping attachments, nothing else. */
+  mediaWorkerUrl: string | null;
+  /**
+   * Uploads in flight or finished, by staged attachment id. The promise is held so a turn sent
+   * before its file finished can still wait for it. Never rejects; null means it was not kept.
+   *
+   * Entries outlive their turn so a retry can record the same upload again (finalize is
+   * idempotent). Removing a file is the only thing that drops its entry, so a file staged and
+   * then removed is never recorded.
+   */
+  pendingUploads: Map<string, Promise<PresignedChatUpload | null>>;
 }
 
 const sessions = new Map<string, ChatSession>();
@@ -129,6 +149,8 @@ function getOrCreate(agentId: string, agentUrl: string): ChatSession {
       lastSend: null,
       onPageCreated: null,
       prepareImage: null,
+      mediaWorkerUrl: null,
+      pendingUploads: new Map(),
     };
     sessions.set(agentId, session);
   }
@@ -457,6 +479,7 @@ async function connect(session: ChatSession): Promise<WebSocket> {
  * drop reads as a bug, and the composer will not send while a refusal is on it.
  */
 function sessionAttachFiles(session: ChatSession, files: File[]): void {
+  const contextForDrop = dropContextFactory(session);
   for (const file of files) {
     const id = makeId();
     const verdict = checkAttachment(file);
@@ -480,7 +503,31 @@ function sessionAttachFiles(session: ChatSession, files: File[]): void {
     update(session, addAttachment(session.state, pending));
     // Not awaited as a batch: a slow image must not hold up the brief dropped with it.
     void settleAttachment(session, id, file, kind);
+    stageUpload(session, id, file, contextForDrop());
   }
+}
+
+/**
+ * One auth context for a whole drop: resolving one costs a token fetch, and a drop stages
+ * every file at once. Lazy, so a drop with nothing keepable costs none.
+ */
+function dropContextFactory(session: ChatSession): () => Promise<ChatContext> | undefined {
+  let resolving: Promise<ChatContext> | undefined;
+  return () => {
+    const getContext = session.getContext;
+    if (!session.mediaWorkerUrl || !getContext) return undefined;
+    if (!resolving) {
+      try {
+        resolving = Promise.resolve(getContext());
+      } catch {
+        // getContext is typed to allow a synchronous implementation, and this runs in the
+        // drop handler rather than inside uploadTarget's catch. Losing the file's
+        // reopenability beats losing the drop.
+        return undefined;
+      }
+    }
+    return resolving;
+  };
 }
 
 async function settleAttachment(
@@ -509,6 +556,131 @@ async function settleAttachment(
   }
 }
 
+/**
+ * Uploads the original file, in parallel with the panel reading it for the agent. The two are
+ * deliberately independent: the agent gets a normalized copy (markup stripped, text cut,
+ * images shrunk), while storage has to get the file the user actually attached — otherwise
+ * "add to library" would publish something they never chose.
+ *
+ * Failures are silent. {@link attachmentBlocker} gates only on reading and decoding, so a turn
+ * whose upload failed still sends; it just cannot be reopened later.
+ */
+function stageUpload(
+  session: ChatSession,
+  id: string,
+  file: File,
+  context?: Promise<ChatContext>,
+): void {
+  // Entries outlive their turn so a retry can re-record them, so nothing else prunes this and
+  // a long-lived session would grow one per file forever. Evicting the oldest costs a
+  // several-turns-old retry its reopenability; retention collects the bytes either way.
+  while (session.pendingUploads.size >= MAX_TRACKED_UPLOADS) {
+    const oldest = session.pendingUploads.keys().next();
+    if (oldest.done === true) break;
+    session.pendingUploads.delete(oldest.value);
+  }
+  session.pendingUploads.set(
+    id,
+    (async () => {
+      const target = await uploadTarget(session, context);
+      if (target === null) return null;
+      try {
+        return await presignAndPut(target, file);
+      } catch (err) {
+        console.warn('[p1-ai-chat] could not keep an attachment; it will not be reopenable', err);
+        return null;
+      }
+    })(),
+  );
+}
+
+/** A few turns' worth of attachments. See stageUpload. */
+const MAX_TRACKED_UPLOADS = MAX_ATTACHMENTS * 4;
+
+/** Bounds a wait without cancelling the work being waited on. */
+function after(ms: number): Promise<void> {
+  return new Promise(resolve => { setTimeout(resolve, ms); });
+}
+
+/**
+ * Null when attachments cannot be kept. That is never a reason to fail a turn.
+ *
+ * `context` lets a caller that is already resolving one share it. Resolving a context fetches
+ * an auth token, and a send does that anyway — without this a turn carrying files fetched two.
+ */
+async function uploadTarget(
+  session: ChatSession,
+  context?: Promise<ChatContext>,
+): Promise<MediaTarget | null> {
+  const workerUrl = session.mediaWorkerUrl;
+  const getContext = session.getContext;
+  if (!workerUrl) return null;
+  try {
+    // Inside the try: getContext is typed to allow a synchronous implementation, and a
+    // throw escaping here would reject a call every caller treats as resolving to null —
+    // aborting the turn over a file that just could not be kept.
+    const resolving = context ?? (getContext ? Promise.resolve(getContext()) : null);
+    if (!resolving) return null;
+    const { siteId, token } = await resolving;
+    return siteId && token ? { workerUrl, siteId, token } : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Long enough for a typical attachment; short enough that a slow one doesn't read as stuck. */
+const KEEP_DEADLINE_MS = 3_000;
+
+/**
+ * Records the uploads for the files going out with this turn. Recording is what makes a file
+ * retrievable, and doing it here instead of at staging time means a file the user removes
+ * before sending is never recorded; its bytes are swept server-side.
+ *
+ * Each settles independently, so one failure only costs that file its reopenability.
+ */
+async function recordUploads(
+  session: ChatSession,
+  attachmentIds: string[],
+  context: Promise<ChatContext>,
+): Promise<Map<string, string>> {
+  const staged = attachmentIds
+    .map(id => ({ id, upload: session.pendingUploads.get(id) }))
+    .filter((entry): entry is { id: string; upload: Promise<PresignedChatUpload | null> } =>
+      entry.upload !== undefined);
+  // Checked first: most turns carry no files, and there is nothing to wait on for those.
+  if (staged.length === 0) return new Map();
+
+  const target = await uploadTarget(session, context);
+  if (target === null) return new Map();
+
+  const recorded = new Map<string, string>();
+  const keeping = Promise.all(
+    staged.map(async ({ id, upload }) => {
+      const reserved = await upload;
+      if (reserved === null) return;
+      try {
+        recorded.set(id, await finalizeChatUpload(target, reserved));
+      } catch (err) {
+        console.warn('[p1-ai-chat] could not keep an attachment; it will not be reopenable', err);
+      }
+    }),
+  );
+
+  // The reference only persists if it goes out in this turn's frame, so the turn has to wait.
+  // But sending the original can take much longer than reading it, and the user should not be
+  // stuck behind their own upload. Anything past the deadline still finishes, then gets swept.
+  await Promise.race([keeping, after(KEEP_DEADLINE_MS)]);
+  return recorded;
+}
+
+/** The card shape for a file travelling with a turn. */
+function toTurnFile(attachment: Attachment): AttachedFile {
+  const kept = attachment.assetId === undefined ? {} : { assetId: attachment.assetId };
+  return attachment.kind === 'image'
+    ? { kind: 'image', filename: attachment.filename, dataUrl: attachment.dataUrl, ...kept }
+    : { kind: 'document', filename: attachment.filename, text: attachment.text, ...kept };
+}
+
 /** A send failure whose message is safe to show the user as-is. */
 class SendFailureError extends Error {}
 
@@ -523,6 +695,8 @@ async function sessionSendMessage(
   if (!trimmed || session.state.isLoading) return;
 
   const assistantId = makeId();
+  // Minted here rather than inside beginTurn so setTurnFiles below can find this turn again.
+  const userMessageId = makeId();
   session.currentAssistantId = assistantId;
   session.streamingGraceUntil = null;
   // Sticky, unlike the other overrides: the user's "yes, use that template" is an ordinary
@@ -533,39 +707,56 @@ async function sessionSendMessage(
   // Set before anything can fail, so failure paths can offer this turn for retry.
   session.lastSend = { text: trimmed, ...(opts ? { opts } : {}) };
   const attachments = opts?.attachments ?? [];
+  const stagedIds = opts?.attachmentIds ?? [];
   // Emptied in the same update that sends them; a retry resends from `lastSend`.
   update(session, clearAttachments(beginTurn(withPendingPage, trimmed, assistantId, {
+    userId: userMessageId,
     ...(opts?.origin ? { origin: opts.origin } : {}),
     // The file itself, so the turn can show what it sent. Lives as long as the session: only
     // the names are persisted, so a replayed turn gets them back without the file.
-    files: attachments.map(a =>
-      a.kind === 'image'
-        ? { kind: a.kind, filename: a.filename, dataUrl: a.dataUrl }
-        : { kind: a.kind, filename: a.filename, text: a.text }),
-  }), opts?.attachmentIds ?? []));
+    files: attachments.map(toTurnFile),
+  }), stagedIds));
   // Before the awaits, not after the send: neither `connect` nor `getContext` has a timeout.
   touchTurn(session);
 
   try {
     const getContext = session.getContext;
     if (!getContext) throw new SendFailureError('Chat is not ready yet. Please try again in a moment.');
+    // Resolved once and shared: this fetches an auth token, and recordUploads needs the same
+    // siteId and token. Calling it again there would fetch a second for the same turn.
+    // Promise.resolve because getContext may be synchronous.
+    const resolvingContext = Promise.resolve(getContext());
     // Awaited together for speed, but reported separately: resolving the context fetches an
     // auth token, and calling that "Connection failed" sends the user to check their network.
-    const [ws, baseContext] = await Promise.all([
+    // recordUploads joins this instead of running first: the turn already waits on the socket,
+    // so keeping the files adds no wall clock. It never rejects.
+    const [ws, baseContext, recorded] = await Promise.all([
       connect(session).catch(() => {
         throw new SendFailureError('Connection failed');
       }),
-      // Promise.resolve because getContext may be synchronous.
-      Promise.resolve(getContext()).catch(() => {
+      resolvingContext.catch(() => {
         throw new SendFailureError('Could not authenticate. Please try again in a moment.');
       }),
+      recordUploads(session, stagedIds, resolvingContext),
     ]);
+    // Matched by position. That holds because the composer will not send while a file is
+    // still reading or refused. The length check is the fallback: if the two ever diverge,
+    // dropping the ids only costs reopenability, but mispairing them would show the wrong file.
+    const aligned = stagedIds.length === attachments.length;
+    const sent = attachments.map((attachment, i) => {
+      const assetId = aligned ? recorded.get(stagedIds[i]) : undefined;
+      return assetId === undefined ? attachment : { ...attachment, assetId };
+    });
+    // So a file attached in this session is reopenable without a reload.
+    if (recorded.size > 0) {
+      update(session, setTurnFiles(session.state, userMessageId, sent.map(toTurnFile)));
+    }
     // Per-turn overrides, plus the conversation's outstanding page if it has one.
     const context: ChatContext = {
       ...baseContext,
       ...(opts?.documentPath != null ? { documentPath: opts.documentPath } : {}),
       ...(opts?.newPage ? { newPage: true } : {}),
-      ...(attachments.length > 0 ? { attachments } : {}),
+      ...(sent.length > 0 ? { attachments: sent } : {}),
       ...(session.state.pendingPage ? { pendingPage: session.state.pendingPage } : {}),
       // Absent rather than [] while unseeded: [] reads as "edit nothing" on the first turn.
       ...(session.state.writeSet !== null
@@ -671,6 +862,8 @@ export interface ChatSessionHooks {
   /** Called with the path of a page the agent created during a turn. */
   onPageCreated?: (path: string) => void;
   prepareImage?: (file: File) => Promise<string>;
+  /** Base URL of the media API. Omit to keep nothing. */
+  mediaWorkerUrl?: string;
 }
 
 /**
@@ -691,6 +884,7 @@ export function acquireChatSession(
     session.getContext = hooks.getContext;
     session.onPageCreated = hooks.onPageCreated ?? null;
     session.prepareImage = hooks.prepareImage ?? null;
+    session.mediaWorkerUrl = hooks.mediaWorkerUrl ?? null;
     return session;
   };
 
@@ -743,6 +937,9 @@ export function acquireChatSession(
     attachFiles: (files: File[]) => sessionAttachFiles(resolve(), files),
     removeAttachment: (id: string) => {
       const session = resolve();
+      // The bytes may already be in storage, but dropping the entry means nothing will ever
+      // record them, so they get swept.
+      session.pendingUploads.delete(id);
       update(session, removeAttachment(session.state, id));
     },
   };

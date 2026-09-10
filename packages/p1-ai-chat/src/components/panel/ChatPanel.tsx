@@ -13,6 +13,14 @@ import { DropOverlay } from '../attachments/DropOverlay.js';
 import { AttachmentModal } from '../attachments/AttachmentModal.js';
 import { clipboardFiles } from '../../lib/attachments/clipboardFiles.js';
 import { attachmentBlocker, toAttachedFile } from '../../lib/attachments/pendingAttachments.js';
+import {
+  addKeptAttachmentToLibrary,
+  fetchKeptAttachment,
+  fetchMediaFields,
+  isKeptAttachmentInLibrary,
+  type MediaField,
+  type MediaTarget,
+} from '../../lib/attachments/mediaApi.js';
 import { downscaleImage } from '../../lib/attachments/downscaleImage.js';
 import { ChatMessage } from '../transcript/ChatMessage.js';
 import { visuallyHidden } from '../../lib/a11y.js';
@@ -110,6 +118,7 @@ export function ChatPanel({ options }: Props): React.ReactElement {
     getContext,
     onPageCreated: options.onPageCreated,
     prepareImage: downscaleImage,
+    ...(options.mediaWorkerUrl ? { mediaWorkerUrl: options.mediaWorkerUrl } : {}),
   });
 
   // A turn needs somewhere to write. Usually that is the open document, but a conversation
@@ -249,7 +258,68 @@ export function ChatPanel({ options }: Props): React.ReactElement {
   }, [isLoading]);
 
   const { isDragging, dropProps } = useFileDrop(attachFiles);
-  const [openFile, setOpenFile] = useState<AttachedFile | null>(null);
+
+  // Same ref pattern as ccrRef above: openFromTurn has to keep a stable identity while
+  // still seeing current messages.
+  const messagesRef = useRef(messages);
+  messagesRef.current = messages;
+
+  /**
+   * What is open, not the object that was open. `setTurnFiles` swaps a turn's files for new
+   * ones as their uploads are recorded, and the `assetId` arriving in that swap is what the
+   * library offer is gated on — so a captured object never grows the offer.
+   */
+  const [openTarget, setOpenTarget] = useState<
+    { file: AttachedFile; messageId?: string; index?: number } | null
+  >(null);
+
+  // Stable identity: ChatMessage is memoized because a turn re-parses its markdown and the
+  // panel re-renders on every streamed token. An inline closure per message defeats that.
+  const openFromTurn = useCallback((file: AttachedFile) => {
+    for (const message of messagesRef.current) {
+      const index = message.attachments?.indexOf(file) ?? -1;
+      if (index >= 0) {
+        setOpenTarget({ file, messageId: message.id, index });
+        return;
+      }
+    }
+    setOpenTarget({ file });
+  }, []);
+
+  // Derived rather than memoized: the deps would include `messages`, which changes on every
+  // streamed token, so a memo would recompute just as often for more machinery.
+  const openFile = ((): AttachedFile | null => {
+    if (openTarget === null) return null;
+    const { file, messageId, index } = openTarget;
+    if (messageId === undefined || index === undefined) return file;
+    // Falls back to what was clicked, so a cleared turn keeps showing the file rather than
+    // blanking the modal.
+    return messagesRef.current.find(m => m.id === messageId)?.attachments?.[index] ?? file;
+  })();
+
+  // Undefined when nothing is configured to keep files, so the modal can say so instead of
+  // spinning. The target is resolved per call from the same context a turn is sent with, so
+  // the token is current instead of captured at mount.
+  const mediaWorkerUrl = options.mediaWorkerUrl;
+  const keptFiles = useMemo(() => {
+    // Truthiness, matching the upload wiring above: an empty base URL would leave the
+    // fetch-and-promote half wired against the host app's own origin.
+    if (!mediaWorkerUrl) return undefined;
+    const target = async (): Promise<MediaTarget> => {
+      const context = await getContext();
+      return { workerUrl: mediaWorkerUrl, siteId: context.siteId, token: context.token };
+    };
+    return {
+      load: async (assetId: string, width?: number): Promise<Blob> =>
+        fetchKeptAttachment(await target(), assetId, width),
+      addToLibrary: async (assetId: string, metadata: Record<string, string>): Promise<void> => {
+        await addKeptAttachmentToLibrary(await target(), assetId, metadata);
+      },
+      fields: (): Promise<MediaField[]> => fetchMediaFields(mediaWorkerUrl),
+      isInLibrary: async (assetId: string): Promise<boolean> =>
+        isKeptAttachmentInLibrary(await target(), assetId),
+    };
+  }, [mediaWorkerUrl, getContext]);
 
   const actionsRef = useRef<HTMLDivElement>(null);
   const [actionsWidth, setActionsWidth] = useState(COMPOSER_ACTIONS_WIDTH);
@@ -299,7 +369,18 @@ export function ChatPanel({ options }: Props): React.ReactElement {
     >
       {isDragging && <DropOverlay />}
       {openFile !== null && (
-        <AttachmentModal file={openFile} onClose={() => setOpenFile(null)} />
+        <AttachmentModal
+          file={openFile}
+          onClose={() => setOpenTarget(null)}
+          {...(keptFiles
+            ? {
+                loadFile: keptFiles.load,
+                addToLibrary: keptFiles.addToLibrary,
+                libraryFields: keptFiles.fields,
+                isInLibrary: keptFiles.isInLibrary,
+              }
+            : {})}
+        />
       )}
       <ChatPanelHeader
         canClear={messages.length > 0}
@@ -341,7 +422,8 @@ export function ChatPanel({ options }: Props): React.ReactElement {
             // Only the newest turn can be retried, so a resend can't fork the
             // conversation from the middle of the transcript.
             onRetry={canRetry && i === messages.length - 1 ? retry : undefined}
-            onOpenFile={setOpenFile}
+            onOpenFile={openFromTurn}
+            loadKept={keptFiles?.load}
           />
         ))}
       </div>
@@ -370,7 +452,7 @@ export function ChatPanel({ options }: Props): React.ReactElement {
         <AttachmentTray
           attachments={attachments}
           onRemove={removeAttachment}
-          onOpen={attachment => setOpenFile(toAttachedFile(attachment))}
+          onOpen={attachment => setOpenTarget({ file: toAttachedFile(attachment) })}
         />
         <div style={{ position: 'relative' }}>
           <Textarea

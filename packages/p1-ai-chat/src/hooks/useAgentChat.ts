@@ -18,6 +18,8 @@ export interface UseAgentChatOptions {
   onPageCreated?: (path: string) => void;
   /** Decodes an attached image for sending. Without it, images cannot be attached. */
   prepareImage?: (file: File) => Promise<string>;
+  /** Base URL of the media API. Omit and attachments are not kept past the session. */
+  mediaWorkerUrl?: string;
 }
 
 export interface UseAgentChatReturn {
@@ -78,6 +80,7 @@ export function useAgentChat({
   getContext,
   onPageCreated,
   prepareImage,
+  mediaWorkerUrl,
 }: UseAgentChatOptions): UseAgentChatReturn {
   // Auth and ids get a new closure identity every render, but the conversation they
   // describe doesn't — read them through a ref so the session isn't re-acquired.
@@ -100,8 +103,11 @@ export function useAgentChat({
         if (!prepare) throw new AttachmentError(NO_IMAGE_DECODER);
         return prepare(file);
       },
+      ...(mediaWorkerUrl !== undefined ? { mediaWorkerUrl } : {}),
     }),
-    [agentId, agentUrl],
+    // Not ref'd like the callbacks above: a change here is a different backend, which the
+    // session would have to be torn down for.
+    [agentId, agentUrl, mediaWorkerUrl],
   );
 
   const state = useSyncExternalStore(session.subscribe, session.getState, session.getState);

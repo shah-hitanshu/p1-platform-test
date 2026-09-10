@@ -8,6 +8,9 @@ import { repairMarkdown } from '../../lib/transcript/streamedMarkdown.js';
 import { ToolGroup, ThinkingLine } from './ToolGroup.js';
 import { MarkdownText } from './MarkdownText.js';
 
+/** Fetches a kept file's bytes, optionally resized server-side. */
+type LoadKeptFile = (assetId: string, width?: number) => Promise<Blob>;
+
 interface Props {
   message: ChatMessageType;
   /**
@@ -17,13 +20,15 @@ interface Props {
   onRetry?: () => void;
   /** Show a file this turn sent. The panel owns the space to show it in. */
   onOpenFile?: (file: AttachedFile) => void;
+  /** Fetches a kept file's bytes. Absent when nothing is set up to keep them. */
+  loadKept?: LoadKeptFile;
 }
 
 /**
  * One turn of the conversation. Memoized because rendering a turn re-parses its markdown,
  * and the panel re-renders on every streamed token and every keystroke.
  */
-function UnmemoizedChatMessage({ message, onRetry, onOpenFile }: Props): React.ReactElement {
+function UnmemoizedChatMessage({ message, onRetry, onOpenFile, loadKept }: Props): React.ReactElement {
   const isUser = message.role === 'user';
   const blocks = turnBlocks(messageParts(message));
 
@@ -48,7 +53,7 @@ function UnmemoizedChatMessage({ message, onRetry, onOpenFile }: Props): React.R
       {message.origin && <OriginCaption origin={message.origin} />}
 
       {message.attachments && message.attachments.length > 0 && (
-        <AttachedFiles files={message.attachments} onOpen={onOpenFile} />
+        <AttachedFiles files={message.attachments} onOpen={onOpenFile} loadKept={loadKept} />
       )}
 
       {/* Prose and step runs in the order they happened, so a call renders where it was made
@@ -119,32 +124,109 @@ function OriginCaption({ origin }: { origin: MessageOrigin }): React.ReactElemen
   );
 }
 
+interface FileCardProps {
+  file: AttachedFile;
+  onOpen?: (file: AttachedFile) => void;
+  loadKept?: LoadKeptFile;
+}
+
 function AttachedFileCard({
   file,
   onOpen,
-}: {
-  file: AttachedFile;
-  onOpen?: (file: AttachedFile) => void;
-}): React.ReactElement {
-  // A turn replayed from history carries names only, so its cards have nothing to open.
-  if (file.dataUrl === undefined && file.text === undefined) {
+  loadKept,
+}: FileCardProps): React.ReactElement {
+  const inMemory = file.dataUrl !== undefined || file.text !== undefined;
+  const fetchable = file.assetId !== undefined && loadKept !== undefined;
+  if (!inMemory && !fetchable) {
     return (
       <div style={{ ...cardStyle, opacity: 0.75 }} title={`${file.filename} — not kept`}>
         <FileCardFace kind={file.kind} filename={file.filename} />
       </div>
     );
   }
+  return <OpenableCard file={file} onOpen={onOpen} loadKept={loadKept} />;
+}
+
+function OpenableCard({
+  file,
+  onOpen,
+  loadKept,
+}: FileCardProps): React.ReactElement {
+  const cardRef = React.useRef<HTMLButtonElement>(null);
+  // A restored image has a reference and no bytes, so its thumbnail is fetched.
+  const fetchId = file.kind === 'image' && file.dataUrl === undefined && loadKept !== undefined
+    ? file.assetId
+    : undefined;
+  const thumbnail = useKeptThumbnail(cardRef, fetchId, loadKept);
+
   return (
     <button
+      ref={cardRef}
       type="button"
       style={{ ...cardStyle, padding: 0, cursor: 'pointer' }}
       aria-label={`Open ${file.filename}`}
       title={file.filename}
       onClick={() => onOpen?.(file)}
     >
-      <FileCardFace kind={file.kind} filename={file.filename} dataUrl={file.dataUrl} />
+      <FileCardFace
+        kind={file.kind}
+        filename={file.filename}
+        dataUrl={file.dataUrl ?? thumbnail}
+      />
     </button>
   );
+}
+
+// Twice the 72px card, so it stays sharp on a retina screen without pulling the original.
+const THUMBNAIL_WIDTH = 144;
+
+/**
+ * The thumbnail for a kept image, fetched only once the card is on screen. Otherwise a long
+ * transcript fires one authenticated request per card the moment it loads. Undefined until
+ * the image arrives; if it never does, the card keeps showing its filename.
+ */
+function useKeptThumbnail(
+  cardRef: React.RefObject<HTMLElement | null>,
+  assetId: string | undefined,
+  loadKept?: LoadKeptFile,
+): string | undefined {
+  const [url, setUrl] = React.useState<string>();
+  const [visible, setVisible] = React.useState(false);
+
+  React.useEffect(() => {
+    if (assetId === undefined || visible) return undefined;
+    const node = cardRef.current;
+    // Without IntersectionObserver (happy-dom, older browsers) fetch eagerly, so the image
+    // still shows up.
+    if (!node || typeof IntersectionObserver === 'undefined') { setVisible(true); return undefined; }
+    const observer = new IntersectionObserver(entries => {
+      if (entries.some(e => e.isIntersecting)) setVisible(true);
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [cardRef, assetId, visible]);
+
+  React.useEffect(() => {
+    if (!visible || assetId === undefined || !loadKept) return undefined;
+    let objectUrl: string | null = null;
+    let live = true;
+    void loadKept(assetId, THUMBNAIL_WIDTH).then(
+      blob => {
+        if (!live) return;
+        objectUrl = URL.createObjectURL(blob);
+        setUrl(objectUrl);
+      },
+      // Falling back to the filename is what the card did before thumbnails, so a failure
+      // here costs nothing that already worked.
+      () => undefined,
+    );
+    return () => {
+      live = false;
+      if (objectUrl !== null) URL.revokeObjectURL(objectUrl);
+    };
+  }, [visible, assetId, loadKept]);
+
+  return url;
 }
 
 /**
@@ -154,9 +236,11 @@ function AttachedFileCard({
 function AttachedFiles({
   files,
   onOpen,
+  loadKept,
 }: {
   files: AttachedFile[];
   onOpen?: (file: AttachedFile) => void;
+  loadKept?: LoadKeptFile;
 }): React.ReactElement {
   return (
     <div style={{
@@ -167,7 +251,9 @@ function AttachedFiles({
       maxWidth: '100%',
     }}>
       {/* Keyed by position: two pasted screenshots can genuinely share a name. */}
-      {files.map((file, i) => <AttachedFileCard key={i} file={file} onOpen={onOpen} />)}
+      {files.map((file, i) => (
+        <AttachedFileCard key={i} file={file} onOpen={onOpen} loadKept={loadKept} />
+      ))}
     </div>
   );
 }

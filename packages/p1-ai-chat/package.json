@@ -22,7 +22,7 @@
     "provenance": false
   },
   "scripts": {
-    "build": "pnpm run clean && tsc --emitDeclarationOnly --declarationMap false && tsc --declaration false --declarationMap false --sourceMap false --removeComments",
+    "build": "pnpm run clean && tsc --emitDeclarationOnly --declarationMap false && tsc --declaration false --declarationMap false --sourceMap false --removeComments && find src -name '*.module.css' | while read f; do dest=\"dist/${f#src/}\"; mkdir -p \"$(dirname \"$dest\")\"; cp \"$f\" \"$dest\"; done",
     "clean": "rm -rf dist *.tsbuildinfo",
     "dev": "tsc --watch",
     "lint": "eslint src test",

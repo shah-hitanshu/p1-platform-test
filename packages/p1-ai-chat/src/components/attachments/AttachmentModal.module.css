@@ -1,0 +1,79 @@
+/**
+ * Attachment preview styles.
+ *
+ * The modal's own centring is NOT here: PDS sets `top: 5%` inline on `.pds-modal`, and an
+ * inline declaration outranks a class, so overriding it from this file would take
+ * `!important` on every property. AttachmentModal passes that one through `style` instead.
+ */
+
+/* One column: the preview absorbs the slack and scrolls, so opening the form shrinks the
+   picture rather than pushing the actions off-screen. */
+.shell {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 72vh;
+  min-height: 0;
+}
+
+.preview {
+  display: flex;
+  flex: 1;
+  justify-content: center;
+  min-height: 0;
+  overflow: auto;
+}
+
+/* Fits the room the form leaves rather than scrolling inside it. */
+.picture {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.text {
+  margin: 0;
+  font-family: inherit;
+  font-size: var(--pds-typography-size-xs);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.notice {
+  padding: 24px 0;
+  color: var(--pds-color-foreground-default-secondary);
+  font-size: var(--pds-typography-size-s);
+  text-align: center;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--pds-color-border-default);
+}
+
+.formTitle {
+  margin: 0;
+  font-size: var(--pds-typography-size-s);
+  font-weight: 600;
+}
+
+/* Pairs, collapsing to one column in a narrow rail. The floor is wide enough that the track
+   count cannot land between two and three and strand a lone field on its own row — PDS
+   inputs carry their own minimum width, so a smaller floor never binds. */
+.fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 12px 16px;
+}
