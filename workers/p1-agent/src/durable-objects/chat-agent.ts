@@ -10,7 +10,7 @@ import { CCR_TOOLS, WEB_TOOLS, executeTool } from '../tools/execute-tool.js';
 import { validateCCRToken } from '../auth.js';
 import { createdDocumentPath, toolErrorResult, withCreatedPage } from '../conversation/scope.js';
 import type { StoredMessage } from '../conversation/history.js';
-import { appendTurn, forProvider, sanitizeHistory, trimForHistory, buildRestoredHistory, turnMayCommit, turnHasOutput } from '../conversation/history.js';
+import { appendTurn, forProvider, sanitizeHistory, trimForHistory, buildRestoredHistory, turnMayCommit, turnHasOutput, uploadedAssetIds } from '../conversation/history.js';
 import {
   MAX_TURN_STEPS,
   STEP_LIMIT_MESSAGE,
@@ -39,6 +39,9 @@ import { imageParts, modelSeesImages } from '../providers/vision.js';
 // endpoint. Override per env via AGENT_MODEL.
 const DEFAULT_MODEL = '@cf/moonshotai/kimi-k2.7-code';
 
+/** Purging a cleared conversation's uploads is best effort; retention is the backstop. */
+const PURGE_TIMEOUT_MS = 10_000;
+
 interface AgentState {
   conversationHistory: StoredMessage[];
   // The validated user who owns this conversation, established on the first
@@ -52,6 +55,12 @@ interface AgentState {
    * write at the end of that turn.
    */
   clearSeq?: number;
+  /**
+   * The site the last turn belonged to. Every media route is site-scoped, and the `clear`
+   * frame carries only a token. Absent on a conversation whose last turn predates this, in
+   * which case the purge is skipped rather than guessed at.
+   */
+  siteId?: string;
 }
 
 /** The two calls {@link resolvePinnedSlots} needs, so a test can stand in for the client. */
@@ -151,6 +160,42 @@ export class ChatAgent extends Agent<Env, AgentState> {
   // conversation has an owner (set on the first chat turn) the caller must be
   // that owner. The DO key is built from non-secret ids, so the token — not the
   // key — is the access control.
+
+  /**
+   * Deletes a cleared conversation's uploads. Best effort: each id is independent, failures are
+   * logged and swallowed, and the caller does not wait. Soft delete is enough here; the
+   * retention sweep hard-deletes cleared chat uploads on its next pass.
+   */
+  private async purgeUploads(siteId: string, token: string, assetIds: string[]): Promise<void> {
+    const base = this.env.MEDIA_WORKER_URL;
+    await Promise.all(
+      assetIds.map(async assetId => {
+        try {
+          const response = await fetch(
+            // Chat uploads only. An image the user added to their media library is theirs
+            // now, and clearing the conversation it arrived in must not take it away. The
+            // narrowing is a path segment rather than a query flag so that a media worker
+            // predating it 404s here instead of quietly widening this to a full delete.
+            `${base}/media/${encodeURIComponent(assetId)}/chat?siteId=${encodeURIComponent(siteId)}`,
+            {
+              method: 'DELETE',
+              headers: { Authorization: `Bearer ${token}` },
+              // Nothing awaits this, so an unresponsive media API would otherwise leave
+              // promises pending for the lifetime of the instance.
+              signal: AbortSignal.timeout(PURGE_TIMEOUT_MS),
+            },
+          );
+          // 404 is the expected answer for one already swept, or promoted out of chat.
+          if (!response.ok && response.status !== 404) {
+            getLogger().warn('could not purge a cleared attachment', { status: response.status });
+          }
+        } catch (err) {
+          getLogger().warn('could not purge a cleared attachment', { error: String(err) });
+        }
+      }),
+    );
+  }
+
   private async authorizeConversationAccess(
     token: string,
   ): Promise<{ ok: true } | { ok: false; error: string }> {
@@ -189,6 +234,8 @@ export class ChatAgent extends Agent<Env, AgentState> {
     let startClearSeq = 0;
     let ownerId: string | undefined;
     let committed = false;
+    // See AgentState.siteId.
+    let turnSiteId: string | undefined;
 
     /**
      * Append this turn to state as it stands now, and bind the conversation to the
@@ -211,12 +258,16 @@ export class ChatAgent extends Agent<Env, AgentState> {
       // Set before the write, not after: `appendTurn` reads live state, so the catch retrying
       // a setState that failed late would append this turn twice.
       committed = true;
+      const siteId = turnSiteId ?? this.state.siteId;
       await this.setState({
         conversationHistory: appendTurn(this.state.conversationHistory, newEntries),
         ownerId,
         // setState replaces rather than merges, so an omitted field is a deletion. Dropping
         // clearSeq here reverted it to undefined, which the next turn read as a clear.
         clearSeq: startClearSeq,
+        // Falls back for the same reason: a turn without a usable siteId must not erase the
+        // stored one, or a later clear would silently leave its uploads behind.
+        ...(siteId === undefined ? {} : { siteId }),
       });
     };
 
@@ -273,12 +324,21 @@ export class ChatAgent extends Agent<Env, AgentState> {
         // conversation the user just wiped. The bumped clearSeq is the backstop for a
         // turn already too far along to abort cleanly.
         this.activeTurn?.abort.abort();
+        // Read before the wipe: these ids exist only in the history about to be dropped.
+        const uploaded = uploadedAssetIds(this.state.conversationHistory);
+        const purgeSiteId = this.state.siteId;
         await this.setState({
           conversationHistory: [],
           ownerId: this.state.ownerId,
           clearSeq: (this.state.clearSeq ?? 0) + 1,
+          ...(purgeSiteId === undefined ? {} : { siteId: purgeSiteId }),
         });
         this.send(connection, { type: 'cleared' });
+        // Fired after the acknowledgement and never awaited, so a media outage can't make
+        // Clear look broken. Anything missed here gets collected by retention.
+        if (purgeSiteId !== undefined && uploaded.length > 0) {
+          void this.purgeUploads(purgeSiteId, parsed.token, uploaded);
+        }
         return;
       }
 
@@ -286,6 +346,7 @@ export class ChatAgent extends Agent<Env, AgentState> {
 
       const { message, context } = parsed;
       turnId = parsed.turnId;
+      if (typeof context.siteId === 'string' && context.siteId !== '') turnSiteId = context.siteId;
 
       // Take ownership of the cancel channel before anything is awaited. Registering it
       // later — after the token round trip, say — meant a Stop pressed during setup found

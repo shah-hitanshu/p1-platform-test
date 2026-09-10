@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import type { Connection, ConnectionContext } from 'agents';
 import { ChatAgent, resolvePinnedSlots } from './chat-agent.js';
 
@@ -96,5 +96,67 @@ describe('ChatAgent state protocol', () => {
 
   it("accepts the agent's own state update", () => {
     expect(() => ChatAgent.prototype.validateStateChange({ conversationHistory: [] }, 'server')).not.toThrow();
+  });
+});
+
+// Clearing a conversation deletes the files it carried. Nothing awaits this, and a
+// failure is swallowed by design — so without a test the whole path is unobserved.
+describe('purging a cleared conversation s uploads', () => {
+  type Purge = (siteId: string, token: string, assetIds: string[]) => Promise<void>;
+  const purge = (ChatAgent.prototype as unknown as { purgeUploads: Purge }).purgeUploads;
+  const withEnv = (fetchMock: ReturnType<typeof vi.fn>) => {
+    vi.stubGlobal('fetch', fetchMock);
+    return { env: { MEDIA_WORKER_URL: 'https://media.test' } };
+  };
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('deletes each file, scoped to the site and authorised as the user', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }));
+    await purge.call(withEnv(fetchMock), 'site-1', 'tok-1', ['a1', 'a2']);
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const first = new URL(String(fetchMock.mock.calls[0][0]));
+    expect(first.pathname).toBe('/media/a1/chat');
+    expect(first.searchParams.get('siteId')).toBe('site-1');
+    expect(fetchMock.mock.calls[0][1].method).toBe('DELETE');
+    expect(fetchMock.mock.calls[0][1].headers.Authorization).toBe('Bearer tok-1');
+  });
+
+  // Without the narrowing this route is the picker's own delete, and an image the user
+  // added to their media library would be taken out of it by clearing an unrelated chat.
+  // A path, not a query flag: a media worker that does not know this route 404s, where an
+  // unknown parameter would have been ignored and the delete widened to the whole asset.
+  it('asks only for chat uploads, so a promoted image is out of reach', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }));
+    await purge.call(withEnv(fetchMock), 'site-1', 'tok-1', ['a1']);
+
+    const requested = new URL(String(fetchMock.mock.calls[0][0]));
+    expect(requested.pathname.endsWith('/chat')).toBe(true);
+    // The unscoped delete is a different path; this must never fall back to it.
+    expect(requested.pathname).not.toBe('/media/a1');
+  });
+
+  // The user asked for the conversation to go, and it already has. Storage catching up
+  // is not their problem, and retention collects anything missed here regardless.
+  it('resolves even when every delete fails', async () => {
+    const fetchMock = vi.fn().mockRejectedValue(new Error('unreachable'));
+    await expect(purge.call(withEnv(fetchMock), 'site-1', 'tok-1', ['a1'])).resolves.toBeUndefined();
+  });
+
+  it('keeps going after one file fails', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response('no', { status: 500 }))
+      .mockResolvedValueOnce(new Response('{}', { status: 200 }));
+    await purge.call(withEnv(fetchMock), 'site-1', 'tok-1', ['a1', 'a2']);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('escapes ids and site ids into the path and query', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }));
+    await purge.call(withEnv(fetchMock), 'site/one', 'tok', ['a/b']);
+    const requested = String(fetchMock.mock.calls[0][0]);
+    expect(requested).toContain('/media/a%2Fb/chat');
+    expect(requested).toContain('siteId=site%2Fone');
   });
 });

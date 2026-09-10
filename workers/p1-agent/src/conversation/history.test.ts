@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type OpenAI from 'openai';
-import { trimHistory, sanitizeHistory, appendTurn, forProvider, trimForHistory, MAX_STORED_PATHS, buildRestoredHistory, turnMayCommit, turnHasOutput } from './history.js';
+import { trimHistory, sanitizeHistory, appendTurn, forProvider, trimForHistory, MAX_STORED_PATHS, buildRestoredHistory, turnMayCommit, turnHasOutput, uploadedAssetIds} from './history.js';
+
 import type { StoredMessage } from './history.js';
 
 type Msg = OpenAI.Chat.Completions.ChatCompletionMessageParam;
@@ -516,5 +517,32 @@ describe('attachment names in stored history', () => {
     const bad = [{ role: 'user', content: 'hi', attachments: [{ kind: 'video', filename: 'x.mp4' }, { kind: 'image' }] }] as unknown as StoredMessage[];
 
     expect(buildRestoredHistory(bad)[0].attachments).toBeUndefined();
+  });
+});
+
+// Clearing a conversation deletes its uploads, and the ids exist only in the
+// history being dropped, so they have to be read out of it first.
+describe('uploadedAssetIds', () => {
+  it('collects every id once, ignoring turns that carried none', () => {
+    expect(uploadedAssetIds([
+      { role: 'user', content: 'a', attachments: [{ kind: 'image', filename: 'a.png', assetId: 'id-1' }] },
+      { role: 'assistant', content: 'ok' },
+      { role: 'user', content: 'b', attachments: [
+        { kind: 'document', filename: 'b.md', assetId: 'id-2' },
+        { kind: 'document', filename: 'c.md' },
+      ] },
+      // A resent turn names the same file again; deleting it twice is pointless.
+      { role: 'user', content: 'c', attachments: [{ kind: 'image', filename: 'a.png', assetId: 'id-1' }] },
+    ])).toEqual(['id-1', 'id-2']);
+  });
+
+  it('drops an id that could not be a safe path segment', () => {
+    expect(uploadedAssetIds([
+      { role: 'user', content: 'a', attachments: [{ kind: 'image', filename: 'a.png', assetId: '../escape' }] },
+    ])).toEqual([]);
+  });
+
+  it('is empty for a conversation with no history', () => {
+    expect(uploadedAssetIds([])).toEqual([]);
   });
 });

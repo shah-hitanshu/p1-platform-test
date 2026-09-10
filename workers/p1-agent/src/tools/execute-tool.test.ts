@@ -165,6 +165,21 @@ describe('executeTool list_media', () => {
     ).rejects.toThrow('not available');
   });
 
+  // The media worker excludes chat attachments from this listing by default,
+  // but only while nothing here asks for them. Asserted rather than inherited: adding an
+  // origin param would put files people attached to a conversation in front of the model
+  // as placeable site images.
+  it('never asks the media worker for anything but library assets', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve([]) });
+    vi.stubGlobal('fetch', mockFetch);
+
+    await executeTool('list_media', { site_id: 'site-1', search: 'logo' }, stubCcrApi, 'user-1', TEST_CONTEXT, webConfig);
+
+    const requested = new URL(String(mockFetch.mock.calls[0][0]));
+    expect(requested.searchParams.has('origin')).toBe(false);
+    expect([...requested.searchParams.keys()].sort()).toEqual(['search', 'siteId']);
+  });
+
   it('bounds the media call so a hung worker cannot hold the turn open', async () => {
     const mockFetch = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve([]) });
     vi.stubGlobal('fetch', mockFetch);

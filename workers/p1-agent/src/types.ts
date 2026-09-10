@@ -44,14 +44,19 @@ export interface SelectedBlock {
 
 /** A file the user attached to a turn, as it arrives from the browser. */
 export type Attachment =
-  | { kind: 'document'; filename: string; text: string }
+  | { kind: 'document'; filename: string; text: string; assetId?: string }
   /** `dataUrl` is the image itself: the gateway will not fetch one, so the bytes come inline. */
-  | { kind: 'image'; filename: string; dataUrl: string };
+  | { kind: 'image'; filename: string; dataUrl: string; assetId?: string };
 
-/** Persisted with a turn, unlike the files, so a reopened conversation shows it carried them. */
+/**
+ * Persisted with a turn, unlike the files themselves. `assetId` points at the original in the
+ * media store, which is what lets a reopened conversation offer the file rather than just its
+ * name. Absent for a turn from before uploads existed, or one whose upload failed.
+ */
 export interface AttachedFileName {
   kind: Attachment['kind'];
   filename: string;
+  assetId?: string;
 }
 
 /** Where a page the agent is about to create should go, as the Create Page dialog collected it. */

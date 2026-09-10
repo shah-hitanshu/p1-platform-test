@@ -71,20 +71,29 @@ function attachmentFilename(value: unknown): string | null {
   return trimmed;
 }
 
+/** Stored, then handed back to the client, which turns it into a request path segment. */
+function attachmentAssetId(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  return /^[A-Za-z0-9_-]{1,64}$/.test(value) ? value : null;
+}
+
 function parseAttachment(entry: unknown): Attachment | null {
   if (typeof entry !== 'object' || entry === null) return null;
-  const { kind, filename, text, dataUrl } = entry as {
-    kind?: unknown; filename?: unknown; text?: unknown; dataUrl?: unknown;
+  const { kind, filename, text, dataUrl, assetId } = entry as {
+    kind?: unknown; filename?: unknown; text?: unknown; dataUrl?: unknown; assetId?: unknown;
   };
   const name = attachmentFilename(filename);
   if (name === null) return null;
+  // A bad id costs the file its reopenability, not the turn.
+  const id = attachmentAssetId(assetId);
+  const kept = id === null ? {} : { assetId: id };
   if (kind === 'document') {
     const body = attachmentText(text);
-    return body === null ? null : { kind: 'document', filename: name, text: body };
+    return body === null ? null : { kind: 'document', filename: name, text: body, ...kept };
   }
   if (kind === 'image') {
     const image = attachmentDataUrl(dataUrl);
-    return image === null ? null : { kind: 'image', filename: name, dataUrl: image };
+    return image === null ? null : { kind: 'image', filename: name, dataUrl: image, ...kept };
   }
   return null;
 }
@@ -125,7 +134,11 @@ export function attachmentsOf(context: ChatContext): Attachment[] {
 }
 
 export function attachmentNames(attachments: Attachment[]): AttachedFileName[] {
-  return attachments.map(({ kind, filename }) => ({ kind, filename }));
+  return attachments.map(({ kind, filename, assetId }) => ({
+    kind,
+    filename,
+    ...(assetId === undefined ? {} : { assetId }),
+  }));
 }
 
 /** Read names off a stored entry: written by us, but read back after an arbitrary deploy. */
@@ -134,10 +147,14 @@ export function attachmentNamesOf(value: unknown): AttachedFileName[] {
   const names: AttachedFileName[] = [];
   for (const entry of value.slice(0, MAX_ATTACHMENTS)) {
     if (typeof entry !== 'object' || entry === null) continue;
-    const { kind, filename } = entry as { kind?: unknown; filename?: unknown };
+    const { kind, filename, assetId } = entry as {
+      kind?: unknown; filename?: unknown; assetId?: unknown;
+    };
     if (kind !== 'image' && kind !== 'document') continue;
     const name = attachmentFilename(filename);
-    if (name !== null) names.push({ kind, filename: name });
+    if (name === null) continue;
+    const id = attachmentAssetId(assetId);
+    names.push({ kind, filename: name, ...(id === null ? {} : { assetId: id }) });
   }
   return names;
 }

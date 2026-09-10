@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { Attachment, ChatContext } from '../types.js';
-import { attachmentsOf, readAttachments } from './context.js';
+import { attachmentNames, attachmentNamesOf, attachmentsOf, readAttachments } from './context.js';
 
 describe('attachmentsOf', () => {
   const PNG = 'data:image/png;base64,QUJD';
@@ -123,5 +123,52 @@ describe('attachmentsOf', () => {
     expect(attachmentsOf(context(undefined))).toEqual([]);
     expect(attachmentsOf(context('brief.md'))).toEqual([]);
     expect(attachmentsOf(context([null, 'x', 42]))).toEqual([]);
+  });
+});
+
+// An assetId is stored and later handed back to the client, which turns it
+// into a request path. It arrives from the browser, so it is validated on the way in and
+// again on the way out of stored state.
+describe('attachment assetId', () => {
+  const context = (attachments: unknown): ChatContext => ({
+    siteId: 's1', branchId: 'b1', documentPath: '/pricing', token: 't',
+    attachments: attachments as Attachment[],
+  });
+
+  it('carries a well-formed id through', () => {
+    const [attachment] = attachmentsOf(context([
+      { kind: 'document', filename: 'brief.md', text: 'hi', assetId: 'a-1_B2' },
+    ]));
+    expect(attachment).toEqual({ kind: 'document', filename: 'brief.md', text: 'hi', assetId: 'a-1_B2' });
+  });
+
+  it('drops an id that could not be a safe path segment, keeping the attachment', () => {
+    for (const bad of ['../secrets', 'a/b', 'a?x=1', '', 'x'.repeat(65), 42, null]) {
+      const [attachment] = attachmentsOf(context([
+        { kind: 'document', filename: 'brief.md', text: 'hi', assetId: bad },
+      ]));
+      // The file still reaches the model; only its reopenability is lost.
+      expect(attachment).toEqual({ kind: 'document', filename: 'brief.md', text: 'hi' });
+    }
+  });
+
+  it('re-validates on the way back out of stored state', () => {
+    expect(attachmentNamesOf([
+      { kind: 'image', filename: 'a.png', assetId: 'ok-1' },
+      { kind: 'image', filename: 'b.png', assetId: '../escape' },
+    ])).toEqual([
+      { kind: 'image', filename: 'a.png', assetId: 'ok-1' },
+      { kind: 'image', filename: 'b.png' },
+    ]);
+  });
+
+  it('records the id alongside the name when a turn is stored', () => {
+    expect(attachmentNames([
+      { kind: 'image', filename: 'a.png', dataUrl: 'data:image/png;base64,QUJD', assetId: 'ok-1' },
+      { kind: 'document', filename: 'b.md', text: 'x' },
+    ])).toEqual([
+      { kind: 'image', filename: 'a.png', assetId: 'ok-1' },
+      { kind: 'document', filename: 'b.md' },
+    ]);
   });
 });

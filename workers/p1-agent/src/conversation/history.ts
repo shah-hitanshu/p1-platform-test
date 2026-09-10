@@ -267,6 +267,17 @@ export function buildRestoredHistory(history: StoredMessage[]): RestoredMessage[
     });
 }
 
+/** Every stored attachment id in a conversation, deduped. The history is the only place they exist. */
+export function uploadedAssetIds(history: StoredMessage[]): string[] {
+  const ids = new Set<string>();
+  for (const message of history) {
+    for (const { assetId } of attachmentNamesOf(message.attachments)) {
+      if (assetId !== undefined) ids.add(assetId);
+    }
+  }
+  return [...ids];
+}
+
 /** Paths a stored `list_documents` keeps: enough to recall the listing, not the whole site. */
 export const MAX_STORED_PATHS = 50;
 
