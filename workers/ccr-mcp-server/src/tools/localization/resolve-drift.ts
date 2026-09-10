@@ -7,7 +7,7 @@ const MAX_FIELDS = 100;
 
 const ResolveDriftInputSchema = z.object({
   site_id: z.string().describe('The site ID (UUID from list_sites)'),
-  branch_id: z.string().describe('The branch ID (UUID from list_branches)'),
+  branch_id: z.string().describe('The workstream ID (UUID from list_branches)'),
   document_id: z.string().describe('The translation document ID (UUID) whose drift was reconciled'),
   fields: z
     .array(
@@ -42,7 +42,7 @@ const ResolveDriftInputSchema = z.object({
 
 export const resolveDriftTool = defineTool({
   description:
-    'Record that changes get_drift reported on a translation have been reconciled against their canonical, so it stops reporting them. Mark a change once you have taken the canonical value, written your own translation of it, or decided the translation should keep what it has — all three settle it. Name each change by its componentId and its propPath exactly as get_drift gave them, so marking one change leaves the others on that field outstanding. Pass upstream_version_id as the toVersionId from the get_drift call the changes came from, so what gets settled is the state you were shown: a change the canonical made after that stays outstanding, and one it makes again later returns to the list on its own. Marks are held per branch. Pass resolved: false to undo a mark. Structural changes cannot be marked, since reconciling one means moving blocks on the canvas, and a slot the canonical no longer holds is refused.',
+    'Record that changes get_drift reported on a translation have been reconciled against their canonical, so it stops reporting them. Mark a change once you have taken the canonical value, written your own translation of it, or decided the translation should keep what it has — all three settle it. Name each change by its componentId and its propPath exactly as get_drift gave them, so marking one change leaves the others on that field outstanding. Pass upstream_version_id as the toVersionId from the get_drift call the changes came from, so what gets settled is the state you were shown: a change the canonical made after that stays outstanding, and one it makes again later returns to the list on its own. Marks are held per workstream. Pass resolved: false to undo a mark. Structural changes cannot be marked, since reconciling one means moving blocks on the canvas, and a slot the canonical no longer holds is refused.',
   inputSchema: ResolveDriftInputSchema,
   annotations: { title: 'Resolve drift', destructiveHint: false, idempotentHint: true },
   mutates: true,
