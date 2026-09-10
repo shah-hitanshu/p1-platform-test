@@ -62,7 +62,7 @@
       "title": "P1 rich text wrapper",
       "description": "Prose typography wrapper used by the P1 editorial blocks, replacing Tailwind's prose classes.",
       "dependencies": [
-        "isomorphic-dompurify"
+        "@pantheon-systems/puck-css"
       ],
       "files": [
         {
@@ -73,10 +73,6 @@
           "path": "rich.css",
           "type": "registry:file",
           "target": "lib/rich.css"
-        },
-        {
-          "path": "sanitize-richtext.ts",
-          "type": "registry:lib"
         }
       ],
       "meta": {

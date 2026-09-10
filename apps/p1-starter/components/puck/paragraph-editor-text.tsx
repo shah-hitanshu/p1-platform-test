@@ -5,7 +5,7 @@ import {
   useResolvedPreviewState,
   getBlockPropsById,
 } from "@pantheon-systems/puck-css";
-import { sanitizeRichtextHtml } from "./sanitize-richtext";
+import { sanitizeRichtextHtml } from "@pantheon-systems/puck-css/sanitize-richtext";
 
 const TEMPLATE_TOKEN_RE = /\{\{[^{}]+\}\}/;
 

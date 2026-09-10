@@ -27,7 +27,6 @@
     "@tailwindcss/postcss": "^4.2.2",
     "@tailwindcss/typography": "^0.5.16",
     "classnames": "^2.5.1",
-    "isomorphic-dompurify": "^3.18.0",
     "launchdarkly-react-client-sdk": "^3.9.2",
     "next": "^16.2.12",
     "postcss": "^8.5.25",

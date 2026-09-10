@@ -1,9 +1,9 @@
 "use client";
 import { type ReactNode, isValidElement } from "react";
 import { richtextField } from "@pantheon-systems/puck-css/fields";
+import { sanitizeRichtextHtml } from "@pantheon-systems/puck-css/sanitize-richtext";
 import { blockPaddingClass } from "./block-padding";
 import { ParagraphEditorText } from "./paragraph-editor-text";
-import { sanitizeRichtextHtml } from "./sanitize-richtext";
 
 export const paragraphBlock = {
   label: "Paragraph",

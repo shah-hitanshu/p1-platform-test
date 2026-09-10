@@ -94,7 +94,7 @@ Puck may hand you either a React element (while editing) or an HTML string
 import { type ReactNode, isValidElement } from "react";
 import { richtextField } from "@pantheon-systems/puck-css/fields";
 import { blockPaddingClass } from "./block-padding";
-import { sanitizeRichtextHtml } from "./sanitize-richtext";
+import { sanitizeRichtextHtml } from "@pantheon-systems/puck-css/sanitize-richtext";
 
 render: ({ text }: { text?: string | ReactNode }) => {
   if (isValidElement(text)) {
@@ -124,7 +124,12 @@ render: ({ text }: { text?: string | ReactNode }) => {
   a protocol allowlist that rejects `javascript:`/`data:` hrefs — but that is an
   upstream TipTap default, not something this repo enforces or tests. Sanitizing
   at render is defense-in-depth that stays correct even if the editor schema, a
-  TipTap upgrade, or the AI-write path later changes. Do **not** feed any HTML
+  TipTap upgrade, or the AI-write path later changes. Import it from
+  `@pantheon-systems/puck-css/sanitize-richtext` — never copy the allowlist into
+  a block, or a tightening upstream will never reach it. If a block genuinely
+  needs a tag or attribute the default allowlist omits, pass
+  `allowedTags`/`allowedAttrs`; they extend the defaults and cannot remove a
+  protection. Do **not** feed any HTML
   string to `dangerouslySetInnerHTML` unsanitized — see also the link-safety
   checks in `list-block.tsx` and `connectable.tsx`.
 - Add the `prose max-w-prose` classes so formatted HTML (lists, emphasis) gets

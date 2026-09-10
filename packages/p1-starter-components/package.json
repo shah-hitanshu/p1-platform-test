@@ -31,7 +31,6 @@
   "devDependencies": {
     "@playwright/test": "^1.58.0",
     "http-server": "^14.1.1",
-    "isomorphic-dompurify": "^3.18.0",
     "@pantheon-systems/eslint-config": "workspace:*",
     "@puckeditor/core": "^0.21.1",
     "@storybook/addon-a11y": "^10.3.5",

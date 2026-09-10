@@ -1,6 +1,6 @@
 import * as React from "react";
 import "./rich.css";
-import { sanitizeRichtextHtml } from "@/registry/p1/internal/sanitize-richtext";
+import { sanitizeRichtextHtml } from "@pantheon-systems/puck-css/sanitize-richtext";
 
 /**
  * Renders the value of a Puck `richtext` field.

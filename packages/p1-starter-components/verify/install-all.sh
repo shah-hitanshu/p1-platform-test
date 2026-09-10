@@ -37,6 +37,34 @@ cat > components.json <<JSON
 }
 JSON
 
+# shadcn installs each item's registry `dependencies` from npm, so a block that
+# imports a puck-css export added in this working tree would be validated
+# against the last release and only break after publish. Override with packed
+# tarballs, the way create-p1-starter-kit's scaffold validation does.
+echo "==> overriding the workspace packages with packed tarballs"
+TARBALLS="$WORK/tarballs"
+mkdir -p "$TARBALLS"
+for dir in css-client puck-css; do
+  if [ ! -d "$REPO_ROOT/packages/$dir/dist" ]; then
+    echo "FAIL: packages/$dir has no dist/ — build the workspace first:"
+    echo "      pnpm exec turbo run build --filter='@pantheon-systems/p1-starter-components^...'"
+    exit 1
+  fi
+  (cd "$REPO_ROOT/packages/$dir" && pnpm pack --pack-destination "$TARBALLS" >/dev/null)
+done
+node -e "
+  const fs = require('fs'), path = require('path');
+  const lines = ['overrides:'];
+  for (const dir of ['css-client', 'puck-css']) {
+    const m = JSON.parse(fs.readFileSync(path.join('$REPO_ROOT/packages', dir, 'package.json'), 'utf8'));
+    const tgz = path.join('$TARBALLS', m.name.replace('@', '').replace('/', '-') + '-' + m.version + '.tgz');
+    if (!fs.existsSync(tgz)) { console.error('FAIL: pnpm pack did not produce ' + tgz); process.exit(1); }
+    lines.push('  \"' + m.name + '\": \"file:' + tgz + '\"');
+  }
+  fs.writeFileSync('pnpm-workspace.yaml', lines.join('\n') + '\n');
+  console.log('    overriding ' + (lines.length - 1) + ' packages');
+"
+
 echo "==> installing @p1/base"
 pnpm dlx shadcn@latest add "$R/base.json" --yes >/dev/null
 COUNT=$(find components/puck/blocks -maxdepth 1 -mindepth 1 -type d | wc -l | tr -d ' ')
@@ -96,6 +124,17 @@ node -e "
     dirs.map(d => \`  P1\${pascal(d)}: \${exportName(d)},\`).join('\n') +
     '\n};\nexport const p1Categories = {};\n');
 "
+# An ignored override silently validates the published packages instead of this
+# working tree, which still installs and builds — green for the wrong reason.
+node -e "
+  const fs = require('fs');
+  const lock = fs.readFileSync('pnpm-lock.yaml', 'utf8');
+  for (const t of fs.readdirSync('$TARBALLS')) {
+    if (!lock.includes(t)) { console.error('FAIL: pnpm ignored the override for ' + t); process.exit(1); }
+  }
+  console.log('    workspace packages resolved from their tarballs');
+"
+
 pnpm exec tsc --noEmit
 pnpm build
 
