@@ -39,6 +39,7 @@ import {
 } from './branch-document-service';
 import { TEMPLATE_RELATION_INNER_JOIN, branchInheritsFromMain } from './document-queries';
 import { publishMergedVersions } from './merge-publish';
+import { carryUpstreamResolutions } from './relations-service';
 import { query } from '../db';
 import {
   triggerMigration,
@@ -300,6 +301,13 @@ export async function executeMerge(
   // 5b. Promote source-branch path overrides to the target branch.
   await applyPathOverridePromotion(pathPromotion);
 
+  // 5c. Carry what the source branch settled onto the target.
+  await carryUpstreamResolutionsForMerge(
+    mergeRequest.sourceBranchId,
+    mergeRequest.targetBranchId,
+    copiedVersions,
+  );
+
   // 6. Create post-merge checkpoint with only merge-touched documents
   const checkpointResult = await createCheckpoint({
     branchId: mergeRequest.targetBranchId,
@@ -404,6 +412,10 @@ export async function executeMergeWithResolution(
   // the post-merge checkpoint captures ONLY merge-touched documents.
   const mergedDocVersions: MergedDocumentVersion[] = [];
 
+  // Conflicts settled without the source's content, for the resolution carry:
+  // what landed is not what the source branch reconciled against.
+  const conflictsKeepingTarget: string[] = [];
+
   // Build a map of per-document resolutions for quick lookup
   const resolutionMap = new Map<string, DocumentResolution>();
   if (resolutions !== undefined) {
@@ -417,6 +429,10 @@ export async function executeMergeWithResolution(
     for (const conflict of detectionResult.conflicts.documentConflicts) {
       const docResolution = resolutionMap.get(conflict.documentId);
       const strategy = docResolution?.strategy ?? resolutionStrategy;
+
+      if (strategy === 'manual' || strategy === 'take-target') {
+        conflictsKeepingTarget.push(conflict.documentId);
+      }
 
       const sourceChange = detectionResult.sourceChanges.find(
         (c) => c.documentId === conflict.documentId,
@@ -530,6 +546,14 @@ export async function executeMergeWithResolution(
 
   // 5b. Promote source-branch path overrides to the target branch.
   await applyPathOverridePromotion(pathPromotion);
+
+  // 5c. Carry what the source branch settled onto the target.
+  await carryUpstreamResolutionsForMerge(
+    mergeRequest.sourceBranchId,
+    mergeRequest.targetBranchId,
+    mergedDocVersions,
+    conflictsKeepingTarget,
+  );
 
   // 6. Create post-merge checkpoint with only merge-touched documents
   const checkpointResult = await createCheckpoint({
@@ -739,6 +763,30 @@ interface MergedDocumentVersion {
   documentId: string;
   documentVersionId: string;
   sourceVersionId: string | null;
+}
+
+/**
+ * Carries what the source branch settled about its translations onto the target, so
+ * work already done to a translation on a branch is not reported as outstanding
+ * again once the branch lands.
+ *
+ * A landed version with no source-branch origin, a conflict resolved by hand or by
+ * keeping the target's content, leaves the target's resolutions for that
+ * translation where they are: the branch's reconciling was not what landed.
+ *
+ * `conflictsKeepingTarget` names those conflicts directly. Keeping the target's
+ * content writes no version, so they have no landed version to be recognised by.
+ */
+export async function carryUpstreamResolutionsForMerge(
+  sourceBranchId: string,
+  targetBranchId: string,
+  mergedVersions: readonly MergedDocumentVersion[],
+  conflictsKeepingTarget: readonly string[] = [],
+): Promise<void> {
+  await carryUpstreamResolutions(sourceBranchId, targetBranchId, [
+    ...mergedVersions.flatMap((v) => (v.sourceVersionId === null ? [v.documentId] : [])),
+    ...conflictsKeepingTarget,
+  ]);
 }
 
 /**

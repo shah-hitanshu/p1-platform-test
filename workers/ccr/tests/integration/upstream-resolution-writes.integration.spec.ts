@@ -28,6 +28,7 @@ import {
   getUpstreamResolutions,
   setUpstreamResolutions,
   clearUpstreamResolutions,
+  carryUpstreamResolutions,
   getAuthorityOverride,
   setAuthorityOverride,
   MAX_OVERRIDE_ENTRIES,
@@ -663,6 +664,244 @@ describe('Upstream-resolution writes - Integration Tests', () => {
 
       const there = await getUpstreamResolutions(translationId, otherId, branchId);
       expect(there.get('HeadingBlock-1')?.get('/title')).toBeUndefined();
+    });
+  });
+
+  describe('carrying what a branch settled onto another branch', () => {
+    let otherId: string;
+
+    const makeBranch = async (name: string): Promise<string> => {
+      const branch = await createBranch({
+        siteId,
+        name: `${name}-${crypto.randomUUID()}`,
+        sourceBranchId: branchId,
+        createdById: TEST_USER_ID,
+        createdByType: 'user',
+      });
+      return branch.id;
+    };
+
+    /**
+     * Records main's map as what the branch's row started with. The service writes
+     * `inherited` when it first inserts a branch's row; this stands in for that,
+     * so it belongs right after the branch's first write and before main settles
+     * anything else.
+     */
+    const recordWhatItStartedWith = async (branch: string): Promise<void> => {
+      await sql.unsafe(
+        `UPDATE app.document_relation_branch_resolutions own
+            SET inherited = COALESCE((
+                  SELECT main.resolutions
+                    FROM app.document_relation_branch_resolutions main
+                   WHERE main.source_document_id = own.source_document_id
+                     AND main.relation_type = 'localization'
+                     AND main.branch_id = $2
+                ), '{}'::jsonb)
+          WHERE own.source_document_id = $1 AND own.relation_type = 'localization'
+            AND own.branch_id = $3`,
+        [translationId, branchId, branch],
+      );
+    };
+
+    const inheritedOn = async (branch: string): Promise<Record<string, unknown>> => {
+      const rows = await sql`
+        SELECT inherited FROM app.document_relation_branch_resolutions
+         WHERE source_document_id = ${translationId}
+           AND relation_type = 'localization' AND branch_id = ${branch}
+      `;
+      return rows[0]?.inherited as Record<string, unknown>;
+    };
+
+    beforeEach(async () => {
+      otherId = await makeBranch('carry');
+    });
+
+    it('carries a mark made on a translation the branch never edited', async () => {
+      await setUpstreamResolutions(
+        translationId,
+        otherId,
+        one('HeadingBlock-1', '/subtitle', HASH_B),
+        branchId,
+      );
+      await recordWhatItStartedWith(otherId);
+
+      await carryUpstreamResolutions(otherId, branchId, []);
+
+      const onMain = await getUpstreamResolutions(translationId, branchId);
+      expect(onMain.get('HeadingBlock-1')?.get('/subtitle')?.hash).toBe(HASH_B);
+    });
+
+    it('leaves a mark main cleared cleared', async () => {
+      await setUpstreamResolutions(translationId, branchId, one('HeadingBlock-1', '/title'));
+      await setUpstreamResolutions(
+        translationId,
+        otherId,
+        one('HeadingBlock-1', '/subtitle', HASH_B),
+        branchId,
+      );
+      await recordWhatItStartedWith(otherId);
+      await clearUpstreamResolutions(translationId, branchId, one('HeadingBlock-1', '/title'));
+
+      await carryUpstreamResolutions(otherId, branchId, []);
+
+      const onMain = await getUpstreamResolutions(translationId, branchId);
+      expect(onMain.get('HeadingBlock-1')?.get('/subtitle')?.hash).toBe(HASH_B);
+      expect(onMain.get('HeadingBlock-1')?.get('/title')).toBeUndefined();
+    });
+
+    it('removes a mark the branch cleared from main', async () => {
+      await setUpstreamResolutions(translationId, branchId, one('HeadingBlock-1', '/title'));
+      await clearUpstreamResolutions(
+        translationId,
+        otherId,
+        one('HeadingBlock-1', '/title'),
+        branchId,
+      );
+      await recordWhatItStartedWith(otherId);
+
+      await carryUpstreamResolutions(otherId, branchId, []);
+
+      const onMain = await getUpstreamResolutions(translationId, branchId);
+      expect(onMain.get('HeadingBlock-1')?.get('/title')).toBeUndefined();
+    });
+
+    it('leaves a mark main settled after the branch started alone', async () => {
+      await setUpstreamResolutions(
+        translationId,
+        otherId,
+        one('HeadingBlock-1', '/subtitle', HASH_B),
+        branchId,
+      );
+      await recordWhatItStartedWith(otherId);
+      await setUpstreamResolutions(translationId, branchId, one('HeadingBlock-1', '/title'));
+
+      await carryUpstreamResolutions(otherId, branchId, []);
+
+      const onMain = await getUpstreamResolutions(translationId, branchId);
+      expect(onMain.get('HeadingBlock-1')?.get('/title')?.hash).toBe(HASH_A);
+      expect(onMain.get('HeadingBlock-1')?.get('/subtitle')?.hash).toBe(HASH_B);
+    });
+
+    it('leaves an excluded translation alone', async () => {
+      await setUpstreamResolutions(
+        translationId,
+        otherId,
+        one('HeadingBlock-1', '/subtitle', HASH_B),
+        branchId,
+      );
+      await recordWhatItStartedWith(otherId);
+
+      await carryUpstreamResolutions(otherId, branchId, [translationId]);
+
+      const onMain = await getUpstreamResolutions(translationId, branchId);
+      expect(onMain.get('HeadingBlock-1')?.get('/subtitle')).toBeUndefined();
+    });
+
+    it('seeds a workstream with no row of its own from main, with the carry applied', async () => {
+      const thirdId = await makeBranch('carry-target');
+      await setUpstreamResolutions(translationId, branchId, one('HeadingBlock-1', '/title'));
+      await clearUpstreamResolutions(
+        translationId,
+        otherId,
+        one('HeadingBlock-1', '/title'),
+        branchId,
+      );
+      await setUpstreamResolutions(
+        translationId,
+        otherId,
+        one('HeadingBlock-1', '/subtitle', HASH_B),
+        branchId,
+      );
+      await recordWhatItStartedWith(otherId);
+
+      await carryUpstreamResolutions(otherId, thirdId, []);
+
+      const onThird = await getUpstreamResolutions(translationId, thirdId);
+      expect(onThird.get('HeadingBlock-1')?.get('/subtitle')?.hash).toBe(HASH_B);
+      expect(onThird.get('HeadingBlock-1')?.get('/title')).toBeUndefined();
+      expect(await inheritedOn(thirdId)).toEqual({
+        'HeadingBlock-1': { '/title': { hash: HASH_A, at: expect.any(String) } },
+      });
+    });
+
+    it('carries on what a workstream received, once that workstream merges', async () => {
+      const thirdId = await makeBranch('carry-target');
+      await setUpstreamResolutions(translationId, branchId, one('HeadingBlock-1', '/title'));
+      await clearUpstreamResolutions(
+        translationId,
+        otherId,
+        one('HeadingBlock-1', '/title'),
+        branchId,
+      );
+      await setUpstreamResolutions(
+        translationId,
+        otherId,
+        one('HeadingBlock-1', '/subtitle', HASH_B),
+        branchId,
+      );
+      await recordWhatItStartedWith(otherId);
+
+      await carryUpstreamResolutions(otherId, thirdId, []);
+      await carryUpstreamResolutions(thirdId, branchId, []);
+
+      const onMain = await getUpstreamResolutions(translationId, branchId);
+      expect(onMain.get('HeadingBlock-1')?.get('/subtitle')?.hash).toBe(HASH_B);
+      expect(onMain.get('HeadingBlock-1')?.get('/title')).toBeUndefined();
+    });
+
+    it('applies the carry to a workstream that already has a row, leaving what it started with', async () => {
+      const thirdId = await makeBranch('carry-target');
+      await setUpstreamResolutions(translationId, branchId, one('HeadingBlock-1', '/title'));
+      await setUpstreamResolutions(
+        translationId,
+        thirdId,
+        one('HeadingBlock-1', '/subtitle', HASH_B),
+        branchId,
+      );
+      await recordWhatItStartedWith(thirdId);
+      await setUpstreamResolutions(
+        translationId,
+        otherId,
+        one('HeadingBlock-1', '/tagline', HASH_B),
+        branchId,
+      );
+      await recordWhatItStartedWith(otherId);
+
+      await carryUpstreamResolutions(otherId, thirdId, []);
+
+      const onThird = await getUpstreamResolutions(translationId, thirdId);
+      expect([...onThird.get('HeadingBlock-1')?.keys() ?? []].sort()).toEqual([
+        '/subtitle',
+        '/tagline',
+        '/title',
+      ]);
+      expect(await inheritedOn(thirdId)).toEqual({
+        'HeadingBlock-1': { '/title': { hash: HASH_A, at: expect.any(String) } },
+      });
+    });
+
+    it('reaches the same result run twice', async () => {
+      await setUpstreamResolutions(translationId, branchId, one('HeadingBlock-1', '/title'));
+      await clearUpstreamResolutions(
+        translationId,
+        otherId,
+        one('HeadingBlock-1', '/title'),
+        branchId,
+      );
+      await setUpstreamResolutions(
+        translationId,
+        otherId,
+        one('HeadingBlock-1', '/subtitle', HASH_B),
+        branchId,
+      );
+      await recordWhatItStartedWith(otherId);
+
+      await carryUpstreamResolutions(otherId, branchId, []);
+      await carryUpstreamResolutions(otherId, branchId, []);
+
+      const onMain = await getUpstreamResolutions(translationId, branchId);
+      expect([...onMain.get('HeadingBlock-1')?.keys() ?? []]).toEqual(['/subtitle']);
+      expect(onMain.get('HeadingBlock-1')?.get('/subtitle')?.hash).toBe(HASH_B);
     });
   });
 });

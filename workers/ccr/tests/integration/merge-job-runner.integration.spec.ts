@@ -33,6 +33,11 @@ import {
   getMergeRequest,
 } from '../../src/services/merge-request-service';
 import { createDocumentOnBranch } from '../../src/services/branch-document-service';
+import { createTranslation } from '../../src/services/create-translation-service';
+import {
+  getUpstreamResolutions,
+  setUpstreamResolutions,
+} from '../../src/services/relations-service';
 import {
   createMergeJob,
   planMergeJob,
@@ -154,6 +159,36 @@ describe('Merge Job Runner - Integration Tests [PCC-3737]', () => {
       WHERE document_id = ${documentId} AND branch_id = ${mainBranchId} AND source = 'merge'
     `;
     return parseInt(rows[0]?.count as string, 10);
+  }
+
+  async function createTranslationOnMain(path: string): Promise<string> {
+    const canonicalId = await createDocOnBranch(mainBranchId, path);
+    const translation = await createTranslation({
+      canonicalDocumentId: canonicalId,
+      branchId: mainBranchId,
+      locale: 'fr-FR',
+      createdById: TEST_USER_ID,
+      createdByType: 'user',
+    });
+    return translation.document.id;
+  }
+
+  async function reconcileTitleOn(
+    translationId: string,
+    branchId: string,
+    hash: string,
+  ): Promise<void> {
+    await setUpstreamResolutions(
+      translationId,
+      branchId,
+      [{ slotId: 'HeadingBlock-1', propPath: '/title', hash }],
+      mainBranchId,
+    );
+  }
+
+  async function titleResolutionOnMain(translationId: string): Promise<string | undefined> {
+    const resolutions = await getUpstreamResolutions(translationId, mainBranchId);
+    return resolutions.get('HeadingBlock-1')?.get('/title')?.hash;
   }
 
   it('runs a merge job end-to-end: plan, chunked apply, finalize, publish', async () => {
@@ -475,6 +510,147 @@ describe('Merge Job Runner - Integration Tests [PCC-3737]', () => {
         error: 'source version no longer exists',
       }),
     ]);
+  });
+
+  it("carries a workstream's reconciled changes for a translation it never edited", async () => {
+    const translationId = await createTranslationOnMain('pages/carry/canonical');
+    const featureBranchId = await createFeatureBranch('runner-carry-resolutions');
+    await reconcileTitleOn(translationId, featureBranchId, 'sha256:settled-on-the-workstream');
+
+    // Reconciling a change records a mark and writes no version, so the page is
+    // what the merge lands alongside the carried mark.
+    await createDocOnBranch(featureBranchId, 'pages/carry/some-other-page');
+
+    const mergeRequestId = await createApprovedMergeRequest(featureBranchId, 'carry resolutions');
+    const jobId = await startJob(mergeRequestId, featureBranchId);
+    await planMergeJob(jobId);
+    await applyMergeChunk(jobId);
+    expect((await finalizeMergeCheckpoint(jobId)).finalized).toBe(true);
+
+    expect(await titleResolutionOnMain(translationId)).toBe('sha256:settled-on-the-workstream');
+    await finalizeMergeStatus(jobId);
+    await finalizeMergeJobRecord(jobId);
+  });
+
+  it('carries reconciled changes when the branch lands no content of its own', async () => {
+    const translationId = await createTranslationOnMain('pages/carry/only-reconciled');
+    const featureBranchId = await createFeatureBranch('runner-carry-only-resolutions');
+    await reconcileTitleOn(translationId, featureBranchId, 'sha256:settled-with-no-edit');
+
+    const mergeRequestId = await createApprovedMergeRequest(featureBranchId, 'carry without edits');
+    const jobId = await startJob(mergeRequestId, featureBranchId);
+    await planMergeJob(jobId);
+    await applyMergeChunk(jobId);
+
+    const checkpoint = await finalizeMergeCheckpoint(jobId);
+    expect(checkpoint.finalized).toBe(true);
+    expect(checkpoint.checkpointId).toBeNull();
+
+    expect(await titleResolutionOnMain(translationId)).toBe('sha256:settled-with-no-edit');
+    await finalizeMergeStatus(jobId);
+    await finalizeMergeJobRecord(jobId);
+  });
+
+  it("leaves the target's reconciled changes alone when a conflict keeps the target's content", async () => {
+    const translationId = await createTranslationOnMain('pages/carry/kept-target');
+    const featureBranchId = await createFeatureBranch('runner-carry-take-target');
+    await reconcileTitleOn(translationId, mainBranchId, 'sha256:settled-on-main');
+    await reconcileTitleOn(translationId, featureBranchId, 'sha256:settled-on-the-workstream');
+
+    await createDocumentVersion({
+      documentId: translationId,
+      branchId: featureBranchId,
+      snapshot: { root: { props: { title: 'Bonjour' } } },
+      source: 'edit',
+      createdById: TEST_USER_ID,
+      createdByType: 'user',
+    });
+    await createDocumentVersion({
+      documentId: translationId,
+      branchId: mainBranchId,
+      snapshot: { root: { props: { title: 'Salut' } } },
+      source: 'edit',
+      createdById: TEST_USER_ID,
+      createdByType: 'user',
+    });
+    // The target side of conflict detection only sees checkpointed versions;
+    // publish makes the main-side edit count.
+    await publishDocument({
+      siteId, documentId: translationId, branchId: mainBranchId,
+      createdById: TEST_USER_ID, createdByType: 'user',
+    });
+
+    const mergeRequestId = await createApprovedMergeRequest(featureBranchId, 'carry take-target');
+    const priorStatus = await claimMergeRequestForExecution(mergeRequestId);
+    const jobId = crypto.randomUUID();
+    await createMergeJob({
+      jobId, mergeRequestId, siteId,
+      sourceBranchId: featureBranchId, targetBranchId: mainBranchId,
+      priorMrStatus: priorStatus as string,
+      resolutions: [{ documentId: translationId, strategy: 'take-target' }],
+      triggeredById: TEST_USER_ID, triggeredByType: 'user',
+    });
+
+    await planMergeJob(jobId);
+    await applyMergeChunk(jobId);
+    await finalizeMergeCheckpoint(jobId);
+
+    expect(await titleResolutionOnMain(translationId)).toBe('sha256:settled-on-main');
+    await finalizeMergeStatus(jobId);
+    await finalizeMergeJobRecord(jobId);
+  });
+
+  it("leaves the target's reconciled changes alone when neither side's content lands", async () => {
+    const translationId = await createTranslationOnMain('pages/carry/resolved-by-hand');
+    const featureBranchId = await createFeatureBranch('runner-carry-manual');
+    await reconcileTitleOn(translationId, mainBranchId, 'sha256:settled-on-main');
+    await reconcileTitleOn(translationId, featureBranchId, 'sha256:settled-on-the-workstream');
+
+    await createDocumentVersion({
+      documentId: translationId,
+      branchId: featureBranchId,
+      snapshot: { root: { props: { title: 'Bonjour' } } },
+      source: 'edit',
+      createdById: TEST_USER_ID,
+      createdByType: 'user',
+    });
+    await createDocumentVersion({
+      documentId: translationId,
+      branchId: mainBranchId,
+      snapshot: { root: { props: { title: 'Salut' } } },
+      source: 'edit',
+      createdById: TEST_USER_ID,
+      createdByType: 'user',
+    });
+    // The target side of conflict detection only sees checkpointed versions;
+    // publish makes the main-side edit count.
+    await publishDocument({
+      siteId, documentId: translationId, branchId: mainBranchId,
+      createdById: TEST_USER_ID, createdByType: 'user',
+    });
+
+    const mergeRequestId = await createApprovedMergeRequest(featureBranchId, 'carry manual');
+    const priorStatus = await claimMergeRequestForExecution(mergeRequestId);
+    const jobId = crypto.randomUUID();
+    await createMergeJob({
+      jobId, mergeRequestId, siteId,
+      sourceBranchId: featureBranchId, targetBranchId: mainBranchId,
+      priorMrStatus: priorStatus as string,
+      resolutions: [{
+        documentId: translationId,
+        strategy: 'manual',
+        resolvedSnapshot: { root: { props: { title: 'Bonjour a tous' } } },
+      }],
+      triggeredById: TEST_USER_ID, triggeredByType: 'user',
+    });
+
+    await planMergeJob(jobId);
+    await applyMergeChunk(jobId);
+    await finalizeMergeCheckpoint(jobId);
+
+    expect(await titleResolutionOnMain(translationId)).toBe('sha256:settled-on-main');
+    await finalizeMergeStatus(jobId);
+    await finalizeMergeJobRecord(jobId);
   });
 
   it('serializes concurrent execute triggers via the MR status CAS', async () => {

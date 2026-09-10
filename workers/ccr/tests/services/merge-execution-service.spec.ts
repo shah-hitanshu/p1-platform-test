@@ -1416,6 +1416,9 @@ describe('Phase 5.3: Merge Execution Service', () => {
 
       // promotePathOverrides: SELECT branch_document_paths — no overrides for this test
       vi.mocked(db.query).mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      // carryUpstreamResolutions: SELECT the resolutions the source branch holds —
+      // the merged document is a template, so it holds none and nothing is written
+      vi.mocked(db.query).mockResolvedValueOnce({ rows: [], rowCount: 0 });
       // Stale document count query
       vi.mocked(db.query).mockResolvedValueOnce({
         rows: [{ count: String(staleCount) }],

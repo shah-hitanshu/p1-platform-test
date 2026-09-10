@@ -173,6 +173,7 @@ export {
   upstreamResolutionsToJson,
   setUpstreamResolutions,
   clearUpstreamResolutions,
+  carryUpstreamResolutions,
 } from './relations-service';
 
 export type {

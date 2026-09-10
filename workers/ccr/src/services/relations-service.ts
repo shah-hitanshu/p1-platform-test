@@ -17,6 +17,7 @@
  */
 
 import { query } from '../db';
+import { findMainBranchId } from './template-read';
 import {
   branchDocumentPathJoin,
   branchInheritsFromMain,
@@ -711,32 +712,32 @@ function jsonObject(source: string): string {
 }
 
 /**
- * The map at `source` merged with the batch at `$3`, slot by slot, so props the
- * batch does not name stay where they were.
+ * The map at `source` merged with the batch bound to `batchParam`, slot by slot,
+ * so props the batch does not name stay where they were.
  */
-function mergedWithBatch(source: string): string {
+function mergedWithBatch(source: string, batchParam = '$3'): string {
   return `(
   SELECT COALESCE(jsonb_object_agg(m.slot, m.props), '{}'::jsonb) FROM (
     SELECT COALESCE(stored.key, batch.key) AS slot,
            COALESCE(${jsonObject('stored.value')}, '{}'::jsonb)
              || COALESCE(batch.value, '{}'::jsonb) AS props
       FROM jsonb_each(${jsonObject(source)}) stored
-      FULL OUTER JOIN jsonb_each($3::jsonb) batch ON batch.key = stored.key
+      FULL OUTER JOIN jsonb_each(${batchParam}::jsonb) batch ON batch.key = stored.key
   ) m)`;
 }
 
 /**
- * The map at `source` minus the props the batch at `$3` names, dropping a slot
- * left with none.
+ * The map at `source` minus the props the batch bound to `batchParam` names,
+ * dropping a slot left with none.
  */
-function prunedByBatch(source: string): string {
+function prunedByBatch(source: string, batchParam = '$3'): string {
   return `(
   SELECT COALESCE(jsonb_object_agg(m.slot, m.props), '{}'::jsonb) FROM (
     SELECT stored.key AS slot,
            ${jsonObject('stored.value')} - (
              SELECT COALESCE(array_agg(p.path), ARRAY[]::text[])
                FROM jsonb_array_elements_text(
-                      COALESCE($3::jsonb -> stored.key, '[]'::jsonb)
+                      COALESCE(${batchParam}::jsonb -> stored.key, '[]'::jsonb)
                     ) AS p(path)
            ) AS props
       FROM jsonb_each(${jsonObject(source)}) stored
@@ -931,4 +932,184 @@ export async function clearUpstreamResolutions(
   return stored === undefined
     ? getUpstreamResolutions(derivedDocumentId, branchId, mainBranchId)
     : resolutionsFromJson(stored);
+}
+
+/**
+ * One row's difference from the map it started with, as the batches that carry it:
+ * `sets` holds the resolutions to record, keyed by slot then pointer, and `clears`
+ * the pointers to remove, keyed by slot.
+ */
+interface CarriedResolutions {
+  sets: Record<string, Record<string, UpstreamResolution>>;
+  clears: Record<string, string[]>;
+}
+
+/**
+ * What a branch settled itself: the difference between the resolutions it `holds`
+ * and the `inherited` copy of main's its row started as. Null when the two agree
+ * throughout, so the branch has settled nothing of its own.
+ *
+ * An entry the branch holds that `inherited` records differently, or not at all,
+ * is the branch's own mark and is set. An entry only `inherited` holds the branch
+ * cleared, so it is removed. An entry the two agree on came over untouched and is
+ * left out of both batches.
+ *
+ * Null-prototype objects throughout: a slot or prop named `__proto__` is a key
+ * here, and assigning one on an ordinary object sets the prototype instead.
+ */
+function carriedResolutions(
+  holds: UpstreamResolutions,
+  inherited: UpstreamResolutions,
+): CarriedResolutions | null {
+  const sets = Object.create(null) as Record<string, Record<string, UpstreamResolution>>;
+  const clears = Object.create(null) as Record<string, string[]>;
+  let settled = false;
+  for (const [slotId, props] of holds) {
+    for (const [propPath, resolution] of props) {
+      const came = inherited.get(slotId)?.get(propPath);
+      if (came?.hash === resolution.hash && came.at === resolution.at) {
+        continue;
+      }
+      const slot = sets[slotId] ?? (Object.create(null) as Record<string, UpstreamResolution>);
+      slot[propPath] = resolution;
+      sets[slotId] = slot;
+      settled = true;
+    }
+  }
+  for (const [slotId, props] of inherited) {
+    for (const propPath of props.keys()) {
+      if (holds.get(slotId)?.has(propPath) === true) {
+        continue;
+      }
+      clears[slotId] = [...(clears[slotId] ?? []), propPath];
+      settled = true;
+    }
+  }
+  return settled ? { sets, clears } : null;
+}
+
+/**
+ * Applies one translation's carried batches to `targetBranchId`: the map that
+ * branch holds minus the cleared pointers, merged with the recorded ones. `$3` is
+ * the set batch, `$4` the clear batch, and `$5` the branch to inherit from.
+ *
+ * A target with no row of its own is seeded the way its own first write seeds one:
+ * main's map with the batches applied, and main's map recorded as what the row
+ * started with. Main inherits nothing, so a row seeded for main starts empty.
+ *
+ * One statement per translation, applied slot-wise over the row's own map, so a
+ * resolution recorded on the target while the carry runs survives it.
+ *
+ * The same statement enforces `MAX_OVERRIDE_ENTRIES` over the result. A seeded row
+ * that would breach the ceiling holds the set batch alone and starts from nothing,
+ * both columns turning on the one condition so they cannot disagree about which
+ * map the row began as. An existing row the batches would take past the ceiling is
+ * left as it stands, and the changes it settled are listed again.
+ *
+ * A no-op when the document has no localization edge, so no resolutions are held
+ * for a document that derives from nothing.
+ */
+async function applyCarriedResolutions(
+  derivedDocumentId: string,
+  targetBranchId: string,
+  mainBranchId: string,
+  carried: CarriedResolutions,
+): Promise<void> {
+  const inherited = inheritedMap('$5');
+  const seeded = mergedWithBatch(prunedByBatch(inherited, '$4'), '$3');
+  const merged = mergedWithBatch(prunedByBatch(STORED_RESOLUTIONS, '$4'), '$3');
+  await query(
+    `INSERT INTO app.document_relation_branch_resolutions AS r
+       (source_document_id, relation_type, branch_id, resolutions, inherited)
+     SELECT $1, 'localization', $2,
+            CASE WHEN seed.within_ceiling THEN seed.resolutions ELSE $3::jsonb END,
+            CASE WHEN seed.within_ceiling THEN seed.inherited ELSE '{}'::jsonb END
+       FROM (
+         SELECT ${seeded} AS resolutions,
+                ${inherited} AS inherited,
+                ${entryCount(seeded)} <= $6 AS within_ceiling
+       ) seed
+      WHERE EXISTS (
+        SELECT 1 FROM app.document_relations
+         WHERE source_document_id = $1 AND relation_type = 'localization'
+      )
+     ON CONFLICT (source_document_id, relation_type, branch_id)
+     DO UPDATE SET
+       resolutions = CASE
+         WHEN ${entryCount(merged)} <= $6
+         THEN ${merged}
+         ELSE r.resolutions
+       END,
+       updated_at = NOW()`,
+    [
+      derivedDocumentId,
+      targetBranchId,
+      carried.sets,
+      carried.clears,
+      mainBranchId,
+      MAX_OVERRIDE_ENTRIES,
+    ],
+  );
+}
+
+/**
+ * Carries what `sourceBranchId` settled onto `targetBranchId`, for every
+ * translation the source branch holds resolutions for.
+ *
+ * A resolution fingerprints the canonical value the change was settled against, so
+ * it reads the same from either branch and the source branch's fingerprint and
+ * time land on the target as they stand. The source branch's row started as the
+ * copy of main's it records in `inherited`, so the difference between the two is
+ * that branch's own doing: a mark it recorded is set on the target, and a mark it
+ * cleared is removed from the target. An entry the two agree on came over
+ * untouched, and the target's entry for it stands, whatever the target has settled
+ * since.
+ *
+ * A carry leaves the target holding what it would hold had it settled those
+ * changes itself. A workstream receiving one has its row seeded from main the way
+ * its own first write would seed it, so it goes on to carry those marks as its own
+ * doing when it merges in turn.
+ *
+ * Every row the source branch holds is carried, whether or not the translation's
+ * content landed. Recording a resolution is not an edit, so a translation
+ * reconciled on a branch without being retranslated has no version of its own to
+ * travel alongside. `excludedDocumentIds` names the translations whose landed
+ * content did not come from the source branch, whose reconciling was not what
+ * landed either.
+ *
+ * Idempotent, so a merge that resumes may run it again.
+ */
+export async function carryUpstreamResolutions(
+  sourceBranchId: string,
+  targetBranchId: string,
+  excludedDocumentIds: readonly string[],
+): Promise<void> {
+  if (sourceBranchId === targetBranchId) {
+    return;
+  }
+  const held = await query<{
+    source_document_id: string;
+    resolutions: UpstreamResolutionsJson;
+    inherited: UpstreamResolutionsJson;
+  }>(
+    `SELECT source_document_id, resolutions, inherited
+       FROM app.document_relation_branch_resolutions
+      WHERE branch_id = $1 AND relation_type = 'localization'
+        AND NOT (source_document_id = ANY($2::uuid[]))`,
+    [sourceBranchId, [...excludedDocumentIds]],
+  );
+  const carried = held.rows.flatMap((row) => {
+    const batches = carriedResolutions(
+      resolutionsFromJson(row.resolutions),
+      resolutionsFromJson(row.inherited),
+    );
+    return batches === null ? [] : [{ derivedDocumentId: row.source_document_id, batches }];
+  });
+  if (carried.length === 0) {
+    return;
+  }
+  const mainBranchId = (await findMainBranchId(targetBranchId)) ?? targetBranchId;
+  for (const { derivedDocumentId, batches } of carried) {
+    await applyCarriedResolutions(derivedDocumentId, targetBranchId, mainBranchId, batches);
+  }
 }

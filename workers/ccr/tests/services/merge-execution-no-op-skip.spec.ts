@@ -659,6 +659,137 @@ describe('copySourceChangesToTarget — no-op skip', () => {
     expect(ckptCall?.documentVersionIds).toEqual([]);
   });
 
+  it('excludes a take-target resolution from the carry, so the target keeps its own reconciled changes', async () => {
+    const { executeMergeWithResolution } = await import(
+      '../../src/services/merge-execution-service'
+    );
+    const conflictDetection = await import(
+      '../../src/services/conflict-detection-service'
+    );
+    const conflictResolution = await import(
+      '../../src/services/conflict-resolution-service'
+    );
+    const mergeRequestService = await import(
+      '../../src/services/merge-request-service'
+    );
+    const docVersionService = await import(
+      '../../src/services/document-version-service'
+    );
+    const checkpointService = await import('../../src/services/checkpoint-service');
+    const branchService = await import('../../src/services/branch-service');
+
+    vi.mocked(mergeRequestService.getMergeRequest).mockResolvedValueOnce({
+      ...baseMergeRequest,
+      hasConflicts: true,
+    });
+    vi.mocked(branchService.getMainBranch).mockResolvedValueOnce(null);
+
+    vi.mocked(conflictDetection.detectConflicts).mockResolvedValueOnce({
+      hasConflicts: true,
+      conflicts: {
+        documentConflicts: [
+          {
+            documentId: 'doc-c',
+            documentPath: 'pages/c',
+            conflictType: 'both-modified',
+            sourceVersion: 3,
+            targetVersion: 2,
+          },
+        ],
+        structureConflicts: [],
+      },
+      mergeBase: {
+        checkpointId: 'cp-base',
+        branchId: 'main-branch',
+        createdAt: '2026-04-20T10:00:00.000Z',
+      },
+      sourceChanges: [
+        {
+          documentId: 'doc-c',
+          documentPath: 'pages/c',
+          latestVersionId: 'source-v',
+          latestVersionNumber: 3,
+          baseVersionId: 'base-v',
+          baseVersionNumber: 1,
+        },
+      ],
+      targetChanges: [
+        {
+          documentId: 'doc-c',
+          documentPath: 'pages/c',
+          latestVersionId: 'target-v',
+          latestVersionNumber: 2,
+          baseVersionId: 'base-v',
+          baseVersionNumber: 1,
+        },
+      ],
+    });
+
+    const existing = {
+      id: 'target-v',
+      documentId: 'doc-c',
+      branchId: 'main-branch',
+      versionNumber: 2,
+      snapshot: { title: 'Existing target' },
+      createdAt: '2026-04-15T10:00:00.000Z',
+      createdById: 'user-1',
+      createdByType: 'user' as const,
+      source: 'edit' as const,
+    };
+    vi.mocked(docVersionService.getLatestDocumentVersion).mockResolvedValueOnce(existing);
+
+    vi.mocked(conflictResolution.resolveAllConflicts).mockResolvedValueOnce({
+      resolvedCount: 1,
+      failedCount: 0,
+      resolutions: [
+        {
+          resolved: true,
+          documentId: 'doc-c',
+          strategy: 'take-target',
+          resultVersionId: 'target-v', // take-target returns the existing target id
+          resolvedById: 'user-1',
+          resolvedByType: 'user',
+        },
+      ],
+    });
+
+    vi.mocked(checkpointService.createCheckpoint).mockResolvedValueOnce({
+      checkpoint: {
+        id: 'cp-post',
+        branchId: 'main-branch',
+        name: 'Merge: Feature merge',
+        checkpointType: 'post_merge',
+        createdAt: '2026-04-25T11:00:00.000Z',
+        createdById: 'user-1',
+        createdByType: 'user',
+      },
+      documentCount: 0,
+    });
+
+    vi.mocked(mergeRequestService.updateMergeRequestStatus).mockResolvedValueOnce({
+      ...baseMergeRequest,
+      status: 'merged',
+      mergedAt: '2026-04-25T11:00:00.000Z',
+    });
+
+    await executeMergeWithResolution({
+      mergeRequestId: 'mr-1',
+      resolutionStrategy: 'take-target',
+      mergedById: 'user-1',
+      mergedByType: 'user',
+    });
+
+    const db = await import('../../src/db');
+    const carrySelect = vi
+      .mocked(db.query)
+      .mock.calls.find(([sql]) =>
+        typeof sql === 'string'
+        && sql.includes('FROM app.document_relation_branch_resolutions')
+        && sql.includes('NOT (source_document_id = ANY'),
+      );
+    expect(carrySelect?.[1]?.[1]).toContain('doc-c');
+  });
+
   it('skips manual resolution when the manual snapshot resolves to the existing target version', async () => {
     const { executeMergeWithResolution } = await import(
       '../../src/services/merge-execution-service'

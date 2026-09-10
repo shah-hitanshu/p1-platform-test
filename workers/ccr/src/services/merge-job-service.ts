@@ -43,6 +43,7 @@ import {
   applySystemManagedExclusions,
   planPathOverridePromotion,
   applyPathOverridePromotion,
+  carryUpstreamResolutionsForMerge,
   runPostMergeTemplateMigrations,
 } from './merge-execution-service';
 import type { DocumentResolution } from './merge-execution-service';
@@ -722,6 +723,22 @@ async function getDoneLedgerEntries(jobId: string): Promise<DoneLedgerEntry[]> {
 }
 
 /**
+ * The conflicted documents whose resolution kept the target's content rather than
+ * the source branch's. Keeping the target writes no version, so these carry no
+ * ledger result to be recognised by.
+ */
+async function getConflictsKeepingTarget(jobId: string): Promise<string[]> {
+  const result = await query<{ document_id: string }>(
+    `SELECT document_id
+       FROM app.merge_job_documents
+      WHERE job_id = $1 AND kind = 'conflict'
+        AND resolution_strategy IN ('manual', 'take-target')`,
+    [jobId],
+  );
+  return result.rows.map((r) => r.document_id);
+}
+
+/**
  * Whether finalization may commit the merge. All-or-nothing by default
  * (design §8 poison policy): any failed document keeps the merge un-finalized
  * and the job ends completed_with_errors with the failures listed.
@@ -766,7 +783,18 @@ export async function finalizeMergeCheckpoint(jobId: string): Promise<FinalizeCh
   );
   await applyPathOverridePromotion(promotion);
 
-  const entries = await getDoneLedgerEntries(jobId);
+  const [entries, conflictsKeepingTarget] = await Promise.all([
+    getDoneLedgerEntries(jobId),
+    getConflictsKeepingTarget(jobId),
+  ]);
+
+  await carryUpstreamResolutionsForMerge(
+    job.sourceBranchId,
+    job.targetBranchId,
+    entries,
+    conflictsKeepingTarget,
+  );
+
   if (entries.length === 0) {
     // Nothing actually merged (all no-ops) — no checkpoint to create.
     return { checkpointId: null, finalized: true, mergedCount: 0 };
