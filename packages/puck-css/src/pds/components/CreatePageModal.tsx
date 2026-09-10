@@ -27,10 +27,16 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { WizardQuestion } from './WizardQuestion.js';
+import { LocaleField } from './LocaleField.js';
+import { TranslateIcon } from './TranslateIcon.js';
+import { TranslatePane } from './TranslatePane.js';
+import type { LocaleFieldOption } from './LocaleField.js';
 import styles from './CreatePageModal.module.css';
 
 /** Step 1 of the Plug-external-data flow: where the data comes from. */
 type DataSourceMode = '' | 'configured' | 'new';
+/** The one seed mode with a backend, and so the only one a page is created with. */
+const SEEDED_FROM_COPY = 'copy';
 /** Step 2: page structure — a collection (index + detail per item) or a single page. */
 type PageStructure = '' | 'collection' | 'single';
 
@@ -58,10 +64,43 @@ export interface CreatePageModalProps {
   /**
    * Called with the new page path and the entered page title when the user
    * creates a page. When created from a content-type template, the template id
-   * is passed so the page is scaffolded from it and bound to it. Should resolve
-   * on success and reject with an Error whose message is shown on failure.
+   * is passed so the page is scaffolded from it and bound to it. A locale is
+   * passed only when one was chosen, which creates the page in that market
+   * alone. Should resolve on success and reject with an Error whose message is
+   * shown on failure.
    */
-  onCreateDocument: (path: string, title: string, templateId?: string) => Promise<void>;
+  onCreateDocument: (
+    path: string,
+    title: string,
+    templateId?: string,
+    locale?: string,
+  ) => Promise<void>;
+  /**
+   * The site's configured market locales. With none, no locale field is offered
+   * and no page can be translated.
+   */
+  locales?: LocaleFieldOption[];
+  /**
+   * The site's locales could not be read, so an empty `locales` means unknown
+   * rather than none.
+   */
+  localesFailed?: boolean;
+  /** Ask for the site's locales again. */
+  onRetryLocales?: () => void;
+  /**
+   * Pages a translation can start from — canonicals, since a translation hangs
+   * off one. Titles are shown where a page has one, paths otherwise.
+   */
+  translatablePages?: { id: string; path: string; title?: string }[];
+  /**
+   * Create a locale version of an existing page. Omit to leave the translate
+   * tile disabled.
+   */
+  onCreateTranslation?: (params: {
+    sourceDocumentId: string;
+    locale: string;
+    mode: 'copy';
+  }) => Promise<void>;
   /**
    * Whether the current user is an administrator. Reserved for gating admin-only
    * options (e.g. "New page template") once permission checks are added — not
@@ -106,9 +145,15 @@ export interface CreatePageModalProps {
   /**
    * Initial screen when the modal opens. `'new-template'` lands directly on the
    * New-template definition form (equivalent to choosing "From page template" →
-   * "+ New template"). `'page'` (default) shows the starting-point grid.
+   * "+ New template"). `'translate'` lands on the translate starting point,
+   * where `initialLocale` and `initialSourceDocumentId` preselect what is being
+   * translated. `'page'` (default) shows the starting-point grid.
    */
-  initialMode?: 'page' | 'new-template';
+  initialMode?: 'page' | 'new-template' | 'translate';
+  /** Market preselected on whichever starting point the modal opens on. */
+  initialLocale?: string;
+  /** Page preselected as what the translation starts from. */
+  initialSourceDocumentId?: string;
   /**
    * Hand a "Generate with AI" brief to the chatbot, along with the page the user wants. The
    * page is not created here: the chat settles which template it starts from first, and a
@@ -145,10 +190,10 @@ const STARTING_POINTS: StartingPoint[] = [
     adminOnly: false,
   },
   {
-    key: 'generate-ai',
-    testId: 'create-page-option-generate-ai',
-    label: 'Generate with AI',
-    description: 'Describe it — AI drafts a first pass.',
+    key: 'translate',
+    testId: 'create-page-option-translate',
+    label: 'Translate an existing page',
+    description: 'Bring a page you already have into another market.',
     enabled: true,
     adminOnly: false,
   },
@@ -157,6 +202,14 @@ const STARTING_POINTS: StartingPoint[] = [
     testId: 'create-page-option-plug-external-data',
     label: 'Plug external data',
     description: 'Configure data sources and build pages from them.',
+    enabled: true,
+    adminOnly: false,
+  },
+  {
+    key: 'generate-ai',
+    testId: 'create-page-option-generate-ai',
+    label: 'Generate with AI',
+    description: 'Describe it — AI drafts a first pass.',
     enabled: true,
     adminOnly: false,
   },
@@ -202,6 +255,7 @@ const OPTION_ICONS: Record<string, React.JSX.Element> = {
       <path d="M3 11v6c0 1.66 4 3 9 3s9-1.34 9-3v-6" />
     </svg>
   ),
+  translate: <TranslateIcon />,
 };
 
 // A content type as rendered in the modal's "Choose a content type" grid.
@@ -315,8 +369,17 @@ function sanitizeSlug(value: string): string {
     .replace(/[^a-z0-9-]/g, '');
 }
 
+// The form mounts when the modal opens and unmounts when it closes, so each
+// opening starts from the props it was opened with and nothing carries over.
 export function CreatePageModal({
   open,
+  ...props
+}: CreatePageModalProps): React.JSX.Element | null {
+  if (!open) return null;
+  return <CreatePageForm {...props} />;
+}
+
+function CreatePageForm({
   onClose,
   onCreateDocument,
   siteHost,
@@ -325,12 +388,29 @@ export function CreatePageModal({
   onCreateTemplate,
   onNavigate,
   initialMode = 'page',
+  initialLocale,
+  initialSourceDocumentId,
   onGenerateWithAI,
-}: CreatePageModalProps): React.JSX.Element | null {
+  locales = [],
+  localesFailed = false,
+  onRetryLocales,
+  translatablePages = [],
+  onCreateTranslation,
+}: Omit<CreatePageModalProps, 'open'>): React.JSX.Element {
   const host =
     siteHost ?? (typeof window !== 'undefined' ? window.location.host : '');
-  const [selected, setSelected] = useState('blank');
-  const [contentType, setContentType] = useState<string | null>(null);
+  // 'new-template' lands on the New-template form, the same state as "From page
+  // template" → "+ New template".
+  const [selected, setSelected] = useState(
+    initialMode === 'new-template'
+      ? 'content-type-template'
+      : initialMode === 'translate'
+        ? 'translate'
+        : 'blank',
+  );
+  const [contentType, setContentType] = useState<string | null>(
+    initialMode === 'new-template' ? 'new-template' : null,
+  );
   const [params, setParams] = useState<Record<string, string>>({});
   // "New template" definition form (mocked create; opens the template editor later).
   const [templateName, setTemplateName] = useState('');
@@ -344,6 +424,16 @@ export function CreatePageModal({
   const [brief, setBrief] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // Market the page is created in. Null is a page with no locale tag, which is
+  // every page today and stays the default. A market settled elsewhere in the
+  // editor arrives already filled.
+  const [locale, setLocale] = useState<string | null>(initialLocale ?? null);
+  // "Translate an existing page": which page is being brought into the market.
+  // A page to start from settles the translate starting point: that is what
+  // makes the new page a version of an existing one.
+  const [translateSource, setTranslateSource] = useState<string | null>(
+    initialMode === 'translate' ? (initialSourceDocumentId ?? null) : null,
+  );
   // "Plug external data" collection builder. Multi-select data sources; route
   // params are derived from the union of the selected sources' inputs (shared
   // name = join key). Sources can be added on the fly (mocked). The route is
@@ -363,52 +453,29 @@ export function CreatePageModal({
     null,
   );
 
-  // Reset to a fresh state whenever the modal is closed.
-  useEffect(() => {
-    if (!open) {
-      setSelected('blank');
-      setContentType(null);
-      setParams({});
-      setTemplateName('');
-      setTemplateLabel('');
-      setTemplateLabelEdited(false);
-      setTemplateDescription('');
-      setTemplatePattern('');
-      setDataSourceMode('');
-      setPageStructure('');
-      setSelectedDatasourceIds([]);
-      setCustomSources([]);
-      setNewType('https-json');
-      setNewName('');
-      setNewUrl('');
-      setTitle('');
-      setSlug('');
-      setSlugEdited(false);
-      setBrief('');
-      setError(null);
-      setSubmitting(false);
-      setRecap(null);
-    }
-  }, [open]);
+  // A market and a source page belong to the starting point that asked for
+  // them, so changing that point leaves neither behind: a locale settled while
+  // translating must not silently tag a blank page. Choosing the open point
+  // again changes nothing, and must not clear a field that stays on screen
+  // holding the value it just dropped.
+  const chooseStartingPoint = useCallback(
+    (key: string) => {
+      if (key === selected) return;
+      setSelected(key);
+      setLocale(null);
+      setTranslateSource(null);
+    },
+    [selected],
+  );
 
-  // When opened in 'new-template' mode, jump straight to the New-template form
-  // (same state as "From page template" → "+ New template").
+  // Close on Escape.
   useEffect(() => {
-    if (open && initialMode === 'new-template') {
-      setSelected('content-type-template');
-      setContentType('new-template');
-    }
-  }, [open, initialMode]);
-
-  // Close on Escape while open.
-  useEffect(() => {
-    if (!open) return;
     function handleKeyDown(e: KeyboardEvent): void {
       if (e.key === 'Escape') onClose();
     }
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [open, onClose]);
+  }, [onClose]);
 
   const handleTitleChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -471,6 +538,17 @@ export function CreatePageModal({
     setNewUrl('');
   }, [newName, newUrl]);
 
+  // Trailing arguments are omitted rather than passed as undefined, so a create
+  // carries only what the form actually settled.
+  const createDocument = useCallback(
+    (path: string, pageTitle: string, templateId?: string): Promise<void> => {
+      if (locale) return onCreateDocument(path, pageTitle, templateId, locale);
+      if (templateId) return onCreateDocument(path, pageTitle, templateId);
+      return onCreateDocument(path, pageTitle);
+    },
+    [locale, onCreateDocument],
+  );
+
   const handleSubmit = useCallback(
     async (e: React.FormEvent<HTMLFormElement>) => {
       e.preventDefault();
@@ -509,6 +587,26 @@ export function CreatePageModal({
           onClose();
         } catch (err) {
           setError(err instanceof Error ? err.message : 'Failed to create template');
+          setSubmitting(false);
+        }
+        return;
+      }
+
+      // Translating an existing page creates a locale version of it rather than
+      // a page of its own, so it has no title or slug of its own to read.
+      if (selected === 'translate') {
+        if (!onCreateTranslation || !translateSource || !locale || submitting) return;
+        setSubmitting(true);
+        setError(null);
+        try {
+          await onCreateTranslation({
+            sourceDocumentId: translateSource,
+            locale,
+            mode: SEEDED_FROM_COPY,
+          });
+          onClose();
+        } catch (err) {
+          setError(err instanceof Error ? err.message : 'Failed to create the locale version');
           setSubmitting(false);
         }
         return;
@@ -583,7 +681,7 @@ export function CreatePageModal({
         setSubmitting(true);
         setError(null);
         try {
-          await onCreateDocument(path, title.trim(), ct.id);
+          await createDocument(path, title.trim(), ct.id);
           onNavigate?.(path);
           onClose();
         } catch (err) {
@@ -598,7 +696,7 @@ export function CreatePageModal({
       setSubmitting(true);
       setError(null);
       try {
-        await onCreateDocument(finalSlug, title.trim());
+        await createDocument(finalSlug, title.trim());
         // Navigate to the new page, then close.
         onNavigate?.(finalSlug);
         onClose();
@@ -627,6 +725,10 @@ export function CreatePageModal({
       selectedDatasourceIds,
       onNavigate,
       onCreateDocument,
+      createDocument,
+      onCreateTranslation,
+      translateSource,
+      locale,
       onGenerateWithAI,
       onClose,
     ],
@@ -640,11 +742,28 @@ export function CreatePageModal({
     [onNavigate, onClose],
   );
 
-  if (!open) return null;
+  // A source can arrive already settled from a control outside the modal, from
+  // where the modal's own list of pages is empty — a host that exposes no
+  // document browser still reaches this flow. So a page to translate exists
+  // whenever either has one.
+  const canChooseSource = translatablePages.length > 0;
+  const hasSourceToTranslate = canChooseSource || translateSource !== null;
 
   // TODO: gate `adminOnly` options behind the `isAdmin` prop once permission
   // checks exist. For now every option is shown to everyone.
-  const visiblePoints = STARTING_POINTS;
+  //
+  // Translating needs somewhere to translate from and a market to translate
+  // into, so a site holding neither offers the tile without letting it be
+  // chosen rather than leading to a form that cannot be submitted. A failed
+  // read leaves the tile reachable: whether the site has markets is unknown,
+  // and the form says so and offers another go.
+  const translateAvailable =
+    onCreateTranslation !== undefined &&
+    (localesFailed || locales.length > 0) &&
+    hasSourceToTranslate;
+  const visiblePoints = STARTING_POINTS.map((point) =>
+    point.key === 'translate' ? { ...point, enabled: translateAvailable } : point,
+  );
 
   // Content types come from the real templates (no built-in/fake list). Keyed by
   // template id; the template's defaultUrlPattern drives the route inputs.
@@ -688,6 +807,12 @@ export function CreatePageModal({
   const isGenerateAI = selected === 'generate-ai';
   const aiEnabled = isGenerateAI && !!onGenerateWithAI;
 
+  // "Translate an existing page" — a locale version of a page that exists, so it
+  // asks which page and which market instead of a title and a URL.
+  const isTranslate = selected === 'translate';
+  const canTranslate = Boolean(onCreateTranslation && translateSource && locale);
+  const chosenLocale = locales.find((l) => l.tag === locale) ?? null;
+
   // Page title + URL (at the top) show for Blank, once a content type is picked,
   // or for Generate with AI when wired. The Plug-external-data flow asks for the
   // title later — in its own naming step after the data source + structure questions.
@@ -714,6 +839,20 @@ export function CreatePageModal({
     pageStructure === 'collection' &&
     selectedSources.length > 0 &&
     routeParamNames.length === 0;
+
+  // One starting point is open at a time, and each names for itself what it is
+  // still missing. Order follows the panes: the template screen replaces the
+  // whole body, so it answers before any starting point does.
+  function startingPointMissingInput(): boolean {
+    if (isTemplateScreen) return !canCreateTemplate;
+    if (isTranslate) return !canTranslate;
+    if (isPlugExternalData) {
+      return !pageStructure || !slug.trim() || collectionNeedsParam;
+    }
+    if (aiEnabled) return !brief.trim() || !slug.trim();
+    if (selectedCt) return !canCreateContentType;
+    return selected !== 'blank' || !slug.trim();
+  }
 
   const content = (
     <div className={styles.backdrop} data-testid="create-page-modal" onClick={onClose}>
@@ -768,7 +907,7 @@ export function CreatePageModal({
                   }`}
                   disabled={!point.enabled}
                   aria-pressed={selected === point.key}
-                  onClick={() => point.enabled && setSelected(point.key)}
+                  onClick={() => point.enabled && chooseStartingPoint(point.key)}
                 >
                   <span className={styles.optionIcon}>{OPTION_ICONS[point.key]}</span>
                   <span className={styles.optionLabel}>{point.label}</span>
@@ -832,6 +971,21 @@ export function CreatePageModal({
                 </button>
               </div>
             </fieldset>
+          )}
+
+          {!isTemplateScreen && isTranslate && (
+            <TranslatePane
+              localesFailed={localesFailed}
+              onRetryLocales={onRetryLocales}
+              locales={locales}
+              hasSourceToTranslate={hasSourceToTranslate}
+              canChooseSource={canChooseSource}
+              translatablePages={translatablePages}
+              translateSource={translateSource}
+              onChooseSource={setTranslateSource}
+              chosenLocale={chosenLocale}
+              onChooseLocale={setLocale}
+            />
           )}
 
           {aiEnabled && (
@@ -965,18 +1119,25 @@ export function CreatePageModal({
                 value={title}
                 onChange={handleTitleChange}
               />
-              {showPageFields && !slug.trim() && (
-                <span
-                  data-testid="create-page-title-required"
-                  role="alert"
-                  className={styles.errorMessage}
-                >
-                  Add a page title — it sets this page’s URL.
-                </span>
-              )}
             </div>
-            {selectedCt && selectedCt.urlPattern ? (
+            {!aiEnabled && (
               <div className={styles.field}>
+                <LocaleField
+                  id="create-page-locale"
+                  label="Locale"
+                  locales={locales}
+                  defaultValue={chosenLocale?.tag}
+                  onChange={setLocale}
+                  message={
+                    chosenLocale
+                      ? `Creates this page in ${chosenLocale.native} only.`
+                      : undefined
+                  }
+                />
+              </div>
+            )}
+            {selectedCt && selectedCt.urlPattern ? (
+              <div className={`${styles.field} ${styles.fieldFull}`}>
                 <label className={styles.fieldLabel}>URL</label>
                 <div className={styles.routeBuilder}>
                   <span className={styles.routeStatic}>{host}</span>
@@ -1009,7 +1170,7 @@ export function CreatePageModal({
                 </div>
               </div>
             ) : isPlugExternalData ? null : (
-              <div className={styles.field}>
+              <div className={`${styles.field} ${styles.fieldFull}`}>
                 <label htmlFor="create-page-slug" className={styles.fieldLabel}>
                   URL slug
                 </label>
@@ -1388,18 +1549,7 @@ export function CreatePageModal({
                   type="submit"
                   data-testid="create-page-submit"
                   className={styles.submitButton}
-                  disabled={
-                    submitting ||
-                    (isTemplateScreen
-                      ? !canCreateTemplate
-                      : isPlugExternalData
-                        ? !pageStructure || !slug.trim() || collectionNeedsParam
-                        : aiEnabled
-                          ? !brief.trim() || !slug.trim()
-                          : selectedCt
-                            ? !canCreateContentType
-                            : selected !== 'blank' || !slug.trim())
-                  }
+                  disabled={submitting || startingPointMissingInput()}
                   aria-busy={submitting}
                 >
                   {submitting ? (
@@ -1409,6 +1559,8 @@ export function CreatePageModal({
                     </>
                   ) : isTemplateScreen ? (
                     'Create template'
+                  ) : isTranslate ? (
+                    'Create from copy'
                   ) : aiEnabled ? (
                     <>
                       <svg

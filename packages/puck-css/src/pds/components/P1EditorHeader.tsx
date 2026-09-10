@@ -17,6 +17,7 @@ import { PageNavigator } from './PageNavigator.js';
 import type { PageNavigatorDocument } from './PageNavigator.js';
 import { PresenceStack } from './PresenceStack.js';
 import { CreatePageModal } from './CreatePageModal.js';
+import type { LocaleFieldOption } from './LocaleField.js';
 import styles from './P1EditorHeader.module.css';
 
 export type { PageNavigatorDocument };
@@ -50,7 +51,12 @@ export interface P1EditorHeaderProps {
   /** Called (and awaited) before the logo link navigates — use to flush pending saves. */
   onBeforeLogoNavigate?: () => Promise<void>;
   onSelectDocument: (doc: PageNavigatorDocument) => void;
-  onCreateDocument?: (path: string, template?: TemplateSummary | null, title?: string) => Promise<void>;
+  onCreateDocument?: (
+    path: string,
+    template?: TemplateSummary | null,
+    title?: string,
+    locale?: string,
+  ) => Promise<void>;
   onGenerateWithAI?: (brief: string, page: { path: string; title: string }) => void;
   onLogout: () => void | Promise<void>;
   /**
@@ -73,6 +79,27 @@ export interface P1EditorHeaderProps {
     description?: string;
     defaultUrlPattern?: string;
   }) => Promise<Template>;
+  /** The site's market locales, for the create-page modal's locale field. */
+  locales?: LocaleFieldOption[];
+  /** The site's locales could not be read, so an empty `locales` means unknown. */
+  localesFailed?: boolean;
+  /** Ask for the site's locales again. */
+  onRetryLocales?: () => void;
+  /** Pages the modal can start a locale version from. */
+  translatablePages?: { id: string; path: string; title?: string }[];
+  /** Create a locale version of an existing page, from the modal's translate flow. */
+  onCreateTranslation?: (params: {
+    sourceDocumentId: string;
+    locale: string;
+    mode: 'copy';
+  }) => Promise<void>;
+  /**
+   * Lets the editor hand the header a request to open the create-page modal,
+   * already aimed at a market and a page. Returns a function that withdraws it.
+   */
+  registerCreatePageOpener?: (
+    open: (params?: { locale?: string; sourceDocumentId?: string }) => void,
+  ) => () => void;
 }
 
 export function P1EditorHeader({
@@ -97,6 +124,12 @@ export function P1EditorHeader({
   onCreateTemplate,
   datasources,
   showAIPanelToggle = false,
+  locales,
+  localesFailed,
+  onRetryLocales,
+  translatablePages,
+  onCreateTranslation,
+  registerCreatePageOpener,
 }: P1EditorHeaderProps): React.ReactElement {
   const aiPanelOpen = useAIPanelOpen();
   // The panel only mounts once open, so it can't reveal itself when a brief arrives.
@@ -114,7 +147,28 @@ export function P1EditorHeader({
   // The Create Page modal, opened from the page navigator's "+ New page" /
   // "+ New template". `createModalMode` selects which screen it opens on.
   const [createModalOpen, setCreateModalOpen] = useState(false);
-  const [createModalMode, setCreateModalMode] = useState<'page' | 'new-template'>('page');
+  const [createModalMode, setCreateModalMode] = useState<
+    'page' | 'new-template' | 'translate'
+  >('page');
+  // A locale the modal opens already set on, from a control that settled it
+  // before the modal existed.
+  const [createModalLocale, setCreateModalLocale] = useState<string | undefined>();
+  const [createModalSource, setCreateModalSource] = useState<string | undefined>();
+
+  // The header owns the modal, so it is the header that carries out a request
+  // to open it — the locale switcher asking for a market it holds no version of.
+  useEffect(() => {
+    if (!registerCreatePageOpener) return;
+    return registerCreatePageOpener((params) => {
+      // Naming a page to start from is what makes this a translation. Without
+      // one there is nothing to open the translate screen on, so the modal
+      // opens where a new page normally begins.
+      setCreateModalMode(params?.sourceDocumentId ? 'translate' : 'page');
+      setCreateModalLocale(params?.locale);
+      setCreateModalSource(params?.sourceDocumentId);
+      setCreateModalOpen(true);
+    });
+  }, [registerCreatePageOpener]);
   const [navigatorPortalStyle, setNavigatorPortalStyle] = useState<
     React.CSSProperties | undefined
   >();
@@ -195,13 +249,18 @@ export function P1EditorHeader({
   // resolve the template id to its list entry so the provider scaffolds from
   // the template and binds templateId/version.
   const handleModalCreateDocument = useCallback(
-    async (path: string, title: string, templateId?: string): Promise<void> => {
+    async (
+      path: string,
+      title: string,
+      templateId?: string,
+      locale?: string,
+    ): Promise<void> => {
       if (!onCreateDocument) return;
       const normalizedPath = path.startsWith('/') ? path : `/${path}`;
       const template = templateId
         ? (templates?.find((t) => t.id === templateId) ?? null)
         : undefined;
-      await onCreateDocument(normalizedPath, template, title);
+      await onCreateDocument(normalizedPath, template, title, locale);
     },
     [onCreateDocument, templates],
   );
@@ -405,11 +464,15 @@ export function P1EditorHeader({
         onCreatePage={() => {
           setPageNavigatorOpen(false);
           setCreateModalMode('page');
+          setCreateModalLocale(undefined);
+          setCreateModalSource(undefined);
           setCreateModalOpen(true);
         }}
         onCreateTemplate={() => {
           setPageNavigatorOpen(false);
           setCreateModalMode('new-template');
+          setCreateModalLocale(undefined);
+          setCreateModalSource(undefined);
           setCreateModalOpen(true);
         }}
         templates={templates}
@@ -422,8 +485,15 @@ export function P1EditorHeader({
       <CreatePageModal
         open={createModalOpen}
         initialMode={createModalMode}
+        initialLocale={createModalLocale}
+        initialSourceDocumentId={createModalSource}
         onClose={() => setCreateModalOpen(false)}
         onCreateDocument={handleModalCreateDocument}
+        locales={locales}
+        localesFailed={localesFailed}
+        onRetryLocales={onRetryLocales}
+        translatablePages={translatablePages}
+        onCreateTranslation={onCreateTranslation}
         onGenerateWithAI={handleGenerateWithAI}
         templates={templates}
         onCreateTemplate={onCreateTemplate}

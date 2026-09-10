@@ -11,6 +11,7 @@ import type {
   DocumentVersion,
   ActorPresence,
   AgentTrigger,
+  TranslationMode,
 } from '@pantheon-systems/css-client';
 import type { ConflictNotification } from '../merge/components/conflict-notifications/index.js';
 import type { UseAgentEditReturn } from '../agent/useAgentEdit.js';
@@ -514,7 +515,19 @@ export interface P1PuckContextValue {
     path: string,
     template?: TemplateSummary | null,
     title?: string,
+    locale?: string,
   ) => Promise<void>;
+
+  /**
+   * Create a locale version of an existing page, hanging off the canonical it
+   * translates, then refresh the document list. `mode` decides how the new
+   * locale's content starts out; omitting it takes the server's default.
+   */
+  createTranslation: (params: {
+    canonicalDocumentId: string;
+    locale: string;
+    mode?: TranslationMode;
+  }) => Promise<Document>;
 
   /**
    * Create a new template (empty layout, authored in the editor afterwards) on

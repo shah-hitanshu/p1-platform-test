@@ -41,6 +41,79 @@ export const Select = (props: Record<string, unknown>) => {
     ),
   );
 };
+interface MockComboboxOption {
+  label: string;
+  value: string;
+  searchIndex?: string[];
+  optionDisplay?: React.ReactNode;
+}
+
+// Combobox stub: a native input plus every option as a button, so a test can
+// read what an option offers and click it. Filtering is the real component's;
+// here all options stay listed. `searchIndex` is exposed as an attribute rather
+// than applied.
+export const Combobox = (props: Record<string, unknown>) => {
+  const options = (props.options ?? []) as MockComboboxOption[];
+  const onOptionSelect = props.onOptionSelect as ((o: MockComboboxOption) => void) | undefined;
+  // As in the real component, `defaultValue` names the option to start on and is
+  // read once, on mount; the input shows that option's label.
+  const [initialText] = React.useState(
+    () => options.find((o) => o.value === props.defaultValue)?.label ?? '',
+  );
+  return React.createElement(
+    'div',
+    {
+      className: 'pds-combobox',
+      'data-testid': props['data-testid'],
+      'data-placeholder': props.placeholder,
+    },
+    React.createElement('label', { htmlFor: props.id as string }, props.label as string),
+    React.createElement('input', {
+      id: props.id,
+      type: 'text',
+      role: 'combobox',
+      defaultValue: initialText,
+      placeholder: props.placeholder,
+      required: props.required,
+      disabled: props.disabled,
+      onChange: props.onChange,
+    }),
+    props.hasClearButton
+      ? React.createElement(
+          'button',
+          {
+            type: 'button',
+            title: 'Clear input text',
+            onClick: props.onClear,
+          },
+          '×',
+        )
+      : null,
+    React.createElement(
+      'ul',
+      { role: 'listbox' },
+      ...options.map((opt) =>
+        React.createElement(
+          'li',
+          { key: opt.value, role: 'none' },
+          React.createElement(
+            'button',
+            {
+              type: 'button',
+              role: 'option',
+              'aria-selected': false,
+              'data-testid': `${props.id as string}-option-${opt.value}`,
+              'data-search': (opt.searchIndex ?? [opt.label]).join(' '),
+              onClick: () => onOptionSelect?.(opt),
+            },
+            opt.optionDisplay ?? opt.label,
+          ),
+        ),
+      ),
+    ),
+    props.message ? React.createElement('p', { className: 'pds-combobox__message' }, props.message as React.ReactNode) : null,
+  );
+};
 export const RadioGroup = () => null;
 // SegmentedButton stub: renders radio-like buttons for value-based selection testing
 export const SegmentedButton = (props: Record<string, unknown>) => {

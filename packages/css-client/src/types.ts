@@ -105,6 +105,11 @@ export interface Document {
   publishedAt?: string | null;
   /** Whether this document is inherited from the parent branch (COW) vs locally edited */
   inherited?: boolean;
+  /**
+   * The page's title, read from its latest version's `root.props.title`. Present
+   * only on a branch document listing; absent elsewhere (get-by-id, get-by-path).
+   */
+  snapshotTitle?: string;
   /** Template this document is bound to (nullable for blank pages) */
   templateId?: string | null;
   /** Version of the template this document was created from or migrated to */

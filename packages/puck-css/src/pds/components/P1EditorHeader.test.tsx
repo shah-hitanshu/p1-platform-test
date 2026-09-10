@@ -6,7 +6,7 @@
  * and the "Compare with Live" button that appears only on non-main branches.
  */
 
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import React from 'react';
 import { render, screen, cleanup, fireEvent, waitFor, act } from '@testing-library/react';
 import type { ActorPresence } from '@pantheon-systems/css-client';
@@ -1009,5 +1009,78 @@ describe('P1EditorHeader — live collaborators', () => {
     // The signed-in user's own avatar must not be inside the collaborator stack.
     const stack = screen.getByTestId('header-collaborators');
     expect(stack.contains(screen.getByTestId('user-menu-trigger'))).toBe(false);
+  });
+});
+
+// =============================================================================
+// Opening the create-page flow on request
+// =============================================================================
+
+describe('P1EditorHeader create-page opener', () => {
+  let openCreatePage: ((params?: { locale?: string; sourceDocumentId?: string }) => void) | null;
+
+  const requestProps = {
+    documents: [],
+    currentDocument: null,
+    siteName: 'My Awesome Site',
+    onSelectDocument: vi.fn(),
+    onLogout: vi.fn(),
+    onCreateDocument: vi.fn().mockResolvedValue(undefined),
+    onCreateTranslation: vi.fn().mockResolvedValue(undefined),
+    locales: [{ tag: 'de-DE', native: 'Deutsch', english: 'German' }],
+    translatablePages: [{ id: 'doc-pricing', path: 'pricing', title: 'Pricing' }],
+    registerCreatePageOpener: (
+      open: (params?: { locale?: string; sourceDocumentId?: string }) => void,
+    ) => {
+      openCreatePage = open;
+      return () => {
+        openCreatePage = null;
+      };
+    },
+  };
+
+  beforeEach(() => {
+    openCreatePage = null;
+  });
+
+  it('opens the create-page flow on the page and market asked for', () => {
+    render(<P1EditorHeader {...requestProps} />);
+
+    act(() => {
+      openCreatePage?.({ locale: 'de-DE', sourceDocumentId: 'doc-pricing' });
+    });
+
+    expect(screen.getByTestId('create-page-translate')).toBeTruthy();
+    expect(
+      (screen.getByTestId('create-page-translate-source') as HTMLSelectElement).value,
+    ).toBe('doc-pricing');
+  });
+
+  it('opens the starting-point grid when no page to start from is named', () => {
+    render(<P1EditorHeader {...requestProps} />);
+
+    act(() => {
+      openCreatePage?.({ locale: 'de-DE' });
+    });
+
+    expect(screen.queryByTestId('create-page-translate')).toBeNull();
+    expect(screen.getByTestId('create-page-option-blank')).toBeTruthy();
+  });
+
+  it('withdraws its opener when it unmounts', () => {
+    const { unmount } = render(<P1EditorHeader {...requestProps} />);
+
+    unmount();
+
+    expect(openCreatePage).toBeNull();
+  });
+
+  it('opens the starting-point grid when the flow is opened from the page list', () => {
+    render(<P1EditorHeader {...requestProps} />);
+
+    fireEvent.click(screen.getByTestId('mock-new-page'));
+
+    expect(screen.getByTestId('create-page-option-blank')).toBeTruthy();
+    expect(screen.queryByTestId('create-page-translate')).toBeNull();
   });
 });

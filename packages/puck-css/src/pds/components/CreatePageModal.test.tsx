@@ -431,30 +431,21 @@ describe('CreatePageModal', () => {
     expect(onNavigate).toHaveBeenCalledWith('blog/2026/06/my-post');
   });
 
-  it('flags a missing title (red) and keeps Create disabled for a content type', () => {
+  it('keeps Create disabled while a content type has no title', () => {
     render(<CreatePageModal {...defaultProps} templates={templatesFixture} />);
 
     fireEvent.click(screen.getByTestId('create-page-option-content-type-template'));
     fireEvent.click(screen.getByTestId('create-page-content-type-blog-post'));
 
-    // No title yet → red hint shown, Create disabled.
-    expect(screen.getByTestId('create-page-title-required')).toBeDefined();
+    // The slug derives from the title, so no title means no route to create at.
     expect(
       (screen.getByTestId('create-page-submit') as HTMLButtonElement).disabled,
     ).toBe(true);
-
-    fireEvent.change(screen.getByTestId('create-page-title-input'), {
-      target: { value: 'My Post' },
-    });
-    expect(screen.queryByTestId('create-page-title-required')).toBeNull();
   });
 
-  it('flags a missing title (red) and keeps Create disabled for a blank page', () => {
+  it('keeps Create disabled until a blank page has a title', () => {
     render(<CreatePageModal {...defaultProps} />);
 
-    // Blank is selected by default; with no title the slug is empty, so
-    // Create must be disabled and the title-required hint shown.
-    expect(screen.getByTestId('create-page-title-required')).toBeDefined();
     expect(
       (screen.getByTestId('create-page-submit') as HTMLButtonElement).disabled,
     ).toBe(true);
@@ -463,7 +454,6 @@ describe('CreatePageModal', () => {
       target: { value: 'My Page' },
     });
 
-    expect(screen.queryByTestId('create-page-title-required')).toBeNull();
     expect(
       (screen.getByTestId('create-page-submit') as HTMLButtonElement).disabled,
     ).toBe(false);
@@ -1362,6 +1352,425 @@ describe('CreatePageModal', () => {
 
       expect(screen.getByTestId('create-page-ai-brief')).toBeTruthy();
       expect(screen.queryByTestId('create-page-generate-ai-note')).toBeNull();
+    });
+  });
+  // ---------------------------------------------------------------------------
+  // Locale
+  // ---------------------------------------------------------------------------
+
+  describe('locale', () => {
+    const localesFixture = [
+      { tag: 'de-DE', native: 'Deutsch', english: 'German' },
+      { tag: 'ja-JP', native: '日本語', english: 'Japanese' },
+    ];
+
+    function fillTitle(value: string): void {
+      fireEvent.change(screen.getByTestId('create-page-title-input'), {
+        target: { value },
+      });
+    }
+
+    it('offers no locale field to a site with no markets', () => {
+      render(<CreatePageModal {...defaultProps} />);
+
+      expect(screen.queryByTestId('create-page-locale')).toBeNull();
+    });
+
+    it('offers the site\'s markets when creating a blank page', () => {
+      render(<CreatePageModal {...defaultProps} locales={localesFixture} />);
+
+      expect(screen.getByTestId('create-page-locale')).toBeTruthy();
+      expect(screen.getByTestId('create-page-locale-option-de-DE')).toBeTruthy();
+    });
+
+    it('creates an untagged page while the locale is left alone', async () => {
+      const onCreateDocument = vi.fn().mockResolvedValue(undefined);
+      render(
+        <CreatePageModal
+          {...defaultProps}
+          onCreateDocument={onCreateDocument}
+          locales={localesFixture}
+        />,
+      );
+      fillTitle('My New Page');
+
+      fireEvent.click(screen.getByTestId('create-page-submit'));
+
+      await waitFor(() =>
+        expect(onCreateDocument).toHaveBeenCalledWith('my-new-page', 'My New Page'),
+      );
+    });
+
+    it('creates the page in the market chosen', async () => {
+      const onCreateDocument = vi.fn().mockResolvedValue(undefined);
+      render(
+        <CreatePageModal
+          {...defaultProps}
+          onCreateDocument={onCreateDocument}
+          locales={localesFixture}
+        />,
+      );
+      fillTitle('Preise');
+      fireEvent.click(screen.getByTestId('create-page-locale-option-de-DE'));
+
+      fireEvent.click(screen.getByTestId('create-page-submit'));
+
+      await waitFor(() =>
+        expect(onCreateDocument).toHaveBeenCalledWith('preise', 'Preise', undefined, 'de-DE'),
+      );
+    });
+
+    it('carries the market through a page created from a template', async () => {
+      const onCreateDocument = vi.fn().mockResolvedValue(undefined);
+      render(
+        <CreatePageModal
+          {...defaultProps}
+          onCreateDocument={onCreateDocument}
+          templates={templatesFixture}
+          locales={localesFixture}
+        />,
+      );
+      fireEvent.click(screen.getByTestId('create-page-option-content-type-template'));
+      fireEvent.click(screen.getByTestId('create-page-content-type-article'));
+      fillTitle('Launch');
+      fireEvent.change(screen.getByTestId('create-page-param-section'), {
+        target: { value: 'news' },
+      });
+      fireEvent.click(screen.getByTestId('create-page-locale-option-ja-JP'));
+
+      fireEvent.click(screen.getByTestId('create-page-submit'));
+
+      await waitFor(() =>
+        expect(onCreateDocument).toHaveBeenCalledWith(
+          'articles/news',
+          'Launch',
+          'article',
+          'ja-JP',
+        ),
+      );
+    });
+
+    it('says what choosing a market does, and says nothing until one is chosen', () => {
+      render(<CreatePageModal {...defaultProps} locales={localesFixture} />);
+
+      expect(screen.queryByText(/Creates this page in/)).toBeNull();
+
+      fireEvent.click(screen.getByTestId('create-page-locale-option-de-DE'));
+
+      expect(screen.getByText('Creates this page in Deutsch only.')).toBeTruthy();
+    });
+
+    it('opens showing a market already settled elsewhere in the editor', () => {
+      render(
+        <CreatePageModal {...defaultProps} locales={localesFixture} initialLocale="de-DE" />,
+      );
+
+      expect((screen.getByLabelText('Locale') as HTMLInputElement).value).toBe('Deutsch');
+      expect(screen.getByText('Creates this page in Deutsch only.')).toBeTruthy();
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Translate an existing page
+  // ---------------------------------------------------------------------------
+
+  describe('translate an existing page', () => {
+    const localesFixture = [{ tag: 'de-DE', native: 'Deutsch', english: 'German' }];
+    const pagesFixture = [
+      { id: 'doc-pricing', path: 'pricing', title: 'Pricing' },
+      { id: 'doc-home', path: 'home' },
+    ];
+
+    function renderTranslate(props: Record<string, unknown> = {}) {
+      const result = render(
+        <CreatePageModal
+          {...defaultProps}
+          locales={localesFixture}
+          translatablePages={pagesFixture}
+          onCreateTranslation={vi.fn().mockResolvedValue(undefined)}
+          {...props}
+        />,
+      );
+      fireEvent.click(screen.getByTestId('create-page-option-translate'));
+      return result;
+    }
+
+    it('offers translating a page as a starting point', () => {
+      render(<CreatePageModal {...defaultProps} />);
+
+      expect(screen.getByTestId('create-page-option-translate')).toBeTruthy();
+    });
+
+    it('asks which page and which market, not for a title and a URL', () => {
+      renderTranslate();
+
+      expect(screen.getByTestId('create-page-translate-source')).toBeTruthy();
+      expect(screen.getByTestId('create-page-translate-locale')).toBeTruthy();
+      expect(screen.queryByTestId('create-page-title-input')).toBeNull();
+    });
+
+    it('names a page by its title, and by its path where it has no title', () => {
+      renderTranslate();
+
+      const options = screen.getByTestId('create-page-translate-source').textContent;
+      expect(options).toContain('Pricing');
+      expect(options).toContain('home');
+    });
+
+    it('offers starting from a copy, with the other two ways shown as coming', () => {
+      renderTranslate();
+
+      expect(screen.getByTestId('create-page-seed-mode-copy').getAttribute('aria-checked')).toBe(
+        'true',
+      );
+      expect((screen.getByTestId('create-page-seed-mode-empty') as HTMLButtonElement).disabled).toBe(
+        true,
+      );
+      expect((screen.getByTestId('create-page-seed-mode-ai') as HTMLButtonElement).disabled).toBe(
+        true,
+      );
+      expect(screen.getByTestId('create-page-seed-mode-ai').textContent).toContain('Coming soon');
+    });
+
+    it('waits for both a page and a market before it can create', () => {
+      renderTranslate({ onCreateTranslation: vi.fn() });
+
+      const submit = () => screen.getByTestId('create-page-submit') as HTMLButtonElement;
+      expect(submit().disabled).toBe(true);
+
+      fireEvent.change(screen.getByTestId('create-page-translate-source'), {
+        target: { value: 'doc-pricing' },
+      });
+      expect(submit().disabled).toBe(true);
+
+      fireEvent.click(screen.getByTestId('create-page-translate-locale-option-de-DE'));
+      expect(submit().disabled).toBe(false);
+    });
+
+    it('creates the locale version from a copy of the page chosen', async () => {
+      const onCreateTranslation = vi.fn().mockResolvedValue(undefined);
+      const onClose = vi.fn();
+      renderTranslate({ onCreateTranslation, onClose });
+
+      fireEvent.change(screen.getByTestId('create-page-translate-source'), {
+        target: { value: 'doc-pricing' },
+      });
+      fireEvent.click(screen.getByTestId('create-page-translate-locale-option-de-DE'));
+      fireEvent.click(screen.getByTestId('create-page-submit'));
+
+      await waitFor(() =>
+        expect(onCreateTranslation).toHaveBeenCalledWith({
+          sourceDocumentId: 'doc-pricing',
+          locale: 'de-DE',
+          mode: 'copy',
+        }),
+      );
+      await waitFor(() => expect(onClose).toHaveBeenCalled());
+    });
+
+    it('labels the action for the way the locale is being started', () => {
+      renderTranslate({ onCreateTranslation: vi.fn() });
+
+      expect(screen.getByTestId('create-page-submit').textContent).toContain('Create from copy');
+    });
+
+    it('opens on the page and market already settled elsewhere', () => {
+      render(
+        <CreatePageModal
+          {...defaultProps}
+          locales={localesFixture}
+          translatablePages={pagesFixture}
+          onCreateTranslation={vi.fn()}
+          initialMode="translate"
+          initialLocale="de-DE"
+          initialSourceDocumentId="doc-pricing"
+        />,
+      );
+
+      expect(screen.getByTestId('create-page-translate')).toBeTruthy();
+      expect(
+        (screen.getByTestId('create-page-translate-source') as HTMLSelectElement).value,
+      ).toBe('doc-pricing');
+      expect((screen.getByTestId('create-page-submit') as HTMLButtonElement).disabled).toBe(false);
+    });
+
+    it('reports a locale version that could not be created', async () => {
+      const onCreateTranslation = vi
+        .fn()
+        .mockRejectedValue(new Error('A German version already exists'));
+      renderTranslate({ onCreateTranslation });
+
+      fireEvent.change(screen.getByTestId('create-page-translate-source'), {
+        target: { value: 'doc-pricing' },
+      });
+      fireEvent.click(screen.getByTestId('create-page-translate-locale-option-de-DE'));
+      await act(async () => {
+        fireEvent.click(screen.getByTestId('create-page-submit'));
+      });
+
+      expect(screen.getByTestId('create-page-error').textContent).toContain(
+        'A German version already exists',
+      );
+    });
+
+    it('says so when the site has no markets to translate into', () => {
+      render(
+        <CreatePageModal
+          {...defaultProps}
+          translatablePages={pagesFixture}
+          onCreateTranslation={vi.fn()}
+          initialMode="translate"
+        />,
+      );
+
+      expect(screen.getByTestId('create-page-translate-no-markets')).toBeTruthy();
+    });
+
+    it('says the locales could not be read rather than reporting none', () => {
+      render(
+        <CreatePageModal
+          {...defaultProps}
+          translatablePages={pagesFixture}
+          onCreateTranslation={vi.fn()}
+          localesFailed
+          initialMode="translate"
+        />,
+      );
+
+      expect(screen.getByTestId('create-page-translate-locales-failed')).toBeTruthy();
+      expect(screen.queryByTestId('create-page-translate-no-markets')).toBeNull();
+    });
+
+    it('asks for the locales again when the failure offers another go', () => {
+      const onRetryLocales = vi.fn();
+      render(
+        <CreatePageModal
+          {...defaultProps}
+          translatablePages={pagesFixture}
+          onCreateTranslation={vi.fn()}
+          localesFailed
+          onRetryLocales={onRetryLocales}
+          initialMode="translate"
+        />,
+      );
+      fireEvent.click(screen.getByTestId('create-page-translate-retry-locales'));
+
+      expect(onRetryLocales).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps translating reachable where the locales could not be read', () => {
+      render(
+        <CreatePageModal
+          {...defaultProps}
+          translatablePages={pagesFixture}
+          onCreateTranslation={vi.fn()}
+          localesFailed
+        />,
+      );
+
+      expect(
+        screen.getByTestId('create-page-option-translate').getAttribute('disabled'),
+      ).toBeNull();
+    });
+
+    it('says so when there is no page to translate', () => {
+      render(
+        <CreatePageModal
+          {...defaultProps}
+          locales={localesFixture}
+          onCreateTranslation={vi.fn()}
+          initialMode="translate"
+        />,
+      );
+
+      expect(screen.getByTestId('create-page-translate-empty')).toBeTruthy();
+    });
+
+    it('leaves the market behind when another starting point is chosen', async () => {
+      const onCreateDocument = vi.fn().mockResolvedValue(undefined);
+      renderTranslate({ onCreateDocument });
+
+      fireEvent.click(screen.getByTestId('create-page-translate-locale-option-de-DE'));
+      fireEvent.click(screen.getByTestId('create-page-option-blank'));
+      fireEvent.change(screen.getByTestId('create-page-title-input'), {
+        target: { value: 'Offers' },
+      });
+      fireEvent.click(screen.getByTestId('create-page-submit'));
+
+      // The market was settled for a translation no longer being made, so the
+      // blank page is created untagged rather than in a market never asked for.
+      await waitFor(() => expect(onCreateDocument).toHaveBeenCalledWith('offers', 'Offers'));
+    });
+
+    it('keeps the market when the open starting point is chosen again', async () => {
+      const onCreateDocument = vi.fn().mockResolvedValue(undefined);
+      render(
+        <CreatePageModal
+          {...defaultProps}
+          locales={localesFixture}
+          onCreateDocument={onCreateDocument}
+        />,
+      );
+
+      fireEvent.click(screen.getByTestId('create-page-option-blank'));
+      fireEvent.click(screen.getByTestId('create-page-locale-option-de-DE'));
+      fireEvent.click(screen.getByTestId('create-page-option-blank'));
+      fireEvent.change(screen.getByTestId('create-page-title-input'), {
+        target: { value: 'Offers' },
+      });
+      fireEvent.click(screen.getByTestId('create-page-submit'));
+
+      // The field still reads Deutsch, so the page has to be created in it.
+      await waitFor(() =>
+        expect(onCreateDocument).toHaveBeenCalledWith(
+          'offers',
+          'Offers',
+          undefined,
+          'de-DE',
+        ),
+      );
+    });
+
+    it('translates a preselected page the modal cannot list itself', () => {
+      render(
+        <CreatePageModal
+          {...defaultProps}
+          locales={localesFixture}
+          onCreateTranslation={vi.fn()}
+          initialMode="translate"
+          initialLocale="de-DE"
+          initialSourceDocumentId="doc-pricing"
+        />,
+      );
+
+      // The source is settled, so there is nothing to choose and nothing absent.
+      expect(screen.queryByTestId('create-page-translate-empty')).toBeNull();
+      expect(screen.queryByTestId('create-page-translate-source')).toBeNull();
+      expect(
+        (screen.getByTestId('create-page-submit') as HTMLButtonElement).disabled,
+      ).toBe(false);
+    });
+
+    it('does not offer translating with nowhere to translate into or from', () => {
+      render(<CreatePageModal {...defaultProps} onCreateTranslation={vi.fn()} />);
+
+      expect(
+        (screen.getByTestId('create-page-option-translate') as HTMLButtonElement).disabled,
+      ).toBe(true);
+    });
+
+    it('does not offer translating where the editor cannot create a version', () => {
+      render(
+        <CreatePageModal
+          {...defaultProps}
+          locales={localesFixture}
+          translatablePages={pagesFixture}
+        />,
+      );
+
+      expect(
+        (screen.getByTestId('create-page-option-translate') as HTMLButtonElement).disabled,
+      ).toBe(true);
     });
   });
 });

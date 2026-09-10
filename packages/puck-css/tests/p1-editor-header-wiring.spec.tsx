@@ -10,6 +10,7 @@ import { render, screen, cleanup, waitFor, act } from '@testing-library/react';
 import React from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { Branch, Document, ActorPresence } from '@pantheon-systems/css-client';
+import { P1SdkQueryProvider } from '../src/data/query-provider.js';
 import { aiPanelStore } from '../src/editor/aiPanelStore.js';
 
 // The header override calls useEditorContext (useQuery) to derive datasources,
@@ -125,6 +126,7 @@ vi.mock('../src/pds/components/P1EditorHeader.js', () => ({
     collaborators,
     logoutError,
     isLoggingOut,
+    translatablePages,
   }: Record<string, unknown>) => {
     const isMain = (currentBranch as { isMain: boolean } | null)?.isMain ?? true;
     const collabs = (collaborators ?? []) as { name?: string; avatar?: string }[];
@@ -155,6 +157,9 @@ vi.mock('../src/pds/components/P1EditorHeader.js', () => ({
         {/* Expose props for assertions */}
         <span data-testid="branch-count">{(branches as unknown[])?.length ?? 0}</span>
         <span data-testid="doc-count">{(documents as unknown[])?.length ?? 0}</span>
+        <span data-testid="translatable-page-paths">
+          {((translatablePages ?? []) as { path: string }[]).map((p) => p.path).join(',')}
+        </span>
         <span data-testid="site-menu-count">
           {(siteMenuItems as unknown[])?.length ?? 0}
         </span>
@@ -328,7 +333,9 @@ function renderHeader(plugin: ReturnType<typeof createP1Plugin>) {
   const headerFn = (plugin.overrides as any)?.header as (() => React.ReactElement) | undefined;
   if (!headerFn) throw new Error('plugin.overrides.header not defined');
   return render(
-    <QueryClientProvider client={testQueryClient}>{headerFn()}</QueryClientProvider>,
+    <QueryClientProvider client={testQueryClient}>
+      <P1SdkQueryProvider>{headerFn()}</P1SdkQueryProvider>
+    </QueryClientProvider>,
   );
 }
 
@@ -351,6 +358,18 @@ describe('createP1Plugin overrides.header — P1EditorHeader', () => {
     const plugin = createP1Plugin(baseOptions);
     renderHeader(plugin);
     expect(screen.getByTestId('site-name').textContent).toBe('Test Site');
+  });
+
+  it('offers pages to translate, not the registry documents beside them', () => {
+    const registryDoc: Document = {
+      ...docs[0],
+      id: 'doc-registry',
+      path: '_registry/templates/blog-post',
+    };
+    const plugin = createP1Plugin({ ...baseOptions, documents: [...docs, registryDoc] });
+    renderHeader(plugin);
+
+    expect(screen.getByTestId('translatable-page-paths').textContent).toBe('/home');
   });
 
   it('renders the p1-subheader-slot anchor div', () => {

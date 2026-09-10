@@ -12,6 +12,7 @@ import type {
   Branch,
   DocumentVersion,
   ActorPresence,
+  TranslationMode,
 } from '@pantheon-systems/css-client';
 import isEqual from 'lodash.isequal';
 import type { P1PuckConfig, P1PuckContextValue, PuckDataOrigin, SaveStatus, PresenceState } from '../core/types.js';
@@ -674,7 +675,12 @@ function P1PuckProviderInner({
   const createDocumentRawRef = useRef(createDocumentRaw);
   createDocumentRawRef.current = createDocumentRaw;
   const stableCreateDocument = useCallback(
-    async (path: string, template?: TemplateSummary | null, title?: string): Promise<void> => {
+    async (
+      path: string,
+      template?: TemplateSummary | null,
+      title?: string,
+      locale?: string,
+    ): Promise<void> => {
       if (!branchIdRef.current) {
         throw new Error('Cannot create document: no branch selected');
       }
@@ -697,10 +703,50 @@ function P1PuckProviderInner({
           templateId: fullTemplate.id,
           templateVersion: fullTemplate.version,
           title,
+          locale,
         });
       } else {
-        await createDocumentRawRef.current(path, undefined, title ? { title } : undefined);
+        await createDocumentRawRef.current(path, undefined, {
+          ...(title ? { title } : {}),
+          ...(locale ? { locale } : {}),
+        });
       }
+    },
+    [userClient, siteId]
+  );
+
+  const refreshDocumentsRef = useRef(refreshDocuments);
+  refreshDocumentsRef.current = refreshDocuments;
+
+  // A locale version of an existing page. The new document hangs off the
+  // canonical, which is what makes it a translation rather than a page of its
+  // own, and it joins the branch's document list once created.
+  const stableCreateTranslation = useCallback(
+    async (params: {
+      canonicalDocumentId: string;
+      locale: string;
+      mode?: TranslationMode;
+    }): Promise<Document> => {
+      if (!branchIdRef.current) {
+        throw new Error('Cannot create a locale version: no branch selected');
+      }
+      const created = await userClient.translations.create({
+        siteId,
+        branchId: branchIdRef.current,
+        canonicalDocumentId: params.canonicalDocumentId,
+        locale: params.locale,
+        ...(params.mode ? { mode: params.mode } : {}),
+      });
+      // Best-effort: the translation already exists once created() resolves, so a
+      // failure here shouldn't surface as a failed translation and strand the caller
+      // without the document it just made.
+      try {
+        await refreshDocumentsRef.current();
+      } catch {
+        // The branch's document list falls out of date; it catches up on the next
+        // successful refresh.
+      }
+      return created.document;
     },
     [userClient, siteId]
   );
@@ -2322,6 +2368,7 @@ function P1PuckProviderInner({
       documentsLoading,
       refreshDocuments,
       createDocument: stableCreateDocument,
+      createTranslation: stableCreateTranslation,
       deleteDocument: stableDeleteDocument,
       createTemplate: stableCreateTemplate,
       updateTemplate: stableUpdateTemplate,
@@ -2416,6 +2463,7 @@ function P1PuckProviderInner({
       branchDocuments,
       documentsLoading,
       stableCreateDocument,
+      stableCreateTranslation,
       stableDeleteDocument,
       stableCreateTemplate,
       stableUpdateTemplate,

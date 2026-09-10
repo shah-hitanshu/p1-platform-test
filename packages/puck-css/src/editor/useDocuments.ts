@@ -36,7 +36,13 @@ interface UseDocumentsReturn {
   create: (
     path: string,
     initialData?: PuckData,
-    options?: { templateId?: string; templateVersion?: number; title?: string },
+    options?: {
+      templateId?: string;
+      templateVersion?: number;
+      title?: string;
+      /** Market the page is authored in. Omitted leaves the page untagged. */
+      locale?: string;
+    },
   ) => Promise<Document>;
 
   /**
@@ -136,7 +142,13 @@ export function useDocuments({
     async (
       path: string,
       initialData?: PuckData,
-      options?: { templateId?: string; templateVersion?: number; title?: string },
+      options?: {
+        templateId?: string;
+        templateVersion?: number;
+        title?: string;
+        /** Market the page is authored in. Omitted leaves the page untagged. */
+        locale?: string;
+      },
     ): Promise<Document> => {
       // Template pages get their initial version built by the backend from the
       // template, which preserves each component's durable slot id. A
@@ -156,6 +168,7 @@ export function useDocuments({
           templateId: options.templateId,
           templateVersion: options.templateVersion ?? 1,
           ...(options.title ? { title: options.title } : {}),
+          ...(options.locale ? { locale: options.locale } : {}),
         });
 
         await refresh();
@@ -186,6 +199,7 @@ export function useDocuments({
         branchId,
         path,
         snapshot: data as unknown as Record<string, unknown>,
+        ...(options?.locale ? { locale: options.locale } : {}),
       });
 
       await refresh();

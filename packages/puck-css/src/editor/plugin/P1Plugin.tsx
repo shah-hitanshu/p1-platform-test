@@ -42,6 +42,9 @@ import type { SubheaderActor } from '../../pds/components/P1EditorSubheader.js';
 import { deriveDocState } from '../../pds/utils/deriveDocState.js';
 import { deriveLiveDocState } from '../../pds/utils/deriveLiveDocState.js';
 import type { Template } from '../../features/content-type-templates/types.js';
+import { useSiteMarkets } from '../../features/localization/useSiteMarkets.js';
+import { useCreateTranslation } from '../../features/localization/useCreateTranslation.js';
+import { localeLabel } from '../../features/localization/locale-labels.js';
 import { useEditorContext } from '../../p1/editor/index.js';
 import type { TemplateSummary } from '../../features/content-type-templates/types.js';
 import { createLogoutStore } from '../logout-store.js';
@@ -495,7 +498,12 @@ export interface P1PluginOptions {
    */
   pageNotFound?: PageNotFoundProps | null;
   /** Callback to create a new document */
-  onDocumentCreate?: (path: string, template?: TemplateSummary | null, title?: string) => Promise<void>;
+  onDocumentCreate?: (
+    path: string,
+    template?: TemplateSummary | null,
+    title?: string,
+    locale?: string,
+  ) => Promise<void>;
   /** Hand a "Generate with AI" brief (+ the new page's path/title) to the chatbot. */
   onGenerateWithAI?: (brief: string, page: { path: string; title: string }) => void;
   /** Show the header's Pantheon AI toggle. Pass the same flag that gates the chat plugin. */
@@ -984,6 +992,48 @@ export function createP1Plugin(options: P1PluginOptions): PuckPlugin {
       .filter((doc) => !doc.archived)
       .map((doc) => ({ id: doc.id, path: doc.path, archived: false as const, inherited: doc.inherited }));
 
+    // The site's markets, named the way a person would look for them, and the
+    // pages a locale version can hang off. A translation derives from a
+    // canonical, so translations are not themselves offered as sources.
+    // Internal `_*` documents are registry entries rather than pages, so they
+    // are no more translatable than they are browsable.
+    const { markets, failed: localesFailed, retry: retryLocales } = useSiteMarkets();
+    const locales = markets.map((tag) => {
+      const label = localeLabel(tag);
+      return { tag, native: label.native, english: label.english };
+    });
+    const translatablePages = rawDocs
+      .filter((doc) => {
+        if (doc.archived || doc.localizedFromId) return false;
+        const normalizedPath = doc.path.startsWith('/') ? doc.path.slice(1) : doc.path;
+        return !normalizedPath.startsWith('_');
+      })
+      .map((doc) => ({ id: doc.id, path: doc.path, title: doc.snapshotTitle }));
+
+    // Creating the version lands the editor on it: the market was asked for so
+    // it could be written, and it is the copy now being translated.
+    const createTranslation = useCreateTranslation();
+    const openDocument = ccr.openDocument;
+    const createVersion = React.useCallback(
+      async (params: { sourceDocumentId: string; locale: string; mode: 'copy' }) => {
+        if (!createTranslation) {
+          throw new Error('No editor to create a locale version in');
+        }
+        const created = await createTranslation({
+          canonicalDocumentId: params.sourceDocumentId,
+          locale: params.locale,
+          mode: params.mode,
+        });
+        openDocument(created.path);
+      },
+      [createTranslation, openDocument],
+    );
+
+    // Left undefined where there is no editor to create a version in, which is
+    // what closes the modal's translate flow rather than letting it lead to a
+    // form that reports success without creating anything.
+    const handleCreateTranslation = createTranslation ? createVersion : undefined;
+
     // Find current document
     const currentDoc =
       rawDocs.find((doc) => doc.path === stableOptions.selectedDocumentPath) ?? null;
@@ -1013,6 +1063,12 @@ export function createP1Plugin(options: P1PluginOptions): PuckPlugin {
           templatesLoading={stableOptions.templatesLoading}
           onCreateTemplate={stableOptions.onCreateTemplate}
           datasources={datasources}
+          locales={locales}
+          localesFailed={localesFailed}
+          onRetryLocales={retryLocales}
+          translatablePages={translatablePages}
+          onCreateTranslation={handleCreateTranslation}
+          registerCreatePageOpener={ccr.registerCreatePageOpener}
           onLogout={stableOptions.onLogout ?? (() => {})}
           logoutError={logout.error}
           isLoggingOut={logout.isLoggingOut}

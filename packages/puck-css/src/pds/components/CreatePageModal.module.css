@@ -190,6 +190,11 @@
   gap: 8px;
 }
 
+/* A hint above the grid is its own block, not a caption on the first card. */
+.fieldHint + .contentTypeGrid {
+  margin-top: 12px;
+}
+
 @media (max-width: 599px) {
   .contentTypeGrid {
     grid-template-columns: 1fr;
@@ -273,7 +278,9 @@
 .field {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  /* Matches the space a PDS field leaves under its label, so a native input and
+     a PDS control sitting side by side start at the same height. */
+  gap: 8px;
 }
 
 .fieldFull {
@@ -281,6 +288,8 @@
 }
 
 .fieldLabel {
+  /* The field's gap sets the distance to the input; a label margin would add to it. */
+  margin-bottom: 0;
   font-size: 13px;
   font-weight: 600;
   color: var(--pds-color-foreground-default, oklch(0.2 0 0));
@@ -305,7 +314,6 @@
 .input,
 .textarea {
   width: 100%;
-  padding: 8px 10px;
   font-size: 14px;
   color: var(--pds-color-foreground-default, oklch(0.2 0 0));
   background: var(--pds-color-surface-default, oklch(1 0 0));
@@ -313,8 +321,16 @@
   border-radius: var(--pds-border-radius-card, 8px);
 }
 
+/* 32px is the height of a PDS field. The padding is horizontal only: vertical
+   padding on a select clips its text instead of growing the box. */
+.input {
+  height: 32px;
+  padding: 0 10px;
+}
+
 .textarea {
   min-height: 64px;
+  padding: 8px 10px;
   resize: vertical;
 }
 
@@ -581,6 +597,44 @@
   color: var(--pds-color-foreground-default-secondary, oklch(0.5 0 0));
 }
 
+/* ---- Locale seed modes ---- */
+
+.modeList {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+@media (max-width: 719px) {
+  .modeList {
+    grid-template-columns: 1fr;
+  }
+}
+
+.modeHeading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.modeBadge {
+  padding: 1px 6px;
+  border-radius: var(--pds-border-radius-default, 4px);
+  background: var(--pds-color-surface-default-secondary, oklch(0.96 0 0));
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--pds-color-foreground-default-secondary, oklch(0.5 0 0));
+}
+
+.modeList .contentTypeCard:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.modeList .contentTypeCard:disabled:hover {
+  border-color: var(--pds-color-border-default, oklch(0.92 0 0));
+}
+
 /* Two-pane data-source workspace: pick configured sources (left) / add on the fly (right). */
 .dsWorkspace {
   display: grid;
@@ -689,7 +743,9 @@
   align-items: center;
   justify-content: flex-end;
   gap: 12px;
-  padding: 16px 24px;
+  /* The body already insets its contents, so the actions end where the fields
+     above them end rather than a second inset further in. */
+  padding: 16px 0;
   margin-top: 4px;
   border-top: 1px solid var(--pds-color-border-default, oklch(0.92 0 0));
 }
@@ -776,4 +832,14 @@
 
 .submitIcon {
   flex: none;
+}
+
+.linkButton {
+  font: inherit;
+  color: var(--pds-color-interactive-link-default, #3A5DFB);
+  background: none;
+  border: 0;
+  padding: 0;
+  text-decoration: underline;
+  cursor: pointer;
 }

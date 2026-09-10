@@ -1,0 +1,40 @@
+.field {
+  width: 100%;
+}
+
+/* An inline-block label sits on a baseline, which drops it below where a block
+   label would start. Field labels line up across the form only if they agree. */
+.field :global(.pds-input-label) {
+  display: block;
+}
+
+.option {
+  display: flex;
+  align-items: baseline;
+  gap: var(--pds-spacing-xs, 0.5rem);
+  min-width: 0;
+}
+
+.native {
+  font-weight: var(--pds-typography-fw-medium, 500);
+  color: var(--pds-color-foreground-default, oklch(0.24 0 0));
+}
+
+.english {
+  font-size: var(--pds-typography-size-xs, 0.75rem);
+  color: var(--pds-color-foreground-default-secondary, oklch(0.45 0 0));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tag {
+  margin-left: auto;
+  padding: 0.06rem 0.31rem;
+  border-radius: var(--pds-border-radius-default, 0.25rem);
+  background: var(--pds-color-surface-default-secondary, oklch(0.96 0 0));
+  font-size: var(--pds-typography-size-xs, 0.75rem);
+  font-variant-numeric: tabular-nums;
+  color: var(--pds-color-foreground-default-secondary, oklch(0.45 0 0));
+  flex-shrink: 0;
+}
