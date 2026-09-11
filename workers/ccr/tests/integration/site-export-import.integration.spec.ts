@@ -5,10 +5,10 @@
  * Prerequisites: Docker Postgres running, migration 038 applied.
  */
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
-import postgres from 'postgres';
+import type postgres from 'postgres';
 import { zipSync, strToU8 } from 'fflate';
 import { setDatabaseInstance } from '../../src/db';
-import type { DatabaseConnection, QueryResult } from '../../src/db';
+import { createRealDatabaseConnection } from '../helpers/database';
 import { createSite } from '../../src/services/site-service';
 import { getMainBranch, listBranches } from '../../src/services/branch-service';
 import { createDocument } from '../../src/services/document-service';
@@ -37,46 +37,13 @@ vi.mock('../../src/storage/r2-presign', () => ({
 import { handleSiteImportRoute } from '../../src/routes/site-import-api';
 import type { AuthenticatedPrincipal } from '../../src/types';
 
-const CONNECTION_STRING = 'postgresql://cssuser:csspass@localhost:5432/cssdb';
 const SYSTEM_UUID = '00000000-0000-0000-0000-000000000000';
 const createdSiteIds: string[] = [];
-
-/**
- * Creates a real DB connection using the same pattern as all other integration tests in this repo.
- * See agent-auth-flow.integration.spec.ts and soft-delete.integration.spec.ts for reference.
- */
-function createRealDatabaseConnection(connectionString: string): {
-  connection: DatabaseConnection;
-  sql: postgres.Sql;
-} {
-  const sql = postgres(connectionString, {
-    transform: { undefined: null },
-    max: 1,
-  });
-
-  const connection: DatabaseConnection = {
-    async query<T = Record<string, unknown>>(
-      sqlQuery: string,
-      params?: unknown[],
-    ): Promise<QueryResult<T>> {
-      const result = await sql.unsafe<T[]>(
-        sqlQuery,
-        params as unknown as postgres.ParameterOrJSON<never>[],
-      );
-      const rows = [...result] as T[];
-      const resultWithCount = result as unknown as { count?: number };
-      const rowCount = resultWithCount.count ?? rows.length;
-      return { rows, rowCount };
-    },
-  };
-
-  return { connection, sql };
-}
 
 let sql: postgres.Sql;
 
 beforeAll(() => {
-  const { connection, sql: pgSql } = createRealDatabaseConnection(CONNECTION_STRING);
+  const { connection, sql: pgSql } = createRealDatabaseConnection();
   sql = pgSql;
   setDatabaseInstance(connection);
 });
@@ -147,7 +114,7 @@ function createMockKV(): KVNamespace {
   return {
     get: vi.fn().mockResolvedValue(null),
     put: vi.fn().mockResolvedValue(undefined),
-  } as unknown as KVNamespace;
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -811,7 +778,7 @@ describe('handleSiteImportRoute integration scenarios', () => {
         kvStore.set(key, value);
         return Promise.resolve();
       }),
-    } as unknown as KVNamespace;
+    };
 
     const { zip, bundleSignature } = await buildValidImportZip({
       sourceSiteId: 'src-site-t3',

@@ -14,13 +14,18 @@
  *   statement order.
  *
  * Authorization is deliberately NOT mocked: these tests are about the real
- * assertPermission running against a mocked `query`, so `db.query` call counts
- * are the authorization cost and the mocked services are the lookup cost.
+ * assertPermission running against a stubbed database, so the statements
+ * recorded there are the authorization cost and the mocked services are the
+ * lookup cost.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { makePrincipal } from '../helpers/principal';
 import { makeBranch } from '../helpers/branch';
+import { stubDatabase, type DatabaseStub } from '../__stubs__/database';
+import { userSiteRoles } from '../../src/db/schema';
+import { handleDocumentRoutes } from '../../src/routes/document-api';
+import * as services from '../../src/services';
 
 // The lookups are stubbed on the service modules the `src/services` barrel
 // re-exports them from, rather than on the barrel itself. Mocking the barrel
@@ -54,11 +59,6 @@ vi.mock('../../src/services/document-version-service', async () => {
     getLatestDocumentVersionWithFallback: vi.fn(),
     listDocumentVersions: vi.fn(),
   };
-});
-
-vi.mock('../../src/db', async () => {
-  const actual = await vi.importActual<typeof import('../../src/db')>('../../src/db');
-  return { ...actual, query: vi.fn() };
 });
 
 const purgeContentCache = vi.hoisted(() => vi.fn());
@@ -96,12 +96,7 @@ const versionsContext = {
   versionAction: 'latest' as const,
 };
 
-async function loadRoutes() {
-  const { handleDocumentRoutes } = await import('../../src/routes/document-api');
-  const services = await import('../../src/services');
-  const db = await import('../../src/db');
-  return { handleDocumentRoutes, services, query: vi.mocked(db.query) };
-}
+type Services = typeof services;
 
 /**
  * Answers every lookup the branch-scoped routes can reach, so a test that is
@@ -109,7 +104,7 @@ async function loadRoutes() {
  * unstubbed mock returning undefined.
  */
 function stubLookups(
-  services: Awaited<ReturnType<typeof loadRoutes>>['services'],
+  services: Services,
   overrides: { documentExistsOnBranch?: boolean } = {},
 ): void {
   vi.mocked(services.getBranch).mockResolvedValue(featureBranch);
@@ -124,7 +119,7 @@ function stubLookups(
 }
 
 /** Every lookup the version routes can reach before returning. */
-function lookupCalls(services: Awaited<ReturnType<typeof loadRoutes>>['services']): Record<string, number> {
+function lookupCalls(services: Services): Record<string, number> {
   return {
     getBranch: vi.mocked(services.getBranch).mock.calls.length,
     getMainBranch: vi.mocked(services.getMainBranch).mock.calls.length,
@@ -137,15 +132,15 @@ function lookupCalls(services: Awaited<ReturnType<typeof loadRoutes>>['services'
 }
 
 describe('branch-scoped document routes: authorization before lookups', () => {
+  let database: DatabaseStub;
+
   beforeEach(() => {
-    vi.resetModules();
     vi.clearAllMocks();
+    database = stubDatabase();
   });
 
   describe('a service token bound to another site', () => {
     it('is refused without a single database query', async () => {
-      const { handleDocumentRoutes, services, query } = await loadRoutes();
-
       stubLookups(services);
 
       const response = await handleDocumentRoutes(versionsRequest(), {
@@ -159,7 +154,7 @@ describe('branch-scoped document routes: authorization before lookups', () => {
       });
 
       expect(response.status).toBe(403);
-      expect(query).not.toHaveBeenCalled();
+      expect(database.statements).toHaveLength(0);
       expect(lookupCalls(services)).toEqual({
         getBranch: 0,
         getMainBranch: 0,
@@ -170,8 +165,6 @@ describe('branch-scoped document routes: authorization before lookups', () => {
     });
 
     it('is refused on the plain document route without a single database query', async () => {
-      const { handleDocumentRoutes, services, query } = await loadRoutes();
-
       stubLookups(services);
 
       const response = await handleDocumentRoutes(
@@ -193,15 +186,13 @@ describe('branch-scoped document routes: authorization before lookups', () => {
       );
 
       expect(response.status).toBe(403);
-      expect(query).not.toHaveBeenCalled();
+      expect(database.statements).toHaveLength(0);
       expect(lookupCalls(services).getBranch).toBe(0);
     });
   });
 
   describe('a service token whose scope does not cover the operation', () => {
     it('is refused without a single database query', async () => {
-      const { handleDocumentRoutes, services, query } = await loadRoutes();
-
       stubLookups(services);
 
       // write:registry reaches POST on the documents handler through the coarse
@@ -227,7 +218,7 @@ describe('branch-scoped document routes: authorization before lookups', () => {
       );
 
       expect(response.status).toBe(403);
-      expect(query).not.toHaveBeenCalled();
+      expect(database.statements).toHaveLength(0);
       expect(lookupCalls(services)).toEqual({
         getBranch: 0,
         getMainBranch: 0,
@@ -240,10 +231,7 @@ describe('branch-scoped document routes: authorization before lookups', () => {
 
   describe('a caller with no role on the site', () => {
     it('is refused on the version routes before any document lookup', async () => {
-      const { handleDocumentRoutes, services, query } = await loadRoutes();
-
       stubLookups(services);
-      query.mockResolvedValue({ rows: [] });
 
       const response = await handleDocumentRoutes(versionsRequest(), {
         ...versionsContext,
@@ -263,10 +251,7 @@ describe('branch-scoped document routes: authorization before lookups', () => {
     });
 
     it('costs exactly the two queries authorization itself needs', async () => {
-      const { handleDocumentRoutes, services, query } = await loadRoutes();
-
       stubLookups(services);
-      query.mockResolvedValue({ rows: [] });
 
       await handleDocumentRoutes(versionsRequest(), {
         ...versionsContext,
@@ -274,14 +259,11 @@ describe('branch-scoped document routes: authorization before lookups', () => {
       });
 
       // The site role, then the branch grant. Nothing else.
-      expect(query).toHaveBeenCalledTimes(2);
+      expect(database.statements).toHaveLength(2);
     });
 
     it('is refused on a version write before any document lookup', async () => {
-      const { handleDocumentRoutes, services, query } = await loadRoutes();
-
       stubLookups(services);
-      query.mockResolvedValue({ rows: [] });
 
       const response = await handleDocumentRoutes(
         new Request(
@@ -306,10 +288,7 @@ describe('branch-scoped document routes: authorization before lookups', () => {
     });
 
     it('is refused on the plain document route before any document lookup', async () => {
-      const { handleDocumentRoutes, services, query } = await loadRoutes();
-
       stubLookups(services);
-      query.mockResolvedValue({ rows: [] });
 
       const response = await handleDocumentRoutes(
         new Request(
@@ -330,10 +309,7 @@ describe('branch-scoped document routes: authorization before lookups', () => {
     });
 
     it('cannot tell a document that is on the branch from one that is not', async () => {
-      const { handleDocumentRoutes, services, query } = await loadRoutes();
-
       stubLookups(services);
-      query.mockResolvedValue({ rows: [] });
 
       const present = await handleDocumentRoutes(versionsRequest(), {
         ...versionsContext,
@@ -342,7 +318,6 @@ describe('branch-scoped document routes: authorization before lookups', () => {
 
       vi.clearAllMocks();
       stubLookups(services, { documentExistsOnBranch: false });
-      query.mockResolvedValue({ rows: [] });
 
       const absent = await handleDocumentRoutes(versionsRequest(), {
         ...versionsContext,
@@ -361,12 +336,10 @@ describe('branch-scoped document routes: authorization before lookups', () => {
     });
 
     it('answers 404 when the branch is not one of the site\'s', async () => {
-      const { handleDocumentRoutes, services, query } = await loadRoutes();
-
       vi.mocked(services.getBranch).mockResolvedValue(
         makeBranch({ id: featureBranch.id, siteId: 'site-other', isMain: false }),
       );
-      query.mockResolvedValue({ rows: [{ role: 'team_member' }] });
+      database.on(userSiteRoles).select.returns([{ role: 'team_member' }]);
 
       const response = await handleDocumentRoutes(versionsRequest(), {
         ...versionsContext,
@@ -378,17 +351,10 @@ describe('branch-scoped document routes: authorization before lookups', () => {
     });
 
     it('answers 404 when the document is absent from the branch', async () => {
-      const { handleDocumentRoutes, services, query } = await loadRoutes();
-
       vi.mocked(services.getBranch).mockResolvedValue(featureBranch);
       vi.mocked(services.documentExistsOnBranch).mockResolvedValue(false);
       vi.mocked(services.getMainBranch).mockResolvedValue(null);
-      query.mockImplementation(async (sql: string) => {
-        if (sql.includes('user_site_roles')) {
-          return { rows: [{ role: 'team_member' }] };
-        }
-        return { rows: [{ site_id: 'site-1', role: null }] };
-      });
+      database.on(userSiteRoles).select.returns([{ role: 'team_member' }]);
 
       const response = await handleDocumentRoutes(versionsRequest(), {
         ...versionsContext,
@@ -402,8 +368,6 @@ describe('branch-scoped document routes: authorization before lookups', () => {
     });
 
     it('still serves a document inherited from main', async () => {
-      const { handleDocumentRoutes, services, query } = await loadRoutes();
-
       const mainBranch = makeBranch({
         id: '22222222-2222-4222-8222-222222222222',
         siteId: 'site-1',
@@ -425,12 +389,7 @@ describe('branch-scoped document routes: authorization before lookups', () => {
         version: inherited as never,
         inherited: true,
       });
-      query.mockImplementation(async (sql: string) => {
-        if (sql.includes('user_site_roles')) {
-          return { rows: [{ role: 'team_member' }] };
-        }
-        return { rows: [{ site_id: 'site-1', role: null }] };
-      });
+      database.on(userSiteRoles).select.returns([{ role: 'team_member' }]);
 
       const response = await handleDocumentRoutes(versionsRequest(), {
         ...versionsContext,

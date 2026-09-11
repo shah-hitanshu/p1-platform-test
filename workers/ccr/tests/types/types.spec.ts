@@ -548,13 +548,16 @@ describe('Phase 1.3: Core TypeScript Types', () => {
           id: 'link-123',
           branchId: 'branch-123',
           email: 'guest@example.com',
+          name: null,
           tokenHash: 'hashed-token',
           status: 'active',
-          expiresAt: '2024-02-01T00:00:00Z',
+          expiresAt: new Date('2024-02-01T00:00:00Z'),
           createdById: 'user-123',
           createdByType: 'user',
-          createdAt: '2024-01-01T00:00:00Z',
+          createdAt: new Date('2024-01-01T00:00:00Z'),
+          message: null,
           accessCount: 0,
+          lastAccessAt: null,
         };
         assertType<GuestLink>(link);
         expect(link.email).toBe('guest@example.com');
@@ -568,13 +571,13 @@ describe('Phase 1.3: Core TypeScript Types', () => {
           name: 'Guest User',
           tokenHash: 'hashed-token',
           status: 'active',
-          expiresAt: '2024-02-01T00:00:00Z',
+          expiresAt: new Date('2024-02-01T00:00:00Z'),
           createdById: 'user-123',
           createdByType: 'user',
-          createdAt: '2024-01-01T00:00:00Z',
+          createdAt: new Date('2024-01-01T00:00:00Z'),
           message: 'Please review this branch',
           accessCount: 5,
-          lastAccessAt: '2024-01-15T00:00:00Z',
+          lastAccessAt: new Date('2024-01-15T00:00:00Z'),
         };
         assertType<GuestLink>(link);
         expect(link.name).toBe('Guest User');
@@ -1218,8 +1221,8 @@ describe('Phase 1.3: Core TypeScript Types', () => {
           capabilities: ['edit', 'create'],
           status: 'active',
           settings: {},
-          createdAt: '2024-01-01T00:00:00Z',
-          updatedAt: '2024-01-01T00:00:00Z',
+          createdAt: new Date('2024-01-01T00:00:00Z'),
+          updatedAt: new Date('2024-01-01T00:00:00Z'),
           isGlobal: false,
         };
         assertType<RegisteredAgent>(agent);
@@ -1235,8 +1238,8 @@ describe('Phase 1.3: Core TypeScript Types', () => {
           capabilities: ['edit', 'create'],
           status: 'suspended',
           settings: {},
-          createdAt: '2024-01-01T00:00:00Z',
-          updatedAt: '2024-01-01T00:00:00Z',
+          createdAt: new Date('2024-01-01T00:00:00Z'),
+          updatedAt: new Date('2024-01-01T00:00:00Z'),
           isGlobal: false,
         };
         assertType<RegisteredAgent>(agent);

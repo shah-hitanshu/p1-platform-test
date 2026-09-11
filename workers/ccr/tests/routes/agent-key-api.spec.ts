@@ -62,8 +62,8 @@ const AGENT: RegisteredAgent = {
   capabilities: [],
   status: 'active',
   settings: {},
-  createdAt: '2026-03-22T10:00:00.000Z',
-  updatedAt: '2026-03-22T10:00:00.000Z',
+  createdAt: new Date('2026-03-22T10:00:00.000Z'),
+  updatedAt: new Date('2026-03-22T10:00:00.000Z'),
   isGlobal: false,
 };
 
@@ -125,7 +125,7 @@ describe('Agent API Key Routes', () => {
           prefix: 'aak_abc12345',
           name: 'CI Pipeline Key',
           createdBy: 'db-user-uuid-123',
-          createdAt: '2026-03-22T10:00:00.000Z',
+          createdAt: new Date('2026-03-22T10:00:00.000Z'),
           lastUsedAt: null,
           revokedAt: null,
         },
@@ -231,7 +231,7 @@ describe('Agent API Key Routes', () => {
           prefix: 'aak_abc12345',
           name: 'Key A',
           createdBy: 'db-user-uuid-123',
-          createdAt: '2026-03-22T10:00:00.000Z',
+          createdAt: new Date('2026-03-22T10:00:00.000Z'),
           lastUsedAt: null,
           revokedAt: null,
         },
@@ -241,8 +241,8 @@ describe('Agent API Key Routes', () => {
           prefix: 'aak_def67890',
           name: 'Key B',
           createdBy: 'db-user-uuid-123',
-          createdAt: '2026-03-22T11:00:00.000Z',
-          lastUsedAt: '2026-03-22T12:00:00.000Z',
+          createdAt: new Date('2026-03-22T11:00:00.000Z'),
+          lastUsedAt: new Date('2026-03-22T12:00:00.000Z'),
           revokedAt: null,
         },
       ]);
@@ -307,7 +307,10 @@ describe('Agent API Key Routes', () => {
       });
 
       expect(response.status).toBe(204);
-      expect(keyService.revokeKey).toHaveBeenCalledWith('key-uuid-001', 'agent-uuid-456');
+      expect(keyService.revokeKey).toHaveBeenCalledWith(
+        'key-uuid-001',
+        'agent-uuid-456',
+      );
     });
 
     it('should return 404 when key not found', async () => {
@@ -394,7 +397,7 @@ describe('Agent API Key Routes', () => {
         key: 'aak_ok',
         metadata: {
           id: 'key-1', agentId: 'agent-uuid-456', prefix: 'aak_ok12', name: 'ok',
-          createdBy: 'db-user-uuid-123', createdAt: '2026-08-19T00:00:00.000Z',
+          createdBy: 'db-user-uuid-123', createdAt: new Date('2026-08-19T00:00:00.000Z'),
           lastUsedAt: null, revokedAt: null,
         },
       });
@@ -459,7 +462,7 @@ describe('Agent API Key Routes', () => {
         key: 'aak_ok',
         metadata: {
           id: 'key-1', agentId: 'agent-uuid-456', prefix: 'aak_ok12', name: 'ok',
-          createdBy: 'db-user-uuid-123', createdAt: '2026-08-19T00:00:00.000Z',
+          createdBy: 'db-user-uuid-123', createdAt: new Date('2026-08-19T00:00:00.000Z'),
           lastUsedAt: null, revokedAt: null,
         },
       });
@@ -569,7 +572,10 @@ describe('Agent API Key Routes', () => {
 
       // Containment must not require admin on every site the agent touches.
       expect(response.status).toBe(204);
-      expect(keyService.revokeKey).toHaveBeenCalledWith('key-uuid-001', 'agent-uuid-456');
+      expect(keyService.revokeKey).toHaveBeenCalledWith(
+        'key-uuid-001',
+        'agent-uuid-456',
+      );
     });
 
     it('rejects revoking when the caller administers none of the agent\'s sites (403)', async () => {

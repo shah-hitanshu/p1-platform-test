@@ -55,17 +55,20 @@ function createMockDurableObjectStub(): DurableObjectStub {
         headers: { 'Content-Type': 'application/json' },
       });
     }),
+    connect: vi.fn(),
     id: {} as DurableObjectId,
-  } as unknown as DurableObjectStub;
+  };
 }
 
 function createMockBrokerTx(): DurableObjectNamespace {
   return {
     idFromName: vi.fn((name: string) => ({ toString: () => name }) as DurableObjectId),
     get: vi.fn(() => createMockDurableObjectStub()),
+    getByName: vi.fn(),
     idFromString: vi.fn(),
     newUniqueId: vi.fn(),
-  } as unknown as DurableObjectNamespace;
+    jurisdiction: vi.fn(),
+  };
 }
 
 /** Only the bindings the broker routes read; cast past the document, presence

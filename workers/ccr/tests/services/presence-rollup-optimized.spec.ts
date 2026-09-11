@@ -388,8 +388,8 @@ describe('Phase 3.3: Presence Rollup Optimization (PresenceManager DO)', () => {
         capabilities: ['edit'],
         status: 'active',
         settings: {},
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+        createdAt: new Date(),
+        updatedAt: new Date(),
         isGlobal: false,
       });
 
@@ -464,8 +464,8 @@ describe('Phase 3.3: Presence Rollup Optimization (PresenceManager DO)', () => {
         capabilities: ['edit'],
         status: 'active',
         settings: {},
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+        createdAt: new Date(),
+        updatedAt: new Date(),
         isGlobal: false,
       });
 

@@ -17,9 +17,9 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import postgres from 'postgres';
+import type postgres from 'postgres';
 import { setDatabaseInstance } from '../../src/db';
-import type { DatabaseConnection, QueryResult } from '../../src/db';
+import { createRealDatabaseConnection } from '../helpers/database';
 
 // Services under test
 import { createAgent, deleteAgent } from '../../src/services/agent-service';
@@ -28,37 +28,6 @@ import { grantRole, revokeRole, listRoles, getRolesForAgent } from '../../src/se
 
 // Auth provider under test
 import { AgentApiKeyProvider } from '../../src/auth/agent-api-key-provider';
-
-// =============================================================================
-// Test Setup
-// =============================================================================
-
-const CONNECTION_STRING = 'postgresql://cssuser:csspass@localhost:5432/cssdb';
-
-function createRealDatabaseConnection(connectionString: string): {
-  connection: DatabaseConnection;
-  sql: postgres.Sql;
-} {
-  const sql = postgres(connectionString, {
-    transform: { undefined: null },
-    max: 1,
-  });
-
-  const connection: DatabaseConnection = {
-    async query<T = Record<string, unknown>>(
-      sqlQuery: string,
-      params?: unknown[],
-    ): Promise<QueryResult<T>> {
-      const result = await sql.unsafe<T[]>(sqlQuery, params as unknown as postgres.ParameterOrJSON<never>[]);
-      const rows = [...result] as T[];
-      const resultWithCount = result as unknown as { count?: number };
-      const rowCount = resultWithCount.count ?? rows.length;
-      return { rows, rowCount };
-    },
-  };
-
-  return { connection, sql };
-}
 
 // =============================================================================
 // Tests
@@ -74,7 +43,7 @@ describe('B8: Agent Auth Flow - End-to-End Integration', () => {
   let roleId: string;
 
   beforeAll(async () => {
-    const { connection, sql: pgSql } = createRealDatabaseConnection(CONNECTION_STRING);
+    const { connection, sql: pgSql } = createRealDatabaseConnection();
     sql = pgSql;
     setDatabaseInstance(connection);
 

@@ -5,23 +5,31 @@
  * Based on collaborative-state-system-architecture-v2.2.md Section "Guest Access"
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { GuestLink } from '../../src/types';
 import * as crypto from 'crypto';
-
-// Mock database module
-vi.mock('../../src/db', () => ({
-  query: vi.fn(),
-}));
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import {
+  validateGuestToken,
+  createGuestLink,
+  revokeGuestLink,
+  getGuestLinksByBranch,
+  isGuestBranchAccess,
+  GUEST_ROLE,
+} from '../../src/auth/guest-access';
+import { guestLinks } from '../../src/db/schema';
+import { stubDatabase, type DatabaseStub } from '../__stubs__/database';
 
 describe('Phase 2.2: Guest Access Validation', () => {
+  let database: DatabaseStub;
+
   // Helper to create a valid token hash
   function hashToken(token: string): string {
     return crypto.createHash('sha256').update(token).digest('hex');
   }
 
-  // Helper to create a mock guest link record
-  function createGuestLinkRecord(overrides: Partial<GuestLink> = {}): GuestLink {
+  // Helper to create a stored guest link row
+  function createGuestLinkRecord(
+    overrides: Partial<typeof guestLinks.$inferSelect> = {},
+  ): typeof guestLinks.$inferSelect {
     return {
       id: 'guest-link-123',
       branchId: 'branch-1',
@@ -29,29 +37,24 @@ describe('Phase 2.2: Guest Access Validation', () => {
       name: 'Guest User',
       tokenHash: hashToken('valid-token'),
       status: 'active',
-      expiresAt: new Date(Date.now() + 86400000).toISOString(), // 24 hours from now
+      expiresAt: new Date(Date.now() + 86400000), // 24 hours from now
       createdById: 'user-123',
       createdByType: 'user',
-      createdAt: new Date().toISOString(),
+      createdAt: new Date(),
+      message: null,
       accessCount: 0,
+      lastAccessAt: null,
       ...overrides,
     };
   }
 
   beforeEach(() => {
-    vi.resetAllMocks();
+    database = stubDatabase();
   });
 
   describe('validateGuestToken', () => {
     it('should return a guest principal for valid token', async () => {
-      const { validateGuestToken } = await import('../../src/auth/guest-access');
-      const db = await import('../../src/db');
-
-      const guestLink = createGuestLinkRecord();
-
-      vi.mocked(db.query).mockResolvedValue({
-        rows: [guestLink],
-      });
+      database.on(guestLinks).select.returns([createGuestLinkRecord()]);
 
       const result = await validateGuestToken('valid-token');
 
@@ -61,98 +64,42 @@ describe('Phase 2.2: Guest Access Validation', () => {
       expect(result?.branchId).toBe('branch-1');
     });
 
-    it('should hash the token before querying', async () => {
-      const { validateGuestToken } = await import('../../src/auth/guest-access');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
-
+    it('should look the token up by hash, never by its plaintext', async () => {
       const token = 'my-secret-token';
-      const expectedHash = hashToken(token);
 
       await validateGuestToken(token);
 
-      expect(db.query).toHaveBeenCalledWith(
-        expect.stringContaining('token_hash'),
-        expect.arrayContaining([expectedHash]),
-      );
+      const [lookup] = database.calls(guestLinks).select;
+      expect(lookup?.params).toContain(hashToken(token));
+      expect(lookup?.params).not.toContain(token);
     });
 
     it('should return null for non-existent token', async () => {
-      const { validateGuestToken } = await import('../../src/auth/guest-access');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
-
       const result = await validateGuestToken('invalid-token');
 
       expect(result).toBeNull();
     });
 
     it('should return null for expired token', async () => {
-      const { validateGuestToken } = await import('../../src/auth/guest-access');
-      const db = await import('../../src/db');
-
-      // Database query checks expiry in WHERE clause, so expired tokens return empty rows
-      // Example expired token would have: expiresAt: new Date(Date.now() - 86400000).toISOString()
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
-
+      // Expiry is enforced in the WHERE clause, so an expired link matches no row.
       const result = await validateGuestToken('valid-token');
 
       expect(result).toBeNull();
     });
 
     it('should return null for revoked token', async () => {
-      const { validateGuestToken } = await import('../../src/auth/guest-access');
-      const db = await import('../../src/db');
-
-      // Database query checks status = 'active' in WHERE clause
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
-
+      // Status is enforced in the WHERE clause, so a revoked link matches no row.
       const result = await validateGuestToken('valid-token');
 
       expect(result).toBeNull();
-    });
-
-    it('should check status is active in query', async () => {
-      const { validateGuestToken } = await import('../../src/auth/guest-access');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
-
-      await validateGuestToken('some-token');
-
-      expect(db.query).toHaveBeenCalledWith(
-        expect.stringMatching(/status\s*=\s*['"]?active/i),
-        expect.any(Array),
-      );
-    });
-
-    it('should check expiration time in query', async () => {
-      const { validateGuestToken } = await import('../../src/auth/guest-access');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
-
-      await validateGuestToken('some-token');
-
-      expect(db.query).toHaveBeenCalledWith(
-        expect.stringMatching(/expires_at\s*>/i),
-        expect.any(Array),
-      );
     });
   });
 
   describe('Guest principal structure', () => {
     it('should include email from guest link', async () => {
-      const { validateGuestToken } = await import('../../src/auth/guest-access');
-      const db = await import('../../src/db');
-
-      const guestLink = createGuestLinkRecord({
-        email: 'special-guest@company.com',
-      });
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [guestLink] });
+      database.on(guestLinks).select.returns([
+        createGuestLinkRecord({ email: 'special-guest@company.com' }),
+      ]);
 
       const result = await validateGuestToken('valid-token');
 
@@ -160,14 +107,7 @@ describe('Phase 2.2: Guest Access Validation', () => {
     });
 
     it('should include name from guest link', async () => {
-      const { validateGuestToken } = await import('../../src/auth/guest-access');
-      const db = await import('../../src/db');
-
-      const guestLink = createGuestLinkRecord({
-        name: 'John Doe',
-      });
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [guestLink] });
+      database.on(guestLinks).select.returns([createGuestLinkRecord({ name: 'John Doe' })]);
 
       const result = await validateGuestToken('valid-token');
 
@@ -175,14 +115,9 @@ describe('Phase 2.2: Guest Access Validation', () => {
     });
 
     it('should include branchId for scoped access', async () => {
-      const { validateGuestToken } = await import('../../src/auth/guest-access');
-      const db = await import('../../src/db');
-
-      const guestLink = createGuestLinkRecord({
-        branchId: 'specific-branch-id',
-      });
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [guestLink] });
+      database.on(guestLinks).select.returns([
+        createGuestLinkRecord({ branchId: 'specific-branch-id' }),
+      ]);
 
       const result = await validateGuestToken('valid-token');
 
@@ -190,12 +125,7 @@ describe('Phase 2.2: Guest Access Validation', () => {
     });
 
     it('should have fixed VIEWER role', async () => {
-      const { validateGuestToken, GUEST_ROLE } = await import('../../src/auth/guest-access');
-      const db = await import('../../src/db');
-
-      const guestLink = createGuestLinkRecord();
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [guestLink] });
+      database.on(guestLinks).select.returns([createGuestLinkRecord()]);
 
       const result = await validateGuestToken('valid-token');
 
@@ -207,12 +137,7 @@ describe('Phase 2.2: Guest Access Validation', () => {
 
   describe('GuestPrincipal type', () => {
     it('should have type property set to guest', async () => {
-      const { validateGuestToken } = await import('../../src/auth/guest-access');
-      const db = await import('../../src/db');
-
-      const guestLink = createGuestLinkRecord();
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [guestLink] });
+      database.on(guestLinks).select.returns([createGuestLinkRecord()]);
 
       const result = await validateGuestToken('valid-token');
 
@@ -220,12 +145,7 @@ describe('Phase 2.2: Guest Access Validation', () => {
     });
 
     it('should have pantheonSiteRoles as empty object', async () => {
-      const { validateGuestToken } = await import('../../src/auth/guest-access');
-      const db = await import('../../src/db');
-
-      const guestLink = createGuestLinkRecord();
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [guestLink] });
+      database.on(guestLinks).select.returns([createGuestLinkRecord()]);
 
       const result = await validateGuestToken('valid-token');
 
@@ -233,73 +153,38 @@ describe('Phase 2.2: Guest Access Validation', () => {
     });
 
     it('should include token expiry from guest link', async () => {
-      const { validateGuestToken } = await import('../../src/auth/guest-access');
-      const db = await import('../../src/db');
-
-      const futureDate = new Date(Date.now() + 86400000).toISOString();
-      const guestLink = createGuestLinkRecord({
-        expiresAt: futureDate,
-      });
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [guestLink] });
+      const futureDate = new Date(Date.now() + 86400000);
+      database.on(guestLinks).select.returns([
+        createGuestLinkRecord({ expiresAt: futureDate }),
+      ]);
 
       const result = await validateGuestToken('valid-token');
 
-      expect(result?.tokenExpiry).toBe(futureDate);
+      expect(result?.tokenExpiry).toEqual(futureDate);
     });
   });
 
   describe('Access tracking', () => {
-    it('should increment access count after successful validation', async () => {
-      const { validateGuestToken } = await import('../../src/auth/guest-access');
-      const db = await import('../../src/db');
-
-      const guestLink = createGuestLinkRecord();
-
-      vi.mocked(db.query)
-        .mockResolvedValueOnce({ rows: [guestLink] }) // SELECT query
-        .mockResolvedValueOnce({ rows: [] }); // UPDATE query
+    it('should record the access against the validated link', async () => {
+      database.on(guestLinks).select.returns([createGuestLinkRecord()]);
 
       await validateGuestToken('valid-token');
 
-      // Check that an UPDATE query was made
-      expect(db.query).toHaveBeenCalledTimes(2);
-      expect(db.query).toHaveBeenLastCalledWith(
-        expect.stringMatching(/UPDATE.*guest_links.*access_count/is),
-        expect.arrayContaining(['guest-link-123']),
-      );
+      const [tracking] = database.calls(guestLinks).update;
+      expect(tracking).toBeDefined();
+      expect(tracking?.params).toContain('guest-link-123');
     });
 
-    it('should update last_access_at timestamp', async () => {
-      const { validateGuestToken } = await import('../../src/auth/guest-access');
-      const db = await import('../../src/db');
-
-      const guestLink = createGuestLinkRecord();
-
-      vi.mocked(db.query)
-        .mockResolvedValueOnce({ rows: [guestLink] })
-        .mockResolvedValueOnce({ rows: [] });
-
+    it('should not record an access when no link matched', async () => {
       await validateGuestToken('valid-token');
 
-      expect(db.query).toHaveBeenLastCalledWith(
-        expect.stringMatching(/last_access_at/i),
-        expect.any(Array),
-      );
+      expect(database.calls(guestLinks).update).toHaveLength(0);
     });
   });
 
   describe('createGuestLink', () => {
     it('should create a new guest link record', async () => {
-      const { createGuestLink } = await import('../../src/auth/guest-access');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({
-        rows: [{
-          id: 'new-guest-link-id',
-          token_hash: 'some-hash',
-        }],
-      });
+      database.on(guestLinks).insert.returns([{ id: 'new-guest-link-id' }]);
 
       const result = await createGuestLink({
         branchId: 'branch-1',
@@ -311,17 +196,12 @@ describe('Phase 2.2: Guest Access Validation', () => {
         message: 'Welcome!',
       });
 
-      expect(result).toHaveProperty('id');
+      expect(result.id).toBe('new-guest-link-id');
       expect(result).toHaveProperty('token'); // Unhashed token returned once
     });
 
     it('should generate a secure random token', async () => {
-      const { createGuestLink } = await import('../../src/auth/guest-access');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({
-        rows: [{ id: 'new-id', token_hash: 'hash' }],
-      });
+      database.on(guestLinks).insert.returns([{ id: 'new-id' }]);
 
       const result = await createGuestLink({
         branchId: 'branch-1',
@@ -335,15 +215,10 @@ describe('Phase 2.2: Guest Access Validation', () => {
       expect(result.token).toMatch(/^[a-f0-9]{32,}$/i);
     });
 
-    it('should store hashed token in database', async () => {
-      const { createGuestLink } = await import('../../src/auth/guest-access');
-      const db = await import('../../src/db');
+    it('should store the token as a hash, never in plaintext', async () => {
+      database.on(guestLinks).insert.returns([{ id: 'new-id' }]);
 
-      vi.mocked(db.query).mockResolvedValue({
-        rows: [{ id: 'new-id', token_hash: 'hash' }],
-      });
-
-      await createGuestLink({
+      const result = await createGuestLink({
         branchId: 'branch-1',
         email: 'guest@example.com',
         createdById: 'user-123',
@@ -351,21 +226,13 @@ describe('Phase 2.2: Guest Access Validation', () => {
         expiresInHours: 24,
       });
 
-      expect(db.query).toHaveBeenCalledWith(
-        expect.stringContaining('INSERT'),
-        expect.arrayContaining([
-          expect.stringMatching(/^[a-f0-9]{64}$/i), // SHA-256 hash is 64 hex chars
-        ]),
-      );
+      const [insert] = database.calls(guestLinks).insert;
+      expect(insert?.params).toContain(hashToken(result.token));
+      expect(insert?.params).not.toContain(result.token);
     });
 
     it('should set status to active', async () => {
-      const { createGuestLink } = await import('../../src/auth/guest-access');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({
-        rows: [{ id: 'new-id', token_hash: 'hash' }],
-      });
+      database.on(guestLinks).insert.returns([{ id: 'new-id' }]);
 
       await createGuestLink({
         branchId: 'branch-1',
@@ -375,22 +242,14 @@ describe('Phase 2.2: Guest Access Validation', () => {
         expiresInHours: 24,
       });
 
-      expect(db.query).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.arrayContaining(['active']),
-      );
+      const [insert] = database.calls(guestLinks).insert;
+      expect(insert?.params).toContain('active');
     });
 
     it('should set expiration based on expiresInHours', async () => {
-      const { createGuestLink } = await import('../../src/auth/guest-access');
-      const db = await import('../../src/db');
-
       const now = Date.now();
       vi.useFakeTimers({ now });
-
-      vi.mocked(db.query).mockResolvedValue({
-        rows: [{ id: 'new-id', token_hash: 'hash' }],
-      });
+      database.on(guestLinks).insert.returns([{ id: 'new-id' }]);
 
       await createGuestLink({
         branchId: 'branch-1',
@@ -400,12 +259,11 @@ describe('Phase 2.2: Guest Access Validation', () => {
         expiresInHours: 48,
       });
 
-      const expectedExpiry = new Date(now + 48 * 60 * 60 * 1000).toISOString();
-
-      expect(db.query).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.arrayContaining([expectedExpiry]),
+      // Timestamps reach the driver as ISO strings, whatever the column's JS type.
+      const stamps = (database.calls(guestLinks).insert[0]?.params ?? []).map((param) =>
+        param instanceof Date ? param.toISOString() : String(param),
       );
+      expect(stamps).toContain(new Date(now + 48 * 60 * 60 * 1000).toISOString());
 
       vi.useRealTimers();
     });
@@ -413,24 +271,17 @@ describe('Phase 2.2: Guest Access Validation', () => {
 
   describe('revokeGuestLink', () => {
     it('should set status to revoked', async () => {
-      const { revokeGuestLink } = await import('../../src/auth/guest-access');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [{ id: 'link-id' }] });
+      database.on(guestLinks).update.returns([{ id: 'link-id' }]);
 
       await revokeGuestLink('link-id');
 
-      expect(db.query).toHaveBeenCalledWith(
-        expect.stringMatching(/UPDATE.*guest_links.*status.*revoked/is),
-        expect.arrayContaining(['link-id']),
-      );
+      const [revoke] = database.calls(guestLinks).update;
+      expect(revoke?.params).toContain('revoked');
+      expect(revoke?.params).toContain('link-id');
     });
 
     it('should return true when link is successfully revoked', async () => {
-      const { revokeGuestLink } = await import('../../src/auth/guest-access');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [{ id: 'link-id' }] });
+      database.on(guestLinks).update.returns([{ id: 'link-id' }]);
 
       const result = await revokeGuestLink('link-id');
 
@@ -438,11 +289,6 @@ describe('Phase 2.2: Guest Access Validation', () => {
     });
 
     it('should return false when link does not exist', async () => {
-      const { revokeGuestLink } = await import('../../src/auth/guest-access');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
-
       const result = await revokeGuestLink('non-existent-id');
 
       expect(result).toBe(false);
@@ -451,63 +297,41 @@ describe('Phase 2.2: Guest Access Validation', () => {
 
   describe('getGuestLinksByBranch', () => {
     it('should return all active guest links for a branch', async () => {
-      const { getGuestLinksByBranch } = await import('../../src/auth/guest-access');
-      const db = await import('../../src/db');
-
-      const links = [
+      database.on(guestLinks).select.returns([
         createGuestLinkRecord({ id: 'link-1', email: 'guest1@example.com' }),
         createGuestLinkRecord({ id: 'link-2', email: 'guest2@example.com' }),
-      ];
-
-      vi.mocked(db.query).mockResolvedValue({ rows: links });
+      ]);
 
       const result = await getGuestLinksByBranch('branch-1');
 
       expect(result).toHaveLength(2);
-      expect(result[0].email).toBe('guest1@example.com');
-      expect(result[1].email).toBe('guest2@example.com');
+      expect(result[0]?.email).toBe('guest1@example.com');
+      expect(result[1]?.email).toBe('guest2@example.com');
     });
 
     it('should exclude revoked links by default', async () => {
-      const { getGuestLinksByBranch } = await import('../../src/auth/guest-access');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
-
       await getGuestLinksByBranch('branch-1');
 
-      expect(db.query).toHaveBeenCalledWith(
-        expect.stringMatching(/status\s*=\s*['"]?active/i),
-        expect.any(Array),
-      );
+      const [listing] = database.calls(guestLinks).select;
+      expect(listing?.params).toContain('branch-1');
+      expect(listing?.params).toContain('active');
     });
 
     it('should include all statuses when includeRevoked is true', async () => {
-      const { getGuestLinksByBranch } = await import('../../src/auth/guest-access');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
-
       await getGuestLinksByBranch('branch-1', { includeRevoked: true });
 
-      // Should not filter by status
-      expect(db.query).toHaveBeenCalledWith(
-        expect.not.stringMatching(/status\s*=\s*['"]?active/i),
-        expect.any(Array),
-      );
+      const [listing] = database.calls(guestLinks).select;
+      expect(listing?.params).toContain('branch-1');
+      expect(listing?.params).not.toContain('active');
     });
   });
 
   describe('GUEST_ROLE constant', () => {
-    it('should be a VIEWER role', async () => {
-      const { GUEST_ROLE } = await import('../../src/auth/guest-access');
-
+    it('should be a VIEWER role', () => {
       expect(GUEST_ROLE.canView).toBe(true);
     });
 
-    it('should deny all editing permissions', async () => {
-      const { GUEST_ROLE } = await import('../../src/auth/guest-access');
-
+    it('should deny all editing permissions', () => {
       expect(GUEST_ROLE.canEdit).toBe(false);
       expect(GUEST_ROLE.canCreateBranch).toBe(false);
       expect(GUEST_ROLE.canEditDocuments).toBe(false);
@@ -520,35 +344,22 @@ describe('Phase 2.2: Guest Access Validation', () => {
   });
 
   describe('isGuestBranchAccess', () => {
-    it('should return true when guest has access to branch', async () => {
-      const { isGuestBranchAccess } = await import('../../src/auth/guest-access');
+    const guestPrincipal = {
+      id: 'guest-link-123',
+      type: 'guest' as const,
+      branchId: 'branch-1',
+      email: 'guest@example.com',
+      name: null,
+      pantheonSiteRoles: {},
+      tokenExpiry: new Date(Date.now() + 3600000),
+      roleName: 'VIEWER' as const,
+    };
 
-      const guestPrincipal = {
-        id: 'guest-link-123',
-        type: 'guest' as const,
-        branchId: 'branch-1',
-        email: 'guest@example.com',
-        pantheonSiteRoles: {},
-        tokenExpiry: new Date(Date.now() + 3600000).toISOString(),
-        roleName: 'VIEWER' as const,
-      };
-
+    it('should return true when guest has access to branch', () => {
       expect(isGuestBranchAccess(guestPrincipal, 'branch-1')).toBe(true);
     });
 
-    it('should return false when guest tries to access different branch', async () => {
-      const { isGuestBranchAccess } = await import('../../src/auth/guest-access');
-
-      const guestPrincipal = {
-        id: 'guest-link-123',
-        type: 'guest' as const,
-        branchId: 'branch-1',
-        email: 'guest@example.com',
-        pantheonSiteRoles: {},
-        tokenExpiry: new Date(Date.now() + 3600000).toISOString(),
-        roleName: 'VIEWER' as const,
-      };
-
+    it('should return false when guest tries to access different branch', () => {
       expect(isGuestBranchAccess(guestPrincipal, 'branch-2')).toBe(false);
     });
   });

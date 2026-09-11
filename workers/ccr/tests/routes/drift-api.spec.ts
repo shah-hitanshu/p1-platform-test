@@ -20,7 +20,7 @@ vi.mock('../../src/auth/authorization', () => ({
   },
 }));
 
-import { handleDriftRoutes } from '../../src/routes/drift-api';
+import { handleDriftRoutes, type DriftRouteContext } from '../../src/routes/drift-api';
 import { listBranchDrift } from '../../src/services';
 import { DEFAULT_DRIFT_LIMIT, MAX_DRIFT_LIMIT } from '../../src/services/branch-drift-service';
 import { getEffectiveRole } from '../../src/auth/authorization';
@@ -62,7 +62,7 @@ function driftRequest(query = '', method = 'GET'): Request {
 
 function context(
   principal: AuthenticatedPrincipal = userPrincipal,
-): { siteId: string; branchId: string; principal: AuthenticatedPrincipal } {
+): DriftRouteContext {
   return { siteId: SITE_ID, branchId: BRANCH_ID, principal };
 }
 

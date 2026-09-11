@@ -8,6 +8,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { AuthenticatedPrincipal } from '../../src/types';
 import { readJson } from '../helpers/http';
 
+// This file mocks '../../src/db' as a module (for the legacy query() calls
+// users-api.ts still makes), so the Drizzle handle threaded into route
+// contexts below is a separate stub kept under its own name.
+
 // Mock the db module
 vi.mock('../../src/db', () => ({
   query: vi.fn(),

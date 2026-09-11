@@ -7,7 +7,9 @@
  * @see collaborative-state-system-architecture-v2.3.md
  */
 
-import { query } from '../db';
+import { eq, sql, type SQL } from 'drizzle-orm';
+import { sites } from '../db/schema';
+import { db } from '../db/scope';
 import { InvalidSettingsError, InvalidLocaleError } from './errors';
 import { localeKey, validateLocale } from './locale';
 
@@ -82,13 +84,6 @@ export interface EnvDefaults {
   defaultCacheTtlBranch?: number;
 }
 
-/**
- * Database row shape for the settings query.
- */
-interface SettingsRow {
-  settings: SiteSettings | string;
-}
-
 // =============================================================================
 // Default Values
 // =============================================================================
@@ -113,17 +108,6 @@ export const MAX_MARKETS = 1000;
 // =============================================================================
 // Helper Functions
 // =============================================================================
-
-/**
- * Parses settings from the database.
- * Handles both string (JSON) and object formats for JSONB columns.
- */
-function parseSettings(value: SiteSettings | string): SiteSettings {
-  if (typeof value === 'string') {
-    return JSON.parse(value) as SiteSettings;
-  }
-  return value;
-}
 
 /**
  * Merges stored settings with defaults, producing the effective settings.
@@ -257,17 +241,16 @@ function validateLocales(value: unknown): SiteLocales {
 export async function getSiteSettings(
   siteId: string,
 ): Promise<EffectiveSiteSettings | null> {
-  const result = await query<SettingsRow>(
-    'SELECT settings FROM app.sites WHERE id = $1',
-    [siteId],
-  );
+  const rows = await db()
+    .select({ settings: sites.settings })
+    .from(sites)
+    .where(eq(sites.id, siteId));
 
-  if (!result.rows[0]) {
+  if (!rows[0]) {
     return null;
   }
 
-  const raw = parseSettings(result.rows[0].settings);
-  return mergeWithDefaults(raw);
+  return mergeWithDefaults(rows[0].settings as SiteSettings);
 }
 
 /**
@@ -311,46 +294,34 @@ export async function updateSiteSettings(
     }
   }
 
-  // A jsonb bind carries the object itself. postgres.js serializes a jsonb
-  // parameter, so a pre-stringified value is JSON-encoded twice and Postgres
-  // stores a string scalar — which `||` appends to rather than merges.
-  let sql: string;
-  let params: unknown[];
+  // `sql.param` keeps the key list a single `text[]` parameter; an interpolated
+  // array expands to one placeholder per element.
+  const removals = sql.param(keysToRemove);
+  const merge = sql`${sites.settings} || ${JSON.stringify(keysToSet)}::jsonb`;
 
+  let nextSettings: SQL;
   if (keysToRemove.length > 0 && Object.keys(keysToSet).length > 0) {
     // Both merge and remove
-    sql = `UPDATE app.sites
-           SET settings = (settings || $1::jsonb) - $2::text[],
-               updated_at = NOW()
-           WHERE id = $3
-           RETURNING settings`;
-    params = [keysToSet, keysToRemove, siteId];
+    nextSettings = sql`(${merge}) - ${removals}::text[]`;
   } else if (keysToRemove.length > 0) {
     // Only remove keys
-    sql = `UPDATE app.sites
-           SET settings = settings - $1::text[],
-               updated_at = NOW()
-           WHERE id = $2
-           RETURNING settings`;
-    params = [keysToRemove, siteId];
+    nextSettings = sql`${sites.settings} - ${removals}::text[]`;
   } else {
     // Only merge
-    sql = `UPDATE app.sites
-           SET settings = settings || $1::jsonb,
-               updated_at = NOW()
-           WHERE id = $2
-           RETURNING settings`;
-    params = [keysToSet, siteId];
+    nextSettings = merge;
   }
 
-  const result = await query<SettingsRow>(sql, params);
+  const rows = await db()
+    .update(sites)
+    .set({ settings: nextSettings, updatedAt: sql`NOW()` })
+    .where(eq(sites.id, siteId))
+    .returning({ settings: sites.settings });
 
-  if (!result.rows[0]) {
+  if (!rows[0]) {
     return null;
   }
 
-  const raw = parseSettings(result.rows[0].settings);
-  return mergeWithDefaults(raw);
+  return mergeWithDefaults(rows[0].settings as SiteSettings);
 }
 
 /**

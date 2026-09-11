@@ -8,7 +8,7 @@
 import type { AuthenticatedPrincipal } from '../types';
 import { toDocumentActorType } from '../types';
 import type { Env } from '../index';
-import { runWithConnection } from '../db';
+import { runWithConnection, query } from '../db';
 import {
   createDocumentOnBranch,
   getLatestTemplateVersionWithFallback,
@@ -25,7 +25,6 @@ import {
 } from '../services';
 import { assertPermission, getEffectiveRole, AuthorizationError } from '../auth/authorization';
 import { isManifestShapedSnapshot, convertManifestToContent } from '../services/template-content-backfill';
-import { query } from '../db';
 import { TEMPLATE_RELATION_INNER_JOIN } from '../services/document-queries';
 import { onTemplateCreated } from '../services/template-hooks';
 import {

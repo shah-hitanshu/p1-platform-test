@@ -13,17 +13,19 @@
  * @see collaborative-state-system-architecture-v2.2.md Section "Branch-Level Authorization"
  */
 
+import { and, eq, sql } from 'drizzle-orm';
 import type {
   AuthenticatedPrincipal,
   RoleName,
   RolePermissions,
   PantheonRole,
 } from '../types';
-import { query } from '../db';
-import { ROLES, mapPantheonRole, mapAgentRole, maxRole, minRole } from './roles';
+import { branchGrants, branches, userSiteRoles, users } from '../db/schema';
+import { db } from '../db/scope';
 import type { MASClient } from '../services/mas-client';
 import { resolveAgentSiteRole } from '../services/agent-site-role-service';
 import { HttpError } from '../services/errors';
+import { ROLES, mapPantheonRole, mapAgentRole, maxRole, minRole } from './roles';
 
 /**
  * Result of an effective role calculation.
@@ -120,14 +122,13 @@ export async function getSiteRole(
     // Query user_site_roles table (legacy single-source)
     // Use dbUserId (the DB users.id) when available, falling back to principal.id
     const userId = principal.dbUserId ?? principal.id;
-    const result = await query<{ role: PantheonRole }>(
-      `SELECT role FROM app.user_site_roles
-       WHERE user_id = $1 AND site_id = $2`,
-      [userId, siteId],
-    );
+    const rows = await db()
+      .select({ role: userSiteRoles.role })
+      .from(userSiteRoles)
+      .where(and(eq(userSiteRoles.userId, userId), eq(userSiteRoles.siteId, siteId)));
 
-    if (result.rows[0]) {
-      return mapPantheonRole(result.rows[0].role);
+    if (rows[0]) {
+      return mapPantheonRole(rows[0].role as PantheonRole);
     }
   }
 
@@ -148,22 +149,25 @@ async function getDualSourceRole(
   // Query both sources in one query
   // Use dbUserId (the DB users.id) when available, falling back to principal.id
   const userId = principal.dbUserId ?? principal.id;
-  const result = await query<{ role: PantheonRole; source: string; updated_at: string }>(
-    `SELECT role, source, updated_at FROM app.user_site_roles
-     WHERE user_id = $1 AND site_id = $2`,
-    [userId, siteId],
-  );
+  const rows = await db()
+    .select({
+      role: userSiteRoles.role,
+      source: userSiteRoles.source,
+      updatedAt: userSiteRoles.updatedAt,
+    })
+    .from(userSiteRoles)
+    .where(and(eq(userSiteRoles.userId, userId), eq(userSiteRoles.siteId, siteId)));
 
   let localRole: RoleName = 'NO_ACCESS';
   let masRole: RoleName = 'NO_ACCESS';
-  let masRow: { role: PantheonRole; updated_at: string } | null = null;
+  let masRow: { role: string; updatedAt: Date | null } | null = null;
 
-  for (const row of result.rows) {
+  for (const row of rows) {
     if (row.source === 'local') {
-      localRole = mapPantheonRole(row.role);
+      localRole = mapPantheonRole(row.role as PantheonRole);
     } else if (row.source === 'mas') {
       masRow = row;
-      masRole = mapPantheonRole(row.role);
+      masRole = mapPantheonRole(row.role as PantheonRole);
     }
   }
 
@@ -171,7 +175,7 @@ async function getDualSourceRole(
 
   // Check if MAS data needs refresh
   const needsRefresh = masRow === null ||
-    isMasRowStale(masRow.updated_at, cacheTtlSeconds);
+    isMasRowStale(masRow.updatedAt, cacheTtlSeconds);
 
   if (needsRefresh) {
     try {
@@ -179,13 +183,19 @@ async function getDualSourceRole(
 
       if (freshRole !== null) {
         // Upsert the MAS role
-        await query(
-          `INSERT INTO app.user_site_roles (user_id, site_id, role, source, updated_at)
-           VALUES ($1, $2, $3, 'mas', NOW())
-           ON CONFLICT (user_id, site_id, source)
-           DO UPDATE SET role = EXCLUDED.role, updated_at = NOW()`,
-          [userId, siteId, freshRole],
-        );
+        await db()
+          .insert(userSiteRoles)
+          .values({
+            userId,
+            siteId,
+            role: freshRole,
+            source: 'mas',
+            updatedAt: sql`NOW()`,
+          })
+          .onConflictDoUpdate({
+            target: [userSiteRoles.userId, userSiteRoles.siteId, userSiteRoles.source],
+            set: { role: sql`excluded.role`, updatedAt: sql`NOW()` },
+          });
         masRole = mapPantheonRole(freshRole);
       } else if (masRow === null) {
         // No MAS data and fetch returned null - masRole stays NO_ACCESS
@@ -209,11 +219,15 @@ async function getDualSourceRole(
 
 /**
  * Checks if a MAS cache row is stale based on TTL.
+ *
+ * A row carrying no refresh time counts as stale, so it is refetched.
  */
-function isMasRowStale(updatedAt: string, cacheTtlSeconds: number): boolean {
-  const updatedTime = new Date(updatedAt).getTime();
+function isMasRowStale(updatedAt: Date | null, cacheTtlSeconds: number): boolean {
+  if (updatedAt === null) {
+    return true;
+  }
   const staleThreshold = Date.now() - cacheTtlSeconds * 1000;
-  return updatedTime < staleThreshold;
+  return updatedAt.getTime() < staleThreshold;
 }
 
 /**
@@ -276,18 +290,18 @@ export async function getEffectiveRole(
 
   // Step 2: Check for branch-level elevation
   const actorId = principal.dbUserId ?? principal.id;
-  const branchGrant = await query<{ site_id: string; role: RoleName | null }>(
-    `SELECT b.site_id, bg.role
-       FROM app.branches b
-       LEFT JOIN app.branch_grants bg
-         ON bg.branch_id = b.id AND bg.actor_id = $2
-      WHERE b.id = $1`,
-    [branchId, actorId],
-  );
+  const branchGrant = await db()
+    .select({ siteId: branches.siteId, role: branchGrants.role })
+    .from(branches)
+    .leftJoin(
+      branchGrants,
+      and(eq(branchGrants.branchId, branches.id), eq(branchGrants.actorId, actorId)),
+    )
+    .where(eq(branches.id, branchId));
 
   // A branch id matching no row is left to the caller, which resolves the branch
   // itself and reports it missing.
-  const branchSiteId = branchGrant.rows[0]?.site_id;
+  const branchSiteId = branchGrant[0]?.siteId;
   if (branchSiteId !== undefined && branchSiteId !== siteId) {
     return {
       role: ROLES.NO_ACCESS,
@@ -295,7 +309,7 @@ export async function getEffectiveRole(
     };
   }
 
-  const grantRoleName = branchGrant.rows[0]?.role ?? undefined;
+  const grantRoleName = (branchGrant[0]?.role as RoleName | null | undefined) ?? undefined;
 
   // Step 3: Effective role is the higher of the two
   const effectiveRoleName = maxRole(baselineRoleName, grantRoleName);
@@ -324,23 +338,26 @@ export async function getEffectiveRole(
  * If the user has never been added to the users allowlist, the
  * query returns no rows and the effective role is NO_ACCESS.
  */
-async function getActingUserSiteRole(actingUserEmail: string, siteId: string): Promise<RoleName> {
-  const result = await query<{ role: PantheonRole; source: string }>(
-    `SELECT usr.role, usr.source FROM app.user_site_roles usr
-     JOIN app.users u ON u.id::text = usr.user_id
-     WHERE u.email = $1 AND usr.site_id = $2`,
-    [actingUserEmail.toLowerCase(), siteId],
-  );
+async function getActingUserSiteRole(
+  actingUserEmail: string,
+  siteId: string,
+): Promise<RoleName> {
+  // users.id is a uuid and user_site_roles.user_id is text, so the join casts.
+  const rows = await db()
+    .select({ role: userSiteRoles.role, source: userSiteRoles.source })
+    .from(userSiteRoles)
+    .innerJoin(users, sql`${users.id}::text = ${userSiteRoles.userId}`)
+    .where(and(eq(users.email, actingUserEmail.toLowerCase()), eq(userSiteRoles.siteId, siteId)));
 
-  if (result.rows.length === 0) {
+  if (rows.length === 0) {
     return 'NO_ACCESS';
   }
 
   // Resolve dual-source rows (local + MAS) by taking the max role,
   // consistent with getDualSourceRole() behavior.
   let resolvedRole: RoleName = 'NO_ACCESS';
-  for (const row of result.rows) {
-    resolvedRole = maxRole(resolvedRole, mapPantheonRole(row.role));
+  for (const row of rows) {
+    resolvedRole = maxRole(resolvedRole, mapPantheonRole(row.role as PantheonRole));
   }
 
   return resolvedRole;
@@ -373,15 +390,18 @@ const BRANCH_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9
  * An id that cannot name a branch — absent, or not a branch id at all — is left to
  * the caller, which resolves the branch itself and reports it missing.
  */
-async function branchBelongsToSite(branchId: string, siteId: string): Promise<boolean> {
+async function branchBelongsToSite(
+  branchId: string,
+  siteId: string,
+): Promise<boolean> {
   if (!BRANCH_ID_PATTERN.test(branchId)) {
     return true;
   }
-  const result = await query<{ site_id: string }>(
-    'SELECT site_id FROM app.branches WHERE id = $1',
-    [branchId],
-  );
-  const branchSiteId = result.rows[0]?.site_id;
+  const rows = await db()
+    .select({ siteId: branches.siteId })
+    .from(branches)
+    .where(eq(branches.id, branchId));
+  const branchSiteId = rows[0]?.siteId;
   return branchSiteId === undefined || branchSiteId === siteId;
 }
 
@@ -393,7 +413,9 @@ export async function hasPermission(
   masClient?: MASClient,
 ): Promise<boolean> {
   if (principal.type === 'service') {
-    return hasServicePermission(principal, siteId) && (await branchBelongsToSite(branchId, siteId));
+    return (
+      hasServicePermission(principal, siteId) && (await branchBelongsToSite(branchId, siteId))
+    );
   }
 
   const { role } = await getEffectiveRole(principal, siteId, branchId, masClient);

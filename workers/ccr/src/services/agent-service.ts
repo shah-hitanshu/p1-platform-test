@@ -7,8 +7,12 @@
  * @see collaborative-state-system-architecture-v2.3.md Section "Agent Politeness System"
  */
 
+import { and, asc, count, desc, eq, or, sql } from 'drizzle-orm';
+import type { PgUpdateSetSource } from 'drizzle-orm/pg-core';
 import type { RegisteredAgent, AgentSettings, AgentStatus } from '../types';
-import { query } from '../db';
+import { driverErrorCode } from '../db/driver-error';
+import { agents } from '../db/schema';
+import { db } from '../db/scope';
 import {
   InvalidAgentParamsError,
   DuplicateAgentNameError,
@@ -59,22 +63,6 @@ export interface GetAgentsByOrganizationOptions {
   status?: AgentStatus;
 }
 
-/**
- * Database row format for agents.
- */
-interface AgentRow {
-  id: string;
-  organization_id: string;
-  name: string;
-  description: string | null;
-  capabilities: string[];
-  status: AgentStatus;
-  settings: AgentSettings | string;
-  is_global: boolean;
-  created_at: string;
-  updated_at: string;
-}
-
 // =============================================================================
 // Default Values
 // =============================================================================
@@ -94,31 +82,20 @@ const DEFAULT_CAPABILITIES: string[] = [];
 // =============================================================================
 
 /**
- * Parses agent settings from database.
- * Handles both string and object formats for JSONB columns.
- */
-function parseSettings(value: AgentSettings | string): AgentSettings {
-  if (typeof value === 'string') {
-    return JSON.parse(value) as AgentSettings;
-  }
-  return value;
-}
-
-/**
  * Maps a database row to a RegisteredAgent domain object.
  */
-function mapRowToAgent(row: AgentRow): RegisteredAgent {
+function mapRowToAgent(row: typeof agents.$inferSelect): RegisteredAgent {
   return {
     id: row.id,
-    organizationId: row.organization_id,
+    organizationId: row.organizationId,
     name: row.name,
     description: row.description ?? undefined,
     capabilities: row.capabilities,
-    status: row.status,
-    settings: parseSettings(row.settings),
-    isGlobal: row.is_global,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
+    status: row.status as AgentStatus,
+    settings: row.settings as AgentSettings,
+    isGlobal: row.isGlobal,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
   };
 }
 
@@ -126,22 +103,30 @@ function mapRowToAgent(row: AgentRow): RegisteredAgent {
  * Checks if an error is a PostgreSQL foreign key constraint violation.
  */
 function isForeignKeyViolation(error: unknown): boolean {
-  return (
-    error instanceof Error &&
-    'code' in error &&
-    (error as NodeJS.ErrnoException).code === '23503'
-  );
+  return driverErrorCode(error) === '23503';
 }
 
 /**
  * Checks if an error is a PostgreSQL unique constraint violation.
  */
 function isUniqueViolation(error: unknown): boolean {
-  return (
-    error instanceof Error &&
-    'code' in error &&
-    (error as NodeJS.ErrnoException).code === '23505'
-  );
+  return driverErrorCode(error) === '23505';
+}
+
+/**
+ * The constraint a rejected query violated.
+ *
+ * Postgres names it in its own error, which Drizzle puts on `cause` alongside the
+ * SQLSTATE. It is what tells two unique constraints on the same table apart, and
+ * unlike the wrapper's message it carries no statement text.
+ */
+function violatedConstraint(error: unknown): string | undefined {
+  for (let candidate: unknown = error; candidate instanceof Error; candidate = candidate.cause) {
+    if ('constraint_name' in candidate && typeof candidate.constraint_name === 'string') {
+      return candidate.constraint_name;
+    }
+  }
+  return undefined;
 }
 
 /**
@@ -167,7 +152,9 @@ function validateName(name: string | undefined): void {
  * @throws DuplicateAgentIdError if custom agent ID already exists
  * @throws DuplicateAgentNameError if agent name already exists in organization
  */
-export async function createAgent(params: CreateAgentParams): Promise<RegisteredAgent> {
+export async function createAgent(
+  params: CreateAgentParams,
+): Promise<RegisteredAgent> {
   validateName(params.name);
 
   const settings: AgentSettings = {
@@ -178,40 +165,22 @@ export async function createAgent(params: CreateAgentParams): Promise<Registered
   const capabilities = params.capabilities ?? DEFAULT_CAPABILITIES;
 
   try {
-    // If custom ID is provided, include it in the INSERT
-    // Otherwise, let the database generate a UUID
+    // An omitted id takes the column's generated default.
     const hasCustomId = params.id !== undefined && params.id !== '';
 
-    const sql = hasCustomId
-      ? `INSERT INTO app.agents (id, organization_id, name, description, capabilities, settings)
-         VALUES ($1, $2, $3, $4, $5, $6)
-         RETURNING id, organization_id, name, description, capabilities, status,
-                 settings, is_global, created_at, updated_at`
-      : `INSERT INTO app.agents (organization_id, name, description, capabilities, settings)
-         VALUES ($1, $2, $3, $4, $5)
-         RETURNING id, organization_id, name, description, capabilities, status,
-                 settings, is_global, created_at, updated_at`;
-
-    const queryParams = hasCustomId
-      ? [
-        params.id,
-        params.organizationId,
-        params.name,
-        params.description ?? null,
+    const rows = await db()
+      .insert(agents)
+      .values({
+        ...(hasCustomId ? { id: params.id } : {}),
+        organizationId: params.organizationId,
+        name: params.name,
+        description: params.description ?? null,
         capabilities,
-        JSON.stringify(settings),
-      ]
-      : [
-        params.organizationId,
-        params.name,
-        params.description ?? null,
-        capabilities,
-        JSON.stringify(settings),
-      ];
+        settings,
+      })
+      .returning();
 
-    const result = await query<AgentRow>(sql, queryParams);
-
-    const row = result.rows[0];
+    const row = rows[0];
     if (!row) {
       throw new Error('Failed to insert agent');
     }
@@ -222,10 +191,7 @@ export async function createAgent(params: CreateAgentParams): Promise<Registered
       throw new OrganizationNotFoundError(params.organizationId);
     }
     if (isUniqueViolation(error)) {
-      // Check if this is a primary key (ID) violation or a name uniqueness violation
-      // PostgreSQL includes constraint name in the error
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      if (errorMessage.includes('agents_pkey') || (params.id !== undefined && errorMessage.includes(params.id))) {
+      if (violatedConstraint(error) === 'agents_pkey') {
         throw new DuplicateAgentIdError(params.id ?? 'unknown');
       }
       throw new DuplicateAgentNameError(params.organizationId, params.name);
@@ -263,14 +229,9 @@ function canonicalAgentId(id: string): string {
  * @returns The agent or null if not found
  */
 export async function getAgentById(id: string): Promise<RegisteredAgent | null> {
-  const result = await query<AgentRow>(`
-    SELECT id, organization_id, name, description, capabilities, status,
-           settings, is_global, created_at, updated_at
-    FROM app.agents
-    WHERE id = $1
-  `, [canonicalAgentId(id)]);
+  const rows = await db().select().from(agents).where(eq(agents.id, canonicalAgentId(id)));
 
-  const row = result.rows[0];
+  const row = rows[0];
   if (!row) {
     return null;
   }
@@ -289,14 +250,12 @@ export async function getAgentByName(
   organizationId: string,
   name: string,
 ): Promise<RegisteredAgent | null> {
-  const result = await query<AgentRow>(`
-    SELECT id, organization_id, name, description, capabilities, status,
-           settings, is_global, created_at, updated_at
-    FROM app.agents
-    WHERE organization_id = $1 AND name = $2
-  `, [organizationId, name]);
+  const rows = await db()
+    .select()
+    .from(agents)
+    .where(and(eq(agents.organizationId, organizationId), eq(agents.name, name)));
 
-  const row = result.rows[0];
+  const row = rows[0];
   if (!row) {
     return null;
   }
@@ -319,53 +278,36 @@ export async function updateAgent(
 ): Promise<RegisteredAgent | null> {
   validateName(params.name);
 
-  const updates: string[] = [];
-  const values: unknown[] = [];
-  let paramIndex = 1;
+  const updates: PgUpdateSetSource<typeof agents> = {};
 
   if (params.name !== undefined) {
-    updates.push(`name = $${String(paramIndex)}`);
-    values.push(params.name);
-    paramIndex++;
+    updates.name = params.name;
   }
 
   if (params.description !== undefined) {
-    updates.push(`description = $${String(paramIndex)}`);
-    values.push(params.description);
-    paramIndex++;
+    updates.description = params.description;
   }
 
   if (params.capabilities !== undefined) {
-    updates.push(`capabilities = $${String(paramIndex)}`);
-    values.push(params.capabilities);
-    paramIndex++;
+    updates.capabilities = params.capabilities;
   }
 
   if (params.settings !== undefined) {
     // Merge with existing settings
-    updates.push(`settings = settings || $${String(paramIndex)}::jsonb`);
-    values.push(JSON.stringify(params.settings));
-    paramIndex++;
+    updates.settings = sql`${agents.settings} || ${JSON.stringify(params.settings)}::jsonb`;
   }
 
-  if (updates.length === 0) {
+  if (Object.keys(updates).length === 0) {
     // No updates to apply, just return current state
     return getAgentById(id);
   }
 
-  updates.push('updated_at = NOW()');
-  values.push(id);
+  updates.updatedAt = sql`NOW()`;
 
   try {
-    const result = await query<AgentRow>(`
-      UPDATE app.agents
-      SET ${updates.join(', ')}
-      WHERE id = $${String(paramIndex)}
-      RETURNING id, organization_id, name, description, capabilities, status,
-                 settings, is_global, created_at, updated_at
-    `, values);
+    const rows = await db().update(agents).set(updates).where(eq(agents.id, id)).returning();
 
-    const row = result.rows[0];
+    const row = rows[0];
     if (!row) {
       return null;
     }
@@ -390,15 +332,13 @@ export async function updateAgentStatus(
   id: string,
   status: AgentStatus,
 ): Promise<RegisteredAgent | null> {
-  const result = await query<AgentRow>(`
-    UPDATE app.agents
-    SET status = $1, updated_at = NOW()
-    WHERE id = $2
-    RETURNING id, organization_id, name, description, capabilities, status,
-                 settings, is_global, created_at, updated_at
-  `, [status, id]);
+  const rows = await db()
+    .update(agents)
+    .set({ status, updatedAt: sql`NOW()` })
+    .where(eq(agents.id, id))
+    .returning();
 
-  const row = result.rows[0];
+  const row = rows[0];
   if (!row) {
     return null;
   }
@@ -413,13 +353,9 @@ export async function updateAgentStatus(
  * @returns true if deleted, false if not found
  */
 export async function deleteAgent(id: string): Promise<boolean> {
-  const result = await query<{ id: string }>(`
-    DELETE FROM app.agents
-    WHERE id = $1
-    RETURNING id
-  `, [id]);
+  const rows = await db().delete(agents).where(eq(agents.id, id)).returning({ id: agents.id });
 
-  return result.rows.length > 0;
+  return rows.length > 0;
 }
 
 /**
@@ -433,27 +369,15 @@ export async function listAgents(
 ): Promise<RegisteredAgent[]> {
   const { limit = 100, offset = 0, status } = options;
 
-  let sql = `
-    SELECT id, organization_id, name, description, capabilities, status,
-           settings, is_global, created_at, updated_at
-    FROM app.agents
-  `;
-  const params: unknown[] = [];
-  let paramIndex = 1;
+  const rows = await db()
+    .select()
+    .from(agents)
+    .where(status === undefined ? undefined : eq(agents.status, status))
+    .orderBy(desc(agents.createdAt))
+    .limit(limit)
+    .offset(offset);
 
-  if (status !== undefined) {
-    sql += ` WHERE status = $${String(paramIndex)}`;
-    params.push(status);
-    paramIndex++;
-  }
-
-  sql += ' ORDER BY created_at DESC';
-  sql += ` LIMIT $${String(paramIndex)} OFFSET $${String(paramIndex + 1)}`;
-  params.push(limit, offset);
-
-  const result = await query<AgentRow>(sql, params);
-
-  return result.rows.map(mapRowToAgent);
+  return rows.map(mapRowToAgent);
 }
 
 /**
@@ -469,25 +393,18 @@ export async function getAgentsByOrganization(
 ): Promise<RegisteredAgent[]> {
   const { status } = options;
 
-  let sql = `
-    SELECT id, organization_id, name, description, capabilities, status,
-           settings, is_global, created_at, updated_at
-    FROM app.agents
-    WHERE (organization_id = $1 OR is_global = true)
-  `;
-  const params: unknown[] = [organizationId];
-  const paramIndex = 2;
+  const rows = await db()
+    .select()
+    .from(agents)
+    .where(
+      and(
+        or(eq(agents.organizationId, organizationId), eq(agents.isGlobal, true)),
+        status === undefined ? undefined : eq(agents.status, status),
+      ),
+    )
+    .orderBy(asc(agents.name));
 
-  if (status !== undefined) {
-    sql += ` AND status = $${String(paramIndex)}`;
-    params.push(status);
-  }
-
-  sql += ' ORDER BY name ASC';
-
-  const result = await query<AgentRow>(sql, params);
-
-  return result.rows.map(mapRowToAgent);
+  return rows.map(mapRowToAgent);
 }
 
 /**
@@ -497,16 +414,15 @@ export async function getAgentsByOrganization(
  * @returns Count of active agents
  */
 export async function getActiveAgentCount(organizationId: string): Promise<number> {
-  const result = await query<{ count: string }>(`
-    SELECT COUNT(*) as count
-    FROM app.agents
-    WHERE organization_id = $1 AND status = 'active'
-  `, [organizationId]);
+  const rows = await db()
+    .select({ count: count() })
+    .from(agents)
+    .where(and(eq(agents.organizationId, organizationId), eq(agents.status, 'active')));
 
-  const row = result.rows[0];
+  const row = rows[0];
   if (!row) {
     return 0;
   }
 
-  return parseInt(row.count, 10);
+  return row.count;
 }

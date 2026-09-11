@@ -9,8 +9,8 @@
  */
 
 import type { AuthenticatedPrincipal } from '../types';
+import { validateToken as validateSiteToken } from '../services/site-api-token-service';
 import type { IdentityProvider } from './identity-provider';
-import { validateToken } from '../services/site-api-token-service';
 
 const TOKEN_PREFIX = 'sat_';
 
@@ -39,7 +39,7 @@ export class SiteApiTokenProvider implements IdentityProvider {
       return null;
     }
 
-    const result = await validateToken(token);
+    const result = await validateSiteToken(token);
     if (!result) {
       return null;
     }
@@ -58,8 +58,7 @@ export class SiteApiTokenProvider implements IdentityProvider {
   /**
    * Site tokens do not use API keys. Always returns null.
    */
-  // eslint-disable-next-line @typescript-eslint/require-await
-  async validateAgentKey(): Promise<AuthenticatedPrincipal | null> {
-    return null;
+  validateAgentKey(): Promise<AuthenticatedPrincipal | null> {
+    return Promise.resolve(null);
   }
 }

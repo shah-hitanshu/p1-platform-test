@@ -1,24 +1,23 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
+import { stubDatabase } from '../__stubs__/database';
+import { sites } from '../../src/db/schema';
+import {
+  getSiteSettings,
+  updateSiteSettings,
+  getEffectiveCacheTtl,
+  localeCountsForRegistry,
+  MAX_MARKETS,
+} from '../../src/services/site-settings-service';
 import type { SiteSettingsUpdate } from '../../src/services/site-settings-service';
-
-vi.mock('../../src/db', () => ({
-  query: vi.fn(),
-}));
+import {
+  InvalidSettingsError,
+} from '../../src/services/errors';
 
 describe('Site Settings Service', () => {
-  beforeEach(() => {
-    vi.resetAllMocks();
-  });
-
   describe('getSiteSettings', () => {
     it('should return defaults when settings column is empty object', async () => {
-      const db = await import('../../src/db');
-      const { getSiteSettings } = await import('../../src/services/site-settings-service');
-
-      vi.mocked(db.query).mockResolvedValue({
-        rows: [{ settings: {} }],
-        rowCount: 1,
-      });
+      const { on } = stubDatabase();
+      on(sites).select.returns([{ settings: {} }]);
 
       const result = await getSiteSettings('site-123');
       expect(result).toEqual({
@@ -28,13 +27,8 @@ describe('Site Settings Service', () => {
     });
 
     it('should merge site overrides with defaults', async () => {
-      const db = await import('../../src/db');
-      const { getSiteSettings } = await import('../../src/services/site-settings-service');
-
-      vi.mocked(db.query).mockResolvedValue({
-        rows: [{ settings: { cacheTtlMain: 120 } }],
-        rowCount: 1,
-      });
+      const { on } = stubDatabase();
+      on(sites).select.returns([{ settings: { cacheTtlMain: 120 } }]);
 
       const result = await getSiteSettings('site-123');
       expect(result).toEqual({
@@ -43,30 +37,17 @@ describe('Site Settings Service', () => {
       });
     });
 
-    it('should handle settings returned as JSON string', async () => {
-      const db = await import('../../src/db');
-      const { getSiteSettings } = await import('../../src/services/site-settings-service');
+    it('should look the site up by id', async () => {
+      const { on, calls } = stubDatabase();
+      on(sites).select.returns([{ settings: {} }]);
 
-      vi.mocked(db.query).mockResolvedValue({
-        rows: [{ settings: JSON.stringify({ cacheTtlBranch: 10 }) }],
-        rowCount: 1,
-      });
+      await getSiteSettings('site-123');
 
-      const result = await getSiteSettings('site-123');
-      expect(result).toEqual({
-        cacheTtlMain: 60,
-        cacheTtlBranch: 10,
-      });
+      expect(calls(sites).select[0].params).toEqual(['site-123']);
     });
 
     it('should return null when site not found', async () => {
-      const db = await import('../../src/db');
-      const { getSiteSettings } = await import('../../src/services/site-settings-service');
-
-      vi.mocked(db.query).mockResolvedValue({
-        rows: [],
-        rowCount: 0,
-      });
+      stubDatabase();
 
       const result = await getSiteSettings('nonexistent');
       expect(result).toBeNull();
@@ -74,76 +55,53 @@ describe('Site Settings Service', () => {
   });
 
   describe('updateSiteSettings', () => {
-    it('should construct correct JSONB merge SQL', async () => {
-      const db = await import('../../src/db');
-      const { updateSiteSettings } = await import('../../src/services/site-settings-service');
-
-      vi.mocked(db.query).mockResolvedValue({
-        rows: [{ settings: { cacheTtlMain: 120 } }],
-        rowCount: 1,
-      });
+    it('should merge the given keys into the settings column', async () => {
+      const { on, calls } = stubDatabase();
+      on(sites).update.returns([{ settings: { cacheTtlMain: 120 } }]);
 
       await updateSiteSettings('site-123', { cacheTtlMain: 120 });
 
-      expect(db.query).toHaveBeenCalledWith(
-        expect.stringContaining('||'),
-        expect.arrayContaining(['site-123']),
-      );
+      const [call] = calls(sites).update;
+      expect(call.sql).toContain('||');
+      expect(call.params).toEqual([JSON.stringify({ cacheTtlMain: 120 }), 'site-123']);
     });
 
     /**
-     * postgres.js serializes a jsonb parameter itself, so a pre-stringified
-     * value is JSON-encoded twice and Postgres stores a string scalar — which
-     * `settings || $1::jsonb` appends to rather than merges, growing the column
-     * into an array one element per write. This test sees only what the service
-     * hands the driver; the database-backed guard is
-     * tests/integration/site-settings.jsonb-serialization.integration.spec.ts.
+     * The merged keys are bound as a single JSON-encoded string, cast to jsonb
+     * in the statement text. Encoding the value twice would leave Postgres
+     * storing a string scalar rather than an object — the database-backed
+     * guard is tests/integration/site-settings.jsonb-serialization.integration.spec.ts.
      */
     it('binds the merged keys as an object, never a JSON string', async () => {
-      const db = await import('../../src/db');
-      const { updateSiteSettings } = await import('../../src/services/site-settings-service');
-
-      vi.mocked(db.query).mockResolvedValue({
-        rows: [{ settings: { cacheTtlMain: 120 } }],
-        rowCount: 1,
-      });
+      const { on, calls } = stubDatabase();
+      on(sites).update.returns([{ settings: { cacheTtlMain: 120 } }]);
 
       await updateSiteSettings('site-123', {
         cacheTtlMain: 120,
         locales: { markets: ['fr'], policy: 'fallback' },
       });
 
-      const [, params] = vi.mocked(db.query).mock.calls[0] as [string, unknown[]];
-      expect(params[0]).toEqual({
+      const [call] = calls(sites).update;
+      expect(JSON.parse(call.params[0] as string)).toEqual({
         cacheTtlMain: 120,
         locales: { markets: ['fr'], policy: 'fallback' },
       });
     });
 
     it('binds the merged keys as an object when the same write also removes one', async () => {
-      const db = await import('../../src/db');
-      const { updateSiteSettings } = await import('../../src/services/site-settings-service');
-
-      vi.mocked(db.query).mockResolvedValue({
-        rows: [{ settings: { cacheTtlMain: 120 } }],
-        rowCount: 1,
-      });
+      const { on, calls } = stubDatabase();
+      on(sites).update.returns([{ settings: { cacheTtlMain: 120 } }]);
 
       await updateSiteSettings('site-123', { cacheTtlMain: 120, cacheTtlBranch: null });
 
-      const [, params] = vi.mocked(db.query).mock.calls[0] as [string, unknown[]];
-      expect(params[0]).toEqual({ cacheTtlMain: 120 });
-      expect(params[1]).toEqual(['cacheTtlBranch']);
+      const [call] = calls(sites).update;
+      expect(JSON.parse(call.params[0] as string)).toEqual({ cacheTtlMain: 120 });
+      expect(call.params[1]).toEqual(['cacheTtlBranch']);
     });
 
     it('should return updated settings merged with defaults', async () => {
-      const db = await import('../../src/db');
-      const { updateSiteSettings } = await import('../../src/services/site-settings-service');
-
-      vi.mocked(db.query).mockResolvedValue({
-        rows: [{ settings: { cacheTtlMain: 120, cacheTtlBranch: 10 } }],
-        rowCount: 1,
-      });
+      const { on } = stubDatabase();
+      on(sites).update.returns([{ settings: { cacheTtlMain: 120, cacheTtlBranch: 10 } }]);
 
       const result = await updateSiteSettings('site-123', { cacheTtlMain: 120, cacheTtlBranch: 10 });
       expect(result).toEqual({
@@ -153,13 +111,8 @@ describe('Site Settings Service', () => {
     });
 
     it('should remove override when null is passed', async () => {
-      const db = await import('../../src/db');
-      const { updateSiteSettings } = await import('../../src/services/site-settings-service');
-
-      vi.mocked(db.query).mockResolvedValue({
-        rows: [{ settings: {} }],
-        rowCount: 1,
-      });
+      const { on } = stubDatabase();
+      on(sites).update.returns([{ settings: {} }]);
 
       const result = await updateSiteSettings('site-123', { cacheTtlMain: null });
       expect(result).toEqual({
@@ -169,21 +122,14 @@ describe('Site Settings Service', () => {
     });
 
     it('should return null when site not found', async () => {
-      const db = await import('../../src/db');
-      const { updateSiteSettings } = await import('../../src/services/site-settings-service');
-
-      vi.mocked(db.query).mockResolvedValue({
-        rows: [],
-        rowCount: 0,
-      });
+      stubDatabase();
 
       const result = await updateSiteSettings('nonexistent', { cacheTtlMain: 120 });
       expect(result).toBeNull();
     });
 
     it('should reject negative cacheTtlMain', async () => {
-      const { updateSiteSettings } = await import('../../src/services/site-settings-service');
-      const { InvalidSettingsError } = await import('../../src/services/errors');
+      stubDatabase();
 
       await expect(
         updateSiteSettings('site-123', { cacheTtlMain: -1 }),
@@ -191,8 +137,7 @@ describe('Site Settings Service', () => {
     });
 
     it('should reject negative cacheTtlBranch', async () => {
-      const { updateSiteSettings } = await import('../../src/services/site-settings-service');
-      const { InvalidSettingsError } = await import('../../src/services/errors');
+      stubDatabase();
 
       await expect(
         updateSiteSettings('site-123', { cacheTtlBranch: -5 }),
@@ -200,8 +145,7 @@ describe('Site Settings Service', () => {
     });
 
     it('should reject non-integer cacheTtlMain', async () => {
-      const { updateSiteSettings } = await import('../../src/services/site-settings-service');
-      const { InvalidSettingsError } = await import('../../src/services/errors');
+      stubDatabase();
 
       await expect(
         updateSiteSettings('site-123', { cacheTtlMain: 3.5 }),
@@ -209,8 +153,7 @@ describe('Site Settings Service', () => {
     });
 
     it('should reject non-integer cacheTtlBranch', async () => {
-      const { updateSiteSettings } = await import('../../src/services/site-settings-service');
-      const { InvalidSettingsError } = await import('../../src/services/errors');
+      stubDatabase();
 
       await expect(
         updateSiteSettings('site-123', { cacheTtlBranch: 2.7 }),
@@ -220,8 +163,7 @@ describe('Site Settings Service', () => {
     // PCC-3676: an unbounded TTL lets stale/draft content persist in caches for
     // arbitrarily long; cap at one day.
     it('should reject cacheTtlBranch above the one-day ceiling', async () => {
-      const { updateSiteSettings } = await import('../../src/services/site-settings-service');
-      const { InvalidSettingsError } = await import('../../src/services/errors');
+      stubDatabase();
 
       await expect(
         updateSiteSettings('site-123', { cacheTtlBranch: 86_401 }),
@@ -229,8 +171,7 @@ describe('Site Settings Service', () => {
     });
 
     it('should reject cacheTtlMain above the one-day ceiling', async () => {
-      const { updateSiteSettings } = await import('../../src/services/site-settings-service');
-      const { InvalidSettingsError } = await import('../../src/services/errors');
+      stubDatabase();
 
       await expect(
         updateSiteSettings('site-123', { cacheTtlMain: 100_000 }),
@@ -238,12 +179,8 @@ describe('Site Settings Service', () => {
     });
 
     it('should accept a TTL exactly at the one-day ceiling', async () => {
-      const db = await import('../../src/db');
-      const { updateSiteSettings } = await import('../../src/services/site-settings-service');
-      vi.mocked(db.query).mockResolvedValue({
-        rows: [{ settings: { cacheTtlBranch: 86_400 } }],
-        rowCount: 1,
-      });
+      const { on } = stubDatabase();
+      on(sites).update.returns([{ settings: { cacheTtlBranch: 86_400 } }]);
 
       await expect(
         updateSiteSettings('site-123', { cacheTtlBranch: 86_400 }),
@@ -251,13 +188,10 @@ describe('Site Settings Service', () => {
     });
 
     it('should store the social defaults', async () => {
-      const db = await import('../../src/db');
-      const { updateSiteSettings } = await import('../../src/services/site-settings-service');
-
-      vi.mocked(db.query).mockResolvedValue({
-        rows: [{ settings: { ogImage: 'https://cdn.example/social.png', ogLocale: 'en_US' } }],
-        rowCount: 1,
-      });
+      const { on } = stubDatabase();
+      on(sites).update.returns([
+        { settings: { ogImage: 'https://cdn.example/social.png', ogLocale: 'en_US' } },
+      ]);
 
       const result = await updateSiteSettings('site-123', {
         ogImage: 'https://cdn.example/social.png',
@@ -273,8 +207,7 @@ describe('Site Settings Service', () => {
     });
 
     it('should reject a non-string ogImage', async () => {
-      const { updateSiteSettings } = await import('../../src/services/site-settings-service');
-      const { InvalidSettingsError } = await import('../../src/services/errors');
+      stubDatabase();
 
       await expect(
         updateSiteSettings('site-123', { ogImage: 42 as unknown as string }),
@@ -282,8 +215,7 @@ describe('Site Settings Service', () => {
     });
 
     it('should reject a blank ogLocale rather than storing it', async () => {
-      const { updateSiteSettings } = await import('../../src/services/site-settings-service');
-      const { InvalidSettingsError } = await import('../../src/services/errors');
+      stubDatabase();
 
       await expect(
         updateSiteSettings('site-123', { ogLocale: '   ' }),
@@ -291,19 +223,30 @@ describe('Site Settings Service', () => {
     });
 
     it('should clear a social default when null is passed', async () => {
-      const db = await import('../../src/db');
-      const { updateSiteSettings } = await import('../../src/services/site-settings-service');
-
-      vi.mocked(db.query).mockResolvedValue({
-        rows: [{ settings: {} }],
-        rowCount: 1,
-      });
+      const { on, calls } = stubDatabase();
+      on(sites).update.returns([{ settings: {} }]);
 
       await updateSiteSettings('site-123', { ogImage: null });
 
-      const [sql, params] = vi.mocked(db.query).mock.calls[0] as [string, unknown[]];
-      expect(sql).toContain('settings - $1::text[]');
-      expect(params[0]).toEqual(['ogImage']);
+      const [call] = calls(sites).update;
+      expect(call.sql).toContain('::text[]');
+      expect(call.params).toEqual([['ogImage'], 'site-123']);
+    });
+
+    it('should merge and remove in one statement when given both', async () => {
+      const { on, calls } = stubDatabase();
+      on(sites).update.returns([{ settings: { cacheTtlMain: 120 } }]);
+
+      await updateSiteSettings('site-123', { cacheTtlMain: 120, ogImage: null });
+
+      const [call] = calls(sites).update;
+      expect(call.sql).toContain('||');
+      expect(call.sql).toContain('::text[]');
+      expect(call.params).toEqual([
+        JSON.stringify({ cacheTtlMain: 120 }),
+        ['ogImage'],
+        'site-123',
+      ]);
     });
   });
 
@@ -313,16 +256,16 @@ describe('Site Settings Service', () => {
       policy: 'fallback' as const,
     };
 
-    /** The block as it reaches the database, read off the write. */
+    /** The registry block as it reaches the database, read off the merged write. */
     async function storedLocales(update: SiteSettingsUpdate): Promise<unknown> {
-      const db = await import('../../src/db');
-      const { updateSiteSettings } = await import('../../src/services/site-settings-service');
+      const { on, calls } = stubDatabase();
+      on(sites).update.returns([{ settings: {} }]);
 
-      vi.mocked(db.query).mockResolvedValue({ rows: [{ settings: {} }], rowCount: 1 });
       await updateSiteSettings('site-123', update);
 
-      const [, params] = vi.mocked(db.query).mock.calls[0] as [string, unknown[]];
-      return (params[0] as { locales: unknown }).locales;
+      const [call] = calls(sites).update;
+      const merged = JSON.parse(call.params[0] as string) as { locales: unknown };
+      return merged.locales;
     }
 
     it('stores the markets and the policy', async () => {
@@ -357,8 +300,7 @@ describe('Site Settings Service', () => {
     });
 
     it('rejects a market that repeats another market', async () => {
-      const { updateSiteSettings } = await import('../../src/services/site-settings-service');
-      const { InvalidSettingsError } = await import('../../src/services/errors');
+      stubDatabase();
 
       await expect(
         updateSiteSettings('site-123', {
@@ -368,8 +310,7 @@ describe('Site Settings Service', () => {
     });
 
     it('rejects a market naming a language the site already publishes under a deprecated tag', async () => {
-      const { updateSiteSettings } = await import('../../src/services/site-settings-service');
-      const { InvalidSettingsError } = await import('../../src/services/errors');
+      stubDatabase();
 
       await expect(
         updateSiteSettings('site-123', {
@@ -387,8 +328,7 @@ describe('Site Settings Service', () => {
     });
 
     it('rejects a malformed language tag', async () => {
-      const { updateSiteSettings } = await import('../../src/services/site-settings-service');
-      const { InvalidSettingsError } = await import('../../src/services/errors');
+      stubDatabase();
 
       await expect(
         updateSiteSettings('site-123', {
@@ -398,9 +338,7 @@ describe('Site Settings Service', () => {
     });
 
     it('rejects more markets than a registry may hold', async () => {
-      const { updateSiteSettings, MAX_MARKETS } = await import(
-        '../../src/services/site-settings-service'
-      );
+      stubDatabase();
 
       await expect(
         updateSiteSettings('site-123', {
@@ -413,8 +351,7 @@ describe('Site Settings Service', () => {
     });
 
     it('rejects a policy it does not recognize', async () => {
-      const { updateSiteSettings } = await import('../../src/services/site-settings-service');
-      const { InvalidSettingsError } = await import('../../src/services/errors');
+      stubDatabase();
 
       await expect(
         updateSiteSettings('site-123', {
@@ -427,8 +364,7 @@ describe('Site Settings Service', () => {
     });
 
     it('rejects a registry that is not an object', async () => {
-      const { updateSiteSettings } = await import('../../src/services/site-settings-service');
-      const { InvalidSettingsError } = await import('../../src/services/errors');
+      stubDatabase();
 
       await expect(
         updateSiteSettings('site-123', {
@@ -438,20 +374,17 @@ describe('Site Settings Service', () => {
     });
 
     it('clears the registry when null is passed', async () => {
-      const db = await import('../../src/db');
-      const { updateSiteSettings } = await import('../../src/services/site-settings-service');
+      const { on, calls } = stubDatabase();
+      on(sites).update.returns([{ settings: {} }]);
 
-      vi.mocked(db.query).mockResolvedValue({ rows: [{ settings: {} }], rowCount: 1 });
       await updateSiteSettings('site-123', { locales: null });
 
-      const [sql, params] = vi.mocked(db.query).mock.calls[0] as [string, unknown[]];
-      expect(sql).toContain('settings - $1::text[]');
-      expect(params[0]).toEqual(['locales']);
+      const [call] = calls(sites).update;
+      expect(call.sql).toContain('::text[]');
+      expect(call.params).toEqual([['locales'], 'site-123']);
     });
 
-    it('reports counts under the registry\'s own tags, matching locales across aliases', async () => {
-      const { localeCountsForRegistry } = await import('../../src/services/site-settings-service');
-
+    it('reports counts under the registry\'s own tags, matching locales across aliases', () => {
       // Pages written under a deprecated tag still belong to the market that
       // names the same locale.
       expect(
@@ -462,9 +395,7 @@ describe('Site Settings Service', () => {
       ).toEqual({ he: 3, de: 12 });
     });
 
-    it('sums documents whose tags name one locale', async () => {
-      const { localeCountsForRegistry } = await import('../../src/services/site-settings-service');
-
+    it('sums documents whose tags name one locale', () => {
       expect(
         localeCountsForRegistry(
           { markets: ['he'], policy: 'fallback' },
@@ -473,9 +404,7 @@ describe('Site Settings Service', () => {
       ).toEqual({ he: 5 });
     });
 
-    it('leaves a locale holding nothing out of the counts', async () => {
-      const { localeCountsForRegistry } = await import('../../src/services/site-settings-service');
-
+    it('leaves a locale holding nothing out of the counts', () => {
       expect(
         localeCountsForRegistry(
           { markets: ['de', 'ja'], policy: 'fallback' },
@@ -484,9 +413,7 @@ describe('Site Settings Service', () => {
       ).toEqual({ de: 12 });
     });
 
-    it('ignores documents in a locale the site does not publish', async () => {
-      const { localeCountsForRegistry } = await import('../../src/services/site-settings-service');
-
+    it('ignores documents in a locale the site does not publish', () => {
       expect(
         localeCountsForRegistry(
           { markets: ['de'], policy: 'fallback' },
@@ -495,9 +422,7 @@ describe('Site Settings Service', () => {
       ).toEqual({ de: 12 });
     });
 
-    it('keeps regional variants of one language apart', async () => {
-      const { localeCountsForRegistry } = await import('../../src/services/site-settings-service');
-
+    it('keeps regional variants of one language apart', () => {
       expect(
         localeCountsForRegistry(
           { markets: ['es-ES', 'es-MX'], policy: 'fallback' },
@@ -507,13 +432,8 @@ describe('Site Settings Service', () => {
     });
 
     it('reads the stored registry back', async () => {
-      const db = await import('../../src/db');
-      const { getSiteSettings } = await import('../../src/services/site-settings-service');
-
-      vi.mocked(db.query).mockResolvedValue({
-        rows: [{ settings: { locales } }],
-        rowCount: 1,
-      });
+      const { on } = stubDatabase();
+      on(sites).select.returns([{ settings: { locales } }]);
 
       const result = await getSiteSettings('site-123');
       expect(result?.locales).toEqual(locales);
@@ -521,9 +441,7 @@ describe('Site Settings Service', () => {
   });
 
   describe('getEffectiveCacheTtl', () => {
-    it('should return site override when present for main branch', async () => {
-      const { getEffectiveCacheTtl } = await import('../../src/services/site-settings-service');
-
+    it('should return site override when present for main branch', () => {
       const result = getEffectiveCacheTtl(
         { cacheTtlMain: 120 },
         true,
@@ -531,9 +449,7 @@ describe('Site Settings Service', () => {
       expect(result).toBe(120);
     });
 
-    it('should return site override when present for non-main branch', async () => {
-      const { getEffectiveCacheTtl } = await import('../../src/services/site-settings-service');
-
+    it('should return site override when present for non-main branch', () => {
       const result = getEffectiveCacheTtl(
         { cacheTtlBranch: 10 },
         false,
@@ -541,9 +457,7 @@ describe('Site Settings Service', () => {
       expect(result).toBe(10);
     });
 
-    it('should return env default for main branch when no site override', async () => {
-      const { getEffectiveCacheTtl } = await import('../../src/services/site-settings-service');
-
+    it('should return env default for main branch when no site override', () => {
       const result = getEffectiveCacheTtl(
         {},
         true,
@@ -552,9 +466,7 @@ describe('Site Settings Service', () => {
       expect(result).toBe(90);
     });
 
-    it('should return env default for non-main branch when no site override', async () => {
-      const { getEffectiveCacheTtl } = await import('../../src/services/site-settings-service');
-
+    it('should return env default for non-main branch when no site override', () => {
       const result = getEffectiveCacheTtl(
         {},
         false,
@@ -563,31 +475,23 @@ describe('Site Settings Service', () => {
       expect(result).toBe(15);
     });
 
-    it('should return hardcoded default (60) for main when no overrides', async () => {
-      const { getEffectiveCacheTtl } = await import('../../src/services/site-settings-service');
-
+    it('should return hardcoded default (60) for main when no overrides', () => {
       const result = getEffectiveCacheTtl({}, true);
       expect(result).toBe(60);
     });
 
-    it('should return hardcoded default (5) for non-main when no overrides', async () => {
-      const { getEffectiveCacheTtl } = await import('../../src/services/site-settings-service');
-
+    it('should return hardcoded default (5) for non-main when no overrides', () => {
       const result = getEffectiveCacheTtl({}, false);
       expect(result).toBe(5);
     });
 
-    it('should fall back through env default to hardcoded when settings are null', async () => {
-      const { getEffectiveCacheTtl } = await import('../../src/services/site-settings-service');
-
+    it('should fall back through env default to hardcoded when settings are null', () => {
       expect(getEffectiveCacheTtl(null, true, { defaultCacheTtlMain: 90 })).toBe(90);
       expect(getEffectiveCacheTtl(null, true)).toBe(60);
       expect(getEffectiveCacheTtl(null, false)).toBe(5);
     });
 
-    it('should prefer site override over env default', async () => {
-      const { getEffectiveCacheTtl } = await import('../../src/services/site-settings-service');
-
+    it('should prefer site override over env default', () => {
       const result = getEffectiveCacheTtl(
         { cacheTtlMain: 300 },
         true,

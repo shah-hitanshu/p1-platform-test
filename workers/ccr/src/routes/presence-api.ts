@@ -14,7 +14,7 @@
  * - Agent presence: Requires caller to be in the same organization
  */
 
-import type { AuthenticatedPrincipal } from '../types';
+import type { AuthenticatedPrincipal, Branch } from '../types';
 import {
   getBranchPresence,
   getSitePresence,
@@ -25,7 +25,6 @@ import { getBranch, getBranchByName, getMainBranch } from '../services/branch-se
 import { HttpError, BranchNotFoundError, SiteNotFoundError, AgentNotFoundError } from '../services/errors';
 import { hasPermission } from '../auth/authorization';
 import { UUID_RE } from '../utils/branch-ref';
-import type { Branch } from '../types';
 
 // =============================================================================
 // Types

@@ -8,8 +8,10 @@
  */
 
 import * as crypto from 'crypto';
-import type { GuestLink, RolePermissions, RoleName, PantheonRole } from '../types';
-import { query } from '../db';
+import { and, eq, gt, sql } from 'drizzle-orm';
+import type { GuestLink, GuestLinkStatus, RolePermissions, RoleName, PantheonRole } from '../types';
+import { guestLinks } from '../db/schema';
+import { db } from '../db/scope';
 import { ROLES } from './roles';
 
 /**
@@ -19,10 +21,10 @@ export interface GuestPrincipal {
   id: string;
   type: 'guest';
   email: string;
-  name?: string;
+  name: string | null;
   branchId: string;
   pantheonSiteRoles: Record<string, PantheonRole>;
-  tokenExpiry: string;
+  tokenExpiry: Date;
   roleName: RoleName;
 }
 
@@ -97,35 +99,36 @@ function generateToken(): string {
  * }
  * ```
  */
-export async function validateGuestToken(token: string): Promise<GuestPrincipal | null> {
+export async function validateGuestToken(
+  token: string,
+): Promise<GuestPrincipal | null> {
   const tokenHash = hashToken(token);
 
   // Query for active, non-expired guest link
-  const result = await query<GuestLink>(
-    `SELECT * FROM guest_links
-     WHERE token_hash = $1
-       AND status = 'active'
-       AND expires_at > NOW()`,
-    [tokenHash],
-  );
+  const rows = await db()
+    .select()
+    .from(guestLinks)
+    .where(
+      and(
+        eq(guestLinks.tokenHash, tokenHash),
+        eq(guestLinks.status, 'active'),
+        gt(guestLinks.expiresAt, sql`NOW()`),
+      ),
+    );
 
-  if (result.rows.length === 0) {
-    return null;
-  }
-
-  const guestLink = result.rows[0];
+  const guestLink = rows[0];
   if (!guestLink) {
     return null;
   }
 
   // Update access tracking (fire and forget)
-  await query(
-    `UPDATE guest_links
-     SET access_count = access_count + 1,
-         last_access_at = NOW()
-     WHERE id = $1`,
-    [guestLink.id],
-  );
+  await db()
+    .update(guestLinks)
+    .set({
+      accessCount: sql`${guestLinks.accessCount} + 1`,
+      lastAccessAt: sql`NOW()`,
+    })
+    .where(eq(guestLinks.id, guestLink.id));
 
   // Return guest principal
   return {
@@ -170,31 +173,25 @@ export async function createGuestLink(
 ): Promise<CreateGuestLinkResult> {
   const token = generateToken();
   const tokenHash = hashToken(token);
-  const expiresAt = new Date(
-    Date.now() + options.expiresInHours * 60 * 60 * 1000,
-  ).toISOString();
+  const expiresAt = new Date(Date.now() + options.expiresInHours * 60 * 60 * 1000);
 
-  const result = await query<{ id: string }>(
-    `INSERT INTO guest_links (
-       branch_id, email, name, token_hash, status,
-       expires_at, created_by_id, created_by_type, message, access_count
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-     RETURNING id`,
-    [
-      options.branchId,
-      options.email,
-      options.name,
+  const rows = await db()
+    .insert(guestLinks)
+    .values({
+      branchId: options.branchId,
+      email: options.email,
+      name: options.name,
       tokenHash,
-      'active',
+      status: 'active',
       expiresAt,
-      options.createdById,
-      options.createdByType,
-      options.message,
-      0,
-    ],
-  );
+      createdById: options.createdById,
+      createdByType: options.createdByType,
+      message: options.message,
+      accessCount: 0,
+    })
+    .returning({ id: guestLinks.id });
 
-  const row = result.rows[0];
+  const row = rows[0];
   if (!row) {
     throw new Error('Failed to create guest link: no row returned');
   }
@@ -220,15 +217,13 @@ export async function createGuestLink(
  * ```
  */
 export async function revokeGuestLink(linkId: string): Promise<boolean> {
-  const result = await query<{ id: string }>(
-    `UPDATE guest_links
-     SET status = 'revoked'
-     WHERE id = $1
-     RETURNING id`,
-    [linkId],
-  );
+  const rows = await db()
+    .update(guestLinks)
+    .set({ status: 'revoked' })
+    .where(eq(guestLinks.id, linkId))
+    .returning({ id: guestLinks.id });
 
-  return result.rows.length > 0;
+  return rows.length > 0;
 }
 
 /**
@@ -250,21 +245,23 @@ export async function getGuestLinksByBranch(
   branchId: string,
   options: GetGuestLinksOptions = {},
 ): Promise<GuestLink[]> {
-  if (options.includeRevoked === true) {
-    const result = await query<GuestLink>(
-      'SELECT * FROM guest_links WHERE branch_id = $1',
-      [branchId],
-    );
-    return result.rows;
-  }
+  const scope =
+    options.includeRevoked === true
+      ? eq(guestLinks.branchId, branchId)
+      : and(eq(guestLinks.branchId, branchId), eq(guestLinks.status, 'active'));
 
-  const result = await query<GuestLink>(
-    `SELECT * FROM guest_links
-     WHERE branch_id = $1 AND status = 'active'`,
-    [branchId],
-  );
+  const rows = await db().select().from(guestLinks).where(scope);
 
-  return result.rows;
+  return rows.map(toGuestLink);
+}
+
+/** The status and creator-type columns are text, narrowed to their domain unions here. */
+function toGuestLink(row: typeof guestLinks.$inferSelect): GuestLink {
+  return {
+    ...row,
+    status: row.status as GuestLinkStatus,
+    createdByType: row.createdByType as 'user' | 'agent',
+  };
 }
 
 /**

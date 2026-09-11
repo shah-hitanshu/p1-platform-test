@@ -165,12 +165,14 @@ describe('AgentApiKeyProvider', () => {
     it('should set empty pantheonSiteRoles', async () => {
       const { AgentApiKeyProvider } = await import('../../src/auth/agent-api-key-provider');
       const agentKeyService = await import('../../src/services/agent-api-key-service');
+      const agentSiteRoleService = await import('../../src/services/agent-site-role-service');
       const provider = new AgentApiKeyProvider();
 
       vi.mocked(agentKeyService.validateKey).mockResolvedValue({
         keyId: 'key-uuid-123',
         agentId: 'agent-uuid-456',
       });
+      vi.mocked(agentSiteRoleService.getRolesForAgent).mockResolvedValue({});
 
       const principal = await provider.validateAgentKey('aak_validkey123abc');
 

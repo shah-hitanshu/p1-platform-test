@@ -71,16 +71,16 @@ export interface GuestLink {
   id: string;
   branchId: string;
   email: string;
-  name?: string;
+  name: string | null;
   tokenHash: string;
   status: GuestLinkStatus;
-  expiresAt: string;
+  expiresAt: Date;
   createdById: string;
   createdByType: 'user' | 'agent';
-  createdAt: string;
-  message?: string;
-  accessCount: number;
-  lastAccessAt?: string;
+  createdAt: Date | null;
+  message: string | null;
+  accessCount: number | null;
+  lastAccessAt: Date | null;
 }
 
 /**

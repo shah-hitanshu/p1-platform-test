@@ -6,42 +6,45 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { getEffectiveRole } from '../../src/auth/authorization';
+import { minRole } from '../../src/auth/roles';
+import { userSiteRoles } from '../../src/db/schema';
+import { stubDatabase, type DatabaseStub } from '../__stubs__/database';
+import { query } from '../../src/db';
 
-// Mock the database module for getEffectiveRole tests
-vi.mock('../../src/db', () => ({
+// The agent site-role resolver still reads through the legacy query path, which
+// the Drizzle stub does not see.
+vi.mock('../../src/db', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../../src/db')>(),
   query: vi.fn(),
 }));
+
 
 describe('Permission Intersection', () => {
   describe('minRole', () => {
     // Test 54: Lower role returned
-    it('should return the lower role when user has lower role than agent', async () => {
-      const { minRole } = await import('../../src/auth/roles');
+    it('should return the lower role when user has lower role than agent', () => {
       expect(minRole('EDITOR', 'VIEWER')).toBe('VIEWER');
     });
 
     // Test 55: Agent role returned when user is higher
-    it('should return the agent role when user has higher role', async () => {
-      const { minRole } = await import('../../src/auth/roles');
+    it('should return the agent role when user has higher role', () => {
       expect(minRole('EDITOR', 'ADMIN')).toBe('EDITOR');
     });
 
     // Test 56: NO_ACCESS dominates
-    it('should return NO_ACCESS when either role is NO_ACCESS', async () => {
-      const { minRole } = await import('../../src/auth/roles');
+    it('should return NO_ACCESS when either role is NO_ACCESS', () => {
       expect(minRole('EDITOR', 'NO_ACCESS')).toBe('NO_ACCESS');
       expect(minRole('NO_ACCESS', 'ADMIN')).toBe('NO_ACCESS');
     });
 
     // Test 57: Equal roles
-    it('should return the same role when both are equal', async () => {
-      const { minRole } = await import('../../src/auth/roles');
+    it('should return the same role when both are equal', () => {
       expect(minRole('EDITOR', 'EDITOR')).toBe('EDITOR');
     });
 
     // Test 58: Exhaustive pairwise test
-    it('should handle all 16 role pair combinations correctly', async () => {
-      const { minRole } = await import('../../src/auth/roles');
+    it('should handle all 16 role pair combinations correctly', () => {
       const roles = ['NO_ACCESS', 'VIEWER', 'EDITOR', 'ADMIN'] as const;
 
       for (let i = 0; i < roles.length; i++) {
@@ -55,29 +58,19 @@ describe('Permission Intersection', () => {
   });
 
   describe('getEffectiveRole with permission intersection', () => {
+    let database: DatabaseStub;
+
     beforeEach(() => {
-      vi.resetAllMocks();
+      database = stubDatabase();
+      vi.mocked(query).mockResolvedValue({ rows: [] });
     });
 
     // Test 59: Agent with actingUserEmail gets min(agentRole, actingUserSiteRole)
     it('should apply permission intersection for agent with actingUserEmail', async () => {
-      const { query } = await import('../../src/db');
-      const mockedQuery = vi.mocked(query);
+      vi.mocked(query).mockResolvedValueOnce({ rows: [{ role: 'admin', implicit: false }] });
+      // The acting user's site role, reached through the users join.
+      database.on(userSiteRoles).select.returns([{ role: 'team_member' }]);
 
-      // First call: agent_site_roles -> ADMIN
-      mockedQuery.mockResolvedValueOnce({
-        rows: [{ role: 'admin' }],
-      });
-      // Second call: branch_grants -> no grant
-      mockedQuery.mockResolvedValueOnce({
-        rows: [],
-      });
-      // Third call: acting user site role lookup -> EDITOR (team_member maps to EDITOR)
-      mockedQuery.mockResolvedValueOnce({
-        rows: [{ role: 'team_member' }],
-      });
-
-      const { getEffectiveRole } = await import('../../src/auth/authorization');
       const result = await getEffectiveRole(
         {
           id: 'agent-1',
@@ -97,19 +90,8 @@ describe('Permission Intersection', () => {
 
     // Test 60: Agent without actingUserEmail gets normal role
     it('should skip intersection when actingUserEmail is absent', async () => {
-      const { query } = await import('../../src/db');
-      const mockedQuery = vi.mocked(query);
+      vi.mocked(query).mockResolvedValueOnce({ rows: [{ role: 'admin', implicit: false }] });
 
-      // First call: agent_site_roles -> ADMIN
-      mockedQuery.mockResolvedValueOnce({
-        rows: [{ role: 'admin' }],
-      });
-      // Second call: branch_grants -> no grant
-      mockedQuery.mockResolvedValueOnce({
-        rows: [],
-      });
-
-      const { getEffectiveRole } = await import('../../src/auth/authorization');
       const result = await getEffectiveRole(
         {
           id: 'agent-1',
@@ -128,23 +110,9 @@ describe('Permission Intersection', () => {
 
     // Test 61: Acting user not in allowlist -> NO_ACCESS
     it('should return NO_ACCESS when acting user is not in allowlist', async () => {
-      const { query } = await import('../../src/db');
-      const mockedQuery = vi.mocked(query);
+      vi.mocked(query).mockResolvedValueOnce({ rows: [{ role: 'admin', implicit: false }] });
+      // An acting user outside the allowlist matches no row.
 
-      // First call: agent_site_roles -> ADMIN
-      mockedQuery.mockResolvedValueOnce({
-        rows: [{ role: 'admin' }],
-      });
-      // Second call: branch_grants -> no grant
-      mockedQuery.mockResolvedValueOnce({
-        rows: [],
-      });
-      // Third call: acting user lookup -> no rows (user not in allowlist)
-      mockedQuery.mockResolvedValueOnce({
-        rows: [],
-      });
-
-      const { getEffectiveRole } = await import('../../src/auth/authorization');
       const result = await getEffectiveRole(
         {
           id: 'agent-1',
@@ -163,19 +131,8 @@ describe('Permission Intersection', () => {
 
     // Test 62: User principals never trigger intersection
     it('should not apply intersection for user principals', async () => {
-      const { query } = await import('../../src/db');
-      const mockedQuery = vi.mocked(query);
+      database.on(userSiteRoles).select.returns([{ role: 'admin' }]);
 
-      // First call: user_site_roles -> ADMIN
-      mockedQuery.mockResolvedValueOnce({
-        rows: [{ role: 'admin' }],
-      });
-      // Second call: branch_grants -> no grant
-      mockedQuery.mockResolvedValueOnce({
-        rows: [],
-      });
-
-      const { getEffectiveRole } = await import('../../src/auth/authorization');
       const result = await getEffectiveRole(
         {
           id: 'user-1',
@@ -191,11 +148,12 @@ describe('Permission Intersection', () => {
 
       // User principal -> no intersection, gets ADMIN
       expect(result.roleName).toBe('ADMIN');
+      // The principal's own baseline lookup is the only role query.
+      expect(database.calls(userSiteRoles).select).toHaveLength(1);
     });
 
     // Test 63: Superadmin bypasses permission intersection
     it('should bypass permission intersection for a superadmin', async () => {
-      const { getEffectiveRole } = await import('../../src/auth/authorization');
       const result = await getEffectiveRole(
         {
           id: 'agent-admin',
@@ -211,6 +169,7 @@ describe('Permission Intersection', () => {
 
       // Superadmin gets ADMIN via early return, no queries, no intersection
       expect(result.roleName).toBe('ADMIN');
+      expect(database.statements).toHaveLength(0);
     });
   });
 });

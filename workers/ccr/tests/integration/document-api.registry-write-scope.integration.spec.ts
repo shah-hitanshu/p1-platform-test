@@ -10,16 +10,13 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import postgres from 'postgres';
+import type postgres from 'postgres';
 import { setDatabaseInstance } from '../../src/db';
 import type { AuthenticatedPrincipal } from '../../src/types';
+import { createRealDatabaseConnection } from '../helpers/database';
 import { readJson } from '../helpers/http';
 
-const TEST_DATABASE_URL =
-  process.env.POSTGRES_CONNECTION_STRING ??
-  'postgresql://cssuser:csspass@localhost:5432/cssdb';
-
-let sql: ReturnType<typeof postgres>;
+let sql: postgres.Sql;
 let testSiteId: string;
 let mainBranchId: string;
 
@@ -36,17 +33,8 @@ function registryServicePrincipal(scopes: string[] = ['write:registry']): Authen
 }
 
 beforeAll(async () => {
-  sql = postgres(TEST_DATABASE_URL, { max: 1 });
-
-  const connection = {
-    async query(sqlQuery: string, params?: unknown[]): Promise<{ rows: unknown[]; rowCount: number }> {
-      const result = await sql.unsafe(sqlQuery, params as unknown as postgres.ParameterOrJSON<never>[]);
-      const rows = [...result];
-      const resultWithCount = result as unknown as { count?: number };
-      const rowCount = resultWithCount.count ?? rows.length;
-      return { rows, rowCount };
-    },
-  };
+  const { connection, sql: pgSql } = createRealDatabaseConnection();
+  sql = pgSql;
   setDatabaseInstance(connection);
 
   // Clean up stale data from previous failed runs

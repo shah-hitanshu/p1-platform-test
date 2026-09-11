@@ -1,5 +1,5 @@
 /**
- * Agent API Key Service Tests (TDD)
+ * Agent API Key Service Tests
  *
  * Tests for agent API key generation, validation, listing, and revocation.
  * Modeled after site-api-token-service.spec.ts but adapted for agent keys:
@@ -10,11 +10,15 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-
-// Mock database module
-vi.mock('../../src/db', () => ({
-  query: vi.fn(),
-}));
+import type { InferSelectModel } from 'drizzle-orm';
+import { agentApiKeys } from '../../src/db/schema';
+import { stubDatabase, type DatabaseStub } from '../__stubs__/database';
+import {
+  generateKey,
+  listKeys,
+  revokeKey,
+  validateKey,
+} from '../../src/services/agent-api-key-service';
 
 // Mock crypto.subtle for SHA-256 hashing
 const mockDigest = vi.fn();
@@ -30,6 +34,8 @@ vi.stubGlobal('crypto', {
 });
 
 describe('Agent API Key Service', () => {
+  let database: DatabaseStub;
+
   beforeEach(() => {
     vi.resetAllMocks();
 
@@ -37,32 +43,23 @@ describe('Agent API Key Service', () => {
     mockDigest.mockResolvedValue(
       new Uint8Array(32).fill(0xab).buffer,
     );
+
+    database = stubDatabase();
   });
 
-  // Database row format matching app.agent_api_keys schema
-  interface MockKeyRow {
-    id: string;
-    agent_id: string;
-    token_hash: string;
-    prefix: string;
-    name: string;
-    created_by: string;
-    created_at: string;
-    last_used_at: string | null;
-    revoked_at: string | null;
-  }
+  type KeyRow = InferSelectModel<typeof agentApiKeys>;
 
-  function createMockKeyRow(overrides: Partial<MockKeyRow> = {}): MockKeyRow {
+  function keyRow(overrides: Partial<KeyRow> = {}): Partial<KeyRow> {
     return {
       id: 'key-uuid-123',
-      agent_id: 'agent-uuid-456',
-      token_hash: 'abababababababababababababababababababababababababababababababababab',
+      agentId: 'agent-uuid-456',
+      tokenHash: 'abababababababababababababababababababababababababababababababababab',
       prefix: 'aak_0d86',
       name: 'Production agent key',
-      created_by: 'user-uuid-789',
-      created_at: '2026-03-21T10:00:00.000Z',
-      last_used_at: null,
-      revoked_at: null,
+      createdBy: 'user-uuid-789',
+      createdAt: new Date('2026-03-21T10:00:00.000Z'),
+      lastUsedAt: null,
+      revokedAt: null,
       ...overrides,
     };
   }
@@ -73,11 +70,7 @@ describe('Agent API Key Service', () => {
 
   describe('generateKey', () => {
     it('should generate a key with aak_ prefix', async () => {
-      const { generateKey } = await import('../../src/services/agent-api-key-service');
-      const db = await import('../../src/db');
-
-      const mockRow = createMockKeyRow();
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+      database.on(agentApiKeys).insert.returns([keyRow()]);
 
       const result = await generateKey({
         agentId: 'agent-uuid-456',
@@ -89,11 +82,7 @@ describe('Agent API Key Service', () => {
     });
 
     it('should return the raw key only at creation time', async () => {
-      const { generateKey } = await import('../../src/services/agent-api-key-service');
-      const db = await import('../../src/db');
-
-      const mockRow = createMockKeyRow();
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+      database.on(agentApiKeys).insert.returns([keyRow()]);
 
       const result = await generateKey({
         agentId: 'agent-uuid-456',
@@ -106,11 +95,7 @@ describe('Agent API Key Service', () => {
     });
 
     it('should return metadata alongside the raw key', async () => {
-      const { generateKey } = await import('../../src/services/agent-api-key-service');
-      const db = await import('../../src/db');
-
-      const mockRow = createMockKeyRow();
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+      database.on(agentApiKeys).insert.returns([keyRow()]);
 
       const result = await generateKey({
         agentId: 'agent-uuid-456',
@@ -122,15 +107,11 @@ describe('Agent API Key Service', () => {
       expect(result.metadata.agentId).toBe('agent-uuid-456');
       expect(result.metadata.name).toBe('Production agent key');
       expect(result.metadata.prefix).toMatch(/^aak_/);
-      expect(result.metadata.createdAt).toBeDefined();
+      expect(result.metadata.createdAt).toEqual(new Date('2026-03-21T10:00:00.000Z'));
     });
 
     it('should not include scopes in metadata (agents use role-based auth)', async () => {
-      const { generateKey } = await import('../../src/services/agent-api-key-service');
-      const db = await import('../../src/db');
-
-      const mockRow = createMockKeyRow();
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+      database.on(agentApiKeys).insert.returns([keyRow()]);
 
       const result = await generateKey({
         agentId: 'agent-uuid-456',
@@ -143,38 +124,26 @@ describe('Agent API Key Service', () => {
     });
 
     it('should store key hash, not the raw key', async () => {
-      const { generateKey } = await import('../../src/services/agent-api-key-service');
-      const db = await import('../../src/db');
+      database.on(agentApiKeys).insert.returns([keyRow()]);
 
-      const mockRow = createMockKeyRow();
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
-
-      await generateKey({
+      const result = await generateKey({
         agentId: 'agent-uuid-456',
         name: 'My key',
         createdBy: 'user-uuid-789',
       });
 
-      // The INSERT query should contain a hash, not the raw key
-      expect(db.query).toHaveBeenCalledWith(
-        expect.stringContaining('INSERT INTO'),
-        expect.arrayContaining(['agent-uuid-456']),
+      const [insert] = database.calls(agentApiKeys).insert;
+      expect(insert?.params).toContain('agent-uuid-456');
+      expect(insert?.params).not.toContain(result.key);
+      // token_hash param is hex, so it carries neither the aak_ prefix nor the key
+      const tokenHashParam = insert?.params.find(
+        (p) => typeof p === 'string' && !p.startsWith('aak_') && p.length === 64,
       );
-
-      // Verify the stored value is a hex hash, not starting with aak_
-      const insertCall = vi.mocked(db.query).mock.calls[0];
-      const params = insertCall[1] as string[];
-      // token_hash param should be hex (no aak_ prefix)
-      const tokenHashParam = params.find((p) => typeof p === 'string' && !p.startsWith('aak_') && p.length === 64);
       expect(tokenHashParam).toBeDefined();
     });
 
     it('should store the prefix for display purposes', async () => {
-      const { generateKey } = await import('../../src/services/agent-api-key-service');
-      const db = await import('../../src/db');
-
-      const mockRow = createMockKeyRow();
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+      database.on(agentApiKeys).insert.returns([keyRow()]);
 
       await generateKey({
         agentId: 'agent-uuid-456',
@@ -182,16 +151,14 @@ describe('Agent API Key Service', () => {
         createdBy: 'user-uuid-789',
       });
 
-      // Verify a prefix starting with aak_ was passed to the query
-      const insertCall = vi.mocked(db.query).mock.calls[0];
-      const params = insertCall[1] as string[];
-      const prefixParam = params.find((p) => typeof p === 'string' && p.startsWith('aak_') && p.length <= 12);
+      const [insert] = database.calls(agentApiKeys).insert;
+      const prefixParam = insert?.params.find(
+        (p) => typeof p === 'string' && p.startsWith('aak_') && p.length <= 12,
+      );
       expect(prefixParam).toBeDefined();
     });
 
     it('should validate required agentId', async () => {
-      const { generateKey } = await import('../../src/services/agent-api-key-service');
-
       await expect(
         generateKey({
           agentId: '',
@@ -202,8 +169,6 @@ describe('Agent API Key Service', () => {
     });
 
     it('should validate required name', async () => {
-      const { generateKey } = await import('../../src/services/agent-api-key-service');
-
       await expect(
         generateKey({
           agentId: 'agent-uuid-456',
@@ -214,8 +179,6 @@ describe('Agent API Key Service', () => {
     });
 
     it('should validate required createdBy', async () => {
-      const { generateKey } = await import('../../src/services/agent-api-key-service');
-
       await expect(
         generateKey({
           agentId: 'agent-uuid-456',
@@ -225,12 +188,8 @@ describe('Agent API Key Service', () => {
       ).rejects.toThrow('createdBy is required');
     });
 
-    it('should insert into app.agent_api_keys table', async () => {
-      const { generateKey } = await import('../../src/services/agent-api-key-service');
-      const db = await import('../../src/db');
-
-      const mockRow = createMockKeyRow();
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+    it('should insert into the agent_api_keys table', async () => {
+      database.on(agentApiKeys).insert.returns([keyRow()]);
 
       await generateKey({
         agentId: 'agent-uuid-456',
@@ -238,10 +197,7 @@ describe('Agent API Key Service', () => {
         createdBy: 'user-uuid-789',
       });
 
-      expect(db.query).toHaveBeenCalledWith(
-        expect.stringContaining('app.agent_api_keys'),
-        expect.any(Array),
-      );
+      expect(database.calls(agentApiKeys).insert).toHaveLength(1);
     });
   });
 
@@ -251,11 +207,7 @@ describe('Agent API Key Service', () => {
 
   describe('validateKey', () => {
     it('should return key info for a valid non-revoked key', async () => {
-      const { validateKey } = await import('../../src/services/agent-api-key-service');
-      const db = await import('../../src/db');
-
-      const mockRow = createMockKeyRow();
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+      database.on(agentApiKeys).select.returns([keyRow()]);
 
       const result = await validateKey('aak_somevalidkey');
 
@@ -265,11 +217,7 @@ describe('Agent API Key Service', () => {
     });
 
     it('should not include scopes in validation result', async () => {
-      const { validateKey } = await import('../../src/services/agent-api-key-service');
-      const db = await import('../../src/db');
-
-      const mockRow = createMockKeyRow();
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+      database.on(agentApiKeys).select.returns([keyRow()]);
 
       const result = await validateKey('aak_somevalidkey');
 
@@ -279,93 +227,58 @@ describe('Agent API Key Service', () => {
     });
 
     it('should return null for non-existent key', async () => {
-      const { validateKey } = await import('../../src/services/agent-api-key-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
-
       const result = await validateKey('aak_nonexistent');
 
       expect(result).toBeNull();
     });
 
     it('should return null for empty key', async () => {
-      const { validateKey } = await import('../../src/services/agent-api-key-service');
-
       const result = await validateKey('');
 
       expect(result).toBeNull();
     });
 
     it('should return null for key without aak_ prefix', async () => {
-      const { validateKey } = await import('../../src/services/agent-api-key-service');
-
       const result = await validateKey('not_an_agent_key');
 
       expect(result).toBeNull();
     });
 
     it('should return null for key that is just the prefix', async () => {
-      const { validateKey } = await import('../../src/services/agent-api-key-service');
-
       const result = await validateKey('aak_');
 
       expect(result).toBeNull();
     });
 
     it('should hash the key before looking it up', async () => {
-      const { validateKey } = await import('../../src/services/agent-api-key-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
-
       await validateKey('aak_somekey');
 
-      // Should have called crypto.subtle.digest
       expect(mockDigest).toHaveBeenCalledWith('SHA-256', expect.any(Uint8Array));
+      // The hash, never the raw key, is what the lookup is parameterised by
+      const [lookup] = database.calls(agentApiKeys).select;
+      expect(lookup?.params).not.toContain('aak_somekey');
     });
 
     it('should only match non-revoked keys', async () => {
-      const { validateKey } = await import('../../src/services/agent-api-key-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
-
       await validateKey('aak_somekey');
 
-      // The first query (SELECT) should filter by revoked_at IS NULL
-      const firstCall = vi.mocked(db.query).mock.calls[0];
-      expect(firstCall[0]).toContain('revoked_at IS NULL');
+      const [lookup] = database.calls(agentApiKeys).select;
+      expect(lookup?.sql).toContain('"revoked_at" is null');
     });
 
     it('should update last_used_at on successful validation', async () => {
-      const { validateKey } = await import('../../src/services/agent-api-key-service');
-      const db = await import('../../src/db');
-
-      const mockRow = createMockKeyRow();
-      vi.mocked(db.query)
-        .mockResolvedValueOnce({ rows: [mockRow] })  // SELECT
-        .mockResolvedValueOnce({ rows: [], rowCount: 1 }); // UPDATE last_used_at
+      database.on(agentApiKeys).select.returns([keyRow()]);
 
       await validateKey('aak_somevalidkey');
 
-      // Should have made two queries: SELECT + UPDATE last_used_at
-      expect(db.query).toHaveBeenCalledTimes(2);
-      const updateCall = vi.mocked(db.query).mock.calls[1];
-      expect(updateCall[0]).toContain('last_used_at');
-      expect(updateCall[0]).toContain('UPDATE');
+      const [touch] = database.calls(agentApiKeys).update;
+      expect(touch?.sql).toContain('"last_used_at"');
     });
 
     it('should not update last_used_at when key is not found', async () => {
-      const { validateKey } = await import('../../src/services/agent-api-key-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
-
       await validateKey('aak_nonexistent');
 
-      // Should have only made the SELECT query, not the UPDATE
-      expect(db.query).toHaveBeenCalledTimes(1);
+      expect(database.calls(agentApiKeys).update).toEqual([]);
     });
   });
 
@@ -375,14 +288,10 @@ describe('Agent API Key Service', () => {
 
   describe('listKeys', () => {
     it('should return key metadata for an agent', async () => {
-      const { listKeys } = await import('../../src/services/agent-api-key-service');
-      const db = await import('../../src/db');
-
-      const mockRows = [
-        createMockKeyRow({ id: 'key-1', name: 'Key A' }),
-        createMockKeyRow({ id: 'key-2', name: 'Key B' }),
-      ];
-      vi.mocked(db.query).mockResolvedValue({ rows: mockRows });
+      database.on(agentApiKeys).select.returns([
+        keyRow({ id: 'key-1', name: 'Key A' }),
+        keyRow({ id: 'key-2', name: 'Key B' }),
+      ]);
 
       const result = await listKeys('agent-uuid-456');
 
@@ -393,71 +302,42 @@ describe('Agent API Key Service', () => {
     });
 
     it('should never return key hashes', async () => {
-      const { listKeys } = await import('../../src/services/agent-api-key-service');
-      const db = await import('../../src/db');
-
-      const mockRows = [createMockKeyRow()];
-      vi.mocked(db.query).mockResolvedValue({ rows: mockRows });
+      database.on(agentApiKeys).select.returns([keyRow()]);
 
       const result = await listKeys('agent-uuid-456');
 
-      // The result should not contain tokenHash
       const resultJson = JSON.stringify(result);
       expect(resultJson).not.toContain('token_hash');
       expect(resultJson).not.toContain('tokenHash');
     });
 
     it('should return empty array when no keys exist', async () => {
-      const { listKeys } = await import('../../src/services/agent-api-key-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
-
       const result = await listKeys('non-existent-agent');
 
       expect(result).toEqual([]);
     });
 
     it('should query by agent_id', async () => {
-      const { listKeys } = await import('../../src/services/agent-api-key-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
-
       await listKeys('agent-uuid-456');
 
-      expect(db.query).toHaveBeenCalledWith(
-        expect.stringContaining('agent_id'),
-        expect.arrayContaining(['agent-uuid-456']),
-      );
+      const [list] = database.calls(agentApiKeys).select;
+      expect(list?.params).toContain('agent-uuid-456');
+      expect(list?.sql).toContain('"agent_id"');
     });
 
     it('should only return non-revoked keys', async () => {
-      const { listKeys } = await import('../../src/services/agent-api-key-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
-
       await listKeys('agent-uuid-456');
 
-      expect(db.query).toHaveBeenCalledWith(
-        expect.stringContaining('revoked_at IS NULL'),
-        expect.any(Array),
-      );
+      const [list] = database.calls(agentApiKeys).select;
+      expect(list?.sql).toContain('"revoked_at" is null');
     });
 
     it('should order by created_at descending', async () => {
-      const { listKeys } = await import('../../src/services/agent-api-key-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
-
       await listKeys('agent-uuid-456');
 
-      expect(db.query).toHaveBeenCalledWith(
-        expect.stringContaining('ORDER BY created_at DESC'),
-        expect.any(Array),
-      );
+      const [list] = database.calls(agentApiKeys).select;
+      expect(list?.sql).toContain('order by');
+      expect(list?.sql).toContain('"created_at" desc');
     });
   });
 
@@ -467,57 +347,41 @@ describe('Agent API Key Service', () => {
 
   describe('revokeKey', () => {
     it('should set revoked_at timestamp', async () => {
-      const { revokeKey } = await import('../../src/services/agent-api-key-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [], rowCount: 1 });
+      database.on(agentApiKeys).update.returns([keyRow()]);
 
       const result = await revokeKey('key-uuid-123', 'agent-uuid-456');
 
       expect(result).toBe(true);
-      expect(db.query).toHaveBeenCalledWith(
-        expect.stringContaining('revoked_at'),
+      const [revoke] = database.calls(agentApiKeys).update;
+      expect(revoke?.sql).toContain('"revoked_at" =');
+      expect(revoke?.params).toEqual(
         expect.arrayContaining(['key-uuid-123', 'agent-uuid-456']),
       );
     });
 
     it('should return false when key not found', async () => {
-      const { revokeKey } = await import('../../src/services/agent-api-key-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [], rowCount: 0 });
-
       const result = await revokeKey('non-existent', 'agent-uuid-456');
 
       expect(result).toBe(false);
     });
 
     it('should scope revocation to the specified agent', async () => {
-      const { revokeKey } = await import('../../src/services/agent-api-key-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [], rowCount: 1 });
+      database.on(agentApiKeys).update.returns([keyRow()]);
 
       await revokeKey('key-uuid-123', 'agent-uuid-456');
 
-      expect(db.query).toHaveBeenCalledWith(
-        expect.stringContaining('agent_id'),
-        expect.arrayContaining(['agent-uuid-456']),
-      );
+      const [revoke] = database.calls(agentApiKeys).update;
+      expect(revoke?.sql).toContain('"agent_id"');
+      expect(revoke?.params).toContain('agent-uuid-456');
     });
 
     it('should only revoke non-revoked keys', async () => {
-      const { revokeKey } = await import('../../src/services/agent-api-key-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [], rowCount: 1 });
+      database.on(agentApiKeys).update.returns([keyRow()]);
 
       await revokeKey('key-uuid-123', 'agent-uuid-456');
 
-      expect(db.query).toHaveBeenCalledWith(
-        expect.stringContaining('revoked_at IS NULL'),
-        expect.any(Array),
-      );
+      const [revoke] = database.calls(agentApiKeys).update;
+      expect(revoke?.sql).toContain('"revoked_at" is null');
     });
   });
 });

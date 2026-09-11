@@ -12,6 +12,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { AuthenticatedPrincipal } from '../../src/types';
 import type { Env } from '../../src/env';
+import { stubDatabase } from '../__stubs__/database';
 
 const cachedContent = vi.hoisted(() => ({
   fetch: vi.fn(),
@@ -49,7 +50,7 @@ vi.mock('cloudflare:workers', () => ({
 vi.mock('../../src/db', () => ({
   initializeDatabaseFromConnectionString: vi.fn(),
   runWithConnection: vi.fn().mockImplementation(
-    (_connStr: string, _opts: unknown, fn: () => unknown) => fn(),
+    async (_connStr: string, _opts: unknown, fn: () => Promise<unknown>) => fn(),
   ),
   query: vi.fn().mockResolvedValue({ rows: [{ now: new Date().toISOString() }] }),
 }));
@@ -189,6 +190,7 @@ describe('content path auth isolation under caching', () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
+    stubDatabase();
     cachedContent.fetch.mockResolvedValue(
       new Response(JSON.stringify({ mock: 'cached-content' }), {
         status: 200,

@@ -11,7 +11,6 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-
 // Mock the agent service
 vi.mock('../../src/services/agent-service', () => ({
   getAgentById: vi.fn(),
@@ -45,8 +44,8 @@ describe('Agent Politeness Phase 7.2: Agent Status Middleware', () => {
         capabilities: ['content_edit'],
         status: 'active',
         settings: {},
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+        createdAt: new Date(),
+        updatedAt: new Date(),
         isGlobal: false,
       });
 
@@ -76,8 +75,8 @@ describe('Agent Politeness Phase 7.2: Agent Status Middleware', () => {
         capabilities: ['content_edit'],
         status: 'suspended',
         settings: {},
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+        createdAt: new Date(),
+        updatedAt: new Date(),
         isGlobal: false,
       });
 
@@ -107,8 +106,8 @@ describe('Agent Politeness Phase 7.2: Agent Status Middleware', () => {
         capabilities: ['content_edit'],
         status: 'disabled',
         settings: {},
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+        createdAt: new Date(),
+        updatedAt: new Date(),
         isGlobal: false,
       });
 

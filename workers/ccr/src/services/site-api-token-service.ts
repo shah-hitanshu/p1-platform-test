@@ -6,7 +6,9 @@
  * The raw token is returned only once at creation time.
  */
 
-import { query } from '../db';
+import { and, desc, eq, isNull, sql, type InferSelectModel } from 'drizzle-orm';
+import { siteApiTokens } from '../db/schema';
+import { db } from '../db/scope';
 
 // =============================================================================
 // Types
@@ -33,9 +35,9 @@ export interface TokenMetadata {
   name: string;
   scopes: string[];
   createdBy: string;
-  createdAt: string;
-  lastUsedAt: string | null;
-  revokedAt: string | null;
+  createdAt: Date;
+  lastUsedAt: Date | null;
+  revokedAt: Date | null;
 }
 
 export interface ValidateTokenResult {
@@ -44,18 +46,19 @@ export interface ValidateTokenResult {
   scopes: string[];
 }
 
-interface TokenRow {
-  id: string;
-  site_id: string;
-  token_hash: string;
-  prefix: string;
-  name: string;
-  scopes: string[];
-  created_by: string;
-  created_at: string;
-  last_used_at: string | null;
-  revoked_at: string | null;
-}
+/** The columns metadata is built from; hashes are never among them. */
+type TokenMetadataColumns = Pick<
+  InferSelectModel<typeof siteApiTokens>,
+  | 'id'
+  | 'siteId'
+  | 'prefix'
+  | 'name'
+  | 'scopes'
+  | 'createdBy'
+  | 'createdAt'
+  | 'lastUsedAt'
+  | 'revokedAt'
+>;
 
 // =============================================================================
 // Constants
@@ -145,20 +148,22 @@ function memoizedLookup(tokenHash: string): Promise<ValidateTokenResult | null> 
 async function lookupTokenByHash(
   tokenHash: string,
 ): Promise<ValidateTokenResult | null> {
-  const result = await query<TokenRow>(
-    `SELECT id, site_id, scopes
-     FROM app.site_api_tokens
-     WHERE token_hash = $1 AND revoked_at IS NULL`,
-    [tokenHash],
-  );
+  const rows = await db()
+    .select({
+      id: siteApiTokens.id,
+      siteId: siteApiTokens.siteId,
+      scopes: siteApiTokens.scopes,
+    })
+    .from(siteApiTokens)
+    .where(and(eq(siteApiTokens.tokenHash, tokenHash), isNull(siteApiTokens.revokedAt)));
 
-  const row = result.rows[0];
+  const row = rows[0];
   if (!row) {
     return null;
   }
   return {
     tokenId: row.id,
-    siteId: row.site_id,
+    siteId: row.siteId,
     scopes: row.scopes,
   };
 }
@@ -167,17 +172,17 @@ export function clearTokenValidationCache(): void {
   validationCache.clear();
 }
 
-function mapRowToMetadata(row: TokenRow): TokenMetadata {
+function mapRowToMetadata(row: TokenMetadataColumns): TokenMetadata {
   return {
     id: row.id,
-    siteId: row.site_id,
+    siteId: row.siteId,
     prefix: row.prefix,
     name: row.name,
     scopes: row.scopes,
-    createdBy: row.created_by,
-    createdAt: row.created_at,
-    lastUsedAt: row.last_used_at,
-    revokedAt: row.revoked_at,
+    createdBy: row.createdBy,
+    createdAt: row.createdAt,
+    lastUsedAt: row.lastUsedAt,
+    revokedAt: row.revokedAt,
   };
 }
 
@@ -219,14 +224,19 @@ export async function generateToken(
   const prefix = rawToken.substring(0, TOKEN_PREFIX.length + DISPLAY_PREFIX_LENGTH);
   const tokenHash = await sha256Hex(rawToken);
 
-  const result = await query<TokenRow>(
-    `INSERT INTO app.site_api_tokens (site_id, token_hash, prefix, name, scopes, created_by)
-     VALUES ($1, $2, $3, $4, $5, $6)
-     RETURNING *`,
-    [params.siteId, tokenHash, prefix, params.name, scopes, params.createdBy],
-  );
+  const rows = await db()
+    .insert(siteApiTokens)
+    .values({
+      siteId: params.siteId,
+      tokenHash,
+      prefix,
+      name: params.name,
+      scopes,
+      createdBy: params.createdBy,
+    })
+    .returning();
 
-  const tokenRow = result.rows[0];
+  const tokenRow = rows[0];
   if (!tokenRow) {
     throw new Error('Failed to generate token');
   }
@@ -259,15 +269,23 @@ export async function validateToken(
  * List active (non-revoked) tokens for a site (metadata only, never hashes).
  */
 export async function listTokens(siteId: string): Promise<TokenMetadata[]> {
-  const result = await query<TokenRow>(
-    `SELECT id, site_id, prefix, name, scopes, created_by, created_at, last_used_at, revoked_at
-     FROM app.site_api_tokens
-     WHERE site_id = $1 AND revoked_at IS NULL
-     ORDER BY created_at DESC`,
-    [siteId],
-  );
+  const rows = await db()
+    .select({
+      id: siteApiTokens.id,
+      siteId: siteApiTokens.siteId,
+      prefix: siteApiTokens.prefix,
+      name: siteApiTokens.name,
+      scopes: siteApiTokens.scopes,
+      createdBy: siteApiTokens.createdBy,
+      createdAt: siteApiTokens.createdAt,
+      lastUsedAt: siteApiTokens.lastUsedAt,
+      revokedAt: siteApiTokens.revokedAt,
+    })
+    .from(siteApiTokens)
+    .where(and(eq(siteApiTokens.siteId, siteId), isNull(siteApiTokens.revokedAt)))
+    .orderBy(desc(siteApiTokens.createdAt));
 
-  return result.rows.map(mapRowToMetadata);
+  return rows.map(mapRowToMetadata);
 }
 
 /**
@@ -279,14 +297,19 @@ export async function revokeToken(
   tokenId: string,
   siteId: string,
 ): Promise<boolean> {
-  const result = await query(
-    `UPDATE app.site_api_tokens
-     SET revoked_at = NOW()
-     WHERE id = $1 AND site_id = $2 AND revoked_at IS NULL`,
-    [tokenId, siteId],
-  );
+  const updated = await db()
+    .update(siteApiTokens)
+    .set({ revokedAt: sql`NOW()` })
+    .where(
+      and(
+        eq(siteApiTokens.id, tokenId),
+        eq(siteApiTokens.siteId, siteId),
+        isNull(siteApiTokens.revokedAt),
+      ),
+    )
+    .returning({ id: siteApiTokens.id });
 
-  const revoked = (result.rowCount ?? 0) > 0;
+  const revoked = updated.length > 0;
   if (revoked) {
     // Entries are keyed by hash and we only have the id; revocation is rare
     // enough that dropping the whole isolate-local cache is the simple answer.

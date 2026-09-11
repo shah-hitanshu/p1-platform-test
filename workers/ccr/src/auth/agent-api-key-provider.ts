@@ -10,9 +10,9 @@
  */
 
 import type { AuthenticatedPrincipal } from '../types';
-import type { IdentityProvider } from './identity-provider';
 import { validateKey } from '../services/agent-api-key-service';
 import { getRolesForAgent } from '../services/agent-site-role-service';
+import type { IdentityProvider } from './identity-provider';
 
 const KEY_PREFIX = 'aak_';
 
@@ -38,9 +38,8 @@ export class AgentApiKeyProvider implements IdentityProvider {
    * Bearer token validation is not supported for agent keys.
    * Always returns null.
    */
-  // eslint-disable-next-line @typescript-eslint/require-await
-  async validateToken(_token: string): Promise<AuthenticatedPrincipal | null> {
-    return null;
+  validateToken(_token: string): Promise<AuthenticatedPrincipal | null> {
+    return Promise.resolve(null);
   }
 
   /**
@@ -60,8 +59,7 @@ export class AgentApiKeyProvider implements IdentityProvider {
       return null;
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-    const pantheonSiteRoles = (await getRolesForAgent(result.agentId)) ?? {};
+    const pantheonSiteRoles = await getRolesForAgent(result.agentId);
 
     return {
       id: result.agentId,

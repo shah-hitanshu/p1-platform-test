@@ -183,7 +183,7 @@ export async function handleSiteExportRoute(
             createdByRef: refMap.get(e.v.createdById) ?? { type: 'system' },
           }),
         }))
-        .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+        .sort((a, b) => (a.createdAt?.getTime() ?? 0) - (b.createdAt?.getTime() ?? 0));
 
       files[`documents/${safePath}/versions.jsonl`] = strToU8(
         versionLines.map((v) => v.line).join('\n'),

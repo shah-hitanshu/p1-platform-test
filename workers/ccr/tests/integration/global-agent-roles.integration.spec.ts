@@ -12,9 +12,10 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
-import postgres from 'postgres';
+import type postgres from 'postgres';
 import { setDatabaseInstance } from '../../src/db';
-import type { DatabaseConnection, QueryResult } from '../../src/db';
+import type { DatabaseConnection } from '../../src/db';
+import { createRealDatabaseConnection } from '../helpers/database';
 import {
   grantRole,
   isGlobalAgentId,
@@ -27,36 +28,6 @@ import { getAgentById, getAgentsByOrganization } from '../../src/services/agent-
 import { listSites } from '../../src/services/site-service';
 import type { AuthenticatedPrincipal } from '../../src/types';
 
-const CONNECTION_STRING = 'postgresql://cssuser:csspass@localhost:5432/cssdb';
-
-function createRealDatabaseConnection(connectionString: string): {
-  connection: DatabaseConnection;
-  sql: postgres.Sql;
-} {
-  const sql = postgres(connectionString, {
-    transform: { undefined: null },
-    max: 1,
-  });
-
-  const connection: DatabaseConnection = {
-    async query<T = Record<string, unknown>>(
-      sqlQuery: string,
-      params?: unknown[],
-    ): Promise<QueryResult<T>> {
-      const result = await sql.unsafe<T[]>(sqlQuery, params as unknown as postgres.ParameterOrJSON<never>[]);
-      const rows = [...result] as T[];
-      const resultWithCount = result as unknown as { count?: number };
-      const rowCount = resultWithCount.count ?? rows.length;
-      return { rows, rowCount };
-    },
-    async close(): Promise<void> {
-      await sql.end();
-    },
-  };
-
-  return { connection, sql };
-}
-
 const GLOBAL_AGENT_ID = 'c1000000-0000-0000-0000-000000000001';
 const LOCAL_AGENT_ID = 'c1000000-0000-0000-0000-000000000002';
 const GRANTED_BY = '00000000-0000-0000-0000-0000000000ff';
@@ -65,6 +36,7 @@ const STRANGER_EMAIL = 'global-agent-test-stranger@example.com';
 
 describe('global agents in the site agent-access list', () => {
   let sql: postgres.Sql;
+  let connection: DatabaseConnection;
   let testOrgId: string;
   let otherOrgId: string;
   let testSiteId: string;
@@ -72,8 +44,9 @@ describe('global agents in the site agent-access list', () => {
   let actingUserId: string;
 
   beforeAll(async () => {
-    const { connection, sql: pgSql } = createRealDatabaseConnection(CONNECTION_STRING);
-    sql = pgSql;
+    const handles = createRealDatabaseConnection();
+    sql = handles.sql;
+    connection = handles.connection;
     setDatabaseInstance(connection);
 
     const orgResult = await sql`
@@ -145,7 +118,7 @@ describe('global agents in the site agent-access list', () => {
        WHERE email IN (${ACTING_USER_EMAIL}, ${STRANGER_EMAIL})`;
     await sql`DELETE FROM app.sites WHERE pantheon_site_id LIKE 'global-agent-test%'`;
     await sql`DELETE FROM app.organizations WHERE id IN (${testOrgId}, ${otherOrgId})`;
-    await sql.end();
+    await connection.close();
   });
 
   it('includes a global agent from another org with no explicit grant', async () => {

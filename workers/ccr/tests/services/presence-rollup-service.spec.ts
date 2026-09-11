@@ -442,8 +442,8 @@ describe('Phase 8: Presence Rollup Service', () => {
         capabilities: ['edit'],
         status: 'active',
         settings: {},
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+        createdAt: new Date(),
+        updatedAt: new Date(),
         isGlobal: false,
       });
       vi.mocked(organizationService.getSitesByOrganization).mockResolvedValue([createMockSite()]);
@@ -488,8 +488,8 @@ describe('Phase 8: Presence Rollup Service', () => {
         capabilities: ['edit'],
         status: 'active',
         settings: {},
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+        createdAt: new Date(),
+        updatedAt: new Date(),
         isGlobal: false,
       });
       vi.mocked(organizationService.getSitesByOrganization).mockResolvedValue([site1, site2]);

@@ -6,6 +6,14 @@
  */
 
 import {
+  contextForTask,
+  contextFromRequest,
+  enrichContext,
+  getLogger,
+  withRequestContext,
+  P1_TELEMETRY_HEADERS,
+} from '@pantheon-systems/p1-telemetry';
+import {
   runWithConnection,
   query,
 } from './db';
@@ -44,16 +52,7 @@ import { handleBrokerRoutes } from './routes/broker-routes';
 import { getCachedSiteAllowedOrigins } from './services/site-service';
 import { isFeatureFlagEnabled } from './services/feature-flag-service';
 import { stripInboundTrustedHeaders } from './utils/trusted-headers';
-import {
-  contextForTask,
-  contextFromRequest,
-  enrichContext,
-  getLogger,
-  withRequestContext,
-  P1_TELEMETRY_HEADERS,
-} from '@pantheon-systems/p1-telemetry';
 import { P1FeatureFlagService } from '@pantheon-systems/p1-feature-flags';
-
 import { ensureLogger } from './telemetry';
 
 // Queue consumer (Phase 5.1)

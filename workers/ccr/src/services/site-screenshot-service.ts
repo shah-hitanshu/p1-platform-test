@@ -10,8 +10,10 @@
  * is missing or older than the configured staleness window.
  */
 
+import { and, eq, isNotNull, isNull, lt, or, sql, type InferSelectModel } from 'drizzle-orm';
 import type { SiteScreenshot, SiteScreenshotStatus } from '../types';
-import { query } from '../db';
+import { siteScreenshots, sites } from '../db/schema';
+import { db } from '../db/scope';
 
 export interface UpsertSiteScreenshotParams {
   siteId: string;
@@ -31,30 +33,20 @@ export interface SiteNeedingScreenshotRefresh {
   url: string;
 }
 
-interface SiteScreenshotRow {
-  site_id: string;
-  r2_key: string;
-  status: string;
-  captured_at: string;
-  error: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-function mapRowToSiteScreenshot(row: SiteScreenshotRow): SiteScreenshot {
+function mapRowToSiteScreenshot(row: InferSelectModel<typeof siteScreenshots>): SiteScreenshot {
   return {
-    siteId: row.site_id,
-    r2Key: row.r2_key,
+    siteId: row.siteId,
+    r2Key: row.r2Key,
     status: row.status as SiteScreenshotStatus,
-    capturedAt: row.captured_at,
+    capturedAt: row.capturedAt,
     error: row.error ?? undefined,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
   };
 }
 
-function toIsoString(value: string | Date): string {
-  return value instanceof Date ? value.toISOString() : value;
+function toDate(value: string | Date): Date {
+  return value instanceof Date ? value : new Date(value);
 }
 
 /**
@@ -63,27 +55,28 @@ function toIsoString(value: string | Date): string {
 export async function upsertSiteScreenshot(
   params: UpsertSiteScreenshotParams,
 ): Promise<SiteScreenshot> {
-  const result = await query<SiteScreenshotRow>(
-    `INSERT INTO app.site_screenshots
-       (site_id, r2_key, status, captured_at, error)
-     VALUES ($1, $2, $3, $4, $5)
-     ON CONFLICT (site_id) DO UPDATE
-       SET r2_key      = EXCLUDED.r2_key,
-           status      = EXCLUDED.status,
-           captured_at = EXCLUDED.captured_at,
-           error       = EXCLUDED.error,
-           updated_at  = NOW()
-     RETURNING *`,
-    [
-      params.siteId,
-      params.r2Key,
-      params.status,
-      toIsoString(params.capturedAt),
-      params.error ?? null,
-    ],
-  );
+  const rows = await db()
+    .insert(siteScreenshots)
+    .values({
+      siteId: params.siteId,
+      r2Key: params.r2Key,
+      status: params.status,
+      capturedAt: toDate(params.capturedAt),
+      error: params.error ?? null,
+    })
+    .onConflictDoUpdate({
+      target: siteScreenshots.siteId,
+      set: {
+        r2Key: sql`excluded.r2_key`,
+        status: sql`excluded.status`,
+        capturedAt: sql`excluded.captured_at`,
+        error: sql`excluded.error`,
+        updatedAt: sql`NOW()`,
+      },
+    })
+    .returning();
 
-  const row = result.rows[0];
+  const row = rows[0];
   if (!row) {
     throw new Error('Failed to upsert site screenshot');
   }
@@ -96,12 +89,12 @@ export async function upsertSiteScreenshot(
 export async function getSiteScreenshot(
   siteId: string,
 ): Promise<SiteScreenshot | null> {
-  const result = await query<SiteScreenshotRow>(
-    'SELECT * FROM app.site_screenshots WHERE site_id = $1',
-    [siteId],
-  );
+  const rows = await db()
+    .select()
+    .from(siteScreenshots)
+    .where(eq(siteScreenshots.siteId, siteId));
 
-  const screenshotRow = result.rows[0];
+  const screenshotRow = rows[0];
   if (!screenshotRow) {
     return null;
   }
@@ -116,17 +109,26 @@ export async function getSiteScreenshot(
 export async function listSitesNeedingScreenshotRefresh(
   options: ListSitesNeedingScreenshotRefreshOptions,
 ): Promise<SiteNeedingScreenshotRefresh[]> {
-  const result = await query<{ id: string; url: string }>(
-    `SELECT s.id, s.url
-       FROM app.sites s
-       LEFT JOIN app.site_screenshots ss ON ss.site_id = s.id
-      WHERE s.url IS NOT NULL
-        AND (ss.captured_at IS NULL
-             OR ss.captured_at < NOW() - ($1::int * interval '1 day'))
-      ORDER BY ss.captured_at ASC NULLS FIRST
-      LIMIT $2`,
-    [options.staleAfterDays, options.limit],
-  );
+  const rows = await db()
+    // The `url IS NOT NULL` predicate below is what makes every selected url a string.
+    .select({ id: sites.id, url: sql<string>`${sites.url}` })
+    .from(sites)
+    .leftJoin(siteScreenshots, eq(siteScreenshots.siteId, sites.id))
+    .where(
+      and(
+        isNotNull(sites.url),
+        or(
+          isNull(siteScreenshots.capturedAt),
+          lt(
+            siteScreenshots.capturedAt,
+            sql`NOW() - (${options.staleAfterDays}::int * interval '1 day')`,
+          ),
+        ),
+      ),
+    )
+    // A site with no screenshot at all is the stalest thing there is, so it sorts first.
+    .orderBy(sql`${siteScreenshots.capturedAt} ASC NULLS FIRST`)
+    .limit(options.limit);
 
-  return result.rows.map((row) => ({ siteId: row.id, url: row.url }));
+  return rows.map((row) => ({ siteId: row.id, url: row.url }));
 }

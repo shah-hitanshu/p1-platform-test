@@ -8,8 +8,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { AuthenticatedPrincipal } from '../../src/types';
-import type { SiteScreenshot } from '../../src/types';
+import type { AuthenticatedPrincipal, SiteScreenshot } from '../../src/types';
 import { readJson } from '../helpers/http';
 import { makeBranch } from '../helpers/branch';
 
@@ -53,9 +52,9 @@ const mockScreenshot: SiteScreenshot = {
   siteId: 'site-123',
   r2Key: 'screenshots/site-123.png',
   status: 'ok',
-  capturedAt: '2026-05-08T10:00:00.000Z',
-  createdAt: '2026-05-08T10:00:00.000Z',
-  updatedAt: '2026-05-08T10:00:00.000Z',
+  capturedAt: new Date('2026-05-08T10:00:00.000Z'),
+  createdAt: new Date('2026-05-08T10:00:00.000Z'),
+  updatedAt: new Date('2026-05-08T10:00:00.000Z'),
 };
 
 interface PresignEnv {

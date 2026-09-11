@@ -5,58 +5,71 @@
  * Based on collaborative-state-system-architecture-v2.3.md
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { AgentSettings, AgentStatus } from '../../src/types';
-
-// Mock database module
-vi.mock('../../src/db', () => ({
-  query: vi.fn(),
-}));
+import { describe, it, expect, beforeEach } from 'vitest';
+import type { InferSelectModel } from 'drizzle-orm';
+import { stubDatabase, type DatabaseStub } from '../__stubs__/database';
+import { agents } from '../../src/db/schema';
+import type { AgentSettings } from '../../src/types';
+import {
+  createAgent,
+  getAgentById,
+  getAgentByName,
+  updateAgent,
+  updateAgentStatus,
+  deleteAgent,
+  listAgents,
+  getAgentsByOrganization,
+  getActiveAgentCount,
+} from '../../src/services/agent-service';
+import {
+  DuplicateAgentIdError,
+  DuplicateAgentNameError,
+  InvalidAgentParamsError,
+  OrganizationNotFoundError,
+} from '../../src/services/errors';
 
 describe('Agent Politeness Phase 1.4: Agent Registry Service', () => {
+  let database: DatabaseStub;
+
   beforeEach(() => {
-    vi.resetAllMocks();
+    database = stubDatabase();
   });
 
   // Default agent settings
   const defaultAgentSettings: AgentSettings = {};
 
-  // Mock agent row type (database format)
-  interface MockAgentRow {
-    id: string;
-    organization_id: string;
-    name: string;
-    description: string | null;
-    capabilities: string[];
-    status: AgentStatus;
-    settings: AgentSettings | string;
-    created_at: string;
-    updated_at: string;
-  }
+  const createdAt = new Date('2026-01-26T12:00:00.000Z');
+  const updatedAt = new Date('2026-01-26T12:00:00.000Z');
 
-  // Helper to create a mock agent row (database format)
-  function createMockAgentRow(overrides: Partial<MockAgentRow> = {}): MockAgentRow {
+  type AgentRow = InferSelectModel<typeof agents>;
+
+  // Helper to create a stub agent row
+  function createAgentRow(overrides: Partial<AgentRow> = {}): Partial<AgentRow> {
     return {
       id: 'agent-uuid-123',
-      organization_id: 'org-uuid-123',
+      organizationId: 'org-uuid-123',
       name: 'Test Agent',
       description: 'A test agent',
       capabilities: ['edit', 'create'],
       status: 'active',
       settings: defaultAgentSettings,
-      created_at: '2026-01-26T12:00:00.000Z',
-      updated_at: '2026-01-26T12:00:00.000Z',
+      createdAt,
+      updatedAt,
       ...overrides,
     };
   }
 
+  /** The error shape postgres raises for a constraint violation. */
+  function constraintViolation(code: string, constraintName: string): Error {
+    return Object.assign(new Error('constraint violation'), {
+      code,
+      constraint_name: constraintName,
+    });
+  }
+
   describe('createAgent', () => {
     it('should create an agent with required fields', async () => {
-      const { createAgent } = await import('../../src/services/agent-service');
-      const db = await import('../../src/db');
-
-      const mockRow = createMockAgentRow();
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+      database.on(agents).insert.returns([createAgentRow()]);
 
       const result = await createAgent({
         organizationId: 'org-uuid-123',
@@ -69,19 +82,17 @@ describe('Agent Politeness Phase 1.4: Agent Registry Service', () => {
       expect(result.id).toBeDefined();
       expect(result.status).toBe('active');
       expect(result.capabilities).toEqual(['edit', 'create']);
-      expect(result.createdAt).toBeDefined();
-      expect(result.updatedAt).toBeDefined();
+      expect(result.createdAt).toEqual(createdAt);
+      expect(result.updatedAt).toEqual(updatedAt);
     });
 
     it('should create an agent with description and capabilities', async () => {
-      const { createAgent } = await import('../../src/services/agent-service');
-      const db = await import('../../src/db');
-
-      const mockRow = createMockAgentRow({
-        description: 'A helpful editing agent',
-        capabilities: ['edit', 'create', 'delete'],
-      });
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+      database.on(agents).insert.returns([
+        createAgentRow({
+          description: 'A helpful editing agent',
+          capabilities: ['edit', 'create', 'delete'],
+        }),
+      ]);
 
       const result = await createAgent({
         organizationId: 'org-uuid-123',
@@ -95,14 +106,10 @@ describe('Agent Politeness Phase 1.4: Agent Registry Service', () => {
     });
 
     it('should create an agent with custom settings', async () => {
-      const { createAgent } = await import('../../src/services/agent-service');
-      const db = await import('../../src/db');
-
       const customSettings: AgentSettings = {
         priorityTier: 'high',
       };
-      const mockRow = createMockAgentRow({ settings: customSettings });
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+      database.on(agents).insert.returns([createAgentRow({ settings: customSettings })]);
 
       const result = await createAgent({
         organizationId: 'org-uuid-123',
@@ -111,12 +118,10 @@ describe('Agent Politeness Phase 1.4: Agent Registry Service', () => {
       });
 
       expect(result.settings.priorityTier).toBe('high');
+      expect(database.calls(agents).insert[0].params).toContain(JSON.stringify(customSettings));
     });
 
     it('should throw InvalidAgentParamsError for empty name', async () => {
-      const { createAgent } = await import('../../src/services/agent-service');
-      const { InvalidAgentParamsError } = await import('../../src/services/errors');
-
       await expect(
         createAgent({
           organizationId: 'org-uuid-123',
@@ -126,9 +131,6 @@ describe('Agent Politeness Phase 1.4: Agent Registry Service', () => {
     });
 
     it('should throw InvalidAgentParamsError for whitespace-only name', async () => {
-      const { createAgent } = await import('../../src/services/agent-service');
-      const { InvalidAgentParamsError } = await import('../../src/services/errors');
-
       await expect(
         createAgent({
           organizationId: 'org-uuid-123',
@@ -138,14 +140,9 @@ describe('Agent Politeness Phase 1.4: Agent Registry Service', () => {
     });
 
     it('should throw OrganizationNotFoundError when organization does not exist', async () => {
-      const { createAgent } = await import('../../src/services/agent-service');
-      const { OrganizationNotFoundError } = await import('../../src/services/errors');
-      const db = await import('../../src/db');
-
-      // Simulate foreign key constraint violation
-      const error = new Error('foreign key constraint violation') as NodeJS.ErrnoException;
-      error.code = '23503';
-      vi.mocked(db.query).mockRejectedValue(error);
+      database
+        .on(agents)
+        .insert.rejects(constraintViolation('23503', 'agents_organization_id_fkey'));
 
       await expect(
         createAgent({
@@ -156,14 +153,9 @@ describe('Agent Politeness Phase 1.4: Agent Registry Service', () => {
     });
 
     it('should throw DuplicateAgentNameError when agent name exists in organization', async () => {
-      const { createAgent } = await import('../../src/services/agent-service');
-      const { DuplicateAgentNameError } = await import('../../src/services/errors');
-      const db = await import('../../src/db');
-
-      // Simulate unique constraint violation
-      const error = new Error('duplicate key value violates unique constraint') as NodeJS.ErrnoException;
-      error.code = '23505';
-      vi.mocked(db.query).mockRejectedValue(error);
+      database
+        .on(agents)
+        .insert.rejects(constraintViolation('23505', 'agents_organization_id_name_key'));
 
       await expect(
         createAgent({
@@ -172,15 +164,23 @@ describe('Agent Politeness Phase 1.4: Agent Registry Service', () => {
         }),
       ).rejects.toThrow(DuplicateAgentNameError);
     });
+
+    it('should throw DuplicateAgentIdError when the primary key is the violated constraint', async () => {
+      database.on(agents).insert.rejects(constraintViolation('23505', 'agents_pkey'));
+
+      await expect(
+        createAgent({
+          id: 'agent-uuid-123',
+          organizationId: 'org-uuid-123',
+          name: 'Test Agent',
+        }),
+      ).rejects.toThrow(DuplicateAgentIdError);
+    });
   });
 
   describe('getAgentById', () => {
     it('should return an agent by ID', async () => {
-      const { getAgentById } = await import('../../src/services/agent-service');
-      const db = await import('../../src/db');
-
-      const mockRow = createMockAgentRow();
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+      database.on(agents).select.returns([createAgentRow()]);
 
       const result = await getAgentById('agent-uuid-123');
 
@@ -188,55 +188,37 @@ describe('Agent Politeness Phase 1.4: Agent Registry Service', () => {
       expect(result?.id).toBe('agent-uuid-123');
       expect(result?.name).toBe('Test Agent');
       expect(result?.organizationId).toBe('org-uuid-123');
+      expect(database.calls(agents).select[0].params).toEqual(['agent-uuid-123']);
     });
 
     it('should return null for non-existent agent', async () => {
-      const { getAgentById } = await import('../../src/services/agent-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
-
       const result = await getAgentById('non-existent-id');
 
       expect(result).toBeNull();
     });
 
-    it('should parse settings from string format (JSONB)', async () => {
-      const { getAgentById } = await import('../../src/services/agent-service');
-      const db = await import('../../src/db');
-
-      const mockRow = createMockAgentRow({
-        settings: JSON.stringify({ priorityTier: 'low' }),
-      });
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+    it('should return the settings object the jsonb column holds', async () => {
+      database.on(agents).select.returns([createAgentRow({ settings: { priorityTier: 'low' } })]);
 
       const result = await getAgentById('agent-uuid-123');
 
-      expect(result?.settings.priorityTier).toBe('low');
+      expect(result?.settings).toEqual({ priorityTier: 'low' });
     });
   });
 
   describe('getAgentByName', () => {
     it('should return an agent by organization and name', async () => {
-      const { getAgentByName } = await import('../../src/services/agent-service');
-      const db = await import('../../src/db');
-
-      const mockRow = createMockAgentRow();
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+      database.on(agents).select.returns([createAgentRow()]);
 
       const result = await getAgentByName('org-uuid-123', 'Test Agent');
 
       expect(result).toBeDefined();
       expect(result?.name).toBe('Test Agent');
       expect(result?.organizationId).toBe('org-uuid-123');
+      expect(database.calls(agents).select[0].params).toEqual(['org-uuid-123', 'Test Agent']);
     });
 
     it('should return null when agent name not found in organization', async () => {
-      const { getAgentByName } = await import('../../src/services/agent-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
-
       const result = await getAgentByName('org-uuid-123', 'Non-Existent Agent');
 
       expect(result).toBeNull();
@@ -245,11 +227,7 @@ describe('Agent Politeness Phase 1.4: Agent Registry Service', () => {
 
   describe('updateAgent', () => {
     it('should update agent name', async () => {
-      const { updateAgent } = await import('../../src/services/agent-service');
-      const db = await import('../../src/db');
-
-      const mockRow = createMockAgentRow({ name: 'Updated Agent' });
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+      database.on(agents).update.returns([createAgentRow({ name: 'Updated Agent' })]);
 
       const result = await updateAgent('agent-uuid-123', {
         name: 'Updated Agent',
@@ -257,29 +235,23 @@ describe('Agent Politeness Phase 1.4: Agent Registry Service', () => {
 
       expect(result).toBeDefined();
       expect(result?.name).toBe('Updated Agent');
+      expect(database.calls(agents).update[0].params).toEqual(['Updated Agent', 'agent-uuid-123']);
     });
 
     it('should update agent description', async () => {
-      const { updateAgent } = await import('../../src/services/agent-service');
-      const db = await import('../../src/db');
-
-      const mockRow = createMockAgentRow({ description: 'New description' });
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+      database.on(agents).update.returns([createAgentRow({ description: 'New description' })]);
 
       const result = await updateAgent('agent-uuid-123', {
         description: 'New description',
       });
 
       expect(result?.description).toBe('New description');
+      expect(database.calls(agents).update[0].params).toEqual(['New description', 'agent-uuid-123']);
     });
 
     it('should update agent capabilities', async () => {
-      const { updateAgent } = await import('../../src/services/agent-service');
-      const db = await import('../../src/db');
-
       const newCapabilities = ['edit', 'create', 'delete', 'merge'];
-      const mockRow = createMockAgentRow({ capabilities: newCapabilities });
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+      database.on(agents).update.returns([createAgentRow({ capabilities: newCapabilities })]);
 
       const result = await updateAgent('agent-uuid-123', {
         capabilities: newCapabilities,
@@ -288,29 +260,24 @@ describe('Agent Politeness Phase 1.4: Agent Registry Service', () => {
       expect(result?.capabilities).toEqual(newCapabilities);
     });
 
-    it('should update agent settings', async () => {
-      const { updateAgent } = await import('../../src/services/agent-service');
-      const db = await import('../../src/db');
-
+    it('should merge supplied settings into the stored value', async () => {
       const updatedSettings: AgentSettings = {
         priorityTier: 'urgent',
       };
-      const mockRow = createMockAgentRow({ settings: updatedSettings });
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+      database.on(agents).update.returns([createAgentRow({ settings: updatedSettings })]);
 
       const result = await updateAgent('agent-uuid-123', {
         settings: updatedSettings,
       });
 
       expect(result?.settings.priorityTier).toBe('urgent');
+      expect(database.calls(agents).update[0].params).toEqual([
+        JSON.stringify(updatedSettings),
+        'agent-uuid-123',
+      ]);
     });
 
     it('should return null for non-existent agent', async () => {
-      const { updateAgent } = await import('../../src/services/agent-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
-
       const result = await updateAgent('non-existent-id', {
         name: 'New Name',
       });
@@ -318,10 +285,16 @@ describe('Agent Politeness Phase 1.4: Agent Registry Service', () => {
       expect(result).toBeNull();
     });
 
-    it('should throw InvalidAgentParamsError for empty name', async () => {
-      const { updateAgent } = await import('../../src/services/agent-service');
-      const { InvalidAgentParamsError } = await import('../../src/services/errors');
+    it('should read back current state when no fields are supplied', async () => {
+      database.on(agents).select.returns([createAgentRow()]);
 
+      const result = await updateAgent('agent-uuid-123', {});
+
+      expect(result?.name).toBe('Test Agent');
+      expect(database.calls(agents).update).toHaveLength(0);
+    });
+
+    it('should throw InvalidAgentParamsError for empty name', async () => {
       await expect(
         updateAgent('agent-uuid-123', {
           name: '',
@@ -330,14 +303,9 @@ describe('Agent Politeness Phase 1.4: Agent Registry Service', () => {
     });
 
     it('should throw DuplicateAgentNameError when name conflicts', async () => {
-      const { updateAgent } = await import('../../src/services/agent-service');
-      const { DuplicateAgentNameError } = await import('../../src/services/errors');
-      const db = await import('../../src/db');
-
-      // Simulate unique constraint violation
-      const error = new Error('duplicate key value violates unique constraint') as NodeJS.ErrnoException;
-      error.code = '23505';
-      vi.mocked(db.query).mockRejectedValue(error);
+      database
+        .on(agents)
+        .update.rejects(constraintViolation('23505', 'agents_organization_id_name_key'));
 
       await expect(
         updateAgent('agent-uuid-123', {
@@ -349,24 +317,17 @@ describe('Agent Politeness Phase 1.4: Agent Registry Service', () => {
 
   describe('updateAgentStatus', () => {
     it('should update agent status to suspended', async () => {
-      const { updateAgentStatus } = await import('../../src/services/agent-service');
-      const db = await import('../../src/db');
-
-      const mockRow = createMockAgentRow({ status: 'suspended' });
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+      database.on(agents).update.returns([createAgentRow({ status: 'suspended' })]);
 
       const result = await updateAgentStatus('agent-uuid-123', 'suspended');
 
       expect(result).toBeDefined();
       expect(result?.status).toBe('suspended');
+      expect(database.calls(agents).update[0].params).toEqual(['suspended', 'agent-uuid-123']);
     });
 
     it('should update agent status to disabled', async () => {
-      const { updateAgentStatus } = await import('../../src/services/agent-service');
-      const db = await import('../../src/db');
-
-      const mockRow = createMockAgentRow({ status: 'disabled' });
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+      database.on(agents).update.returns([createAgentRow({ status: 'disabled' })]);
 
       const result = await updateAgentStatus('agent-uuid-123', 'disabled');
 
@@ -374,11 +335,7 @@ describe('Agent Politeness Phase 1.4: Agent Registry Service', () => {
     });
 
     it('should update agent status to active', async () => {
-      const { updateAgentStatus } = await import('../../src/services/agent-service');
-      const db = await import('../../src/db');
-
-      const mockRow = createMockAgentRow({ status: 'active' });
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+      database.on(agents).update.returns([createAgentRow({ status: 'active' })]);
 
       const result = await updateAgentStatus('agent-uuid-123', 'active');
 
@@ -386,11 +343,6 @@ describe('Agent Politeness Phase 1.4: Agent Registry Service', () => {
     });
 
     it('should return null for non-existent agent', async () => {
-      const { updateAgentStatus } = await import('../../src/services/agent-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
-
       const result = await updateAgentStatus('non-existent-id', 'suspended');
 
       expect(result).toBeNull();
@@ -399,22 +351,15 @@ describe('Agent Politeness Phase 1.4: Agent Registry Service', () => {
 
   describe('deleteAgent', () => {
     it('should delete an agent and return true', async () => {
-      const { deleteAgent } = await import('../../src/services/agent-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [{ id: 'agent-uuid-123' }] });
+      database.on(agents).delete.returns([{ id: 'agent-uuid-123' }]);
 
       const result = await deleteAgent('agent-uuid-123');
 
       expect(result).toBe(true);
+      expect(database.calls(agents).delete[0].params).toEqual(['agent-uuid-123']);
     });
 
     it('should return false for non-existent agent', async () => {
-      const { deleteAgent } = await import('../../src/services/agent-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
-
       const result = await deleteAgent('non-existent-id');
 
       expect(result).toBe(false);
@@ -423,14 +368,12 @@ describe('Agent Politeness Phase 1.4: Agent Registry Service', () => {
 
   describe('listAgents', () => {
     it('should list all agents', async () => {
-      const { listAgents } = await import('../../src/services/agent-service');
-      const db = await import('../../src/db');
-
-      const mockRows = [
-        createMockAgentRow({ id: 'agent-1', name: 'Agent One' }),
-        createMockAgentRow({ id: 'agent-2', name: 'Agent Two' }),
-      ];
-      vi.mocked(db.query).mockResolvedValue({ rows: mockRows });
+      database
+        .on(agents)
+        .select.returns([
+          createAgentRow({ id: 'agent-1', name: 'Agent One' }),
+          createAgentRow({ id: 'agent-2', name: 'Agent Two' }),
+        ]);
 
       const result = await listAgents();
 
@@ -440,53 +383,39 @@ describe('Agent Politeness Phase 1.4: Agent Registry Service', () => {
     });
 
     it('should return empty array when no agents exist', async () => {
-      const { listAgents } = await import('../../src/services/agent-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
-
       const result = await listAgents();
 
       expect(result).toEqual([]);
     });
 
     it('should support pagination with limit and offset', async () => {
-      const { listAgents } = await import('../../src/services/agent-service');
-      const db = await import('../../src/db');
-
-      const mockRows = [createMockAgentRow({ id: 'agent-2', name: 'Agent Two' })];
-      vi.mocked(db.query).mockResolvedValue({ rows: mockRows });
+      database.on(agents).select.returns([createAgentRow({ id: 'agent-2', name: 'Agent Two' })]);
 
       const result = await listAgents({ limit: 1, offset: 1 });
 
       expect(result).toHaveLength(1);
-      expect(db.query).toHaveBeenCalled();
+      expect(database.calls(agents).select[0].params).toEqual([1, 1]);
     });
 
     it('should filter by status', async () => {
-      const { listAgents } = await import('../../src/services/agent-service');
-      const db = await import('../../src/db');
-
-      const mockRows = [createMockAgentRow({ id: 'agent-1', status: 'active' })];
-      vi.mocked(db.query).mockResolvedValue({ rows: mockRows });
+      database.on(agents).select.returns([createAgentRow({ id: 'agent-1', status: 'active' })]);
 
       const result = await listAgents({ status: 'active' });
 
       expect(result).toHaveLength(1);
       expect(result[0].status).toBe('active');
+      expect(database.calls(agents).select[0].params).toContain('active');
     });
   });
 
   describe('getAgentsByOrganization', () => {
     it('should return all agents for an organization', async () => {
-      const { getAgentsByOrganization } = await import('../../src/services/agent-service');
-      const db = await import('../../src/db');
-
-      const mockRows = [
-        createMockAgentRow({ id: 'agent-1', name: 'Agent One', organization_id: 'org-uuid-123' }),
-        createMockAgentRow({ id: 'agent-2', name: 'Agent Two', organization_id: 'org-uuid-123' }),
-      ];
-      vi.mocked(db.query).mockResolvedValue({ rows: mockRows });
+      database
+        .on(agents)
+        .select.returns([
+          createAgentRow({ id: 'agent-1', name: 'Agent One', organizationId: 'org-uuid-123' }),
+          createAgentRow({ id: 'agent-2', name: 'Agent Two', organizationId: 'org-uuid-123' }),
+        ]);
 
       const result = await getAgentsByOrganization('org-uuid-123');
 
@@ -494,50 +423,40 @@ describe('Agent Politeness Phase 1.4: Agent Registry Service', () => {
       expect(result[0].name).toBe('Agent One');
       expect(result[1].name).toBe('Agent Two');
       expect(result[0].organizationId).toBe('org-uuid-123');
+      expect(database.calls(agents).select[0].params).toEqual(['org-uuid-123', true]);
     });
 
     it('should return empty array when organization has no agents', async () => {
-      const { getAgentsByOrganization } = await import('../../src/services/agent-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
-
       const result = await getAgentsByOrganization('org-with-no-agents');
 
       expect(result).toEqual([]);
     });
 
     it('should filter by status within organization', async () => {
-      const { getAgentsByOrganization } = await import('../../src/services/agent-service');
-      const db = await import('../../src/db');
+      database.on(agents).select.returns([createAgentRow({ id: 'agent-1', status: 'active' })]);
 
-      const mockRows = [createMockAgentRow({ id: 'agent-1', status: 'active' })];
-      vi.mocked(db.query).mockResolvedValue({ rows: mockRows });
-
-      const result = await getAgentsByOrganization('org-uuid-123', { status: 'active' });
+      const result = await getAgentsByOrganization('org-uuid-123', {
+        status: 'active',
+      });
 
       expect(result).toHaveLength(1);
       expect(result[0].status).toBe('active');
+      expect(database.calls(agents).select[0].params).toEqual(['org-uuid-123', true, 'active']);
     });
   });
 
   describe('getActiveAgentCount', () => {
     it('should return count of active agents for an organization', async () => {
-      const { getActiveAgentCount } = await import('../../src/services/agent-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [{ count: '5' }] });
+      database.on(agents).select.returnsRaw([{ count: 5 }]);
 
       const result = await getActiveAgentCount('org-uuid-123');
 
       expect(result).toBe(5);
+      expect(database.calls(agents).select[0].params).toEqual(['org-uuid-123', 'active']);
     });
 
     it('should return 0 when no active agents exist', async () => {
-      const { getActiveAgentCount } = await import('../../src/services/agent-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [{ count: '0' }] });
+      database.on(agents).select.returnsRaw([{ count: 0 }]);
 
       const result = await getActiveAgentCount('org-with-no-agents');
 

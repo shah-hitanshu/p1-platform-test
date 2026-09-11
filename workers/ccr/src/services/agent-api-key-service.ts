@@ -9,7 +9,9 @@
  * Authorization is determined by per-site roles in agent_site_roles.
  */
 
-import { query } from '../db';
+import { and, desc, eq, isNull, sql, type InferSelectModel } from 'drizzle-orm';
+import { agentApiKeys } from '../db/schema';
+import { db } from '../db/scope';
 
 // =============================================================================
 // Types
@@ -34,9 +36,9 @@ export interface KeyMetadata {
   prefix: string;
   name: string;
   createdBy: string;
-  createdAt: string;
-  lastUsedAt: string | null;
-  revokedAt: string | null;
+  createdAt: Date;
+  lastUsedAt: Date | null;
+  revokedAt: Date | null;
 }
 
 export interface ValidateKeyResult {
@@ -44,17 +46,11 @@ export interface ValidateKeyResult {
   agentId: string;
 }
 
-interface KeyRow {
-  id: string;
-  agent_id: string;
-  token_hash: string;
-  prefix: string;
-  name: string;
-  created_by: string;
-  created_at: string;
-  last_used_at: string | null;
-  revoked_at: string | null;
-}
+/** The columns metadata is built from; hashes are never among them. */
+type KeyMetadataColumns = Pick<
+  InferSelectModel<typeof agentApiKeys>,
+  'id' | 'agentId' | 'prefix' | 'name' | 'createdBy' | 'createdAt' | 'lastUsedAt' | 'revokedAt'
+>;
 
 // =============================================================================
 // Constants
@@ -88,16 +84,16 @@ async function sha256Hex(input: string): Promise<string> {
     .join('');
 }
 
-function mapRowToMetadata(row: KeyRow): KeyMetadata {
+function mapRowToMetadata(row: KeyMetadataColumns): KeyMetadata {
   return {
     id: row.id,
-    agentId: row.agent_id,
+    agentId: row.agentId,
     prefix: row.prefix,
     name: row.name,
-    createdBy: row.created_by,
-    createdAt: row.created_at,
-    lastUsedAt: row.last_used_at,
-    revokedAt: row.revoked_at,
+    createdBy: row.createdBy,
+    createdAt: row.createdAt,
+    lastUsedAt: row.lastUsedAt,
+    revokedAt: row.revokedAt,
   };
 }
 
@@ -132,14 +128,18 @@ export async function generateKey(
   const prefix = rawKey.substring(0, KEY_PREFIX.length + DISPLAY_PREFIX_LENGTH);
   const tokenHash = await sha256Hex(rawKey);
 
-  const result = await query<KeyRow>(
-    `INSERT INTO app.agent_api_keys (agent_id, token_hash, prefix, name, created_by)
-     VALUES ($1, $2, $3, $4, $5)
-     RETURNING *`,
-    [params.agentId, tokenHash, prefix, params.name, params.createdBy],
-  );
+  const rows = await db()
+    .insert(agentApiKeys)
+    .values({
+      agentId: params.agentId,
+      tokenHash,
+      prefix,
+      name: params.name,
+      createdBy: params.createdBy,
+    })
+    .returning();
 
-  const row = result.rows[0];
+  const row = rows[0];
   if (!row) {
     throw new Error('Failed to insert agent API key');
   }
@@ -166,31 +166,27 @@ export async function validateKey(
 
   const tokenHash = await sha256Hex(rawKey);
 
-  const result = await query<KeyRow>(
-    `SELECT id, agent_id
-     FROM app.agent_api_keys
-     WHERE token_hash = $1 AND revoked_at IS NULL`,
-    [tokenHash],
-  );
+  const rows = await db()
+    .select({ id: agentApiKeys.id, agentId: agentApiKeys.agentId })
+    .from(agentApiKeys)
+    .where(and(eq(agentApiKeys.tokenHash, tokenHash), isNull(agentApiKeys.revokedAt)));
 
-  if (result.rows.length === 0) {
-    return null;
-  }
-
-  const row = result.rows[0];
+  const row = rows[0];
   if (!row) {
     return null;
   }
 
-  // Fire-and-forget: update last_used_at without blocking the response
-  void query(
-    'UPDATE app.agent_api_keys SET last_used_at = NOW() WHERE token_hash = $1',
-    [tokenHash],
-  );
+  // Fire-and-forget: update last_used_at without blocking the response. A
+  // builder runs only when awaited, so `execute()` is what starts the statement.
+  void db()
+    .update(agentApiKeys)
+    .set({ lastUsedAt: sql`NOW()` })
+    .where(eq(agentApiKeys.tokenHash, tokenHash))
+    .execute();
 
   return {
     keyId: row.id,
-    agentId: row.agent_id,
+    agentId: row.agentId,
   };
 }
 
@@ -198,15 +194,22 @@ export async function validateKey(
  * List active (non-revoked) keys for an agent (metadata only, never hashes).
  */
 export async function listKeys(agentId: string): Promise<KeyMetadata[]> {
-  const result = await query<KeyRow>(
-    `SELECT id, agent_id, prefix, name, created_by, created_at, last_used_at, revoked_at
-     FROM app.agent_api_keys
-     WHERE agent_id = $1 AND revoked_at IS NULL
-     ORDER BY created_at DESC`,
-    [agentId],
-  );
+  const rows = await db()
+    .select({
+      id: agentApiKeys.id,
+      agentId: agentApiKeys.agentId,
+      prefix: agentApiKeys.prefix,
+      name: agentApiKeys.name,
+      createdBy: agentApiKeys.createdBy,
+      createdAt: agentApiKeys.createdAt,
+      lastUsedAt: agentApiKeys.lastUsedAt,
+      revokedAt: agentApiKeys.revokedAt,
+    })
+    .from(agentApiKeys)
+    .where(and(eq(agentApiKeys.agentId, agentId), isNull(agentApiKeys.revokedAt)))
+    .orderBy(desc(agentApiKeys.createdAt));
 
-  return result.rows.map(mapRowToMetadata);
+  return rows.map(mapRowToMetadata);
 }
 
 /**
@@ -218,12 +221,17 @@ export async function revokeKey(
   keyId: string,
   agentId: string,
 ): Promise<boolean> {
-  const result = await query(
-    `UPDATE app.agent_api_keys
-     SET revoked_at = NOW()
-     WHERE id = $1 AND agent_id = $2 AND revoked_at IS NULL`,
-    [keyId, agentId],
-  );
+  const revoked = await db()
+    .update(agentApiKeys)
+    .set({ revokedAt: sql`NOW()` })
+    .where(
+      and(
+        eq(agentApiKeys.id, keyId),
+        eq(agentApiKeys.agentId, agentId),
+        isNull(agentApiKeys.revokedAt),
+      ),
+    )
+    .returning({ id: agentApiKeys.id });
 
-  return (result.rowCount ?? 0) > 0;
+  return revoked.length > 0;
 }

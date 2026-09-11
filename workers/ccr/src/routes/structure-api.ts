@@ -6,7 +6,7 @@
  */
 
 import type { CreateStructureParams, UpdateBranchStructureParams, ListBranchStructuresOptions } from '../services/structure-types';
-import type { StructureType } from '../types';
+import type { StructureType, AuthenticatedPrincipal } from '../types';
 import {
   createStructure,
   getBranch,
@@ -23,7 +23,6 @@ import {
   HttpError,
 } from '../services';
 import { assertPermission, AuthorizationError } from '../auth/authorization';
-import type { AuthenticatedPrincipal } from '../types';
 import { validatePagination, validateJsonSize, SIZE_LIMITS } from './validation';
 
 /**

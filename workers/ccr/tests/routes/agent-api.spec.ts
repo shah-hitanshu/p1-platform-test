@@ -53,8 +53,8 @@ describe('Agent Politeness Phase 1.5: Agent API Routes', () => {
       capabilities: ['edit', 'create'],
       status: 'active',
       settings: {},
-      createdAt: '2026-01-26T12:00:00.000Z',
-      updatedAt: '2026-01-26T12:00:00.000Z',
+      createdAt: new Date('2026-01-26T12:00:00.000Z'),
+      updatedAt: new Date('2026-01-26T12:00:00.000Z'),
       isGlobal: false,
       ...overrides,
     };
@@ -207,9 +207,10 @@ describe('Agent Politeness Phase 1.5: Agent API Routes', () => {
       });
 
       expect(response.status).toBe(200);
-      expect(services.getAgentsByOrganization).toHaveBeenCalledWith('org-uuid-123', {
-        status: 'active',
-      });
+      expect(services.getAgentsByOrganization).toHaveBeenCalledWith(
+        'org-uuid-123',
+        { status: 'active' },
+      );
     });
   });
 

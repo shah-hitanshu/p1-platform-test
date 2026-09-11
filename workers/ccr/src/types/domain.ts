@@ -99,8 +99,8 @@ export interface RegisteredAgent {
   status: AgentStatus;
   settings: AgentSettings;
   isGlobal: boolean;
-  createdAt: string;
-  updatedAt: string;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 /**
@@ -139,11 +139,11 @@ export interface SiteScreenshot {
   siteId: string;
   r2Key: string;
   status: SiteScreenshotStatus;
-  capturedAt: string;
+  capturedAt: Date;
   /** Short reason when status != 'ok'. */
   error?: string;
-  createdAt: string;
-  updatedAt: string;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 /**

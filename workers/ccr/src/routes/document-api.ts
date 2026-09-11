@@ -85,9 +85,9 @@ import { resolveBranchRef } from '../utils/branch-ref';
 import { buildDocumentSkeletonFromTemplate } from '../services/document-skeleton';
 import { applyTitleToSnapshot } from '../services/document-title';
 import { assertPermission, assertSiteBinding, getEffectiveRole } from '../auth/authorization';
+import { purgeContentCache, purgeDeletedDocument } from '../cache/purge';
 import { templateMetadata } from './template-api';
 import { validatePagination } from './validation';
-import { purgeContentCache, purgeDeletedDocument } from '../cache/purge';
 
 /** The operation a document route path names beyond the document itself. */
 export type DocumentRouteAction =
@@ -1203,7 +1203,13 @@ async function handleDocumentVersionRoutes(
     case 'GET':
       return await handleListDocumentVersions(documentId, branchId);
     case 'POST':
-      return await handleCreateDocumentVersion(request, documentId, branchId, context.siteId, context.principal);
+      return await handleCreateDocumentVersion(
+        request,
+        documentId,
+        branchId,
+        context.siteId,
+        context.principal,
+      );
     default:
       return errorResponse('Method not allowed', 405);
   }

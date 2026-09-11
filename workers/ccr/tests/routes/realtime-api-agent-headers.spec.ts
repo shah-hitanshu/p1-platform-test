@@ -93,8 +93,8 @@ function createMockActiveAgent(agentId: string): {
   capabilities: string[];
   status: 'active';
   settings: Record<string, unknown>;
-  createdAt: string;
-  updatedAt: string;
+  createdAt: Date;
+  updatedAt: Date;
   isGlobal: boolean;
 } {
   return {
@@ -105,8 +105,8 @@ function createMockActiveAgent(agentId: string): {
     capabilities: ['content_edit'],
     status: 'active',
     settings: {},
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
+    createdAt: new Date(),
+    updatedAt: new Date(),
     isGlobal: false,
   };
 }

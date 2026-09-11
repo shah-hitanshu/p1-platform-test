@@ -13,8 +13,9 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import postgres from 'postgres';
+import type postgres from 'postgres';
 import { setDatabaseInstance } from '../../src/db';
+import { createRealDatabaseConnection } from '../helpers/database';
 import { readJson } from '../helpers/http';
 import { makePrincipal } from '../helpers/principal';
 
@@ -24,7 +25,7 @@ const TEST_DATABASE_URL =
 
 const SITE_KEY = 'test-migration-e2e-site';
 
-let sql: ReturnType<typeof postgres>;
+let sql: postgres.Sql;
 let testSiteId: string;
 let mainBranchId: string;
 let adminUserId: string;
@@ -55,17 +56,8 @@ function templateLayout(
 }
 
 beforeAll(async () => {
-  sql = postgres(TEST_DATABASE_URL, { max: 1 });
-
-  const connection = {
-    async query(sqlQuery: string, params?: unknown[]): Promise<{ rows: unknown[]; rowCount: number }> {
-      const result = await sql.unsafe(sqlQuery, params as unknown as postgres.ParameterOrJSON<never>[]);
-      const rows = [...result];
-      const resultWithCount = result as unknown as { count?: number };
-      const rowCount = resultWithCount.count ?? rows.length;
-      return { rows, rowCount };
-    },
-  };
+  const { connection, sql: pgSql } = createRealDatabaseConnection(TEST_DATABASE_URL);
+  sql = pgSql;
   setDatabaseInstance(connection);
 
   // Clean up any stale data from prior runs

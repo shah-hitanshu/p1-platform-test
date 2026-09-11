@@ -1,16 +1,20 @@
 /**
- * Site API Token Service Tests (TDD)
+ * Site API Token Service Tests
  *
  * Tests for per-site API token generation, validation, listing, and revocation.
- * Tests should FAIL initially until implementation is complete.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-
-// Mock database module
-vi.mock('../../src/db', () => ({
-  query: vi.fn(),
-}));
+import type { InferSelectModel } from 'drizzle-orm';
+import { siteApiTokens } from '../../src/db/schema';
+import { stubDatabase, type DatabaseStub } from '../__stubs__/database';
+import {
+  clearTokenValidationCache,
+  generateToken,
+  listTokens,
+  revokeToken,
+  validateToken,
+} from '../../src/services/site-api-token-service';
 
 // Mock crypto.subtle for SHA-256 hashing
 const mockDigest = vi.fn();
@@ -26,7 +30,9 @@ vi.stubGlobal('crypto', {
 });
 
 describe('Site API Token Service', () => {
-  beforeEach(async () => {
+  let database: DatabaseStub;
+
+  beforeEach(() => {
     vi.resetAllMocks();
 
     // Default mock for SHA-256 digest — returns a predictable hash
@@ -34,38 +40,27 @@ describe('Site API Token Service', () => {
       new Uint8Array(32).fill(0xab).buffer,
     );
 
+    database = stubDatabase();
+
     // The fixed digest means every token hashes identically across tests, so
     // the per-isolate validation cache must be emptied between them.
-    const { clearTokenValidationCache } = await import('../../src/services/site-api-token-service');
     clearTokenValidationCache();
   });
 
-  // Database row format
-  interface MockTokenRow {
-    id: string;
-    site_id: string;
-    token_hash: string;
-    prefix: string;
-    name: string;
-    scopes: string[];
-    created_by: string;
-    created_at: string;
-    last_used_at: string | null;
-    revoked_at: string | null;
-  }
+  type TokenRow = InferSelectModel<typeof siteApiTokens>;
 
-  function createMockTokenRow(overrides: Partial<MockTokenRow> = {}): MockTokenRow {
+  function tokenRow(overrides: Partial<TokenRow> = {}): Partial<TokenRow> {
     return {
       id: 'token-uuid-123',
-      site_id: 'site-uuid-456',
-      token_hash: 'abababababababababababababababababababababababababababababababababab',
+      siteId: 'site-uuid-456',
+      tokenHash: 'abababababababababababababababababababababababababababababababababab',
       prefix: 'sat_0d86',
       name: 'Production frontend',
       scopes: ['read:published'],
-      created_by: 'user-uuid-789',
-      created_at: '2026-03-06T10:00:00.000Z',
-      last_used_at: null,
-      revoked_at: null,
+      createdBy: 'user-uuid-789',
+      createdAt: new Date('2026-03-06T10:00:00.000Z'),
+      lastUsedAt: null,
+      revokedAt: null,
       ...overrides,
     };
   }
@@ -76,11 +71,7 @@ describe('Site API Token Service', () => {
 
   describe('generateToken', () => {
     it('should generate a token with sat_ prefix', async () => {
-      const { generateToken } = await import('../../src/services/site-api-token-service');
-      const db = await import('../../src/db');
-
-      const mockRow = createMockTokenRow();
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+      database.on(siteApiTokens).insert.returns([tokenRow()]);
 
       const result = await generateToken({
         siteId: 'site-uuid-456',
@@ -93,11 +84,7 @@ describe('Site API Token Service', () => {
     });
 
     it('should return the raw token only at creation time', async () => {
-      const { generateToken } = await import('../../src/services/site-api-token-service');
-      const db = await import('../../src/db');
-
-      const mockRow = createMockTokenRow();
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+      database.on(siteApiTokens).insert.returns([tokenRow()]);
 
       const result = await generateToken({
         siteId: 'site-uuid-456',
@@ -111,11 +98,7 @@ describe('Site API Token Service', () => {
     });
 
     it('should return metadata alongside the raw token', async () => {
-      const { generateToken } = await import('../../src/services/site-api-token-service');
-      const db = await import('../../src/db');
-
-      const mockRow = createMockTokenRow();
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+      database.on(siteApiTokens).insert.returns([tokenRow()]);
 
       const result = await generateToken({
         siteId: 'site-uuid-456',
@@ -129,43 +112,31 @@ describe('Site API Token Service', () => {
       expect(result.metadata.name).toBe('Production frontend');
       expect(result.metadata.prefix).toMatch(/^sat_/);
       expect(result.metadata.scopes).toEqual(['read:published']);
-      expect(result.metadata.createdAt).toBeDefined();
+      expect(result.metadata.createdAt).toEqual(new Date('2026-03-06T10:00:00.000Z'));
     });
 
     it('should store token hash, not the raw token', async () => {
-      const { generateToken } = await import('../../src/services/site-api-token-service');
-      const db = await import('../../src/db');
+      database.on(siteApiTokens).insert.returns([tokenRow()]);
 
-      const mockRow = createMockTokenRow();
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
-
-      await generateToken({
+      const result = await generateToken({
         siteId: 'site-uuid-456',
         name: 'My token',
         scopes: ['read:published'],
         createdBy: 'user-uuid-789',
       });
 
-      // The INSERT query should contain a hash, not the raw token
-      expect(db.query).toHaveBeenCalledWith(
-        expect.stringContaining('INSERT INTO'),
-        expect.arrayContaining(['site-uuid-456']),
+      const [insert] = database.calls(siteApiTokens).insert;
+      expect(insert?.params).toContain('site-uuid-456');
+      expect(insert?.params).not.toContain(result.token);
+      // token_hash param is hex, so it carries neither the sat_ prefix nor the token
+      const tokenHashParam = insert?.params.find(
+        (p) => typeof p === 'string' && !p.startsWith('sat_') && p.length === 64,
       );
-
-      // Verify the stored value is a hex hash, not starting with sat_
-      const insertCall = vi.mocked(db.query).mock.calls[0];
-      const params = insertCall[1] as string[];
-      // token_hash param should be hex (no sat_ prefix)
-      const tokenHashParam = params.find((p) => typeof p === 'string' && !p.startsWith('sat_') && p.length === 64);
       expect(tokenHashParam).toBeDefined();
     });
 
     it('should store the prefix for display purposes', async () => {
-      const { generateToken } = await import('../../src/services/site-api-token-service');
-      const db = await import('../../src/db');
-
-      const mockRow = createMockTokenRow();
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+      database.on(siteApiTokens).insert.returns([tokenRow()]);
 
       await generateToken({
         siteId: 'site-uuid-456',
@@ -174,16 +145,14 @@ describe('Site API Token Service', () => {
         createdBy: 'user-uuid-789',
       });
 
-      // Verify a prefix starting with sat_ was passed to the query
-      const insertCall = vi.mocked(db.query).mock.calls[0];
-      const params = insertCall[1] as string[];
-      const prefixParam = params.find((p) => typeof p === 'string' && p.startsWith('sat_') && p.length <= 12);
+      const [insert] = database.calls(siteApiTokens).insert;
+      const prefixParam = insert?.params.find(
+        (p) => typeof p === 'string' && p.startsWith('sat_') && p.length <= 12,
+      );
       expect(prefixParam).toBeDefined();
     });
 
     it('should validate required siteId', async () => {
-      const { generateToken } = await import('../../src/services/site-api-token-service');
-
       await expect(
         generateToken({
           siteId: '',
@@ -195,8 +164,6 @@ describe('Site API Token Service', () => {
     });
 
     it('should validate required name', async () => {
-      const { generateToken } = await import('../../src/services/site-api-token-service');
-
       await expect(
         generateToken({
           siteId: 'site-uuid-456',
@@ -208,8 +175,6 @@ describe('Site API Token Service', () => {
     });
 
     it('should validate required createdBy', async () => {
-      const { generateToken } = await import('../../src/services/site-api-token-service');
-
       await expect(
         generateToken({
           siteId: 'site-uuid-456',
@@ -221,11 +186,7 @@ describe('Site API Token Service', () => {
     });
 
     it('should default scopes to read:published when not provided', async () => {
-      const { generateToken } = await import('../../src/services/site-api-token-service');
-      const db = await import('../../src/db');
-
-      const mockRow = createMockTokenRow({ scopes: ['read:published'] });
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+      database.on(siteApiTokens).insert.returns([tokenRow({ scopes: ['read:published'] })]);
 
       const result = await generateToken({
         siteId: 'site-uuid-456',
@@ -237,11 +198,7 @@ describe('Site API Token Service', () => {
     });
 
     it('should accept write:registry as a valid scope', async () => {
-      const { generateToken } = await import('../../src/services/site-api-token-service');
-      const db = await import('../../src/db');
-
-      const mockRow = createMockTokenRow({ scopes: ['write:registry'] });
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+      database.on(siteApiTokens).insert.returns([tokenRow({ scopes: ['write:registry'] })]);
 
       const result = await generateToken({
         siteId: 'site-uuid-456',
@@ -254,8 +211,6 @@ describe('Site API Token Service', () => {
     });
 
     it('should reject unknown scope strings', async () => {
-      const { generateToken } = await import('../../src/services/site-api-token-service');
-
       await expect(
         generateToken({
           siteId: 'site-uuid-456',
@@ -273,11 +228,7 @@ describe('Site API Token Service', () => {
 
   describe('validateToken', () => {
     it('should return token info for a valid non-revoked token', async () => {
-      const { validateToken } = await import('../../src/services/site-api-token-service');
-      const db = await import('../../src/db');
-
-      const mockRow = createMockTokenRow();
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+      database.on(siteApiTokens).select.returns([tokenRow()]);
 
       const result = await validateToken('sat_somevalidtoken');
 
@@ -288,56 +239,37 @@ describe('Site API Token Service', () => {
     });
 
     it('should return null for non-existent token', async () => {
-      const { validateToken } = await import('../../src/services/site-api-token-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
-
       const result = await validateToken('sat_nonexistent');
 
       expect(result).toBeNull();
     });
 
     it('should return null for empty token', async () => {
-      const { validateToken } = await import('../../src/services/site-api-token-service');
-
       const result = await validateToken('');
 
       expect(result).toBeNull();
     });
 
     it('should return null for token without sat_ prefix', async () => {
-      const { validateToken } = await import('../../src/services/site-api-token-service');
-
       const result = await validateToken('not_a_site_token');
 
       expect(result).toBeNull();
     });
 
     it('should hash the token before looking it up', async () => {
-      const { validateToken } = await import('../../src/services/site-api-token-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
-
       await validateToken('sat_sometoken');
 
-      // Should have called crypto.subtle.digest
       expect(mockDigest).toHaveBeenCalledWith('SHA-256', expect.any(Uint8Array));
+      // The hash, never the raw token, is what the lookup is parameterised by
+      const [lookup] = database.calls(siteApiTokens).select;
+      expect(lookup?.params).not.toContain('sat_sometoken');
     });
 
     it('should only match non-revoked tokens', async () => {
-      const { validateToken } = await import('../../src/services/site-api-token-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
-
       await validateToken('sat_sometoken');
 
-      expect(db.query).toHaveBeenCalledWith(
-        expect.stringContaining('revoked_at IS NULL'),
-        expect.any(Array),
-      );
+      const [lookup] = database.calls(siteApiTokens).select;
+      expect(lookup?.sql).toContain('"revoked_at" is null');
     });
   });
 
@@ -347,103 +279,68 @@ describe('Site API Token Service', () => {
 
   describe('validateToken memoization', () => {
     it('should serve repeat validations from the cache without a second query', async () => {
-      const { validateToken } = await import('../../src/services/site-api-token-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [createMockTokenRow()] });
+      database.on(siteApiTokens).select.returns([tokenRow()]);
 
       const first = await validateToken('sat_somevalidtoken');
       const second = await validateToken('sat_somevalidtoken');
 
       expect(first).toEqual(second);
-      expect(db.query).toHaveBeenCalledTimes(1);
+      expect(database.calls(siteApiTokens).select).toHaveLength(1);
     });
 
     it('should cache misses so junk-token storms hit Postgres once', async () => {
-      const { validateToken } = await import('../../src/services/site-api-token-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
-
       expect(await validateToken('sat_junk')).toBeNull();
       expect(await validateToken('sat_junk')).toBeNull();
-      expect(db.query).toHaveBeenCalledTimes(1);
+
+      expect(database.calls(siteApiTokens).select).toHaveLength(1);
     });
 
     it('should collapse concurrent validations of the same token into one query', async () => {
-      const { validateToken } = await import('../../src/services/site-api-token-service');
-      const db = await import('../../src/db');
+      database.on(siteApiTokens).select.returns([tokenRow()]);
 
-      let resolveQuery: (value: { rows: unknown[] }) => void = () => {};
-      vi.mocked(db.query).mockReturnValue(
-        new Promise((resolve) => {
-          resolveQuery = resolve;
-        }),
-      );
-
-      const inFlight = Promise.all([
+      const results = await Promise.all([
         validateToken('sat_somevalidtoken'),
         validateToken('sat_somevalidtoken'),
         validateToken('sat_somevalidtoken'),
       ]);
-      await vi.waitFor(() => {
-        expect(db.query).toHaveBeenCalled();
-      });
-      resolveQuery({ rows: [createMockTokenRow()] });
 
-      const results = await inFlight;
       expect(results.every((r) => r?.tokenId === 'token-uuid-123')).toBe(true);
-      expect(db.query).toHaveBeenCalledTimes(1);
+      expect(database.calls(siteApiTokens).select).toHaveLength(1);
     });
 
     it('should not cache a failed lookup', async () => {
-      const { validateToken } = await import('../../src/services/site-api-token-service');
-      const db = await import('../../src/db');
+      database.on(siteApiTokens).select.rejects(new Error('connection reset'));
 
-      vi.mocked(db.query)
-        .mockRejectedValueOnce(new Error('connection reset'))
-        .mockResolvedValueOnce({ rows: [createMockTokenRow()] });
+      await expect(validateToken('sat_somevalidtoken')).rejects.toThrow();
+      await expect(validateToken('sat_somevalidtoken')).rejects.toThrow();
 
-      await expect(validateToken('sat_somevalidtoken')).rejects.toThrow('connection reset');
-      const retry = await validateToken('sat_somevalidtoken');
-
-      expect(retry?.tokenId).toBe('token-uuid-123');
-      expect(db.query).toHaveBeenCalledTimes(2);
+      expect(database.calls(siteApiTokens).select).toHaveLength(2);
     });
 
     it('should expire entries after the TTL', async () => {
       vi.useFakeTimers();
       try {
-        const { validateToken } = await import('../../src/services/site-api-token-service');
-        const db = await import('../../src/db');
-
-        vi.mocked(db.query).mockResolvedValue({ rows: [createMockTokenRow()] });
+        database.on(siteApiTokens).select.returns([tokenRow()]);
 
         await validateToken('sat_somevalidtoken');
         vi.advanceTimersByTime(61_000);
         await validateToken('sat_somevalidtoken');
 
-        expect(db.query).toHaveBeenCalledTimes(2);
+        expect(database.calls(siteApiTokens).select).toHaveLength(2);
       } finally {
         vi.useRealTimers();
       }
     });
 
     it('should drop cached entries when a token is revoked', async () => {
-      const { validateToken, revokeToken } = await import('../../src/services/site-api-token-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query)
-        .mockResolvedValueOnce({ rows: [createMockTokenRow()] }) // validate → cached
-        .mockResolvedValueOnce({ rows: [], rowCount: 1 }) // revoke
-        .mockResolvedValueOnce({ rows: [] }); // re-validate → revoked
+      database.on(siteApiTokens).select.returns([tokenRow()]);
+      database.on(siteApiTokens).update.returns([tokenRow()]);
 
       await validateToken('sat_somevalidtoken');
       await revokeToken('token-uuid-123', 'site-uuid-456');
-      const afterRevoke = await validateToken('sat_somevalidtoken');
+      await validateToken('sat_somevalidtoken');
 
-      expect(afterRevoke).toBeNull();
-      expect(db.query).toHaveBeenCalledTimes(3);
+      expect(database.calls(siteApiTokens).select).toHaveLength(2);
     });
   });
 
@@ -453,14 +350,10 @@ describe('Site API Token Service', () => {
 
   describe('listTokens', () => {
     it('should return token metadata for a site', async () => {
-      const { listTokens } = await import('../../src/services/site-api-token-service');
-      const db = await import('../../src/db');
-
-      const mockRows = [
-        createMockTokenRow({ id: 'token-1', name: 'Token A' }),
-        createMockTokenRow({ id: 'token-2', name: 'Token B' }),
-      ];
-      vi.mocked(db.query).mockResolvedValue({ rows: mockRows });
+      database.on(siteApiTokens).select.returns([
+        tokenRow({ id: 'token-1', name: 'Token A' }),
+        tokenRow({ id: 'token-2', name: 'Token B' }),
+      ]);
 
       const result = await listTokens('site-uuid-456');
 
@@ -471,59 +364,39 @@ describe('Site API Token Service', () => {
     });
 
     it('should never return token hashes', async () => {
-      const { listTokens } = await import('../../src/services/site-api-token-service');
-      const db = await import('../../src/db');
-
-      const mockRows = [createMockTokenRow()];
-      vi.mocked(db.query).mockResolvedValue({ rows: mockRows });
+      database.on(siteApiTokens).select.returns([tokenRow()]);
 
       const result = await listTokens('site-uuid-456');
 
-      // The result should not contain tokenHash
       const resultJson = JSON.stringify(result);
       expect(resultJson).not.toContain('token_hash');
       expect(resultJson).not.toContain('tokenHash');
     });
 
     it('should return empty array when no tokens exist', async () => {
-      const { listTokens } = await import('../../src/services/site-api-token-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
-
       const result = await listTokens('non-existent-site');
 
       expect(result).toEqual([]);
     });
 
     it('should query by site_id', async () => {
-      const { listTokens } = await import('../../src/services/site-api-token-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
-
       await listTokens('site-uuid-456');
 
-      expect(db.query).toHaveBeenCalledWith(
-        expect.stringContaining('site_id'),
-        expect.arrayContaining(['site-uuid-456']),
-      );
+      const [list] = database.calls(siteApiTokens).select;
+      expect(list?.params).toContain('site-uuid-456');
+      expect(list?.sql).toContain('"site_id"');
     });
 
     it('should include revoked status in results', async () => {
-      const { listTokens } = await import('../../src/services/site-api-token-service');
-      const db = await import('../../src/db');
-
-      const mockRows = [
-        createMockTokenRow({ id: 'active-token', revoked_at: null }),
-        createMockTokenRow({ id: 'revoked-token', revoked_at: '2026-03-06T12:00:00.000Z' }),
-      ];
-      vi.mocked(db.query).mockResolvedValue({ rows: mockRows });
+      database.on(siteApiTokens).select.returns([
+        tokenRow({ id: 'active-token', revokedAt: null }),
+        tokenRow({ id: 'revoked-token', revokedAt: new Date('2026-03-06T12:00:00.000Z') }),
+      ]);
 
       const result = await listTokens('site-uuid-456');
 
       expect(result[0].revokedAt).toBeNull();
-      expect(result[1].revokedAt).toBe('2026-03-06T12:00:00.000Z');
+      expect(result[1].revokedAt).toEqual(new Date('2026-03-06T12:00:00.000Z'));
     });
   });
 
@@ -533,43 +406,32 @@ describe('Site API Token Service', () => {
 
   describe('revokeToken', () => {
     it('should set revoked_at timestamp', async () => {
-      const { revokeToken } = await import('../../src/services/site-api-token-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [], rowCount: 1 });
+      database.on(siteApiTokens).update.returns([tokenRow()]);
 
       const result = await revokeToken('token-uuid-123', 'site-uuid-456');
 
       expect(result).toBe(true);
-      expect(db.query).toHaveBeenCalledWith(
-        expect.stringContaining('revoked_at'),
+      const [revoke] = database.calls(siteApiTokens).update;
+      expect(revoke?.sql).toContain('"revoked_at" =');
+      expect(revoke?.params).toEqual(
         expect.arrayContaining(['token-uuid-123', 'site-uuid-456']),
       );
     });
 
     it('should return false when token not found', async () => {
-      const { revokeToken } = await import('../../src/services/site-api-token-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [], rowCount: 0 });
-
       const result = await revokeToken('non-existent', 'site-uuid-456');
 
       expect(result).toBe(false);
     });
 
     it('should scope revocation to the specified site', async () => {
-      const { revokeToken } = await import('../../src/services/site-api-token-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [], rowCount: 1 });
+      database.on(siteApiTokens).update.returns([tokenRow()]);
 
       await revokeToken('token-uuid-123', 'site-uuid-456');
 
-      expect(db.query).toHaveBeenCalledWith(
-        expect.stringContaining('site_id'),
-        expect.arrayContaining(['site-uuid-456']),
-      );
+      const [revoke] = database.calls(siteApiTokens).update;
+      expect(revoke?.sql).toContain('"site_id"');
+      expect(revoke?.params).toContain('site-uuid-456');
     });
   });
 });

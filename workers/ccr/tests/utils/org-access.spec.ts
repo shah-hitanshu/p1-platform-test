@@ -36,6 +36,7 @@ vi.mock('../../src/db', () => ({
 
 const ORG_ID = 'org-uuid-123';
 
+
 /**
  * Both checks read the membership table directly, so the tests answer by SQL
  * rather than by call order — is_active moved into these statements and a
@@ -90,8 +91,8 @@ const agentRecord = (
   capabilities: [],
   status: 'active',
   settings: {},
-  createdAt: '2026-01-01T00:00:00.000Z',
-  updatedAt: '2026-01-01T00:00:00.000Z',
+  createdAt: new Date('2026-01-01T00:00:00.000Z'),
+  updatedAt: new Date('2026-01-01T00:00:00.000Z'),
   isGlobal: false,
   ...overrides,
 });

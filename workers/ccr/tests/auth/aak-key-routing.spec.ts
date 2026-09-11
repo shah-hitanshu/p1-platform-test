@@ -9,11 +9,14 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { AuthenticatedPrincipal } from '../../src/types';
+import { stubDatabase } from '../__stubs__/database';
 
 // Mock the database
 vi.mock('../../src/db', () => ({
   initializeDatabaseFromConnectionString: vi.fn(),
-  runWithConnection: vi.fn().mockImplementation((_connStr: string, _opts: unknown, fn: () => unknown) => fn()),
+  runWithConnection: vi.fn().mockImplementation(
+    async (_connStr: string, _opts: unknown, fn: () => Promise<unknown>) => fn(),
+  ),
   query: vi.fn().mockResolvedValue({ rows: [{ now: new Date().toISOString() }] }),
 }));
 
@@ -202,6 +205,7 @@ describe('aak_ key routing (B4)', () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
+    stubDatabase();
   });
 
   it('should authenticate aak_ keys via X-API-Key header', async () => {

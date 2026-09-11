@@ -7,9 +7,9 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import postgres from 'postgres';
+import type postgres from 'postgres';
 import { setDatabaseInstance } from '../../src/db';
-import type { DatabaseConnection, QueryResult } from '../../src/db';
+import { createRealDatabaseConnection } from '../helpers/database';
 import { createSite } from '../../src/services/site-service';
 import {
   createDocumentOnBranch,
@@ -19,31 +19,8 @@ import { createDocumentVersion } from '../../src/services/document-version-servi
 import type { AuthenticatedPrincipal } from '../../src/types';
 import { readJson } from '../helpers/http';
 
-const CONNECTION_STRING = 'postgresql://cssuser:csspass@localhost:5432/cssdb';
 const TEST_USER_ID = '88888888-8888-8888-8888-888888888888';
 const SITE_PREFIX = 'template-cow-test';
-
-function createRealDatabaseConnection(connectionString: string): {
-  connection: DatabaseConnection;
-  sql: postgres.Sql;
-} {
-  const sql = postgres(connectionString, { transform: { undefined: null }, max: 1 });
-  const connection: DatabaseConnection = {
-    async query<T = Record<string, unknown>>(
-      sqlQuery: string,
-      params?: unknown[],
-    ): Promise<QueryResult<T>> {
-      const result = await sql.unsafe<T[]>(
-        sqlQuery,
-        params as unknown as postgres.ParameterOrJSON<never>[],
-      );
-      const rows = [...result] as T[];
-      const resultWithCount = result as unknown as { count?: number };
-      return { rows, rowCount: resultWithCount.count ?? rows.length };
-    },
-  };
-  return { connection, sql };
-}
 
 /** A content-shaped template snapshot with the label carried at root.props._template. */
 function templateSnapshot(
@@ -77,7 +54,7 @@ describe('Template API — Copy-on-Write inheritance', () => {
   let featureBranchId: string;
 
   beforeAll(async () => {
-    const { connection, sql: pgSql } = createRealDatabaseConnection(CONNECTION_STRING);
+    const { connection, sql: pgSql } = createRealDatabaseConnection();
     sql = pgSql;
     setDatabaseInstance(connection);
 

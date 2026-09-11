@@ -21,7 +21,18 @@ vi.mock('../../src/utils/branch-ref', () => ({
 // Mock the database
 vi.mock('../../src/db', () => ({
   initializeDatabaseFromConnectionString: vi.fn(),
-  runWithConnection: vi.fn().mockImplementation((_connStr: string, _opts: unknown, fn: () => unknown) => fn()),
+  runWithConnection: vi.fn().mockImplementation(
+    async (_connStr: string, _opts: unknown, fn: () => Promise<unknown>) => {
+      // Imported dynamically: src/index runs against whichever module graph
+      // vi.resetModules() most recently built, and the installed scope must
+      // belong to that same graph's src/db/scope.
+      const { withDatabase } = await import('../../src/db/scope');
+      return withDatabase(
+        { execute: async (): Promise<Record<string, unknown>[]> => [{ now: new Date() }] } as never,
+        fn,
+      );
+    },
+  ),
   query: vi.fn().mockResolvedValue({ rows: [{ now: new Date().toISOString() }] }),
 }));
 

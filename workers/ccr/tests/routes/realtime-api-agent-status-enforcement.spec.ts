@@ -100,8 +100,8 @@ interface MockAgent {
   capabilities: string[];
   status: 'active' | 'suspended' | 'disabled';
   settings: Record<string, unknown>;
-  createdAt: string;
-  updatedAt: string;
+  createdAt: Date;
+  updatedAt: Date;
   isGlobal: boolean;
 }
 
@@ -117,8 +117,8 @@ function createMockAgent(status: 'active' | 'suspended' | 'disabled', id = 'agen
     capabilities: ['content_edit'],
     status,
     settings: {},
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
+    createdAt: new Date(),
+    updatedAt: new Date(),
     isGlobal: false,
   };
 }

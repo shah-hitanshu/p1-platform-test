@@ -209,7 +209,11 @@ describe('handleSiteExportRoute', () => {
     mockListBranches.mockResolvedValueOnce([MOCK_MAIN_BRANCH] as never);
     mockListDocuments.mockResolvedValueOnce([]);
     mockSignR2.mockResolvedValueOnce({ url: 'https://r2.example.com/signed', expiresAt: '2026-06-01' });
-    await handleSiteExportRoute(makeRequest(), { siteId: 'site-1', principal: servicePrincipal }, createEnv());
+    await handleSiteExportRoute(
+      makeRequest(),
+      { siteId: 'site-1', principal: servicePrincipal },
+      createEnv(),
+    );
     expect(mockAssertPermission).not.toHaveBeenCalled();
   });
 
@@ -249,7 +253,7 @@ describe('handleSiteExportRoute', () => {
       versionNumber: 1,
       isPublished: false,
       snapshot: { root: {} },
-      createdAt: '2026-01-01T00:00:00Z',
+      createdAt: new Date('2026-01-01T00:00:00Z'),
       createdById: 'u1',
       createdByType: 'user',
     }]);
@@ -365,7 +369,7 @@ describe('handleSiteExportRoute', () => {
       versionNumber: 1,
       isPublished: false,
       snapshot: { root: { type: 'Root', props: {} } },
-      createdAt: '2026-01-01T10:00:00Z',
+      createdAt: new Date('2026-01-01T10:00:00Z'),
       createdById: 'u1',
       createdByType: 'user',
     }]);
@@ -377,7 +381,7 @@ describe('handleSiteExportRoute', () => {
       versionNumber: 1,
       isPublished: false,
       snapshot: { root: { type: 'Root', props: { title: 'feature' } } },
-      createdAt: '2026-02-01T10:00:00Z',
+      createdAt: new Date('2026-02-01T10:00:00Z'),
       createdById: 'u1',
       createdByType: 'user',
     }]);
@@ -386,7 +390,11 @@ describe('handleSiteExportRoute', () => {
     mockSignR2.mockResolvedValueOnce({ url: 'https://r2.example.com/signed', expiresAt: '2026-06-01T00:00:00Z' });
 
     const env = createEnv({ R2_BUNDLES: { put: mockR2Put } });
-    await handleSiteExportRoute(makeRequest(), { siteId: 'site-1', principal: createPrincipal() }, env);
+    await handleSiteExportRoute(
+      makeRequest(),
+      { siteId: 'site-1', principal: createPrincipal() },
+      env,
+    );
 
     expect(capturedPutArgs).toHaveLength(1);
     const firstPut = capturedPutArgs[0];
@@ -430,7 +438,11 @@ describe('handleSiteExportRoute', () => {
     mockSignR2.mockResolvedValueOnce({ url: 'https://r2.example.com/signed', expiresAt: '2026-06-01T00:00:00Z' });
 
     const env = createEnv({ R2_BUNDLES: { put: mockR2Put } });
-    await handleSiteExportRoute(makeRequest(), { siteId: 'site-1', principal: createPrincipal() }, env);
+    await handleSiteExportRoute(
+      makeRequest(),
+      { siteId: 'site-1', principal: createPrincipal() },
+      env,
+    );
 
     expect(capturedPutArgs).toHaveLength(1);
     const putArg = capturedPutArgs[0];
@@ -467,7 +479,7 @@ describe('handleSiteExportRoute', () => {
       versionNumber: 1,
       isPublished: false,
       snapshot: { root: { type: 'Root', props: {} } },
-      createdAt: '2026-01-01T10:00:00Z',
+      createdAt: new Date('2026-01-01T10:00:00Z'),
       createdById: 'u1',
       createdByType: 'user',
     }]);
@@ -475,7 +487,11 @@ describe('handleSiteExportRoute', () => {
     mockSignR2.mockResolvedValueOnce({ url: 'https://r2.example.com/signed', expiresAt: '2026-06-01T00:00:00Z' });
 
     const env = createEnv({ R2_BUNDLES: { put: mockR2Put } });
-    await handleSiteExportRoute(makeRequest(), { siteId: 'site-1', principal: createPrincipal() }, env);
+    await handleSiteExportRoute(
+      makeRequest(),
+      { siteId: 'site-1', principal: createPrincipal() },
+      env,
+    );
 
     expect(capturedPutArgs).toHaveLength(1);
     const putArg16 = capturedPutArgs[0];
@@ -512,7 +528,11 @@ describe('handleSiteExportRoute', () => {
     mockSignR2.mockResolvedValueOnce({ url: 'https://r2.example.com/signed', expiresAt: '2026-06-01T00:00:00Z' });
 
     const env = createEnv({ R2_BUNDLES: { put: mockR2Put } });
-    const resp = await handleSiteExportRoute(makeRequest(), { siteId: 'site-1', principal: createPrincipal() }, env);
+    const resp = await handleSiteExportRoute(
+      makeRequest(),
+      { siteId: 'site-1', principal: createPrincipal() },
+      env,
+    );
 
     expect(resp.status).toBe(200);
     const body = JSON.parse(await resp.text()) as { documentCount: number; downloadUrl: string };
@@ -545,7 +565,7 @@ describe('handleSiteExportRoute', () => {
       versionNumber: 1,
       isPublished: false,
       snapshot: { root: { type: 'Root', props: {} } },
-      createdAt: '2026-01-01T10:00:00Z',
+      createdAt: new Date('2026-01-01T10:00:00Z'),
       createdById: 'u1',
       createdByType: 'user',
     }]);

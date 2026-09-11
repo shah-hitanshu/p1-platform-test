@@ -5,7 +5,9 @@
  * Extracted from index.ts.
  */
 
-import { query } from '../db';
+import { sql } from 'drizzle-orm';
+import { driverErrorCode } from '../db/driver-error';
+import { db } from '../db/scope';
 import { setGauge, recordTiming } from '../services/metrics-service';
 import type { Env } from '../env';
 
@@ -37,7 +39,7 @@ export async function handleHealth(env: Env): Promise<Response> {
   // Test database connection (connection is already established via runWithConnection)
   try {
     const start = Date.now();
-    const result = await query<{ now: string }>('SELECT NOW() as now');
+    const rows = await db().execute(sql`SELECT NOW() as now`);
     const latencyMs = Date.now() - start;
 
     health.database = {
@@ -46,7 +48,7 @@ export async function handleHealth(env: Env): Promise<Response> {
     };
 
     // Verify we got a result
-    if (result.rows.length === 0) {
+    if (rows.length === 0) {
       throw new Error('No result from database');
     }
 
@@ -55,9 +57,12 @@ export async function handleHealth(env: Env): Promise<Response> {
     recordTiming('ccr_db_health_latency_ms', latencyMs);
   } catch (error) {
     health.status = 'unhealthy';
+    // A rejected query's message embeds the statement text, which can carry
+    // customer content. The SQLSTATE, or the error's name, is what a public
+    // probe can report.
     health.database = {
       connected: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
+      error: driverErrorCode(error) ?? (error instanceof Error ? error.name : 'Unknown error'),
     };
 
     // Record unhealthy database status
