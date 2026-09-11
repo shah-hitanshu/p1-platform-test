@@ -42,7 +42,9 @@ describe("createP1Pages legacy-structure dev warning", () => {
     const msg = (console.warn as unknown as { mock: { calls: unknown[][] } })
       .mock.calls[0][0] as string;
     expect(msg).toContain("pages.Layout");
-    expect(msg).toContain("p1-migrate");
+    // The whole command, so a rename of the subcommand fails here rather than
+    // shipping customers an invocation that exits on the usage error.
+    expect(msg).toContain("p1-next-sdk migrate");
   });
 
   it("does not warn once Layout has rendered", async () => {

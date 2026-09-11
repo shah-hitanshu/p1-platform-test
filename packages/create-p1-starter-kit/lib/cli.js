@@ -5,6 +5,8 @@ import * as clack from '@clack/prompts';
 import pc from 'picocolors';
 import { copyTemplate } from './copy-template.js';
 import { detectPackageManager, isPackageManagerAvailable, installDependencies } from './install-deps.js';
+import { installP1Blocks, installedBlockNames, writeComponentsJson } from './install-p1-blocks.js';
+import { readNamespaceForDisplay } from './registry-config.js';
 import { showWelcome, showSuccess, showInstallHelp, showError } from './messages.js';
 
 const PROJECT_NAME_RULE =
@@ -35,6 +37,8 @@ export function parseArgs(args) {
       parsed.git = arg === '--git';
     } else if (arg === '--install' || arg === '--no-install') {
       parsed.install = arg === '--install';
+    } else if (arg === '--blocks' || arg === '--no-blocks') {
+      parsed.blocks = arg === '--blocks';
     } else if (arg.startsWith('-')) {
       throw new Error(`Unknown option: ${arg}`);
     } else if (parsed.projectName === undefined) {
@@ -133,6 +137,24 @@ export async function runCLI() {
     }
   }
 
+  // P1 component library?
+  let shouldAddP1Blocks;
+  if (parsed.blocks !== undefined) {
+    shouldAddP1Blocks = parsed.blocks;
+  } else if (parsed.yes) {
+    shouldAddP1Blocks = true;
+  } else {
+    shouldAddP1Blocks = await clack.confirm({
+      message: 'Include the P1 starter component library?',
+      initialValue: true,
+    });
+
+    if (clack.isCancel(shouldAddP1Blocks)) {
+      clack.cancel('Operation cancelled');
+      process.exit(0);
+    }
+  }
+
   // Install deps?
   let shouldInstall;
   if (parsed.install !== undefined) {
@@ -182,6 +204,45 @@ export async function runCLI() {
     process.exit(1);
   }
 
+  // Deliberately outside the try above, which deletes targetDir on failure: a
+  // network problem should warn and leave a usable project, not destroy one.
+  let installedBlockCount = 0;
+  let p1BlocksPartial = false;
+  if (shouldAddP1Blocks) {
+    s.start('Installing the P1 component library...');
+    try {
+      installedBlockCount = installP1Blocks(targetDir, { packageManager }).length;
+      s.stop(`Installed ${installedBlockCount} P1 blocks`);
+    } catch (error) {
+      s.stop('Could not install the P1 component library');
+      clack.log.warn(error.message);
+      // Blocks can land before the failure. Counting them keeps the closing
+      // message from offering the library as though nothing were installed.
+      installedBlockCount = installedBlockNames(targetDir).length;
+      p1BlocksPartial = installedBlockCount > 0;
+      // installP1Blocks resolves the registry manifest while binding its
+      // arguments, so a manifest problem throws before it writes anything,
+      // leaving a project that cannot add blocks later. Only written when it is
+      // genuinely absent: a spawn that failed midway has already written it,
+      // and shadcn may have edited it since.
+      if (!fs.existsSync(path.join(targetDir, 'components.json'))) {
+        try {
+          writeComponentsJson(targetDir);
+        } catch (writeError) {
+          clack.log.warn(`Could not write components.json: ${writeError.message}`);
+        }
+      }
+    }
+  } else {
+    // components.json is written either way, so declining today does not mean
+    // looking up a registry URL tomorrow.
+    try {
+      writeComponentsJson(targetDir);
+    } catch (error) {
+      clack.log.warn(`Could not write components.json: ${error.message}`);
+    }
+  }
+
   // Git init
   if (shouldInitGit) {
     s.start('Initializing git repository...');
@@ -214,5 +275,9 @@ export async function runCLI() {
   }
 
   clack.outro(pc.green('All done!'));
-  showSuccess(projectName, targetDir, packageManager);
+  showSuccess(projectName, targetDir, packageManager, {
+    p1Blocks: installedBlockCount,
+    p1BlocksPartial,
+    registryNamespace: readNamespaceForDisplay(),
+  });
 }

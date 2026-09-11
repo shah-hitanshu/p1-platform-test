@@ -196,6 +196,39 @@ function rewriteEslintConfig(destPath) {
   console.log(`  Rewrote eslint.config.js, inlining: ${presets.map((p) => p.name).join(', ')}`);
 }
 
+/**
+ * The scaffolder needs to know where the code registry lives and which release
+ * to pin to. Both are build-time facts: the URL comes from the registry's own
+ * registry.json, the release from this package's version — it identifies the
+ * artifact the customer actually installed. Handed to the CLI through lib/,
+ * which is never copied into a generated project.
+ */
+function writeGeneratedRegistry() {
+  const registryPath = path.join(repoRoot, 'packages/p1-starter-components/registry.json');
+  const registry = JSON.parse(fs.readFileSync(registryPath, 'utf-8'));
+
+  if (!registry.homepage || registry.homepage.includes('TBD')) {
+    throw new Error(
+      `${registryPath} has no real homepage yet (${registry.homepage}). ` +
+      'The scaffolder cannot pin to a placeholder host.'
+    );
+  }
+
+  const { version } = JSON.parse(
+    fs.readFileSync(path.join(__dirname, '../package.json'), 'utf-8')
+  );
+
+  const config = {
+    namespace: `@${registry.name}`,
+    url: `${registry.homepage.replace(/\/$/, '')}/r/{name}.json`,
+    release: `v${version}`,
+  };
+
+  const outPath = path.join(__dirname, '../lib/generated-registry.json');
+  fs.writeFileSync(outPath, JSON.stringify(config, null, 2) + '\n');
+  console.log(`  ${config.namespace} -> ${config.url} (${config.release})`);
+}
+
 function stageGitignore(destPath) {
   const dotted = path.join(destPath, '.gitignore');
   if (!fs.existsSync(dotted)) {
@@ -237,6 +270,14 @@ export function buildTemplate(destPath = templateDest) {
 
   console.log('Rewriting eslint config...');
   rewriteEslintConfig(destPath);
+
+  // Stamped into lib/, not into destPath, so it is a side effect on this
+  // package rather than on the build output — skipped when a test builds to a
+  // temp directory, which would otherwise rewrite the committed manifest.
+  if (destPath === templateDest) {
+    console.log('Resolving the code registry...');
+    writeGeneratedRegistry();
+  }
 
   console.log('Staging .gitignore for publication...');
   stageGitignore(destPath);

@@ -21,6 +21,105 @@ The following files are **auto-generated** — do not edit by hand:
 
 ---
 
+## Getting the blocks
+
+Browse everything available, with the exact command for each, in the
+**[P1 component catalog](https://components.p1.pantheon.io/)**.
+
+A project scaffolded by
+[create-p1-starter-kit](https://www.npmjs.com/package/@pantheon-systems/create-p1-starter-kit) is
+already configured for the `@p1` registry, whichever way it answered the component-library prompt:
+
+```bash
+pnpm dlx shadcn@latest add @p1/pricing
+```
+
+The install prints the three lines to paste into `components/puck/blocks/index.ts`:
+
+```ts
+import { PricingBlock } from "./pricing/pricing.block";
+P1Pricing: PricingBlock,                                        // in p1Blocks
+p1Convert: { title: "P1 Convert", components: ["P1Pricing"] },  // in p1Categories
+```
+
+The category line is what puts the block in the editor drawer. A block registered in `p1Blocks`
+alone still works, but stays out of the drawer with no error. Repeat for each block you want — a
+block's export name is at the top of `components/puck/blocks/<name>/<name>.block.tsx` and does not
+always match the directory: `@p1/logos` exports `LogoCloudBlock`.
+
+### Projects scaffolded before the component-library release
+
+They have no `components.json`, no `@/*` path alias and no blocks barrel, and nothing back-fills
+them. `shadcn add @p1/…` fails with `Unknown registry "@p1"` until all three exist. One command
+writes all three:
+
+```bash
+npx @pantheon-systems/p1-next-sdk enable-registry
+```
+
+It ships with `@pantheon-systems/p1-next-sdk`, skips anything already in place, and edits
+`tsconfig.json` as text so comments survive. If you need to do it by hand instead:
+
+**1. Create `components.json`** at the project root:
+
+```json
+{
+  "$schema": "https://ui.shadcn.com/schema.json",
+  "style": "p1",
+  "rsc": true,
+  "tsx": true,
+  "tailwind": { "config": "", "css": "app/styles.css", "baseColor": "neutral", "cssVariables": true },
+  "aliases": { "components": "@/components", "ui": "@/components/ui", "lib": "@/lib", "hooks": "@/hooks", "utils": "@/lib/utils" },
+  "registries": { "@p1": "https://components.p1.pantheon.io/r/{name}.json" }
+}
+```
+
+Write the file rather than running `shadcn init`, which rewrites `app/styles.css` and drops the
+`@plugin` and `@source` lines the starter kit ships. Omitting `style`, `rsc` or `tailwind` fails with
+`Invalid configuration found`.
+
+**2. Add the path alias** to `tsconfig.json`, alongside the React mappings already there:
+
+```json
+"paths": {
+  "@/*": ["./*"],
+  "react": ["./node_modules/@types/react"],
+  "react-dom": ["./node_modules/@types/react-dom"],
+  "react/jsx-runtime": ["./node_modules/@types/react/jsx-runtime"]
+}
+```
+
+**3. Create the barrel** at `components/puck/blocks/index.ts` and spread it from `puck.config.tsx`:
+
+```ts
+import type { Config } from "@puckeditor/core";
+
+export const p1Blocks = {} satisfies Config["components"];
+
+export const p1Categories = {} satisfies NonNullable<Config["categories"]>;
+```
+
+```tsx
+import { p1Blocks, p1Categories } from "./components/puck/blocks";
+
+export const config = {
+  categories: {
+    ...p1Categories,   // first, so your own categories are declared after
+    typography: { … },
+  },
+  components: {
+    ...p1Blocks,       // first, for the same reason
+    HeadingBlock: headingBlock,
+  },
+} as Config;
+```
+
+Both spreads must come first. Later keys win in an object literal, so a spread placed last lets a
+registry category overwrite one of yours — the blocks stay registered and disappear from the drawer,
+which looks like a broken install rather than a merge.
+
+Scaffolding a new project and moving your work across is often less effort than step 3.
+
 ## Adding a block
 
 **1. Create the block folder with three files:**
@@ -131,4 +230,5 @@ After converting it, run `test:visual` (not `:update`). A diff means the rewrite
 
 ## Code registry
 
-Private and unpublished. Blocks are distributed via `pnpm dlx shadcn@latest add @p1/<name>` from the hosted registry.
+Private and unpublished. Blocks are distributed via `pnpm dlx shadcn@latest add @p1/<name>` from the
+hosted registry, and browsable in the [P1 component catalog](https://components.p1.pantheon.io/).

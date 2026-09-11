@@ -15,14 +15,14 @@ New projects scaffolded with `create-p1-starter-kit@0.8.x` already have the new 
 From your project root, on a clean git tree:
 
 ```bash
-npx @pantheon-systems/p1-next-sdk p1-migrate
+npx @pantheon-systems/p1-next-sdk migrate
 ```
 
 It restructures the routes for you and leaves sibling routes (`/p1/merge`, `/p1/api`, `/p1/auth`) untouched. It writes code that only newer P1 packages export, so it checks the suite you have installed first and tells you to upgrade before it touches anything. Step 6 below needs a newer suite than the route move does; against an older one the codemod says so, skips that step alone, and leaves your existing chatbot gate working. Preview first with `--dry-run`; the codemod refuses to run on a dirty tree unless you pass `--force`, is safe to re-run (idempotent), and **bails with a pointer back to this guide** if your files have diverged from the starter shape. If it bails, follow the manual steps below.
 
 ```bash
-npx @pantheon-systems/p1-next-sdk p1-migrate --dry-run   # preview
-npx @pantheon-systems/p1-next-sdk p1-migrate             # apply
+npx @pantheon-systems/p1-next-sdk migrate --dry-run   # preview
+npx @pantheon-systems/p1-next-sdk migrate             # apply
 ```
 
 Review the diff and commit it as its own change.

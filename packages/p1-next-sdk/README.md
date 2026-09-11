@@ -111,8 +111,35 @@ transpilePackages: [
 
 ## CLI
 
-The package ships a `p1-migrate` binary for applying P1 migrations:
+`p1-next-sdk` dispatches on the first argument:
 
 ```bash
-npx p1-migrate
+npx @pantheon-systems/p1-next-sdk migrate        # was: npx p1-migrate
+npx @pantheon-systems/p1-next-sdk enable-registry
 ```
+
+### enable-registry
+
+Wires an existing app up to the P1 component registry, so `shadcn add @p1/…` works in a project
+scaffolded before the registry existed:
+
+```bash
+npx @pantheon-systems/p1-next-sdk enable-registry
+```
+
+It writes `components.json`, creates `components/puck/blocks/index.ts`, and adds the `@/*` path
+alias to `tsconfig.json`. Anything already in place is left alone, so a second run changes nothing,
+and a `tsconfig.json` it cannot edit safely is reported rather than rewritten.
+
+It does not touch `puck.config.tsx`. That file is yours and you have changed it, so the two spreads
+to add are printed instead:
+
+```tsx
+import { p1Blocks, p1Categories } from "./components/puck/blocks";
+
+categories: { ...p1Categories, /* your own categories after */ },
+components: { ...p1Blocks,     /* your own blocks after */ },
+```
+
+Both spreads must come first — later keys win in an object literal, so one placed last lets a
+registry category overwrite yours, and its blocks stay registered while vanishing from the drawer.

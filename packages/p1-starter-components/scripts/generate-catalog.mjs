@@ -109,16 +109,23 @@ function toPuckKey(exportName) {
   return 'P1' + exportName.replace(/Block$/, '');
 }
 
-// Auto-generate the shadcn docs string.
-function generateDocs(name, exportName) {
+// The three lines a user pastes to register a block. Built from the block's own
+// metadata, so nothing has to read the user's file to work out what to tell them.
+function generateDocs(name, exportName, categories) {
   const puckKey = toPuckKey(exportName);
+  // Categories are single lowercase words in the registry; the starter's own keys
+  // are namespaced so an unprefixed collision can't hide the block in the drawer.
+  const category = (categories?.[0] ?? 'other').replace(/^./, (c) => c.toUpperCase());
+  const categoryKey = `p1${category}`;
   return (
-    `Register the block in your Puck config:\n\n` +
-    `  // components/puck/blocks/index.ts\n` +
-    `  // 1. Add the import:\n` +
-    `  import { ${exportName} } from './${name}/${name}.block';\n` +
-    `  // 2. Add an entry to the existing p1Blocks object:\n` +
-    `  //    ${puckKey}: ${exportName},\n\n` +
+    `Register it in components/puck/blocks/index.ts:\n\n` +
+    `  import { ${exportName} } from "./${name}/${name}.block";\n\n` +
+    `  // in p1Blocks\n` +
+    `  ${puckKey}: ${exportName},\n\n` +
+    `  // in p1Categories — create the entry if it does not exist yet:\n` +
+    `  ${categoryKey}: { title: "P1 ${category}", components: ["${puckKey}"] },\n` +
+    `  // or, if ${categoryKey} already exists, add to its components array (no duplicate key):\n` +
+    `  // ${categoryKey}: { title: "P1 ${category}", components: ["${puckKey}", "P1CTA"] },\n\n` +
     `Then edit components/puck/blocks/${name}/${name}.css to restyle it — the file is yours.`
   );
 }
@@ -171,8 +178,8 @@ const registryItems = blocks.map(({ name, exportName, category, meta }) => ({
   dependencies: (meta.dependencies ?? ['@puckeditor/core']).map((d) => (d === '@puckeditor/core' ? PUCK_DEP : d)),
   // Every block imports defineMeta, so this is appended rather than left to the per-block list.
   registryDependencies: [...new Set([...(meta.registryDependencies ?? ['@p1/tokens']), '@p1/internal-meta'])],
-  meta: { version: '0.1.0', atlas: `${category}/${name}` },
-  docs: generateDocs(name, exportName),
+  meta: { version: '0.1.0', atlas: `${category}/${name}`, exportName },
+  docs: generateDocs(name, exportName, meta.categories ?? [category]),
   files: [
     { path: `${name}/${name}.tsx`, type: 'registry:component', target: `components/puck/blocks/${name}/${name}.tsx` },
     { path: `${name}/${name}.block.tsx`, type: 'registry:component', target: `components/puck/blocks/${name}/${name}.block.tsx` },

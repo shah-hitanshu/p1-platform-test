@@ -53,13 +53,13 @@ Preferred order:
 2. **Breaking but self-announcing.** A type-level break plus a changeset and a
    `docs/MIGRATION-*.md` is the floor. A dev-only runtime warning that detects the old
    shape is a good addition; treat it as a nudge, not a guarantee.
-3. **A codemod, only when it earns it.** `packages/p1-next-sdk/bin/p1-migrate.js`
-   exists because SDK 0.8 moved the editor into an `(editor)` route group — upgraded
-   apps got a silently empty editor. Ship one when the edit is localized, mechanical,
-   and hard to hand-roll correctly. Do not ship one to save a customer work they can
-   do safely themselves.
+3. **A codemod, only when it earns it.** `p1-next-sdk migrate`
+   (`packages/p1-next-sdk/bin/lib/cli.js`) exists because SDK 0.8 moved the editor
+   into an `(editor)` route group — upgraded apps got a silently empty editor. Ship
+   one when the edit is localized, mechanical, and hard to hand-roll correctly. Do
+   not ship one to save a customer work they can do safely themselves.
 
-If you do write one, the `p1-migrate` conventions are not stylistic — each came from a
+If you do write one, that codemod's conventions are not stylistic — each came from a
 real failure:
 
 - **Template-match or bail.** Validate every target before touching it and refuse on

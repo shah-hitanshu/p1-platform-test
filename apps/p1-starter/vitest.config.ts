@@ -1,8 +1,17 @@
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 
 export default defineConfig({
   plugins: [react()],
+  resolve: {
+    // Blocks installed from the code registry import through @/, which tsconfig
+    // resolves for tsc and next but vitest does not read. Without this a test
+    // touching an installed block fails to resolve rather than to assert.
+    alias: {
+      "@/": `${fileURLToPath(new URL(".", import.meta.url))}`,
+    },
+  },
   test: {
     environment: "node",
     // Inlining below means the first test to import puck-css pays for Vite

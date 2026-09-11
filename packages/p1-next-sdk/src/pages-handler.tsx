@@ -112,7 +112,7 @@ export function createP1Pages(opts: P1PagesConfig) {
         "[p1-next-sdk] The P1 editor now renders from pages.Layout, but this " +
           "app rendered pages.Page without it — the editor will be empty. Mount " +
           "it at app/p1/(editor)/layout.tsx, or run: " +
-          "npx @pantheon-systems/p1-next-sdk p1-migrate — see " +
+          "npx @pantheon-systems/p1-next-sdk migrate — see " +
           "docs/MIGRATION-EDITOR-LAYOUT.md",
       );
     }

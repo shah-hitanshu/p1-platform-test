@@ -114,3 +114,5 @@ apps/p1-registry/out/
 packages/p1-starter-components/visual/baselines/
 packages/p1-starter-components/visual/results/
 packages/p1-starter-components/visual/report/
+
+packages/create-p1-starter-kit/lib/generated-registry.json

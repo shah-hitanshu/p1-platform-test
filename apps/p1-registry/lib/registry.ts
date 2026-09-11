@@ -20,6 +20,7 @@ export interface Catalog {
   byCategory: Record<string, CatalogItem[]>;
 }
 
+
 export function loadCatalog(registryDir?: string): Catalog {
   const dir = registryDir ?? join(process.cwd(), 'public', 'r');
   const indexPath = join(dir, 'registry.json');

@@ -128,6 +128,30 @@ describe('build artifacts', () => {
 
     expect(stale).toEqual([]);
   });
+
+  it('does not stamp the registry manifest when building somewhere other than template/', () => {
+    // writeGeneratedRegistry() ignores destPath and always writes lib/, so a
+    // build to a temp directory used to reach outside it and rewrite this file
+    // — a test run with a side effect on the package it is testing.
+    //
+    // Asserted on mtime, not contents: the stamp rewrites byte-identical content
+    // whenever the version has not moved, so comparing contents proves nothing.
+    //
+    // The file is a gitignored build artifact, so it is absent on a clean
+    // checkout — absent before and still absent after is the same pass, and a
+    // stamp that created it turns null into a number.
+    const manifest = path.join(pkgRoot, 'lib/generated-registry.json');
+    const stampedAt = () => (fs.existsSync(manifest) ? fs.statSync(manifest).mtimeMs : null);
+    const before = stampedAt();
+
+    const scratch = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'build-stamp-')), 'template');
+    try {
+      buildTemplate(scratch);
+      expect(stampedAt()).toBe(before);
+    } finally {
+      fs.rmSync(path.dirname(scratch), { recursive: true, force: true });
+    }
+  });
 });
 
 // The CLI tells the user which credentials to fill in, so its text is documentation

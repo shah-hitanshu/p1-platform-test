@@ -47,7 +47,7 @@
         "@p1/steps",
         "@p1/timeline"
       ],
-      "docs": "Register the installed blocks in components/puck/blocks/index.ts, which your Puck config already spreads. Add more any time with `shadcn add @p1/<name>`, and review our updates to a block you have edited with `shadcn add @p1/<name> --diff`."
+      "docs": "Every block landed in components/puck/blocks. Using one takes three lines in components/puck/blocks/index.ts, which your Puck config already spreads.\n\nFor example, to use the pricing block:\n\n  import { PricingBlock } from \"./pricing/pricing.block\";\n\n  P1Pricing: PricingBlock,  // add to p1Blocks\n\n  // in p1Categories — create the entry if it does not exist yet:\n  p1Convert: { title: \"P1 Convert\", components: [\"P1Pricing\"] },\n  // or, if p1Convert already exists, add to its components array (no duplicate key):\n  // p1Convert: { title: \"P1 Convert\", components: [\"P1Pricing\", \"P1CTA\"] },\n\nRepeat for each block you want. A block's export name is at the top of components/puck/blocks/<name>/<name>.block.tsx — it does not always match the directory. Review our updates to a block you have edited with `shadcn add @p1/<name> --diff`."
     }
   ]
 }

@@ -8,7 +8,7 @@
   },
   "scripts": {
     "build": "node scripts/build-template.js",
-    "clean": "rm -rf template node_modules/.vite",
+    "clean": "rm -rf template lib/generated-registry.json node_modules/.vite",
     "lint": "eslint index.js lib scripts",
     "lint:fix": "eslint index.js lib scripts --fix",
     "lint:template": "node scripts/lint-template.js",

@@ -17,7 +17,7 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "p1-migrate": "./bin/p1-migrate.js"
+    "p1-next-sdk": "./bin/p1-next-sdk.js"
   },
   "exports": {
     ".": {

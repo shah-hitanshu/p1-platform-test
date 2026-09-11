@@ -254,6 +254,20 @@ jobs:
         run: pnpm --filter @pantheon-systems/p1-starter-components build-storybook
       - name: Build the code registry
         run: pnpm --filter @pantheon-systems/p1-starter-components registry:build
+      # registry:build regenerates three files that are committed, because the
+      # catalog app imports two of them and the scaffold checks read the third.
+      # Without this, editing a block and forgetting to regenerate ships a served
+      # registry that disagrees with the source it was built from.
+      - name: Generated registry files match their source
+        run: |
+          git diff --exit-code -- \
+            packages/p1-starter-components/registry/p1/blocks/registry.json \
+            apps/p1-registry/lib/catalog.generated.tsx \
+            apps/p1-registry/lib/preview-names.ts \
+          || {
+            echo "::error::Generated registry files are stale. Run: pnpm --filter @pantheon-systems/p1-starter-components registry:generate"
+            exit 1
+          }
       - name: Test and typecheck the catalog app
         run: |
           pnpm --filter @pantheon-systems/p1-registry test

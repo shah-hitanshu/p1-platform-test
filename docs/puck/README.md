@@ -21,6 +21,10 @@ Integration between [Puck Editor](https://puckeditor.com) and the Collaborative 
 | `@pantheon/css-client` | TypeScript API client for the Collaborative Content Repository |
 | `@pantheon/puck-css` | React hooks and components for Puck editor integration |
 
+Blocks for the Puck drawer are distributed separately, as a shadcn code registry rather than a
+package. Browse them, with the install command for each, in the
+[P1 component catalog](https://components.p1.pantheon.io/).
+
 ## Installation
 
 ```bash
@@ -417,7 +421,7 @@ If you skip the rebuild, the embedded CSS stays at the old version even though t
 A codemod restructures an existing app for you:
 
 ```bash
-npx @pantheon-systems/p1-next-sdk p1-migrate
+npx @pantheon-systems/p1-next-sdk migrate
 ```
 
 See [docs/MIGRATION-EDITOR-LAYOUT.md](docs/MIGRATION-EDITOR-LAYOUT.md) for the full guide, the `--dry-run`/`--force` options, and the manual steps.

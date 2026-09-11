@@ -60,6 +60,8 @@ app/
     auth/[...action]/route.ts   # Login / logout callbacks
     merge/                      # Branch merge review UI
 components/puck/                # Block definitions (Heading, Paragraph, Image, …)
+components/puck/blocks/         # Blocks installed from the P1 component registry
+  index.ts                      #   where you register them (see "P1 blocks" below)
 lib/remote-datasources.ts       # Datasource registry (REMOTE_DATASOURCE_REGISTRY)
 lib/remote-datasource-fetchers.ts  # Fetchers backing those datasources
 puck.config.tsx                 # Puck editor configuration — block registry & categories
@@ -67,13 +69,55 @@ puck.config.tsx                 # Puck editor configuration — block registry &
 
 ## Customizing
 
-- **Add a block** — create a component in `components/puck/`, then register it in
-  `puck.config.tsx`.
+- **Add a block** — install one from the P1 registry (below), or create a component in
+  `components/puck/` and register it in `puck.config.tsx`.
 - **Add a datasource** — add an entry to `REMOTE_DATASOURCE_REGISTRY` in
   `lib/remote-datasources.ts`, with its fetcher in `lib/remote-datasource-fetchers.ts`, to make
   external data available to block fields through `{{ datasource.field }}` expressions.
 - **Change styling** — the project uses Tailwind CSS v4; edit `app/styles.css` or the individual
   block components.
+
+## P1 blocks
+
+P1 ships a library of marketing, editorial and layout blocks as a shadcn code registry rather than
+a package, so the code lands in your project and belongs to you — edit it, restyle it, delete what
+you do not want.
+
+```bash
+npx shadcn@latest add @p1/pricing
+```
+
+The files land in `components/puck/blocks/pricing/`. Registering the block takes three lines in
+`components/puck/blocks/index.ts`, which `puck.config.tsx` already spreads:
+
+```ts
+import { PricingBlock } from "./pricing/pricing.block";
+
+P1Pricing: PricingBlock,  // add to p1Blocks
+
+// in p1Categories — create the entry if it does not exist yet:
+p1Convert: { title: "P1 Convert", components: ["P1Pricing"] },
+// or, if p1Convert already exists, add to its components array (no duplicate key):
+// p1Convert: { title: "P1 Convert", components: ["P1Pricing", "P1CTA"] },
+```
+
+The install prints the `import` and `p1Blocks` lines for you. Add the block to an existing
+`p1Categories` entry, or create one — but never create a second key for a category that
+already exists. Repeat for each block you want.
+
+Two things worth knowing:
+
+- The category line is what puts a block in the editor drawer. A block registered in `p1Blocks`
+  alone still works but stays out of the drawer, with no error.
+- A block's export name is at the top of `components/puck/blocks/<name>/<name>.block.tsx` and does
+  not always match the directory — `@p1/logos` exports `LogoCloudBlock`.
+
+Blocks you never register cost nothing. To see what we changed in a block you have already edited,
+without overwriting your work:
+
+```bash
+npx shadcn@latest add @p1/pricing --diff components/puck/blocks/pricing/pricing.tsx
+```
 
 ## Updating
 

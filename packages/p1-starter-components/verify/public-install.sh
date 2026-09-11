@@ -37,20 +37,39 @@ curl -sSI "$HOST/r/registry.json" | grep -Ei 'cache-control|etag' || {
 echo "==> a clean project installs from the public origin"
 cd "$WORK" && mkdir consumer && cd consumer
 npm init -y >/dev/null
+# The same shape the scaffolder writes. shadcn rejects a components.json missing
+# style, rsc or tailwind outright, so a partial one fails before it ever reaches
+# the registry and tells you nothing about the host.
 cat > components.json <<JSON
 { "\$schema": "https://ui.shadcn.com/schema.json",
+  "style": "p1",
+  "rsc": true,
   "tsx": true,
-  "aliases": { "components": "@/components", "lib": "@/lib", "utils": "@/lib/utils" },
+  "tailwind": { "config": "", "css": "app/styles.css", "baseColor": "neutral", "cssVariables": true },
+  "aliases": { "components": "@/components", "ui": "@/components/ui", "lib": "@/lib", "hooks": "@/hooks", "utils": "@/lib/utils" },
   "registries": { "@p1": "$HOST/r/{name}.json" } }
 JSON
+# shadcn resolves the @/ aliases through tsconfig and refuses to run without one.
+cat > tsconfig.json <<'JSON'
+{ "compilerOptions": { "jsx": "preserve", "module": "esnext", "moduleResolution": "bundler",
+  "strict": true, "skipLibCheck": true, "esModuleInterop": true, "noEmit": true,
+  "paths": { "@/*": ["./*"] } }, "include": ["**/*.ts", "**/*.tsx"], "exclude": ["node_modules"] }
+JSON
+# @p1/tokens appends its own @import to whatever tailwind.css names, so the file
+# has to exist for that half of the install to be exercised.
+mkdir -p app && printf '@import "tailwindcss";\n' > app/styles.css
 pnpm dlx shadcn@latest list @p1
 pnpm dlx shadcn@latest search @p1 --query hero
 pnpm dlx shadcn@latest add @p1/hero --yes
 test -f components/puck/blocks/hero/hero.tsx || { echo "FAIL: hero did not install"; exit 1; }
+grep -q 'p1-tokens' app/styles.css || { echo "FAIL: @p1/tokens did not inject its import"; exit 1; }
 
 echo "==> --diff reports drift on an edited block"
 printf '\n// customer edit\n' >> components/puck/blocks/hero/hero.tsx
-pnpm dlx shadcn@latest add @p1/hero --diff | tee "$WORK/diff.txt"
+# Named path, not a bare --diff: shadcn prints only the first five files of an
+# item and hero has nine, so the edited one falls outside the summary.
+pnpm dlx shadcn@latest add @p1/hero --diff components/puck/blocks/hero/hero.tsx \
+  2>&1 | tee "$WORK/diff.txt"
 grep -q 'customer edit\|^-\|^+' "$WORK/diff.txt" || { echo "FAIL: --diff reported nothing"; exit 1; }
 
 echo "==> no agent tooling was installed (D19)"

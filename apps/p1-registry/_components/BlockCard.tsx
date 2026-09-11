@@ -1,6 +1,9 @@
 'use client';
 import * as React from 'react';
+// Type-only from lib/registry: it imports node:fs, and this is a client
+// component, so a value import from there would reach the browser bundle.
 import type { CatalogItem } from '../lib/registry';
+import { registrationSnippet } from '../lib/registration-snippet';
 import { previewNames } from '../lib/preview-names';
 
 interface BlockCardProps {
@@ -37,12 +40,15 @@ export function BlockCard({ item }: BlockCardProps) {
   const preview = useDialog();
   const code = useDialog();
 
-  const [copied, setCopied] = React.useState<'cmd' | 'agent' | null>(null);
+  const [copied, setCopied] = React.useState<'cmd' | 'agent' | 'reg' | null>(null);
 
   const installCmd = `pnpm dlx shadcn@latest add @p1/${item.name}`;
+  // The registration lines are served with the item, so the catalog and the CLI
+  // can never disagree about the component key or the category.
+  const registerDocs = registrationSnippet(item.docs);
   const agentPrompt = `Add the P1 ${item.title ?? item.name} block to this project and register it in the Puck config.`;
 
-  function copy(text: string, kind: 'cmd' | 'agent') {
+  function copy(text: string, kind: 'cmd' | 'agent' | 'reg') {
     navigator.clipboard
       .writeText(text)
       .then(() => {
@@ -166,6 +172,21 @@ export function BlockCard({ item }: BlockCardProps) {
               {copied === 'cmd' ? 'Copied!' : 'Copy'}
             </button>
           </div>
+          {registerDocs && (
+            <>
+              <div className="p1-code-dialog__cmd-label">Then register it</div>
+              <div className="p1-code-dialog__docs">
+                <pre className="p1-code-dialog__docs-code">{registerDocs}</pre>
+                <button
+                  className="p1-code-dialog__copy"
+                  onClick={() => copy(registerDocs, 'reg')}
+                  type="button"
+                >
+                  {copied === 'reg' ? 'Copied!' : 'Copy'}
+                </button>
+              </div>
+            </>
+          )}
           <button
             className="p1-code-dialog__agent"
             onClick={() => copy(agentPrompt, 'agent')}

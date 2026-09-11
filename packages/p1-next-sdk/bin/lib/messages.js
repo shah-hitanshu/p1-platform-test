@@ -10,9 +10,9 @@ const TAG = "[p1-migrate]";
 export function help() {
   console.log(
     [
-      "p1-migrate — migrate a P1 app to the persistent (editor) layout",
+      "p1-next-sdk migrate — migrate a P1 app to the persistent (editor) layout",
       "",
-      "Usage: npx @pantheon-systems/p1-next-sdk p1-migrate [options]",
+      "Usage: npx @pantheon-systems/p1-next-sdk migrate [options]",
       "",
       "Options:",
       "  --dir=<path>   Project directory to migrate (default: current directory)",

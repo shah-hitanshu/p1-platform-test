@@ -13,9 +13,11 @@ import { puckRoot } from "./components/puck/root";
 import { spacerBlock } from "./components/puck/spacer-block";
 import { welcomeBlock } from "./components/puck/welcome-block";
 import { dataListBlock } from "./components/puck/data-list-block";
+import { p1Blocks, p1Categories } from "./components/puck/blocks";
 
 export const config = {
   categories: {
+    ...p1Categories,
     typography: {
       title: "Typography",
       components: ["HeadingBlock", "ParagraphBlock", "QuoteBlock", "ListBlock"],
@@ -43,6 +45,7 @@ export const config = {
   },
   root: puckRoot,
   components: {
+    ...p1Blocks,
     HeadingBlock: headingBlock,
     ParagraphBlock: paragraphBlock,
     ImageBlock: imageBlock,
