@@ -56,6 +56,7 @@ export function InspectorTabHeader({
           aria-label="Collapse panel"
           aria-pressed={rightSideBarVisible}
           title="Collapse panel"
+          data-testid="inspector-collapse-button"
         >
           <Icon iconName="angleRight" size="s" aria-hidden="true" />
         </button>

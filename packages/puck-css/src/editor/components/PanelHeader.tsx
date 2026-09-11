@@ -50,6 +50,7 @@ export function PanelHeader({
           dispatch({ type: 'setUi', ui: { leftSideBarVisible: false } });
           onCollapse?.();
         }}
+        data-testid="panel-header-collapse-button"
       />
     </div>
   );

@@ -102,6 +102,7 @@ export function P1InspectorFields({
           hasBorder={false}
           onClick={handleReopen}
           className="p1-inspector-reopen-btn"
+          data-testid="inspector-reopen-button"
         />
       </div>
     );

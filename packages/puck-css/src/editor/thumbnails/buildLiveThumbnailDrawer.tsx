@@ -105,7 +105,7 @@ function LiveThumbnailDrawer({
       versionNumber={viewingVersion?.versionNumber ?? undefined}
       onExitPreview={returnToLatest}
     >
-    <PanelShell title="Blocks" onCollapse={options.onClose}>
+    <PanelShell title="Blocks" onCollapse={options.onClose} testId="blocks-panel">
         {/* Toolbar: category count + expand/collapse all */}
         {sections.length > 0 && (
           <div className="p1-blocks-drawer__toolbar">
