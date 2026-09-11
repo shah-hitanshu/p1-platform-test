@@ -15,14 +15,16 @@
  * Based on collaborative-state-system-architecture-v2.2.md
  */
 
-import { query } from '../db';
+import { and, asc, count, eq, sql } from 'drizzle-orm';
+import type { PgUpdateSetSource } from 'drizzle-orm/pg-core';
+import { branchStructureState, siteStructures } from '../db/schema';
+import { db } from '../db/scope';
+import { driverErrorCode } from '../db/driver-error';
 import type {
   CreateStructureParams,
   UpdateBranchStructureParams,
   BranchStructure,
   ListBranchStructuresOptions,
-  StructureDefinitionRow,
-  BranchStructureRow,
 } from './structure-types';
 import {
   mapBranchStructureRow,
@@ -83,80 +85,79 @@ export {
 // =============================================================================
 
 /**
+ * The select list every branch-structure read shares: identity from the branch
+ * row, ownership and creation time from the definition.
+ */
+const branchStructureColumns = {
+  structureId: branchStructureState.structureId,
+  branchId: branchStructureState.branchId,
+  name: branchStructureState.name,
+  slug: branchStructureState.slug,
+  description: branchStructureState.description,
+  structureType: branchStructureState.structureType,
+  structureTree: branchStructureState.structureTree,
+  metadataSchema: branchStructureState.metadataSchema,
+  schemaEnforcement: branchStructureState.schemaEnforcement,
+  siteId: siteStructures.siteId,
+  createdAt: siteStructures.createdAt,
+};
+
+const DEFAULT_STRUCTURE_METADATA_SCHEMA: Record<string, unknown> = {
+  type: 'object',
+  properties: { title: { type: 'string' } },
+  required: ['title'],
+};
+
+/**
  * Create a new site structure (atomic: definition + branch state).
  * Creates both the site_structures definition and branch_structure_state entry.
  */
-export async function createStructure(params: CreateStructureParams): Promise<BranchStructure> {
+export async function createStructure(
+  params: CreateStructureParams,
+): Promise<BranchStructure> {
   const { siteId, branchId, name, description, structureType } = params;
   const slug = normalizeSlug(params.slug);
 
   try {
     // Step 1: Create the structure definition (minimal - just ID and site)
-    const defResult = await query<StructureDefinitionRow>(
-      `INSERT INTO app.site_structures (site_id)
-       VALUES ($1)
-       RETURNING *`,
-      [siteId],
-    );
+    const [defRow] = await db()
+      .insert(siteStructures)
+      .values({ siteId })
+      .returning();
 
-    const defRow = defResult.rows[0];
     if (!defRow) {
       throw new SiteNotFoundError(siteId);
     }
-    const structureId = defRow.id;
-    const createdAt = defRow.created_at;
 
     // Step 2: Create the branch structure state (with identity)
-    const defaultSchema = JSON.stringify({
-      type: 'object',
-      properties: { title: { type: 'string' } },
-      required: ['title'],
-    });
-
-    const stateResult = await query<BranchStructureRow>(
-      `INSERT INTO app.branch_structure_state
-       (branch_id, structure_id, name, slug, description, structure_type,
-        structure_tree, metadata_schema, schema_enforcement)
-       VALUES ($1, $2, $3, $4, $5, $6, '[]'::jsonb, $9::jsonb, 'warn')
-       RETURNING
-         structure_id,
-         $7::uuid AS site_id,
-         branch_id,
-         name,
-         slug,
-         description,
-         structure_type,
-         structure_tree,
-         metadata_schema,
-         schema_enforcement,
-         $8::timestamptz AS created_at`,
-      [
+    const [stateRow] = await db()
+      .insert(branchStructureState)
+      .values({
         branchId,
-        structureId,
+        structureId: defRow.id,
         name,
         slug,
-        description ?? null,
+        description: description ?? null,
         structureType,
-        siteId,
-        createdAt,
-        defaultSchema,
-      ],
-    );
+        structureTree: [],
+        metadataSchema: DEFAULT_STRUCTURE_METADATA_SCHEMA,
+        schemaEnforcement: 'warn',
+      })
+      .returning();
 
-    const stateRow = stateResult.rows[0];
     if (!stateRow) {
       throw new SiteNotFoundError(siteId);
     }
-    return mapBranchStructureRow(stateRow);
+    // Ownership and creation time belong to the definition just written, so the
+    // branch row is completed from it rather than read back.
+    return mapBranchStructureRow({ ...stateRow, siteId, createdAt: defRow.createdAt });
   } catch (error) {
-    if (error instanceof Error && 'code' in error) {
-      const pgError = error as Error & { code: string };
-      if (pgError.code === '23505') {
-        throw new DuplicateStructureSlugError(siteId, slug);
-      }
-      if (pgError.code === '23503') {
-        throw new SiteNotFoundError(siteId);
-      }
+    const code = driverErrorCode(error);
+    if (code === '23505') {
+      throw new DuplicateStructureSlugError(siteId, slug);
+    }
+    if (code === '23503') {
+      throw new SiteNotFoundError(siteId);
     }
     throw error;
   }
@@ -169,30 +170,17 @@ export async function getBranchStructure(
   branchId: string,
   structureId: string,
 ): Promise<BranchStructure | null> {
-  const result = await query<BranchStructureRow>(
-    `SELECT
-       bss.structure_id,
-       ss.site_id,
-       bss.branch_id,
-       bss.name,
-       bss.slug,
-       bss.description,
-       bss.structure_type,
-       bss.structure_tree,
-       bss.metadata_schema,
-       bss.schema_enforcement,
-       ss.created_at
-     FROM app.branch_structure_state bss
-     JOIN app.site_structures ss ON ss.id = bss.structure_id
-     WHERE bss.branch_id = $1 AND bss.structure_id = $2`,
-    [branchId, structureId],
-  );
+  const [branchRow] = await db()
+    .select(branchStructureColumns)
+    .from(branchStructureState)
+    .innerJoin(siteStructures, eq(siteStructures.id, branchStructureState.structureId))
+    .where(
+      and(
+        eq(branchStructureState.branchId, branchId),
+        eq(branchStructureState.structureId, structureId),
+      ),
+    );
 
-  if (result.rows.length === 0) {
-    return null;
-  }
-
-  const branchRow = result.rows[0];
   if (!branchRow) {
     return null;
   }
@@ -207,30 +195,17 @@ export async function getBranchStructureBySlug(
   slug: string,
 ): Promise<BranchStructure | null> {
   const normalizedSlug = normalizeSlug(slug);
-  const result = await query<BranchStructureRow>(
-    `SELECT
-       bss.structure_id,
-       ss.site_id,
-       bss.branch_id,
-       bss.name,
-       bss.slug,
-       bss.description,
-       bss.structure_type,
-       bss.structure_tree,
-       bss.metadata_schema,
-       bss.schema_enforcement,
-       ss.created_at
-     FROM app.branch_structure_state bss
-     JOIN app.site_structures ss ON ss.id = bss.structure_id
-     WHERE bss.branch_id = $1 AND bss.slug = $2`,
-    [branchId, normalizedSlug],
-  );
+  const [slugRow] = await db()
+    .select(branchStructureColumns)
+    .from(branchStructureState)
+    .innerJoin(siteStructures, eq(siteStructures.id, branchStructureState.structureId))
+    .where(
+      and(
+        eq(branchStructureState.branchId, branchId),
+        eq(branchStructureState.slug, normalizedSlug),
+      ),
+    );
 
-  if (result.rows.length === 0) {
-    return null;
-  }
-
-  const slugRow = result.rows[0];
   if (!slugRow) {
     return null;
   }
@@ -244,34 +219,20 @@ export async function listBranchStructures(
   branchId: string,
   options?: ListBranchStructuresOptions,
 ): Promise<BranchStructure[]> {
-  let sql = `
-    SELECT
-      bss.structure_id,
-      ss.site_id,
-      bss.branch_id,
-      bss.name,
-      bss.slug,
-      bss.description,
-      bss.structure_type,
-      bss.structure_tree,
-      bss.metadata_schema,
-      bss.schema_enforcement,
-      ss.created_at
-    FROM app.branch_structure_state bss
-    JOIN app.site_structures ss ON ss.id = bss.structure_id
-    WHERE bss.branch_id = $1`;
-
-  const params: string[] = [branchId];
+  const conditions = [eq(branchStructureState.branchId, branchId)];
 
   if (options?.structureType !== undefined) {
-    sql += ' AND bss.structure_type = $2';
-    params.push(options.structureType);
+    conditions.push(eq(branchStructureState.structureType, options.structureType));
   }
 
-  sql += ' ORDER BY ss.created_at ASC';
+  const rows = await db()
+    .select(branchStructureColumns)
+    .from(branchStructureState)
+    .innerJoin(siteStructures, eq(siteStructures.id, branchStructureState.structureId))
+    .where(and(...conditions))
+    .orderBy(asc(siteStructures.createdAt));
 
-  const result = await query<BranchStructureRow>(sql, params);
-  return result.rows.map(mapBranchStructureRow);
+  return rows.map(mapBranchStructureRow);
 }
 
 /**
@@ -282,30 +243,21 @@ export async function updateBranchStructure(
   structureId: string,
   updates: UpdateBranchStructureParams,
 ): Promise<BranchStructure> {
-  const setClauses: string[] = [];
-  const params: (string | null)[] = [];
-  let paramIndex = 1;
+  const changes: PgUpdateSetSource<typeof branchStructureState> = {};
 
   if (updates.name !== undefined) {
-    setClauses.push(`name = $${String(paramIndex)}`);
-    params.push(updates.name);
-    paramIndex++;
+    changes.name = updates.name;
   }
 
   if (updates.slug !== undefined) {
-    const normalizedSlug = normalizeSlug(updates.slug);
-    setClauses.push(`slug = $${String(paramIndex)}`);
-    params.push(normalizedSlug);
-    paramIndex++;
+    changes.slug = normalizeSlug(updates.slug);
   }
 
   if (updates.description !== undefined) {
-    setClauses.push(`description = $${String(paramIndex)}`);
-    params.push(updates.description);
-    paramIndex++;
+    changes.description = updates.description;
   }
 
-  if (setClauses.length === 0) {
+  if (Object.keys(changes).length === 0) {
     const existing = await getBranchStructure(branchId, structureId);
     if (existing === null) {
       throw new StructureNotFoundError(structureId);
@@ -313,18 +265,19 @@ export async function updateBranchStructure(
     return existing;
   }
 
-  params.push(branchId, structureId);
-
   try {
-    const result = await query<{ structure_id: string }>(
-      `UPDATE app.branch_structure_state
-       SET ${setClauses.join(', ')}
-       WHERE branch_id = $${String(paramIndex)} AND structure_id = $${String(paramIndex + 1)}
-       RETURNING structure_id`,
-      params,
-    );
+    const updatedRows = await db()
+      .update(branchStructureState)
+      .set(changes)
+      .where(
+        and(
+          eq(branchStructureState.branchId, branchId),
+          eq(branchStructureState.structureId, structureId),
+        ),
+      )
+      .returning({ structureId: branchStructureState.structureId });
 
-    if (result.rows.length === 0) {
+    if (updatedRows.length === 0) {
       throw new StructureNotFoundError(structureId);
     }
 
@@ -335,11 +288,8 @@ export async function updateBranchStructure(
     }
     return updated;
   } catch (error) {
-    if (error instanceof Error && 'code' in error) {
-      const pgError = error as Error & { code: string };
-      if (pgError.code === '23505') {
-        throw new DuplicateStructureSlugError(branchId, updates.slug ?? '');
-      }
+    if (driverErrorCode(error) === '23505') {
+      throw new DuplicateStructureSlugError(branchId, updates.slug ?? '');
     }
     throw error;
   }
@@ -354,32 +304,31 @@ export async function deleteBranchStructure(
   structureId: string,
 ): Promise<void> {
   // Step 1: Delete from branch_structure_state
-  const deleteResult = await query<{ structure_id: string }>(
-    `DELETE FROM app.branch_structure_state
-     WHERE branch_id = $1 AND structure_id = $2
-     RETURNING structure_id`,
-    [branchId, structureId],
-  );
+  const deletedRows = await db()
+    .delete(branchStructureState)
+    .where(
+      and(
+        eq(branchStructureState.branchId, branchId),
+        eq(branchStructureState.structureId, structureId),
+      ),
+    )
+    .returning({ structureId: branchStructureState.structureId });
 
-  if (deleteResult.rows.length === 0) {
+  if (deletedRows.length === 0) {
     throw new StructureNotFoundError(structureId);
   }
 
   // Step 2: Check if any other branches reference this structure
-  const countResult = await query<{ count: string }>(
-    'SELECT COUNT(*) AS count FROM app.branch_structure_state WHERE structure_id = $1',
-    [structureId],
-  );
+  const [countRow] = await db()
+    .select({ count: count() })
+    .from(branchStructureState)
+    .where(eq(branchStructureState.structureId, structureId));
 
-  const countRow = countResult.rows[0];
-  const remainingRefs = countRow ? parseInt(countRow.count, 10) : 0;
+  const remainingRefs = countRow?.count ?? 0;
 
   // Step 3: If no more references, cascade delete the definition
   if (remainingRefs === 0) {
-    await query(
-      'DELETE FROM app.site_structures WHERE id = $1',
-      [structureId],
-    );
+    await db().delete(siteStructures).where(eq(siteStructures.id, structureId));
   }
 }
 
@@ -391,36 +340,25 @@ export async function copyStructureStateForBranch(
   sourceBranchId: string,
   newBranchId: string,
 ): Promise<void> {
-  await query(
-    `INSERT INTO app.branch_structure_state (
-       branch_id,
-       structure_id,
-       name,
-       slug,
-       description,
-       structure_type,
-       structure_tree,
-       metadata_schema,
-       schema_enforcement,
-       has_changes_since_checkpoint,
-       last_modified_at,
-       last_modified_by
-     )
-     SELECT
-       $2,
-       structure_id,
-       name,
-       slug,
-       description,
-       structure_type,
-       structure_tree,
-       metadata_schema,
-       schema_enforcement,
-       FALSE,
-       last_modified_at,
-       last_modified_by
-     FROM app.branch_structure_state
-     WHERE branch_id = $1`,
-    [sourceBranchId, newBranchId],
+  // The insert column list is the table's own, in schema order, so the select
+  // must project every insertable column in that order.
+  await db().insert(branchStructureState).select(
+    db()
+      .select({
+        branchId: sql<string>`${newBranchId}`.as('branch_id'),
+        structureId: branchStructureState.structureId,
+        structureTree: branchStructureState.structureTree,
+        metadataSchema: branchStructureState.metadataSchema,
+        schemaEnforcement: branchStructureState.schemaEnforcement,
+        hasChangesSinceCheckpoint: sql<boolean>`FALSE`.as('has_changes_since_checkpoint'),
+        lastModifiedAt: branchStructureState.lastModifiedAt,
+        lastModifiedBy: branchStructureState.lastModifiedBy,
+        name: branchStructureState.name,
+        slug: branchStructureState.slug,
+        description: branchStructureState.description,
+        structureType: branchStructureState.structureType,
+      })
+      .from(branchStructureState)
+      .where(eq(branchStructureState.branchId, sourceBranchId)),
   );
 }

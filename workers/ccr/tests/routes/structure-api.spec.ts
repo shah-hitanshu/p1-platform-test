@@ -60,7 +60,7 @@ describe('Phase 7.1.1b: Structure API Routes', () => {
         slug: 'main-nav',
         description: 'Primary site navigation',
         structureType: 'hierarchy',
-        createdAt: '2026-01-24T10:00:00.000Z',
+        createdAt: new Date('2026-01-24T10:00:00.000Z'),
       });
 
       const request = new Request(
@@ -200,7 +200,7 @@ describe('Phase 7.1.1b: Structure API Routes', () => {
           name: 'Main Navigation',
           slug: 'main-nav',
           structureType: 'hierarchy',
-          createdAt: '2026-01-24T10:00:00.000Z',
+          createdAt: new Date('2026-01-24T10:00:00.000Z'),
         },
         {
           id: 'struct-2',
@@ -208,7 +208,7 @@ describe('Phase 7.1.1b: Structure API Routes', () => {
           name: 'Blog',
           slug: 'blog',
           structureType: 'collection',
-          createdAt: '2026-01-24T11:00:00.000Z',
+          createdAt: new Date('2026-01-24T11:00:00.000Z'),
         },
       ]);
 
@@ -275,7 +275,7 @@ describe('Phase 7.1.1b: Structure API Routes', () => {
         structureType: 'hierarchy',
         metadataSchema: { type: 'object' },
         schemaEnforcement: 'warn',
-        createdAt: '2026-01-24T10:00:00.000Z',
+        createdAt: new Date('2026-01-24T10:00:00.000Z'),
       });
 
       const request = new Request(
@@ -338,7 +338,7 @@ describe('Phase 7.1.1b: Structure API Routes', () => {
         slug: 'stuff-i-write',
         description: 'My blog posts',
         structureType: 'collection',
-        createdAt: '2026-01-24T10:00:00.000Z',
+        createdAt: new Date('2026-01-24T10:00:00.000Z'),
       });
 
       const request = new Request(
@@ -712,7 +712,7 @@ describe('Phase 7.1.1b: Structure API Routes', () => {
         name: 'Main Navigation',
         slug: 'main-nav',
         structureType: 'hierarchy',
-        createdAt: '2026-01-24T10:00:00.000Z',
+        createdAt: new Date('2026-01-24T10:00:00.000Z'),
       });
 
       const request = new Request(

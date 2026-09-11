@@ -58,7 +58,7 @@ describe('Phase 7.1.1b: Node API Routes', () => {
         name: 'Main Nav',
         slug: 'main-nav',
         structureType: 'hierarchy',
-        createdAt: '2026-01-24T10:00:00.000Z',
+        createdAt: new Date('2026-01-24T10:00:00.000Z'),
       });
 
       vi.mocked(services.createNode).mockResolvedValueOnce({
@@ -110,7 +110,7 @@ describe('Phase 7.1.1b: Node API Routes', () => {
         name: 'Main Nav',
         slug: 'main-nav',
         structureType: 'hierarchy',
-        createdAt: '2026-01-24T10:00:00.000Z',
+        createdAt: new Date('2026-01-24T10:00:00.000Z'),
       });
 
       vi.mocked(services.createNode).mockResolvedValueOnce({
@@ -163,7 +163,7 @@ describe('Phase 7.1.1b: Node API Routes', () => {
         name: 'Main Nav',
         slug: 'main-nav',
         structureType: 'hierarchy',
-        createdAt: '2026-01-24T10:00:00.000Z',
+        createdAt: new Date('2026-01-24T10:00:00.000Z'),
       });
 
       const request = new Request(
@@ -201,7 +201,7 @@ describe('Phase 7.1.1b: Node API Routes', () => {
         name: 'Main Nav',
         slug: 'main-nav',
         structureType: 'hierarchy',
-        createdAt: '2026-01-24T10:00:00.000Z',
+        createdAt: new Date('2026-01-24T10:00:00.000Z'),
       });
 
       vi.mocked(services.createNode).mockRejectedValueOnce(
@@ -242,7 +242,7 @@ describe('Phase 7.1.1b: Node API Routes', () => {
         name: 'Main Nav',
         slug: 'main-nav',
         structureType: 'hierarchy',
-        createdAt: '2026-01-24T10:00:00.000Z',
+        createdAt: new Date('2026-01-24T10:00:00.000Z'),
       });
 
       vi.mocked(services.createNode).mockRejectedValueOnce(
@@ -291,7 +291,7 @@ describe('Phase 7.1.1b: Node API Routes', () => {
         name: 'Main Nav',
         slug: 'main-nav',
         structureType: 'hierarchy',
-        createdAt: '2026-01-24T10:00:00.000Z',
+        createdAt: new Date('2026-01-24T10:00:00.000Z'),
       });
 
       vi.mocked(services.listNodes).mockResolvedValueOnce([
@@ -344,7 +344,7 @@ describe('Phase 7.1.1b: Node API Routes', () => {
         name: 'Main Nav',
         slug: 'main-nav',
         structureType: 'hierarchy',
-        createdAt: '2026-01-24T10:00:00.000Z',
+        createdAt: new Date('2026-01-24T10:00:00.000Z'),
       });
 
       vi.mocked(services.listNodes).mockResolvedValueOnce([]);
@@ -684,7 +684,7 @@ describe('Phase 7.1.1b: Node API Routes', () => {
         name: 'Main Nav',
         slug: 'main-nav',
         structureType: 'hierarchy',
-        createdAt: '2026-01-24T10:00:00.000Z',
+        createdAt: new Date('2026-01-24T10:00:00.000Z'),
       });
 
       vi.mocked(services.reorderNodes).mockResolvedValueOnce(undefined);
@@ -731,7 +731,7 @@ describe('Phase 7.1.1b: Node API Routes', () => {
         name: 'Main Navigation',
         slug: 'main-nav',
         structureType: 'hierarchy',
-        createdAt: '2026-01-24T10:00:00.000Z',
+        createdAt: new Date('2026-01-24T10:00:00.000Z'),
       });
 
       vi.mocked(services.buildNavigationTree).mockResolvedValueOnce([
@@ -872,7 +872,7 @@ describe('Phase 7.1.1b: Node API Routes', () => {
         name: 'Main Nav',
         slug: 'main-nav',
         structureType: 'hierarchy',
-        createdAt: '2026-01-24T10:00:00.000Z',
+        createdAt: new Date('2026-01-24T10:00:00.000Z'),
       });
 
       vi.mocked(services.listNodes).mockResolvedValueOnce([]);
@@ -910,7 +910,7 @@ describe('Phase 7.1.1b: Node API Routes', () => {
         name: 'Main Nav',
         slug: 'main-nav',
         structureType: 'hierarchy',
-        createdAt: '2026-01-24T10:00:00.000Z',
+        createdAt: new Date('2026-01-24T10:00:00.000Z'),
       });
 
       vi.mocked(services.createNode).mockResolvedValueOnce({
@@ -1010,7 +1010,7 @@ describe('Phase 7.1.1b: Node API Routes', () => {
         name: 'Navigation',
         slug: 'navigation',
         structureType: 'hierarchy',
-        createdAt: '2026-01-24T10:00:00.000Z',
+        createdAt: new Date('2026-01-24T10:00:00.000Z'),
       });
 
       const request = new Request(
@@ -1051,7 +1051,7 @@ describe('Phase 7.1.1b: Node API Routes', () => {
         name: 'Navigation',
         slug: 'navigation',
         structureType: 'hierarchy',
-        createdAt: '2026-01-24T10:00:00.000Z',
+        createdAt: new Date('2026-01-24T10:00:00.000Z'),
       });
 
       const request = new Request(

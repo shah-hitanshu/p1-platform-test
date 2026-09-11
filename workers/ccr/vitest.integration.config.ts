@@ -41,7 +41,7 @@ export default defineConfig({
       // not resolve. Reached transitively via the publish services, which
       // purge the edge cache.
       'cloudflare:workers': fileURLToPath(
-        new URL('tests/stubs/cloudflare-workers.ts', import.meta.url),
+        new URL('tests/__stubs__/cloudflare-workers.ts', import.meta.url),
       ),
     },
   },

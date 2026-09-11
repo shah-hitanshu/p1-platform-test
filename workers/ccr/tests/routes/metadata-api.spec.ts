@@ -62,7 +62,7 @@ describe('Phase 7.1.1b: Metadata API Routes', () => {
         },
         schemaEnforcement: 'warn',
         hasChangesSinceCheckpoint: false,
-        lastModifiedAt: '2026-01-24T10:00:00.000Z',
+        lastModifiedAt: new Date('2026-01-24T10:00:00.000Z'),
       });
 
       const request = new Request(
@@ -130,7 +130,7 @@ describe('Phase 7.1.1b: Metadata API Routes', () => {
         },
         schemaEnforcement: 'strict',
         hasChangesSinceCheckpoint: true,
-        lastModifiedAt: '2026-01-24T11:00:00.000Z',
+        lastModifiedAt: new Date('2026-01-24T11:00:00.000Z'),
       });
 
       vi.mocked(services.getSchemaValidationSummary).mockResolvedValueOnce({
@@ -236,7 +236,7 @@ describe('Phase 7.1.1b: Metadata API Routes', () => {
         },
         conformsToSchema: true,
         validationErrors: [],
-        lastModifiedAt: '2026-01-24T10:00:00.000Z',
+        lastModifiedAt: new Date('2026-01-24T10:00:00.000Z'),
       });
 
       const request = new Request(
@@ -302,7 +302,7 @@ describe('Phase 7.1.1b: Metadata API Routes', () => {
         },
         conformsToSchema: true,
         validationErrors: [],
-        lastModifiedAt: '2026-01-24T11:00:00.000Z',
+        lastModifiedAt: new Date('2026-01-24T11:00:00.000Z'),
       });
 
       const request = new Request(
@@ -411,7 +411,7 @@ describe('Phase 7.1.1b: Metadata API Routes', () => {
           metadata: { title: 'Page 1' },
           conformsToSchema: true,
           validationErrors: [],
-          lastModifiedAt: '2026-01-24T10:00:00.000Z',
+          lastModifiedAt: new Date('2026-01-24T10:00:00.000Z'),
         },
         {
           documentId: 'doc-2',
@@ -420,7 +420,7 @@ describe('Phase 7.1.1b: Metadata API Routes', () => {
           metadata: { title: 'Page 2' },
           conformsToSchema: false,
           validationErrors: [{ field: 'author', message: 'Required' }],
-          lastModifiedAt: '2026-01-24T11:00:00.000Z',
+          lastModifiedAt: new Date('2026-01-24T11:00:00.000Z'),
         },
       ]);
 
@@ -547,7 +547,7 @@ describe('Phase 7.1.1b: Metadata API Routes', () => {
         },
         schemaEnforcement: 'warn',
         hasChangesSinceCheckpoint: false,
-        lastModifiedAt: '2026-01-24T10:00:00.000Z',
+        lastModifiedAt: new Date('2026-01-24T10:00:00.000Z'),
       });
 
       const request = new Request(
@@ -588,7 +588,7 @@ describe('Phase 7.1.1b: Metadata API Routes', () => {
         },
         schemaEnforcement: 'strict',
         hasChangesSinceCheckpoint: true,
-        lastModifiedAt: '2026-01-24T11:00:00.000Z',
+        lastModifiedAt: new Date('2026-01-24T11:00:00.000Z'),
       });
 
       vi.mocked(services.getSchemaValidationSummary).mockResolvedValueOnce({
@@ -647,7 +647,7 @@ describe('Phase 7.1.1b: Metadata API Routes', () => {
         },
         conformsToSchema: true,
         validationErrors: [],
-        lastModifiedAt: '2026-01-24T11:00:00.000Z',
+        lastModifiedAt: new Date('2026-01-24T11:00:00.000Z'),
       });
 
       const request = new Request(

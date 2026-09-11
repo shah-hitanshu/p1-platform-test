@@ -22,7 +22,7 @@ registerHooks({
   resolve(specifier, context, nextResolve) {
     if (specifier === 'cloudflare:workers') {
       return nextResolve(
-        new URL('../../tests/stubs/cloudflare-workers.ts', import.meta.url).href,
+        new URL('../../tests/__stubs__/cloudflare-workers.ts', import.meta.url).href,
         context,
       );
     }

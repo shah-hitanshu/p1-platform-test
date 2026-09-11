@@ -63,6 +63,7 @@ import { ROLES } from '../../src/auth/roles';
 import { triggerMigration, processMigration } from '../../src/services/migration-service';
 import { readJson } from '../helpers/http';
 import { makeBranch } from '../helpers/branch';
+import { stubDatabase } from '../__stubs__/database';
 
 describe('handleMigrateTemplate — 202/waitUntil path', () => {
   const siteId = 'site-uuid-001';
@@ -95,15 +96,14 @@ describe('handleMigrateTemplate — 202/waitUntil path', () => {
 
   beforeEach(() => {
     vi.resetAllMocks();
+    stubDatabase();
 
     // Re-set authorization mocks after resetAllMocks clears them
     vi.mocked(assertPermission).mockResolvedValue(undefined);
     vi.mocked(getEffectiveRole).mockResolvedValue({ role: ROLES.ADMIN, roleName: 'ADMIN' });
 
     // runWithConnection defaults to executing the callback
-    vi.mocked(runWithConnection).mockImplementation(async (_cs, _opts, fn) => {
-      return await (fn)();
-    });
+    vi.mocked(runWithConnection).mockImplementation(async (_cs, _opts, fn) => fn());
     vi.mocked(processMigration).mockResolvedValue({
       processedDocuments: 5,
       conflictedDocuments: 0,
@@ -222,7 +222,7 @@ describe('handleMigrateTemplate — 202/waitUntil path', () => {
         throw new Error('Migration exploded');
       }
       // Second call: update job status to 'failed'
-      return await (fn)();
+      return fn();
     });
     vi.mocked(query).mockResolvedValue({ rows: [], rowCount: 1 });
 

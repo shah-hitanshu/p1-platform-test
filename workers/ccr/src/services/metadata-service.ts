@@ -8,41 +8,16 @@
  */
 
 import Ajv from 'ajv';
-import { query } from '../db';
+import { and, eq, sql } from 'drizzle-orm';
+import type { PgUpdateSetSource } from 'drizzle-orm/pg-core';
+import { branchDocumentMetadata, branchStructureState, documents } from '../db/schema';
+import { db } from '../db/scope';
 import { BranchStructureStateNotFoundError, DocumentMetadataNotFoundError, SchemaValidationError } from './errors';
 import type { SchemaEnforcementMode } from '../types';
 
 // =============================================================================
 // Types
 // =============================================================================
-
-/**
- * Branch structure state from database row.
- */
-interface BranchStructureStateRow {
-  branch_id: string;
-  structure_id: string;
-  structure_tree: string;
-  metadata_schema: string;
-  schema_enforcement: string;
-  has_changes_since_checkpoint: boolean;
-  last_modified_at: string | null;
-  last_modified_by: string | null;
-}
-
-/**
- * Document metadata from database row.
- */
-interface DocumentMetadataRow {
-  branch_id: string;
-  structure_id: string;
-  document_id: string;
-  metadata: string;
-  conforms_to_schema: boolean;
-  validation_errors: string;
-  last_modified_at: string | null;
-  last_modified_by: string | null;
-}
 
 /**
  * Branch structure state returned from service.
@@ -53,8 +28,8 @@ export interface BranchStructureState {
   structureTree: unknown[];
   metadataSchema: Record<string, unknown>;
   schemaEnforcement: SchemaEnforcementMode;
-  hasChangesSinceCheckpoint: boolean;
-  lastModifiedAt?: string;
+  hasChangesSinceCheckpoint: boolean | null;
+  lastModifiedAt?: Date;
   lastModifiedBy?: string;
 }
 
@@ -66,9 +41,9 @@ export interface DocumentMetadata {
   structureId: string;
   documentId: string;
   metadata: Record<string, unknown>;
-  conformsToSchema: boolean;
+  conformsToSchema: boolean | null;
   validationErrors: ValidationError[];
-  lastModifiedAt?: string;
+  lastModifiedAt?: Date;
   lastModifiedBy?: string;
 }
 
@@ -87,18 +62,6 @@ export interface ValidationError {
 export interface MetadataValidationResult {
   valid: boolean;
   errors: ValidationError[];
-}
-
-/**
- * Parameters for creating branch structure state.
- */
-export interface CreateBranchStructureStateParams {
-  branchId: string;
-  structureId: string;
-  structureTree?: unknown[];
-  metadataSchema?: Record<string, unknown>;
-  schemaEnforcement?: SchemaEnforcementMode;
-  modifiedById?: string;
 }
 
 /**
@@ -219,30 +182,32 @@ export function validateMetadata(
 // =============================================================================
 
 function mapBranchStructureStateRow(
-  row: BranchStructureStateRow,
+  row: typeof branchStructureState.$inferSelect,
 ): BranchStructureState {
   return {
-    branchId: row.branch_id,
-    structureId: row.structure_id,
-    structureTree: JSON.parse(row.structure_tree) as unknown[],
-    metadataSchema: JSON.parse(row.metadata_schema) as Record<string, unknown>,
-    schemaEnforcement: row.schema_enforcement as SchemaEnforcementMode,
-    hasChangesSinceCheckpoint: row.has_changes_since_checkpoint,
-    lastModifiedAt: row.last_modified_at ?? undefined,
-    lastModifiedBy: row.last_modified_by ?? undefined,
+    branchId: row.branchId,
+    structureId: row.structureId,
+    structureTree: row.structureTree as unknown[],
+    metadataSchema: row.metadataSchema as Record<string, unknown>,
+    schemaEnforcement: row.schemaEnforcement as SchemaEnforcementMode,
+    hasChangesSinceCheckpoint: row.hasChangesSinceCheckpoint,
+    lastModifiedAt: row.lastModifiedAt ?? undefined,
+    lastModifiedBy: row.lastModifiedBy ?? undefined,
   };
 }
 
-function mapDocumentMetadataRow(row: DocumentMetadataRow): DocumentMetadata {
+function mapDocumentMetadataRow(
+  row: typeof branchDocumentMetadata.$inferSelect,
+): DocumentMetadata {
   return {
-    branchId: row.branch_id,
-    structureId: row.structure_id,
-    documentId: row.document_id,
-    metadata: JSON.parse(row.metadata) as Record<string, unknown>,
-    conformsToSchema: row.conforms_to_schema,
-    validationErrors: JSON.parse(row.validation_errors) as ValidationError[],
-    lastModifiedAt: row.last_modified_at ?? undefined,
-    lastModifiedBy: row.last_modified_by ?? undefined,
+    branchId: row.branchId,
+    structureId: row.structureId,
+    documentId: row.documentId,
+    metadata: row.metadata as Record<string, unknown>,
+    conformsToSchema: row.conformsToSchema,
+    validationErrors: row.validationErrors as ValidationError[],
+    lastModifiedAt: row.lastModifiedAt ?? undefined,
+    lastModifiedBy: row.lastModifiedBy ?? undefined,
   };
 }
 
@@ -257,60 +222,20 @@ export async function getBranchStructureState(
   branchId: string,
   structureId: string,
 ): Promise<BranchStructureState | null> {
-  const result = await query<BranchStructureStateRow>(
-    `SELECT * FROM app.branch_structure_state
-     WHERE branch_id = $1 AND structure_id = $2`,
-    [branchId, structureId],
-  );
+  const [row] = await db()
+    .select()
+    .from(branchStructureState)
+    .where(
+      and(
+        eq(branchStructureState.branchId, branchId),
+        eq(branchStructureState.structureId, structureId),
+      ),
+    );
 
-  if (result.rows.length === 0) {
-    return null;
-  }
-
-  const row = result.rows[0];
   if (!row) {
     return null;
   }
   return mapBranchStructureStateRow(row);
-}
-
-/**
- * Create branch structure state.
- */
-export async function createBranchStructureState(
-  params: CreateBranchStructureStateParams,
-): Promise<BranchStructureState> {
-  const {
-    branchId,
-    structureId,
-    structureTree = [],
-    metadataSchema = DEFAULT_METADATA_SCHEMA,
-    schemaEnforcement = 'warn',
-    modifiedById,
-  } = params;
-
-  const result = await query<BranchStructureStateRow>(
-    `INSERT INTO app.branch_structure_state (
-       branch_id, structure_id, structure_tree, metadata_schema,
-       schema_enforcement, has_changes_since_checkpoint,
-       last_modified_at, last_modified_by
-     ) VALUES ($1, $2, $3, $4, $5, FALSE, NOW(), $6)
-     RETURNING *`,
-    [
-      branchId,
-      structureId,
-      JSON.stringify(structureTree),
-      JSON.stringify(metadataSchema),
-      schemaEnforcement,
-      modifiedById ?? null,
-    ],
-  );
-
-  const createdRow = result.rows[0];
-  if (!createdRow) {
-    throw new Error('Failed to create branch structure state');
-  }
-  return mapBranchStructureStateRow(createdRow);
 }
 
 /**
@@ -321,49 +246,38 @@ export async function updateBranchStructureState(
   structureId: string,
   params: UpdateBranchStructureStateParams,
 ): Promise<BranchStructureState> {
-  const updates: string[] = [];
-  const values: unknown[] = [];
-  let paramIndex = 1;
+  const changes: PgUpdateSetSource<typeof branchStructureState> = {
+    hasChangesSinceCheckpoint: true,
+    lastModifiedAt: sql`NOW()`,
+  };
 
   if (params.structureTree !== undefined) {
-    updates.push(`structure_tree = $${String(paramIndex++)}`);
-    values.push(JSON.stringify(params.structureTree));
+    changes.structureTree = params.structureTree;
   }
 
   if (params.metadataSchema !== undefined) {
-    updates.push(`metadata_schema = $${String(paramIndex++)}`);
-    values.push(JSON.stringify(params.metadataSchema));
+    changes.metadataSchema = params.metadataSchema;
   }
 
   if (params.schemaEnforcement !== undefined) {
-    updates.push(`schema_enforcement = $${String(paramIndex++)}`);
-    values.push(params.schemaEnforcement);
+    changes.schemaEnforcement = params.schemaEnforcement;
   }
-
-  updates.push('has_changes_since_checkpoint = TRUE');
-  updates.push('last_modified_at = NOW()');
 
   if (params.modifiedById !== undefined) {
-    updates.push(`last_modified_by = $${String(paramIndex++)}`);
-    values.push(params.modifiedById);
+    changes.lastModifiedBy = params.modifiedById;
   }
 
-  values.push(branchId);
-  values.push(structureId);
+  const [updatedRow] = await db()
+    .update(branchStructureState)
+    .set(changes)
+    .where(
+      and(
+        eq(branchStructureState.branchId, branchId),
+        eq(branchStructureState.structureId, structureId),
+      ),
+    )
+    .returning();
 
-  const result = await query<BranchStructureStateRow>(
-    `UPDATE app.branch_structure_state
-     SET ${updates.join(', ')}
-     WHERE branch_id = $${String(paramIndex++)} AND structure_id = $${String(paramIndex)}
-     RETURNING *`,
-    values,
-  );
-
-  if (result.rows.length === 0) {
-    throw new BranchStructureStateNotFoundError(branchId, structureId);
-  }
-
-  const updatedRow = result.rows[0];
   if (!updatedRow) {
     throw new BranchStructureStateNotFoundError(branchId, structureId);
   }
@@ -377,14 +291,20 @@ export async function deleteBranchStructureState(
   branchId: string,
   structureId: string,
 ): Promise<void> {
-  const result = await query<{ branch_id: string; structure_id: string }>(
-    `DELETE FROM app.branch_structure_state
-     WHERE branch_id = $1 AND structure_id = $2
-     RETURNING branch_id, structure_id`,
-    [branchId, structureId],
-  );
+  const deletedRows = await db()
+    .delete(branchStructureState)
+    .where(
+      and(
+        eq(branchStructureState.branchId, branchId),
+        eq(branchStructureState.structureId, structureId),
+      ),
+    )
+    .returning({
+      branchId: branchStructureState.branchId,
+      structureId: branchStructureState.structureId,
+    });
 
-  if (result.rows.length === 0) {
+  if (deletedRows.length === 0) {
     throw new BranchStructureStateNotFoundError(branchId, structureId);
   }
 }
@@ -401,13 +321,17 @@ export async function getDocumentMetadata(
   structureId: string,
   documentId: string,
 ): Promise<DocumentMetadata | null> {
-  const result = await query<DocumentMetadataRow>(
-    `SELECT * FROM app.branch_document_metadata
-     WHERE branch_id = $1 AND structure_id = $2 AND document_id = $3`,
-    [branchId, structureId, documentId],
-  );
+  const [docMetaRow] = await db()
+    .select()
+    .from(branchDocumentMetadata)
+    .where(
+      and(
+        eq(branchDocumentMetadata.branchId, branchId),
+        eq(branchDocumentMetadata.structureId, structureId),
+        eq(branchDocumentMetadata.documentId, documentId),
+      ),
+    );
 
-  const docMetaRow = result.rows[0];
   if (!docMetaRow) {
     return null;
   }
@@ -424,23 +348,25 @@ export async function setDocumentMetadata(
   const { branchId, structureId, documentId, metadata, modifiedById } = params;
 
   // Get structure state for schema and enforcement mode
-  const stateResult = await query<{
-    metadata_schema: string;
-    schema_enforcement: string;
-  }>(
-    `SELECT metadata_schema, schema_enforcement
-     FROM app.branch_structure_state
-     WHERE branch_id = $1 AND structure_id = $2`,
-    [branchId, structureId],
-  );
+  const [stateRow] = await db()
+    .select({
+      metadataSchema: branchStructureState.metadataSchema,
+      schemaEnforcement: branchStructureState.schemaEnforcement,
+    })
+    .from(branchStructureState)
+    .where(
+      and(
+        eq(branchStructureState.branchId, branchId),
+        eq(branchStructureState.structureId, structureId),
+      ),
+    );
 
   // Default to warn mode if state doesn't exist
-  const stateRow = stateResult.rows[0];
   const schema = stateRow
-    ? (JSON.parse(stateRow.metadata_schema) as Record<string, unknown>)
+    ? (stateRow.metadataSchema as Record<string, unknown>)
     : DEFAULT_METADATA_SCHEMA;
   const enforcement = stateRow
-    ? (stateRow.schema_enforcement as SchemaEnforcementMode)
+    ? (stateRow.schemaEnforcement as SchemaEnforcementMode)
     : 'warn';
 
   // Validate metadata
@@ -459,32 +385,34 @@ export async function setDocumentMetadata(
   }
 
   // Upsert metadata
-  const result = await query<DocumentMetadataRow>(
-    `INSERT INTO app.branch_document_metadata (
-       branch_id, structure_id, document_id, metadata,
-       conforms_to_schema, validation_errors,
-       last_modified_at, last_modified_by
-     ) VALUES ($1, $2, $3, $4, $5, $6, NOW(), $7)
-     ON CONFLICT (branch_id, structure_id, document_id)
-     DO UPDATE SET
-       metadata = EXCLUDED.metadata,
-       conforms_to_schema = EXCLUDED.conforms_to_schema,
-       validation_errors = EXCLUDED.validation_errors,
-       last_modified_at = EXCLUDED.last_modified_at,
-       last_modified_by = EXCLUDED.last_modified_by
-     RETURNING *`,
-    [
+  const [metaRow] = await db()
+    .insert(branchDocumentMetadata)
+    .values({
       branchId,
       structureId,
       documentId,
-      JSON.stringify(metadata),
+      metadata,
       conformsToSchema,
-      JSON.stringify(validationErrors),
-      modifiedById ?? null,
-    ],
-  );
+      validationErrors,
+      lastModifiedAt: sql`NOW()`,
+      lastModifiedBy: modifiedById ?? null,
+    })
+    .onConflictDoUpdate({
+      target: [
+        branchDocumentMetadata.branchId,
+        branchDocumentMetadata.structureId,
+        branchDocumentMetadata.documentId,
+      ],
+      set: {
+        metadata: sql`excluded.metadata`,
+        conformsToSchema: sql`excluded.conforms_to_schema`,
+        validationErrors: sql`excluded.validation_errors`,
+        lastModifiedAt: sql`excluded.last_modified_at`,
+        lastModifiedBy: sql`excluded.last_modified_by`,
+      },
+    })
+    .returning();
 
-  const metaRow = result.rows[0];
   if (!metaRow) {
     throw new Error('Failed to set document metadata');
   }
@@ -499,18 +427,22 @@ export async function deleteDocumentMetadata(
   structureId: string,
   documentId: string,
 ): Promise<void> {
-  const result = await query<{
-    branch_id: string;
-    structure_id: string;
-    document_id: string;
-  }>(
-    `DELETE FROM app.branch_document_metadata
-     WHERE branch_id = $1 AND structure_id = $2 AND document_id = $3
-     RETURNING branch_id, structure_id, document_id`,
-    [branchId, structureId, documentId],
-  );
+  const deletedRows = await db()
+    .delete(branchDocumentMetadata)
+    .where(
+      and(
+        eq(branchDocumentMetadata.branchId, branchId),
+        eq(branchDocumentMetadata.structureId, structureId),
+        eq(branchDocumentMetadata.documentId, documentId),
+      ),
+    )
+    .returning({
+      branchId: branchDocumentMetadata.branchId,
+      structureId: branchDocumentMetadata.structureId,
+      documentId: branchDocumentMetadata.documentId,
+    });
 
-  if (result.rows.length === 0) {
+  if (deletedRows.length === 0) {
     throw new DocumentMetadataNotFoundError(branchId, structureId, documentId);
   }
 }
@@ -523,27 +455,24 @@ export async function listDocumentMetadata(
 ): Promise<DocumentMetadata[]> {
   const { branchId, structureId, conformsToSchema, limit = 100, offset = 0 } = options;
 
-  let whereClause = 'WHERE branch_id = $1 AND structure_id = $2';
-  const values: unknown[] = [branchId, structureId];
-  let paramIndex = 3;
+  const conditions = [
+    eq(branchDocumentMetadata.branchId, branchId),
+    eq(branchDocumentMetadata.structureId, structureId),
+  ];
 
   if (conformsToSchema !== undefined) {
-    whereClause += ` AND conforms_to_schema = $${String(paramIndex++)}`;
-    values.push(conformsToSchema);
+    conditions.push(eq(branchDocumentMetadata.conformsToSchema, conformsToSchema));
   }
 
-  values.push(limit);
-  values.push(offset);
+  const rows = await db()
+    .select()
+    .from(branchDocumentMetadata)
+    .where(and(...conditions))
+    .orderBy(branchDocumentMetadata.documentId)
+    .limit(limit)
+    .offset(offset);
 
-  const result = await query<DocumentMetadataRow>(
-    `SELECT * FROM app.branch_document_metadata
-     ${whereClause}
-     ORDER BY document_id
-     LIMIT $${String(paramIndex++)} OFFSET $${String(paramIndex)}`,
-    values,
-  );
-
-  return result.rows.map(mapDocumentMetadataRow);
+  return rows.map(mapDocumentMetadataRow);
 }
 
 // =============================================================================
@@ -558,78 +487,82 @@ export async function validateAllDocuments(
   structureId: string,
 ): Promise<SchemaValidationResult> {
   // Get structure state
-  const stateResult = await query<{ metadata_schema: string }>(
-    `SELECT metadata_schema FROM app.branch_structure_state
-     WHERE branch_id = $1 AND structure_id = $2`,
-    [branchId, structureId],
-  );
+  const [validationStateRow] = await db()
+    .select({ metadataSchema: branchStructureState.metadataSchema })
+    .from(branchStructureState)
+    .where(
+      and(
+        eq(branchStructureState.branchId, branchId),
+        eq(branchStructureState.structureId, structureId),
+      ),
+    );
 
-  if (stateResult.rows.length === 0) {
-    throw new BranchStructureStateNotFoundError(branchId, structureId);
-  }
-
-  const validationStateRow = stateResult.rows[0];
   if (!validationStateRow) {
     throw new BranchStructureStateNotFoundError(branchId, structureId);
   }
-  const schema = JSON.parse(validationStateRow.metadata_schema) as Record<
-    string,
-    unknown
-  >;
+  const schema = validationStateRow.metadataSchema as Record<string, unknown>;
 
   // Get all document metadata with document paths
-  const docsResult = await query<{
-    document_id: string;
-    document_path: string;
-    metadata: string;
-  }>(
-    `SELECT bdm.document_id, d.path as document_path, bdm.metadata
-     FROM app.branch_document_metadata bdm
-     JOIN app.documents d ON d.id = bdm.document_id
-     WHERE bdm.branch_id = $1 AND bdm.structure_id = $2`,
-    [branchId, structureId],
-  );
+  const docRows = await db()
+    .select({
+      documentId: branchDocumentMetadata.documentId,
+      documentPath: documents.path,
+      metadata: branchDocumentMetadata.metadata,
+    })
+    .from(branchDocumentMetadata)
+    .innerJoin(documents, eq(documents.id, branchDocumentMetadata.documentId))
+    .where(
+      and(
+        eq(branchDocumentMetadata.branchId, branchId),
+        eq(branchDocumentMetadata.structureId, structureId),
+      ),
+    );
 
   const nonConformingDocuments: NonConformingDocument[] = [];
   let conformingCount = 0;
 
-  for (const doc of docsResult.rows) {
-    const metadata = JSON.parse(doc.metadata) as Record<string, unknown>;
-    const validationResult = validateMetadata(metadata, schema);
+  for (const doc of docRows) {
+    const validationResult = validateMetadata(
+      doc.metadata as Record<string, unknown>,
+      schema,
+    );
 
     if (validationResult.valid) {
       conformingCount++;
       // Update validation state
-      await query(
-        `UPDATE app.branch_document_metadata
-         SET conforms_to_schema = TRUE, validation_errors = '[]'
-         WHERE branch_id = $1 AND structure_id = $2 AND document_id = $3`,
-        [branchId, structureId, doc.document_id],
-      );
+      await db()
+        .update(branchDocumentMetadata)
+        .set({ conformsToSchema: true, validationErrors: [] })
+        .where(
+          and(
+            eq(branchDocumentMetadata.branchId, branchId),
+            eq(branchDocumentMetadata.structureId, structureId),
+            eq(branchDocumentMetadata.documentId, doc.documentId),
+          ),
+        );
     } else {
       nonConformingDocuments.push({
-        documentId: doc.document_id,
-        documentPath: doc.document_path,
+        documentId: doc.documentId,
+        documentPath: doc.documentPath,
         errors: validationResult.errors,
       });
       // Update validation state
-      await query(
-        `UPDATE app.branch_document_metadata
-         SET conforms_to_schema = FALSE, validation_errors = $4
-         WHERE branch_id = $1 AND structure_id = $2 AND document_id = $3`,
-        [
-          branchId,
-          structureId,
-          doc.document_id,
-          JSON.stringify(validationResult.errors),
-        ],
-      );
+      await db()
+        .update(branchDocumentMetadata)
+        .set({ conformsToSchema: false, validationErrors: validationResult.errors })
+        .where(
+          and(
+            eq(branchDocumentMetadata.branchId, branchId),
+            eq(branchDocumentMetadata.structureId, structureId),
+            eq(branchDocumentMetadata.documentId, doc.documentId),
+          ),
+        );
     }
   }
 
   return {
     structureId,
-    totalDocuments: docsResult.rows.length,
+    totalDocuments: docRows.length,
     conformingDocuments: conformingCount,
     nonConformingDocuments,
   };
@@ -642,31 +575,28 @@ export async function getSchemaValidationSummary(
   branchId: string,
   structureId: string,
 ): Promise<SchemaValidationSummary> {
-  const result = await query<{
-    total_documents: string;
-    conforming_documents: string;
-  }>(
-    `SELECT
-       COUNT(*) as total_documents,
-       COUNT(*) FILTER (WHERE conforms_to_schema = TRUE) as conforming_documents
-     FROM app.branch_document_metadata
-     WHERE branch_id = $1 AND structure_id = $2`,
-    [branchId, structureId],
-  );
+  const [summaryRow] = await db()
+    .select({
+      totalDocuments: sql<number>`COUNT(*)`.mapWith(Number),
+      conformingDocuments: sql<number>`
+        COUNT(*) FILTER (WHERE ${branchDocumentMetadata.conformsToSchema} = TRUE)
+      `.mapWith(Number),
+    })
+    .from(branchDocumentMetadata)
+    .where(
+      and(
+        eq(branchDocumentMetadata.branchId, branchId),
+        eq(branchDocumentMetadata.structureId, structureId),
+      ),
+    );
 
-  const summaryRow = result.rows[0];
   if (!summaryRow) {
     throw new BranchStructureStateNotFoundError(branchId, structureId);
   }
-  const totalDocuments = parseInt(summaryRow.total_documents, 10);
-  const conformingDocuments = parseInt(
-    summaryRow.conforming_documents,
-    10,
-  );
 
   return {
-    totalDocuments,
-    conformingDocuments,
-    nonConformingCount: totalDocuments - conformingDocuments,
+    totalDocuments: summaryRow.totalDocuments,
+    conformingDocuments: summaryRow.conformingDocuments,
+    nonConformingCount: summaryRow.totalDocuments - summaryRow.conformingDocuments,
   };
 }

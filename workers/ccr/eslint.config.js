@@ -9,6 +9,19 @@ export default [
   }),
   ...testsConfig,
   {
+    files: ['src/**/*.ts'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "ImportSpecifier[imported.name='installDatabase']",
+          message:
+            'installDatabase is the test fallback for db(). Production code opens a scope with runWithConnection.',
+        },
+      ],
+    },
+  },
+  {
     ignores: ['node_modules/**', 'dist/**', '**/*.js'],
   },
 ];

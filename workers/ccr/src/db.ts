@@ -21,9 +21,18 @@
 
 import postgres from 'postgres';
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { drizzle } from 'drizzle-orm/postgres-js';
 import { resolveConnection } from './db/resolve-connection';
 import { CLIENT_TIMEOUT_MESSAGE, classifyQueryFailure } from './db/query-failure';
 import { getLogger } from '@pantheon-systems/p1-telemetry';
+import * as schema from './db/schema';
+import { describeQuery } from './db/describe-query';
+import { STATEMENT_TIMEOUT_MS, withQueryGuard } from './db/query-guard';
+import type { Database } from './db/executor';
+import { withDatabase, inTransaction } from './db/scope';
+
+export { describeQuery };
+export type { Database, Executor, Transaction } from './db/executor';
 
 /**
  * Result of a database query.
@@ -71,6 +80,10 @@ const connectionStorage = new AsyncLocalStorage<DatabaseConnection>();
  * Run a function with a request-scoped database connection.
  * This ensures each concurrent request has its own isolated connection.
  *
+ * The request's Drizzle handle is entered into the scope in `./db/scope` for
+ * the duration of `fn`, so query code reached from `fn` finds it through `db()`.
+ * The legacy `query()` connection is entered into its own store alongside.
+ *
  * @param connectionString - PostgreSQL connection string
  * @param options - Connection options
  * @param fn - Function to run with the connection
@@ -82,11 +95,16 @@ const connectionStorage = new AsyncLocalStorage<DatabaseConnection>();
  * runner's chunk steps, this module's own retry-once) agree on what counts.
  */
 export function isConnectionError(error: unknown): boolean {
-  return (
-    error instanceof Error &&
-    (/connection (refused|terminated|reset|ended|closed)/i.test(error.message) ||
-      /ECONNREFUSED|ECONNRESET|ETIMEDOUT|socket hang up|57P01/.test(error.message))
-  );
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  if (
+    /connection (refused|terminated|reset|ended|closed)/i.test(error.message) ||
+    /ECONNREFUSED|ECONNRESET|ETIMEDOUT|socket hang up|57P01/.test(error.message)
+  ) {
+    return true;
+  }
+  return isConnectionError(error.cause);
 }
 
 export async function runWithConnection<T>(
@@ -94,20 +112,20 @@ export async function runWithConnection<T>(
   options: ConnectionOptions,
   fn: () => Promise<T>,
 ): Promise<T> {
-  const connection = createDatabaseConnection(connectionString, options);
+  const scope = createRequestScope(connectionString, options);
   try {
-    return await connectionStorage.run(connection, fn);
+    return await connectionStorage.run(scope.connection, () => withDatabase(scope.db, fn));
   } catch (error: unknown) {
     if (!isConnectionError(error)) throw error;
 
     // eslint-disable-next-line @typescript-eslint/no-empty-function
-    connection.close().catch(() => {});
-    const retryConnection = createDatabaseConnection(connectionString, options);
+    scope.close().catch(() => {});
+    const retry = createRequestScope(connectionString, options);
     try {
-      return await connectionStorage.run(retryConnection, fn);
+      return await connectionStorage.run(retry.connection, () => withDatabase(retry.db, fn));
     } finally {
       // eslint-disable-next-line @typescript-eslint/no-empty-function
-      retryConnection.close().catch(() => {});
+      retry.close().catch(() => {});
     }
   } finally {
     // Fire-and-forget: do not await connection close. Awaiting sql.end() can
@@ -119,7 +137,7 @@ export async function runWithConnection<T>(
     // For Hyperdrive connections, the pool automatically reclaims the slot
     // when the Worker invocation completes, so explicit close is not required
     // for correctness. For direct connections, the OS cleans up the socket.
-    connection.close().catch(() => { /* ignore cleanup errors */ });
+    scope.close().catch(() => { /* ignore cleanup errors */ });
   }
 }
 
@@ -162,11 +180,52 @@ export function createDatabaseConnection(
   connectionString: string,
   options: ConnectionOptions = {},
 ): DatabaseConnection {
+  return connectionFor(createPostgresClient(connectionString, options));
+}
+
+/**
+ * The raw `query()` connection and the Drizzle handle for one request, each on
+ * its own client.
+ *
+ * They cannot share one. `drizzle()` replaces its client's timestamp parsers and
+ * its json serializers with identity functions so that it can map values itself,
+ * which leaves anything else on that client reading timestamps as strings and
+ * throwing on an object parameter.
+ *
+ * A request therefore opens two connections for as long as `query()` has callers,
+ * and one once it has none.
+ */
+function createRequestScope(
+  connectionString: string,
+  options: ConnectionOptions,
+): RequestScope {
+  const drizzleClient = createPostgresClient(connectionString, options);
+  const connection = connectionFor(createPostgresClient(connectionString, options));
+  return {
+    connection,
+    db: drizzle(withQueryGuard(drizzleClient), { schema }),
+    close: async (): Promise<void> => {
+      await Promise.allSettled([connection.close(), drizzleClient.end({ timeout: 5 })]);
+    },
+  };
+}
+
+interface RequestScope {
+  connection: DatabaseConnection;
+  db: Database;
+  /** Ends both clients. */
+  close: () => Promise<void>;
+}
+
+function createPostgresClient(
+  connectionString: string,
+  options: ConnectionOptions,
+): postgres.Sql {
   const { isHyperdrive = false } = options;
 
   // Create a new postgres connection for this request
   // Hyperdrive connections use different settings than direct connections
-  const sql = postgres(connectionString, {
+  return postgres(connectionString, {
     // Don't transform undefined to null - let postgres handle it
     transform: {
       undefined: null,
@@ -180,8 +239,15 @@ export function createDatabaseConnection(
     // Hyperdrive requires prepare: false for connection pooling compatibility
     // See: https://developers.cloudflare.com/hyperdrive/configuration/connect-to-postgres/
     prepare: isHyperdrive ? false : true,
+    // Server-side half of the query guard; the client-side deadline is in
+    // query-guard.ts. No statement can currently outlive this, so bounding it
+    // server-side only adds cancellation of a backend the client stopped
+    // waiting for.
+    connection: { statement_timeout: STATEMENT_TIMEOUT_MS },
   });
+}
 
+function connectionFor(sql: postgres.Sql): DatabaseConnection {
   return {
     async query<T = Record<string, unknown>>(
       sqlQuery: string,
@@ -279,49 +345,6 @@ async function runSqlUnsafe<T = Record<string, unknown>>(
 }
 
 /**
- * Low-cardinality description of a statement: the operation and the primary table.
- *
- * Deliberately not the statement text — it can embed customer content, and as a log
- * field it would be unbounded cardinality. This is also why sqlcommenter is not applied
- * per request: Hyperdrive caches by query text, so a unique comment per request would
- * drive its hit rate to zero.
- *
- * The schema qualifier is matched and discarded. Every table here is written
- * `app.<table>`, so a pattern that stops at the dot reports `app` for every statement
- * ever logged — a constant field that looks like data. `db.collection.name` is the
- * table in OTel's vocabulary; the schema would be `db.namespace`, and with exactly one
- * schema it carries no information worth a field.
- *
- * A leading CTE is stepped over so `WITH … INSERT INTO x` reports `insert` rather than
- * `with`, which is not an operation anyone queries by.
- */
-export function describeQuery(sqlQuery: string): { 'db.operation.name': string; 'db.collection.name'?: string } {
-  const outer = stripParenthesized(sqlQuery.trim().replace(/\s+/g, ' '));
-  const operation = /\b(select|insert|update|delete)\b/i.exec(outer)?.[1]?.toLowerCase() ?? 'other';
-  const table = /\b(?:from|into|update|join)\s+"?(?:[a-z_][a-z0-9_]*"?\."?)?([a-z_][a-z0-9_]*)"?/i
-    .exec(outer)?.[1]
-    ?.toLowerCase();
-  return table === undefined
-    ? { 'db.operation.name': operation }
-    : { 'db.operation.name': operation, 'db.collection.name': table };
-}
-
-/**
- * Drop every parenthesized group, innermost first, leaving only what runs at the outer
- * level. That is what makes a CTE report the statement it performs rather than `with`,
- * and keeps a subquery's table from being mistaken for the statement's own.
- */
-function stripParenthesized(sql: string): string {
-  let out = sql;
-  let previous: string;
-  do {
-    previous = out;
-    out = out.replace(/\([^()]*\)/g, ' ');
-  } while (out !== previous);
-  return out;
-}
-
-/**
  * Test-only connection storage.
  * Used by setDatabaseInstance for test mocking.
  */
@@ -357,6 +380,12 @@ export async function query<T = Record<string, unknown>>(
   const connection = connectionStorage.getStore();
   if (!connection) {
     throw new Error('Database not initialized. Wrap request handler with runWithConnection().');
+  }
+  // The raw connection and the Drizzle handle are separate clients (see
+  // createRequestScope), so a raw statement issued inside transaction() would
+  // commit outside it.
+  if (inTransaction()) {
+    throw new Error('query() called inside a Drizzle transaction; its statement would run on a separate connection, outside the transaction.');
   }
   return connection.query<T>(sql, params);
 }

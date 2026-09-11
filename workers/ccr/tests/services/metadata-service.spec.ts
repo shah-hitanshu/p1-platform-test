@@ -5,17 +5,35 @@
  * with JSON Schema validation.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-
-// Mock the database module
-vi.mock('../../src/db', () => ({
-  query: vi.fn(),
-}));
+import { describe, it, expect, beforeEach } from 'vitest';
+import { stubDatabase, type DatabaseStub } from '../__stubs__/database';
+import {
+  branchDocumentMetadata,
+  branchStructureState,
+} from '../../src/db/schema';
+import {
+  BranchStructureStateNotFoundError,
+  DocumentMetadataNotFoundError,
+  SchemaValidationError,
+} from '../../src/services/errors';
+import {
+  deleteBranchStructureState,
+  deleteDocumentMetadata,
+  getBranchStructureState,
+  getDocumentMetadata,
+  getSchemaValidationSummary,
+  listDocumentMetadata,
+  setDocumentMetadata,
+  updateBranchStructureState,
+  validateAllDocuments,
+  validateMetadata,
+} from '../../src/services/metadata-service';
 
 describe('Phase 6.2: Metadata Service', () => {
+  let stub: DatabaseStub;
+
   beforeEach(() => {
-    vi.resetModules();
-    vi.clearAllMocks();
+    stub = stubDatabase();
   });
 
   // ===========================================================================
@@ -24,29 +42,22 @@ describe('Phase 6.2: Metadata Service', () => {
 
   describe('getBranchStructureState', () => {
     it('should return structure state for a branch', async () => {
-      const { getBranchStructureState } = await import(
-        '../../src/services/metadata-service'
-      );
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [
-          {
-            branch_id: 'branch-1',
-            structure_id: 'struct-1',
-            structure_tree: JSON.stringify([]),
-            metadata_schema: JSON.stringify({
-              type: 'object',
-              properties: { title: { type: 'string' } },
-              required: ['title'],
-            }),
-            schema_enforcement: 'warn',
-            has_changes_since_checkpoint: false,
-            last_modified_at: '2026-01-24T10:00:00.000Z',
-            last_modified_by: 'user-1',
+      stub.on(branchStructureState).select.returns([
+        {
+          branchId: 'branch-1',
+          structureId: 'struct-1',
+          structureTree: [],
+          metadataSchema: {
+            type: 'object',
+            properties: { title: { type: 'string' } },
+            required: ['title'],
           },
-        ],
-      });
+          schemaEnforcement: 'warn',
+          hasChangesSinceCheckpoint: false,
+          lastModifiedAt: new Date('2026-01-24T10:00:00.000Z'),
+          lastModifiedBy: 'user-1',
+        },
+      ]);
 
       const state = await getBranchStructureState('branch-1', 'struct-1');
 
@@ -62,109 +73,14 @@ describe('Phase 6.2: Metadata Service', () => {
     });
 
     it('should return null when structure state does not exist', async () => {
-      const { getBranchStructureState } = await import(
-        '../../src/services/metadata-service'
-      );
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
-
       const state = await getBranchStructureState('branch-1', 'nonexistent');
 
       expect(state).toBeNull();
     });
   });
 
-  describe('createBranchStructureState', () => {
-    it('should create structure state with default schema', async () => {
-      const { createBranchStructureState } = await import(
-        '../../src/services/metadata-service'
-      );
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [
-          {
-            branch_id: 'branch-1',
-            structure_id: 'struct-1',
-            structure_tree: JSON.stringify([]),
-            metadata_schema: JSON.stringify({
-              type: 'object',
-              properties: {
-                title: { type: 'string', maxLength: 100 },
-                description: { type: 'string', maxLength: 300 },
-              },
-              required: ['title'],
-            }),
-            schema_enforcement: 'warn',
-            has_changes_since_checkpoint: false,
-            last_modified_at: '2026-01-24T10:00:00.000Z',
-            last_modified_by: null,
-          },
-        ],
-      });
-
-      const state = await createBranchStructureState({
-        branchId: 'branch-1',
-        structureId: 'struct-1',
-      });
-
-      expect(state.branchId).toBe('branch-1');
-      expect(state.structureId).toBe('struct-1');
-      expect(state.schemaEnforcement).toBe('warn');
-    });
-
-    it('should create structure state with custom schema', async () => {
-      const { createBranchStructureState } = await import(
-        '../../src/services/metadata-service'
-      );
-      const db = await import('../../src/db');
-
-      const customSchema = {
-        type: 'object',
-        properties: {
-          title: { type: 'string' },
-          author: { type: 'string' },
-          publishDate: { type: 'string', format: 'date' },
-        },
-        required: ['title', 'author'],
-      };
-
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [
-          {
-            branch_id: 'branch-1',
-            structure_id: 'struct-1',
-            structure_tree: JSON.stringify([]),
-            metadata_schema: JSON.stringify(customSchema),
-            schema_enforcement: 'strict',
-            has_changes_since_checkpoint: false,
-            last_modified_at: '2026-01-24T10:00:00.000Z',
-            last_modified_by: 'user-1',
-          },
-        ],
-      });
-
-      const state = await createBranchStructureState({
-        branchId: 'branch-1',
-        structureId: 'struct-1',
-        metadataSchema: customSchema,
-        schemaEnforcement: 'strict',
-        modifiedById: 'user-1',
-      });
-
-      expect(state.metadataSchema).toEqual(customSchema);
-      expect(state.schemaEnforcement).toBe('strict');
-    });
-  });
-
   describe('updateBranchStructureState', () => {
     it('should update metadata schema', async () => {
-      const { updateBranchStructureState } = await import(
-        '../../src/services/metadata-service'
-      );
-      const db = await import('../../src/db');
-
       const newSchema = {
         type: 'object',
         properties: {
@@ -174,20 +90,18 @@ describe('Phase 6.2: Metadata Service', () => {
         required: ['title', 'category'],
       };
 
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [
-          {
-            branch_id: 'branch-1',
-            structure_id: 'struct-1',
-            structure_tree: JSON.stringify([]),
-            metadata_schema: JSON.stringify(newSchema),
-            schema_enforcement: 'warn',
-            has_changes_since_checkpoint: true,
-            last_modified_at: '2026-01-24T11:00:00.000Z',
-            last_modified_by: 'user-1',
-          },
-        ],
-      });
+      stub.on(branchStructureState).update.returns([
+        {
+          branchId: 'branch-1',
+          structureId: 'struct-1',
+          structureTree: [],
+          metadataSchema: newSchema,
+          schemaEnforcement: 'warn',
+          hasChangesSinceCheckpoint: true,
+          lastModifiedAt: new Date('2026-01-24T11:00:00.000Z'),
+          lastModifiedBy: 'user-1',
+        },
+      ]);
 
       const state = await updateBranchStructureState('branch-1', 'struct-1', {
         metadataSchema: newSchema,
@@ -199,25 +113,18 @@ describe('Phase 6.2: Metadata Service', () => {
     });
 
     it('should update schema enforcement mode', async () => {
-      const { updateBranchStructureState } = await import(
-        '../../src/services/metadata-service'
-      );
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [
-          {
-            branch_id: 'branch-1',
-            structure_id: 'struct-1',
-            structure_tree: JSON.stringify([]),
-            metadata_schema: JSON.stringify({ type: 'object' }),
-            schema_enforcement: 'strict',
-            has_changes_since_checkpoint: true,
-            last_modified_at: '2026-01-24T11:00:00.000Z',
-            last_modified_by: 'user-1',
-          },
-        ],
-      });
+      stub.on(branchStructureState).update.returns([
+        {
+          branchId: 'branch-1',
+          structureId: 'struct-1',
+          structureTree: [],
+          metadataSchema: { type: 'object' },
+          schemaEnforcement: 'strict',
+          hasChangesSinceCheckpoint: true,
+          lastModifiedAt: new Date('2026-01-24T11:00:00.000Z'),
+          lastModifiedBy: 'user-1',
+        },
+      ]);
 
       const state = await updateBranchStructureState('branch-1', 'struct-1', {
         schemaEnforcement: 'strict',
@@ -228,12 +135,6 @@ describe('Phase 6.2: Metadata Service', () => {
     });
 
     it('should throw error when structure state does not exist', async () => {
-      const { updateBranchStructureState } = await import('../../src/services/metadata-service');
-      const { BranchStructureStateNotFoundError } = await import('../../src/services/errors');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
-
       await expect(
         updateBranchStructureState('branch-1', 'nonexistent', {
           schemaEnforcement: 'strict',
@@ -244,30 +145,20 @@ describe('Phase 6.2: Metadata Service', () => {
 
   describe('deleteBranchStructureState', () => {
     it('should delete structure state', async () => {
-      const { deleteBranchStructureState } = await import(
-        '../../src/services/metadata-service'
-      );
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [{ branch_id: 'branch-1', structure_id: 'struct-1' }],
-      });
+      stub.on(branchStructureState).delete.returns([
+        { branchId: 'branch-1', structureId: 'struct-1' },
+      ]);
 
       await deleteBranchStructureState('branch-1', 'struct-1');
 
-      expect(db.query).toHaveBeenCalledWith(
-        expect.stringContaining('DELETE'),
-        expect.arrayContaining(['branch-1', 'struct-1']),
-      );
+      expect(stub.calls(branchStructureState).delete).toHaveLength(1);
+      expect(stub.calls(branchStructureState).delete[0]?.params).toEqual([
+        'branch-1',
+        'struct-1',
+      ]);
     });
 
     it('should throw error when structure state does not exist', async () => {
-      const { deleteBranchStructureState } = await import('../../src/services/metadata-service');
-      const { BranchStructureStateNotFoundError } = await import('../../src/services/errors');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
-
       await expect(
         deleteBranchStructureState('branch-1', 'nonexistent'),
       ).rejects.toThrow(BranchStructureStateNotFoundError);
@@ -280,34 +171,20 @@ describe('Phase 6.2: Metadata Service', () => {
 
   describe('getDocumentMetadata', () => {
     it('should return document metadata', async () => {
-      const { getDocumentMetadata } = await import(
-        '../../src/services/metadata-service'
-      );
-      const db = await import('../../src/db');
+      stub.on(branchDocumentMetadata).select.returns([
+        {
+          branchId: 'branch-1',
+          structureId: 'struct-1',
+          documentId: 'doc-1',
+          metadata: { title: 'My Document', author: 'John Doe' },
+          conformsToSchema: true,
+          validationErrors: [],
+          lastModifiedAt: new Date('2026-01-24T10:00:00.000Z'),
+          lastModifiedBy: 'user-1',
+        },
+      ]);
 
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [
-          {
-            branch_id: 'branch-1',
-            structure_id: 'struct-1',
-            document_id: 'doc-1',
-            metadata: JSON.stringify({
-              title: 'My Document',
-              author: 'John Doe',
-            }),
-            conforms_to_schema: true,
-            validation_errors: JSON.stringify([]),
-            last_modified_at: '2026-01-24T10:00:00.000Z',
-            last_modified_by: 'user-1',
-          },
-        ],
-      });
-
-      const metadata = await getDocumentMetadata(
-        'branch-1',
-        'struct-1',
-        'doc-1',
-      );
+      const metadata = await getDocumentMetadata('branch-1', 'struct-1', 'doc-1');
 
       expect(metadata).not.toBeNull();
       expect(metadata?.documentId).toBe('doc-1');
@@ -319,15 +196,7 @@ describe('Phase 6.2: Metadata Service', () => {
     });
 
     it('should return null when document metadata does not exist', async () => {
-      const { getDocumentMetadata } = await import(
-        '../../src/services/metadata-service'
-      );
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
-
-      const metadata = await getDocumentMetadata(
-        'branch-1',
+      const metadata = await getDocumentMetadata('branch-1',
         'struct-1',
         'nonexistent',
       );
@@ -338,42 +207,28 @@ describe('Phase 6.2: Metadata Service', () => {
 
   describe('setDocumentMetadata', () => {
     it('should create document metadata with validation', async () => {
-      const { setDocumentMetadata } = await import(
-        '../../src/services/metadata-service'
-      );
-      const db = await import('../../src/db');
-
-      // First query: get branch structure state for schema
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [
-          {
-            branch_id: 'branch-1',
-            structure_id: 'struct-1',
-            metadata_schema: JSON.stringify({
-              type: 'object',
-              properties: { title: { type: 'string' } },
-              required: ['title'],
-            }),
-            schema_enforcement: 'warn',
+      stub.on(branchStructureState).select.returns([
+        {
+          metadataSchema: {
+            type: 'object',
+            properties: { title: { type: 'string' } },
+            required: ['title'],
           },
-        ],
-      });
-
-      // Second query: upsert metadata
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [
-          {
-            branch_id: 'branch-1',
-            structure_id: 'struct-1',
-            document_id: 'doc-1',
-            metadata: JSON.stringify({ title: 'New Document' }),
-            conforms_to_schema: true,
-            validation_errors: JSON.stringify([]),
-            last_modified_at: '2026-01-24T10:00:00.000Z',
-            last_modified_by: 'user-1',
-          },
-        ],
-      });
+          schemaEnforcement: 'warn',
+        },
+      ]);
+      stub.on(branchDocumentMetadata).insert.returns([
+        {
+          branchId: 'branch-1',
+          structureId: 'struct-1',
+          documentId: 'doc-1',
+          metadata: { title: 'New Document' },
+          conformsToSchema: true,
+          validationErrors: [],
+          lastModifiedAt: new Date('2026-01-24T10:00:00.000Z'),
+          lastModifiedBy: 'user-1',
+        },
+      ]);
 
       const result = await setDocumentMetadata({
         branchId: 'branch-1',
@@ -389,44 +244,30 @@ describe('Phase 6.2: Metadata Service', () => {
     });
 
     it('should flag non-conforming metadata in warn mode', async () => {
-      const { setDocumentMetadata } = await import(
-        '../../src/services/metadata-service'
-      );
-      const db = await import('../../src/db');
-
-      // First query: get branch structure state for schema
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [
-          {
-            branch_id: 'branch-1',
-            structure_id: 'struct-1',
-            metadata_schema: JSON.stringify({
-              type: 'object',
-              properties: { title: { type: 'string' } },
-              required: ['title'],
-            }),
-            schema_enforcement: 'warn',
+      stub.on(branchStructureState).select.returns([
+        {
+          metadataSchema: {
+            type: 'object',
+            properties: { title: { type: 'string' } },
+            required: ['title'],
           },
-        ],
-      });
-
-      // Second query: upsert metadata with validation errors
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [
-          {
-            branch_id: 'branch-1',
-            structure_id: 'struct-1',
-            document_id: 'doc-1',
-            metadata: JSON.stringify({}),
-            conforms_to_schema: false,
-            validation_errors: JSON.stringify([
-              { field: 'title', message: "must have required property 'title'" },
-            ]),
-            last_modified_at: '2026-01-24T10:00:00.000Z',
-            last_modified_by: 'user-1',
-          },
-        ],
-      });
+          schemaEnforcement: 'warn',
+        },
+      ]);
+      stub.on(branchDocumentMetadata).insert.returns([
+        {
+          branchId: 'branch-1',
+          structureId: 'struct-1',
+          documentId: 'doc-1',
+          metadata: {},
+          conformsToSchema: false,
+          validationErrors: [
+            { field: 'title', message: "must have required property 'title'" },
+          ],
+          lastModifiedAt: new Date('2026-01-24T10:00:00.000Z'),
+          lastModifiedBy: 'user-1',
+        },
+      ]);
 
       const result = await setDocumentMetadata({
         branchId: 'branch-1',
@@ -438,28 +279,21 @@ describe('Phase 6.2: Metadata Service', () => {
 
       expect(result.conformsToSchema).toBe(false);
       expect(result.validationErrors.length).toBeGreaterThan(0);
+      // The conformance verdict is what gets written, not what the caller sent.
+      expect(stub.calls(branchDocumentMetadata).insert[0]?.params).toContain(false);
     });
 
     it('should throw error for non-conforming metadata in strict mode', async () => {
-      const { setDocumentMetadata } = await import('../../src/services/metadata-service');
-      const { SchemaValidationError } = await import('../../src/services/errors');
-      const db = await import('../../src/db');
-
-      // First query: get branch structure state for schema
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [
-          {
-            branch_id: 'branch-1',
-            structure_id: 'struct-1',
-            metadata_schema: JSON.stringify({
-              type: 'object',
-              properties: { title: { type: 'string' } },
-              required: ['title'],
-            }),
-            schema_enforcement: 'strict',
+      stub.on(branchStructureState).select.returns([
+        {
+          metadataSchema: {
+            type: 'object',
+            properties: { title: { type: 'string' } },
+            required: ['title'],
           },
-        ],
-      });
+          schemaEnforcement: 'strict',
+        },
+      ]);
 
       await expect(
         setDocumentMetadata({
@@ -470,45 +304,32 @@ describe('Phase 6.2: Metadata Service', () => {
           modifiedById: 'user-1',
         }),
       ).rejects.toThrow(SchemaValidationError);
+      expect(stub.calls(branchDocumentMetadata).insert).toHaveLength(0);
     });
 
     it('should skip validation in none mode', async () => {
-      const { setDocumentMetadata } = await import(
-        '../../src/services/metadata-service'
-      );
-      const db = await import('../../src/db');
-
-      // First query: get branch structure state for schema
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [
-          {
-            branch_id: 'branch-1',
-            structure_id: 'struct-1',
-            metadata_schema: JSON.stringify({
-              type: 'object',
-              properties: { title: { type: 'string' } },
-              required: ['title'],
-            }),
-            schema_enforcement: 'none',
+      stub.on(branchStructureState).select.returns([
+        {
+          metadataSchema: {
+            type: 'object',
+            properties: { title: { type: 'string' } },
+            required: ['title'],
           },
-        ],
-      });
-
-      // Second query: upsert metadata (no validation)
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [
-          {
-            branch_id: 'branch-1',
-            structure_id: 'struct-1',
-            document_id: 'doc-1',
-            metadata: JSON.stringify({}),
-            conforms_to_schema: true,
-            validation_errors: JSON.stringify([]),
-            last_modified_at: '2026-01-24T10:00:00.000Z',
-            last_modified_by: 'user-1',
-          },
-        ],
-      });
+          schemaEnforcement: 'none',
+        },
+      ]);
+      stub.on(branchDocumentMetadata).insert.returns([
+        {
+          branchId: 'branch-1',
+          structureId: 'struct-1',
+          documentId: 'doc-1',
+          metadata: {},
+          conformsToSchema: true,
+          validationErrors: [],
+          lastModifiedAt: new Date('2026-01-24T10:00:00.000Z'),
+          lastModifiedBy: 'user-1',
+        },
+      ]);
 
       const result = await setDocumentMetadata({
         branchId: 'branch-1',
@@ -524,36 +345,21 @@ describe('Phase 6.2: Metadata Service', () => {
 
   describe('deleteDocumentMetadata', () => {
     it('should delete document metadata', async () => {
-      const { deleteDocumentMetadata } = await import(
-        '../../src/services/metadata-service'
-      );
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [
-          {
-            branch_id: 'branch-1',
-            structure_id: 'struct-1',
-            document_id: 'doc-1',
-          },
-        ],
-      });
+      stub.on(branchDocumentMetadata).delete.returns([
+        { branchId: 'branch-1', structureId: 'struct-1', documentId: 'doc-1' },
+      ]);
 
       await deleteDocumentMetadata('branch-1', 'struct-1', 'doc-1');
 
-      expect(db.query).toHaveBeenCalledWith(
-        expect.stringContaining('DELETE'),
-        expect.arrayContaining(['branch-1', 'struct-1', 'doc-1']),
-      );
+      expect(stub.calls(branchDocumentMetadata).delete).toHaveLength(1);
+      expect(stub.calls(branchDocumentMetadata).delete[0]?.params).toEqual([
+        'branch-1',
+        'struct-1',
+        'doc-1',
+      ]);
     });
 
     it('should throw error when document metadata does not exist', async () => {
-      const { deleteDocumentMetadata } = await import('../../src/services/metadata-service');
-      const { DocumentMetadataNotFoundError } = await import('../../src/services/errors');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
-
       await expect(
         deleteDocumentMetadata('branch-1', 'struct-1', 'nonexistent'),
       ).rejects.toThrow(DocumentMetadataNotFoundError);
@@ -562,35 +368,28 @@ describe('Phase 6.2: Metadata Service', () => {
 
   describe('listDocumentMetadata', () => {
     it('should list all document metadata in a structure', async () => {
-      const { listDocumentMetadata } = await import(
-        '../../src/services/metadata-service'
-      );
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [
-          {
-            branch_id: 'branch-1',
-            structure_id: 'struct-1',
-            document_id: 'doc-1',
-            metadata: JSON.stringify({ title: 'Doc 1' }),
-            conforms_to_schema: true,
-            validation_errors: JSON.stringify([]),
-            last_modified_at: '2026-01-24T10:00:00.000Z',
-            last_modified_by: 'user-1',
-          },
-          {
-            branch_id: 'branch-1',
-            structure_id: 'struct-1',
-            document_id: 'doc-2',
-            metadata: JSON.stringify({ title: 'Doc 2' }),
-            conforms_to_schema: false,
-            validation_errors: JSON.stringify([{ field: 'author', message: 'required' }]),
-            last_modified_at: '2026-01-24T11:00:00.000Z',
-            last_modified_by: 'user-2',
-          },
-        ],
-      });
+      stub.on(branchDocumentMetadata).select.returns([
+        {
+          branchId: 'branch-1',
+          structureId: 'struct-1',
+          documentId: 'doc-1',
+          metadata: { title: 'Doc 1' },
+          conformsToSchema: true,
+          validationErrors: [],
+          lastModifiedAt: new Date('2026-01-24T10:00:00.000Z'),
+          lastModifiedBy: 'user-1',
+        },
+        {
+          branchId: 'branch-1',
+          structureId: 'struct-1',
+          documentId: 'doc-2',
+          metadata: { title: 'Doc 2' },
+          conformsToSchema: false,
+          validationErrors: [{ field: 'author', message: 'required' }],
+          lastModifiedAt: new Date('2026-01-24T11:00:00.000Z'),
+          lastModifiedBy: 'user-2',
+        },
+      ]);
 
       const metadataList = await listDocumentMetadata({
         branchId: 'branch-1',
@@ -600,28 +399,26 @@ describe('Phase 6.2: Metadata Service', () => {
       expect(metadataList).toHaveLength(2);
       expect(metadataList[0].documentId).toBe('doc-1');
       expect(metadataList[1].documentId).toBe('doc-2');
+      expect(stub.calls(branchDocumentMetadata).select[0]?.params).toEqual([
+        'branch-1',
+        'struct-1',
+        100,
+      ]);
     });
 
     it('should filter by conformance status', async () => {
-      const { listDocumentMetadata } = await import(
-        '../../src/services/metadata-service'
-      );
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [
-          {
-            branch_id: 'branch-1',
-            structure_id: 'struct-1',
-            document_id: 'doc-2',
-            metadata: JSON.stringify({ title: 'Doc 2' }),
-            conforms_to_schema: false,
-            validation_errors: JSON.stringify([{ field: 'author', message: 'required' }]),
-            last_modified_at: '2026-01-24T11:00:00.000Z',
-            last_modified_by: 'user-2',
-          },
-        ],
-      });
+      stub.on(branchDocumentMetadata).select.returns([
+        {
+          branchId: 'branch-1',
+          structureId: 'struct-1',
+          documentId: 'doc-2',
+          metadata: { title: 'Doc 2' },
+          conformsToSchema: false,
+          validationErrors: [{ field: 'author', message: 'required' }],
+          lastModifiedAt: new Date('2026-01-24T11:00:00.000Z'),
+          lastModifiedBy: 'user-2',
+        },
+      ]);
 
       const metadataList = await listDocumentMetadata({
         branchId: 'branch-1',
@@ -631,6 +428,9 @@ describe('Phase 6.2: Metadata Service', () => {
 
       expect(metadataList).toHaveLength(1);
       expect(metadataList[0].conformsToSchema).toBe(false);
+      const { sql, params } = stub.calls(branchDocumentMetadata).select[0] ?? {};
+      expect(sql).toContain('"conforms_to_schema"');
+      expect(params).toEqual(['branch-1', 'struct-1', false, 100]);
     });
   });
 
@@ -639,11 +439,7 @@ describe('Phase 6.2: Metadata Service', () => {
   // ===========================================================================
 
   describe('validateMetadata', () => {
-    it('should validate conforming metadata', async () => {
-      const { validateMetadata } = await import(
-        '../../src/services/metadata-service'
-      );
-
+    it('should validate conforming metadata', () => {
       const schema = {
         type: 'object',
         properties: {
@@ -659,11 +455,7 @@ describe('Phase 6.2: Metadata Service', () => {
       expect(result.errors).toEqual([]);
     });
 
-    it('should return errors for non-conforming metadata', async () => {
-      const { validateMetadata } = await import(
-        '../../src/services/metadata-service'
-      );
-
+    it('should return errors for non-conforming metadata', () => {
       const schema = {
         type: 'object',
         properties: {
@@ -679,11 +471,7 @@ describe('Phase 6.2: Metadata Service', () => {
       expect(result.errors.length).toBeGreaterThan(0);
     });
 
-    it('should validate type constraints', async () => {
-      const { validateMetadata } = await import(
-        '../../src/services/metadata-service'
-      );
-
+    it('should validate type constraints', () => {
       const schema = {
         type: 'object',
         properties: {
@@ -703,11 +491,7 @@ describe('Phase 6.2: Metadata Service', () => {
       ).toBe(true);
     });
 
-    it('should validate enum constraints', async () => {
-      const { validateMetadata } = await import(
-        '../../src/services/metadata-service'
-      );
-
+    it('should validate enum constraints', () => {
       const schema = {
         type: 'object',
         properties: {
@@ -727,50 +511,24 @@ describe('Phase 6.2: Metadata Service', () => {
 
   describe('validateAllDocuments', () => {
     it('should validate all documents against schema', async () => {
-      const { validateAllDocuments } = await import(
-        '../../src/services/metadata-service'
-      );
-      const db = await import('../../src/db');
-
-      // First query: get structure state with schema
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [
-          {
-            branch_id: 'branch-1',
-            structure_id: 'struct-1',
-            metadata_schema: JSON.stringify({
-              type: 'object',
-              properties: { title: { type: 'string' } },
-              required: ['title'],
-            }),
-            schema_enforcement: 'warn',
+      stub.on(branchStructureState).select.returns([
+        {
+          metadataSchema: {
+            type: 'object',
+            properties: { title: { type: 'string' } },
+            required: ['title'],
           },
-        ],
-      });
-
-      // Second query: get all document metadata with document paths
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [
-          {
-            document_id: 'doc-1',
-            document_path: 'pages/home',
-            metadata: JSON.stringify({ title: 'Home' }),
-          },
-          {
-            document_id: 'doc-2',
-            document_path: 'pages/about',
-            metadata: JSON.stringify({}), // Missing title
-          },
-          {
-            document_id: 'doc-3',
-            document_path: 'pages/contact',
-            metadata: JSON.stringify({ title: 'Contact' }),
-          },
-        ],
-      });
-
-      // Third query: update validation state for each document
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
+        },
+      ]);
+      stub.on(branchDocumentMetadata).select.returnsRaw([
+        { documentId: 'doc-1', documentPath: 'pages/home', metadata: { title: 'Home' } },
+        { documentId: 'doc-2', documentPath: 'pages/about', metadata: {} },
+        {
+          documentId: 'doc-3',
+          documentPath: 'pages/contact',
+          metadata: { title: 'Contact' },
+        },
+      ]);
 
       const result = await validateAllDocuments('branch-1', 'struct-1');
 
@@ -779,15 +537,15 @@ describe('Phase 6.2: Metadata Service', () => {
       expect(result.conformingDocuments).toBe(2);
       expect(result.nonConformingDocuments).toHaveLength(1);
       expect(result.nonConformingDocuments[0].documentId).toBe('doc-2');
+      // Every document's verdict is written back.
+      expect(
+        stub
+          .calls(branchDocumentMetadata)
+          .update.map((call) => call.params[call.params.length - 1]),
+      ).toEqual(['doc-1', 'doc-2', 'doc-3']);
     });
 
     it('should throw error when structure state does not exist', async () => {
-      const { validateAllDocuments } = await import('../../src/services/metadata-service');
-      const { BranchStructureStateNotFoundError } = await import('../../src/services/errors');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
-
       await expect(
         validateAllDocuments('branch-1', 'nonexistent'),
       ).rejects.toThrow(BranchStructureStateNotFoundError);
@@ -796,19 +554,9 @@ describe('Phase 6.2: Metadata Service', () => {
 
   describe('getSchemaValidationSummary', () => {
     it('should return validation summary for a structure', async () => {
-      const { getSchemaValidationSummary } = await import(
-        '../../src/services/metadata-service'
-      );
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [
-          {
-            total_documents: '10',
-            conforming_documents: '7',
-          },
-        ],
-      });
+      stub
+        .on(branchDocumentMetadata)
+        .select.returnsRaw([{ totalDocuments: 10, conformingDocuments: 7 }]);
 
       const summary = await getSchemaValidationSummary('branch-1', 'struct-1');
 
@@ -823,18 +571,14 @@ describe('Phase 6.2: Metadata Service', () => {
   // ===========================================================================
 
   describe('Error Classes', () => {
-    it('should have BranchStructureStateNotFoundError', async () => {
-      const { BranchStructureStateNotFoundError } = await import('../../src/services/errors');
-
+    it('should have BranchStructureStateNotFoundError', () => {
       const error = new BranchStructureStateNotFoundError('branch-1', 'struct-1');
       expect(error.name).toBe('BranchStructureStateNotFoundError');
       expect(error.branchId).toBe('branch-1');
       expect(error.structureId).toBe('struct-1');
     });
 
-    it('should have DocumentMetadataNotFoundError', async () => {
-      const { DocumentMetadataNotFoundError } = await import('../../src/services/errors');
-
+    it('should have DocumentMetadataNotFoundError', () => {
       const error = new DocumentMetadataNotFoundError(
         'branch-1',
         'struct-1',
@@ -844,9 +588,7 @@ describe('Phase 6.2: Metadata Service', () => {
       expect(error.documentId).toBe('doc-1');
     });
 
-    it('should have SchemaValidationError', async () => {
-      const { SchemaValidationError } = await import('../../src/services/errors');
-
+    it('should have SchemaValidationError', () => {
       const errors = [
         { field: 'title', message: 'required' },
         { field: 'author', message: 'must be string' },

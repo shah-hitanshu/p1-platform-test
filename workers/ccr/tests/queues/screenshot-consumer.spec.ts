@@ -7,6 +7,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { ScreenshotQueueMessage } from '../../src/types/queue-messages';
+import { stubDatabase } from '../__stubs__/database';
 
 vi.mock('../../src/db', () => ({
   runWithConnection: vi.fn().mockImplementation(
@@ -88,6 +89,7 @@ describe('Screenshot consumer', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    stubDatabase();
     const { runWithConnection } = await import('../../src/db');
     vi.mocked(runWithConnection).mockImplementation(
       async (_connStr: string, _opts: unknown, fn: () => Promise<unknown>) => fn(),

@@ -402,7 +402,6 @@ export type {
 // Metadata Service
 export {
   getBranchStructureState,
-  createBranchStructureState,
   updateBranchStructureState,
   deleteBranchStructureState,
   getDocumentMetadata,
@@ -419,7 +418,6 @@ export type {
   DocumentMetadata,
   ValidationError,
   MetadataValidationResult,
-  CreateBranchStructureStateParams,
   UpdateBranchStructureStateParams,
   SetDocumentMetadataParams,
   ListDocumentMetadataOptions,

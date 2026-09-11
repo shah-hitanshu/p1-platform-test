@@ -14,8 +14,11 @@
  */
 
 import postgres from 'postgres';
+import { drizzle } from 'drizzle-orm/postgres-js';
 import { getDatabaseInstance, setDatabaseInstance, runWithConnection } from '../../src/db';
-import type { DatabaseConnection, QueryResult } from '../../src/db';
+import type { Database, DatabaseConnection, QueryResult } from '../../src/db';
+import * as schema from '../../src/db/schema';
+import { installDatabase } from '../../src/db/scope';
 
 const DEFAULT_HOST = 'localhost';
 const DEFAULT_PORT = '5432';
@@ -27,11 +30,13 @@ const DEFAULT_USER = 'cssuser';
 const DEFAULT_PASSWORD = 'csspass';
 
 /**
- * Connection string for the local test database, overridable per part so CI can
- * point at its own instance.
+ * Connection string for the local test database: a whole URL from the
+ * environment when one is set, else assembled from parts so a per-worktree
+ * database only has to override POSTGRES_DB.
  */
 export const TEST_CONNECTION_STRING =
   process.env.TEST_DATABASE_URL
+  ?? process.env.POSTGRES_CONNECTION_STRING
   ?? `postgresql://${process.env.POSTGRES_USER ?? DEFAULT_USER}`
     + `:${process.env.POSTGRES_PASSWORD ?? DEFAULT_PASSWORD}`
     + `@${process.env.POSTGRES_HOST ?? DEFAULT_HOST}`
@@ -39,19 +44,30 @@ export const TEST_CONNECTION_STRING =
     + `/${process.env.POSTGRES_DB ?? DEFAULT_DATABASE}`;
 
 /**
- * Build a `DatabaseConnection` backed by a real Postgres connection, alongside
- * the raw `sql` handle for test setup and assertions.
+ * Build the handles a test needs against a real Postgres: the Drizzle `db` the
+ * code under test reaches through `db()`, the `DatabaseConnection` the raw
+ * `query` interface resolves to, and `sql` itself for setup and assertions.
+ *
+ * `db` is installed as the scope fallback until the connection is closed, so a
+ * spec calls the code under test directly. A request opened with
+ * `runWithConnection` still takes precedence inside its own scope.
+ *
+ * `db` gets its own client. `drizzle()` replaces its client's timestamp parsers
+ * and json serializers with identity functions, so sharing one would leave `sql`
+ * reading timestamps as strings and throwing on an object parameter.
+ *
+ * Closing the connection ends both clients.
  *
  * @param connectionString - Defaults to the local test database.
  */
 export function createRealDatabaseConnection(connectionString: string = TEST_CONNECTION_STRING): {
+  db: Database;
   connection: DatabaseConnection;
   sql: postgres.Sql;
 } {
-  const sql = postgres(connectionString, {
-    transform: { undefined: null },
-    max: 1,
-  });
+  const clientOptions = { transform: { undefined: null }, max: 1 };
+  const sql = postgres(connectionString, clientOptions);
+  const drizzleClient = postgres(connectionString, clientOptions);
 
   const connection: DatabaseConnection = {
     async query<T>(text: string, params: unknown[] = []): Promise<QueryResult<T>> {
@@ -65,11 +81,14 @@ export function createRealDatabaseConnection(connectionString: string = TEST_CON
       return { rows, rowCount };
     },
     async close(): Promise<void> {
-      await sql.end();
+      installDatabase(null);
+      await Promise.allSettled([sql.end(), drizzleClient.end()]);
     },
   };
 
-  return { connection, sql };
+  const db = drizzle(drizzleClient, { schema });
+  installDatabase(db);
+  return { db, connection, sql };
 }
 
 /**

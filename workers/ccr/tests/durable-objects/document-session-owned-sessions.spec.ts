@@ -7,6 +7,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
+import { stubDatabase } from '../__stubs__/database';
 
 vi.mock('cloudflare:workers', () => ({
   DurableObject: class DurableObject {
@@ -255,6 +256,7 @@ describe('checkpoints for a person-owned session', () => {
   it('attributes the checkpoint to the person\'s database identity', async () => {
     const { createCheckpoint } = await import('../../src/services/checkpoint-service');
     const { runWithConnection } = await import('../../src/db');
+    stubDatabase();
     vi.mocked(runWithConnection).mockImplementation(
       async (_c: unknown, _o: unknown, cb: () => Promise<unknown>) => cb(),
     );

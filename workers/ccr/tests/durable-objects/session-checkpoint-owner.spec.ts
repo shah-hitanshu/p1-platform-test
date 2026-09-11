@@ -30,6 +30,7 @@ import type {
   DocumentSessionEnv,
   SessionInfo,
 } from '../../src/durable-objects/document-session-types';
+import { stubDatabase } from '../__stubs__/database';
 
 const sessionInfo: SessionInfo = {
   siteId: 'site-1',
@@ -72,6 +73,7 @@ function postedBody(fetchMock: ReturnType<typeof vi.fn>): Record<string, unknown
 
 beforeEach(() => {
   vi.clearAllMocks();
+  stubDatabase();
   // Run the callback the direct path wraps in a connection.
   vi.mocked(runWithConnection).mockImplementation(
     async (_conn: unknown, _opts: unknown, callback: () => Promise<unknown>) => callback(),

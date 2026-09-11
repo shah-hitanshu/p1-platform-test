@@ -6,6 +6,7 @@
  */
 
 import type { StructureNode, StructureType, NodeType } from '../types';
+import type { branchStructureState, siteStructures } from '../db/schema';
 import { InvalidSlugError } from './errors';
 
 // =============================================================================
@@ -43,12 +44,12 @@ export interface BranchStructure {
   branchId: string;
   name: string;
   slug: string;
-  description?: string;
+  description?: string | null;
   structureType: StructureType;
   structureTree: Record<string, unknown>[];
   metadataSchema: Record<string, unknown>;
   schemaEnforcement: string;
-  createdAt: string;
+  createdAt: Date | null;
 }
 
 /**
@@ -146,30 +147,26 @@ export function normalizeSlug(slug: string): string {
 // =============================================================================
 
 /**
- * Site structure definition (minimal after migration 007).
+ * A structure's branch-scoped state joined to the site it belongs to.
+ *
+ * Identity (name, slug) lives on the branch row; the owning site and the
+ * creation time live on the definition, so neither table describes the whole
+ * structure on its own.
  */
-export interface StructureDefinitionRow {
-  id: string;
-  site_id: string;
-  created_at: string;
-}
-
-/**
- * Branch structure state (includes identity after migration 007).
- */
-export interface BranchStructureRow {
-  structure_id: string;
-  site_id: string;
-  branch_id: string;
-  name: string;
-  slug: string;
-  description?: string;
-  structure_type: string;
-  structure_tree: Record<string, unknown>[];
-  metadata_schema: Record<string, unknown>;
-  schema_enforcement: string;
-  created_at: string;
-}
+export type BranchStructureRow =
+  Pick<
+    typeof branchStructureState.$inferSelect,
+    | 'structureId'
+    | 'branchId'
+    | 'name'
+    | 'slug'
+    | 'description'
+    | 'structureType'
+    | 'structureTree'
+    | 'metadataSchema'
+    | 'schemaEnforcement'
+  >
+  & Pick<typeof siteStructures.$inferSelect, 'siteId' | 'createdAt'>;
 
 export interface NodeRow {
   id: string;
@@ -190,17 +187,17 @@ export interface NodeRow {
 
 export function mapBranchStructureRow(row: BranchStructureRow): BranchStructure {
   return {
-    id: row.structure_id,
-    siteId: row.site_id,
-    branchId: row.branch_id,
+    id: row.structureId,
+    siteId: row.siteId,
+    branchId: row.branchId,
     name: row.name,
     slug: row.slug,
     description: row.description,
-    structureType: row.structure_type as StructureType,
-    structureTree: row.structure_tree,
-    metadataSchema: row.metadata_schema,
-    schemaEnforcement: row.schema_enforcement,
-    createdAt: row.created_at,
+    structureType: row.structureType as StructureType,
+    structureTree: row.structureTree as Record<string, unknown>[],
+    metadataSchema: row.metadataSchema as Record<string, unknown>,
+    schemaEnforcement: row.schemaEnforcement,
+    createdAt: row.createdAt,
   };
 }
 

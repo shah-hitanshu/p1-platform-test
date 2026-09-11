@@ -3,6 +3,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { stubDatabase } from '../__stubs__/database';
 
 vi.mock('../../src/db', () => ({
   runWithConnection: vi.fn().mockImplementation(
@@ -32,6 +33,7 @@ function createEnv(overrides: { SCREENSHOT_QUEUE?: MockQueue; POSTGRES_CONNECTIO
 describe('runWeeklyScreenshotRefresh', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
+    stubDatabase();
     const { runWithConnection } = await import('../../src/db');
     vi.mocked(runWithConnection).mockImplementation(
       async (_connStr: string, _opts: unknown, fn: () => Promise<unknown>) => fn(),

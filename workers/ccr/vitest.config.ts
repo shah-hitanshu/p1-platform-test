@@ -60,10 +60,10 @@ export default defineConfig({
       // where cloudflare: protocol imports do not resolve. The integration
       // config runs in Node too and needs the same aliases.
       '@cloudflare/workers-oauth-provider': fileURLToPath(
-        new URL('tests/stubs/workers-oauth-provider.ts', import.meta.url),
+        new URL('tests/__stubs__/workers-oauth-provider.ts', import.meta.url),
       ),
       'cloudflare:workers': fileURLToPath(
-        new URL('tests/stubs/cloudflare-workers.ts', import.meta.url),
+        new URL('tests/__stubs__/cloudflare-workers.ts', import.meta.url),
       ),
     },
   },
