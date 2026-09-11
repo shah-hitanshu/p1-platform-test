@@ -60,12 +60,43 @@ export const pages = createP1Pages({
 Client components render inside `P1NextRouterProvider`, which bridges P1 navigation to the
 Next.js router.
 
+### AI chatbot
+
+The chatbot is in limited release, and whether it is available to a given site is decided by
+Pantheon rather than configured by the application. Wrap the editor in `P1ChatbotProvider` and
+return `useP1Chatbot`'s result from the editor's `useExtensions` slot; there is nothing to
+branch on, because an unavailable chatbot contributes no plugins, no handler and an unchanged
+canvas key.
+
+```tsx
+function useEditorExtensions({ openDocument }: P1EditorContext): P1EditorExtensions {
+  const chatbot = useP1Chatbot({ onPageCreated: openDocument });
+
+  return {
+    plugins: chatbot.plugins,
+    pluginOptions: chatbot.pluginOptions,
+    editorKeySuffix: chatbot.editorKeySuffix,
+  };
+}
+
+export const EditorClientWrapper = createP1EditorClient({
+  puckConfig: config,
+  wrapEditor: (editor) => <P1ChatbotProvider>{editor}</P1ChatbotProvider>,
+  useExtensions: useEditorExtensions,
+});
+```
+
+There is nothing to configure. An editor that has not been given an agent evaluates no
+rollout flag and initializes no rollout client, so a project adds no environment
+variables for the chatbot and changes nothing when the rollout ends.
+
 ## Entry points
 
 | Import | Contents |
 | --- | --- |
-| `@pantheon-systems/p1-next-sdk` | `P1NextRouterProvider` and client-side helpers |
+| `@pantheon-systems/p1-next-sdk` | `createP1EditorClient`, `P1NextRouterProvider` and client-side helpers |
 | `.../server` | `createP1Handler`, `createP1AuthHandler`, `createP1Pages`, `createP1Middleware`, `createCssQueryFetchers` |
+| `.../chatbot` | `P1ChatbotProvider`, `useP1Chatbot` |
 
 Transpilation is required, since the P1 packages ship untranspiled ESM:
 

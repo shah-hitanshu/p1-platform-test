@@ -1,0 +1,5 @@
+/* Every stylesheet the P1 editor needs, in the order it needs them. Import this
+   once from the route that mounts the editor. */
+
+@import "@pantheon-systems/puck-css/styles.css";
+@import "@pantheon-systems/puck-css/pds/styles.css";

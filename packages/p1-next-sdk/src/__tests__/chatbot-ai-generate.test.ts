@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { DraftRequest, DraftRequestChannel } from "@pantheon-systems/p1-ai-chat";
-import { createGenerateWithAIHandler } from "../lib/chatbot-flag/ai-generate";
+import { createGenerateWithAIHandler } from "../chatbot/ai-generate";
 
 /**
  * A recording stand-in for the request channel. The real channel is unit-tested in

@@ -343,14 +343,151 @@ export function rewriteDocumentNotFound(source) {
   return out;
 }
 
-/** Full editor-client transform: deepen imports, add the named imports, rewrite the signature, adopt the SDK overlay and page-not-found flow. */
-export function rewriteEditorClient(source) {
+/**
+ * Hand the app's own chatbot rollout gate to the SDK's `useP1Chatbot`.
+ *
+ * `lib/chatbot-flag/` and `components/ChatbotFlagProvider.tsx` are left on disk
+ * once nothing imports them — this transform only rewrites the files it moves.
+ */
+const CHATBOT_EDITS = [
+  [
+    /^import \{ createAIChatPlugin \} from "@pantheon-systems\/p1-ai-chat";\n/m,
+    `import { P1ChatbotProvider, useP1Chatbot } from "@pantheon-systems/p1-next-sdk/chatbot";\n`,
+  ],
+  [/^import \{ useFlags \} from "launchdarkly-react-client-sdk";\n/m, ``],
+  [/^import \{ ChatbotFlagProvider \} from "[^"]*components\/ChatbotFlagProvider";\n/m, ``],
+  [
+    /^import \{ shouldShowChatbot, CHATBOT_FLAG_KEY \} from "[^"]*lib\/chatbot-flag\/feature-gate";\n/m,
+    ``,
+  ],
+  [
+    /^import \{ createGenerateWithAIHandler \} from "[^"]*lib\/chatbot-flag\/ai-generate";\n/m,
+    ``,
+  ],
+  [
+    /^import \{ getDraftRequestChannel \} from "[^"]*lib\/chatbot-flag\/draft-request-channel";\n/m,
+    ``,
+  ],
+  [`<ChatbotFlagProvider>`, `<P1ChatbotProvider>`],
+  [`</ChatbotFlagProvider>`, `</P1ChatbotProvider>`],
+  [
+    `      onGenerateWithAI: createGenerateWithAIHandler(draftRequests, chatbotEnabled),\n` +
+      `      showAIPanelToggle: chatbotEnabled,\n`,
+    `      ...chatbot.pluginOptions,\n`,
+  ],
+  [
+    'key={`${puckKey}-${chatbotEnabled ? "ai" : "no-ai"}`}',
+    "key={`${puckKey}${chatbot.editorKeySuffix}`}",
+  ],
+];
+
+const MOUNTS_THE_PLUGIN = `  const chatbot = useP1Chatbot({ onPageCreated: handlePageCreated });
+  const additionalPlugins = React.useMemo(
+    () => [...p1Plugins, mediaPlugin, ...chatbot.plugins],
+    [p1Plugins, mediaPlugin, chatbot.plugins],
+  );
+`;
+
+// A scaffold created before the chat plugin gained a default agent reads
+// NEXT_PUBLIC_AGENT_URL itself and treats an unset value as "no chatbot"; a later one
+// passes the variable straight through. Both shapes are published, and both migrate to
+// the same call — but the two blocks of a shape have to be matched as a pair, so an app
+// that customized one of them bails instead of being half-rewritten.
+const CHATBOT_GATE_SHAPES = [
+  [
+    [
+      `  const flags = useFlags();\n` +
+        `  const agentUrl = process.env.NEXT_PUBLIC_AGENT_URL;\n` +
+        `  const chatbotEnabled = shouldShowChatbot(flags[CHATBOT_FLAG_KEY], agentUrl);\n` +
+        `  // Singleton: survives the remount caused by navigating to the new page.\n` +
+        `  const draftRequests = getDraftRequestChannel();\n`,
+      ``,
+    ],
+    [
+      `  const aiPlugin = React.useMemo(
+    () =>
+      chatbotEnabled && agentUrl
+        ? createAIChatPlugin({ agentUrl, draftRequests, onPageCreated: handlePageCreated })
+        : null,
+    [chatbotEnabled, agentUrl, draftRequests, handlePageCreated],
+  );
+  const additionalPlugins = React.useMemo(
+    () => (aiPlugin ? [...p1Plugins, mediaPlugin, aiPlugin] : [...p1Plugins, mediaPlugin]),
+    [p1Plugins, mediaPlugin, aiPlugin],
+  );
+`,
+      MOUNTS_THE_PLUGIN,
+    ],
+  ],
+  [
+    [
+      `  const flags = useFlags();\n` +
+        `  const chatbotEnabled = shouldShowChatbot(flags[CHATBOT_FLAG_KEY]);\n` +
+        `  // Singleton: survives the remount caused by navigating to the new page.\n` +
+        `  const draftRequests = getDraftRequestChannel();\n`,
+      ``,
+    ],
+    [
+      `  const aiPlugin = React.useMemo(
+    () =>
+      chatbotEnabled
+        ? createAIChatPlugin({
+            agentUrl: process.env.NEXT_PUBLIC_AGENT_URL,
+            draftRequests,
+            onPageCreated: handlePageCreated,
+          })
+        : null,
+    [chatbotEnabled, draftRequests, handlePageCreated],
+  );
+  const additionalPlugins = React.useMemo(
+    () => (aiPlugin ? [...p1Plugins, mediaPlugin, aiPlugin] : [...p1Plugins, mediaPlugin]),
+    [p1Plugins, mediaPlugin, aiPlugin],
+  );
+`,
+      MOUNTS_THE_PLUGIN,
+    ],
+  ],
+];
+
+const matches = (source, find) =>
+  typeof find === "string" ? source.includes(find) : find.test(source);
+
+function chatbotEdits(source) {
+  const shape = CHATBOT_GATE_SHAPES.find((edits) =>
+    edits.every(([find]) => matches(source, find)),
+  );
+  return [...CHATBOT_EDITS, ...(shape ?? CHATBOT_GATE_SHAPES[0])];
+}
+
+/** Hand the chatbot's rollout gate to the SDK; the app keeps no flag plumbing of its own. */
+export function rewriteChatbotGate(source) {
+  const edits = chatbotEdits(source);
+  const found = edits.filter(([find]) => matches(source, find));
+  if (found.length === 0) return source;
+  if (found.length !== edits.length) {
+    throw new BailError(
+      "editor-client.tsx has partly-customized chatbot wiring; migrate this file by hand.",
+    );
+  }
+  let out = source;
+  for (const [find, replace] of edits) out = out.replace(find, replace);
+  return out;
+}
+
+/** Full editor-client transform: deepen imports, add the named imports, rewrite the signature, adopt the SDK overlay, page-not-found flow and chatbot gate. */
+/**
+ * `chatbot: false` skips the chatbot step, leaving the app's own gate in place.
+ * The route move is the reason to run this codemod and needs a far older SDK
+ * than the chatbot rewrite's output does, so the two are gated separately.
+ */
+export function rewriteEditorClient(source, { chatbot = true } = {}) {
   let out = deepenRelativeImports(source);
   out = addNamedImport(out, "next/navigation", "usePathname", "prepend");
   out = addNamedImport(out, "@pantheon-systems/p1-next-sdk", "editorPagePathFromUrlPath", "append");
   out = rewriteWrapperSignature(out);
   out = rewriteLoadingOverlay(out);
   out = rewriteDocumentNotFound(out);
+  if (chatbot) out = rewriteChatbotGate(out);
   return out;
 }
 

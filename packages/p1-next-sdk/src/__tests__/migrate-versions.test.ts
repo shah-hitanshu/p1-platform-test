@@ -12,14 +12,25 @@
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 
 // @ts-expect-error - hand-written ESM JS codemod, no type declarations
-import { assertSuiteVersions } from "../../bin/lib/detect.js";
+import {
+  assertSuiteVersions,
+  CHATBOT_MIN_VERSION,
+  MIN_SUITE_VERSION,
+} from "../../bin/lib/detect.js";
 // @ts-expect-error - hand-written ESM JS codemod, no type declarations
 import { migrate } from "../../bin/lib/cli.js";
 // @ts-expect-error - hand-written ESM JS codemod, no type declarations
 import { BailError } from "../../bin/lib/transform.js";
+
+// Read the floors rather than restating them: each rises whenever the output of the
+// step it guards starts needing a newer export, and these cases mean "at" and "above".
+const ABOVE_FLOOR = "0.99.0";
+
+/** Old enough to skip the chatbot rewrite, new enough to still restructure routes. */
+const BETWEEN_FLOORS = "0.9.0";
 
 const SDK = "@pantheon-systems/p1-next-sdk";
 const PUCK_CSS = "@pantheon-systems/puck-css";
@@ -93,20 +104,52 @@ describe("assertSuiteVersions", () => {
 
   it("accepts a consistent suite at the minimum version", () => {
     const root = makeProject({
-      [SDK]: "0.8.0",
-      [PUCK_CSS]: "0.8.0",
-      [CSS_CLIENT]: "0.8.0",
+      [SDK]: MIN_SUITE_VERSION,
+      [PUCK_CSS]: MIN_SUITE_VERSION,
+      [CSS_CLIENT]: MIN_SUITE_VERSION,
     });
-    expect(assertSuiteVersions(root)).toEqual({ status: "ok", version: "0.8.0" });
+    expect(assertSuiteVersions(root)).toEqual({
+      status: "ok",
+      version: MIN_SUITE_VERSION,
+      chatbot: false,
+    });
   });
 
   it("accepts a consistent suite newer than the minimum", () => {
     const root = makeProject({
-      [SDK]: "0.9.1",
-      [PUCK_CSS]: "0.9.1",
-      [CSS_CLIENT]: "0.9.1",
+      [SDK]: ABOVE_FLOOR,
+      [PUCK_CSS]: ABOVE_FLOOR,
+      [CSS_CLIENT]: ABOVE_FLOOR,
     });
-    expect(assertSuiteVersions(root).status).toBe("ok");
+    expect(assertSuiteVersions(root)).toEqual({
+      status: "ok",
+      version: ABOVE_FLOOR,
+      chatbot: true,
+    });
+  });
+
+  it("clears the chatbot rewrite only from its own floor upward", () => {
+    const below = makeProject({
+      [SDK]: BETWEEN_FLOORS,
+      [PUCK_CSS]: BETWEEN_FLOORS,
+      [CSS_CLIENT]: BETWEEN_FLOORS,
+    });
+    const at = makeProject({
+      [SDK]: CHATBOT_MIN_VERSION,
+      [PUCK_CSS]: CHATBOT_MIN_VERSION,
+      [CSS_CLIENT]: CHATBOT_MIN_VERSION,
+    });
+
+    expect(assertSuiteVersions(below)).toEqual({
+      status: "ok",
+      version: BETWEEN_FLOORS,
+      chatbot: false,
+    });
+    expect(assertSuiteVersions(at)).toEqual({
+      status: "ok",
+      version: CHATBOT_MIN_VERSION,
+      chatbot: true,
+    });
   });
 
   it("bails when the suite is consistent but older than the layout release", () => {
@@ -121,9 +164,9 @@ describe("assertSuiteVersions", () => {
 
   it("bails when installed suite versions disagree", () => {
     const root = makeProject({
-      [SDK]: "0.8.0",
+      [SDK]: MIN_SUITE_VERSION,
       [PUCK_CSS]: "0.5.0",
-      [CSS_CLIENT]: "0.8.0",
+      [CSS_CLIENT]: MIN_SUITE_VERSION,
     });
     expect(() => assertSuiteVersions(root)).toThrow(BailError);
     expect(() => assertSuiteVersions(root)).toThrow(/puck-css/);
@@ -133,12 +176,16 @@ describe("assertSuiteVersions", () => {
     // pnpm's isolated node_modules links only direct dependencies at the root, so
     // css-client — a transitive dep of the SDK — legitimately isn't there. Real
     // apps look exactly like this; requiring it would bail on every one of them.
-    const root = makeProject({ [SDK]: "0.8.0", [PUCK_CSS]: "0.8.0" });
-    expect(assertSuiteVersions(root)).toEqual({ status: "ok", version: "0.8.0" });
+    const root = makeProject({ [SDK]: MIN_SUITE_VERSION, [PUCK_CSS]: MIN_SUITE_VERSION });
+    expect(assertSuiteVersions(root)).toEqual({
+      status: "ok",
+      version: MIN_SUITE_VERSION,
+      chatbot: false,
+    });
   });
 
   it("still flags version skew among only the root-level packages", () => {
-    const root = makeProject({ [SDK]: "0.8.0", [PUCK_CSS]: "0.5.0" });
+    const root = makeProject({ [SDK]: MIN_SUITE_VERSION, [PUCK_CSS]: "0.5.0" });
     expect(() => assertSuiteVersions(root)).toThrow(BailError);
     expect(() => assertSuiteVersions(root)).toThrow(/puck-css/);
   });
@@ -148,9 +195,9 @@ describe("assertSuiteVersions", () => {
     // puck-css range leaves two copies of puck-css, and post-0.8 there is no
     // internal peerDependency left to warn about it.
     const root = makeProject({
-      [SDK]: "0.8.0",
-      [PUCK_CSS]: "0.8.0",
-      [CSS_CLIENT]: "0.8.0",
+      [SDK]: MIN_SUITE_VERSION,
+      [PUCK_CSS]: MIN_SUITE_VERSION,
+      [CSS_CLIENT]: MIN_SUITE_VERSION,
     });
     installNested(root, SDK, PUCK_CSS, "0.5.0");
 
@@ -160,20 +207,20 @@ describe("assertSuiteVersions", () => {
 
   it("ignores a nested copy at the same version as the root", () => {
     const root = makeProject({
-      [SDK]: "0.8.0",
-      [PUCK_CSS]: "0.8.0",
-      [CSS_CLIENT]: "0.8.0",
+      [SDK]: MIN_SUITE_VERSION,
+      [PUCK_CSS]: MIN_SUITE_VERSION,
+      [CSS_CLIENT]: MIN_SUITE_VERSION,
     });
-    installNested(root, SDK, PUCK_CSS, "0.8.0");
+    installNested(root, SDK, PUCK_CSS, MIN_SUITE_VERSION);
 
     expect(assertSuiteVersions(root).status).toBe("ok");
   });
 
   it("treats a prerelease of the minimum version as acceptable", () => {
     const root = makeProject({
-      [SDK]: "0.8.0-beta.1",
-      [PUCK_CSS]: "0.8.0-beta.1",
-      [CSS_CLIENT]: "0.8.0-beta.1",
+      [SDK]: `${MIN_SUITE_VERSION}-beta.1`,
+      [PUCK_CSS]: `${MIN_SUITE_VERSION}-beta.1`,
+      [CSS_CLIENT]: `${MIN_SUITE_VERSION}-beta.1`,
     });
     expect(assertSuiteVersions(root).status).toBe("ok");
   });
@@ -216,14 +263,48 @@ describe("migrate version guard", () => {
 
   it("migrates normally when the installed suite is current", async () => {
     const root = makeProject({
-      [SDK]: "0.8.0",
-      [PUCK_CSS]: "0.8.0",
-      [CSS_CLIENT]: "0.8.0",
+      [SDK]: MIN_SUITE_VERSION,
+      [PUCK_CSS]: MIN_SUITE_VERSION,
+      [CSS_CLIENT]: MIN_SUITE_VERSION,
     });
     makeLegacyApp(root);
 
     await expect(migrate({ dir: root, force: true })).resolves.toMatchObject({ changed: true });
     expect(existsSync(join(root, "app/p1/(editor)/layout.tsx"))).toBe(true);
+  });
+
+  it("still restructures routes when only the chatbot rewrite is out of reach", async () => {
+    const root = makeProject({
+      [SDK]: BETWEEN_FLOORS,
+      [PUCK_CSS]: BETWEEN_FLOORS,
+      [CSS_CLIENT]: BETWEEN_FLOORS,
+    });
+    makeLegacyApp(root);
+
+    await expect(migrate({ dir: root, force: true })).resolves.toMatchObject({ changed: true });
+    expect(existsSync(join(root, "app/p1/(editor)/layout.tsx"))).toBe(true);
+  });
+
+  // The chatbot step runs on an unverifiable install, so the diagnostic has to name the
+  // floor that step's output needs and not just the one the route move needs.
+  it("names the chatbot floor too when versions could not be verified", async () => {
+    const root = makeProject();
+    makeLegacyApp(root);
+    const lines: string[] = [];
+    const log = vi.spyOn(console, "log").mockImplementation((...args: unknown[]) => {
+      lines.push(args.join(" "));
+    });
+
+    try {
+      await expect(migrate({ dir: root, force: true })).resolves.toMatchObject({ changed: true });
+    } finally {
+      log.mockRestore();
+    }
+
+    const output = lines.join("\n");
+    expect(output).toContain(MIN_SUITE_VERSION);
+    expect(output).toContain(CHATBOT_MIN_VERSION);
+    expect(output).toContain("@pantheon-systems/p1-next-sdk/chatbot");
   });
 
   it("skips the version check for an already-migrated app", async () => {

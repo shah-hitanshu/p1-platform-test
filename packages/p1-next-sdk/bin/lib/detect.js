@@ -66,11 +66,19 @@ export function detectApp(dir) {
 }
 
 /**
- * The release that moved the editor from `pages.Page` to `pages.Layout`. The
- * codemod writes routes that call `Layout`, so anything older would be
- * restructured to import an export that does not exist yet.
+ * The oldest release the codemod's route restructuring runs against: it writes
+ * routes that call `pages.Layout`, so anything older would be moved into a
+ * layout its installed packages cannot render.
  */
 export const MIN_SUITE_VERSION = "0.8.0";
+
+/**
+ * The oldest release the chatbot rewrite's output runs against, since it imports
+ * `@pantheon-systems/p1-next-sdk/chatbot`. Below this the route migration still
+ * applies and the app keeps its own chatbot wiring, rather than the whole
+ * migration being refused for one optional step.
+ */
+export const CHATBOT_MIN_VERSION = "0.16.0";
 
 /**
  * The lockstep-versioned packages a consumer app actually installs.
@@ -122,6 +130,9 @@ function isOlderThan(version, floor) {
  * the app's direct dependencies are linked at the root, so a suite package
  * missing from there is transitive, not broken — and a genuinely absent one
  * fails loudly at build time anyway.
+ *
+ * `chatbot` in the result says whether the chatbot rewrite's output would
+ * resolve against what is installed; the caller skips that step when it is false.
  */
 export function assertSuiteVersions(dir) {
   const modules = join(dir, "node_modules");
@@ -175,5 +186,9 @@ export function assertSuiteVersions(dir) {
     );
   }
 
-  return { status: "ok", version };
+  return {
+    status: "ok",
+    version,
+    chatbot: !isOlderThan(parsed, parseVersion(CHATBOT_MIN_VERSION)),
+  };
 }

@@ -17,8 +17,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const pkgRoot = path.resolve(__dirname, '..');
 const repoRoot = path.resolve(pkgRoot, '../..');
 
-// The template's @pantheon-systems workspace dependencies, direct and
-// transitive (puck-css is a dependency of p1-next-sdk, p1-ai-chat, p1-media).
+// The template's @pantheon-systems workspace dependencies, direct and transitive
+// (puck-css is a dependency of p1-next-sdk, p1-ai-chat, p1-media; p1-ai-chat now
+// arrives only through p1-next-sdk).
 const PACKED_PACKAGE_DIRS = [
   'packages/css-client',
   'packages/puck-css',

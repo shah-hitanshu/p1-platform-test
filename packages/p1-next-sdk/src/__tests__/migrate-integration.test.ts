@@ -1,15 +1,32 @@
 /**
  * End-to-end proof for the p1-migrate codemod: reconstruct the OLD starter
  * editor layout from the vendored `fixtures/legacy-editor` snapshot, run the
- * codemod, and assert the result is byte-identical to the current HEAD
- * `apps/p1-starter/app/p1/(editor)/` tree. Also proves sibling routes are left
- * alone, that a second run is a no-op, and that an unrecognized app bails.
+ * codemod, and assert the result. Also proves sibling routes are left alone,
+ * that a second run is a no-op, and that an unrecognized app bails.
  *
  * The legacy sources are vendored rather than read via `git show main:…`
  * because this migration deletes them from the starter — once it lands there is
  * no revision left to read them from.
+ *
+ * The expected output is checked two different ways, because the codemod does
+ * two different things:
+ *
+ * - `layout.tsx`, `page.tsx` and `p1-pages.tsx` are *written from templates the
+ *   codemod carries*, so comparing them to the starter at HEAD is a real
+ *   invariant: it fails if those templates drift from the app they are meant to
+ *   produce.
+ * - `editor-client.tsx` is *transformed from the app's own file*. Its output is
+ *   whatever the transform makes of the legacy input, which has nothing to do
+ *   with how the starter's editor looks today. Pinning it to HEAD meant every
+ *   ordinary edit to the starter's editor broke this test, fixable only by
+ *   hand-editing the frozen `legacy-editor` snapshot — rewriting history to
+ *   match the present. It is pinned to `fixtures/migrated-editor` instead: a
+ *   golden file that moves only when the transform itself changes.
+ *
+ * Regenerate the golden file with `UPDATE_MIGRATE_FIXTURE=1 pnpm test`, and read
+ * the diff — the codemod is frozen migration history, so a change here is
+ * either a deliberate fix to the transform or a bug.
  */
-
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve, dirname, join } from "node:path";
@@ -25,6 +42,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, "../../../..");
 const headP1 = resolve(repoRoot, "apps/p1-starter/app/p1");
 const legacyDir = resolve(__dirname, "fixtures/legacy-editor");
+const migratedDir = resolve(__dirname, "fixtures/migrated-editor");
 
 function legacy(name: string): string {
   return readFileSync(join(legacyDir, name), "utf-8");
@@ -32,6 +50,14 @@ function legacy(name: string): string {
 
 function head(rel: string): string {
   return readFileSync(join(headP1, rel), "utf-8");
+}
+
+function expectMatchesGolden(actual: string, name: string): void {
+  const goldenPath = join(migratedDir, name);
+  if (process.env.UPDATE_MIGRATE_FIXTURE) {
+    writeFileSync(goldenPath, actual);
+  }
+  expect(actual).toBe(readFileSync(goldenPath, "utf-8"));
 }
 
 const tmpDirs: string[] = [];
@@ -57,7 +83,7 @@ afterEach(() => {
 });
 
 describe("p1-migrate end-to-end", () => {
-  it("reproduces the HEAD (editor) tree byte-for-byte", async () => {
+  it("reproduces the (editor) tree byte-for-byte", async () => {
     const root = makeOldApp();
 
     await migrate({ dir: root, force: true });
@@ -66,7 +92,10 @@ describe("p1-migrate end-to-end", () => {
     expect(readFileSync(join(editor, "layout.tsx"), "utf-8")).toBe(head("(editor)/layout.tsx"));
     expect(readFileSync(join(editor, "[[...p1]]/page.tsx"), "utf-8")).toBe(head("(editor)/[[...p1]]/page.tsx"));
     expect(readFileSync(join(editor, "[[...p1]]/p1-pages.tsx"), "utf-8")).toBe(head("(editor)/[[...p1]]/p1-pages.tsx"));
-    expect(readFileSync(join(editor, "[[...p1]]/editor-client.tsx"), "utf-8")).toBe(head("(editor)/[[...p1]]/editor-client.tsx"));
+    expectMatchesGolden(
+      readFileSync(join(editor, "[[...p1]]/editor-client.tsx"), "utf-8"),
+      "editor-client.tsx",
+    );
   });
 
   it("removes the old catch-all directory and leaves siblings untouched", async () => {

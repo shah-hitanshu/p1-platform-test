@@ -27,15 +27,22 @@
     "./server": {
       "types": "./dist/server.d.ts",
       "import": "./dist/server.js"
-    }
+    },
+    "./chatbot": {
+      "types": "./dist/chatbot/index.d.ts",
+      "import": "./dist/chatbot/index.js"
+    },
+    "./editor.css": "./src/editor-client/editor.css"
   },
   "files": [
     "dist",
     "bin",
+    "src/**/*.css",
+    "!src/**/*.module.css",
     "!dist/**/*.map"
   ],
   "scripts": {
-    "build": "pnpm run clean && tsc --emitDeclarationOnly --declarationMap false && tsc --declaration false --declarationMap false --sourceMap false --removeComments",
+    "build": "pnpm run clean && tsc --emitDeclarationOnly --declarationMap false && tsc --declaration false --declarationMap false --sourceMap false --removeComments && node scripts/copy-css-assets.mjs",
     "clean": "rm -rf dist *.tsbuildinfo",
     "lint": "eslint src",
     "lint:fix": "eslint src --fix",
@@ -44,10 +51,13 @@
   },
   "dependencies": {
     "@pantheon-systems/css-client": "workspace:*",
+    "@pantheon-systems/p1-ai-chat": "workspace:*",
     "@pantheon-systems/puck-css": "workspace:*",
+    "launchdarkly-react-client-sdk": "^3.9.2",
     "server-only": "^0.0.1"
   },
   "peerDependencies": {
+    "@pantheon-systems/pds-toolkit-react": ">=2.0.0-alpha.0",
     "@puckeditor/core": ">=0.21.0",
     "next": ">=14.0.0",
     "react": ">=18.0.0",

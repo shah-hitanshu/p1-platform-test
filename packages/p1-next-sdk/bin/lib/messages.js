@@ -3,7 +3,7 @@
  * dependency — so the SDK's runtime deps stay unchanged.
  */
 
-import { MIN_SUITE_VERSION } from "./detect.js";
+import { CHATBOT_MIN_VERSION, MIN_SUITE_VERSION } from "./detect.js";
 
 const TAG = "[p1-migrate]";
 
@@ -40,6 +40,23 @@ export function versionsUnverified() {
   );
   console.log(
     `${TAG} Make sure your dependencies are installed and on ${MIN_SUITE_VERSION} or newer.`,
+  );
+  console.log(
+    `${TAG} The chatbot step is attempted without verification, and what it writes needs ` +
+      `${CHATBOT_MIN_VERSION} or newer. If your editor ends up unable to resolve ` +
+      "@pantheon-systems/p1-next-sdk/chatbot, that is the version to upgrade to.",
+  );
+}
+
+export function chatbotStepSkipped(version) {
+  console.log(
+    `${TAG} Installed P1 packages are at ${version}, so your editor keeps its own AI ` +
+      `chatbot wiring — handing it to the SDK needs ${CHATBOT_MIN_VERSION} or newer. ` +
+      "The route migration below is unaffected.",
+  );
+  console.log(
+    `${TAG} Upgrade to ${CHATBOT_MIN_VERSION} or newer and re-run to pick it up, or leave ` +
+      "it as it is — the app-level gate keeps working until the rollout flag retires.",
   );
 }
 

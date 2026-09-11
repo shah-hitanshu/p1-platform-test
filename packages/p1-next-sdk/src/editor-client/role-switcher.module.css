@@ -1,0 +1,38 @@
+.panel {
+  position: fixed;
+  right: var(--pds-spacing-m);
+  bottom: var(--pds-spacing-m);
+  z-index: 99999;
+  display: flex;
+  align-items: center;
+  gap: var(--pds-spacing-xs);
+  padding: var(--pds-spacing-2xs) var(--pds-spacing-xs);
+  border: 1px solid var(--pds-color-border-default);
+  border-radius: var(--pds-border-radius-card);
+  background: var(--pds-color-surface-default);
+  box-shadow: var(--pds-elevation-overlay);
+  color: var(--pds-color-foreground-default);
+  font-family: var(--pds-typography-ff-default);
+  font-size: var(--pds-typography-size-xs);
+  line-height: var(--pds-typography-lh-s);
+}
+
+.label {
+  color: var(--pds-color-foreground-default-secondary);
+}
+
+.select {
+  padding: var(--pds-spacing-3xs) var(--pds-spacing-2xs);
+  border: 1px solid var(--pds-color-border-input);
+  border-radius: var(--pds-border-radius-default);
+  background: var(--pds-color-surface-default-secondary);
+  color: var(--pds-color-foreground-default);
+  font-family: inherit;
+  font-size: inherit;
+  cursor: pointer;
+}
+
+.select:focus-visible {
+  outline: 2px solid var(--pds-color-interactive-focus);
+  outline-offset: 1px;
+}

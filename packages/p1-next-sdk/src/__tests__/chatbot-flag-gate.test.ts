@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { shouldShowChatbot, CHATBOT_FLAG_KEY } from "../lib/chatbot-flag/feature-gate";
+import { shouldShowChatbot, CHATBOT_FLAG_KEY } from "../chatbot/feature-gate";
 
 describe("shouldShowChatbot", () => {
   it("is off when the flag is disabled", () => {

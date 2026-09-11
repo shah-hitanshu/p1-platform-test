@@ -1,0 +1,27 @@
+.message {
+  padding: var(--pds-spacing-4xl);
+  color: var(--pds-color-foreground-default);
+  font-family: var(--pds-typography-ff-default);
+  text-align: center;
+}
+
+.title {
+  margin: 0 0 var(--pds-spacing-s);
+  font-size: var(--pds-typography-size-l);
+  font-weight: var(--pds-typography-fw-semibold);
+  line-height: var(--pds-typography-lh-m);
+}
+
+.detail {
+  margin: 0;
+  color: var(--pds-color-foreground-default-secondary);
+  font-size: var(--pds-typography-size-s);
+  line-height: var(--pds-typography-lh-s);
+}
+
+.hint {
+  margin: var(--pds-spacing-s) 0 0;
+  color: var(--pds-color-foreground-default-secondary);
+  font-size: var(--pds-typography-size-xs);
+  line-height: var(--pds-typography-lh-s);
+}

@@ -90,7 +90,12 @@ export async function migrate(opts = {}) {
 
   // Runs on --dry-run too: a plan the installed suite cannot render is not a
   // plan worth previewing.
-  if (assertSuiteVersions(dir).status === "unverified") msg.versionsUnverified();
+  const suite = assertSuiteVersions(dir);
+  if (suite.status === "unverified") msg.versionsUnverified();
+  // Unverifiable means unverifiable, not old — attempt the step, matching the
+  // clean-tree check's bias toward proceeding.
+  const chatbot = suite.status !== "ok" || suite.chatbot;
+  if (!chatbot) msg.chatbotStepSkipped(suite.version);
 
   if (!force && !dryRun && assertCleanTree(dir).status === "no-repo") msg.noGitRepo();
 
@@ -99,7 +104,10 @@ export async function migrate(opts = {}) {
   const newCatchAll = join(editorGroup, "[[...p1]]");
 
   // Transform everything up front — any bail happens before we touch disk.
-  const newEditorClient = rewriteEditorClient(fsops.read(join(catchAll, "editor-client.tsx")));
+  const newEditorClient = rewriteEditorClient(
+    fsops.read(join(catchAll, "editor-client.tsx")),
+    { chatbot },
+  );
   const { p1Pages, page } = splitPageFile(fsops.read(join(catchAll, "page.tsx")));
   const layout = buildLayoutFile();
 

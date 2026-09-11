@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildFlagContext } from "../lib/chatbot-flag/flag-context";
+import { buildFlagContext } from "../chatbot/flag-context";
 
 const user = (over: Partial<{ id: string; name: string; email: string }> = {}) => ({
   id: "00000000-0000-4000-8000-000000000001",

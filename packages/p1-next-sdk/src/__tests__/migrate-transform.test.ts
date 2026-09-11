@@ -15,6 +15,8 @@ import {
   addNamedImport,
   rewriteWrapperSignature,
   rewriteLoadingOverlay,
+  rewriteChatbotGate,
+  rewriteEditorClient,
   splitPageFile,
   BailError,
   // @ts-expect-error - hand-written ESM JS codemod, no type declarations
@@ -218,5 +220,105 @@ describe("rewriteLoadingOverlay", () => {
     const partly = legacy.replace("Switching workstream...", "Hang tight, swapping branches");
 
     expect(() => rewriteLoadingOverlay(partly)).toThrow(BailError);
+  });
+});
+
+describe("rewriteChatbotGate", () => {
+  // The remount key it rewrites is the one the overlay step leaves behind, so the
+  // gate runs after it — feed it the same input the codemod does.
+  const legacy = rewriteLoadingOverlay(
+    readFileSync(
+      resolve(dirname(fileURLToPath(import.meta.url)), "fixtures/legacy-editor/editor-client.tsx"),
+      "utf-8",
+    ),
+  );
+
+  it("hands the whole gate to the SDK", () => {
+    const out = rewriteChatbotGate(legacy);
+
+    expect(out).toContain(
+      `import { P1ChatbotProvider, useP1Chatbot } from "@pantheon-systems/p1-next-sdk/chatbot";`,
+    );
+    expect(out).toContain("const chatbot = useP1Chatbot({ onPageCreated: handlePageCreated });");
+    expect(out).toContain("...chatbot.pluginOptions,");
+    expect(out).toContain("key={`${puckKey}${chatbot.editorKeySuffix}`}");
+  });
+
+  it("leaves the app naming no flag, provider or feature-flag package of its own", () => {
+    const out = rewriteChatbotGate(legacy);
+
+    expect(out).not.toContain("launchdarkly");
+    expect(out).not.toContain("CHATBOT_FLAG_KEY");
+    expect(out).not.toContain("ChatbotFlagProvider");
+    expect(out).not.toContain("chatbot-flag/");
+    expect(out).not.toContain("chatbotEnabled");
+  });
+
+  it("leaves an app that already asks the SDK alone", () => {
+    const once = rewriteChatbotGate(legacy);
+    expect(rewriteChatbotGate(once)).toBe(once);
+  });
+
+  // The published starter kits predate the chat plugin's default agent, so they read
+  // NEXT_PUBLIC_AGENT_URL themselves and gate on it. That shape has to reach the same
+  // place as the current one, or every project scaffolded so far bails.
+  it("migrates a scaffold that gates on its own agent URL to the same call", () => {
+    const gatesOnItsOwnAgentUrl = legacy
+      .replace(
+        "  const chatbotEnabled = shouldShowChatbot(flags[CHATBOT_FLAG_KEY]);\n",
+        "  const agentUrl = process.env.NEXT_PUBLIC_AGENT_URL;\n" +
+          "  const chatbotEnabled = shouldShowChatbot(flags[CHATBOT_FLAG_KEY], agentUrl);\n",
+      )
+      .replace(
+        `      chatbotEnabled
+        ? createAIChatPlugin({
+            agentUrl: process.env.NEXT_PUBLIC_AGENT_URL,
+            draftRequests,
+            onPageCreated: handlePageCreated,
+          })
+        : null,
+    [chatbotEnabled, draftRequests, handlePageCreated],`,
+        `      chatbotEnabled && agentUrl
+        ? createAIChatPlugin({ agentUrl, draftRequests, onPageCreated: handlePageCreated })
+        : null,
+    [chatbotEnabled, agentUrl, draftRequests, handlePageCreated],`,
+      );
+
+    expect(gatesOnItsOwnAgentUrl).not.toBe(legacy);
+    expect(rewriteChatbotGate(gatesOnItsOwnAgentUrl)).toBe(rewriteChatbotGate(legacy));
+  });
+
+  it("bails rather than half-rewriting an app that customized the wiring", () => {
+    // Kept its own remount key, but still has everything else the gate replaces.
+    const partly = legacy.replace('${chatbotEnabled ? "ai" : "no-ai"}', "${aiSuffix}");
+
+    expect(() => rewriteChatbotGate(partly)).toThrow(BailError);
+  });
+});
+
+describe("rewriteEditorClient", () => {
+  const legacy = readFileSync(
+    resolve(dirname(fileURLToPath(import.meta.url)), "fixtures/legacy-editor/editor-client.tsx"),
+    "utf-8",
+  );
+
+  it("moves the route and hands over the gate by default", () => {
+    const out = rewriteEditorClient(legacy);
+
+    expect(out).toContain(`import { usePathname, useRouter } from "next/navigation";`);
+    expect(out).toContain("useP1Chatbot");
+    expect(out).not.toContain("chatbotEnabled");
+  });
+
+  it("leaves the app's own gate in place when the chatbot step is skipped", () => {
+    const out = rewriteEditorClient(legacy, { chatbot: false });
+
+    // The reason to run the codemod still applies: the route move is unaffected.
+    expect(out).toContain(`import { usePathname, useRouter } from "next/navigation";`);
+    expect(out).toContain("editorPagePathFromUrlPath");
+
+    expect(out).toContain("chatbotEnabled");
+    expect(out).toContain("ChatbotFlagProvider");
+    expect(out).not.toContain("@pantheon-systems/p1-next-sdk/chatbot");
   });
 });

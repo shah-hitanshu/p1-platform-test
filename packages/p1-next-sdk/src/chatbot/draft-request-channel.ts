@@ -1,4 +1,7 @@
-import { createDraftRequestChannel, type DraftRequestChannel } from "@pantheon-systems/p1-ai-chat";
+import {
+  createDraftRequestChannel,
+  type DraftRequestChannel,
+} from "@pantheon-systems/p1-ai-chat";
 
 let channel: DraftRequestChannel | null = null;
 

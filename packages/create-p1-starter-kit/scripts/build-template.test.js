@@ -188,3 +188,78 @@ describe('template lint', () => {
     expect(lintTemplate(built)).toEqual([]);
   });
 });
+
+// Whether the AI chatbot is available to a site is Pantheon's decision, so its rollout
+// gate lives in @pantheon-systems/p1-next-sdk/chatbot rather than in a scaffolded
+// project's source. These assertions keep it there.
+describe('the chatbot rollout gate is not a scaffolded project\'s to carry', () => {
+  const SCANNED_EXTENSIONS = ['.ts', '.tsx', '.js', '.mjs', '.json', '.css', '.example'];
+
+  function sources(dir = built) {
+    return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) return sources(full);
+      if (!SCANNED_EXTENSIONS.some((ext) => entry.name.endsWith(ext))) return [];
+      return [[path.relative(built, full), fs.readFileSync(full, 'utf-8')]];
+    });
+  }
+
+  const filesContaining = (needle) =>
+    sources().filter(([, content]) => content.includes(needle)).map(([file]) => file);
+
+  // Guards the scan itself: an empty file list would make every absence below vacuous.
+  it('reads the files a scaffold would carry', () => {
+    expect(filesContaining('@pantheon-systems/p1-next-sdk/chatbot')).toContain(
+      'app/p1/(editor)/[[...p1]]/editor-client.tsx'
+    );
+  });
+
+  it('installs no LaunchDarkly package', () => {
+    const manifest = JSON.parse(read('package.json'));
+    const installed = Object.keys({ ...manifest.dependencies, ...manifest.devDependencies });
+
+    expect(installed.filter((name) => name.startsWith('launchdarkly'))).toEqual([]);
+  });
+
+  it('imports the LaunchDarkly browser SDK from no file', () => {
+    expect(filesContaining('launchdarkly-react-client-sdk')).toEqual([]);
+  });
+
+  // Retiring the flag has to be a release of the SDK, with nothing to edit in any
+  // project ever scaffolded.
+  it('names the flag key nowhere', () => {
+    expect(filesContaining('p1-chatbot')).toEqual([]);
+    expect(filesContaining('CHATBOT_FLAG_KEY')).toEqual([]);
+  });
+
+  it('asks for no LaunchDarkly configuration', () => {
+    expect(filesContaining('NEXT_PUBLIC_LD_CLIENT_ID')).toEqual([]);
+  });
+});
+
+describe('the scaffolded editor reads the chatbot gate through the SDK', () => {
+  const editorClient = () => read('app/p1/(editor)/[[...p1]]/editor-client.tsx');
+
+  it('imports the seam from the SDK\'s chatbot entry point', () => {
+    expect(editorClient()).toContain('from "@pantheon-systems/p1-next-sdk/chatbot"');
+    expect(editorClient()).toContain('P1ChatbotProvider');
+    expect(editorClient()).toContain('useP1Chatbot');
+  });
+
+  it('wraps the editor in the provider that evaluates the gate', () => {
+    expect(editorClient()).toMatch(
+      /wrapEditor:[\s\S]*<P1ChatbotProvider>\{editor\}<\/P1ChatbotProvider>/
+    );
+  });
+
+  it('contributes the SDK\'s plugins alongside the app\'s own', () => {
+    expect(editorClient()).toMatch(/plugins[\s\S]*\.\.\.chatbot\.plugins/);
+  });
+
+  it('passes the plugin options and canvas key through without branching on them', () => {
+    expect(editorClient()).toContain('pluginOptions: chatbot.pluginOptions');
+    expect(editorClient()).toContain('editorKeySuffix: chatbot.editorKeySuffix');
+    expect(editorClient()).not.toContain('onGenerateWithAI');
+    expect(editorClient()).not.toContain('showAIPanelToggle');
+  });
+});

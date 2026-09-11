@@ -18,7 +18,7 @@ From your project root, on a clean git tree:
 npx @pantheon-systems/p1-next-sdk p1-migrate
 ```
 
-It restructures the routes for you and leaves sibling routes (`/p1/merge`, `/p1/api`, `/p1/auth`) untouched. Preview first with `--dry-run`; the codemod refuses to run on a dirty tree unless you pass `--force`, is safe to re-run (idempotent), and **bails with a pointer back to this guide** if your files have diverged from the starter shape. If it bails, follow the manual steps below.
+It restructures the routes for you and leaves sibling routes (`/p1/merge`, `/p1/api`, `/p1/auth`) untouched. It writes code that only newer P1 packages export, so it checks the suite you have installed first and tells you to upgrade before it touches anything. Step 6 below needs a newer suite than the route move does; against an older one the codemod says so, skips that step alone, and leaves your existing chatbot gate working. Preview first with `--dry-run`; the codemod refuses to run on a dirty tree unless you pass `--force`, is safe to re-run (idempotent), and **bails with a pointer back to this guide** if your files have diverged from the starter shape. If it bails, follow the manual steps below.
 
 ```bash
 npx @pantheon-systems/p1-next-sdk p1-migrate --dry-run   # preview
@@ -114,6 +114,86 @@ Then deepen the remaining relative imports in this file by one level (`../../../
 ### 5. Remove any `NON_EDITOR_ROUTES` opt-out list
 
 Earlier versions kept the editor off sibling routes with a hand-maintained `NON_EDITOR_ROUTES` array. The `(editor)` route group makes siblings editor-free by construction, so delete that list.
+
+### 6. Hand the AI chatbot's rollout gate to the SDK
+
+Optional, and the one step with its own version requirement: it imports
+`@pantheon-systems/p1-next-sdk/chatbot`, so skip it if your installed suite predates that
+entry point. The app-level gate below keeps working until the rollout flag retires.
+
+Earlier starters carried the chatbot's rollout plumbing themselves: a local
+`ChatbotFlagProvider`, a hardcoded flag key, a `lib/chatbot-flag/` directory, and a
+feature-flag SDK in the app's own `package.json`. Whether the chatbot is available to a
+site is Pantheon's decision, not the application's, so it now lives behind
+`@pantheon-systems/p1-next-sdk/chatbot` — and nothing in your project has to change when
+the rollout ends.
+
+```diff
+-import { createAIChatPlugin } from "@pantheon-systems/p1-ai-chat";
+-import { useFlags } from "launchdarkly-react-client-sdk";
++import { P1ChatbotProvider, useP1Chatbot } from "@pantheon-systems/p1-next-sdk/chatbot";
+-import { ChatbotFlagProvider } from "../../../../components/ChatbotFlagProvider";
+-import { shouldShowChatbot, CHATBOT_FLAG_KEY } from "../../../../lib/chatbot-flag/feature-gate";
+-import { createGenerateWithAIHandler } from "../../../../lib/chatbot-flag/ai-generate";
+-import { getDraftRequestChannel } from "../../../../lib/chatbot-flag/draft-request-channel";
+```
+
+Swap the provider:
+
+```diff
+-        <ChatbotFlagProvider>
++        <P1ChatbotProvider>
+           <EditorContent path={path} />
+-        </ChatbotFlagProvider>
++        </P1ChatbotProvider>
+```
+
+There is nothing left to branch on — an unavailable chatbot contributes no plugins, no
+handler and an unchanged remount key:
+
+```diff
+-  const flags = useFlags();
+-  const agentUrl = process.env.NEXT_PUBLIC_AGENT_URL;
+-  const chatbotEnabled = shouldShowChatbot(flags[CHATBOT_FLAG_KEY], agentUrl);
+-  const draftRequests = getDraftRequestChannel();
+-  const aiPlugin = React.useMemo(
+-    () =>
+-      chatbotEnabled && agentUrl
+-        ? createAIChatPlugin({ agentUrl, draftRequests, onPageCreated: handlePageCreated })
+-        : null,
+-    [chatbotEnabled, agentUrl, draftRequests, handlePageCreated],
+-  );
++  const chatbot = useP1Chatbot({ onPageCreated: handlePageCreated });
+   const additionalPlugins = React.useMemo(
+-    () => (aiPlugin ? [...p1Plugins, mediaPlugin, aiPlugin] : [...p1Plugins, mediaPlugin]),
+-    [p1Plugins, mediaPlugin, aiPlugin],
++    () => [...p1Plugins, mediaPlugin, ...chatbot.plugins],
++    [p1Plugins, mediaPlugin, chatbot.plugins],
+   );
+```
+
+```diff
+     pluginOptions: {
+       onDocumentSelect: handleDocumentSelect,
+-      onGenerateWithAI: createGenerateWithAIHandler(draftRequests, chatbotEnabled),
+-      showAIPanelToggle: chatbotEnabled,
++      ...chatbot.pluginOptions,
+```
+
+```diff
+-          <Puck key={`${puckKey}-${chatbotEnabled ? "ai" : "no-ai"}`} {...puckProps as any} _experimentalFullScreenCanvas={true} />
++          <Puck key={`${puckKey}${chatbot.editorKeySuffix}`} {...puckProps as any} _experimentalFullScreenCanvas={true} />
+```
+
+Nothing imports the old gate afterwards, so it can go — the codemod leaves these for you
+rather than deleting files it was not asked to move:
+
+- `lib/chatbot-flag/` and `components/ChatbotFlagProvider.tsx`, plus their test files
+- `launchdarkly-react-client-sdk` and `@pantheon-systems/p1-ai-chat` in `package.json`
+- `NEXT_PUBLIC_LD_CLIENT_ID` in `.env` / `.env.example`
+
+`NEXT_PUBLIC_AGENT_URL` still applies, and still belongs to the environment rather than
+to your source.
 
 ## Minimum structure after migration
 
