@@ -176,16 +176,17 @@ collaborative-state-system/
 │   │   │   └── emitter.ts
 │   │   │
 │   │   └── db/                       # Database utilities
-│   │       ├── migrate.ts            # Migration runner
-│   │       └── migrations/           # SQL migration files
-│   │           ├── 001_core_schema.sql
-│   │           ├── 002_checkpoints.sql
-│   │           ├── 003_merge_requests.sql
-│   │           ├── 004_authorization.sql
-│   │           ├── 005_site_structures.sql
-│   │           ├── 006_seed_data.sql
-│   │           ├── 007_branch_scoped_structures.sql
-│   │           └── 008_document_soft_delete.sql
+│   │       ├── schema.ts             # Schema source of truth (Drizzle)
+│   │       ├── migrate.ts            # Migration applier
+│   │       ├── baseline.ts           # Cut-over baseline preflight
+│   │       ├── seed.ts               # Dev/CI seed loader
+│   │       └── fixtures/             # Dev/CI seed rows
+│   │
+│   ├── drizzle/                      # Generated migrations + journal
+│   │   ├── 0000_baseline.sql
+│   │   ├── 0001_triggers_and_constraints.sql
+│   │   ├── ...
+│   │   └── meta/                     # Snapshots and _journal.json
 │   │
 │   └── tests/                        # Test files (mirrors src/)
 │
@@ -269,11 +270,11 @@ make docker-up      # Start PostgreSQL and Firestore emulator
 make worker-dev     # Start Miniflare (in another terminal)
 ```
 
-### 4. Run Database Migrations
+### 4. Build the Database
 
 ```bash
 cd workers
-pnpm db:migrate
+pnpm db:setup   # migrate, then load the dev/CI seed data
 ```
 
 ### 5. Verify Services
@@ -371,26 +372,53 @@ pnpm test:typecheck
 
 ### Database Migrations
 
-Migrations are managed with a lightweight TypeScript runner.
+`src/db/schema/` is the source of truth for the `app` schema: one file per
+table, named after it (`document-versions.sql.ts`), re-exported from
+`index.ts`. drizzle-kit generates the SQL in `drizzle/` from it and tracks what
+has been applied in `drizzle.__drizzle_migrations`.
 
 ```bash
 cd workers
 
-# Run pending migrations
+# Apply pending migrations
 pnpm db:migrate
 
-# Check migration status
-pnpm db:migrate:status
+# Rebuild from scratch (WARNING: destroys data)
+pnpm db:migrate:reset && pnpm db:seed
 
-# Reset database (WARNING: destroys data)
-pnpm db:migrate:reset
+# Load demo/mock data — dev and CI only, and only against a fresh database
+pnpm db:seed
 ```
 
-#### Creating a New Migration
+A database created before the Drizzle cut-over is baselined automatically the
+first time `db:migrate` runs against it: its data is preserved and the
+already-applied migrations are recorded rather than re-executed. Run
+`pnpm db:baseline` to do that step on its own.
 
-1. Create a new SQL file in `workers/src/db/migrations/`
-2. Name it with the next sequence number: `009_your_migration.sql`
+#### Changing the Schema
+
+1. Edit the table's file in `src/db/schema/`; a new table also needs a line in `index.ts`
+2. Run `pnpm db:generate` and review the SQL it writes to `drizzle/`
 3. Run `pnpm db:migrate`
+4. Commit the schema change, the new migration, and `drizzle/meta/`
+
+`.github/scripts/check-db-schema-sync.sh` is the gate CI runs, and it needs no
+database, so run it from the repo root to see what CI will say.
+
+Never edit an applied migration. Nothing detects it — the migrator selects by
+journal timestamp and does not re-check hashes, and `drizzle-kit check` only
+looks for collisions inside the journal — so an edit is silently ignored on
+databases that already ran it, leaving them permanently out of step with the
+ones built afterwards. Correct a mistake with a new migration.
+
+Content drizzle-kit cannot express (triggers, functions, `NOT VALID`
+constraints, comments) goes in a custom migration from
+`pnpm exec drizzle-kit generate --custom`.
+
+Every pending migration runs inside one transaction. `CREATE INDEX CONCURRENTLY`
+and anything else that cannot run in a transaction block has to be applied by
+hand, and a heavy index build holds its lock for the whole run rather than just
+its own file.
 
 ### Linting and Type Checking
 
@@ -933,7 +961,7 @@ make dev-status
 ./scripts/wait-for-services.sh
 
 # Check migrations
-cd workers && pnpm db:migrate:status
+cd workers && pnpm db:migrate
 ```
 
 ### Terraform initialization fails

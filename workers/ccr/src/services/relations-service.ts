@@ -12,8 +12,7 @@
  * every branch, so a number read on another branch names a different version or
  * none. Template edges pin by synced_version instead.
  *
- * @see workers/src/db/migrations/042_document_relations.sql
- * @see workers/src/db/migrations/073_localization_synced_version_id.sql
+ * @see src/db/schema/document-relations.sql.ts (documentRelations)
  */
 
 import { query } from '../db';

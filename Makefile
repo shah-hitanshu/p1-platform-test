@@ -80,7 +80,7 @@ docker-up: ## Start containers (PostgreSQL)
 .PHONY: db-ready
 db-ready: ## Ensure .dev.vars exists and the local DB schema is migrated
 	@[ -f workers/ccr/.dev.vars ] || ./scripts/ccr/generate-dev-vars.sh
-	@POSTGRES_CONNECTION_STRING=postgresql://cssuser:csspass@localhost:5432/cssdb pnpm --filter ccr-worker db:migrate
+	@POSTGRES_CONNECTION_STRING=postgresql://cssuser:csspass@localhost:5432/cssdb pnpm --filter ccr-worker db:setup
 
 .PHONY: docker-down
 docker-down: ## Stop containers

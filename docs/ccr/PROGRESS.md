@@ -6,6 +6,38 @@ This document tracks the implementation progress of the Collaborative JSON State
 
 ---
 
+## Drizzle ORM migration — Phase 0: schema source of truth and migration cut-over
+
+**Status:** Phase 0 complete — awaiting PR review
+**Branch:** `ag-pcc-3353-migrate-to-using-orm`
+**Date:** 2026-08-18
+**Plan:** `docs/ccr/plans/2026-07-02-pcc-3353-drizzle-orm-migration.md`
+
+### Summary
+
+The database schema now has a single TypeScript source of truth (`workers/ccr/src/db/schema/`) and migrations are owned by drizzle-kit. The hand-rolled runner and the numbered SQL migrations are gone; a fresh database is built from the Drizzle journal (`workers/ccr/drizzle/`) and is provably identical to one built by the old migrations. This is the foundation for later phases; no application query code has changed yet, so runtime behaviour is unchanged.
+
+### What changed
+
+- **Schema:** `src/db/schema/` mirrors the `app` schema exactly, introspected then hand-corrected for several drizzle-kit introspection defects (timestamp mode, mangled column defaults, scrambled index operator classes, and a self-referential type cycle between branches and checkpoints).
+- **Migrations:** `drizzle/0000_baseline` (full DDL) and `drizzle/0001_triggers_and_constraints` (the implicit `text -> uuid` cast, the `pgcrypto` extension, the copy-on-write branch trigger, the time-fenced `document_versions_content_present` constraint, and all table and column comments), plus `drizzle/0002` through `drizzle/0006`, carrying the migrations that landed after the cut-over was cut. `src/db/migrate.ts` is now Drizzle's programmatic migrator, preserving the Cloud SQL proxy path and `POSTGRES_SET_ROLE` object ownership.
+- **Seeds:** demo/mock data moved to a standalone `db:seed` script, run only in dev and CI. Rows are declared in `src/db/fixtures/` and inserted through Drizzle, so they are type-checked against `schema.ts` and reference each other by name instead of by copied id. Ids are generated per run apart from the ten that code outside the fixtures hardcodes. This is the one intentional behaviour change: production no longer receives demo rows.
+- **Baselining:** `db:migrate` self-heals. A preflight (`src/db/baseline.ts`) detects a pre-cut-over database (app schema present, no Drizzle journal), confirms `app.schema_migrations` records the last numbered migration, and records the baseline journal so the migrator is a no-op — existing data is preserved. A database short of the cut-over schema is refused, and told to apply the numbered migrations from a pre-cut-over checkout rather than to discard itself. Fresh and already-managed databases are untouched. It also runs standalone as `db:baseline`.
+
+### Verification
+
+- `pg_dump` of an `app` schema built from the Drizzle journal is identical to one built by the legacy migrations, down to indexes, check constraints, the trigger and every comment. The only difference is the now-inert `app.schema_migrations` tracking table, which the Drizzle path does not create.
+- Database-level objects are compared separately, since an `app`-scoped dump cannot see them: `pg_cast`, `pg_extension`, `pg_proc` and non-internal triggers match too. The implicit `text -> uuid` cast lives here, and a database missing it fails any comparison between a text column and a uuid with `operator does not exist: text = uuid`.
+- Seeded rows match one-for-one; the seed pins the UUIDs and timestamps the legacy migrations generated at run time.
+- Ongoing guarantee: a `db:generate` no-output CI gate replaces the old duplicate-number check, catching a `schema.ts` edit that never got a migration. It does not fire on comments, renamed exports or reordered declarations, since drizzle-kit diffs the serialized schema model rather than the file text. `drizzle-kit check` runs alongside it but covers only journal collisions, and `db:check-journal` rejects an entry whose timestamp would make the migrator skip it.
+
+### Remaining
+
+- Existing databases are baselined automatically the first time `db:migrate` runs against them, so local developers need no manual step. Staging and production are baselined the same way through their normal migration path.
+- Later work: the Drizzle instance threaded from the connection boundary with the query guard that replaces `runSqlUnsafe`, then porting queries to Drizzle in place — first everything unreachable from a transaction, then the transaction owners — and finally removal of the legacy query layer. No shim is built. Choosing a higher-level data-access abstraction is explicitly out of scope and left to the team once the queries are typed.
+
+---
+
 ## PCC-3191: MCP Server Auth Migration (per-caller credential forwarding)
 
 **Status:** Complete

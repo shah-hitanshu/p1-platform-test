@@ -120,25 +120,6 @@ function hasIndex(indexes: IndexInfo[], indexName: string): boolean {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Migration Infrastructure Tests
-// ─────────────────────────────────────────────────────────────────────────────
-
-describe('Migration Infrastructure', () => {
-  it('should have schema_migrations table to track applied migrations', async () => {
-    const exists = await tableExists('schema_migrations');
-    expect(exists).toBe(true);
-  });
-
-  it('schema_migrations should have required columns', async () => {
-    const columns = await getTableColumns('schema_migrations');
-
-    expect(hasColumn(columns, 'id', 'integer')).toBe(true);
-    expect(hasColumn(columns, 'name', 'text')).toBe(true);
-    expect(hasColumn(columns, 'applied_at')).toBe(true);
-  });
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
 // Core Schema Tests - Sites
 // ─────────────────────────────────────────────────────────────────────────────
 

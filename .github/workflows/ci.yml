@@ -157,11 +157,12 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Build worker dependencies
         run: pnpm exec turbo run build --filter='ccr-worker^...'
-      - name: Migrations (duplicate-number guard + fresh schema)
-        run: |
-          dupes=$(ls workers/ccr/src/db/migrations/*.sql | sed 's|.*/||; s/_.*//' | sort | uniq -d)
-          if [ -n "$dupes" ]; then echo "Duplicate migration numbers: $dupes"; exit 1; fi
-          pnpm --filter ccr-worker db:migrate
+      - name: Migrations (fresh schema)
+        run: pnpm --filter ccr-worker db:migrate
+      - name: Seed database
+        run: pnpm --filter ccr-worker db:seed
+      - name: Schema and migrations are in sync
+        run: .github/scripts/check-db-schema-sync.sh
       - name: DB + integration tests
         run: |
           pnpm --filter ccr-worker test:db

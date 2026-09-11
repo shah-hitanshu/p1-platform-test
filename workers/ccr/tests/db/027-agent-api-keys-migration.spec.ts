@@ -227,15 +227,6 @@ describe('Agent API Keys Table (Migration 027)', () => {
     );
     expect(agentIndex).toBeDefined();
   });
-
-  it('should be recorded in schema_migrations', async () => {
-    const result = await sql<{ count: string }[]>`
-      SELECT COUNT(*) as count
-      FROM app.schema_migrations
-      WHERE id = 27 AND name = 'agent_api_keys'
-    `;
-    expect(parseInt(result[0].count, 10)).toBe(1);
-  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
