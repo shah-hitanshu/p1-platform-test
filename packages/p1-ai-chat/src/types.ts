@@ -215,8 +215,11 @@ export interface DraftRequestChannel {
 }
 
 export interface AIChatPluginOptions {
-  /** Base URL of the chat agent backend, e.g. "https://your-agent-host.example.com" */
-  agentUrl: string;
+  /**
+   * Base URL of the chat agent backend. Defaults to the production agent; set it only to
+   * reach another environment. Blank counts as unset.
+   */
+  agentUrl?: string;
   /**
    * Base URL of the media API, so attached files are kept and can be reopened after a reload.
    * Falls back to `NEXT_PUBLIC_MEDIA_WORKER_URL` (the same variable `@pantheon-systems/p1-media`
@@ -240,6 +243,9 @@ export interface AIChatPluginOptions {
    */
   onPageCreated?: (path: string) => void;
 }
+
+/** Plugin options once `createAIChatPlugin` has applied its defaults. */
+export type ResolvedAIChatPluginOptions = AIChatPluginOptions & { agentUrl: string };
 
 /** A single tool call within a replayed turn — already executed, so it carries its result. */
 export interface RestoredToolCall {

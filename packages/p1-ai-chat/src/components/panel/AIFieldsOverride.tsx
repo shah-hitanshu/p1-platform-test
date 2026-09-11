@@ -1,6 +1,6 @@
 import React from 'react';
 import { useAIPanelOpen } from '@pantheon-systems/puck-css';
-import type { AIChatPluginOptions } from '../../types.js';
+import type { ResolvedAIChatPluginOptions } from '../../types.js';
 import { ChatPanel } from './ChatPanel.js';
 
 /**
@@ -12,7 +12,7 @@ export function AIFieldsOverride({
   options,
 }: {
   children?: React.ReactNode;
-  options: AIChatPluginOptions;
+  options: ResolvedAIChatPluginOptions;
 }): React.ReactElement {
   const open = useAIPanelOpen();
   if (!open) return <>{children}</>;

@@ -24,11 +24,11 @@ import {
 import { downscaleImage } from '../../lib/attachments/downscaleImage.js';
 import { ChatMessage } from '../transcript/ChatMessage.js';
 import { visuallyHidden } from '../../lib/a11y.js';
-import type { AIChatPluginOptions, AttachedFile, DraftRequest } from '../../types.js';
+import type { ResolvedAIChatPluginOptions, AttachedFile, DraftRequest } from '../../types.js';
 import { ChatPanelHeader } from './ChatPanelHeader.js';
 
 interface Props {
-  options: AIChatPluginOptions;
+  options: ResolvedAIChatPluginOptions;
 }
 
 /**

@@ -1,7 +1,8 @@
 import React from 'react';
 import type { Plugin } from '@puckeditor/core';
 import { AIFieldsOverride } from './components/panel/AIFieldsOverride.js';
-import type { AIChatPluginOptions } from './types.js';
+import type { AIChatPluginOptions, ResolvedAIChatPluginOptions } from './types.js';
+import { resolveAgentUrl } from './constants.js';
 
 export type {
   AIChatPluginOptions,
@@ -21,6 +22,7 @@ export type {
   DraftRequestChannel,
 } from './types.js';
 export { createDraftRequestChannel } from './lib/draftRequestChannel.js';
+export { PRODUCTION_AGENT_URL } from './constants.js';
 
 // Reuse the real Puck plugin type instead of a hand-maintained local copy, so
 // this can never drift from what @puckeditor/core actually consumes (see PCC-3399).
@@ -43,9 +45,10 @@ function envMediaWorkerUrl(): string | undefined {
  * No `render`/`label`/`icon`: the panel takes over the right-hand rail through the `fields`
  * override, opened from the editor header rather than from Puck's plugin rail.
  */
-export function createAIChatPlugin(options: AIChatPluginOptions): Plugin {
-  const resolvedOptions: AIChatPluginOptions = {
+export function createAIChatPlugin(options: AIChatPluginOptions = {}): Plugin {
+  const resolvedOptions: ResolvedAIChatPluginOptions = {
     ...options,
+    agentUrl: resolveAgentUrl(options.agentUrl),
     // `||`, not `??`: an env file with a bare `NEXT_PUBLIC_MEDIA_WORKER_URL=` inlines to '',
     // and an empty base URL would build requests against the host app's own origin.
     mediaWorkerUrl: options.mediaWorkerUrl || envMediaWorkerUrl() || undefined,

@@ -217,8 +217,7 @@ function EditorContent({
   const p1Plugins = useP1Plugins(path, config);
   const mediaPlugin = React.useMemo(() => createMediaPlugin({}), []);
   const flags = useFlags();
-  const agentUrl = process.env.NEXT_PUBLIC_AGENT_URL;
-  const chatbotEnabled = shouldShowChatbot(flags[CHATBOT_FLAG_KEY], agentUrl);
+  const chatbotEnabled = shouldShowChatbot(flags[CHATBOT_FLAG_KEY]);
   // Singleton: survives the remount caused by navigating to the new page.
   const draftRequests = getDraftRequestChannel();
   // The agent creates the page it was asked for, so the editor follows it there. Also what
@@ -231,10 +230,14 @@ function EditorContent({
   );
   const aiPlugin = React.useMemo(
     () =>
-      chatbotEnabled && agentUrl
-        ? createAIChatPlugin({ agentUrl, draftRequests, onPageCreated: handlePageCreated })
+      chatbotEnabled
+        ? createAIChatPlugin({
+            agentUrl: process.env.NEXT_PUBLIC_AGENT_URL,
+            draftRequests,
+            onPageCreated: handlePageCreated,
+          })
         : null,
-    [chatbotEnabled, agentUrl, draftRequests, handlePageCreated],
+    [chatbotEnabled, draftRequests, handlePageCreated],
   );
   const additionalPlugins = React.useMemo(
     () => (aiPlugin ? [...p1Plugins, mediaPlugin, aiPlugin] : [...p1Plugins, mediaPlugin]),

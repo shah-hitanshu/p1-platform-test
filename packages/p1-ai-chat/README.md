@@ -25,6 +25,13 @@ npm install @pantheon-systems/puck-css @puckeditor/core react \
 ```tsx
 import { createAIChatPlugin } from "@pantheon-systems/p1-ai-chat";
 
+const aiChatPlugin = createAIChatPlugin();
+```
+
+The plugin reaches the production chat agent by default. Pass `agentUrl` only to point a
+deployment at a different environment:
+
+```tsx
 const aiChatPlugin = createAIChatPlugin({
   agentUrl: process.env.NEXT_PUBLIC_AGENT_URL,
 });

@@ -173,33 +173,31 @@ The plugin declares `@pantheon-systems/puck-css`, `@pantheon-systems/pds-toolkit
 
 ### Wire it up
 
-`createAIChatPlugin({ agentUrl })` returns a Puck plugin. It sources the current site/branch/document and the CCR auth token from the `@pantheon-systems/puck-css` hooks (`useP1Puck`/`useP1Auth`) internally, so the only required option is the Worker URL:
+`createAIChatPlugin()` returns a Puck plugin. It sources the current site/branch/document and the CCR auth token from the `@pantheon-systems/puck-css` hooks (`useP1Puck`/`useP1Auth`) internally, and defaults to the production agent, so it takes no required options:
 
 ```tsx
 import { createAIChatPlugin } from '@pantheon-systems/p1-ai-chat';
 
 // Inside the editor component, add it to the plugin list.
-const aiPlugin = React.useMemo(
-  () =>
-    process.env.NEXT_PUBLIC_AGENT_URL
-      ? createAIChatPlugin({ agentUrl: process.env.NEXT_PUBLIC_AGENT_URL })
-      : null,
-  [],
-);
+const aiPlugin = React.useMemo(() => createAIChatPlugin(), []);
 
 const { puckProps } = useP1Editor({
-  additionalPlugins: aiPlugin ? [...p1Plugins, aiPlugin] : p1Plugins,
+  additionalPlugins: [...p1Plugins, aiPlugin],
   // ...
 });
 ```
 
-Add `NEXT_PUBLIC_AGENT_URL` to your `.env.local`:
+To point an editor at a different environment, set `NEXT_PUBLIC_AGENT_URL` in `.env.local` and pass it through:
 
 ```env
 NEXT_PUBLIC_AGENT_URL=https://p1-chatbot-agent-staging.pantheon-content-publisher.workers.dev
 ```
 
-When `NEXT_PUBLIC_AGENT_URL` is unset the plugin is simply not added, so the editor renders unchanged.
+```tsx
+createAIChatPlugin({ agentUrl: process.env.NEXT_PUBLIC_AGENT_URL });
+```
+
+An unset or blank value resolves to the production agent, so set it alongside the CCR and media overrides — an editor pointed at a staging backend but left silent here still talks to the production agent.
 
 ---
 
@@ -223,7 +221,7 @@ When `NEXT_PUBLIC_AGENT_URL` is unset the plugin is simply not added, so the edi
 
 | Variable | Description |
 |---|---|
-| `NEXT_PUBLIC_AGENT_URL` | Agent Worker URL |
+| `NEXT_PUBLIC_AGENT_URL` | Agent Worker URL. Optional — defaults to the production agent; set it to reach another environment. |
 
 ---
 
@@ -270,7 +268,7 @@ pnpm dev
 # Listens on http://localhost:8787
 ```
 
-For the Puck app, set:
+For the Puck app, point it away from the production default:
 ```env
 NEXT_PUBLIC_AGENT_URL=http://localhost:8787
 ```
