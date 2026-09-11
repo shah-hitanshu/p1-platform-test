@@ -237,7 +237,7 @@ img.logo {
   flex-shrink: 0;
 }
 
-/* ── Pantheon AI toggle ─────────────────────────────────────────────── */
+/* ── Pantheon Agent toggle ─────────────────────────────────────────────── */
 
 .aiToggle {
   display: inline-flex;
@@ -250,8 +250,7 @@ img.logo {
   background: transparent;
   border: none;
   border-radius: var(--pds-border-radius-container, 0.375rem);
-  /* Not `brand-default`, which is the yellow rather than the blue the design uses. */
-  color: var(--pds-color-interactive-background-current);
+  color: var(--pds-color-foreground-default);
   cursor: pointer;
 }
 
@@ -259,10 +258,10 @@ img.logo {
   background: var(--pds-color-surface-default-secondary);
 }
 
+/* Same surface as :hover, restated so an active button keeps its chip if hover ever diverges. */
 .aiToggleActive,
 .aiToggleActive:hover {
-  background: var(--pds-color-interactive-background-current);
-  color: var(--pds-color-interactive-background-current-foreground);
+  background: var(--pds-color-surface-default-secondary);
 }
 
 /* ── User avatar ────────────────────────────────────────────────────── */

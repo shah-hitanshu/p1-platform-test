@@ -38,7 +38,7 @@ afterEach(() => {
   cleanup();
 });
 
-describe('P1EditorHeader — Pantheon AI toggle', () => {
+describe('P1EditorHeader — Pantheon Agent toggle', () => {
   it('is absent unless the consumer opts in', () => {
     render(<P1EditorHeader {...baseProps} />);
 

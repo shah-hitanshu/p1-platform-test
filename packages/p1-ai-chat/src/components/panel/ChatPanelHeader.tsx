@@ -27,6 +27,7 @@ export function ChatPanelHeader({
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
+        borderBottom: '1px solid var(--pds-color-border-default)',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
           <Avatar />
@@ -36,7 +37,7 @@ export function ChatPanelHeader({
               fontWeight: 'var(--pds-typography-fw-semibold)',
               color: 'var(--pds-color-foreground-default)',
             }}>
-              Pantheon AI
+              Pantheon Agent
             </div>
             <div style={{
               fontSize: 'var(--pds-typography-size-2xs)',
@@ -89,14 +90,12 @@ function Avatar(): React.ReactElement {
         flexShrink: 0,
         width: 28,
         height: 28,
-        borderRadius: 6,
         display: 'grid',
         placeItems: 'center',
-        color: 'var(--pds-color-interactive-background-current-foreground)',
-        background: 'var(--pds-color-interactive-background-current)',
+        color: 'var(--pds-color-foreground-default)',
       }}
     >
-      <Icon iconName="sparkles" size="s" />
+      <Icon iconName="sparkles" size="m" />
     </div>
   );
 }

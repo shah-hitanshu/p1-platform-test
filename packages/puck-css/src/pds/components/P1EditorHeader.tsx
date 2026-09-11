@@ -70,7 +70,7 @@ export interface P1EditorHeaderProps {
   templatesLoading?: boolean;
   /** Data sources (built-in + user) for the modal's collection builder. */
   datasources?: { id: string; label: string; inputs?: string[] }[];
-  /** Show the Pantheon AI toggle. Pass the same flag that gates the chat plugin. */
+  /** Show the Pantheon Agent toggle. Pass the same flag that gates the chat plugin. */
   showAIPanelToggle?: boolean;
   /** Create a new template from the modal's "New template" flow. */
   onCreateTemplate?: (params: {
@@ -519,7 +519,7 @@ export function P1EditorHeader({
         </>
       )}
 
-      {/* Pantheon AI */}
+      {/* Pantheon Agent */}
       {showAIPanelToggle && (
         <>
           <button
@@ -530,9 +530,9 @@ export function P1EditorHeader({
             }
             onClick={() => aiPanelStore.toggle()}
             aria-pressed={aiPanelOpen}
-            aria-label="Pantheon AI"
+            aria-label="Pantheon Agent"
           >
-            <Icon iconName="sparkles" size="l" />
+            <Icon iconName="sparkles" size="m" />
           </button>
           <div className={styles.divider} aria-hidden="true" />
         </>

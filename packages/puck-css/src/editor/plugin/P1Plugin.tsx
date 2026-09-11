@@ -506,7 +506,7 @@ export interface P1PluginOptions {
   ) => Promise<void>;
   /** Hand a "Generate with AI" brief (+ the new page's path/title) to the chatbot. */
   onGenerateWithAI?: (brief: string, page: { path: string; title: string }) => void;
-  /** Show the header's Pantheon AI toggle. Pass the same flag that gates the chat plugin. */
+  /** Show the header's Pantheon Agent toggle. Pass the same flag that gates the chat plugin. */
   showAIPanelToggle?: boolean;
   /** Callback to delete a document */
   onDocumentDelete?: (documentId: string, path: string) => Promise<void>;

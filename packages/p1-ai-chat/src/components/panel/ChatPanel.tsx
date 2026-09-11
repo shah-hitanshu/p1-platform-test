@@ -459,7 +459,7 @@ export function ChatPanel({ options }: Props): React.ReactElement {
             id="ai-chat-input"
             label="Message"
             showLabel={false}
-            placeholder="Ask Pantheon AI…"
+            placeholder="Ask Pantheon Agent…"
             value={input}
             onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setInput(e.target.value)}
             textareaProps={{
