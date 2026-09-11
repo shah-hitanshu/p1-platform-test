@@ -297,8 +297,7 @@ describe('Agent Politeness Phase 2.4: Agent Edit Workflow API Routes', () => {
           '../../src/routes/realtime-api'
         );
 
-        const agent789Context: RealtimeRouteContext = {
-          principal: { ...defaultPrincipal, id: 'agent-789' },
+        const agent789Context: RealtimeRouteContext = { principal: { ...defaultPrincipal, id: 'agent-789' },
         };
         const request = new Request(
           'https://example.com/api/sites/site-1/branches/branch-1/documents/page/can-agent-edit',

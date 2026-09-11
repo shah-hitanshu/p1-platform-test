@@ -14,7 +14,8 @@
  * template content backfill does.
  */
 
-import { query } from '../db';
+import { sql } from 'drizzle-orm';
+import { db } from '../db/scope';
 import { createDocumentVersion } from './document-version-service';
 import { applyTitleToSnapshot, isRecord } from './document-title';
 
@@ -94,12 +95,12 @@ export interface BackfillPageTitlesOptions {
   dryRun?: boolean;
 }
 
-interface CandidateRow {
+type CandidateRow = {
   document_id: string;
   branch_id: string;
   path: string;
   snapshot: Record<string, unknown> | null;
-}
+};
 
 /**
  * Converts the latest version of every document whose title still sits at the
@@ -116,13 +117,14 @@ export async function backfillPageTitles(
 ): Promise<PageTitleBackfillResult> {
   const { siteId, dryRun = false } = options;
 
-  const candidates = await query<CandidateRow>(
-    `SELECT dv.document_id, dv.branch_id, d.path, dv.snapshot
+  const scope = siteId ?? null;
+  const candidates = await db().execute<CandidateRow>(sql`
+     SELECT dv.document_id, dv.branch_id, d.path, dv.snapshot
      FROM app.document_versions dv
      INNER JOIN app.documents d ON d.id = dv.document_id
      WHERE d.archived_at IS NULL
        AND dv.is_tombstone = false
-       AND ($1::uuid IS NULL OR d.site_id = $1::uuid)
+       AND (${scope}::uuid IS NULL OR d.site_id = ${scope}::uuid)
        AND (
          dv.snapshot ? 'title'
          OR dv.snapshot IS NULL
@@ -132,13 +134,11 @@ export async function backfillPageTitles(
          SELECT MAX(dv2.version_number)
          FROM app.document_versions dv2
          WHERE dv2.document_id = dv.document_id AND dv2.branch_id = dv.branch_id
-       )`,
-    [siteId ?? null],
-  );
+       )`);
 
   const result: PageTitleBackfillResult = { converted: [], skipped: [] };
 
-  for (const candidate of candidates.rows) {
+  for (const candidate of candidates) {
     const entry: BackfillEntry = {
       documentId: candidate.document_id,
       branchId: candidate.branch_id,

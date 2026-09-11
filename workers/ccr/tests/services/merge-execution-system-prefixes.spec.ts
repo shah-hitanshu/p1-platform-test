@@ -12,10 +12,20 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { makeBranch } from '../helpers/branch';
-
-vi.mock('../../src/db', () => ({
-  query: vi.fn(),
-}));
+import { stubDatabase } from '../__stubs__/database';
+import {
+  executeMerge,
+  executeMergeWithResolution,
+  previewMerge,
+} from '../../src/services/merge-execution-service';
+import * as conflictDetection from '../../src/services/conflict-detection-service';
+import * as conflictResolution from '../../src/services/conflict-resolution-service';
+import * as mergeRequestService from '../../src/services/merge-request-service';
+import * as docVersionService from '../../src/services/document-version-service';
+import * as checkpointService from '../../src/services/checkpoint-service';
+import * as branchService from '../../src/services/branch-service';
+import * as mergePublish from '../../src/services/merge-publish';
+import * as pathChangeService from '../../src/services/path-change-service';
 
 vi.mock('../../src/services/conflict-detection-service', () => ({
   detectConflicts: vi.fn(),
@@ -67,6 +77,10 @@ vi.mock('../../src/services/path-change-service', () => ({
   getPathChangesSince: vi.fn().mockResolvedValue([]),
 }));
 
+vi.mock('../../src/services/relations-service', () => ({
+  carryUpstreamResolutions: vi.fn(),
+}));
+
 const baseMergeRequest = {
   id: 'mr-1',
   siteId: 'site-1',
@@ -77,8 +91,8 @@ const baseMergeRequest = {
   hasConflicts: false,
   createdById: 'user-1',
   createdByType: 'user' as const,
-  createdAt: '2026-04-25T10:00:00.000Z',
-  updatedAt: '2026-04-25T10:00:00.000Z',
+  createdAt: new Date('2026-04-25T10:00:00.000Z'),
+  updatedAt: new Date('2026-04-25T10:00:00.000Z'),
 };
 
 const baseMainBranch = makeBranch({
@@ -94,30 +108,14 @@ const baseMainBranch = makeBranch({
   updatedAt: '2026-01-01T00:00:00.000Z',
 });
 
+
 describe('executeMerge — system-managed path exclusion', () => {
   beforeEach(async () => {
     vi.resetAllMocks();
-    const db = await import('../../src/db');
-    vi.mocked(db.query).mockResolvedValue({ rows: [], rowCount: 0 });
+    stubDatabase();
   });
 
   it('excludes documents under _registry/ from merge writes and post_merge checkpoint', async () => {
-    const { executeMerge } = await import(
-      '../../src/services/merge-execution-service'
-    );
-    const conflictDetection = await import(
-      '../../src/services/conflict-detection-service'
-    );
-    const mergeRequestService = await import(
-      '../../src/services/merge-request-service'
-    );
-    const docVersionService = await import(
-      '../../src/services/document-version-service'
-    );
-    const checkpointService = await import('../../src/services/checkpoint-service');
-    const branchService = await import('../../src/services/branch-service');
-    const mergePublish = await import('../../src/services/merge-publish');
-
     vi.mocked(mergeRequestService.getMergeRequest).mockResolvedValueOnce(
       baseMergeRequest,
     );
@@ -130,7 +128,7 @@ describe('executeMerge — system-managed path exclusion', () => {
       mergeBase: {
         checkpointId: 'checkpoint-base',
         branchId: 'main-branch',
-        createdAt: '2026-04-20T10:00:00.000Z',
+        createdAt: new Date('2026-04-20T10:00:00.000Z'),
       },
       sourceChanges: [
         {
@@ -206,7 +204,7 @@ describe('executeMerge — system-managed path exclusion', () => {
     vi.mocked(mergeRequestService.updateMergeRequestStatus).mockResolvedValueOnce({
       ...baseMergeRequest,
       status: 'merged',
-      mergedAt: '2026-04-25T11:00:00.000Z',
+      mergedAt: new Date('2026-04-25T11:00:00.000Z'),
     });
 
     const result = await executeMerge({
@@ -244,17 +242,6 @@ describe('executeMerge — system-managed path exclusion', () => {
     // If conflict detection reports a _registry conflict, executeMerge must
     // ignore it (the underlying registry is code-managed, not site content).
     // The merge proceeds without raising MergeConflictsError.
-    const { executeMerge } = await import(
-      '../../src/services/merge-execution-service'
-    );
-    const conflictDetection = await import(
-      '../../src/services/conflict-detection-service'
-    );
-    const mergeRequestService = await import(
-      '../../src/services/merge-request-service'
-    );
-    const checkpointService = await import('../../src/services/checkpoint-service');
-    const branchService = await import('../../src/services/branch-service');
 
     vi.mocked(mergeRequestService.getMergeRequest).mockResolvedValueOnce(
       baseMergeRequest,
@@ -278,7 +265,7 @@ describe('executeMerge — system-managed path exclusion', () => {
       mergeBase: {
         checkpointId: 'checkpoint-base',
         branchId: 'main-branch',
-        createdAt: '2026-04-20T10:00:00.000Z',
+        createdAt: new Date('2026-04-20T10:00:00.000Z'),
       },
       sourceChanges: [
         {
@@ -318,7 +305,7 @@ describe('executeMerge — system-managed path exclusion', () => {
     vi.mocked(mergeRequestService.updateMergeRequestStatus).mockResolvedValueOnce({
       ...baseMergeRequest,
       status: 'merged',
-      mergedAt: '2026-04-25T11:00:00.000Z',
+      mergedAt: new Date('2026-04-25T11:00:00.000Z'),
     });
 
     // Must NOT throw MergeConflictsError — the only conflict is _registry,
@@ -346,26 +333,10 @@ describe('executeMerge — system-managed path exclusion', () => {
 describe('executeMergeWithResolution — system-managed path exclusion', () => {
   beforeEach(async () => {
     vi.resetAllMocks();
-    const db = await import('../../src/db');
-    vi.mocked(db.query).mockResolvedValue({ rows: [], rowCount: 0 });
+    stubDatabase();
   });
 
   it('excludes _registry/ from conflict resolution and the post_merge checkpoint', async () => {
-    const { executeMergeWithResolution } = await import(
-      '../../src/services/merge-execution-service'
-    );
-    const conflictDetection = await import(
-      '../../src/services/conflict-detection-service'
-    );
-    const conflictResolution = await import(
-      '../../src/services/conflict-resolution-service'
-    );
-    const mergeRequestService = await import(
-      '../../src/services/merge-request-service'
-    );
-    const checkpointService = await import('../../src/services/checkpoint-service');
-    const branchService = await import('../../src/services/branch-service');
-
     vi.mocked(mergeRequestService.getMergeRequest).mockResolvedValueOnce({
       ...baseMergeRequest,
       hasConflicts: true,
@@ -397,7 +368,7 @@ describe('executeMergeWithResolution — system-managed path exclusion', () => {
       mergeBase: {
         checkpointId: 'checkpoint-base',
         branchId: 'main-branch',
-        createdAt: '2026-04-20T10:00:00.000Z',
+        createdAt: new Date('2026-04-20T10:00:00.000Z'),
       },
       sourceChanges: [
         {
@@ -460,7 +431,7 @@ describe('executeMergeWithResolution — system-managed path exclusion', () => {
     vi.mocked(mergeRequestService.updateMergeRequestStatus).mockResolvedValueOnce({
       ...baseMergeRequest,
       status: 'merged',
-      mergedAt: '2026-04-25T11:00:00.000Z',
+      mergedAt: new Date('2026-04-25T11:00:00.000Z'),
     });
 
     const result = await executeMergeWithResolution({
@@ -493,18 +464,11 @@ describe('executeMergeWithResolution — system-managed path exclusion', () => {
 describe('previewMerge — system-managed path exclusion', () => {
   beforeEach(async () => {
     vi.resetAllMocks();
-    const pathChangeService = await import('../../src/services/path-change-service');
+    stubDatabase();
     vi.mocked(pathChangeService.getPathChangesSince).mockResolvedValue([]);
   });
 
   it('always excludes _registry/ from preview, even when caller provides no excludePathPrefixes', async () => {
-    const { previewMerge } = await import(
-      '../../src/services/merge-execution-service'
-    );
-    const conflictDetection = await import(
-      '../../src/services/conflict-detection-service'
-    );
-
     vi.mocked(conflictDetection.detectConflicts).mockResolvedValueOnce({
       hasConflicts: true,
       conflicts: {
@@ -529,7 +493,7 @@ describe('previewMerge — system-managed path exclusion', () => {
       mergeBase: {
         checkpointId: 'checkpoint-base',
         branchId: 'main-branch',
-        createdAt: '2026-04-20T10:00:00.000Z',
+        createdAt: new Date('2026-04-20T10:00:00.000Z'),
       },
       sourceChanges: [
         {
@@ -581,20 +545,13 @@ describe('previewMerge — system-managed path exclusion', () => {
   });
 
   it('combines system-managed exclusions with caller-provided excludePathPrefixes', async () => {
-    const { previewMerge } = await import(
-      '../../src/services/merge-execution-service'
-    );
-    const conflictDetection = await import(
-      '../../src/services/conflict-detection-service'
-    );
-
     vi.mocked(conflictDetection.detectConflicts).mockResolvedValueOnce({
       hasConflicts: false,
       conflicts: { documentConflicts: [], structureConflicts: [] },
       mergeBase: {
         checkpointId: 'checkpoint-base',
         branchId: 'main-branch',
-        createdAt: '2026-04-20T10:00:00.000Z',
+        createdAt: new Date('2026-04-20T10:00:00.000Z'),
       },
       sourceChanges: [
         {
@@ -643,12 +600,6 @@ describe('previewMerge — system-managed path exclusion', () => {
     // specifically: under `_registry/` this exclusion kept them off main —
     // merged page deletions shipped without their redirects, and templates
     // merged without the datasource/query that make List blocks render.
-    const { previewMerge } = await import(
-      '../../src/services/merge-execution-service'
-    );
-    const conflictDetection = await import(
-      '../../src/services/conflict-detection-service'
-    );
 
     vi.mocked(conflictDetection.detectConflicts).mockResolvedValueOnce({
       hasConflicts: false,
@@ -656,7 +607,7 @@ describe('previewMerge — system-managed path exclusion', () => {
       mergeBase: {
         checkpointId: 'checkpoint-base',
         branchId: 'main-branch',
-        createdAt: '2026-04-20T10:00:00.000Z',
+        createdAt: new Date('2026-04-20T10:00:00.000Z'),
       },
       sourceChanges: [
         {

@@ -5,7 +5,11 @@
  * and navigation tree building.
  */
 
-import { query } from '../db';
+import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import type { PgUpdateSetSource } from 'drizzle-orm/pg-core';
+import { driverErrorCode } from '../db/driver-error';
+import { documents, structureNodes } from '../db/schema';
+import { db } from '../db/scope';
 import type { StructureNode, NodeType } from '../types';
 import type {
   CreateNodeParams,
@@ -13,7 +17,6 @@ import type {
   ListNodesOptions,
   MoveNodeParams,
   NavigationTreeNode,
-  NodeRow,
 } from './structure-types';
 import {
   mapNodeRow,
@@ -33,43 +36,39 @@ import {
 /**
  * Create a new structure node.
  */
-export async function createNode(params: CreateNodeParams): Promise<StructureNode> {
+export async function createNode(
+  params: CreateNodeParams,
+): Promise<StructureNode> {
   const { structureId, parentNodeId, name, nodeType, documentId, externalUrl, position } =
     params;
   const slug = normalizeSlug(params.slug);
 
   try {
-    const result = await query<NodeRow>(
-      `INSERT INTO app.structure_nodes
-       (structure_id, parent_node_id, name, slug, node_type, document_id, external_url, position)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-       RETURNING *`,
-      [
+    const [row] = await db()
+      .insert(structureNodes)
+      .values({
         structureId,
-        parentNodeId ?? null,
+        parentNodeId: parentNodeId ?? null,
         name,
         slug,
         nodeType,
-        documentId ?? null,
-        externalUrl ?? null,
+        documentId: documentId ?? null,
+        externalUrl: externalUrl ?? null,
         position,
-      ],
-    );
+      })
+      .returning();
 
-    const row = result.rows[0];
     if (!row) {
       throw new StructureNotFoundError(structureId);
     }
     return mapNodeRow(row);
   } catch (error) {
-    if (error instanceof Error && 'code' in error) {
-      const pgError = error as Error & { code: string };
-      if (pgError.code === '23505') {
-        throw new DuplicateNodeSlugError(structureId, slug);
-      }
-      if (pgError.code === '23503') {
-        throw new StructureNotFoundError(structureId);
-      }
+    const code = driverErrorCode(error);
+    if (code === '23505') {
+      throw new DuplicateNodeSlugError(structureId, slug);
+    }
+    if (code === '23503') {
+      throw new StructureNotFoundError(structureId);
     }
     throw error;
   }
@@ -79,13 +78,12 @@ export async function createNode(params: CreateNodeParams): Promise<StructureNod
  * Get a node by ID.
  */
 export async function getNode(nodeId: string): Promise<StructureNode | null> {
-  const result = await query<NodeRow>(
-    'SELECT * FROM app.structure_nodes WHERE id = $1',
-    [nodeId],
-  );
+  const [nodeRow] = await db()
+    .select()
+    .from(structureNodes)
+    .where(eq(structureNodes.id, nodeId));
 
-  const nodeRow = result.rows[0];
-  if (!nodeRow) {
+  if (nodeRow === undefined) {
     return null;
   }
 
@@ -95,25 +93,28 @@ export async function getNode(nodeId: string): Promise<StructureNode | null> {
 /**
  * List nodes in a structure.
  */
-export async function listNodes(options: ListNodesOptions): Promise<StructureNode[]> {
+export async function listNodes(
+  options: ListNodesOptions,
+): Promise<StructureNode[]> {
   const { structureId, parentNodeId } = options;
 
-  let sql = 'SELECT * FROM app.structure_nodes WHERE structure_id = $1';
-  const params: (string | null)[] = [structureId];
+  const conditions = [eq(structureNodes.structureId, structureId)];
 
   if (parentNodeId !== undefined) {
-    if (parentNodeId === null) {
-      sql += ' AND parent_node_id IS NULL';
-    } else {
-      sql += ' AND parent_node_id = $2';
-      params.push(parentNodeId);
-    }
+    conditions.push(
+      parentNodeId === null
+        ? isNull(structureNodes.parentNodeId)
+        : eq(structureNodes.parentNodeId, parentNodeId),
+    );
   }
 
-  sql += ' ORDER BY position ASC';
+  const rows = await db()
+    .select()
+    .from(structureNodes)
+    .where(and(...conditions))
+    .orderBy(asc(structureNodes.position));
 
-  const result = await query<NodeRow>(sql, params);
-  return result.rows.map(mapNodeRow);
+  return rows.map(mapNodeRow);
 }
 
 /**
@@ -123,36 +124,25 @@ export async function updateNode(
   nodeId: string,
   updates: UpdateNodeParams,
 ): Promise<StructureNode> {
-  const setClauses: string[] = [];
-  const params: (string | null)[] = [];
-  let paramIndex = 1;
+  const values: PgUpdateSetSource<typeof structureNodes> = {};
 
   if (updates.name !== undefined) {
-    setClauses.push(`name = $${String(paramIndex)}`);
-    params.push(updates.name);
-    paramIndex++;
+    values.name = updates.name;
   }
 
   if (updates.slug !== undefined) {
-    const normalizedSlug = normalizeSlug(updates.slug);
-    setClauses.push(`slug = $${String(paramIndex)}`);
-    params.push(normalizedSlug);
-    paramIndex++;
+    values.slug = normalizeSlug(updates.slug);
   }
 
   if (updates.documentId !== undefined) {
-    setClauses.push(`document_id = $${String(paramIndex)}`);
-    params.push(updates.documentId);
-    paramIndex++;
+    values.documentId = updates.documentId;
   }
 
   if (updates.externalUrl !== undefined) {
-    setClauses.push(`external_url = $${String(paramIndex)}`);
-    params.push(updates.externalUrl);
-    paramIndex++;
+    values.externalUrl = updates.externalUrl;
   }
 
-  if (setClauses.length === 0) {
+  if (Object.keys(values).length === 0) {
     const existing = await getNode(nodeId);
     if (existing === null) {
       throw new NodeNotFoundError(nodeId);
@@ -160,19 +150,13 @@ export async function updateNode(
     return existing;
   }
 
-  params.push(nodeId);
+  const [updatedRow] = await db()
+    .update(structureNodes)
+    .set(values)
+    .where(eq(structureNodes.id, nodeId))
+    .returning();
 
-  const result = await query<NodeRow>(
-    `UPDATE app.structure_nodes SET ${setClauses.join(', ')} WHERE id = $${String(paramIndex)} RETURNING *`,
-    params,
-  );
-
-  if (result.rows.length === 0) {
-    throw new NodeNotFoundError(nodeId);
-  }
-
-  const updatedRow = result.rows[0];
-  if (!updatedRow) {
+  if (updatedRow === undefined) {
     throw new NodeNotFoundError(nodeId);
   }
   return mapNodeRow(updatedRow);
@@ -182,12 +166,12 @@ export async function updateNode(
  * Delete a node.
  */
 export async function deleteNode(nodeId: string): Promise<void> {
-  const result = await query<{ id: string }>(
-    'DELETE FROM app.structure_nodes WHERE id = $1 RETURNING id',
-    [nodeId],
-  );
+  const deleted = await db()
+    .delete(structureNodes)
+    .where(eq(structureNodes.id, nodeId))
+    .returning({ id: structureNodes.id });
 
-  if (result.rows.length === 0) {
+  if (deleted.length === 0) {
     throw new NodeNotFoundError(nodeId);
   }
 }
@@ -213,38 +197,29 @@ export async function moveNode(
 
   // Check for circular reference if moving to a new parent
   if (newParentId !== null) {
-    const ancestorResult = await query<{ id: string }>(
-      `WITH RECURSIVE ancestry AS (
-        SELECT id, parent_node_id FROM app.structure_nodes WHERE id = $1
+    const ancestors = await db().execute<{ id: string }>(sql`
+      WITH RECURSIVE ancestry AS (
+        SELECT id, parent_node_id FROM app.structure_nodes WHERE id = ${newParentId}
         UNION ALL
         SELECT n.id, n.parent_node_id
         FROM app.structure_nodes n
         JOIN ancestry a ON n.id = a.parent_node_id
       )
-      SELECT id FROM ancestry WHERE id = $2`,
-      [newParentId, nodeId],
-    );
+      SELECT id FROM ancestry WHERE id = ${nodeId}`);
 
-    if (ancestorResult.rows.length > 0) {
+    if (ancestors.length > 0) {
       throw new CircularReferenceError(nodeId, newParentId);
     }
   }
 
   // Update the node
-  const result = await query<NodeRow>(
-    `UPDATE app.structure_nodes
-     SET parent_node_id = $1, position = $2
-     WHERE id = $3
-     RETURNING *`,
-    [newParentId, newPosition, nodeId],
-  );
+  const [movedRow] = await db()
+    .update(structureNodes)
+    .set({ parentNodeId: newParentId, position: newPosition })
+    .where(eq(structureNodes.id, nodeId))
+    .returning();
 
-  if (result.rows.length === 0) {
-    throw new NodeNotFoundError(nodeId);
-  }
-
-  const movedRow = result.rows[0];
-  if (!movedRow) {
+  if (movedRow === undefined) {
     throw new NodeNotFoundError(nodeId);
   }
   return mapNodeRow(movedRow);
@@ -260,16 +235,19 @@ export async function reorderNodes(
 ): Promise<void> {
   // Update each node's position
   for (let i = 0; i < nodeIds.length; i++) {
-    await query(
-      `UPDATE app.structure_nodes
-       SET position = $1
-       WHERE id = $2 AND structure_id = $3 AND
-       ${parentNodeId === null ? 'parent_node_id IS NULL' : 'parent_node_id = $4'}
-       RETURNING id`,
-      parentNodeId === null
-        ? [i, nodeIds[i], structureId]
-        : [i, nodeIds[i], structureId, parentNodeId],
-    );
+    await db()
+      .update(structureNodes)
+      .set({ position: i })
+      .where(
+        and(
+          eq(structureNodes.id, nodeIds[i] ?? ''),
+          eq(structureNodes.structureId, structureId),
+          parentNodeId === null
+            ? isNull(structureNodes.parentNodeId)
+            : eq(structureNodes.parentNodeId, parentNodeId),
+        ),
+      )
+      .returning({ id: structureNodes.id });
   }
 }
 
@@ -280,31 +258,32 @@ export async function reorderNodes(
 /**
  * Build a navigation tree from structure nodes.
  */
-export async function buildNavigationTree(structureId: string): Promise<NavigationTreeNode[]> {
+export async function buildNavigationTree(
+  structureId: string,
+): Promise<NavigationTreeNode[]> {
   // Get all nodes in the structure
-  const nodeResult = await query<NodeRow>(
-    'SELECT * FROM app.structure_nodes WHERE structure_id = $1 ORDER BY position ASC',
-    [structureId],
-  );
+  const nodeRows = await db()
+    .select()
+    .from(structureNodes)
+    .where(eq(structureNodes.structureId, structureId))
+    .orderBy(asc(structureNodes.position));
 
-  if (nodeResult.rows.length === 0) {
+  if (nodeRows.length === 0) {
     return [];
   }
 
-  const nodeRows = nodeResult.rows;
-
   // Get document paths for document nodes
   const documentIds = nodeRows
-    .filter((row) => row.document_id !== null)
-    .map((row) => row.document_id);
+    .map((row) => row.documentId)
+    .filter((id): id is string => id !== null);
 
   const documentPaths = new Map<string, string>();
   if (documentIds.length > 0) {
-    const docResult = await query<{ id: string; path: string }>(
-      'SELECT id, path FROM app.documents WHERE id = ANY($1)',
-      [documentIds],
-    );
-    for (const doc of docResult.rows) {
+    const docRows = await db()
+      .select({ id: documents.id, path: documents.path })
+      .from(documents)
+      .where(inArray(documents.id, documentIds));
+    for (const doc of docRows) {
       documentPaths.set(doc.id, doc.path);
     }
   }
@@ -319,21 +298,21 @@ export async function buildNavigationTree(structureId: string): Promise<Navigati
       id: row.id,
       name: row.name,
       slug: row.slug,
-      nodeType: row.node_type as NodeType,
+      nodeType: row.nodeType as NodeType,
       position: row.position,
       children: [],
     };
 
-    if (row.document_id !== null) {
-      treeNode.documentId = row.document_id;
-      const path = documentPaths.get(row.document_id);
+    if (row.documentId !== null) {
+      treeNode.documentId = row.documentId;
+      const path = documentPaths.get(row.documentId);
       if (path !== undefined) {
         treeNode.documentPath = path;
       }
     }
 
-    if (row.external_url !== null) {
-      treeNode.externalUrl = row.external_url;
+    if (row.externalUrl !== null) {
+      treeNode.externalUrl = row.externalUrl;
     }
 
     nodesById.set(row.id, treeNode);
@@ -344,10 +323,10 @@ export async function buildNavigationTree(structureId: string): Promise<Navigati
     const node = nodesById.get(row.id);
     if (node === undefined) continue;
 
-    if (row.parent_node_id === null) {
+    if (row.parentNodeId === null) {
       rootNodes.push(node);
     } else {
-      const parent = nodesById.get(row.parent_node_id);
+      const parent = nodesById.get(row.parentNodeId);
       if (parent !== undefined) {
         parent.children.push(node);
       }

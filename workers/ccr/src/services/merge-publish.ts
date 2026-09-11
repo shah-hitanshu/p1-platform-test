@@ -15,7 +15,9 @@
  * never affected because the publish checkpoint uses the allowlist field.
  */
 
-import { query } from '../db';
+import { eq } from 'drizzle-orm';
+import { documentVersions } from '../db/schema';
+import { db } from '../db/scope';
 import { createCheckpoint } from './checkpoint-service';
 import { purgeContentCache } from '../cache/purge';
 
@@ -93,18 +95,14 @@ export async function publishMergedVersions(
       if (entry.sourceVersionId === null) {
         continue;
       }
-      await query(
-        `UPDATE app.document_versions
-         SET source_branch_id = $1, source_version_id = $2
-         WHERE id = $3`,
-        [sourceBranchId, entry.sourceVersionId, entry.documentVersionId],
-      );
-      await query(
-        `UPDATE app.document_versions
-         SET published_to_version_id = $1
-         WHERE id = $2`,
-        [entry.documentVersionId, entry.sourceVersionId],
-      );
+      await db()
+        .update(documentVersions)
+        .set({ sourceBranchId, sourceVersionId: entry.sourceVersionId })
+        .where(eq(documentVersions.id, entry.documentVersionId));
+      await db()
+        .update(documentVersions)
+        .set({ publishedToVersionId: entry.documentVersionId })
+        .where(eq(documentVersions.id, entry.sourceVersionId));
     }
   } finally {
     await purgeContentCache({

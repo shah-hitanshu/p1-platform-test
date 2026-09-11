@@ -8,11 +8,28 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-
-// Mock database module
-vi.mock('../../src/db', () => ({
-  query: vi.fn(),
-}));
+import { stubDatabase, type DatabaseStub } from '../__stubs__/database';
+import { documents } from '../../src/db/schema';
+import {
+  executeMerge,
+  executeMergeWithResolution,
+  previewMerge,
+} from '../../src/services/merge-execution-service';
+import * as conflictDetection from '../../src/services/conflict-detection-service';
+import * as conflictResolution from '../../src/services/conflict-resolution-service';
+import * as mergeRequestService from '../../src/services/merge-request-service';
+import * as docVersionService from '../../src/services/document-version-service';
+import * as checkpointService from '../../src/services/checkpoint-service';
+import * as documentDiffService from '../../src/services/document-diff-service';
+import * as branchService from '../../src/services/branch-service';
+import * as migrationService from '../../src/services/migration-service';
+import * as pathChangeService from '../../src/services/path-change-service';
+import {
+  MergeConflictsError,
+  MergeExecutionError,
+  MergeNotAllowedError,
+  MergeRequestNotFoundError,
+} from '../../src/services/errors';
 
 // Mock dependent services
 vi.mock('../../src/services/conflict-detection-service', () => ({
@@ -67,30 +84,27 @@ vi.mock('../../src/services/migration-service', () => ({
 }));
 
 vi.mock('../../src/services/path-change-service', () => ({
-  getPathChangesSince: vi.fn().mockResolvedValue([]),
+  getPathChangesSince: vi.fn(),
 }));
 
+vi.mock('../../src/services/relations-service', () => ({
+  carryUpstreamResolutions: vi.fn(),
+}));
+
+let on: DatabaseStub['on'];
+
 describe('Phase 5.3: Merge Execution Service', () => {
-  beforeEach(async () => {
+  beforeEach(() => {
     vi.resetAllMocks();
-    const db = await import('../../src/db');
-    vi.mocked(db.query).mockResolvedValue({ rows: [], rowCount: 0 });
+    ({ on } = stubDatabase());
     // Default: no main branch resolved → auto-publish is skipped for all
     // existing tests (their targets are non-main feature branches).
-    const branchService = await import('../../src/services/branch-service');
     vi.mocked(branchService.getMainBranch).mockResolvedValue(null);
-    const pathChangeService = await import('../../src/services/path-change-service');
     vi.mocked(pathChangeService.getPathChangesSince).mockResolvedValue([]);
   });
 
   describe('executeMerge', () => {
     it('should execute merge successfully when no conflicts exist', async () => {
-      const { executeMerge } = await import('../../src/services/merge-execution-service');
-      const conflictDetection = await import('../../src/services/conflict-detection-service');
-      const mergeRequestService = await import('../../src/services/merge-request-service');
-      const checkpointService = await import('../../src/services/checkpoint-service');
-      const docVersionService = await import('../../src/services/document-version-service');
-
       // Mock merge request
       vi.mocked(mergeRequestService.getMergeRequest).mockResolvedValueOnce({
         id: 'mr-1',
@@ -102,8 +116,8 @@ describe('Phase 5.3: Merge Execution Service', () => {
         hasConflicts: false,
         createdById: 'user-1',
         createdByType: 'user',
-        createdAt: '2026-01-20T10:00:00.000Z',
-        updatedAt: '2026-01-20T10:00:00.000Z',
+        createdAt: new Date('2026-01-20T10:00:00.000Z'),
+        updatedAt: new Date('2026-01-20T10:00:00.000Z'),
       });
 
       // Mock no conflicts
@@ -113,7 +127,7 @@ describe('Phase 5.3: Merge Execution Service', () => {
         mergeBase: {
           checkpointId: 'checkpoint-base',
           branchId: 'target-branch',
-          createdAt: '2026-01-15T10:00:00.000Z',
+          createdAt: new Date('2026-01-15T10:00:00.000Z'),
         },
         sourceChanges: [
           {
@@ -179,9 +193,9 @@ describe('Phase 5.3: Merge Execution Service', () => {
         hasConflicts: false,
         createdById: 'user-1',
         createdByType: 'user',
-        createdAt: '2026-01-20T10:00:00.000Z',
-        updatedAt: '2026-01-20T11:00:00.000Z',
-        mergedAt: '2026-01-20T11:00:00.000Z',
+        createdAt: new Date('2026-01-20T10:00:00.000Z'),
+        updatedAt: new Date('2026-01-20T11:00:00.000Z'),
+        mergedAt: new Date('2026-01-20T11:00:00.000Z'),
         mergedById: 'user-1',
         mergedByType: 'user',
       });
@@ -199,10 +213,6 @@ describe('Phase 5.3: Merge Execution Service', () => {
     });
 
     it('should fail when merge request is not in approved status', async () => {
-      const { executeMerge } = await import('../../src/services/merge-execution-service');
-      const { MergeNotAllowedError } = await import('../../src/services/errors');
-      const mergeRequestService = await import('../../src/services/merge-request-service');
-
       // Mock merge request in wrong status
       vi.mocked(mergeRequestService.getMergeRequest).mockResolvedValueOnce({
         id: 'mr-1',
@@ -214,8 +224,8 @@ describe('Phase 5.3: Merge Execution Service', () => {
         hasConflicts: false,
         createdById: 'user-1',
         createdByType: 'user',
-        createdAt: '2026-01-20T10:00:00.000Z',
-        updatedAt: '2026-01-20T10:00:00.000Z',
+        createdAt: new Date('2026-01-20T10:00:00.000Z'),
+        updatedAt: new Date('2026-01-20T10:00:00.000Z'),
       });
 
       await expect(
@@ -228,11 +238,6 @@ describe('Phase 5.3: Merge Execution Service', () => {
     });
 
     it('should fail when conflicts are detected', async () => {
-      const { executeMerge } = await import('../../src/services/merge-execution-service');
-      const { MergeConflictsError } = await import('../../src/services/errors');
-      const conflictDetection = await import('../../src/services/conflict-detection-service');
-      const mergeRequestService = await import('../../src/services/merge-request-service');
-
       // Mock approved merge request
       vi.mocked(mergeRequestService.getMergeRequest).mockResolvedValueOnce({
         id: 'mr-1',
@@ -244,8 +249,8 @@ describe('Phase 5.3: Merge Execution Service', () => {
         hasConflicts: false,
         createdById: 'user-1',
         createdByType: 'user',
-        createdAt: '2026-01-20T10:00:00.000Z',
-        updatedAt: '2026-01-20T10:00:00.000Z',
+        createdAt: new Date('2026-01-20T10:00:00.000Z'),
+        updatedAt: new Date('2026-01-20T10:00:00.000Z'),
       });
 
       // Mock conflicts detected
@@ -266,7 +271,7 @@ describe('Phase 5.3: Merge Execution Service', () => {
         mergeBase: {
           checkpointId: 'checkpoint-base',
           branchId: 'target-branch',
-          createdAt: '2026-01-15T10:00:00.000Z',
+          createdAt: new Date('2026-01-15T10:00:00.000Z'),
         },
         sourceChanges: [],
         targetChanges: [],
@@ -283,8 +288,8 @@ describe('Phase 5.3: Merge Execution Service', () => {
         hasConflicts: true,
         createdById: 'user-1',
         createdByType: 'user',
-        createdAt: '2026-01-20T10:00:00.000Z',
-        updatedAt: '2026-01-20T11:00:00.000Z',
+        createdAt: new Date('2026-01-20T10:00:00.000Z'),
+        updatedAt: new Date('2026-01-20T11:00:00.000Z'),
       });
 
       await expect(
@@ -297,12 +302,6 @@ describe('Phase 5.3: Merge Execution Service', () => {
     });
 
     it('should copy source changes to target branch', async () => {
-      const { executeMerge } = await import('../../src/services/merge-execution-service');
-      const conflictDetection = await import('../../src/services/conflict-detection-service');
-      const mergeRequestService = await import('../../src/services/merge-request-service');
-      const docVersionService = await import('../../src/services/document-version-service');
-      const checkpointService = await import('../../src/services/checkpoint-service');
-
       vi.mocked(mergeRequestService.getMergeRequest).mockResolvedValueOnce({
         id: 'mr-1',
         siteId: 'site-1',
@@ -313,8 +312,8 @@ describe('Phase 5.3: Merge Execution Service', () => {
         hasConflicts: false,
         createdById: 'user-1',
         createdByType: 'user',
-        createdAt: '2026-01-20T10:00:00.000Z',
-        updatedAt: '2026-01-20T10:00:00.000Z',
+        createdAt: new Date('2026-01-20T10:00:00.000Z'),
+        updatedAt: new Date('2026-01-20T10:00:00.000Z'),
       });
 
       // Source has 2 new documents
@@ -324,7 +323,7 @@ describe('Phase 5.3: Merge Execution Service', () => {
         mergeBase: {
           checkpointId: 'checkpoint-base',
           branchId: 'target-branch',
-          createdAt: '2026-01-15T10:00:00.000Z',
+          createdAt: new Date('2026-01-15T10:00:00.000Z'),
         },
         sourceChanges: [
           {
@@ -420,9 +419,9 @@ describe('Phase 5.3: Merge Execution Service', () => {
         hasConflicts: false,
         createdById: 'user-1',
         createdByType: 'user',
-        createdAt: '2026-01-20T10:00:00.000Z',
-        updatedAt: '2026-01-20T11:00:00.000Z',
-        mergedAt: '2026-01-20T11:00:00.000Z',
+        createdAt: new Date('2026-01-20T10:00:00.000Z'),
+        updatedAt: new Date('2026-01-20T11:00:00.000Z'),
+        mergedAt: new Date('2026-01-20T11:00:00.000Z'),
         mergedById: 'user-1',
       });
 
@@ -440,11 +439,6 @@ describe('Phase 5.3: Merge Execution Service', () => {
     });
 
     it('should create post-merge checkpoint with correct type', async () => {
-      const { executeMerge } = await import('../../src/services/merge-execution-service');
-      const conflictDetection = await import('../../src/services/conflict-detection-service');
-      const mergeRequestService = await import('../../src/services/merge-request-service');
-      const checkpointService = await import('../../src/services/checkpoint-service');
-
       vi.mocked(mergeRequestService.getMergeRequest).mockResolvedValueOnce({
         id: 'mr-1',
         siteId: 'site-1',
@@ -455,8 +449,8 @@ describe('Phase 5.3: Merge Execution Service', () => {
         hasConflicts: false,
         createdById: 'user-1',
         createdByType: 'user',
-        createdAt: '2026-01-20T10:00:00.000Z',
-        updatedAt: '2026-01-20T10:00:00.000Z',
+        createdAt: new Date('2026-01-20T10:00:00.000Z'),
+        updatedAt: new Date('2026-01-20T10:00:00.000Z'),
       });
 
       vi.mocked(conflictDetection.detectConflicts).mockResolvedValueOnce({
@@ -465,7 +459,7 @@ describe('Phase 5.3: Merge Execution Service', () => {
         mergeBase: {
           checkpointId: 'checkpoint-base',
           branchId: 'target-branch',
-          createdAt: '2026-01-15T10:00:00.000Z',
+          createdAt: new Date('2026-01-15T10:00:00.000Z'),
         },
         sourceChanges: [],
         targetChanges: [],
@@ -494,8 +488,8 @@ describe('Phase 5.3: Merge Execution Service', () => {
         hasConflicts: false,
         createdById: 'user-1',
         createdByType: 'user',
-        createdAt: '2026-01-20T10:00:00.000Z',
-        updatedAt: '2026-01-20T11:00:00.000Z',
+        createdAt: new Date('2026-01-20T10:00:00.000Z'),
+        updatedAt: new Date('2026-01-20T11:00:00.000Z'),
       });
 
       await executeMerge({
@@ -513,10 +507,6 @@ describe('Phase 5.3: Merge Execution Service', () => {
     });
 
     it('should throw MergeRequestNotFoundError when merge request does not exist', async () => {
-      const { executeMerge } = await import('../../src/services/merge-execution-service');
-      const mergeRequestService = await import('../../src/services/merge-request-service');
-      const { MergeRequestNotFoundError } = await import('../../src/services/errors');
-
       vi.mocked(mergeRequestService.getMergeRequest).mockResolvedValueOnce(null);
 
       await expect(
@@ -529,12 +519,6 @@ describe('Phase 5.3: Merge Execution Service', () => {
     });
 
     it('should copy tombstone versions to target during merge', async () => {
-      const { executeMerge } = await import('../../src/services/merge-execution-service');
-      const conflictDetection = await import('../../src/services/conflict-detection-service');
-      const mergeRequestService = await import('../../src/services/merge-request-service');
-      const docVersionService = await import('../../src/services/document-version-service');
-      const checkpointService = await import('../../src/services/checkpoint-service');
-
       // Mock approved merge request
       vi.mocked(mergeRequestService.getMergeRequest).mockResolvedValueOnce({
         id: 'mr-1',
@@ -546,8 +530,8 @@ describe('Phase 5.3: Merge Execution Service', () => {
         hasConflicts: false,
         createdById: 'user-1',
         createdByType: 'user',
-        createdAt: '2026-01-20T10:00:00.000Z',
-        updatedAt: '2026-01-20T10:00:00.000Z',
+        createdAt: new Date('2026-01-20T10:00:00.000Z'),
+        updatedAt: new Date('2026-01-20T10:00:00.000Z'),
       });
 
       // Source has a tombstoned document (deleted on branch via tombstone)
@@ -557,7 +541,7 @@ describe('Phase 5.3: Merge Execution Service', () => {
         mergeBase: {
           checkpointId: 'checkpoint-base',
           branchId: 'target-branch',
-          createdAt: '2026-01-15T10:00:00.000Z',
+          createdAt: new Date('2026-01-15T10:00:00.000Z'),
         },
         sourceChanges: [
           {
@@ -624,8 +608,8 @@ describe('Phase 5.3: Merge Execution Service', () => {
         hasConflicts: false,
         createdById: 'user-1',
         createdByType: 'user',
-        createdAt: '2026-01-20T10:00:00.000Z',
-        updatedAt: '2026-01-20T11:00:00.000Z',
+        createdAt: new Date('2026-01-20T10:00:00.000Z'),
+        updatedAt: new Date('2026-01-20T11:00:00.000Z'),
       });
 
       const result = await executeMerge({
@@ -649,12 +633,6 @@ describe('Phase 5.3: Merge Execution Service', () => {
     });
 
     it('should only copy documents with local versions (COW: no inherited docs)', async () => {
-      const { executeMerge } = await import('../../src/services/merge-execution-service');
-      const conflictDetection = await import('../../src/services/conflict-detection-service');
-      const mergeRequestService = await import('../../src/services/merge-request-service');
-      const docVersionService = await import('../../src/services/document-version-service');
-      const checkpointService = await import('../../src/services/checkpoint-service');
-
       vi.mocked(mergeRequestService.getMergeRequest).mockResolvedValueOnce({
         id: 'mr-1',
         siteId: 'site-1',
@@ -665,8 +643,8 @@ describe('Phase 5.3: Merge Execution Service', () => {
         hasConflicts: false,
         createdById: 'user-1',
         createdByType: 'user',
-        createdAt: '2026-01-20T10:00:00.000Z',
-        updatedAt: '2026-01-20T10:00:00.000Z',
+        createdAt: new Date('2026-01-20T10:00:00.000Z'),
+        updatedAt: new Date('2026-01-20T10:00:00.000Z'),
       });
 
       // With COW, sourceChanges should ONLY contain locally modified documents,
@@ -678,7 +656,7 @@ describe('Phase 5.3: Merge Execution Service', () => {
         mergeBase: {
           checkpointId: 'checkpoint-base',
           branchId: 'target-branch',
-          createdAt: '2026-01-15T10:00:00.000Z',
+          createdAt: new Date('2026-01-15T10:00:00.000Z'),
         },
         sourceChanges: [
           // Only one locally edited document — inherited docs are NOT present
@@ -741,8 +719,8 @@ describe('Phase 5.3: Merge Execution Service', () => {
         hasConflicts: false,
         createdById: 'user-1',
         createdByType: 'user',
-        createdAt: '2026-01-20T10:00:00.000Z',
-        updatedAt: '2026-01-20T11:00:00.000Z',
+        createdAt: new Date('2026-01-20T10:00:00.000Z'),
+        updatedAt: new Date('2026-01-20T11:00:00.000Z'),
       });
 
       const result = await executeMerge({
@@ -765,14 +743,6 @@ describe('Phase 5.3: Merge Execution Service', () => {
 
   describe('executeMergeWithResolution', () => {
     it('should execute merge with take-source resolution strategy', async () => {
-      const { executeMergeWithResolution } = await import(
-        '../../src/services/merge-execution-service'
-      );
-      const conflictDetection = await import('../../src/services/conflict-detection-service');
-      const conflictResolution = await import('../../src/services/conflict-resolution-service');
-      const mergeRequestService = await import('../../src/services/merge-request-service');
-      const checkpointService = await import('../../src/services/checkpoint-service');
-
       vi.mocked(mergeRequestService.getMergeRequest).mockResolvedValueOnce({
         id: 'mr-1',
         siteId: 'site-1',
@@ -783,8 +753,8 @@ describe('Phase 5.3: Merge Execution Service', () => {
         hasConflicts: true,
         createdById: 'user-1',
         createdByType: 'user',
-        createdAt: '2026-01-20T10:00:00.000Z',
-        updatedAt: '2026-01-20T10:00:00.000Z',
+        createdAt: new Date('2026-01-20T10:00:00.000Z'),
+        updatedAt: new Date('2026-01-20T10:00:00.000Z'),
         conflictDetails: {
           documentConflicts: [
             {
@@ -814,7 +784,7 @@ describe('Phase 5.3: Merge Execution Service', () => {
         mergeBase: {
           checkpointId: 'checkpoint-base',
           branchId: 'target-branch',
-          createdAt: '2026-01-15T10:00:00.000Z',
+          createdAt: new Date('2026-01-15T10:00:00.000Z'),
         },
         sourceChanges: [
           {
@@ -877,8 +847,8 @@ describe('Phase 5.3: Merge Execution Service', () => {
         hasConflicts: false,
         createdById: 'user-1',
         createdByType: 'user',
-        createdAt: '2026-01-20T10:00:00.000Z',
-        updatedAt: '2026-01-20T11:00:00.000Z',
+        createdAt: new Date('2026-01-20T10:00:00.000Z'),
+        updatedAt: new Date('2026-01-20T11:00:00.000Z'),
       });
 
       const result = await executeMergeWithResolution({
@@ -896,24 +866,6 @@ describe('Phase 5.3: Merge Execution Service', () => {
 
   describe('previewMerge', () => {
     it('should return merge preview with changes and conflicts', async () => {
-      const { previewMerge } = await import('../../src/services/merge-execution-service');
-      const conflictDetection = await import('../../src/services/conflict-detection-service');
-      const mergeRequestService = await import('../../src/services/merge-request-service');
-
-      vi.mocked(mergeRequestService.getMergeRequest).mockResolvedValueOnce({
-        id: 'mr-1',
-        siteId: 'site-1',
-        sourceBranchId: 'source-branch',
-        targetBranchId: 'target-branch',
-        title: 'Feature merge',
-        status: 'open',
-        hasConflicts: false,
-        createdById: 'user-1',
-        createdByType: 'user',
-        createdAt: '2026-01-20T10:00:00.000Z',
-        updatedAt: '2026-01-20T10:00:00.000Z',
-      });
-
       vi.mocked(conflictDetection.detectConflicts).mockResolvedValueOnce({
         hasConflicts: true,
         conflicts: {
@@ -931,7 +883,7 @@ describe('Phase 5.3: Merge Execution Service', () => {
         mergeBase: {
           checkpointId: 'checkpoint-base',
           branchId: 'target-branch',
-          createdAt: '2026-01-15T10:00:00.000Z',
+          createdAt: new Date('2026-01-15T10:00:00.000Z'),
         },
         sourceChanges: [
           {
@@ -963,7 +915,7 @@ describe('Phase 5.3: Merge Execution Service', () => {
         ],
       });
 
-      const preview = await previewMerge('mr-1');
+      const preview = await previewMerge('source-branch', 'target-branch');
 
       expect(preview.canMerge).toBe(false);
       expect(preview.hasConflicts).toBe(true);
@@ -974,47 +926,25 @@ describe('Phase 5.3: Merge Execution Service', () => {
     });
 
     it('should indicate merge is possible when no conflicts', async () => {
-      const { previewMerge } = await import('../../src/services/merge-execution-service');
-      const conflictDetection = await import('../../src/services/conflict-detection-service');
-      const mergeRequestService = await import('../../src/services/merge-request-service');
-
-      vi.mocked(mergeRequestService.getMergeRequest).mockResolvedValueOnce({
-        id: 'mr-1',
-        siteId: 'site-1',
-        sourceBranchId: 'source-branch',
-        targetBranchId: 'target-branch',
-        title: 'Feature merge',
-        status: 'approved',
-        hasConflicts: false,
-        createdById: 'user-1',
-        createdByType: 'user',
-        createdAt: '2026-01-20T10:00:00.000Z',
-        updatedAt: '2026-01-20T10:00:00.000Z',
-      });
-
       vi.mocked(conflictDetection.detectConflicts).mockResolvedValueOnce({
         hasConflicts: false,
         conflicts: { documentConflicts: [], structureConflicts: [] },
         mergeBase: {
           checkpointId: 'checkpoint-base',
           branchId: 'target-branch',
-          createdAt: '2026-01-15T10:00:00.000Z',
+          createdAt: new Date('2026-01-15T10:00:00.000Z'),
         },
         sourceChanges: [],
         targetChanges: [],
       });
 
-      const preview = await previewMerge('mr-1');
+      const preview = await previewMerge('source-branch', 'target-branch');
 
       expect(preview.canMerge).toBe(true);
       expect(preview.hasConflicts).toBe(false);
     });
 
     it('should include document diffs when includeContent option is true', async () => {
-      const { previewMerge } = await import('../../src/services/merge-execution-service');
-      const conflictDetection = await import('../../src/services/conflict-detection-service');
-      const documentDiffService = await import('../../src/services/document-diff-service');
-
       vi.mocked(conflictDetection.detectConflicts).mockResolvedValueOnce({
         hasConflicts: true,
         conflicts: {
@@ -1032,7 +962,7 @@ describe('Phase 5.3: Merge Execution Service', () => {
         mergeBase: {
           checkpointId: 'checkpoint-base',
           branchId: 'target-branch',
-          createdAt: '2026-01-15T10:00:00.000Z',
+          createdAt: new Date('2026-01-15T10:00:00.000Z'),
         },
         sourceChanges: [
           {
@@ -1088,10 +1018,6 @@ describe('Phase 5.3: Merge Execution Service', () => {
     });
 
     it('should not include document diffs when includeContent option is false', async () => {
-      const { previewMerge } = await import('../../src/services/merge-execution-service');
-      const conflictDetection = await import('../../src/services/conflict-detection-service');
-      const documentDiffService = await import('../../src/services/document-diff-service');
-
       vi.mocked(conflictDetection.detectConflicts).mockResolvedValueOnce({
         hasConflicts: true,
         conflicts: {
@@ -1109,7 +1035,7 @@ describe('Phase 5.3: Merge Execution Service', () => {
         mergeBase: {
           checkpointId: 'checkpoint-base',
           branchId: 'target-branch',
-          createdAt: '2026-01-15T10:00:00.000Z',
+          createdAt: new Date('2026-01-15T10:00:00.000Z'),
         },
         sourceChanges: [],
         targetChanges: [],
@@ -1124,17 +1050,13 @@ describe('Phase 5.3: Merge Execution Service', () => {
     });
 
     it('should not include document diffs when includeContent option is omitted', async () => {
-      const { previewMerge } = await import('../../src/services/merge-execution-service');
-      const conflictDetection = await import('../../src/services/conflict-detection-service');
-      const documentDiffService = await import('../../src/services/document-diff-service');
-
       vi.mocked(conflictDetection.detectConflicts).mockResolvedValueOnce({
         hasConflicts: false,
         conflicts: { documentConflicts: [], structureConflicts: [] },
         mergeBase: {
           checkpointId: 'checkpoint-base',
           branchId: 'target-branch',
-          createdAt: '2026-01-15T10:00:00.000Z',
+          createdAt: new Date('2026-01-15T10:00:00.000Z'),
         },
         sourceChanges: [],
         targetChanges: [],
@@ -1147,10 +1069,6 @@ describe('Phase 5.3: Merge Execution Service', () => {
     });
 
     it('should exclude documents matching excludePathPrefixes', async () => {
-      const { previewMerge } = await import('../../src/services/merge-execution-service');
-      const conflictDetection = await import('../../src/services/conflict-detection-service');
-      const documentDiffService = await import('../../src/services/document-diff-service');
-
       vi.mocked(conflictDetection.detectConflicts).mockResolvedValueOnce({
         hasConflicts: true,
         conflicts: {
@@ -1175,7 +1093,7 @@ describe('Phase 5.3: Merge Execution Service', () => {
         mergeBase: {
           checkpointId: 'checkpoint-base',
           branchId: 'target-branch',
-          createdAt: '2026-01-15T10:00:00.000Z',
+          createdAt: new Date('2026-01-15T10:00:00.000Z'),
         },
         sourceChanges: [
           {
@@ -1242,8 +1160,6 @@ describe('Phase 5.3: Merge Execution Service', () => {
 
   describe('Error Classes', () => {
     it('should export MergeNotAllowedError with correct properties', async () => {
-      const { MergeNotAllowedError } = await import('../../src/services/errors');
-
       const error = new MergeNotAllowedError('mr-1', 'open', 'Merge request must be approved');
 
       expect(error.name).toBe('MergeNotAllowedError');
@@ -1253,8 +1169,6 @@ describe('Phase 5.3: Merge Execution Service', () => {
     });
 
     it('should export MergeConflictsError with correct properties', async () => {
-      const { MergeConflictsError } = await import('../../src/services/errors');
-
       const error = new MergeConflictsError('mr-1', 2);
 
       expect(error.name).toBe('MergeConflictsError');
@@ -1263,8 +1177,6 @@ describe('Phase 5.3: Merge Execution Service', () => {
     });
 
     it('should export MergeExecutionError with correct properties', async () => {
-      const { MergeExecutionError } = await import('../../src/services/errors');
-
       const error = new MergeExecutionError('mr-1', 'Failed to copy documents');
 
       expect(error.name).toBe('MergeExecutionError');
@@ -1278,18 +1190,10 @@ describe('Phase 5.3: Merge Execution Service', () => {
   // =========================================================================
 
   describe('post-merge template migration', () => {
-
-    async function setupSuccessfulMergeWithTemplateChange(
+    function setupSuccessfulMergeWithTemplateChange(
       templateDocId = 'tmpl-doc-1',
       staleCount = 3,
-    ) {
-      const { executeMerge } = await import('../../src/services/merge-execution-service');
-      const conflictDetection = await import('../../src/services/conflict-detection-service');
-      const mergeRequestService = await import('../../src/services/merge-request-service');
-      const checkpointService = await import('../../src/services/checkpoint-service');
-      const docVersionService = await import('../../src/services/document-version-service');
-      const db = await import('../../src/db');
-      const migrationService = await import('../../src/services/migration-service');
+    ): void {
 
       // Mock merge request
       vi.mocked(mergeRequestService.getMergeRequest).mockResolvedValueOnce({
@@ -1302,8 +1206,8 @@ describe('Phase 5.3: Merge Execution Service', () => {
         hasConflicts: false,
         createdById: 'user-1',
         createdByType: 'user',
-        createdAt: '2026-06-18T10:00:00.000Z',
-        updatedAt: '2026-06-18T10:00:00.000Z',
+        createdAt: new Date('2026-06-18T10:00:00.000Z'),
+        updatedAt: new Date('2026-06-18T10:00:00.000Z'),
       });
 
       // Conflict detection returns a template document in sourceChanges
@@ -1313,7 +1217,7 @@ describe('Phase 5.3: Merge Execution Service', () => {
         mergeBase: {
           checkpointId: 'cp-base',
           branchId: 'main-branch',
-          createdAt: '2026-06-17T10:00:00.000Z',
+          createdAt: new Date('2026-06-17T10:00:00.000Z'),
         },
         sourceChanges: [
           {
@@ -1385,9 +1289,9 @@ describe('Phase 5.3: Merge Execution Service', () => {
         hasConflicts: false,
         createdById: 'user-1',
         createdByType: 'user',
-        createdAt: '2026-06-18T10:00:00.000Z',
-        updatedAt: '2026-06-18T11:00:00.000Z',
-        mergedAt: '2026-06-18T11:00:00.000Z',
+        createdAt: new Date('2026-06-18T10:00:00.000Z'),
+        updatedAt: new Date('2026-06-18T11:00:00.000Z'),
+        mergedAt: new Date('2026-06-18T11:00:00.000Z'),
         mergedById: 'user-1',
         mergedByType: 'user',
       });
@@ -1414,16 +1318,8 @@ describe('Phase 5.3: Merge Execution Service', () => {
         source: 'merge',
       });
 
-      // promotePathOverrides: SELECT branch_document_paths — no overrides for this test
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [], rowCount: 0 });
-      // carryUpstreamResolutions: SELECT the resolutions the source branch holds —
-      // the merged document is a template, so it holds none and nothing is written
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [], rowCount: 0 });
       // Stale document count query
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [{ count: String(staleCount) }],
-        rowCount: 1,
-      });
+      on(documents).select.returnsRaw([{ count: staleCount }]);
 
       // triggerMigration mock
       vi.mocked(migrationService.triggerMigration).mockResolvedValueOnce({
@@ -1449,17 +1345,10 @@ describe('Phase 5.3: Merge Execution Service', () => {
         conflictedDocuments: 0,
         conflicts: [],
       });
-
-      return {
-        executeMerge,
-        migrationService,
-        docVersionService,
-        db,
-      };
     }
 
     it('should trigger migration when template documents are merged', async () => {
-      const { executeMerge, migrationService } = await setupSuccessfulMergeWithTemplateChange();
+      setupSuccessfulMergeWithTemplateChange();
 
       const result = await executeMerge({
         mergeRequestId: 'mr-tmpl',
@@ -1476,8 +1365,7 @@ describe('Phase 5.3: Merge Execution Service', () => {
     });
 
     it('should skip migration when no stale documents exist', async () => {
-      const { executeMerge, migrationService } =
-        await setupSuccessfulMergeWithTemplateChange('tmpl-doc-2', 0);
+      setupSuccessfulMergeWithTemplateChange('tmpl-doc-2', 0);
 
       const result = await executeMerge({
         mergeRequestId: 'mr-tmpl',
@@ -1491,8 +1379,7 @@ describe('Phase 5.3: Merge Execution Service', () => {
     });
 
     it('should not fail the merge when migration throws', async () => {
-      const { executeMerge } = await setupSuccessfulMergeWithTemplateChange();
-      const migrationService = await import('../../src/services/migration-service');
+      setupSuccessfulMergeWithTemplateChange();
 
       // Override triggerMigration to throw
       vi.mocked(migrationService.triggerMigration).mockReset();
@@ -1511,13 +1398,6 @@ describe('Phase 5.3: Merge Execution Service', () => {
     });
 
     it('should skip migration for non-template source changes', async () => {
-      const { executeMerge } = await import('../../src/services/merge-execution-service');
-      const conflictDetection = await import('../../src/services/conflict-detection-service');
-      const mergeRequestService = await import('../../src/services/merge-request-service');
-      const checkpointService = await import('../../src/services/checkpoint-service');
-      const docVersionService = await import('../../src/services/document-version-service');
-      const migrationService = await import('../../src/services/migration-service');
-
       vi.mocked(mergeRequestService.getMergeRequest).mockResolvedValueOnce({
         id: 'mr-page',
         siteId: 'site-1',
@@ -1528,8 +1408,8 @@ describe('Phase 5.3: Merge Execution Service', () => {
         hasConflicts: false,
         createdById: 'user-1',
         createdByType: 'user',
-        createdAt: '2026-06-18T10:00:00.000Z',
-        updatedAt: '2026-06-18T10:00:00.000Z',
+        createdAt: new Date('2026-06-18T10:00:00.000Z'),
+        updatedAt: new Date('2026-06-18T10:00:00.000Z'),
       });
 
       // Only regular page documents, no templates
@@ -1539,7 +1419,7 @@ describe('Phase 5.3: Merge Execution Service', () => {
         mergeBase: {
           checkpointId: 'cp-base',
           branchId: 'main-branch',
-          createdAt: '2026-06-17T10:00:00.000Z',
+          createdAt: new Date('2026-06-17T10:00:00.000Z'),
         },
         sourceChanges: [
           {
@@ -1601,9 +1481,9 @@ describe('Phase 5.3: Merge Execution Service', () => {
         hasConflicts: false,
         createdById: 'user-1',
         createdByType: 'user',
-        createdAt: '2026-06-18T10:00:00.000Z',
-        updatedAt: '2026-06-18T11:00:00.000Z',
-        mergedAt: '2026-06-18T11:00:00.000Z',
+        createdAt: new Date('2026-06-18T10:00:00.000Z'),
+        updatedAt: new Date('2026-06-18T11:00:00.000Z'),
+        mergedAt: new Date('2026-06-18T11:00:00.000Z'),
         mergedById: 'user-1',
         mergedByType: 'user',
       });

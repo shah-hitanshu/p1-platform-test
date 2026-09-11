@@ -759,7 +759,9 @@ async function isFinalizable(job: MergeJob): Promise<boolean> {
  * Path promotion + post_merge checkpoint over ALL done rows across every
  * chunk (design §6 step 3), stamped for idempotency.
  */
-export async function finalizeMergeCheckpoint(jobId: string): Promise<FinalizeCheckpointResult> {
+export async function finalizeMergeCheckpoint(
+  jobId: string,
+): Promise<FinalizeCheckpointResult> {
   const job = await requireMergeJob(jobId);
 
   // Crash-window guard: checkpoint already created by a previous attempt.

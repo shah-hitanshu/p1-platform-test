@@ -17,19 +17,36 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-
-vi.mock('../../src/db', () => ({
-  query: vi.fn(),
-}));
+import { stubDatabase, type DatabaseStub } from '../__stubs__/database';
+import { documentVersions } from '../../src/db/schema';
+import { publishMergedVersions } from '../../src/services/merge-publish';
+import { createCheckpoint } from '../../src/services/checkpoint-service';
 
 vi.mock('../../src/services/checkpoint-service', () => ({
   createCheckpoint: vi.fn(),
 }));
 
+function checkpointResult(id: string, documentCount: number) {
+  return {
+    checkpoint: {
+      id,
+      branchId: 'main-branch',
+      name: 'Auto-publish',
+      checkpointType: 'publish' as const,
+      createdAt: '2026-04-25T10:00:00.000Z',
+      createdById: 'user-1',
+      createdByType: 'user' as const,
+    },
+    documentCount,
+  };
+}
+
 describe('publishMergedVersions', () => {
+  let database: DatabaseStub;
+
   beforeEach(() => {
     vi.resetAllMocks();
-    vi.resetModules();
+    database = stubDatabase();
   });
 
   it('creates the publish checkpoint on main BEFORE writing any provenance UPDATE', async () => {
@@ -37,31 +54,12 @@ describe('publishMergedVersions', () => {
     // fails we must leave NO provenance behind (so isPublished stays false
     // and the document stays in its pre-merge state). The helper achieves
     // this by calling createCheckpoint first, then doing UPDATEs.
-    const { publishMergedVersions } = await import(
-      '../../src/services/merge-publish'
-    );
-    const db = await import('../../src/db');
-    const checkpointService = await import('../../src/services/checkpoint-service');
+    const { statements, calls } = database;
 
-    const callOrder: string[] = [];
-    vi.mocked(checkpointService.createCheckpoint).mockImplementationOnce(() => {
-      callOrder.push('createCheckpoint');
-      return Promise.resolve({
-        checkpoint: {
-          id: 'checkpoint-publish-merge-1',
-          branchId: 'main-branch',
-          name: 'Auto-publish: Feature merge',
-          checkpointType: 'publish',
-          createdAt: '2026-04-25T10:00:00.000Z',
-          createdById: 'user-1',
-          createdByType: 'user',
-        },
-        documentCount: 1,
-      });
-    });
-    vi.mocked(db.query).mockImplementation(() => {
-      callOrder.push('query');
-      return Promise.resolve({ rows: [], rowCount: 1 } as never);
+    let statementsBeforeCheckpoint = -1;
+    vi.mocked(createCheckpoint).mockImplementationOnce(() => {
+      statementsBeforeCheckpoint = statements.length;
+      return Promise.resolve(checkpointResult('checkpoint-publish-merge-1', 1));
     });
 
     const result = await publishMergedVersions({
@@ -81,7 +79,7 @@ describe('publishMergedVersions', () => {
     });
 
     // Publish checkpoint created on main with documentVersionIds allowlist
-    expect(checkpointService.createCheckpoint).toHaveBeenCalledWith(
+    expect(createCheckpoint).toHaveBeenCalledWith(
       expect.objectContaining({
         branchId: 'main-branch',
         checkpointType: 'publish',
@@ -91,34 +89,18 @@ describe('publishMergedVersions', () => {
       }),
     );
 
-    // Ordering: createCheckpoint runs first; provenance queries follow.
-    expect(callOrder[0]).toBe('createCheckpoint');
-    expect(callOrder.slice(1).every((c) => c === 'query')).toBe(true);
+    // Nothing has been written when the checkpoint is created; the two
+    // provenance UPDATEs follow it.
+    expect(statementsBeforeCheckpoint).toBe(0);
+    expect(calls(documentVersions).update).toHaveLength(2);
 
     expect(result.checkpointId).toBe('checkpoint-publish-merge-1');
     expect(result.publishedCount).toBe(1);
   });
 
   it('sets source_branch_id and source_version_id on the main-side version when sourceVersionId is set', async () => {
-    const { publishMergedVersions } = await import(
-      '../../src/services/merge-publish'
-    );
-    const db = await import('../../src/db');
-    const checkpointService = await import('../../src/services/checkpoint-service');
-
-    vi.mocked(db.query).mockResolvedValue({ rows: [], rowCount: 1 });
-    vi.mocked(checkpointService.createCheckpoint).mockResolvedValueOnce({
-      checkpoint: {
-        id: 'cp-1',
-        branchId: 'main-branch',
-        name: 'Auto-publish',
-        checkpointType: 'publish',
-        createdAt: '2026-04-25T10:00:00.000Z',
-        createdById: 'user-1',
-        createdByType: 'user',
-      },
-      documentCount: 1,
-    });
+    const { calls } = database;
+    vi.mocked(createCheckpoint).mockResolvedValueOnce(checkpointResult('cp-1', 1));
 
     await publishMergedVersions({
       siteId: 'site-1',
@@ -136,40 +118,18 @@ describe('publishMergedVersions', () => {
       mergeTitle: 'Feature',
     });
 
-    // Find the call that updated the main-side version's provenance
-    const provenanceCall = vi.mocked(db.query).mock.calls.find(
-      ([sql]) =>
-        typeof sql === 'string' &&
-        sql.includes('source_branch_id') &&
-        sql.includes('source_version_id') &&
-        sql.toUpperCase().includes('UPDATE'),
-    );
-    expect(provenanceCall).toBeDefined();
-    expect(provenanceCall?.[1]).toEqual(
-      expect.arrayContaining(['source-branch', 'source-v-1', 'main-v-1']),
-    );
+    // The provenance UPDATE names the source branch and version it came from,
+    // and the main-side version it describes.
+    expect(calls(documentVersions).update.map((call) => call.params)).toContainEqual([
+      'source-branch',
+      'source-v-1',
+      'main-v-1',
+    ]);
   });
 
   it('sets published_to_version_id back-link on the source-branch version when sourceVersionId is set', async () => {
-    const { publishMergedVersions } = await import(
-      '../../src/services/merge-publish'
-    );
-    const db = await import('../../src/db');
-    const checkpointService = await import('../../src/services/checkpoint-service');
-
-    vi.mocked(db.query).mockResolvedValue({ rows: [], rowCount: 1 });
-    vi.mocked(checkpointService.createCheckpoint).mockResolvedValueOnce({
-      checkpoint: {
-        id: 'cp-1',
-        branchId: 'main-branch',
-        name: 'Auto-publish',
-        checkpointType: 'publish',
-        createdAt: '2026-04-25T10:00:00.000Z',
-        createdById: 'user-1',
-        createdByType: 'user',
-      },
-      documentCount: 1,
-    });
+    const { calls } = database;
+    vi.mocked(createCheckpoint).mockResolvedValueOnce(checkpointResult('cp-1', 1));
 
     await publishMergedVersions({
       siteId: 'site-1',
@@ -187,39 +147,16 @@ describe('publishMergedVersions', () => {
       mergeTitle: 'Feature',
     });
 
-    // Find the call that updated the back-link on the source-branch version
-    const backlinkCall = vi.mocked(db.query).mock.calls.find(
-      ([sql]) =>
-        typeof sql === 'string' &&
-        sql.includes('published_to_version_id') &&
-        sql.toUpperCase().includes('UPDATE'),
-    );
-    expect(backlinkCall).toBeDefined();
-    expect(backlinkCall?.[1]).toEqual(
-      expect.arrayContaining(['main-v-1', 'source-v-1']),
-    );
+    // The back-link UPDATE points the source-branch version at the main-side one.
+    expect(calls(documentVersions).update.map((call) => call.params)).toContainEqual([
+      'main-v-1',
+      'source-v-1',
+    ]);
   });
 
   it('skips provenance updates for entries with sourceVersionId === null but still includes them in publish checkpoint', async () => {
-    const { publishMergedVersions } = await import(
-      '../../src/services/merge-publish'
-    );
-    const db = await import('../../src/db');
-    const checkpointService = await import('../../src/services/checkpoint-service');
-
-    vi.mocked(db.query).mockResolvedValue({ rows: [], rowCount: 1 });
-    vi.mocked(checkpointService.createCheckpoint).mockResolvedValueOnce({
-      checkpoint: {
-        id: 'cp-1',
-        branchId: 'main-branch',
-        name: 'Auto-publish',
-        checkpointType: 'publish',
-        createdAt: '2026-04-25T10:00:00.000Z',
-        createdById: 'user-1',
-        createdByType: 'user',
-      },
-      documentCount: 2,
-    });
+    const { calls } = database;
+    vi.mocked(createCheckpoint).mockResolvedValueOnce(checkpointResult('cp-1', 2));
 
     await publishMergedVersions({
       siteId: 'site-1',
@@ -244,32 +181,16 @@ describe('publishMergedVersions', () => {
       mergeTitle: 'Mixed',
     });
 
-    // Provenance UPDATE for main-v-2 must NOT exist (no source for it).
-    const noSourceProvenance = vi
-      .mocked(db.query)
-      .mock.calls.some(
-        ([sql, params]) =>
-          typeof sql === 'string' &&
-          sql.includes('source_branch_id') &&
-          Array.isArray(params) &&
-          params.includes('main-v-2'),
-      );
-    expect(noSourceProvenance).toBe(false);
+    // main-v-2 has no identifiable source, so no UPDATE may name it — neither
+    // provenance on it nor a back-link to it.
+    const updated = calls(documentVersions).update;
+    expect(updated.some(({ params }) => params.includes('main-v-2'))).toBe(false);
 
-    // Back-link UPDATE for any non-existent source must NOT exist.
-    const noSourceBacklink = vi
-      .mocked(db.query)
-      .mock.calls.some(
-        ([sql, params]) =>
-          typeof sql === 'string' &&
-          sql.includes('published_to_version_id') &&
-          Array.isArray(params) &&
-          params.includes('main-v-2'),
-      );
-    expect(noSourceBacklink).toBe(false);
+    // Only the entry with a source is touched: provenance plus back-link.
+    expect(updated).toHaveLength(2);
 
     // But both documents are still in the publish checkpoint.
-    expect(checkpointService.createCheckpoint).toHaveBeenCalledWith(
+    expect(createCheckpoint).toHaveBeenCalledWith(
       expect.objectContaining({
         documentVersionIds: [
           { documentId: 'doc-1', documentVersionId: 'main-v-1' },
@@ -283,13 +204,8 @@ describe('publishMergedVersions', () => {
     // If createCheckpoint fails, the helper must throw without leaving any
     // provenance fields populated — otherwise we'd have orphan provenance
     // pointing at versions that aren't actually published.
-    const { publishMergedVersions } = await import(
-      '../../src/services/merge-publish'
-    );
-    const db = await import('../../src/db');
-    const checkpointService = await import('../../src/services/checkpoint-service');
-
-    vi.mocked(checkpointService.createCheckpoint).mockRejectedValueOnce(
+    const { statements } = database;
+    vi.mocked(createCheckpoint).mockRejectedValueOnce(
       new Error('Checkpoint creation failed'),
     );
 
@@ -312,15 +228,11 @@ describe('publishMergedVersions', () => {
     ).rejects.toThrow('Checkpoint creation failed');
 
     // No provenance UPDATEs should have run — checkpoint failed first.
-    expect(db.query).not.toHaveBeenCalled();
+    expect(statements).toHaveLength(0);
   });
 
   it('returns publishedCount = 0 and skips DB work entirely when no merged versions are passed', async () => {
-    const { publishMergedVersions } = await import(
-      '../../src/services/merge-publish'
-    );
-    const db = await import('../../src/db');
-    const checkpointService = await import('../../src/services/checkpoint-service');
+    const { statements } = database;
 
     const result = await publishMergedVersions({
       siteId: 'site-1',
@@ -334,7 +246,7 @@ describe('publishMergedVersions', () => {
 
     expect(result.publishedCount).toBe(0);
     expect(result.checkpointId).toBeUndefined();
-    expect(checkpointService.createCheckpoint).not.toHaveBeenCalled();
-    expect(db.query).not.toHaveBeenCalled();
+    expect(createCheckpoint).not.toHaveBeenCalled();
+    expect(statements).toHaveLength(0);
   });
 });

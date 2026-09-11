@@ -8,11 +8,21 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-
-// Mock database module
-vi.mock('../../src/db', () => ({
-  query: vi.fn(),
-}));
+import { stubDatabase, type DatabaseStub } from '../__stubs__/database';
+import {
+  resolveConflict,
+  resolveAllConflicts,
+  resolveDeletedConflict,
+} from '../../src/services/conflict-resolution-service';
+import {
+  createDocumentVersion,
+  getDocumentVersion,
+} from '../../src/services/document-version-service';
+import {
+  ManualResolutionError,
+  UnsupportedStrategyError,
+  VersionNotFoundError,
+} from '../../src/services/errors';
 
 // Mock document version service
 vi.mock('../../src/services/document-version-service', () => ({
@@ -27,11 +37,8 @@ describe('Phase 5.2b: Conflict Resolution Service', () => {
 
   describe('resolveConflict', () => {
     it('should apply take-source strategy by copying source version to target branch', async () => {
-      const { resolveConflict } = await import('../../src/services/conflict-resolution-service');
-      const docVersionService = await import('../../src/services/document-version-service');
-
       // Mock source version
-      vi.mocked(docVersionService.getDocumentVersion).mockResolvedValueOnce({
+      vi.mocked(getDocumentVersion).mockResolvedValueOnce({
         id: 'source-version-id',
         documentId: 'doc-1',
         branchId: 'source-branch',
@@ -44,7 +51,7 @@ describe('Phase 5.2b: Conflict Resolution Service', () => {
       });
 
       // Mock version creation
-      vi.mocked(docVersionService.createDocumentVersion).mockResolvedValueOnce({
+      vi.mocked(createDocumentVersion).mockResolvedValueOnce({
         id: 'new-version-id',
         documentId: 'doc-1',
         branchId: 'target-branch',
@@ -72,10 +79,10 @@ describe('Phase 5.2b: Conflict Resolution Service', () => {
       expect(result.strategy).toBe('take-source');
 
       // Verify source version was fetched
-      expect(docVersionService.getDocumentVersion).toHaveBeenCalledWith('source-version-id');
+      expect(getDocumentVersion).toHaveBeenCalledWith('source-version-id');
 
       // Verify new version was created on target branch with source snapshot
-      expect(docVersionService.createDocumentVersion).toHaveBeenCalledWith(
+      expect(createDocumentVersion).toHaveBeenCalledWith(
         expect.objectContaining({
           documentId: 'doc-1',
           branchId: 'target-branch',
@@ -86,11 +93,8 @@ describe('Phase 5.2b: Conflict Resolution Service', () => {
     });
 
     it('should apply take-target strategy by keeping target version unchanged', async () => {
-      const { resolveConflict } = await import('../../src/services/conflict-resolution-service');
-      const docVersionService = await import('../../src/services/document-version-service');
-
       // Mock target version
-      vi.mocked(docVersionService.getDocumentVersion).mockResolvedValueOnce({
+      vi.mocked(getDocumentVersion).mockResolvedValueOnce({
         id: 'target-version-id',
         documentId: 'doc-1',
         branchId: 'target-branch',
@@ -118,15 +122,11 @@ describe('Phase 5.2b: Conflict Resolution Service', () => {
       expect(result.strategy).toBe('take-target');
 
       // For take-target, no new version is created - we keep existing
-      expect(docVersionService.createDocumentVersion).not.toHaveBeenCalled();
+      expect(createDocumentVersion).not.toHaveBeenCalled();
     });
 
     it('should throw VersionNotFoundError when source version does not exist', async () => {
-      const { resolveConflict } = await import('../../src/services/conflict-resolution-service');
-      const { VersionNotFoundError } = await import('../../src/services/errors');
-      const docVersionService = await import('../../src/services/document-version-service');
-
-      vi.mocked(docVersionService.getDocumentVersion).mockResolvedValueOnce(null);
+      vi.mocked(getDocumentVersion).mockResolvedValueOnce(null);
 
       await expect(
         resolveConflict({
@@ -143,11 +143,7 @@ describe('Phase 5.2b: Conflict Resolution Service', () => {
     });
 
     it('should throw VersionNotFoundError when target version does not exist for take-target', async () => {
-      const { resolveConflict } = await import('../../src/services/conflict-resolution-service');
-      const { VersionNotFoundError } = await import('../../src/services/errors');
-      const docVersionService = await import('../../src/services/document-version-service');
-
-      vi.mocked(docVersionService.getDocumentVersion).mockResolvedValueOnce(null);
+      vi.mocked(getDocumentVersion).mockResolvedValueOnce(null);
 
       await expect(
         resolveConflict({
@@ -164,9 +160,6 @@ describe('Phase 5.2b: Conflict Resolution Service', () => {
     });
 
     it('should throw ManualResolutionError for manual strategy without resolvedSnapshot', async () => {
-      const { resolveConflict } = await import('../../src/services/conflict-resolution-service');
-      const { ManualResolutionError } = await import('../../src/services/errors');
-
       await expect(
         resolveConflict({
           documentId: 'doc-1',
@@ -182,10 +175,7 @@ describe('Phase 5.2b: Conflict Resolution Service', () => {
     });
 
     it('should include resolution metadata in result', async () => {
-      const { resolveConflict } = await import('../../src/services/conflict-resolution-service');
-      const docVersionService = await import('../../src/services/document-version-service');
-
-      vi.mocked(docVersionService.getDocumentVersion).mockResolvedValueOnce({
+      vi.mocked(getDocumentVersion).mockResolvedValueOnce({
         id: 'source-version-id',
         documentId: 'doc-1',
         branchId: 'source-branch',
@@ -197,7 +187,7 @@ describe('Phase 5.2b: Conflict Resolution Service', () => {
         source: 'edit',
       });
 
-      vi.mocked(docVersionService.createDocumentVersion).mockResolvedValueOnce({
+      vi.mocked(createDocumentVersion).mockResolvedValueOnce({
         id: 'new-version-id',
         documentId: 'doc-1',
         branchId: 'target-branch',
@@ -228,11 +218,8 @@ describe('Phase 5.2b: Conflict Resolution Service', () => {
 
   describe('resolveAllConflicts', () => {
     it('should resolve multiple conflicts with same strategy', async () => {
-      const { resolveAllConflicts } = await import('../../src/services/conflict-resolution-service');
-      const docVersionService = await import('../../src/services/document-version-service');
-
       // Mock source versions for two documents
-      vi.mocked(docVersionService.getDocumentVersion)
+      vi.mocked(getDocumentVersion)
         .mockResolvedValueOnce({
           id: 'source-v1',
           documentId: 'doc-1',
@@ -257,7 +244,7 @@ describe('Phase 5.2b: Conflict Resolution Service', () => {
         });
 
       // Mock version creations
-      vi.mocked(docVersionService.createDocumentVersion)
+      vi.mocked(createDocumentVersion)
         .mockResolvedValueOnce({
           id: 'new-v1',
           documentId: 'doc-1',
@@ -315,11 +302,8 @@ describe('Phase 5.2b: Conflict Resolution Service', () => {
     });
 
     it('should continue resolving after individual failures', async () => {
-      const { resolveAllConflicts } = await import('../../src/services/conflict-resolution-service');
-      const docVersionService = await import('../../src/services/document-version-service');
-
       // First document fails (version not found), second succeeds
-      vi.mocked(docVersionService.getDocumentVersion)
+      vi.mocked(getDocumentVersion)
         .mockResolvedValueOnce(null) // First fails
         .mockResolvedValueOnce({
           id: 'source-v2',
@@ -333,7 +317,7 @@ describe('Phase 5.2b: Conflict Resolution Service', () => {
           source: 'edit',
         });
 
-      vi.mocked(docVersionService.createDocumentVersion).mockResolvedValueOnce({
+      vi.mocked(createDocumentVersion).mockResolvedValueOnce({
         id: 'new-v2',
         documentId: 'doc-2',
         branchId: 'target-branch',
@@ -379,8 +363,6 @@ describe('Phase 5.2b: Conflict Resolution Service', () => {
     });
 
     it('should return empty results for empty conflicts array', async () => {
-      const { resolveAllConflicts } = await import('../../src/services/conflict-resolution-service');
-
       const result = await resolveAllConflicts({
         conflicts: [],
         sourceBranchId: 'source-branch',
@@ -397,13 +379,13 @@ describe('Phase 5.2b: Conflict Resolution Service', () => {
   });
 
   describe('resolveDeletedConflict', () => {
+    let database: DatabaseStub;
+
+    beforeEach(() => {
+      database = stubDatabase();
+    });
+
     it('should handle deleted-in-source by deleting document on target when take-source', async () => {
-      const { resolveDeletedConflict } = await import('../../src/services/conflict-resolution-service');
-      const db = await import('../../src/db');
-
-      // Mock soft delete (mark latest version as deleted)
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ id: 'deleted-marker' }] });
-
       const result = await resolveDeletedConflict({
         documentId: 'doc-1',
         targetBranchId: 'target-branch',
@@ -415,11 +397,12 @@ describe('Phase 5.2b: Conflict Resolution Service', () => {
 
       expect(result.resolved).toBe(true);
       expect(result.action).toBe('deleted');
+
+      // The deletion is recorded on the target branch, not merely reported.
+      expect(database.statements).toHaveLength(1);
     });
 
     it('should handle deleted-in-source by keeping target when take-target', async () => {
-      const { resolveDeletedConflict } = await import('../../src/services/conflict-resolution-service');
-
       const result = await resolveDeletedConflict({
         documentId: 'doc-1',
         targetBranchId: 'target-branch',
@@ -434,11 +417,8 @@ describe('Phase 5.2b: Conflict Resolution Service', () => {
     });
 
     it('should handle deleted-in-target by restoring from source when take-source', async () => {
-      const { resolveDeletedConflict } = await import('../../src/services/conflict-resolution-service');
-      const docVersionService = await import('../../src/services/document-version-service');
-
       // Mock source version to restore
-      vi.mocked(docVersionService.getDocumentVersion).mockResolvedValueOnce({
+      vi.mocked(getDocumentVersion).mockResolvedValueOnce({
         id: 'source-version',
         documentId: 'doc-1',
         branchId: 'source-branch',
@@ -450,7 +430,7 @@ describe('Phase 5.2b: Conflict Resolution Service', () => {
         source: 'edit',
       });
 
-      vi.mocked(docVersionService.createDocumentVersion).mockResolvedValueOnce({
+      vi.mocked(createDocumentVersion).mockResolvedValueOnce({
         id: 'restored-version',
         documentId: 'doc-1',
         branchId: 'target-branch',
@@ -478,8 +458,6 @@ describe('Phase 5.2b: Conflict Resolution Service', () => {
     });
 
     it('should handle deleted-in-target by keeping deleted when take-target', async () => {
-      const { resolveDeletedConflict } = await import('../../src/services/conflict-resolution-service');
-
       const result = await resolveDeletedConflict({
         documentId: 'doc-1',
         targetBranchId: 'target-branch',
@@ -496,13 +474,10 @@ describe('Phase 5.2b: Conflict Resolution Service', () => {
 
   describe('resolveConflict with manual strategy', () => {
     it('should create a version with the provided resolvedSnapshot', async () => {
-      const { resolveConflict } = await import('../../src/services/conflict-resolution-service');
-      const docVersionService = await import('../../src/services/document-version-service');
-
       const resolvedSnapshot = { title: 'Manually Merged Title', body: 'Custom content' };
 
       // Mock version creation
-      vi.mocked(docVersionService.createDocumentVersion).mockResolvedValueOnce({
+      vi.mocked(createDocumentVersion).mockResolvedValueOnce({
         id: 'manual-version-id',
         documentId: 'doc-1',
         branchId: 'target-branch',
@@ -531,10 +506,10 @@ describe('Phase 5.2b: Conflict Resolution Service', () => {
       expect(result.strategy).toBe('manual');
 
       // Should NOT fetch source or target version - uses provided snapshot directly
-      expect(docVersionService.getDocumentVersion).not.toHaveBeenCalled();
+      expect(getDocumentVersion).not.toHaveBeenCalled();
 
       // Should create new version on target branch with the provided snapshot
-      expect(docVersionService.createDocumentVersion).toHaveBeenCalledWith(
+      expect(createDocumentVersion).toHaveBeenCalledWith(
         expect.objectContaining({
           documentId: 'doc-1',
           branchId: 'target-branch',
@@ -545,9 +520,6 @@ describe('Phase 5.2b: Conflict Resolution Service', () => {
     });
 
     it('should reject manual strategy without resolvedSnapshot', async () => {
-      const { resolveConflict } = await import('../../src/services/conflict-resolution-service');
-      const { ManualResolutionError } = await import('../../src/services/errors');
-
       await expect(
         resolveConflict({
           documentId: 'doc-1',
@@ -564,12 +536,9 @@ describe('Phase 5.2b: Conflict Resolution Service', () => {
     });
 
     it('should include resolution metadata in manual result', async () => {
-      const { resolveConflict } = await import('../../src/services/conflict-resolution-service');
-      const docVersionService = await import('../../src/services/document-version-service');
-
       const resolvedSnapshot = { title: 'Resolved' };
 
-      vi.mocked(docVersionService.createDocumentVersion).mockResolvedValueOnce({
+      vi.mocked(createDocumentVersion).mockResolvedValueOnce({
         id: 'new-version-id',
         documentId: 'doc-1',
         branchId: 'target-branch',
@@ -601,8 +570,6 @@ describe('Phase 5.2b: Conflict Resolution Service', () => {
 
   describe('Error Classes', () => {
     it('should export VersionNotFoundError with correct properties', async () => {
-      const { VersionNotFoundError } = await import('../../src/services/errors');
-
       const error = new VersionNotFoundError('version-123');
 
       expect(error.name).toBe('VersionNotFoundError');
@@ -611,8 +578,6 @@ describe('Phase 5.2b: Conflict Resolution Service', () => {
     });
 
     it('should export UnsupportedStrategyError with correct properties', async () => {
-      const { UnsupportedStrategyError } = await import('../../src/services/errors');
-
       const error = new UnsupportedStrategyError('manual');
 
       expect(error.name).toBe('UnsupportedStrategyError');

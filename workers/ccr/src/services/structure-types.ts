@@ -6,7 +6,7 @@
  */
 
 import type { StructureNode, StructureType, NodeType } from '../types';
-import type { branchStructureState, siteStructures } from '../db/schema';
+import type { branchStructureState, siteStructures, structureNodes } from '../db/schema';
 import { InvalidSlugError } from './errors';
 
 // =============================================================================
@@ -168,19 +168,6 @@ export type BranchStructureRow =
   >
   & Pick<typeof siteStructures.$inferSelect, 'siteId' | 'createdAt'>;
 
-export interface NodeRow {
-  id: string;
-  structure_id: string;
-  parent_node_id: string | null;
-  position: number;
-  name: string;
-  slug: string;
-  node_type: string;
-  document_id: string | null;
-  external_url: string | null;
-  created_at: string;
-}
-
 // =============================================================================
 // Mappers
 // =============================================================================
@@ -201,25 +188,25 @@ export function mapBranchStructureRow(row: BranchStructureRow): BranchStructure 
   };
 }
 
-export function mapNodeRow(row: NodeRow): StructureNode {
+export function mapNodeRow(row: typeof structureNodes.$inferSelect): StructureNode {
   const node: StructureNode = {
     id: row.id,
-    structureId: row.structure_id,
+    structureId: row.structureId,
     position: row.position,
     name: row.name,
     slug: row.slug,
-    nodeType: row.node_type as NodeType,
-    createdAt: row.created_at,
+    nodeType: row.nodeType as NodeType,
+    createdAt: row.createdAt,
   };
 
-  if (row.parent_node_id !== null) {
-    node.parentNodeId = row.parent_node_id;
+  if (row.parentNodeId !== null) {
+    node.parentNodeId = row.parentNodeId;
   }
-  if (row.document_id !== null) {
-    node.documentId = row.document_id;
+  if (row.documentId !== null) {
+    node.documentId = row.documentId;
   }
-  if (row.external_url !== null) {
-    node.externalUrl = row.external_url;
+  if (row.externalUrl !== null) {
+    node.externalUrl = row.externalUrl;
   }
 
   return node;

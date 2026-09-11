@@ -4,7 +4,11 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import postgres from 'postgres';
+import { drizzle } from 'drizzle-orm/postgres-js';
 import { setDatabaseInstance } from '../../src/db';
+import type { Database } from '../../src/db/executor';
+import { installDatabase } from '../../src/db/scope';
+import * as schema from '../../src/db/schema';
 import { backfillTemplateContentShape } from '../../src/services/template-content-backfill';
 
 const TEST_DATABASE_URL =
@@ -12,6 +16,8 @@ const TEST_DATABASE_URL =
   'postgresql://cssuser:csspass@localhost:5432/cssdb';
 
 let sql: ReturnType<typeof postgres>;
+let db: Database;
+let drizzleClient: ReturnType<typeof postgres>;
 let testSiteId: string;
 let mainBranchId: string;
 let adminUserId: string;
@@ -59,6 +65,11 @@ async function cleanupSiteArtifacts(siteId: string): Promise<void> {
 
 beforeAll(async () => {
   sql = postgres(TEST_DATABASE_URL, { max: 1 });
+  // drizzle() replaces its client's timestamp parsers and json serializers with
+  // identity functions, so it gets a client of its own.
+  drizzleClient = postgres(TEST_DATABASE_URL, { max: 1 });
+  db = drizzle(drizzleClient, { schema });
+  installDatabase(db);
 
   const connection = {
     async query(sqlQuery: string, params?: unknown[]): Promise<{ rows: unknown[]; rowCount: number }> {
@@ -115,7 +126,8 @@ afterAll(async () => {
   }
 
   setDatabaseInstance(null);
-  await sql.end();
+  installDatabase(null);
+  await Promise.allSettled([sql.end(), drizzleClient.end()]);
 });
 
 describe('Template Content Shape Backfill', () => {

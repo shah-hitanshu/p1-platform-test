@@ -213,7 +213,9 @@ async function recoverFromCreateCollision(
  * self-corrects: the next execute re-claims and its probes absorb all
  * completed work.)
  */
-async function releaseClaimBestEffort(params: RunnerExecuteParams): Promise<void> {
+async function releaseClaimBestEffort(
+  params: RunnerExecuteParams,
+): Promise<void> {
   if (params.mergeRequestId === undefined || params.priorMrStatus === undefined) {
     return;
   }

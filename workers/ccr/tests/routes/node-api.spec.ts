@@ -69,7 +69,7 @@ describe('Phase 7.1.1b: Node API Routes', () => {
         slug: 'getting-started',
         nodeType: 'section',
         position: 0,
-        createdAt: '2026-01-24T10:00:00.000Z',
+        createdAt: new Date('2026-01-24T10:00:00.000Z'),
       });
 
       const request = new Request(
@@ -122,7 +122,7 @@ describe('Phase 7.1.1b: Node API Routes', () => {
         nodeType: 'document',
         documentId: 'doc-uuid',
         position: 0,
-        createdAt: '2026-01-24T10:00:00.000Z',
+        createdAt: new Date('2026-01-24T10:00:00.000Z'),
       });
 
       const request = new Request(
@@ -303,7 +303,7 @@ describe('Phase 7.1.1b: Node API Routes', () => {
           slug: 'section-a',
           nodeType: 'section',
           position: 0,
-          createdAt: '2026-01-24T10:00:00.000Z',
+          createdAt: new Date('2026-01-24T10:00:00.000Z'),
         },
         {
           id: 'node-2',
@@ -313,7 +313,7 @@ describe('Phase 7.1.1b: Node API Routes', () => {
           slug: 'section-b',
           nodeType: 'section',
           position: 1,
-          createdAt: '2026-01-24T11:00:00.000Z',
+          createdAt: new Date('2026-01-24T11:00:00.000Z'),
         },
       ]);
 
@@ -362,7 +362,7 @@ describe('Phase 7.1.1b: Node API Routes', () => {
       });
 
       expect(response.status).toBe(200);
-      expect(services.listNodes).toHaveBeenCalledWith(
+      expect(vi.mocked(services.listNodes).mock.calls[0]?.[0]).toEqual(
         expect.objectContaining({ parentNodeId: 'node-1' }),
       );
     });
@@ -385,7 +385,7 @@ describe('Phase 7.1.1b: Node API Routes', () => {
         slug: 'section-a',
         nodeType: 'section',
         position: 0,
-        createdAt: '2026-01-24T10:00:00.000Z',
+        createdAt: new Date('2026-01-24T10:00:00.000Z'),
       });
 
       const request = new Request(
@@ -447,7 +447,7 @@ describe('Phase 7.1.1b: Node API Routes', () => {
         slug: 'quick-start',
         nodeType: 'section',
         position: 0,
-        createdAt: '2026-01-24T10:00:00.000Z',
+        createdAt: new Date('2026-01-24T10:00:00.000Z'),
       });
 
       const request = new Request(
@@ -606,7 +606,7 @@ describe('Phase 7.1.1b: Node API Routes', () => {
         slug: 'moved-node',
         nodeType: 'section',
         position: 2,
-        createdAt: '2026-01-24T10:00:00.000Z',
+        createdAt: new Date('2026-01-24T10:00:00.000Z'),
       });
 
       const request = new Request(
@@ -921,7 +921,7 @@ describe('Phase 7.1.1b: Node API Routes', () => {
         slug: 'getting-started',
         nodeType: 'section',
         position: 0,
-        createdAt: '2026-01-24T10:00:00.000Z',
+        createdAt: new Date('2026-01-24T10:00:00.000Z'),
       });
 
       const request = new Request(

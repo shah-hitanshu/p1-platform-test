@@ -7,8 +7,12 @@
  * @see collaborative-state-system-architecture-v2.2.md Section "Merge Operations"
  */
 
+import { and, desc, eq, sql } from 'drizzle-orm';
+import type { PgUpdateSetSource } from 'drizzle-orm/pg-core';
 import type { MergeRequest, MergeRequestStatus, ConflictDetails } from '../types';
-import { query } from '../db';
+import { driverErrorCode } from '../db/driver-error';
+import { branches, mergeRequests } from '../db/schema';
+import { db } from '../db/scope';
 import {
   MergeRequestNotFoundError,
   InvalidMergeRequestParamsError,
@@ -64,29 +68,6 @@ export interface MergeMetadata {
   mergedByType: 'user' | 'agent';
 }
 
-/**
- * Database row format for merge requests.
- */
-interface MergeRequestRow {
-  id: string;
-  site_id: string;
-  source_branch_id: string;
-  target_branch_id: string;
-  base_checkpoint_id: string | null;
-  title: string;
-  description: string | null;
-  status: MergeRequestStatus;
-  has_conflicts: boolean;
-  conflict_details: string | null;
-  created_by_id: string;
-  created_by_type: 'user' | 'agent';
-  created_at: string;
-  updated_at: string;
-  merged_at: string | null;
-  merged_by_id: string | null;
-  merged_by_type: string | null;
-}
-
 // =============================================================================
 // Status Transitions
 // =============================================================================
@@ -133,13 +114,12 @@ export async function claimMergeRequestForExecution(
 ): Promise<'approved' | 'conflicted' | null> {
   for (const prior of ['approved', 'conflicted'] as const) {
     // Edge governed by VALID_STATUS_TRANSITIONS: approved/conflicted -> merging.
-    const result = await query<{ id: string }>(
-      `UPDATE app.merge_requests SET status = 'merging', updated_at = NOW()
-       WHERE id = $1 AND status = $2
-       RETURNING id`,
-      [mergeRequestId, prior],
-    );
-    if (result.rows.length > 0) {
+    const [row] = await db()
+      .update(mergeRequests)
+      .set({ status: 'merging', updatedAt: sql`NOW()` })
+      .where(and(eq(mergeRequests.id, mergeRequestId), eq(mergeRequests.status, prior)))
+      .returning({ id: mergeRequests.id });
+    if (row !== undefined) {
       return prior;
     }
   }
@@ -157,11 +137,10 @@ export async function restoreMergeRequestClaim(
   if (!isValidStatusTransition('merging', priorStatus as MergeRequestStatus)) {
     throw new InvalidMergeRequestStatusTransitionError('merging', priorStatus as MergeRequestStatus);
   }
-  await query(
-    `UPDATE app.merge_requests SET status = $2, updated_at = NOW()
-     WHERE id = $1 AND status = 'merging'`,
-    [mergeRequestId, priorStatus],
-  );
+  await db()
+    .update(mergeRequests)
+    .set({ status: priorStatus, updatedAt: sql`NOW()` })
+    .where(and(eq(mergeRequests.id, mergeRequestId), eq(mergeRequests.status, 'merging')));
 }
 
 /**
@@ -171,11 +150,10 @@ export async function restoreMergeRequestClaim(
 export async function markMergeRequestConflictedFromMerging(
   mergeRequestId: string,
 ): Promise<void> {
-  await query(
-    `UPDATE app.merge_requests SET status = 'conflicted', updated_at = NOW()
-     WHERE id = $1 AND status = 'merging'`,
-    [mergeRequestId],
-  );
+  await db()
+    .update(mergeRequests)
+    .set({ status: 'conflicted', updatedAt: sql`NOW()` })
+    .where(and(eq(mergeRequests.id, mergeRequestId), eq(mergeRequests.status, 'merging')));
 }
 
 /**
@@ -194,39 +172,43 @@ export function isValidStatusTransition(
 // =============================================================================
 
 /**
- * Convert database row to MergeRequest type.
+ * The constraint a rejected statement violated, as the driver names it.
  */
-function rowToMergeRequest(row: MergeRequestRow): MergeRequest {
-  let conflictDetails: ConflictDetails | undefined;
-  if (row.conflict_details !== null && row.conflict_details !== '') {
-    try {
-      conflictDetails =
-        typeof row.conflict_details === 'string'
-          ? (JSON.parse(row.conflict_details) as ConflictDetails)
-          : row.conflict_details;
-    } catch {
-      // Invalid JSON, leave undefined
+function constraintName(error: unknown): string {
+  for (let candidate: unknown = error; candidate instanceof Error; candidate = candidate.cause) {
+    if ('constraint' in candidate && typeof candidate.constraint === 'string') {
+      return candidate.constraint;
     }
   }
+  return '';
+}
+
+/**
+ * Convert database row to MergeRequest type.
+ */
+function rowToMergeRequest(row: typeof mergeRequests.$inferSelect): MergeRequest {
+  // conflict_details is jsonb, so the driver hands back the decoded value.
+  const conflictDetails =
+    row.conflictDetails === null ? undefined : (row.conflictDetails as ConflictDetails);
 
   return {
     id: row.id,
-    siteId: row.site_id,
-    sourceBranchId: row.source_branch_id,
-    targetBranchId: row.target_branch_id,
-    baseCheckpointId: row.base_checkpoint_id ?? undefined,
+    siteId: row.siteId,
+    sourceBranchId: row.sourceBranchId,
+    targetBranchId: row.targetBranchId,
+    baseCheckpointId: row.baseCheckpointId ?? undefined,
     title: row.title,
     description: row.description ?? undefined,
-    status: row.status,
-    hasConflicts: row.has_conflicts,
+    status: row.status as MergeRequestStatus,
+    hasConflicts: row.hasConflicts ?? false,
     conflictDetails,
-    createdById: row.created_by_id,
-    createdByType: row.created_by_type,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-    mergedAt: row.merged_at ?? undefined,
-    mergedById: row.merged_by_id ?? undefined,
-    mergedByType: row.merged_by_type ?? undefined,
+    createdById: row.createdById,
+    createdByType: row.createdByType as 'user' | 'agent',
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    mergedAt: row.mergedAt ?? undefined,
+    mergedById: row.mergedById ?? undefined,
+    mergedByType: row.mergedByType ?? undefined,
   };
 }
 
@@ -237,7 +219,9 @@ function rowToMergeRequest(row: MergeRequestRow): MergeRequest {
 /**
  * Create a new merge request.
  */
-export async function createMergeRequest(params: CreateMergeRequestParams): Promise<MergeRequest> {
+export async function createMergeRequest(
+  params: CreateMergeRequestParams,
+): Promise<MergeRequest> {
   // Validate required fields
   if (params.title.trim() === '') {
     throw new InvalidMergeRequestParamsError('Title is required and cannot be empty.');
@@ -248,52 +232,38 @@ export async function createMergeRequest(params: CreateMergeRequestParams): Prom
   }
 
   // Validate target branch is the main branch
-  const targetBranchResult = await query<{ id: string; is_main: boolean }>(
-    'SELECT id, is_main FROM app.branches WHERE id = $1',
-    [params.targetBranchId],
-  );
+  const [targetBranch] = await db()
+    .select({ id: branches.id, isMain: branches.isMain })
+    .from(branches)
+    .where(eq(branches.id, params.targetBranchId));
 
-  const targetBranch = targetBranchResult.rows[0];
-  if (targetBranch?.is_main !== true) {
+  if (targetBranch?.isMain !== true) {
     throw new TargetBranchNotMainError(params.targetBranchId);
   }
 
-  const sql = `
-    INSERT INTO app.merge_requests (
-      site_id,
-      source_branch_id,
-      target_branch_id,
-      base_checkpoint_id,
-      title,
-      description,
-      created_by_id,
-      created_by_type
-    )
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-    RETURNING *
-  `;
-
   try {
-    const result = await query<MergeRequestRow>(sql, [
-      params.siteId,
-      params.sourceBranchId,
-      params.targetBranchId,
-      params.baseCheckpointId ?? null,
-      params.title.trim(),
-      params.description?.trim() ?? null,
-      params.createdById,
-      params.createdByType,
-    ]);
+    const [row] = await db()
+      .insert(mergeRequests)
+      .values({
+        siteId: params.siteId,
+        sourceBranchId: params.sourceBranchId,
+        targetBranchId: params.targetBranchId,
+        baseCheckpointId: params.baseCheckpointId ?? null,
+        title: params.title.trim(),
+        description: params.description?.trim() ?? null,
+        createdById: params.createdById,
+        createdByType: params.createdByType,
+      })
+      .returning();
 
-    const row = result.rows[0];
     if (!row) {
       throw new Error('Failed to create merge request');
     }
     return rowToMergeRequest(row);
   } catch (error) {
     // Handle foreign key violations
-    if (error instanceof Error && 'code' in error && error.code === '23503') {
-      const constraint = (error as Error & { constraint?: string }).constraint ?? '';
+    if (driverErrorCode(error) === '23503') {
+      const constraint = constraintName(error);
       if (constraint.includes('source_branch')) {
         throw new SourceBranchNotFoundError(params.sourceBranchId);
       }
@@ -309,15 +279,9 @@ export async function createMergeRequest(params: CreateMergeRequestParams): Prom
  * Get a merge request by ID.
  */
 export async function getMergeRequest(id: string): Promise<MergeRequest | null> {
-  const sql = 'SELECT * FROM app.merge_requests WHERE id = $1';
-  const result = await query<MergeRequestRow>(sql, [id]);
+  const [row] = await db().select().from(mergeRequests).where(eq(mergeRequests.id, id));
 
-  if (result.rows.length === 0) {
-    return null;
-  }
-
-  const row = result.rows[0];
-  if (!row) {
+  if (row === undefined) {
     return null;
   }
   return rowToMergeRequest(row);
@@ -330,46 +294,29 @@ export async function listMergeRequests(
   siteId: string,
   options: ListMergeRequestsOptions = {},
 ): Promise<MergeRequest[]> {
-  const conditions: string[] = ['site_id = $1'];
-  const params: unknown[] = [siteId];
-  let paramIndex = 2;
+  const conditions = [eq(mergeRequests.siteId, siteId)];
 
   if (options.status !== undefined) {
-    conditions.push('status = $' + String(paramIndex));
-    params.push(options.status);
-    paramIndex++;
+    conditions.push(eq(mergeRequests.status, options.status));
   }
 
   if (options.sourceBranchId !== undefined && options.sourceBranchId !== '') {
-    conditions.push('source_branch_id = $' + String(paramIndex));
-    params.push(options.sourceBranchId);
-    paramIndex++;
+    conditions.push(eq(mergeRequests.sourceBranchId, options.sourceBranchId));
   }
 
   if (options.targetBranchId !== undefined && options.targetBranchId !== '') {
-    conditions.push('target_branch_id = $' + String(paramIndex));
-    params.push(options.targetBranchId);
-    paramIndex++;
+    conditions.push(eq(mergeRequests.targetBranchId, options.targetBranchId));
   }
 
-  const limit = options.limit ?? 50;
-  const offset = options.offset ?? 0;
+  const rows = await db()
+    .select()
+    .from(mergeRequests)
+    .where(and(...conditions))
+    .orderBy(desc(mergeRequests.createdAt))
+    .limit(options.limit ?? 50)
+    .offset(options.offset ?? 0);
 
-  const limitParam = '$' + String(paramIndex);
-  const offsetParam = '$' + String(paramIndex + 1);
-
-  const sql =
-    'SELECT * FROM app.merge_requests WHERE ' +
-    conditions.join(' AND ') +
-    ' ORDER BY created_at DESC LIMIT ' +
-    limitParam +
-    ' OFFSET ' +
-    offsetParam;
-
-  params.push(limit, offset);
-
-  const result = await query<MergeRequestRow>(sql, params);
-  return result.rows.map(rowToMergeRequest);
+  return rows.map(rowToMergeRequest);
 }
 
 /**
@@ -384,23 +331,17 @@ export async function updateMergeRequest(
     throw new InvalidMergeRequestParamsError('Title cannot be empty.');
   }
 
-  const updates: string[] = [];
-  const values: unknown[] = [];
-  let paramIndex = 1;
+  const updates: PgUpdateSetSource<typeof mergeRequests> = {};
 
   if (params.title !== undefined) {
-    updates.push('title = $' + String(paramIndex));
-    values.push(params.title.trim());
-    paramIndex++;
+    updates.title = params.title.trim();
   }
 
   if (params.description !== undefined) {
-    updates.push('description = $' + String(paramIndex));
-    values.push(params.description.trim());
-    paramIndex++;
+    updates.description = params.description.trim();
   }
 
-  if (updates.length === 0) {
+  if (Object.keys(updates).length === 0) {
     // Nothing to update, just fetch and return
     const existing = await getMergeRequest(id);
     if (existing === null) {
@@ -409,24 +350,13 @@ export async function updateMergeRequest(
     return existing;
   }
 
-  updates.push('updated_at = NOW()');
-  values.push(id);
+  const [updatedRow] = await db()
+    .update(mergeRequests)
+    .set({ ...updates, updatedAt: sql`NOW()` })
+    .where(eq(mergeRequests.id, id))
+    .returning();
 
-  const sql =
-    'UPDATE app.merge_requests SET ' +
-    updates.join(', ') +
-    ' WHERE id = $' +
-    String(paramIndex) +
-    ' RETURNING *';
-
-  const result = await query<MergeRequestRow>(sql, values);
-
-  if (result.rows.length === 0) {
-    throw new MergeRequestNotFoundError(id);
-  }
-
-  const updatedRow = result.rows[0];
-  if (!updatedRow) {
+  if (updatedRow === undefined) {
     throw new MergeRequestNotFoundError(id);
   }
   return rowToMergeRequest(updatedRow);
@@ -441,63 +371,41 @@ export async function updateMergeRequestStatus(
   mergeMetadata?: MergeMetadata,
 ): Promise<MergeRequest> {
   // Get current status
-  const currentResult = await query<{ status: MergeRequestStatus }>(
-    'SELECT status FROM app.merge_requests WHERE id = $1',
-    [id],
-  );
+  const [currentRow] = await db()
+    .select({ status: mergeRequests.status })
+    .from(mergeRequests)
+    .where(eq(mergeRequests.id, id));
 
-  if (currentResult.rows.length === 0) {
+  if (currentRow === undefined) {
     throw new MergeRequestNotFoundError(id);
   }
-
-  const currentRow = currentResult.rows[0];
-  if (!currentRow) {
-    throw new MergeRequestNotFoundError(id);
-  }
-  const currentStatus = currentRow.status;
+  const currentStatus = currentRow.status as MergeRequestStatus;
 
   // Validate transition
   if (!isValidStatusTransition(currentStatus, newStatus)) {
     throw new InvalidMergeRequestStatusTransitionError(currentStatus, newStatus);
   }
 
-  // Build update query
-  const updates = ['status = $1', 'updated_at = NOW()'];
-  const values: unknown[] = [newStatus];
-  let paramIndex = 2;
+  const updates: PgUpdateSetSource<typeof mergeRequests> = {};
 
   // Add merge metadata if transitioning to merged
   if (newStatus === 'merged' && mergeMetadata !== undefined) {
-    updates.push('merged_at = NOW()');
-    updates.push('merged_by_id = $' + String(paramIndex));
-    values.push(mergeMetadata.mergedById);
-    paramIndex++;
-    updates.push('merged_by_type = $' + String(paramIndex));
-    values.push(mergeMetadata.mergedByType);
-    paramIndex++;
+    updates.mergedAt = sql`NOW()`;
+    updates.mergedById = mergeMetadata.mergedById;
+    updates.mergedByType = mergeMetadata.mergedByType;
   }
-
-  values.push(id);
-  const idParam = paramIndex;
-  paramIndex++;
-  values.push(currentStatus);
 
   // Qualified on the status this function just validated, so the write is a
   // real CAS: a concurrent transition between the read above and this UPDATE
   // quals out (0 rows) instead of blindly overwriting — e.g. a PATCH racing
   // a merge job's claim can no longer slip an MR out of 'merging' [PCC-3737].
-  const sql =
-    'UPDATE app.merge_requests SET ' +
-    updates.join(', ') +
-    ' WHERE id = $' +
-    String(idParam) +
-    ' AND status = $' +
-    String(paramIndex) +
-    ' RETURNING *';
+  const [statusRow] = await db()
+    .update(mergeRequests)
+    .set({ status: newStatus, updatedAt: sql`NOW()`, ...updates })
+    .where(and(eq(mergeRequests.id, id), eq(mergeRequests.status, currentStatus)))
+    .returning();
 
-  const result = await query<MergeRequestRow>(sql, values);
-  const statusRow = result.rows[0];
-  if (!statusRow) {
+  if (statusRow === undefined) {
     // Row exists (read above) but the status moved underneath us: report the
     // transition as invalid from the caller's observed state.
     throw new InvalidMergeRequestStatusTransitionError(currentStatus, newStatus);
@@ -516,28 +424,17 @@ export async function updateMergeRequestConflicts(
     conflictDetails.documentConflicts.length > 0 ||
     conflictDetails.structureConflicts.length > 0;
 
-  const sql = `
-    UPDATE app.merge_requests
-    SET
-      has_conflicts = $1,
-      conflict_details = $2,
-      updated_at = NOW()
-    WHERE id = $3
-    RETURNING *
-  `;
+  const [conflictRow] = await db()
+    .update(mergeRequests)
+    .set({
+      hasConflicts,
+      conflictDetails: hasConflicts ? conflictDetails : null,
+      updatedAt: sql`NOW()`,
+    })
+    .where(eq(mergeRequests.id, id))
+    .returning();
 
-  const result = await query<MergeRequestRow>(sql, [
-    hasConflicts,
-    hasConflicts ? JSON.stringify(conflictDetails) : null,
-    id,
-  ]);
-
-  if (result.rows.length === 0) {
-    throw new MergeRequestNotFoundError(id);
-  }
-
-  const conflictRow = result.rows[0];
-  if (!conflictRow) {
+  if (conflictRow === undefined) {
     throw new MergeRequestNotFoundError(id);
   }
   return rowToMergeRequest(conflictRow);
@@ -548,17 +445,9 @@ export async function updateMergeRequestConflicts(
  */
 export async function deleteMergeRequest(id: string): Promise<void> {
   // Check if merge request exists and isn't merged
-  const checkResult = await query<MergeRequestRow>(
-    'SELECT * FROM app.merge_requests WHERE id = $1',
-    [id],
-  );
+  const [checkRow] = await db().select().from(mergeRequests).where(eq(mergeRequests.id, id));
 
-  if (checkResult.rows.length === 0) {
-    throw new MergeRequestNotFoundError(id);
-  }
-
-  const checkRow = checkResult.rows[0];
-  if (!checkRow) {
+  if (checkRow === undefined) {
     throw new MergeRequestNotFoundError(id);
   }
   if (checkRow.status === 'merged') {
@@ -566,5 +455,5 @@ export async function deleteMergeRequest(id: string): Promise<void> {
   }
 
   // Delete the merge request
-  await query('DELETE FROM app.merge_requests WHERE id = $1', [id]);
+  await db().delete(mergeRequests).where(eq(mergeRequests.id, id));
 }

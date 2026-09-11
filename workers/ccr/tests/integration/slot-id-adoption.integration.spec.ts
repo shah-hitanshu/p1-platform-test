@@ -14,8 +14,12 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import postgres from 'postgres';
+import { drizzle } from 'drizzle-orm/postgres-js';
 import { setDatabaseInstance } from '../../src/db';
 import type { DatabaseConnection, QueryResult } from '../../src/db';
+import type { Database } from '../../src/db/executor';
+import { installDatabase } from '../../src/db/scope';
+import * as schema from '../../src/db/schema';
 
 import { createSite } from '../../src/services/site-service';
 import { createDocumentOnBranch } from '../../src/services/branch-document-service';
@@ -27,13 +31,15 @@ const TEST_USER_ID = '88888888-8888-8888-8888-888888888888';
 const SITE_PREFIX = 'slot-adoption-test';
 
 function createRealDatabaseConnection(connectionString: string): {
+  db: Database;
   connection: DatabaseConnection;
   sql: postgres.Sql;
 } {
-  const sql = postgres(connectionString, {
-    transform: { undefined: null },
-    max: 1,
-  });
+  const clientOptions = { transform: { undefined: null }, max: 1 };
+  const sql = postgres(connectionString, clientOptions);
+  // drizzle() replaces its client's timestamp parsers and json serializers with
+  // identity functions, so it gets a client of its own.
+  const drizzleClient = postgres(connectionString, clientOptions);
 
   const connection: DatabaseConnection = {
     async query<T = Record<string, unknown>>(
@@ -51,7 +57,7 @@ function createRealDatabaseConnection(connectionString: string): {
     },
   };
 
-  return { connection, sql };
+  return { db: drizzle(drizzleClient, { schema }), connection, sql };
 }
 
 interface Comp {
@@ -75,6 +81,7 @@ const TEMPLATE_SNAPSHOT = {
 };
 
 describe('Slot-id adoption runner — Integration Tests', () => {
+  let db: Database;
   let sql: postgres.Sql;
   let siteId: string;
   let branchId: string;
@@ -84,9 +91,11 @@ describe('Slot-id adoption runner — Integration Tests', () => {
   let unboundDocId: string;
 
   beforeAll(async () => {
-    const { connection, sql: pgSql } = createRealDatabaseConnection(CONNECTION_STRING);
+    const { db: drizzleDb, connection, sql: pgSql } = createRealDatabaseConnection(CONNECTION_STRING);
+    db = drizzleDb;
     sql = pgSql;
     setDatabaseInstance(connection);
+    installDatabase(db);
 
     await sql`
       INSERT INTO app.users (id, email, name)
@@ -186,6 +195,7 @@ describe('Slot-id adoption runner — Integration Tests', () => {
     }
     await sql.end();
     setDatabaseInstance(null);
+    installDatabase(null);
   });
 
   it('reports what would be adopted on a dry run without writing versions', async () => {

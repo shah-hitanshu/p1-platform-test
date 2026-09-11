@@ -8,7 +8,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { readJson } from '../helpers/http';
 import { makePrincipal } from '../helpers/principal';
 import { makeBranch } from '../helpers/branch';
-
 // Mock the services
 vi.mock('../../src/services', async () => {
   const actual = await vi.importActual('../../src/services');
@@ -66,7 +65,7 @@ describe('Phase 7.1d: Grant API Routes', () => {
         grantedById: 'user-1',
         grantedByType: 'user',
         reason: 'Needs edit access',
-        grantedAt: '2026-01-24T11:00:00.000Z',
+        grantedAt: new Date('2026-01-24T11:00:00.000Z'),
       });
 
       const request = new Request(
@@ -179,7 +178,8 @@ describe('Phase 7.1d: Grant API Routes', () => {
           role: 'EDITOR',
           grantedById: 'user-1',
           grantedByType: 'user',
-          grantedAt: '2026-01-24T11:00:00.000Z',
+          reason: null,
+          grantedAt: new Date('2026-01-24T11:00:00.000Z'),
         },
         {
           id: 'grant-2',
@@ -189,7 +189,8 @@ describe('Phase 7.1d: Grant API Routes', () => {
           role: 'VIEWER',
           grantedById: 'user-1',
           grantedByType: 'user',
-          grantedAt: '2026-01-24T12:00:00.000Z',
+          reason: null,
+          grantedAt: new Date('2026-01-24T12:00:00.000Z'),
         },
       ]);
 
@@ -205,7 +206,7 @@ describe('Phase 7.1d: Grant API Routes', () => {
       });
 
       expect(response.status).toBe(200);
-      const body = await readJson(response);
+      const body = await readJson<{ grants: { role: string }[] }>(response);
       expect(body.grants).toHaveLength(2);
       expect(body.grants[0].role).toBe('EDITOR');
     });
@@ -229,7 +230,7 @@ describe('Phase 7.1d: Grant API Routes', () => {
         grantedById: 'user-1',
         grantedByType: 'user',
         reason: 'Needs edit access',
-        grantedAt: '2026-01-24T11:00:00.000Z',
+        grantedAt: new Date('2026-01-24T11:00:00.000Z'),
       });
 
       const request = new Request(
@@ -431,7 +432,8 @@ describe('Phase 7.1d: Grant API Routes', () => {
         role: 'EDITOR',
         grantedById: 'user-1',
         grantedByType: 'user',
-        grantedAt: '2026-01-24T11:00:00.000Z',
+        reason: null,
+        grantedAt: new Date('2026-01-24T11:00:00.000Z'),
       });
 
       const request = new Request(
@@ -471,7 +473,7 @@ describe('Phase 7.1d: Grant API Routes', () => {
         throw new AuthorizationError(
           'Permission denied',
           'canView',
-          'viewer',
+          'VIEWER',
         );
       });
 

@@ -8,11 +8,17 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-
-// Mock database module
-vi.mock('../../src/db', () => ({
-  query: vi.fn(),
-}));
+import {
+  checkMergeability,
+  detectConflicts,
+} from '../../src/services/conflict-detection-service';
+import {
+  findMergeBase,
+  getModifiedDocumentsSince,
+} from '../../src/services/merge-base-service';
+import {
+  NoMergeBaseError,
+} from '../../src/services/errors';
 
 // Mock merge-base-service
 vi.mock('../../src/services/merge-base-service', () => ({
@@ -27,18 +33,15 @@ describe('Phase 5.2a: Conflict Detection Service', () => {
 
   describe('detectConflicts', () => {
     it('should return no conflicts when branches have no overlapping changes', async () => {
-      const { detectConflicts } = await import('../../src/services/conflict-detection-service');
-      const mergeBaseService = await import('../../src/services/merge-base-service');
-
       // Mock merge base found
-      vi.mocked(mergeBaseService.findMergeBase).mockResolvedValueOnce({
+      vi.mocked(findMergeBase).mockResolvedValueOnce({
         checkpointId: 'checkpoint-123',
         branchId: 'main-branch',
-        createdAt: '2026-01-20T10:00:00.000Z',
+        createdAt: new Date('2026-01-20T10:00:00.000Z'),
       });
 
       // Source modified doc-1, target modified doc-2 (no overlap)
-      vi.mocked(mergeBaseService.getModifiedDocumentsSince)
+      vi.mocked(getModifiedDocumentsSince)
         .mockResolvedValueOnce([
           {
             documentId: 'doc-1',
@@ -69,17 +72,14 @@ describe('Phase 5.2a: Conflict Detection Service', () => {
     });
 
     it('should detect conflict when both branches modified same document', async () => {
-      const { detectConflicts } = await import('../../src/services/conflict-detection-service');
-      const mergeBaseService = await import('../../src/services/merge-base-service');
-
-      vi.mocked(mergeBaseService.findMergeBase).mockResolvedValueOnce({
+      vi.mocked(findMergeBase).mockResolvedValueOnce({
         checkpointId: 'checkpoint-123',
         branchId: 'main-branch',
-        createdAt: '2026-01-20T10:00:00.000Z',
+        createdAt: new Date('2026-01-20T10:00:00.000Z'),
       });
 
       // Both branches modified the same document (doc-1)
-      vi.mocked(mergeBaseService.getModifiedDocumentsSince)
+      vi.mocked(getModifiedDocumentsSince)
         .mockResolvedValueOnce([
           {
             documentId: 'doc-1',
@@ -112,17 +112,14 @@ describe('Phase 5.2a: Conflict Detection Service', () => {
     });
 
     it('should detect conflict when document deleted in source but modified in target', async () => {
-      const { detectConflicts } = await import('../../src/services/conflict-detection-service');
-      const mergeBaseService = await import('../../src/services/merge-base-service');
-
-      vi.mocked(mergeBaseService.findMergeBase).mockResolvedValueOnce({
+      vi.mocked(findMergeBase).mockResolvedValueOnce({
         checkpointId: 'checkpoint-123',
         branchId: 'main-branch',
-        createdAt: '2026-01-20T10:00:00.000Z',
+        createdAt: new Date('2026-01-20T10:00:00.000Z'),
       });
 
       // Source deleted doc-1, target modified it
-      vi.mocked(mergeBaseService.getModifiedDocumentsSince)
+      vi.mocked(getModifiedDocumentsSince)
         .mockResolvedValueOnce([
           {
             documentId: 'doc-1',
@@ -153,17 +150,14 @@ describe('Phase 5.2a: Conflict Detection Service', () => {
     });
 
     it('should detect conflict when document deleted in target but modified in source', async () => {
-      const { detectConflicts } = await import('../../src/services/conflict-detection-service');
-      const mergeBaseService = await import('../../src/services/merge-base-service');
-
-      vi.mocked(mergeBaseService.findMergeBase).mockResolvedValueOnce({
+      vi.mocked(findMergeBase).mockResolvedValueOnce({
         checkpointId: 'checkpoint-123',
         branchId: 'main-branch',
-        createdAt: '2026-01-20T10:00:00.000Z',
+        createdAt: new Date('2026-01-20T10:00:00.000Z'),
       });
 
       // Source modified doc-1, target deleted it
-      vi.mocked(mergeBaseService.getModifiedDocumentsSince)
+      vi.mocked(getModifiedDocumentsSince)
         .mockResolvedValueOnce([
           {
             documentId: 'doc-1',
@@ -194,17 +188,14 @@ describe('Phase 5.2a: Conflict Detection Service', () => {
     });
 
     it('should not conflict when both branches deleted same document', async () => {
-      const { detectConflicts } = await import('../../src/services/conflict-detection-service');
-      const mergeBaseService = await import('../../src/services/merge-base-service');
-
-      vi.mocked(mergeBaseService.findMergeBase).mockResolvedValueOnce({
+      vi.mocked(findMergeBase).mockResolvedValueOnce({
         checkpointId: 'checkpoint-123',
         branchId: 'main-branch',
-        createdAt: '2026-01-20T10:00:00.000Z',
+        createdAt: new Date('2026-01-20T10:00:00.000Z'),
       });
 
       // Both branches deleted doc-1
-      vi.mocked(mergeBaseService.getModifiedDocumentsSince)
+      vi.mocked(getModifiedDocumentsSince)
         .mockResolvedValueOnce([
           {
             documentId: 'doc-1',
@@ -235,17 +226,14 @@ describe('Phase 5.2a: Conflict Detection Service', () => {
     });
 
     it('should return multiple conflicts when multiple documents conflict', async () => {
-      const { detectConflicts } = await import('../../src/services/conflict-detection-service');
-      const mergeBaseService = await import('../../src/services/merge-base-service');
-
-      vi.mocked(mergeBaseService.findMergeBase).mockResolvedValueOnce({
+      vi.mocked(findMergeBase).mockResolvedValueOnce({
         checkpointId: 'checkpoint-123',
         branchId: 'main-branch',
-        createdAt: '2026-01-20T10:00:00.000Z',
+        createdAt: new Date('2026-01-20T10:00:00.000Z'),
       });
 
       // Both branches modified doc-1 and doc-2
-      vi.mocked(mergeBaseService.getModifiedDocumentsSince)
+      vi.mocked(getModifiedDocumentsSince)
         .mockResolvedValueOnce([
           {
             documentId: 'doc-1',
@@ -290,23 +278,16 @@ describe('Phase 5.2a: Conflict Detection Service', () => {
     });
 
     it('should throw NoMergeBaseError when no common ancestor found', async () => {
-      const { detectConflicts } = await import('../../src/services/conflict-detection-service');
-      const { NoMergeBaseError } = await import('../../src/services/errors');
-      const mergeBaseService = await import('../../src/services/merge-base-service');
-
-      vi.mocked(mergeBaseService.findMergeBase).mockResolvedValueOnce(null);
+      vi.mocked(findMergeBase).mockResolvedValueOnce(null);
 
       await expect(detectConflicts('branch-a', 'branch-b')).rejects.toThrow(NoMergeBaseError);
     });
 
     it('should include source and target changes in result', async () => {
-      const { detectConflicts } = await import('../../src/services/conflict-detection-service');
-      const mergeBaseService = await import('../../src/services/merge-base-service');
-
-      vi.mocked(mergeBaseService.findMergeBase).mockResolvedValueOnce({
+      vi.mocked(findMergeBase).mockResolvedValueOnce({
         checkpointId: 'checkpoint-123',
         branchId: 'main-branch',
-        createdAt: '2026-01-20T10:00:00.000Z',
+        createdAt: new Date('2026-01-20T10:00:00.000Z'),
       });
 
       const sourceChanges = [
@@ -331,7 +312,7 @@ describe('Phase 5.2a: Conflict Detection Service', () => {
         },
       ];
 
-      vi.mocked(mergeBaseService.getModifiedDocumentsSince)
+      vi.mocked(getModifiedDocumentsSince)
         .mockResolvedValueOnce(sourceChanges)
         .mockResolvedValueOnce(targetChanges);
 
@@ -346,30 +327,27 @@ describe('Phase 5.2a: Conflict Detection Service', () => {
 
   describe('detectConflicts - published state comparison', () => {
     it('should pass publishedOnly true for target branch changes', async () => {
-      const { detectConflicts } = await import('../../src/services/conflict-detection-service');
-      const mergeBaseService = await import('../../src/services/merge-base-service');
-
-      vi.mocked(mergeBaseService.findMergeBase).mockResolvedValueOnce({
+      vi.mocked(findMergeBase).mockResolvedValueOnce({
         checkpointId: 'checkpoint-123',
         branchId: 'main-branch',
-        createdAt: '2026-01-20T10:00:00.000Z',
+        createdAt: new Date('2026-01-20T10:00:00.000Z'),
       });
 
-      vi.mocked(mergeBaseService.getModifiedDocumentsSince)
+      vi.mocked(getModifiedDocumentsSince)
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([]);
 
       await detectConflicts('source-branch', 'target-branch');
 
       // First call: source branch — no publishedOnly option (raw latest versions)
-      expect(mergeBaseService.getModifiedDocumentsSince).toHaveBeenNthCalledWith(
+      expect(getModifiedDocumentsSince).toHaveBeenNthCalledWith(
         1,
         'source-branch',
         'checkpoint-123',
       );
 
       // Second call: target branch — publishedOnly: true (only published versions)
-      expect(mergeBaseService.getModifiedDocumentsSince).toHaveBeenNthCalledWith(
+      expect(getModifiedDocumentsSince).toHaveBeenNthCalledWith(
         2,
         'target-branch',
         'checkpoint-123',
@@ -378,19 +356,16 @@ describe('Phase 5.2a: Conflict Detection Service', () => {
     });
 
     it('should not show conflicts for unpublished edits on target', async () => {
-      const { detectConflicts } = await import('../../src/services/conflict-detection-service');
-      const mergeBaseService = await import('../../src/services/merge-base-service');
-
-      vi.mocked(mergeBaseService.findMergeBase).mockResolvedValueOnce({
+      vi.mocked(findMergeBase).mockResolvedValueOnce({
         checkpointId: 'checkpoint-123',
         branchId: 'main-branch',
-        createdAt: '2026-01-20T10:00:00.000Z',
+        createdAt: new Date('2026-01-20T10:00:00.000Z'),
       });
 
       // Source branch edited doc-1
       // Target branch has NO published changes to doc-1
       // (unpublished edits should be invisible to conflict detection)
-      vi.mocked(mergeBaseService.getModifiedDocumentsSince)
+      vi.mocked(getModifiedDocumentsSince)
         .mockResolvedValueOnce([
           {
             documentId: 'doc-1',
@@ -411,17 +386,14 @@ describe('Phase 5.2a: Conflict Detection Service', () => {
     });
 
     it('should show new pages on source as additions when target has no published version', async () => {
-      const { detectConflicts } = await import('../../src/services/conflict-detection-service');
-      const mergeBaseService = await import('../../src/services/merge-base-service');
-
-      vi.mocked(mergeBaseService.findMergeBase).mockResolvedValueOnce({
+      vi.mocked(findMergeBase).mockResolvedValueOnce({
         checkpointId: 'checkpoint-123',
         branchId: 'main-branch',
-        createdAt: '2026-01-20T10:00:00.000Z',
+        createdAt: new Date('2026-01-20T10:00:00.000Z'),
       });
 
       // Source branch created a new page
-      vi.mocked(mergeBaseService.getModifiedDocumentsSince)
+      vi.mocked(getModifiedDocumentsSince)
         .mockResolvedValueOnce([
           {
             documentId: 'doc-new',
@@ -442,9 +414,6 @@ describe('Phase 5.2a: Conflict Detection Service', () => {
     });
 
     it('should treat target-side tombstone as non-existence: no conflict, source change passes through (verticon-2026 scenario)', async () => {
-      const { detectConflicts } = await import('../../src/services/conflict-detection-service');
-      const mergeBaseService = await import('../../src/services/merge-base-service');
-
       // Bug repro shape:
       //  - main published doc-vert at v1, then again at v3 via merge
       //  - main deleted doc-vert directly → tombstone v4 (not in publish checkpoint)
@@ -460,13 +429,13 @@ describe('Phase 5.2a: Conflict Detection Service', () => {
       // detection sees source-only modification → no conflict. Frontend then
       // classifies as new-on-draft and renders in the merge preview list.
 
-      vi.mocked(mergeBaseService.findMergeBase).mockResolvedValueOnce({
+      vi.mocked(findMergeBase).mockResolvedValueOnce({
         checkpointId: 'merge-base-cp',
         branchId: 'main-branch',
-        createdAt: '2026-04-23T00:15:25.262Z',
+        createdAt: new Date('2026-04-23T00:15:25.262Z'),
       });
 
-      vi.mocked(mergeBaseService.getModifiedDocumentsSince)
+      vi.mocked(getModifiedDocumentsSince)
         // Source side (verticon): doc-vert was edited.
         .mockResolvedValueOnce([
           {
@@ -494,16 +463,13 @@ describe('Phase 5.2a: Conflict Detection Service', () => {
 
   describe('checkMergeability', () => {
     it('should return canMerge true when no conflicts', async () => {
-      const { checkMergeability } = await import('../../src/services/conflict-detection-service');
-      const mergeBaseService = await import('../../src/services/merge-base-service');
-
-      vi.mocked(mergeBaseService.findMergeBase).mockResolvedValueOnce({
+      vi.mocked(findMergeBase).mockResolvedValueOnce({
         checkpointId: 'checkpoint-123',
         branchId: 'main-branch',
-        createdAt: '2026-01-20T10:00:00.000Z',
+        createdAt: new Date('2026-01-20T10:00:00.000Z'),
       });
 
-      vi.mocked(mergeBaseService.getModifiedDocumentsSince)
+      vi.mocked(getModifiedDocumentsSince)
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([]);
 
@@ -514,17 +480,14 @@ describe('Phase 5.2a: Conflict Detection Service', () => {
     });
 
     it('should return canMerge false when conflicts exist', async () => {
-      const { checkMergeability } = await import('../../src/services/conflict-detection-service');
-      const mergeBaseService = await import('../../src/services/merge-base-service');
-
-      vi.mocked(mergeBaseService.findMergeBase).mockResolvedValueOnce({
+      vi.mocked(findMergeBase).mockResolvedValueOnce({
         checkpointId: 'checkpoint-123',
         branchId: 'main-branch',
-        createdAt: '2026-01-20T10:00:00.000Z',
+        createdAt: new Date('2026-01-20T10:00:00.000Z'),
       });
 
       // Both modified same document
-      vi.mocked(mergeBaseService.getModifiedDocumentsSince)
+      vi.mocked(getModifiedDocumentsSince)
         .mockResolvedValueOnce([
           {
             documentId: 'doc-1',
@@ -553,16 +516,13 @@ describe('Phase 5.2a: Conflict Detection Service', () => {
     });
 
     it('should include merge base in result', async () => {
-      const { checkMergeability } = await import('../../src/services/conflict-detection-service');
-      const mergeBaseService = await import('../../src/services/merge-base-service');
-
-      vi.mocked(mergeBaseService.findMergeBase).mockResolvedValueOnce({
+      vi.mocked(findMergeBase).mockResolvedValueOnce({
         checkpointId: 'checkpoint-123',
         branchId: 'main-branch',
-        createdAt: '2026-01-20T10:00:00.000Z',
+        createdAt: new Date('2026-01-20T10:00:00.000Z'),
       });
 
-      vi.mocked(mergeBaseService.getModifiedDocumentsSince)
+      vi.mocked(getModifiedDocumentsSince)
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([]);
 
@@ -572,16 +532,13 @@ describe('Phase 5.2a: Conflict Detection Service', () => {
     });
 
     it('should include changes summary in result', async () => {
-      const { checkMergeability } = await import('../../src/services/conflict-detection-service');
-      const mergeBaseService = await import('../../src/services/merge-base-service');
-
-      vi.mocked(mergeBaseService.findMergeBase).mockResolvedValueOnce({
+      vi.mocked(findMergeBase).mockResolvedValueOnce({
         checkpointId: 'checkpoint-123',
         branchId: 'main-branch',
-        createdAt: '2026-01-20T10:00:00.000Z',
+        createdAt: new Date('2026-01-20T10:00:00.000Z'),
       });
 
-      vi.mocked(mergeBaseService.getModifiedDocumentsSince)
+      vi.mocked(getModifiedDocumentsSince)
         .mockResolvedValueOnce([
           {
             documentId: 'doc-1',
@@ -612,8 +569,6 @@ describe('Phase 5.2a: Conflict Detection Service', () => {
 
   describe('Error Classes', () => {
     it('should export NoMergeBaseError with correct properties', async () => {
-      const { NoMergeBaseError } = await import('../../src/services/errors');
-
       const error = new NoMergeBaseError('source-id', 'target-id');
 
       expect(error.name).toBe('NoMergeBaseError');

@@ -15,7 +15,9 @@
  * @see docs/puck/plans/2026-08-05-component-registry-casing-research.md
  */
 
-import { query } from '../db';
+import { and, desc, eq, isNull, like, sql } from 'drizzle-orm';
+import { documentVersions, documents } from '../db/schema';
+import { db } from '../db/scope';
 import { escapeLikePattern } from './document-types';
 import { componentTypeKey, type CanonicalComponentNames } from './component-type-validation';
 
@@ -51,22 +53,30 @@ export async function loadCanonicalComponentNames(
 
   const pathPattern = escapeLikePattern(COMPONENT_PREFIX) + '%';
 
-  const result = await query<{ name: string | null }>(
-    `SELECT latest.name FROM (
-       SELECT DISTINCT ON (dv.document_id)
-         dv.snapshot->>'name' AS name, dv.is_tombstone
-       FROM app.document_versions dv
-       JOIN app.documents d ON d.id = dv.document_id
-       WHERE dv.branch_id = $1 AND d.path LIKE $2 ESCAPE '\\'
-         AND dv.superseded_at IS NULL
-       ORDER BY dv.document_id, dv.version_number DESC
-     ) latest
-     WHERE latest.is_tombstone = false`,
-    [branchId, pathPattern],
-  );
+  const latest = db()
+    .selectDistinctOn([documentVersions.documentId], {
+      name: sql<string | null>`${documentVersions.snapshot}->>'name'`.as('name'),
+      isTombstone: documentVersions.isTombstone,
+    })
+    .from(documentVersions)
+    .innerJoin(documents, eq(documents.id, documentVersions.documentId))
+    .where(
+      and(
+        eq(documentVersions.branchId, branchId),
+        like(documents.path, pathPattern),
+        isNull(documentVersions.supersededAt),
+      ),
+    )
+    .orderBy(documentVersions.documentId, desc(documentVersions.versionNumber))
+    .as('latest');
+
+  const rows = await db()
+    .select({ name: latest.name })
+    .from(latest)
+    .where(eq(latest.isTombstone, false));
 
   const names: CanonicalComponentNames = new Map();
-  for (const row of result.rows) {
+  for (const row of rows) {
     if (row.name !== null && row.name !== '') {
       names.set(componentTypeKey(row.name), row.name);
     }

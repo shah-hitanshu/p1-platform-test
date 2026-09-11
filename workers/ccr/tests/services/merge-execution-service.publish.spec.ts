@@ -12,10 +12,18 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { makeBranch } from '../helpers/branch';
-
-vi.mock('../../src/db', () => ({
-  query: vi.fn(),
-}));
+import { stubDatabase } from '../__stubs__/database';
+import {
+  executeMerge,
+  executeMergeWithResolution,
+} from '../../src/services/merge-execution-service';
+import * as conflictDetection from '../../src/services/conflict-detection-service';
+import * as conflictResolution from '../../src/services/conflict-resolution-service';
+import * as mergeRequestService from '../../src/services/merge-request-service';
+import * as docVersionService from '../../src/services/document-version-service';
+import * as checkpointService from '../../src/services/checkpoint-service';
+import * as branchService from '../../src/services/branch-service';
+import * as mergePublish from '../../src/services/merge-publish';
 
 vi.mock('../../src/services/conflict-detection-service', () => ({
   detectConflicts: vi.fn(),
@@ -59,6 +67,10 @@ vi.mock('../../src/services/merge-publish', () => ({
   publishMergedVersions: vi.fn(),
 }));
 
+vi.mock('../../src/services/relations-service', () => ({
+  carryUpstreamResolutions: vi.fn(),
+}));
+
 const baseMergeRequest = {
   id: 'mr-1',
   siteId: 'site-1',
@@ -69,8 +81,8 @@ const baseMergeRequest = {
   hasConflicts: false,
   createdById: 'user-1',
   createdByType: 'user' as const,
-  createdAt: '2026-04-25T10:00:00.000Z',
-  updatedAt: '2026-04-25T10:00:00.000Z',
+  createdAt: new Date('2026-04-25T10:00:00.000Z'),
+  updatedAt: new Date('2026-04-25T10:00:00.000Z'),
 };
 
 const baseMainBranch = makeBranch({
@@ -86,30 +98,14 @@ const baseMainBranch = makeBranch({
   updatedAt: '2026-01-01T00:00:00.000Z',
 });
 
+
 describe('executeMerge auto-publish (target = main)', () => {
   beforeEach(async () => {
     vi.resetAllMocks();
-    const db = await import('../../src/db');
-    vi.mocked(db.query).mockResolvedValue({ rows: [], rowCount: 0 });
+    stubDatabase();
   });
 
   it('calls publishMergedVersions with the merge-created versions when target is main', async () => {
-    const { executeMerge } = await import(
-      '../../src/services/merge-execution-service'
-    );
-    const conflictDetection = await import(
-      '../../src/services/conflict-detection-service'
-    );
-    const mergeRequestService = await import(
-      '../../src/services/merge-request-service'
-    );
-    const docVersionService = await import(
-      '../../src/services/document-version-service'
-    );
-    const checkpointService = await import('../../src/services/checkpoint-service');
-    const branchService = await import('../../src/services/branch-service');
-    const mergePublish = await import('../../src/services/merge-publish');
-
     vi.mocked(mergeRequestService.getMergeRequest).mockResolvedValueOnce(
       baseMergeRequest,
     );
@@ -121,7 +117,7 @@ describe('executeMerge auto-publish (target = main)', () => {
       mergeBase: {
         checkpointId: 'checkpoint-base',
         branchId: 'main-branch',
-        createdAt: '2026-04-20T10:00:00.000Z',
+        createdAt: new Date('2026-04-20T10:00:00.000Z'),
       },
       sourceChanges: [
         {
@@ -213,7 +209,7 @@ describe('executeMerge auto-publish (target = main)', () => {
     vi.mocked(mergeRequestService.updateMergeRequestStatus).mockResolvedValueOnce({
       ...baseMergeRequest,
       status: 'merged',
-      mergedAt: '2026-04-25T11:00:00.000Z',
+      mergedAt: new Date('2026-04-25T11:00:00.000Z'),
       mergedById: 'user-1',
       mergedByType: 'user',
     });
@@ -251,22 +247,6 @@ describe('executeMerge auto-publish (target = main)', () => {
   });
 
   it('does NOT call publishMergedVersions when target branch is not main', async () => {
-    const { executeMerge } = await import(
-      '../../src/services/merge-execution-service'
-    );
-    const conflictDetection = await import(
-      '../../src/services/conflict-detection-service'
-    );
-    const mergeRequestService = await import(
-      '../../src/services/merge-request-service'
-    );
-    const docVersionService = await import(
-      '../../src/services/document-version-service'
-    );
-    const checkpointService = await import('../../src/services/checkpoint-service');
-    const branchService = await import('../../src/services/branch-service');
-    const mergePublish = await import('../../src/services/merge-publish');
-
     vi.mocked(mergeRequestService.getMergeRequest).mockResolvedValueOnce({
       ...baseMergeRequest,
       targetBranchId: 'feature-branch-c',
@@ -280,7 +260,7 @@ describe('executeMerge auto-publish (target = main)', () => {
       mergeBase: {
         checkpointId: 'checkpoint-base',
         branchId: 'feature-branch-c',
-        createdAt: '2026-04-20T10:00:00.000Z',
+        createdAt: new Date('2026-04-20T10:00:00.000Z'),
       },
       sourceChanges: [
         {
@@ -336,7 +316,7 @@ describe('executeMerge auto-publish (target = main)', () => {
       ...baseMergeRequest,
       targetBranchId: 'feature-branch-c',
       status: 'merged',
-      mergedAt: '2026-04-25T11:00:00.000Z',
+      mergedAt: new Date('2026-04-25T11:00:00.000Z'),
     });
 
     const result = await executeMerge({
@@ -353,21 +333,6 @@ describe('executeMerge auto-publish (target = main)', () => {
     // Safety test: main has many documents (with unpublished edits), but the
     // source branch only changed one. publishMergedVersions must receive ONLY
     // that one document — never the rest of main.
-    const { executeMerge } = await import(
-      '../../src/services/merge-execution-service'
-    );
-    const conflictDetection = await import(
-      '../../src/services/conflict-detection-service'
-    );
-    const mergeRequestService = await import(
-      '../../src/services/merge-request-service'
-    );
-    const docVersionService = await import(
-      '../../src/services/document-version-service'
-    );
-    const checkpointService = await import('../../src/services/checkpoint-service');
-    const branchService = await import('../../src/services/branch-service');
-    const mergePublish = await import('../../src/services/merge-publish');
 
     vi.mocked(mergeRequestService.getMergeRequest).mockResolvedValueOnce(
       baseMergeRequest,
@@ -382,7 +347,7 @@ describe('executeMerge auto-publish (target = main)', () => {
       mergeBase: {
         checkpointId: 'checkpoint-base',
         branchId: 'main-branch',
-        createdAt: '2026-04-20T10:00:00.000Z',
+        createdAt: new Date('2026-04-20T10:00:00.000Z'),
       },
       sourceChanges: [
         {
@@ -442,7 +407,7 @@ describe('executeMerge auto-publish (target = main)', () => {
     vi.mocked(mergeRequestService.updateMergeRequestStatus).mockResolvedValueOnce({
       ...baseMergeRequest,
       status: 'merged',
-      mergedAt: '2026-04-25T11:00:00.000Z',
+      mergedAt: new Date('2026-04-25T11:00:00.000Z'),
     });
 
     await executeMerge({
@@ -466,22 +431,6 @@ describe('executeMerge auto-publish (target = main)', () => {
   });
 
   it('does not fail the merge if publishMergedVersions throws (publish failure is surfaced but merge stays committed)', async () => {
-    const { executeMerge } = await import(
-      '../../src/services/merge-execution-service'
-    );
-    const conflictDetection = await import(
-      '../../src/services/conflict-detection-service'
-    );
-    const mergeRequestService = await import(
-      '../../src/services/merge-request-service'
-    );
-    const docVersionService = await import(
-      '../../src/services/document-version-service'
-    );
-    const checkpointService = await import('../../src/services/checkpoint-service');
-    const branchService = await import('../../src/services/branch-service');
-    const mergePublish = await import('../../src/services/merge-publish');
-
     vi.mocked(mergeRequestService.getMergeRequest).mockResolvedValueOnce(
       baseMergeRequest,
     );
@@ -492,7 +441,7 @@ describe('executeMerge auto-publish (target = main)', () => {
       mergeBase: {
         checkpointId: 'checkpoint-base',
         branchId: 'main-branch',
-        createdAt: '2026-04-20T10:00:00.000Z',
+        createdAt: new Date('2026-04-20T10:00:00.000Z'),
       },
       sourceChanges: [
         {
@@ -546,7 +495,7 @@ describe('executeMerge auto-publish (target = main)', () => {
     vi.mocked(mergeRequestService.updateMergeRequestStatus).mockResolvedValueOnce({
       ...baseMergeRequest,
       status: 'merged',
-      mergedAt: '2026-04-25T11:00:00.000Z',
+      mergedAt: new Date('2026-04-25T11:00:00.000Z'),
     });
 
     const result = await executeMerge({
@@ -573,27 +522,10 @@ describe('executeMerge auto-publish (target = main)', () => {
 describe('executeMergeWithResolution auto-publish (target = main)', () => {
   beforeEach(async () => {
     vi.resetAllMocks();
-    const db = await import('../../src/db');
-    vi.mocked(db.query).mockResolvedValue({ rows: [], rowCount: 0 });
+    stubDatabase();
   });
 
   it('passes sourceVersionId for take-source resolutions', async () => {
-    const { executeMergeWithResolution } = await import(
-      '../../src/services/merge-execution-service'
-    );
-    const conflictDetection = await import(
-      '../../src/services/conflict-detection-service'
-    );
-    const conflictResolution = await import(
-      '../../src/services/conflict-resolution-service'
-    );
-    const mergeRequestService = await import(
-      '../../src/services/merge-request-service'
-    );
-    const checkpointService = await import('../../src/services/checkpoint-service');
-    const branchService = await import('../../src/services/branch-service');
-    const mergePublish = await import('../../src/services/merge-publish');
-
     vi.mocked(mergeRequestService.getMergeRequest).mockResolvedValueOnce({
       ...baseMergeRequest,
       hasConflicts: true,
@@ -617,7 +549,7 @@ describe('executeMergeWithResolution auto-publish (target = main)', () => {
       mergeBase: {
         checkpointId: 'checkpoint-base',
         branchId: 'main-branch',
-        createdAt: '2026-04-20T10:00:00.000Z',
+        createdAt: new Date('2026-04-20T10:00:00.000Z'),
       },
       sourceChanges: [
         {
@@ -677,7 +609,7 @@ describe('executeMergeWithResolution auto-publish (target = main)', () => {
     vi.mocked(mergeRequestService.updateMergeRequestStatus).mockResolvedValueOnce({
       ...baseMergeRequest,
       status: 'merged',
-      mergedAt: '2026-04-25T11:00:00.000Z',
+      mergedAt: new Date('2026-04-25T11:00:00.000Z'),
     });
 
     await executeMergeWithResolution({
@@ -699,22 +631,6 @@ describe('executeMergeWithResolution auto-publish (target = main)', () => {
   });
 
   it('passes sourceVersionId = null for take-target resolutions', async () => {
-    const { executeMergeWithResolution } = await import(
-      '../../src/services/merge-execution-service'
-    );
-    const conflictDetection = await import(
-      '../../src/services/conflict-detection-service'
-    );
-    const conflictResolution = await import(
-      '../../src/services/conflict-resolution-service'
-    );
-    const mergeRequestService = await import(
-      '../../src/services/merge-request-service'
-    );
-    const checkpointService = await import('../../src/services/checkpoint-service');
-    const branchService = await import('../../src/services/branch-service');
-    const mergePublish = await import('../../src/services/merge-publish');
-
     vi.mocked(mergeRequestService.getMergeRequest).mockResolvedValueOnce({
       ...baseMergeRequest,
       hasConflicts: true,
@@ -738,7 +654,7 @@ describe('executeMergeWithResolution auto-publish (target = main)', () => {
       mergeBase: {
         checkpointId: 'checkpoint-base',
         branchId: 'main-branch',
-        createdAt: '2026-04-20T10:00:00.000Z',
+        createdAt: new Date('2026-04-20T10:00:00.000Z'),
       },
       sourceChanges: [
         {
@@ -798,7 +714,7 @@ describe('executeMergeWithResolution auto-publish (target = main)', () => {
     vi.mocked(mergeRequestService.updateMergeRequestStatus).mockResolvedValueOnce({
       ...baseMergeRequest,
       status: 'merged',
-      mergedAt: '2026-04-25T11:00:00.000Z',
+      mergedAt: new Date('2026-04-25T11:00:00.000Z'),
     });
 
     await executeMergeWithResolution({
@@ -819,22 +735,6 @@ describe('executeMergeWithResolution auto-publish (target = main)', () => {
   });
 
   it('passes sourceVersionId = null for manual resolutions', async () => {
-    const { executeMergeWithResolution } = await import(
-      '../../src/services/merge-execution-service'
-    );
-    const conflictDetection = await import(
-      '../../src/services/conflict-detection-service'
-    );
-    const mergeRequestService = await import(
-      '../../src/services/merge-request-service'
-    );
-    const docVersionService = await import(
-      '../../src/services/document-version-service'
-    );
-    const checkpointService = await import('../../src/services/checkpoint-service');
-    const branchService = await import('../../src/services/branch-service');
-    const mergePublish = await import('../../src/services/merge-publish');
-
     vi.mocked(mergeRequestService.getMergeRequest).mockResolvedValueOnce({
       ...baseMergeRequest,
       hasConflicts: true,
@@ -858,7 +758,7 @@ describe('executeMergeWithResolution auto-publish (target = main)', () => {
       mergeBase: {
         checkpointId: 'checkpoint-base',
         branchId: 'main-branch',
-        createdAt: '2026-04-20T10:00:00.000Z',
+        createdAt: new Date('2026-04-20T10:00:00.000Z'),
       },
       sourceChanges: [
         {
@@ -915,7 +815,7 @@ describe('executeMergeWithResolution auto-publish (target = main)', () => {
     vi.mocked(mergeRequestService.updateMergeRequestStatus).mockResolvedValueOnce({
       ...baseMergeRequest,
       status: 'merged',
-      mergedAt: '2026-04-25T11:00:00.000Z',
+      mergedAt: new Date('2026-04-25T11:00:00.000Z'),
     });
 
     await executeMergeWithResolution({
@@ -947,21 +847,6 @@ describe('executeMergeWithResolution auto-publish (target = main)', () => {
     // executeMergeWithResolution flow: a publish failure must surface as
     // result.publishError without rolling back the merge or its conflict
     // resolution.
-    const { executeMergeWithResolution } = await import(
-      '../../src/services/merge-execution-service'
-    );
-    const conflictDetection = await import(
-      '../../src/services/conflict-detection-service'
-    );
-    const conflictResolution = await import(
-      '../../src/services/conflict-resolution-service'
-    );
-    const mergeRequestService = await import(
-      '../../src/services/merge-request-service'
-    );
-    const checkpointService = await import('../../src/services/checkpoint-service');
-    const branchService = await import('../../src/services/branch-service');
-    const mergePublish = await import('../../src/services/merge-publish');
 
     vi.mocked(mergeRequestService.getMergeRequest).mockResolvedValueOnce({
       ...baseMergeRequest,
@@ -986,7 +871,7 @@ describe('executeMergeWithResolution auto-publish (target = main)', () => {
       mergeBase: {
         checkpointId: 'checkpoint-base',
         branchId: 'main-branch',
-        createdAt: '2026-04-20T10:00:00.000Z',
+        createdAt: new Date('2026-04-20T10:00:00.000Z'),
       },
       sourceChanges: [
         {
@@ -1045,7 +930,7 @@ describe('executeMergeWithResolution auto-publish (target = main)', () => {
     vi.mocked(mergeRequestService.updateMergeRequestStatus).mockResolvedValueOnce({
       ...baseMergeRequest,
       status: 'merged',
-      mergedAt: '2026-04-25T11:00:00.000Z',
+      mergedAt: new Date('2026-04-25T11:00:00.000Z'),
     });
 
     const result = await executeMergeWithResolution({

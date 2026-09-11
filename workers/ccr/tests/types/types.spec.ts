@@ -344,8 +344,8 @@ describe('Phase 1.3: Core TypeScript Types', () => {
           hasConflicts: false,
           createdById: 'user-123',
           createdByType: 'user',
-          createdAt: '2024-01-01T00:00:00Z',
-          updatedAt: '2024-01-01T00:00:00Z',
+          createdAt: new Date('2024-01-01T00:00:00Z'),
+          updatedAt: new Date('2024-01-01T00:00:00Z'),
         };
         assertType<MergeRequest>(mr);
         expect(mr.title).toBe('Add new feature');
@@ -364,9 +364,9 @@ describe('Phase 1.3: Core TypeScript Types', () => {
           hasConflicts: false,
           createdById: 'user-123',
           createdByType: 'user',
-          createdAt: '2024-01-01T00:00:00Z',
-          updatedAt: '2024-01-01T00:00:00Z',
-          mergedAt: '2024-01-02T00:00:00Z',
+          createdAt: new Date('2024-01-01T00:00:00Z'),
+          updatedAt: new Date('2024-01-01T00:00:00Z'),
+          mergedAt: new Date('2024-01-02T00:00:00Z'),
           mergedById: 'user-456',
           mergedByType: 'user',
         };
@@ -397,8 +397,8 @@ describe('Phase 1.3: Core TypeScript Types', () => {
           },
           createdById: 'user-123',
           createdByType: 'user',
-          createdAt: '2024-01-01T00:00:00Z',
-          updatedAt: '2024-01-01T00:00:00Z',
+          createdAt: new Date('2024-01-01T00:00:00Z'),
+          updatedAt: new Date('2024-01-01T00:00:00Z'),
         };
         assertType<MergeRequest>(mr);
         expect(mr.conflictDetails?.documentConflicts).toHaveLength(1);
@@ -772,7 +772,7 @@ describe('Phase 1.3: Core TypeScript Types', () => {
           name: 'Products',
           slug: 'products',
           nodeType: 'section',
-          createdAt: '2024-01-01T00:00:00Z',
+          createdAt: new Date('2024-01-01T00:00:00Z'),
         };
         assertType<StructureNode>(node);
         expect(node.nodeType).toBe('section');
@@ -788,7 +788,7 @@ describe('Phase 1.3: Core TypeScript Types', () => {
           slug: 'product-a',
           nodeType: 'document',
           documentId: 'doc-123',
-          createdAt: '2024-01-01T00:00:00Z',
+          createdAt: new Date('2024-01-01T00:00:00Z'),
         };
         assertType<StructureNode>(node);
         expect(node.documentId).toBe('doc-123');
@@ -803,7 +803,7 @@ describe('Phase 1.3: Core TypeScript Types', () => {
           slug: 'external',
           nodeType: 'external',
           externalUrl: 'https://example.com',
-          createdAt: '2024-01-01T00:00:00Z',
+          createdAt: new Date('2024-01-01T00:00:00Z'),
         };
         assertType<StructureNode>(node);
         expect(node.externalUrl).toBe('https://example.com');

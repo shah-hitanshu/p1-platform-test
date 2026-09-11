@@ -18,10 +18,18 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { makeBranch } from '../helpers/branch';
-
-vi.mock('../../src/db', () => ({
-  query: vi.fn(),
-}));
+import { stubDatabase } from '../__stubs__/database';
+import {
+  executeMerge,
+  executeMergeWithResolution,
+} from '../../src/services/merge-execution-service';
+import * as conflictDetection from '../../src/services/conflict-detection-service';
+import * as conflictResolution from '../../src/services/conflict-resolution-service';
+import * as mergeRequestService from '../../src/services/merge-request-service';
+import * as docVersionService from '../../src/services/document-version-service';
+import * as checkpointService from '../../src/services/checkpoint-service';
+import * as branchService from '../../src/services/branch-service';
+import * as mergePublish from '../../src/services/merge-publish';
 
 vi.mock('../../src/services/conflict-detection-service', () => ({
   detectConflicts: vi.fn(),
@@ -65,6 +73,10 @@ vi.mock('../../src/services/merge-publish', () => ({
   publishMergedVersions: vi.fn(),
 }));
 
+vi.mock('../../src/services/relations-service', () => ({
+  carryUpstreamResolutions: vi.fn(),
+}));
+
 const baseMergeRequest = {
   id: 'mr-1',
   siteId: 'site-1',
@@ -75,8 +87,8 @@ const baseMergeRequest = {
   hasConflicts: false,
   createdById: 'user-1',
   createdByType: 'user' as const,
-  createdAt: '2026-04-25T10:00:00.000Z',
-  updatedAt: '2026-04-25T10:00:00.000Z',
+  createdAt: new Date('2026-04-25T10:00:00.000Z'),
+  updatedAt: new Date('2026-04-25T10:00:00.000Z'),
 };
 
 const baseMainBranch = makeBranch({
@@ -92,11 +104,11 @@ const baseMainBranch = makeBranch({
   updatedAt: '2026-01-01T00:00:00.000Z',
 });
 
+
 describe('copySourceChangesToTarget — no-op skip', () => {
   beforeEach(async () => {
     vi.resetAllMocks();
-    const db = await import('../../src/db');
-    vi.mocked(db.query).mockResolvedValue({ rows: [], rowCount: 0 });
+    stubDatabase();
   });
 
   it('skips entries where createDocumentVersion returned the pre-existing latest version (no real merge happened)', async () => {
@@ -105,21 +117,6 @@ describe('copySourceChangesToTarget — no-op skip', () => {
     // main. For doc-B, createDocumentVersion's unique-violation fallback
     // returns the pre-existing main-side v1 (no new work).
     // Expectation: only doc-A is in copiedVersions and downstream checkpoints.
-    const { executeMerge } = await import(
-      '../../src/services/merge-execution-service'
-    );
-    const conflictDetection = await import(
-      '../../src/services/conflict-detection-service'
-    );
-    const mergeRequestService = await import(
-      '../../src/services/merge-request-service'
-    );
-    const docVersionService = await import(
-      '../../src/services/document-version-service'
-    );
-    const checkpointService = await import('../../src/services/checkpoint-service');
-    const branchService = await import('../../src/services/branch-service');
-    const mergePublish = await import('../../src/services/merge-publish');
 
     vi.mocked(mergeRequestService.getMergeRequest).mockResolvedValueOnce(
       baseMergeRequest,
@@ -132,7 +129,7 @@ describe('copySourceChangesToTarget — no-op skip', () => {
       mergeBase: {
         checkpointId: 'checkpoint-base',
         branchId: 'main-branch',
-        createdAt: '2026-04-20T10:00:00.000Z',
+        createdAt: new Date('2026-04-20T10:00:00.000Z'),
       },
       sourceChanges: [
         {
@@ -256,7 +253,7 @@ describe('copySourceChangesToTarget — no-op skip', () => {
     vi.mocked(mergeRequestService.updateMergeRequestStatus).mockResolvedValueOnce({
       ...baseMergeRequest,
       status: 'merged',
-      mergedAt: '2026-04-25T11:00:00.000Z',
+      mergedAt: new Date('2026-04-25T11:00:00.000Z'),
     });
 
     const result = await executeMerge({
@@ -291,21 +288,6 @@ describe('copySourceChangesToTarget — no-op skip', () => {
     // First-time merge: source has doc-NEW, main has nothing for that doc.
     // getLatestDocumentVersion returns null. createDocumentVersion creates
     // v1 (no fallback could fire). Doc must be included.
-    const { executeMerge } = await import(
-      '../../src/services/merge-execution-service'
-    );
-    const conflictDetection = await import(
-      '../../src/services/conflict-detection-service'
-    );
-    const mergeRequestService = await import(
-      '../../src/services/merge-request-service'
-    );
-    const docVersionService = await import(
-      '../../src/services/document-version-service'
-    );
-    const checkpointService = await import('../../src/services/checkpoint-service');
-    const branchService = await import('../../src/services/branch-service');
-    const mergePublish = await import('../../src/services/merge-publish');
 
     vi.mocked(mergeRequestService.getMergeRequest).mockResolvedValueOnce(
       baseMergeRequest,
@@ -318,7 +300,7 @@ describe('copySourceChangesToTarget — no-op skip', () => {
       mergeBase: {
         checkpointId: 'checkpoint-base',
         branchId: 'main-branch',
-        createdAt: '2026-04-20T10:00:00.000Z',
+        createdAt: new Date('2026-04-20T10:00:00.000Z'),
       },
       sourceChanges: [
         {
@@ -381,7 +363,7 @@ describe('copySourceChangesToTarget — no-op skip', () => {
     vi.mocked(mergeRequestService.updateMergeRequestStatus).mockResolvedValueOnce({
       ...baseMergeRequest,
       status: 'merged',
-      mergedAt: '2026-04-25T11:00:00.000Z',
+      mergedAt: new Date('2026-04-25T11:00:00.000Z'),
     });
 
     const result = await executeMerge({
@@ -404,23 +386,6 @@ describe('copySourceChangesToTarget — no-op skip', () => {
     // source snapshot is identical to main's existing version (resolver
     // returns the existing target version id). Must be excluded from the
     // post_merge checkpoint.
-    const { executeMergeWithResolution } = await import(
-      '../../src/services/merge-execution-service'
-    );
-    const conflictDetection = await import(
-      '../../src/services/conflict-detection-service'
-    );
-    const conflictResolution = await import(
-      '../../src/services/conflict-resolution-service'
-    );
-    const mergeRequestService = await import(
-      '../../src/services/merge-request-service'
-    );
-    const docVersionService = await import(
-      '../../src/services/document-version-service'
-    );
-    const checkpointService = await import('../../src/services/checkpoint-service');
-    const branchService = await import('../../src/services/branch-service');
 
     vi.mocked(mergeRequestService.getMergeRequest).mockResolvedValueOnce({
       ...baseMergeRequest,
@@ -445,7 +410,7 @@ describe('copySourceChangesToTarget — no-op skip', () => {
       mergeBase: {
         checkpointId: 'checkpoint-base',
         branchId: 'main-branch',
-        createdAt: '2026-04-20T10:00:00.000Z',
+        createdAt: new Date('2026-04-20T10:00:00.000Z'),
       },
       sourceChanges: [
         {
@@ -515,7 +480,7 @@ describe('copySourceChangesToTarget — no-op skip', () => {
     vi.mocked(mergeRequestService.updateMergeRequestStatus).mockResolvedValueOnce({
       ...baseMergeRequest,
       status: 'merged',
-      mergedAt: '2026-04-25T11:00:00.000Z',
+      mergedAt: new Date('2026-04-25T11:00:00.000Z'),
     });
 
     const result = await executeMergeWithResolution({
@@ -536,23 +501,6 @@ describe('copySourceChangesToTarget — no-op skip', () => {
   it('skips take-target resolution from the post_merge checkpoint (always a no-op for the target)', async () => {
     // take-target by definition returns the existing target version id.
     // The no-op skip suppresses it.
-    const { executeMergeWithResolution } = await import(
-      '../../src/services/merge-execution-service'
-    );
-    const conflictDetection = await import(
-      '../../src/services/conflict-detection-service'
-    );
-    const conflictResolution = await import(
-      '../../src/services/conflict-resolution-service'
-    );
-    const mergeRequestService = await import(
-      '../../src/services/merge-request-service'
-    );
-    const docVersionService = await import(
-      '../../src/services/document-version-service'
-    );
-    const checkpointService = await import('../../src/services/checkpoint-service');
-    const branchService = await import('../../src/services/branch-service');
 
     vi.mocked(mergeRequestService.getMergeRequest).mockResolvedValueOnce({
       ...baseMergeRequest,
@@ -577,7 +525,7 @@ describe('copySourceChangesToTarget — no-op skip', () => {
       mergeBase: {
         checkpointId: 'cp-base',
         branchId: 'main-branch',
-        createdAt: '2026-04-20T10:00:00.000Z',
+        createdAt: new Date('2026-04-20T10:00:00.000Z'),
       },
       sourceChanges: [
         {
@@ -645,7 +593,7 @@ describe('copySourceChangesToTarget — no-op skip', () => {
     vi.mocked(mergeRequestService.updateMergeRequestStatus).mockResolvedValueOnce({
       ...baseMergeRequest,
       status: 'merged',
-      mergedAt: '2026-04-25T11:00:00.000Z',
+      mergedAt: new Date('2026-04-25T11:00:00.000Z'),
     });
 
     await executeMergeWithResolution({
@@ -701,7 +649,7 @@ describe('copySourceChangesToTarget — no-op skip', () => {
       mergeBase: {
         checkpointId: 'cp-base',
         branchId: 'main-branch',
-        createdAt: '2026-04-20T10:00:00.000Z',
+        createdAt: new Date('2026-04-20T10:00:00.000Z'),
       },
       sourceChanges: [
         {
@@ -769,7 +717,7 @@ describe('copySourceChangesToTarget — no-op skip', () => {
     vi.mocked(mergeRequestService.updateMergeRequestStatus).mockResolvedValueOnce({
       ...baseMergeRequest,
       status: 'merged',
-      mergedAt: '2026-04-25T11:00:00.000Z',
+      mergedAt: new Date('2026-04-25T11:00:00.000Z'),
     });
 
     await executeMergeWithResolution({
@@ -779,33 +727,12 @@ describe('copySourceChangesToTarget — no-op skip', () => {
       mergedByType: 'user',
     });
 
-    const db = await import('../../src/db');
-    const carrySelect = vi
-      .mocked(db.query)
-      .mock.calls.find(([sql]) =>
-        typeof sql === 'string'
-        && sql.includes('FROM app.document_relation_branch_resolutions')
-        && sql.includes('NOT (source_document_id = ANY'),
-      );
-    expect(carrySelect?.[1]?.[1]).toContain('doc-c');
+    const { carryUpstreamResolutions } = await import('../../src/services/relations-service');
+    const [, , excludedDocumentIds] = vi.mocked(carryUpstreamResolutions).mock.calls[0] ?? [];
+    expect(excludedDocumentIds).toContain('doc-c');
   });
 
   it('skips manual resolution when the manual snapshot resolves to the existing target version', async () => {
-    const { executeMergeWithResolution } = await import(
-      '../../src/services/merge-execution-service'
-    );
-    const conflictDetection = await import(
-      '../../src/services/conflict-detection-service'
-    );
-    const mergeRequestService = await import(
-      '../../src/services/merge-request-service'
-    );
-    const docVersionService = await import(
-      '../../src/services/document-version-service'
-    );
-    const checkpointService = await import('../../src/services/checkpoint-service');
-    const branchService = await import('../../src/services/branch-service');
-
     vi.mocked(mergeRequestService.getMergeRequest).mockResolvedValueOnce({
       ...baseMergeRequest,
       hasConflicts: true,
@@ -829,7 +756,7 @@ describe('copySourceChangesToTarget — no-op skip', () => {
       mergeBase: {
         checkpointId: 'cp-base',
         branchId: 'main-branch',
-        createdAt: '2026-04-20T10:00:00.000Z',
+        createdAt: new Date('2026-04-20T10:00:00.000Z'),
       },
       sourceChanges: [
         {
@@ -886,7 +813,7 @@ describe('copySourceChangesToTarget — no-op skip', () => {
     vi.mocked(mergeRequestService.updateMergeRequestStatus).mockResolvedValueOnce({
       ...baseMergeRequest,
       status: 'merged',
-      mergedAt: '2026-04-25T11:00:00.000Z',
+      mergedAt: new Date('2026-04-25T11:00:00.000Z'),
     });
 
     await executeMergeWithResolution({
@@ -912,21 +839,6 @@ describe('copySourceChangesToTarget — no-op skip', () => {
     // main version. Result: zero merged docs, zero post_merge entries,
     // zero auto-publish call (per existing zero-versions short-circuit
     // in autoPublishIfTargetIsMain).
-    const { executeMerge } = await import(
-      '../../src/services/merge-execution-service'
-    );
-    const conflictDetection = await import(
-      '../../src/services/conflict-detection-service'
-    );
-    const mergeRequestService = await import(
-      '../../src/services/merge-request-service'
-    );
-    const docVersionService = await import(
-      '../../src/services/document-version-service'
-    );
-    const checkpointService = await import('../../src/services/checkpoint-service');
-    const branchService = await import('../../src/services/branch-service');
-    const mergePublish = await import('../../src/services/merge-publish');
 
     vi.mocked(mergeRequestService.getMergeRequest).mockResolvedValueOnce(
       baseMergeRequest,
@@ -939,7 +851,7 @@ describe('copySourceChangesToTarget — no-op skip', () => {
       mergeBase: {
         checkpointId: 'checkpoint-base',
         branchId: 'main-branch',
-        createdAt: '2026-04-20T10:00:00.000Z',
+        createdAt: new Date('2026-04-20T10:00:00.000Z'),
       },
       sourceChanges: [
         {
@@ -997,7 +909,7 @@ describe('copySourceChangesToTarget — no-op skip', () => {
     vi.mocked(mergeRequestService.updateMergeRequestStatus).mockResolvedValueOnce({
       ...baseMergeRequest,
       status: 'merged',
-      mergedAt: '2026-04-25T11:00:00.000Z',
+      mergedAt: new Date('2026-04-25T11:00:00.000Z'),
     });
 
     const result = await executeMerge({

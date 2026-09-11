@@ -12,6 +12,9 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { stubDatabase, type DatabaseStub } from '../__stubs__/database';
+import { documentVersions } from '../../src/db/schema';
+import { publishMergedVersions } from '../../src/services/merge-publish';
 
 const SITE_ID = 'site-123';
 const MAIN_BRANCH_ID = 'branch-main';
@@ -174,15 +177,16 @@ describe('publish invalidates the edge cache', () => {
       };
     }
 
+    let database: DatabaseStub;
+
     beforeEach(() => {
+      database = stubDatabase();
       mocks.createCheckpoint.mockResolvedValue({
         checkpoint: { id: 'cp-2', branchId: MAIN_BRANCH_ID },
       });
     });
 
     it('purges the main branch after an auto-publish merge', async () => {
-      const { publishMergedVersions } = await import('../../src/services/merge-publish');
-
       await publishMergedVersions(mergeParams());
 
       expect(mocks.purgeContentCache).toHaveBeenCalledTimes(1);
@@ -194,15 +198,12 @@ describe('publish invalidates the edge cache', () => {
     // run, so a throw there used to skip the purge entirely and leave the edge
     // serving pre-merge content for a full TTL with no log signal.
     it('still purges when the best-effort provenance updates throw', async () => {
-      mocks.query.mockImplementation((sql: string) => {
-        if (sql.includes('SET source_branch_id')) {
-          return Promise.reject(new Error('transient db error'));
-        }
-        return Promise.resolve(stubQuery(sql));
-      });
-      const { publishMergedVersions } = await import('../../src/services/merge-publish');
+      const failure = new Error('transient db error');
+      database.on(documentVersions).update.rejects(failure);
 
-      await expect(publishMergedVersions(mergeParams())).rejects.toThrow('transient db error');
+      await expect(publishMergedVersions(mergeParams())).rejects.toMatchObject({
+        cause: failure,
+      });
 
       expect(mocks.purgeContentCache).toHaveBeenCalledTimes(1);
       const params = mocks.purgeContentCache.mock.calls[0]?.[0] as { branchId?: string };
@@ -210,8 +211,6 @@ describe('publish invalidates the edge cache', () => {
     });
 
     it('does not purge when the merge published nothing', async () => {
-      const { publishMergedVersions } = await import('../../src/services/merge-publish');
-
       await publishMergedVersions({ ...mergeParams(), mergedVersions: [] });
 
       expect(mocks.purgeContentCache).not.toHaveBeenCalled();

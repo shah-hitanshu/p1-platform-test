@@ -332,9 +332,9 @@ export interface MergeRequest {
   conflictDetails?: ConflictDetails;
   createdById: string;
   createdByType: 'user' | 'agent';
-  createdAt: string;
-  updatedAt: string;
-  mergedAt?: string;
+  createdAt: Date | null;
+  updatedAt: Date | null;
+  mergedAt?: Date;
   mergedById?: string;
   mergedByType?: string;
 }

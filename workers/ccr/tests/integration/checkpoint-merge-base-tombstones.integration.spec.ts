@@ -6,7 +6,7 @@
  * workstream forked must not read back as a change the workstream is making.
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
-import postgres from 'postgres';
+import type postgres from 'postgres';
 import { setDatabaseInstance } from '../../src/db';
 import {
   createBranch,
@@ -16,6 +16,7 @@ import {
   findMergeBase,
   getModifiedDocumentsSince,
 } from '../../src/services';
+import { createRealDatabaseConnection } from '../helpers/database';
 
 const TEST_DATABASE_URL =
   process.env.POSTGRES_CONNECTION_STRING ??
@@ -74,23 +75,18 @@ function sessionCheckpoint(branchId: string) {
   };
 }
 
+let connection: ReturnType<typeof createRealDatabaseConnection>['connection'];
+
 beforeAll(async () => {
-  sql = postgres(TEST_DATABASE_URL, { max: 1 });
-  setDatabaseInstance({
-    async query(sqlQuery: string, params?: unknown[]) {
-      const result = await sql.unsafe(
-        sqlQuery,
-        params as unknown as postgres.ParameterOrJSON<never>[],
-      );
-      const rows = [...result];
-      return { rows, rowCount: (result as unknown as { count?: number }).count ?? rows.length };
-    },
-  } as never);
+  const real = createRealDatabaseConnection(TEST_DATABASE_URL);
+  sql = real.sql;
+  connection = real.connection;
+  setDatabaseInstance(connection);
 });
 
 afterAll(async () => {
   await purgeSite();
-  await sql.end();
+  await connection.close();
 });
 
 beforeEach(async () => {

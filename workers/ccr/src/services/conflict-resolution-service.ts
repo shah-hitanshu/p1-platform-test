@@ -8,7 +8,8 @@
  */
 
 import type { ConflictResolutionStrategy, DocumentConflict } from '../types';
-import { query } from '../db';
+import { sql } from 'drizzle-orm';
+import { db } from '../db/scope';
 import {
   getDocumentVersion,
   createDocumentVersion,
@@ -334,12 +335,13 @@ export async function resolveDeletedConflict(
       // Delete on target - create a deletion marker
       // In this system, we mark deletion by creating a version with null/empty snapshot
       // or by using a soft-delete flag
-      await query(
-        `INSERT INTO app.document_deletions (document_id, branch_id, deleted_by_id, deleted_by_type)
-         VALUES ($1, $2, $3, $4)
-         RETURNING id`,
-        [documentId, targetBranchId, resolvedById, resolvedByType],
-      );
+      // TODO(PCC-3925): app.document_deletions exists in no migration, so this
+      // write always fails. Deletion on a branch is marked by a tombstone
+      // version everywhere else in the codebase.
+      await db().execute(sql`
+        INSERT INTO app.document_deletions (document_id, branch_id, deleted_by_id, deleted_by_type)
+        VALUES (${documentId}, ${targetBranchId}, ${resolvedById}, ${resolvedByType})
+        RETURNING id`);
 
       return {
         resolved: true,

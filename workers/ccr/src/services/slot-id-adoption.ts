@@ -14,7 +14,9 @@
 
 import type { DocumentComponent } from './component-identity';
 import { walkComponents, extractComponentIds } from './component-identity';
-import { query } from '../db';
+import { and, eq, isNull } from 'drizzle-orm';
+import { branches as branchesTable, documentRelations, documentVersions, documents } from '../db/schema';
+import { db } from '../db/scope';
 import type { PuckAction } from './action-classification';
 import {
   getLatestDocumentVersion,
@@ -237,17 +239,6 @@ export interface SlotAdoptionRunSummary {
 }
 
 /**
- * A template edge with the source document's path and its site's main branch,
- * the branch that resolves an inherited template version.
- */
-interface TemplateEdgeRow {
-  document_id: string;
-  template_id: string;
-  path: string;
-  main_branch_id: string;
-}
-
-/**
  * Runs the adoption pass over every non-archived document with a template
  * edge, on each branch the document has a version. A dry run only reports what
  * would change; otherwise each adopted document gains a migration-sourced
@@ -263,28 +254,37 @@ export async function runSlotIdAdoption(
     skipped: [],
   };
 
-  const edges = await query<TemplateEdgeRow>(
-    `SELECT dr.source_document_id AS document_id,
-       dr.target_document_id AS template_id,
-       d.path AS path,
-       mb.id AS main_branch_id
-     FROM app.document_relations dr
-     JOIN app.documents d ON d.id = dr.source_document_id
-     JOIN app.branches mb ON mb.site_id = d.site_id AND mb.is_main = true
-     WHERE dr.relation_type = 'template'
-       AND d.archived_at IS NULL
-       ${options.siteId !== undefined ? 'AND d.site_id = $1' : ''}
-     ORDER BY d.id`,
-    options.siteId !== undefined ? [options.siteId] : [],
-  );
+  const edgeConditions = [
+    eq(documentRelations.relationType, 'template'),
+    isNull(documents.archivedAt),
+  ];
+  if (options.siteId !== undefined) {
+    edgeConditions.push(eq(documents.siteId, options.siteId));
+  }
 
-  for (const edge of edges.rows) {
-    const branches = await query<{ branch_id: string }>(
-      'SELECT DISTINCT branch_id FROM app.document_versions WHERE document_id = $1',
-      [edge.document_id],
-    );
+  const edges = await db()
+    .select({
+      document_id: documentRelations.sourceDocumentId,
+      template_id: documentRelations.targetDocumentId,
+      path: documents.path,
+      main_branch_id: branchesTable.id,
+    })
+    .from(documentRelations)
+    .innerJoin(documents, eq(documents.id, documentRelations.sourceDocumentId))
+    .innerJoin(
+      branchesTable,
+      and(eq(branchesTable.siteId, documents.siteId), eq(branchesTable.isMain, true)),
+    )
+    .where(and(...edgeConditions))
+    .orderBy(documents.id);
 
-    for (const { branch_id: branchId } of branches.rows) {
+  for (const edge of edges) {
+    const branchRows = await db()
+      .selectDistinct({ branch_id: documentVersions.branchId })
+      .from(documentVersions)
+      .where(eq(documentVersions.documentId, edge.document_id));
+
+    for (const { branch_id: branchId } of branchRows) {
       summary.examined += 1;
 
       const documentVersion = await getLatestDocumentVersion(edge.document_id, branchId);

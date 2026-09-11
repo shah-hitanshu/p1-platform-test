@@ -43,7 +43,7 @@ export interface StructureNode {
   nodeType: NodeType;
   documentId?: string; // For document nodes
   externalUrl?: string; // For external nodes
-  createdAt: string;
+  createdAt: Date | null;
 }
 
 /**

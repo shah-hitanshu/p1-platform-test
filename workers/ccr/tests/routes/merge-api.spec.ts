@@ -8,7 +8,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { readJson } from '../helpers/http';
 import { makePrincipal } from '../helpers/principal';
 import { makeBranch } from '../helpers/branch';
-
 // Mock the services
 vi.mock('../../src/services', async () => {
   const actual = await vi.importActual('../../src/services');
@@ -417,7 +416,7 @@ describe('Phase 7.1c: Merge API Routes', () => {
         }),
       });
 
-      expect(vi.mocked(services.createMergeRequest)).toHaveBeenCalledWith(
+      expect(vi.mocked(services.createMergeRequest).mock.calls[0]?.[0]).toEqual(
         expect.objectContaining({ createdById: 'db-uuid-for-user' }),
       );
     });

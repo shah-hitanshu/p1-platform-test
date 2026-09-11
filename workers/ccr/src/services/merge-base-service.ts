@@ -8,7 +8,9 @@
  * @see collaborative-state-system-architecture-v2.2.md Section "Merge Operations"
  */
 
-import { query } from '../db';
+import { asc, eq, sql } from 'drizzle-orm';
+import { branches, checkpointDocuments, checkpoints, documentVersions, documents } from '../db/schema';
+import { db } from '../db/scope';
 import { SourceBranchNotFoundError, TargetBranchNotFoundError } from './errors';
 
 // =============================================================================
@@ -21,7 +23,7 @@ import { SourceBranchNotFoundError, TargetBranchNotFoundError } from './errors';
 export interface MergeBase {
   checkpointId: string;
   branchId: string;
-  createdAt: string;
+  createdAt: Date | null;
   name?: string;
   message?: string;
 }
@@ -61,24 +63,11 @@ export interface BranchInLineage {
 }
 
 // =============================================================================
-// Database Row Types
+// Raw Projection Row Types
 // =============================================================================
 
-interface MergeBaseRow {
-  merge_base_checkpoint_id: string | null;
-  merge_base_branch_id: string | null;
-  created_at: string;
-  name: string | null;
-  message: string | null;
-}
-
-interface BranchRow {
-  id: string;
-  source_branch_id: string | null;
-  source_checkpoint_id: string | null;
-}
-
-interface ModifiedDocumentRow {
+/** Shapes the CTE queries below project, which no table declares. */
+type ModifiedDocumentRow = {
   document_id: string;
   document_path: string;
   latest_version_id: string | null;
@@ -86,24 +75,14 @@ interface ModifiedDocumentRow {
   base_version_id: string | null;
   base_version_number: number | null;
   is_deleted?: boolean;
-  source?: string;
-  snapshot?: Record<string, unknown> | null;
-}
+};
 
-interface CheckpointDocumentRow {
-  document_id: string;
-  document_path: string;
-  version_id: string;
-  version_number: number;
-  snapshot: Record<string, unknown> | string;
-}
-
-interface BranchLineageRow {
+type BranchLineageRow = {
   id: string;
   source_branch_id: string | null;
   source_checkpoint_id: string | null;
   depth: number;
-}
+};
 
 // =============================================================================
 // Merge Base Calculation
@@ -128,64 +107,58 @@ export async function findMergeBase(
     return null;
   }
 
-  // Verify source branch exists and get its source_checkpoint_id
-  const sourceBranchResult = await query<BranchRow>(
-    'SELECT id, source_branch_id, source_checkpoint_id FROM app.branches WHERE id = $1',
-    [sourceBranchId],
-  );
+  const branchColumns = {
+    id: branches.id,
+    sourceBranchId: branches.sourceBranchId,
+    sourceCheckpointId: branches.sourceCheckpointId,
+  };
 
-  if (sourceBranchResult.rows.length === 0) {
+  // Verify source branch exists and get its source_checkpoint_id
+  const [sourceBranch] = await db()
+    .select(branchColumns)
+    .from(branches)
+    .where(eq(branches.id, sourceBranchId));
+
+  if (sourceBranch === undefined) {
     throw new SourceBranchNotFoundError(sourceBranchId);
   }
 
   // Verify target branch exists
-  const targetBranchResult = await query<BranchRow>(
-    'SELECT id, source_branch_id, source_checkpoint_id FROM app.branches WHERE id = $1',
-    [targetBranchId],
-  );
+  const [targetBranch] = await db()
+    .select(branchColumns)
+    .from(branches)
+    .where(eq(branches.id, targetBranchId));
 
-  if (targetBranchResult.rows.length === 0) {
+  if (targetBranch === undefined) {
     throw new TargetBranchNotFoundError(targetBranchId);
   }
 
   // With main-only branching, the merge base is simply the source_checkpoint_id
   // from the source branch (the checkpoint on main when the branch was created)
-  const sourceBranch = sourceBranchResult.rows[0];
-  if (!sourceBranch) {
-    throw new SourceBranchNotFoundError(sourceBranchId);
-  }
-  const sourceCheckpointId = sourceBranch.source_checkpoint_id;
+  const sourceCheckpointId = sourceBranch.sourceCheckpointId;
 
   if (sourceCheckpointId === null) {
     return null;
   }
 
   // Look up checkpoint metadata
-  const checkpointResult = await query<MergeBaseRow>(
-    `SELECT
-      $1::uuid AS merge_base_checkpoint_id,
-      $2::uuid AS merge_base_branch_id,
-      c.created_at,
-      c.name,
-      c.message
-    FROM app.checkpoints c
-    WHERE c.id = $1`,
-    [sourceCheckpointId, targetBranchId],
-  );
+  const [row] = await db()
+    .select({
+      createdAt: checkpoints.createdAt,
+      name: checkpoints.name,
+      message: checkpoints.message,
+    })
+    .from(checkpoints)
+    .where(eq(checkpoints.id, sourceCheckpointId));
 
-  if (checkpointResult.rows.length === 0) {
-    return null;
-  }
-
-  const row = checkpointResult.rows[0];
-  if (!row) {
+  if (row === undefined) {
     return null;
   }
 
   return {
-    checkpointId: row.merge_base_checkpoint_id ?? '',
-    branchId: row.merge_base_branch_id ?? '',
-    createdAt: row.created_at,
+    checkpointId: sourceCheckpointId,
+    branchId: targetBranchId,
+    createdAt: row.createdAt,
     name: row.name ?? undefined,
     message: row.message ?? undefined,
   };
@@ -219,11 +192,11 @@ export async function getModifiedDocumentsSince(
   // doc translation merge into main produced 32 phantom conflicts because
   // every prior post_merge had captured 32 docs.
   const publishTypeFilter = options?.publishedOnly === true
-    ? "AND cp.checkpoint_type = 'publish'"
-    : '';
+    ? sql`AND cp.checkpoint_type = 'publish'`
+    : sql``;
 
   const currentVersionsCte = options?.publishedOnly === true
-    ? `
+    ? sql`
     current_versions AS (
       -- Tombstone overlay: a delete written directly to document_versions
       -- without a publish checkpoint capturing it must still be authoritative
@@ -244,27 +217,27 @@ export async function getModifiedDocumentsSince(
       FROM app.checkpoint_documents cd
       INNER JOIN app.checkpoints cp ON cp.id = cd.checkpoint_id
       INNER JOIN app.document_versions dv ON dv.id = cd.document_version_id
-      WHERE cp.branch_id = $1 ${publishTypeFilter}
+      WHERE cp.branch_id = ${branchId} ${publishTypeFilter}
         AND NOT EXISTS (
           SELECT 1 FROM app.document_versions dv_t
           WHERE dv_t.document_id = cd.document_id
-            AND dv_t.branch_id = $1
+            AND dv_t.branch_id = ${branchId}
             AND dv_t.is_tombstone = true
             AND dv_t.version_number > dv.version_number
         )
       ORDER BY cd.document_id, cp.created_at DESC
     )`
-    : `
+    : sql`
     current_versions AS (
       SELECT DISTINCT ON (dv.document_id)
         dv.document_id, dv.id AS version_id, dv.version_number, dv.source, dv.snapshot, dv.is_tombstone
       FROM app.document_versions dv
-      WHERE dv.branch_id = $1
+      WHERE dv.branch_id = ${branchId}
         AND dv.superseded_at IS NULL
       ORDER BY dv.document_id, dv.version_number DESC
     )`;
 
-  const sql = `
+  const statement = sql`
     WITH
     -- Documents and versions at the merge base checkpoint time.
     -- Resolves the full published state by looking at ALL checkpoints
@@ -279,8 +252,8 @@ export async function getModifiedDocumentsSince(
       FROM app.checkpoint_documents cd
       INNER JOIN app.checkpoints cp ON cp.id = cd.checkpoint_id
       INNER JOIN app.document_versions dv ON dv.id = cd.document_version_id
-      WHERE cp.branch_id = (SELECT branch_id FROM app.checkpoints WHERE id = $2)
-        AND cp.created_at <= (SELECT created_at FROM app.checkpoints WHERE id = $2)
+      WHERE cp.branch_id = (SELECT branch_id FROM app.checkpoints WHERE id = ${checkpointId})
+        AND cp.created_at <= (SELECT created_at FROM app.checkpoints WHERE id = ${checkpointId})
         ${publishTypeFilter}
       ORDER BY cd.document_id, cp.created_at DESC
     ),
@@ -316,9 +289,9 @@ export async function getModifiedDocumentsSince(
       AND NOT (cd.document_id IS NULL AND d.archived_at IS NOT NULL)
   `;
 
-  const result = await query<ModifiedDocumentRow>(sql, [branchId, checkpointId]);
+  const rows = await db().execute<ModifiedDocumentRow>(statement);
 
-  return result.rows.map((row) => ({
+  return rows.map((row) => ({
     documentId: row.document_id,
     documentPath: row.document_path,
     latestVersionId: row.latest_version_id,
@@ -335,31 +308,27 @@ export async function getModifiedDocumentsSince(
 export async function getDocumentsAtCheckpoint(
   checkpointId: string,
 ): Promise<CheckpointDocument[]> {
-  const sql = `
-    SELECT
-      cd.document_id,
-      d.path AS document_path,
-      cd.document_version_id AS version_id,
-      dv.version_number,
-      dv.snapshot
-    FROM app.checkpoint_documents cd
-    INNER JOIN app.documents d ON d.id = cd.document_id
-    INNER JOIN app.document_versions dv ON dv.id = cd.document_version_id
-    WHERE cd.checkpoint_id = $1
-    ORDER BY d.path
-  `;
+  const rows = await db()
+    .select({
+      documentId: checkpointDocuments.documentId,
+      documentPath: documents.path,
+      versionId: checkpointDocuments.documentVersionId,
+      versionNumber: documentVersions.versionNumber,
+      snapshot: documentVersions.snapshot,
+    })
+    .from(checkpointDocuments)
+    .innerJoin(documents, eq(documents.id, checkpointDocuments.documentId))
+    .innerJoin(documentVersions, eq(documentVersions.id, checkpointDocuments.documentVersionId))
+    .where(eq(checkpointDocuments.checkpointId, checkpointId))
+    .orderBy(asc(documents.path));
 
-  const result = await query<CheckpointDocumentRow>(sql, [checkpointId]);
-
-  return result.rows.map((row) => ({
-    documentId: row.document_id,
-    documentPath: row.document_path,
-    versionId: row.version_id,
-    versionNumber: row.version_number,
-    snapshot:
-      typeof row.snapshot === 'string'
-        ? (JSON.parse(row.snapshot) as Record<string, unknown>)
-        : row.snapshot,
+  return rows.map((row) => ({
+    documentId: row.documentId,
+    documentPath: row.documentPath,
+    versionId: row.versionId,
+    versionNumber: row.versionNumber,
+    // snapshot is jsonb, so the driver hands back the decoded value.
+    snapshot: (row.snapshot ?? {}) as Record<string, unknown>,
   }));
 }
 
@@ -371,8 +340,10 @@ export async function getDocumentsAtCheckpoint(
  * Get the full lineage of a branch from itself to the root (main branch).
  * Uses recursive CTE for efficient traversal.
  */
-export async function getBranchLineage(branchId: string): Promise<BranchInLineage[]> {
-  const sql = `
+export async function getBranchLineage(
+  branchId: string,
+): Promise<BranchInLineage[]> {
+  const rows = await db().execute<BranchLineageRow>(sql`
     WITH RECURSIVE lineage AS (
       SELECT
         id,
@@ -380,7 +351,7 @@ export async function getBranchLineage(branchId: string): Promise<BranchInLineag
         source_checkpoint_id,
         0 AS depth
       FROM app.branches
-      WHERE id = $1
+      WHERE id = ${branchId}
 
       UNION ALL
 
@@ -395,11 +366,9 @@ export async function getBranchLineage(branchId: string): Promise<BranchInLineag
     SELECT id, source_branch_id, source_checkpoint_id, depth
     FROM lineage
     ORDER BY depth ASC
-  `;
+  `);
 
-  const result = await query<BranchLineageRow>(sql, [branchId]);
-
-  return result.rows.map((row) => ({
+  return rows.map((row) => ({
     id: row.id,
     sourceBranchId: row.source_branch_id,
     sourceCheckpointId: row.source_checkpoint_id,

@@ -5,7 +5,9 @@
  * Grants can elevate an actor's permissions on specific branches.
  */
 
-import { query } from '../db';
+import { and, desc, eq } from 'drizzle-orm';
+import { branchGrants } from '../db/schema';
+import { db } from '../db/scope';
 import { DuplicateGrantError } from './errors';
 import type { RoleName } from '../types';
 
@@ -20,8 +22,8 @@ export interface Grant {
   role: RoleName;
   grantedById: string;
   grantedByType: 'user' | 'agent';
-  reason?: string;
-  grantedAt: string;
+  reason: string | null;
+  grantedAt: Date | null;
 }
 
 /**
@@ -46,6 +48,20 @@ export interface ListGrantsOptions {
   role?: RoleName;
 }
 
+function rowToGrant(row: typeof branchGrants.$inferSelect): Grant {
+  return {
+    id: row.id,
+    branchId: row.branchId,
+    actorId: row.actorId,
+    actorType: row.actorType as 'user' | 'agent',
+    role: row.role as RoleName,
+    grantedById: row.grantedById,
+    grantedByType: row.grantedByType as 'user' | 'agent',
+    reason: row.reason,
+    grantedAt: row.grantedAt,
+  };
+}
+
 /**
  * Create a new grant for an actor on a branch
  */
@@ -61,64 +77,42 @@ export async function createGrant(params: CreateGrantParams): Promise<Grant> {
   } = params;
 
   // Check if grant already exists
-  const existing = await query<{ id: string }>(
-    `SELECT id FROM app.branch_grants
-     WHERE branch_id = $1 AND actor_id = $2`,
-    [branchId, actorId],
-  );
+  const existing = await db()
+    .select({ id: branchGrants.id })
+    .from(branchGrants)
+    .where(and(eq(branchGrants.branchId, branchId), eq(branchGrants.actorId, actorId)));
 
-  if (existing.rows.length > 0) {
+  if (existing.length > 0) {
     throw new DuplicateGrantError(branchId, actorId);
   }
 
-  const result = await query<Grant>(
-    `INSERT INTO app.branch_grants (
-       branch_id, actor_id, actor_type, role,
-       granted_by_id, granted_by_type, reason
-     )
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
-     RETURNING
-       id,
-       branch_id AS "branchId",
-       actor_id AS "actorId",
-       actor_type AS "actorType",
-       role,
-       granted_by_id AS "grantedById",
-       granted_by_type AS "grantedByType",
-       reason,
-       granted_at AS "grantedAt"`,
-    [branchId, actorId, actorType, role, grantedById, grantedByType, reason],
-  );
+  const [row] = await db()
+    .insert(branchGrants)
+    .values({
+      branchId,
+      actorId,
+      actorType,
+      role,
+      grantedById,
+      grantedByType,
+      reason,
+    })
+    .returning();
 
-  const row = result.rows[0];
-  if (!row) {
+  if (row === undefined) {
     throw new Error('Failed to insert grant');
   }
 
-  return row;
+  return rowToGrant(row);
 }
 
 /**
  * Get a grant by ID
  */
 export async function getGrant(grantId: string): Promise<Grant | null> {
-  const result = await query<Grant>(
-    `SELECT
-       id,
-       branch_id AS "branchId",
-       actor_id AS "actorId",
-       actor_type AS "actorType",
-       role,
-       granted_by_id AS "grantedById",
-       granted_by_type AS "grantedByType",
-       reason,
-       granted_at AS "grantedAt"
-     FROM app.branch_grants
-     WHERE id = $1`,
-    [grantId],
-  );
+  const [row] = await db().select().from(branchGrants).where(eq(branchGrants.id, grantId));
 
-  return result.rows[0] ?? null;
+  return row === undefined ? null : rowToGrant(row);
 }
 
 /**
@@ -127,40 +121,23 @@ export async function getGrant(grantId: string): Promise<Grant | null> {
 export async function listGrants(options: ListGrantsOptions): Promise<Grant[]> {
   const { branchId, actorType, role } = options;
 
-  let sql = `
-    SELECT
-      id,
-      branch_id AS "branchId",
-      actor_id AS "actorId",
-      actor_type AS "actorType",
-      role,
-      granted_by_id AS "grantedById",
-      granted_by_type AS "grantedByType",
-      reason,
-      granted_at AS "grantedAt"
-    FROM app.branch_grants
-    WHERE branch_id = $1
-  `;
-
-  const params: unknown[] = [branchId];
-  let paramIndex = 2;
+  const conditions = [eq(branchGrants.branchId, branchId)];
 
   if (actorType !== undefined) {
-    sql += ` AND actor_type = $${String(paramIndex)}`;
-    params.push(actorType);
-    paramIndex++;
+    conditions.push(eq(branchGrants.actorType, actorType));
   }
 
   if (role !== undefined) {
-    sql += ` AND role = $${String(paramIndex)}`;
-    params.push(role);
-    paramIndex++;
+    conditions.push(eq(branchGrants.role, role));
   }
 
-  sql += ' ORDER BY granted_at DESC';
+  const rows = await db()
+    .select()
+    .from(branchGrants)
+    .where(and(...conditions))
+    .orderBy(desc(branchGrants.grantedAt));
 
-  const result = await query<Grant>(sql, params);
-  return result.rows;
+  return rows.map(rowToGrant);
 }
 
 /**
@@ -168,10 +145,10 @@ export async function listGrants(options: ListGrantsOptions): Promise<Grant[]> {
  * @returns true if the grant was deleted, false if it didn't exist
  */
 export async function deleteGrant(grantId: string): Promise<boolean> {
-  const result = await query(
-    'DELETE FROM app.branch_grants WHERE id = $1',
-    [grantId],
-  );
+  const deleted = await db()
+    .delete(branchGrants)
+    .where(eq(branchGrants.id, grantId))
+    .returning({ id: branchGrants.id });
 
-  return (result.rowCount ?? 0) > 0;
+  return deleted.length > 0;
 }

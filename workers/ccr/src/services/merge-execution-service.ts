@@ -37,10 +37,17 @@ import {
   upsertBranchDocumentPaths,
   type PlannedMove,
 } from './branch-document-service';
-import { TEMPLATE_RELATION_INNER_JOIN, branchInheritsFromMain } from './document-queries';
+import { branchInheritsFromMain } from './document-queries';
 import { publishMergedVersions } from './merge-publish';
+import { and, count, eq, isNull, lt, sql } from 'drizzle-orm';
+import {
+  branchDocumentPaths,
+  documentRelationBranchSync,
+  documentRelations,
+  documents,
+} from '../db/schema';
+import { db } from '../db/scope';
 import { carryUpstreamResolutions } from './relations-service';
-import { query } from '../db';
 import {
   triggerMigration,
   processMigration,
@@ -699,17 +706,15 @@ export async function planPathOverridePromotion(
   targetBranchId: string,
   siteId: string,
 ): Promise<PathOverridePromotion | null> {
-  const overrides = await query<{ document_id: string; path: string }>(
-    'SELECT document_id, path FROM app.branch_document_paths WHERE branch_id = $1',
-    [sourceBranchId],
-  );
+  const moves: PlannedMove[] = await db()
+    .select({
+      documentId: branchDocumentPaths.documentId,
+      newPath: branchDocumentPaths.path,
+    })
+    .from(branchDocumentPaths)
+    .where(eq(branchDocumentPaths.branchId, sourceBranchId));
 
-  if (overrides.rows.length === 0) return null;
-
-  const moves: PlannedMove[] = overrides.rows.map((row) => ({
-    documentId: row.document_id,
-    newPath: row.path,
-  }));
+  if (moves.length === 0) return null;
 
   await assertPathFreeOnBranch(
     targetBranchId,
@@ -742,13 +747,17 @@ export async function applyPathOverridePromotion(
     return;
   }
 
-  await query(
-    `UPDATE app.documents d
-     SET path = m.path
-     FROM unnest($1::uuid[], $2::text[]) AS m(document_id, path)
-     WHERE d.id = m.document_id`,
-    [moves.map((move) => move.documentId), moves.map((move) => move.newPath)],
-  );
+  // One statement rather than a loop: unnest pairs the id and path arrays into
+  // rows the UPDATE joins against.
+  await db().execute(sql`
+    UPDATE app.documents d
+    SET path = m.path
+    FROM unnest(
+      ${moves.map((move) => move.documentId)}::uuid[],
+      ${moves.map((move) => move.newPath)}::text[]
+    ) AS m(document_id, path)
+    WHERE d.id = m.document_id
+  `);
 }
 
 /**
@@ -958,28 +967,47 @@ async function getStaleTemplateCountByBranch(
   branchId: string,
   inheritsFromMain: boolean,
 ): Promise<number> {
-  const [sql, params]: [string, unknown[]] = inheritsFromMain
-    ? [
-      `SELECT COUNT(*) as count FROM app.documents d
-       ${TEMPLATE_RELATION_INNER_JOIN}
-       LEFT JOIN app.document_relation_branch_sync brs
-         ON brs.source_document_id = d.id AND brs.relation_type = 'template' AND brs.branch_id = $3
-       WHERE dr.target_document_id = $1
-         AND COALESCE(brs.synced_version, dr.synced_version) < $2
-         AND d.archived_at IS NULL`,
-      [templateId, targetVersion, branchId],
-    ]
-    : [
-      `SELECT COUNT(*) as count FROM app.documents d
-       ${TEMPLATE_RELATION_INNER_JOIN}
-       WHERE dr.target_document_id = $1 AND dr.synced_version < $2 AND d.archived_at IS NULL`,
-      [templateId, targetVersion],
-    ];
+  const templateRelation = and(
+    eq(documentRelations.sourceDocumentId, documents.id),
+    eq(documentRelations.relationType, 'template'),
+  );
 
-  const result = await query<{ count: string }>(sql, params);
-  const row = result.rows[0];
-  if (!row) return 0;
-  return parseInt(row.count, 10);
+  const rows = inheritsFromMain
+    ? await db()
+      .select({ count: count() })
+      .from(documents)
+      .innerJoin(documentRelations, templateRelation)
+      .leftJoin(
+        documentRelationBranchSync,
+        and(
+          eq(documentRelationBranchSync.sourceDocumentId, documents.id),
+          eq(documentRelationBranchSync.relationType, 'template'),
+          eq(documentRelationBranchSync.branchId, branchId),
+        ),
+      )
+      .where(
+        and(
+          eq(documentRelations.targetDocumentId, templateId),
+          lt(
+            sql`COALESCE(${documentRelationBranchSync.syncedVersion}, ${documentRelations.syncedVersion})`,
+            targetVersion,
+          ),
+          isNull(documents.archivedAt),
+        ),
+      )
+    : await db()
+      .select({ count: count() })
+      .from(documents)
+      .innerJoin(documentRelations, templateRelation)
+      .where(
+        and(
+          eq(documentRelations.targetDocumentId, templateId),
+          lt(documentRelations.syncedVersion, targetVersion),
+          isNull(documents.archivedAt),
+        ),
+      );
+
+  return rows[0]?.count ?? 0;
 }
 
 async function triggerPostMergeTemplateMigrations(

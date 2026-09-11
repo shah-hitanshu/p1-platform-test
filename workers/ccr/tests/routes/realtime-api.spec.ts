@@ -466,8 +466,7 @@ describe('Phase 4.2: Real-Time API Routes', () => {
       );
 
       const operations = [{ type: 'set', path: 'title', value: 'Hello' }];
-      const userContext: RealtimeRouteContext = {
-        principal: { ...defaultPrincipal, id: 'user-123' },
+      const userContext: RealtimeRouteContext = { principal: { ...defaultPrincipal, id: 'user-123' },
       };
       const request = new Request(
         'https://example.com/api/sites/site-1/branches/branch-1/documents/page/edits',
@@ -499,8 +498,7 @@ describe('Phase 4.2: Real-Time API Routes', () => {
         '../../src/routes/realtime-api'
       );
 
-      const userContext: RealtimeRouteContext = {
-        principal: { ...defaultPrincipal, id: 'user-123' },
+      const userContext: RealtimeRouteContext = { principal: { ...defaultPrincipal, id: 'user-123' },
       };
       const request = new Request(
         'https://example.com/api/sites/site-1/branches/branch-1/documents/page/edits',
@@ -525,8 +523,7 @@ describe('Phase 4.2: Real-Time API Routes', () => {
         '../../src/routes/realtime-api'
       );
 
-      const userContext: RealtimeRouteContext = {
-        principal: { ...defaultPrincipal, id: 'user-123' },
+      const userContext: RealtimeRouteContext = { principal: { ...defaultPrincipal, id: 'user-123' },
       };
       const request = new Request(
         'https://example.com/api/sites/site-1/branches/branch-1/documents/page/edits',
@@ -548,8 +545,7 @@ describe('Phase 4.2: Real-Time API Routes', () => {
         '../../src/routes/realtime-api'
       );
 
-      const agentContext: RealtimeRouteContext = {
-        principal: { ...defaultPrincipal, id: 'agent-456', type: 'agent' },
+      const agentContext: RealtimeRouteContext = { principal: { ...defaultPrincipal, id: 'agent-456', type: 'agent' },
       };
       const request = new Request(
         'https://example.com/api/sites/site-1/branches/branch-1/documents/page/edits',
@@ -718,8 +714,7 @@ describe('Phase 4.2: Real-Time API Routes', () => {
         '../../src/routes/realtime-api'
       );
 
-      const userContext: RealtimeRouteContext = {
-        principal: { ...defaultPrincipal, id: 'user-123' },
+      const userContext: RealtimeRouteContext = { principal: { ...defaultPrincipal, id: 'user-123' },
       };
       const request = new Request(
         'https://example.com/api/sites/site-1/branches/branch-1/documents/page/connect',
@@ -745,8 +740,7 @@ describe('Phase 4.2: Real-Time API Routes', () => {
         '../../src/routes/realtime-api'
       );
 
-      const userContext: RealtimeRouteContext = {
-        principal: { ...defaultPrincipal, id: 'user-789' },
+      const userContext: RealtimeRouteContext = { principal: { ...defaultPrincipal, id: 'user-789' },
       };
       const request = new Request(
         'https://example.com/api/sites/site-1/branches/branch-1/documents/page/connect',
