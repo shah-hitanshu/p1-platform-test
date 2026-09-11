@@ -897,6 +897,18 @@ export function parseRoute(path: string): { handler: string; params: RouteParams
     };
   }
 
+  // Site members route
+  // /api/sites/{siteId}/members
+  const siteMembersMatch = /^\/api\/sites\/([^/]+)\/members$/.exec(normalizedPath);
+  if (siteMembersMatch) {
+    return {
+      handler: 'site-members',
+      params: {
+        siteId: siteMembersMatch[1],
+      },
+    };
+  }
+
   // Collaborator routes
   // /api/sites/{siteId}/collaborators/{userId}?
   const collaboratorMatch = /^\/api\/sites\/([^/]+)\/collaborators(?:\/([^/]+))?$/.exec(normalizedPath);

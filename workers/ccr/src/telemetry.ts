@@ -119,6 +119,12 @@ export function ensureLogger(env: TelemetryEnv): P1Logger {
       'flag_value',
       'flag_source',
       'flag_reason',
+      // Site members endpoint: roster size and which source answered. The memo
+      // is isolate-local, so 'roster_source' is the only way to see whether it
+      // is earning its keep or the upstream roster is degrading.
+      'member_count',
+      'agent_count',
+      'roster_source',
     ],
   });
   return logger;

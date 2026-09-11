@@ -338,6 +338,137 @@ Authorization: Bearer <token>
 
 ---
 
+## Site Members Endpoint
+
+The collaborator endpoints above manage grants and require `canManageGrants`. Reading
+who the collaborators *are* is a different act, so it has its own endpoint gated only on
+`canView` — it exists to populate pickers (a mention list, an assignee dropdown) for any
+user who can see the site.
+
+```
+GET /api/sites/{siteId}/members
+Authorization: Bearer <token>
+```
+
+**Response (200 OK):**
+
+```json
+{
+  "members": [
+    {
+      "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "name": "Ada Lovelace",
+      "email": "ada@pantheon.io",
+      "role": "admin",
+      "avatar": "https://cdn.example.com/ada.png",
+      "source": "mas"
+    }
+  ],
+  "agents": [
+    {
+      "id": "agent-uuid",
+      "name": "Copy Editor",
+      "role": "editor",
+      "avatar": null,
+      "isGlobal": false
+    }
+  ]
+}
+```
+
+- `members[].role` is a Pantheon role; `agents[].role` is an agent site role
+  (`viewer` / `editor` / `admin`).
+- `avatar` is always `null` for agents — there is no stored image for them, so clients
+  derive one from the id.
+- `isGlobal` is true for an agent that reaches every site rather than holding a grant on
+  this one.
+- Permission is `canView`, resolved against the site's main branch. A site with no main
+  branch is a 404.
+
+### How the members array is assembled
+
+Two sources are folded together:
+
+1. **`user_site_roles` for the site.** A person can hold two rows here — one `local`, one
+   cached from MAS — so rows are folded per person and the higher role is reported,
+   matching how authorization resolves an effective role. When both rows land on the same
+   tier (`mapPantheonRole` collapses developer/team_member/author/editor onto `EDITOR`),
+   the local grant wins the tie: it was made against this site deliberately, where the
+   MAS value mirrors account-wide membership.
+2. **The upstream MAS roster** (`getSiteMemberships`), unioned in. The cached rows only
+   cover people who have had a request authorized recently, so local grants alone
+   under-report on Pantheon-authenticated sites. A person who is in MAS but has never
+   signed in to CCR has no `users` row and comes back with a null `name` and `avatar`
+   rather than being dropped.
+
+If the MAS roster is unavailable the request still succeeds with the locally-known members
+and logs a degraded outcome — an upstream outage should not empty a mention picker.
+
+### Caching
+
+The response body is keyed on `siteId` alone — it is identical for everyone who can view
+the site, and only the authorization is per-caller. That makes it cheap to cache *inside*
+the worker and unsafe to cache in front of it: a CDN, ISR or browser cache keys on the bare
+URL and never sees the per-member gate, so a `public` copy of a roster carrying names and
+email addresses would be served to anyone who guessed the path. The endpoint therefore
+returns `Cache-Control: private, no-store`, the same reasoning that governs non-main content
+responses.
+
+Behind the permission check, the upstream roster is memoized per site for 60s in worker
+module scope (`services/mas-roster-cache.ts` — it wraps `MASClient`, so it sits with the
+client it caches rather than inside the route that happens to be its only caller today). The upstream call is a paged HTTP round trip and is the
+dominant cost of the request, so this is where the saving is. The memo is isolate-local: a
+cold isolate always misses, and there is no invalidation protocol — the worst case is the
+uncached behaviour. A minute of staleness is cheap in both directions, since a person
+removed upstream has already lost access on the authorization path, which does not read
+this memo.
+
+Concurrent callers that miss together share one upstream read: the promise is registered
+before it is awaited and dropped in a `finally`, so N viewers arriving on a cold site
+produce one round trip rather than N — which is the busy-site case the memo exists for.
+
+If the upstream call fails and a memo up to 10 minutes old is on hand, that stale roster is
+served rather than dropping the MAS-only people from the list. Both the memo and the stale
+fallback are visible in the logs via `roster_source`
+(`upstream` / `memo` / `stale` / `unavailable` / `unconfigured`).
+
+### Module layout
+
+| File | Holds |
+|------|-------|
+| `routes/site-members/index.ts` | the gate and the shape: method, permission, status codes, the log line |
+| `routes/site-members/types.ts` | the wire contract |
+| `services/site-members-service.ts` | the roster: the SQL, the row shapes, the local/upstream union, the role fold |
+| `services/mas-roster-cache.ts` | the memo in front of `MASClient.getSiteMemberships` |
+
+Everything that touches the database sits in `services/`, as it does for the rest of this
+worker; the route contributes no SQL of its own. `mas-roster-cache` is separate from the
+service because it wraps `MASClient` and holds state, so it belongs with the client it
+caches rather than with its one current caller.
+
+Tests mock `src/db`, `branch-service` and `agent-site-role-service` by direct path rather
+than through `src/services/index.ts` — mocking that barrel forks the error classes it
+re-exports, which is how a real 403 turns into a 500.
+
+### Observability
+
+Every served request logs one `site members served` line carrying `site_id`,
+`member_count`, `agent_count`, `roster_source`, `duration_ms` and an `outcome` of `ok` or
+`degraded`. `stale` and `unavailable` both count as degraded — a request the memo rescued
+after a failed upstream call is not a healthy one, and treating it as `ok` would hide an
+outage that stays inside the ten-minute grace window. `unconfigured` stays `ok`: it is a
+deployment state, not a failure. A 403 logs `site members denied`; a failure logs `site members route failed`
+with the error. `member_count`, `agent_count` and `roster_source` are added to the worker's
+`allowFields` in `telemetry.ts`, so they survive redaction in the deployed lanes — without
+that they would appear in the `dropped` list instead of the log body.
+
+Because the memo is isolate-local there is no cache-hit counter to read anywhere else;
+`roster_source` on that one line is the only evidence of whether it is earning its keep, and
+a rising share of `stale` or `unavailable` is the signal that the upstream roster service is
+in trouble.
+
+---
+
 ## Role Mapping
 
 ### MAS Roles to CCR Roles

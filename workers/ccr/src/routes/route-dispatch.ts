@@ -30,6 +30,7 @@ import { handleLocaleCoverageRoutes } from './locale-coverage-api';
 import { handleMergeRoutes } from './merge-api';
 import { handleGrantRoutes } from './grant-api';
 import { handleCollaboratorRoutes } from './collaborator-api';
+import { handleSiteMembersRoutes } from './site-members';
 import { handleRolesRoutes } from './roles-api';
 import { handleCurrentUserRoute, handleUsersRoutes } from './users-api';
 import { handleOrgUsersRoutes } from './org-users-api';
@@ -298,6 +299,13 @@ export async function dispatchRoute(
 
     case 'admin-backfill-datasources':
       return await handleBackfillDatasources(request, principal);
+
+    case 'site-members':
+      return await handleSiteMembersRoutes(request, {
+        siteId: route.params.siteId ?? '',
+        principal,
+        masClient,
+      });
 
     case 'collaborators':
       return await handleCollaboratorRoutes(request, {
