@@ -73,6 +73,12 @@ jobs:
         run: pnpm exec turbo run typecheck
       - name: Lint
         run: pnpm exec turbo run lint lint:root
+      # The packer applies wrangler's module rules and resolves the entry
+      # point's whole import graph, so a worker that typechecks and lints clean
+      # can still fail to bundle. Without this the deploy on main is the first
+      # thing that notices.
+      - name: Every deployed worker bundles
+        run: .github/scripts/check-worker-bundles.sh
       # @p1/agent asserts the pre-PCC-3239 slot-ID semantics against an
       # unreleased workspace validator; the fix is cross-team, not ours.
       # puck-css has its own job below: its suite and ccr-worker's are each

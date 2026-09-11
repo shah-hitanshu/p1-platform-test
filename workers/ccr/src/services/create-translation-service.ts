@@ -6,7 +6,7 @@
  * identity, and a 'localization' edge pins the translation to the canonical
  * version it was cloned from.
  *
- * @see src/db/schema/documents.sql.ts (documents.locale)
+ * @see src/db/schema/documents.schema.ts (documents.locale)
  */
 
 import type { Document } from '../types';

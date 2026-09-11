@@ -12,7 +12,7 @@
  * every branch, so a number read on another branch names a different version or
  * none. Template edges pin by synced_version instead.
  *
- * @see src/db/schema/document-relations.sql.ts (documentRelations)
+ * @see src/db/schema/document-relations.schema.ts (documentRelations)
  */
 
 import { query } from '../db';

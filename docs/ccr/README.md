@@ -176,7 +176,7 @@ collaborative-state-system/
 │   │   │   └── emitter.ts
 │   │   │
 │   │   └── db/                       # Database utilities
-│   │       ├── schema.ts             # Schema source of truth (Drizzle)
+│   │       ├── schema/               # Schema source of truth (Drizzle), one file per table
 │   │       ├── migrate.ts            # Migration applier
 │   │       ├── baseline.ts           # Cut-over baseline preflight
 │   │       ├── seed.ts               # Dev/CI seed loader
@@ -373,7 +373,7 @@ pnpm test:typecheck
 ### Database Migrations
 
 `src/db/schema/` is the source of truth for the `app` schema: one file per
-table, named after it (`document-versions.sql.ts`), re-exported from
+table, named after it (`document-versions.schema.ts`), re-exported from
 `index.ts`. drizzle-kit generates the SQL in `drizzle/` from it and tracks what
 has been applied in `drizzle.__drizzle_migrations`.
 
