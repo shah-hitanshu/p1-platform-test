@@ -32,9 +32,11 @@ import { VALID_OPERATION_TYPES } from './document-session-types';
 import { applyOperation, initializeFromSnapshot } from './crdt-operations';
 import { validateActorId, validateOperation } from './session-validators';
 import { errorResponse } from './websocket-utils';
-import { SYNC_SCHEDULE_KEY } from './postgres-sync-manager';
-import type { PostgresSyncManager, SyncSchedule } from './postgres-sync-manager';
+import type { PostgresSyncManager } from './postgres-sync-manager';
 import { getAllConnections } from './session-id-parser';
+
+/** Attribution for a flush with no pending sync: the platform, not a person. */
+const FLUSH_FALLBACK_ACTOR_ID = '00000000-0000-0000-0000-000000000001';
 
 // =============================================================================
 // Dependencies interface
@@ -374,40 +376,22 @@ export async function handleFlush(
     return errorResponse(405, 'Method not allowed. Use POST.');
   }
 
-  // Persist to DO storage first
-  await deps.flushPendingPersist();
-
-  // Check if sync infrastructure is configured
-  const internalApiUrl = deps.env.INTERNAL_API_URL;
-  const internalSecret = deps.env.INTERNAL_SECRET;
-  if (internalApiUrl === undefined || internalSecret === undefined) {
+  // Without sync config the CRDT state still belongs in DO storage.
+  if (deps.env.INTERNAL_API_URL === undefined || deps.env.INTERNAL_SECRET === undefined) {
+    await deps.flushPendingPersist();
     return new Response(
       JSON.stringify({ flushed: false, reason: 'no_sync_config' }),
       { status: 200, headers: { 'Content-Type': 'application/json' } },
     );
   }
 
-  // Get actor info from sync schedule (or default)
-  let actorId = '00000000-0000-0000-0000-000000000001';
-  let actorType: 'user' | 'agent' = 'user';
-  let actorEmail: string | undefined;
-  let actorName: string | undefined;
-  const schedule = await deps.storage.get<SyncSchedule>(SYNC_SCHEDULE_KEY);
-  if (schedule !== undefined) {
-    actorId = schedule.actorId;
-    actorType = schedule.actorType;
-    actorEmail = schedule.actorEmail;
-    actorName = schedule.actorName;
-  }
-
-  // Perform synchronous direct sync (bypasses queue)
   try {
-    await deps.syncManager.performDirectSync(internalApiUrl, internalSecret, actorId, actorType, {
-      actorEmail,
-      actorName,
+    const versionId = await deps.syncManager.flushAndSync(deps.flushPendingPersist, {
+      actorId: FLUSH_FALLBACK_ACTOR_ID,
+      actorType: 'user',
     });
     return new Response(
-      JSON.stringify({ flushed: true }),
+      JSON.stringify({ flushed: true, ...(versionId !== undefined ? { versionId } : {}) }),
       { status: 200, headers: { 'Content-Type': 'application/json' } },
     );
   } catch (error) {

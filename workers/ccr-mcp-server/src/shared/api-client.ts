@@ -275,6 +275,8 @@ export interface CompleteAgentEditRequest {
 export interface CompleteAgentEditResponse {
   success: boolean;
   checkpointId: string;
+  /** The document version the completed edit is readable from. */
+  versionId?: string;
 }
 
 export interface AbortAgentEditRequest {

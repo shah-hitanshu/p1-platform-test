@@ -21,7 +21,6 @@ import type {
   SessionInfo,
   DocumentSessionEnv,
 } from './document-session-types';
-import { SYNC_SCHEDULE_KEY } from './postgres-sync-manager';
 import type {
   WsFocusRegionUpdateMessage,
   WsPresenceHeartbeatMessage,
@@ -55,12 +54,10 @@ export interface PresenceProtocolDeps {
   getWebSockets: () => WebSocket[];
   getAllConnections: () => [WebSocket, ConnectionMeta][];
   syncManager: {
-    performDirectSync: (
-      internalApiUrl: string,
-      internalSecret: string,
-      actorId: string,
-      actorType: 'user' | 'agent',
-    ) => Promise<void>;
+    flushAndSync: (
+      flushPendingPersist: () => Promise<void>,
+      fallback: { actorId: string; actorType: 'user' | 'agent' },
+    ) => Promise<string | undefined>;
   };
   storage: DurableObjectStorage;
   flushPendingPersist: () => Promise<void>;
@@ -176,19 +173,13 @@ export async function handleWsPublishRequest(
   }
 
   try {
-    // Step 1: Flush CRDT state to Postgres. Attribution uses the resolved
-    // dbUserId (app.users.id) when present, falling back to actorId (the OAuth
-    // subject) for agents and unresolved principals.
-    let actorId = meta.dbUserId ?? meta.actorId;
-    let actorType: 'user' | 'agent' = meta.actorType;
-    const schedule = await deps.storage.get<{ dueAt: number; actorId: string; actorType: 'user' | 'agent' }>(SYNC_SCHEDULE_KEY);
-    if (schedule !== undefined) {
-      actorId = schedule.actorId;
-      actorType = schedule.actorType;
-    }
-
-    await deps.flushPendingPersist();
-    await deps.syncManager.performDirectSync(internalApiUrl, internalSecret, actorId, actorType);
+    // Step 1: Flush CRDT state to Postgres. With no sync owed, attribution uses
+    // the resolved dbUserId (app.users.id) when present, falling back to
+    // actorId (the OAuth subject) for agents and unresolved principals.
+    await deps.syncManager.flushAndSync(deps.flushPendingPersist, {
+      actorId: meta.dbUserId ?? meta.actorId,
+      actorType: meta.actorType,
+    });
 
     // Step 2: Call internal publish endpoint
     const publishUrl = `${internalApiUrl}/internal/publish`;

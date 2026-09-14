@@ -7,11 +7,13 @@
  * document-session.ts.
  */
 
+import { getLogger } from '@pantheon-systems/p1-telemetry';
 import { type PresenceManager, regionsOverlap } from '../services/presence-service';
 import type {
   ActivityDetector,
 } from '../services/activity-detection-service';
 import type { EditPermissionService } from '../services/edit-permission-service';
+import type { PostgresSyncManager } from './postgres-sync-manager';
 import type { Organization } from '../types';
 import {
   MAX_INTENT_LENGTH,
@@ -55,8 +57,10 @@ export interface AgentPolitenessDeps {
   presenceManager: PresenceManager;
   activityDetector: ActivityDetector;
   editPermissionService: EditPermissionService;
+  syncManager: PostgresSyncManager;
   cachedOrganization: Organization | null | undefined;
   getConnectionCount: () => number;
+  flushPendingPersist: () => Promise<void>;
   persistEditSessions: () => Promise<void>;
   persistPresence: () => Promise<void>;
   broadcastPresenceUpdate: () => void;
@@ -447,6 +451,32 @@ export async function handleAgentEditComplete(
     return notOwnerError;
   }
 
+  // The edit lives in the CRDT until a flush writes it to Postgres. Everything
+  // below reads Postgres — the checkpoint manifest diffs document versions, and
+  // the caller's next read goes to the content store — so the flush comes first
+  // or both see the pre-edit content.
+  const flushOwner = checkpointOwner(request, sessionOwner(session));
+  let versionId: string | undefined;
+  try {
+    versionId = await deps.syncManager.flushAndSync(deps.flushPendingPersist, {
+      actorId: flushOwner.id,
+      actorType: flushOwner.type,
+    });
+  } catch (error) {
+    // The edit is still held in the CRDT and the idle sync will retry, but the
+    // caller cannot be told it succeeded while the content is unreadable. The
+    // session stays open so the caller can complete again or abort.
+    getLogger().error(
+      'edit session flush failed',
+      error instanceof Error ? error : new Error(String(error)),
+      { editSessionId: parsed.editSessionId },
+    );
+    return deps.errorResponse(
+      503,
+      'Edit session not completed: the changes could not be saved. Retry completing the session, or abort it to discard them.',
+    );
+  }
+
   // Create post-edit checkpoint if there was a pre-edit checkpoint
   let postCheckpointId: string | undefined;
   if (session.checkpointId !== undefined) {
@@ -475,6 +505,7 @@ export async function handleAgentEditComplete(
   return deps.jsonResponse(200, {
     success: true,
     checkpointId: postCheckpointId,
+    versionId,
   });
 }
 

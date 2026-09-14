@@ -153,6 +153,7 @@ export async function dispatchRoute(
         versionAction: route.params.versionAction as DocumentVersionAction | undefined,
         versionId: route.params.versionId,
         principal,
+        documentStateBinding: env.DOCUMENT_STATE,
       });
 
       // After a successful publish, notify the main branch DO to reload

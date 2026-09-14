@@ -6,6 +6,7 @@
  */
 
 import { getLogger } from '@pantheon-systems/p1-telemetry';
+import { flushDocumentSession } from '../services/document-session-flush';
 import type { AuthenticatedPrincipal } from '../types';
 import {
   HttpError,
@@ -115,6 +116,8 @@ export interface DocumentRouteContext {
   versionAction?: DocumentVersionAction;
   versionId?: string;
   principal: AuthenticatedPrincipal;
+  /** Reaches the collaborative session that holds a document's newest edits. */
+  documentStateBinding?: DurableObjectNamespace;
 }
 
 /**
@@ -1313,6 +1316,29 @@ async function handleBranchScopedDocumentRoutes(
         return errorResponse(
           'Templates must be published via template API (admin only)',
           403,
+        );
+      }
+    }
+    // Publishing reads the document's latest version out of Postgres, so the
+    // session's pending edits go there first or the publish ships the content
+    // the editor has already moved past.
+    if (context.documentStateBinding !== undefined) {
+      try {
+        await flushDocumentSession(
+          context.documentStateBinding,
+          context.siteId,
+          branchId,
+          context.documentId,
+        );
+      } catch (error) {
+        getLogger().error(
+          'publish flush failed',
+          error instanceof Error ? error : new Error(String(error)),
+          { site_id: context.siteId, branch_id: branchId, document_id: context.documentId },
+        );
+        return errorResponse(
+          'Publish aborted: recent edits to this page could not be saved. Try again in a moment.',
+          503,
         );
       }
     }

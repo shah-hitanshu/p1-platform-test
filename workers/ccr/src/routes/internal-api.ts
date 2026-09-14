@@ -52,6 +52,8 @@ interface CrdtSyncBody {
   actorEmail?: string;
   /** Verified display name of the actor (PCC-3457) */
   actorName?: string;
+  /** Puck actions behind this edit, which classify the version as structural or prop-only. */
+  puckActions?: { type: string; [key: string]: unknown }[];
 }
 
 /**
@@ -178,6 +180,23 @@ function validateCrdtSyncBody(body: unknown): { valid: false; error: string } | 
     return { valid: false, error: 'actorName must be a string when provided' };
   }
 
+  // Each action carries its own shape beyond `type`, which classification reads
+  // and stores verbatim.
+  if (data.puckActions !== undefined) {
+    if (!Array.isArray(data.puckActions)) {
+      return { valid: false, error: 'puckActions must be an array when provided' };
+    }
+    const everyActionIsTyped = data.puckActions.every(
+      (action) =>
+        action !== null
+        && typeof action === 'object'
+        && typeof (action as { type?: unknown }).type === 'string',
+    );
+    if (!everyActionIsTyped) {
+      return { valid: false, error: 'each puckAction must be an object with a string type' };
+    }
+  }
+
   return {
     valid: true,
     data: {
@@ -189,6 +208,9 @@ function validateCrdtSyncBody(body: unknown): { valid: false; error: string } | 
       actorType: data.actorType,
       ...(data.actorEmail !== undefined ? { actorEmail: data.actorEmail } : {}),
       ...(data.actorName !== undefined ? { actorName: data.actorName } : {}),
+      ...(data.puckActions !== undefined
+        ? { puckActions: data.puckActions as { type: string; [key: string]: unknown }[] }
+        : {}),
     },
   };
 }
@@ -228,6 +250,7 @@ async function handleCrdtSync(request: Request): Promise<Response> {
       actorType: data.actorType,
       ...(data.actorEmail !== undefined ? { actorEmail: data.actorEmail } : {}),
       ...(data.actorName !== undefined ? { actorName: data.actorName } : {}),
+      ...(data.puckActions !== undefined ? { puckActions: data.puckActions } : {}),
     });
 
     return jsonResponse({ version });

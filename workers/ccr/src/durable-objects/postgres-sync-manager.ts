@@ -20,6 +20,7 @@ import { applySnapshotToYMap } from './crdt-operations';
 import { reconstructVersionSnapshot } from '../services/document-version-service';
 import { enforceUniqueSlotIds } from '../services/slot-id-backstop';
 import { extractComponentIds } from '../services/component-identity';
+import { classifyChange, type PuckAction } from '../services/action-classification';
 import { IMMEDIATE_SYNC_ACTION_TYPES } from '../constants/security-limits';
 
 /** Storage key for sync schedule (survives hibernation) */
@@ -53,12 +54,25 @@ export interface PendingActionMetadata {
   actionMetadata?: Record<string, unknown>;
 }
 
+/**
+ * One write's inputs, taken together at a single instant so the version
+ * records exactly the state and actions it carries.
+ */
+interface PendingWrite {
+  snapshot: Record<string, unknown>;
+  /** Identifies the document state the snapshot was taken from. */
+  stateVectorHash: string;
+  puckActions?: PuckAction[];
+  /** How many of the actions were taken from memory, acknowledged on success. */
+  takenActionCount: number;
+}
+
 /** Provenance of the loaded baseline, for gate diagnostics. In-memory only. */
 export type BaselineSource = 'branch' | 'cow' | 'none' | 'restored';
 
 export class PostgresSyncManager {
   /** Promise tracking an in-progress sync to prevent concurrent syncs */
-  private syncInProgress: Promise<void> | null = null;
+  private syncInProgress: Promise<unknown> | null = null;
 
   /** Last synced state vector hash for change detection */
   lastSyncedStateVectorHash: string | null = null;
@@ -316,27 +330,13 @@ export class PostgresSyncManager {
       return;
     }
 
-    // Read sync schedule from storage if no actor info provided
-    let syncActorId = actorId;
-    let syncActorType = actorType ?? 'user' as const;
-    let syncActorEmail = identity?.actorEmail;
-    let syncActorName = identity?.actorName;
-    let syncPuckActions: { type: string; [key: string]: unknown }[] | undefined;
-    if (syncActorId === undefined) {
-      const schedule = await this.storage.get<SyncSchedule>(SYNC_SCHEDULE_KEY);
-      if (schedule !== undefined) {
-        syncActorId = schedule.actorId;
-        syncActorType = schedule.actorType;
-        syncActorEmail = schedule.actorEmail;
-        syncActorName = schedule.actorName;
-        syncPuckActions = schedule.puckActions;
-      }
-    }
-
-    // Use in-memory accumulated actions if not read from schedule
-    if (syncPuckActions === undefined && this.pendingPuckActions.length > 0) {
-      syncPuckActions = this.pendingPuckActions;
-    }
+    // The schedule attributes the sync when the caller does not, and carries
+    // the actions across hibernation.
+    const schedule = await this.storage.get<SyncSchedule>(SYNC_SCHEDULE_KEY);
+    const syncActorId = actorId ?? schedule?.actorId;
+    const syncActorType = actorType ?? schedule?.actorType ?? 'user';
+    const syncActorEmail = identity?.actorEmail ?? schedule?.actorEmail;
+    const syncActorName = identity?.actorName ?? schedule?.actorName;
 
     if (syncActorId === undefined) {
       console.log('Sync skipped: no sync schedule or actor info available');
@@ -352,26 +352,37 @@ export class PostgresSyncManager {
     }
 
     // Set the lock before starting the sync
-    this.syncInProgress = this.performSync(
-      internalApiUrl, internalSecret, syncActorId, syncActorType, syncPuckActions,
+    const scheduledSync = this.performSync(
+      internalApiUrl, internalSecret, syncActorId, syncActorType, schedule?.puckActions,
       { actorEmail: syncActorEmail, actorName: syncActorName },
     );
+    this.syncInProgress = scheduledSync;
 
     try {
-      await this.syncInProgress;
+      await scheduledSync;
     } finally {
-      this.syncInProgress = null;
+      // Whoever holds the lock releases it; a sync that started later owns it now.
+      if (this.syncInProgress === scheduledSync) {
+        this.syncInProgress = null;
+      }
     }
   }
 
   /**
-   * Produce the snapshot a write path is about to send to PostgreSQL. Every
-   * write path obtains its snapshot here, so no writer can reach the database
-   * with state the session never loaded.
+   * Take the inputs of the write about to happen: the document as it stands
+   * this instant, the hash identifying that state, and the Puck actions behind
+   * it. Every write path obtains its snapshot here, so no writer can reach the
+   * database with state the session never loaded.
    *
+   * Actions pending in memory are the ones the snapshot reflects. An action
+   * that arrives after this returns is not in the snapshot and stays pending
+   * for the next write.
+   *
+   * @param scheduledActions - Actions carried by the sync schedule, used when
+   *   memory holds none because the session hibernated since they were recorded.
    * @throws when the session's content failed to load
    */
-  private async captureSnapshotForWrite(actorId: string): Promise<Record<string, unknown>> {
+  private takePendingWrite(scheduledActions?: PuckAction[]): PendingWrite {
     if (this.contentLoadFailed) {
       throw new Error(
         `Sync refused for document ${this.sessionInfo.documentId}: session state was `
@@ -379,12 +390,15 @@ export class PostgresSyncManager {
       );
     }
 
-    const root = this.getYdoc().getMap('root');
-    const snapshot = root.toJSON() as Record<string, unknown>;
-
-    await this.detectCoWBaselineMismatch(snapshot, actorId);
-
-    return snapshot;
+    const snapshot = this.getYdoc().getMap('root').toJSON() as Record<string, unknown>;
+    const takenActionCount = this.pendingPuckActions.length;
+    const puckActions = takenActionCount > 0 ? [...this.pendingPuckActions] : scheduledActions;
+    return {
+      snapshot,
+      stateVectorHash: this.computeStateVectorHash(),
+      ...(puckActions !== undefined ? { puckActions } : {}),
+      takenActionCount,
+    };
   }
 
   /**
@@ -394,7 +408,7 @@ export class PostgresSyncManager {
    * @param internalSecret - The internal secret (pre-validated)
    * @param actorId - Actor ID for sync attribution
    * @param actorType - Actor type for sync attribution
-   * @param puckActions - Optional array of Puck actions
+   * @param scheduledActions - Puck actions carried by the sync schedule
    * @param identity - Verified actor identity (PCC-3457)
    */
   private async performSync(
@@ -402,30 +416,31 @@ export class PostgresSyncManager {
     internalSecret: string,
     actorId: string,
     actorType: 'user' | 'agent',
-    puckActions?: { type: string; [key: string]: unknown }[],
+    scheduledActions?: PuckAction[],
     identity?: ActorIdentity,
   ): Promise<void> {
     try {
-      const snapshot = await this.captureSnapshotForWrite(actorId);
+      const write = this.takePendingWrite(scheduledActions);
+      await this.detectCoWBaselineMismatch(write.snapshot, actorId);
 
       const payload = {
         siteId: this.sessionInfo.siteId,
         documentId: this.sessionInfo.documentId,
         branchId: this.sessionInfo.branchId,
-        snapshot,
+        snapshot: write.snapshot,
         actorId,
         actorType,
         ...(identity?.actorEmail !== undefined ? { actorEmail: identity.actorEmail } : {}),
         ...(identity?.actorName !== undefined ? { actorName: identity.actorName } : {}),
-        ...(puckActions !== undefined ? { puckActions } : {}),
+        ...(write.puckActions !== undefined ? { puckActions: write.puckActions } : {}),
       };
 
       // Phase 5.1: Prefer queue-based sync when available
       if (this.env.SYNC_QUEUE !== undefined) {
         try {
           await this.env.SYNC_QUEUE.send({ ...payload, timestamp: Date.now() });
-          await this.recordSyncSuccess();
-          console.log(`Queued sync for document ${this.sessionInfo.documentId}, puckActions: ${puckActions ? String(puckActions.length) : 'none'}`);
+          await this.recordSyncSuccess(write);
+          console.log(`Queued sync for document ${this.sessionInfo.documentId}, puckActions: ${write.puckActions ? String(write.puckActions.length) : 'none'}`);
           return;
         } catch (error) {
           // Queues reject any message above their per-message ceiling, so a
@@ -455,7 +470,7 @@ export class PostgresSyncManager {
         console.error(`Sync to PostgreSQL failed: ${String(response.status)} ${errorText}`);
       } else {
         console.log(`Synced document ${this.sessionInfo.documentId} to PostgreSQL`);
-        await this.recordSyncSuccess();
+        await this.recordSyncSuccess(write);
       }
     } catch (error) {
       console.error('Error syncing to PostgreSQL:', error);
@@ -463,19 +478,91 @@ export class PostgresSyncManager {
   }
 
   /**
-   * Mark the session's state as durably written: no sync is owed until the
-   * document changes again.
+   * Mark a write as durably stored. The session is clean only as far as the
+   * state that write took: an edit that arrived while it was in flight still
+   * owes a sync, and its schedule stays in place for the alarm to serve.
    */
-  private async recordSyncSuccess(): Promise<void> {
-    this.lastSyncedStateVectorHash = this.computeStateVectorHash();
-    this.pendingPuckActions = [];
-    await this.storage.delete(SYNC_SCHEDULE_KEY);
+  private async recordSyncSuccess(write: PendingWrite): Promise<void> {
+    this.lastSyncedStateVectorHash = write.stateVectorHash;
+    this.pendingPuckActions.splice(0, write.takenActionCount);
+    const unchangedSince = this.computeStateVectorHash() === write.stateVectorHash
+      && this.pendingPuckActions.length === 0;
+    if (unchangedSince) {
+      await this.storage.delete(SYNC_SCHEDULE_KEY);
+    }
+  }
+
+  /**
+   * Write the document's pending state to Postgres and return the version it
+   * now reads from.
+   *
+   * Attribution comes from the pending sync schedule, which names the actor
+   * whose edits are being flushed; `fallback` covers a document with no sync
+   * owed. Resolves to undefined when the sync infrastructure is unconfigured,
+   * which is the local and test case.
+   *
+   * @param flushPendingPersist - Writes the in-memory Y.Doc to DO storage.
+   *   Owned by DocumentSession, so it arrives as a callback.
+   */
+  async flushAndSync(
+    flushPendingPersist: () => Promise<void>,
+    fallback: { actorId: string; actorType: 'user' | 'agent' },
+  ): Promise<string | undefined> {
+    const internalApiUrl = this.env.INTERNAL_API_URL;
+    const internalSecret = this.env.INTERNAL_SECRET;
+    if (internalApiUrl === undefined || internalSecret === undefined) {
+      // Postgres is out of reach, but the CRDT state still belongs in DO storage.
+      await flushPendingPersist();
+      return undefined;
+    }
+
+    await flushPendingPersist();
+    // The schedule is read once this write's turn comes: an earlier write in
+    // the queue may have served the actor it named.
+    return this.runSerialized(async () => {
+      const schedule = await this.storage.get<SyncSchedule>(SYNC_SCHEDULE_KEY);
+      return await this.executeDirectSync(
+        internalApiUrl,
+        internalSecret,
+        schedule?.actorId ?? fallback.actorId,
+        schedule?.actorType ?? fallback.actorType,
+        {
+          ...(schedule?.actorEmail !== undefined ? { actorEmail: schedule.actorEmail } : {}),
+          ...(schedule?.actorName !== undefined ? { actorName: schedule.actorName } : {}),
+        },
+        schedule?.puckActions,
+      );
+    });
+  }
+
+  /**
+   * Run a write with every other write from this session waiting behind it.
+   *
+   * Each caller waits on the write before it and immediately becomes what the
+   * next caller waits on. Waiting on the lock without replacing it would let
+   * two waiters resume together and compute the same next version number.
+   */
+  private runSerialized<T>(work: () => Promise<T>): Promise<T> {
+    const previous = this.syncInProgress ?? Promise.resolve();
+    // A failed write still releases the queue behind it.
+    const run = previous.catch(() => undefined).then(work);
+    this.syncInProgress = run;
+    return run.finally(() => {
+      // Whoever holds the lock releases it; a write that started later owns it now.
+      if (this.syncInProgress === run) {
+        this.syncInProgress = null;
+      }
+    });
   }
 
   /**
    * Perform a synchronous sync to PostgreSQL, bypassing the async queue.
    * Uses direct Hyperdrive connection when available, falls back to HTTP internal API.
    * Unlike performSync(), this method never uses the queue and always awaits completion.
+   *
+   * Resolves to the id of the version the document now reads from. An unchanged
+   * document mints no new version, so the id is the existing latest one; it is
+   * undefined only when the version cannot be identified.
    */
   async performDirectSync(
     internalApiUrl: string,
@@ -483,20 +570,13 @@ export class PostgresSyncManager {
     actorId: string,
     actorType: 'user' | 'agent',
     identity?: ActorIdentity,
-  ): Promise<void> {
-    // If another sync is in progress, wait for it
-    if (this.syncInProgress !== null) {
-      await this.syncInProgress;
-    }
-
-    // Set the lock so concurrent syncs (e.g. alarm-driven) wait for us
-    const directSyncPromise = this.executeDirectSync(internalApiUrl, internalSecret, actorId, actorType, identity);
-    this.syncInProgress = directSyncPromise;
-    try {
-      await directSyncPromise;
-    } finally {
-      this.syncInProgress = null;
-    }
+    scheduledActions?: PuckAction[],
+  ): Promise<string | undefined> {
+    return this.runSerialized(() =>
+      this.executeDirectSync(
+        internalApiUrl, internalSecret, actorId, actorType, identity, scheduledActions,
+      ),
+    );
   }
 
   /**
@@ -508,11 +588,14 @@ export class PostgresSyncManager {
     actorId: string,
     actorType: 'user' | 'agent',
     identity?: ActorIdentity,
-  ): Promise<void> {
-    const rawSnapshot = await this.captureSnapshotForWrite(actorId);
+    scheduledActions?: PuckAction[],
+  ): Promise<string | undefined> {
+    const write = this.takePendingWrite(scheduledActions);
+    await this.detectCoWBaselineMismatch(write.snapshot, actorId);
+    const puckActions = write.puckActions;
 
     // CoW detection compares against the raw CRDT ids, so it runs before dedupe.
-    const snapshot = enforceUniqueSlotIds(this.sessionInfo.documentId, rawSnapshot);
+    const snapshot = enforceUniqueSlotIds(this.sessionInfo.documentId, write.snapshot);
 
     // Phase 5.3: Try direct Hyperdrive path first (synchronous, no queue).
     // PCC-3457: the direct INSERT writes actorId raw into the uuid
@@ -522,15 +605,17 @@ export class PostgresSyncManager {
     const isUuidActor = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(actorId);
     if (this.env.HYPERDRIVE !== undefined && isUuidActor) {
       try {
-        await runWithConnection(
+        const versionId = await runWithConnection(
           this.env.HYPERDRIVE.connectionString,
           { isHyperdrive: true },
           async () => {
             const { documentId, branchId } = this.sessionInfo;
-            await dbQuery(
+            const { actionType, actionMetadata } = classifyChange(undefined, puckActions);
+            const inserted = await dbQuery<{ id: string }>(
               `INSERT INTO app.document_versions (
                 document_id, branch_id, version_number, snapshot,
-                source, created_by_id, created_by_type
+                source, created_by_id, created_by_type,
+                action_type, action_metadata
               )
               SELECT $1, $2,
                 COALESCE(
@@ -538,7 +623,7 @@ export class PostgresSyncManager {
                    WHERE document_id = $1 AND branch_id = $2),
                   0
                 ) + 1,
-                $3, 'realtime', $4, $5
+                $3, 'realtime', $4, $5, $6, $7::jsonb
               WHERE NOT EXISTS (
                 SELECT 1 FROM (
                   SELECT snapshot FROM app.document_versions
@@ -546,15 +631,32 @@ export class PostgresSyncManager {
                   ORDER BY version_number DESC LIMIT 1
                 ) latest
                 WHERE latest.snapshot IS NOT DISTINCT FROM $3::jsonb
-              )`,
-              [documentId, branchId, snapshot, actorId, actorType],
+              )
+              RETURNING id`,
+              [
+                documentId, branchId, snapshot, actorId, actorType,
+                actionType,
+                actionMetadata === null ? null : JSON.stringify(actionMetadata),
+              ],
             );
+
+            // A snapshot matching the latest version mints no row, and the
+            // document still reads from that version.
+            if (inserted.rows[0] !== undefined) {
+              return inserted.rows[0].id;
+            }
+            const latest = await dbQuery<{ id: string }>(
+              `SELECT id FROM app.document_versions
+               WHERE document_id = $1 AND branch_id = $2
+               ORDER BY version_number DESC LIMIT 1`,
+              [documentId, branchId],
+            );
+            return latest.rows[0]?.id;
           },
         );
-        this.lastSyncedStateVectorHash = this.computeStateVectorHash();
-        await this.storage.delete(SYNC_SCHEDULE_KEY);
+        await this.recordSyncSuccess(write);
         console.log(`Flushed document ${this.sessionInfo.documentId} to PostgreSQL (direct DB)`);
-        return;
+        return versionId;
       } catch (error) {
         console.warn('Direct DB flush failed, falling back to HTTP:', error);
       }
@@ -577,6 +679,7 @@ export class PostgresSyncManager {
         actorType,
         ...(identity?.actorEmail !== undefined ? { actorEmail: identity.actorEmail } : {}),
         ...(identity?.actorName !== undefined ? { actorName: identity.actorName } : {}),
+        ...(puckActions !== undefined ? { puckActions } : {}),
       }),
     });
 
@@ -585,9 +688,15 @@ export class PostgresSyncManager {
       throw new Error(`HTTP sync failed: ${String(response.status)} ${errorText}`);
     }
 
-    this.lastSyncedStateVectorHash = this.computeStateVectorHash();
-    await this.storage.delete(SYNC_SCHEDULE_KEY);
+    // The version is committed once the response is ok, so the session records
+    // the write before reading the body. A body that cannot be read costs the
+    // caller the version id, not the sync.
+    await this.recordSyncSuccess(write);
     console.log(`Flushed document ${this.sessionInfo.documentId} to PostgreSQL (HTTP)`);
+    const synced = await response
+      .json<{ version?: { id?: string } }>()
+      .catch(() => ({ version: undefined }));
+    return synced.version?.id;
   }
 
   // =============================================================================

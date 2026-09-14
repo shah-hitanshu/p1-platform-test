@@ -70,6 +70,8 @@ export interface SyncCrdtToPostgresParams {
   actorEmail?: string;
   /** Verified display name of the actor (PCC-3457) */
   actorName?: string;
+  /** Puck actions behind this edit, which classify the version as structural or prop-only. */
+  puckActions?: { type: string; [key: string]: unknown }[];
 }
 
 /**
@@ -137,6 +139,7 @@ export async function syncCrdtToPostgres(
     source: 'realtime',
     createdById: resolution.actorId,
     createdByType: params.actorType,
+    ...(params.puckActions !== undefined ? { puckActions: params.puckActions } : {}),
   });
 
   return version;

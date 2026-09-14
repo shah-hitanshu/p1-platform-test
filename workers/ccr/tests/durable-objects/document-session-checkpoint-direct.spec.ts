@@ -149,10 +149,20 @@ describe('Phase 6.3: Checkpoint Bypass for Queue', () => {
     vi.resetAllMocks();
     mockState = createMockState();
 
-    // Default: HTTP API responds with success
-    globalThis.fetch = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ found: false }), { status: 404 }),
-    );
+    // Default: no stored CRDT state to load, and a flush to Postgres succeeds.
+    globalThis.fetch = vi.fn().mockImplementation((urlOrReq: string | Request) => {
+      const url = typeof urlOrReq === 'string' ? urlOrReq : urlOrReq.url;
+      if (url.includes('/internal/crdt-sync')) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ version: { id: 'version-flushed-1' } }), {
+            status: 200,
+          }),
+        );
+      }
+      return Promise.resolve(
+        new Response(JSON.stringify({ found: false }), { status: 404 }),
+      );
+    });
 
     // Default: runWithConnection just runs the fn
     const db = await import('../../src/db');

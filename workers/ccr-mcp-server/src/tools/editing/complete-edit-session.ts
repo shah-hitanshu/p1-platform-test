@@ -9,7 +9,7 @@ const CompleteEditSessionInputSchema = DocumentOnBranchInputSchema.extend({
 
 export const completeEditSessionTool = defineTool({
   description:
-    'Complete an edit session successfully and save your changes. This creates a post-edit checkpoint. Always call this when you are done making edits — do not leave sessions open. Before completing, consider using get_document to verify your changes look correct. If the result is not what you expected, use abort_edit_session instead.',
+    'Complete an edit session successfully and save your changes. This returns once the changes are readable, so there is no need to re-read the page to confirm they landed. It also creates a post-edit checkpoint. Always call this when you are done making edits — do not leave sessions open. If the result is not what you expected, use abort_edit_session instead.',
   inputSchema: CompleteEditSessionInputSchema,
   annotations: { title: 'Complete edit session', destructiveHint: false, idempotentHint: false },
   mutates: true,
@@ -22,11 +22,14 @@ export const completeEditSessionTool = defineTool({
         editSessionId: input.edit_session_id,
       });
       const message = result.checkpointId
-        ? `Edit session completed. Checkpoint: ${result.checkpointId}`
-        : 'Edit session completed.';
+        ? `Edit session completed and changes are readable. Checkpoint: ${result.checkpointId}`
+        : 'Edit session completed and changes are readable.';
       return formatResult({
         success: result.success,
         ...(result.checkpointId && { checkpointId: result.checkpointId }),
+        ...(result.versionId !== undefined && result.versionId !== ''
+          ? { versionId: result.versionId }
+          : {}),
         message,
       });
     } catch (error) {

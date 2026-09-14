@@ -804,8 +804,10 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
       presenceManager: this.presenceManager,
       activityDetector: this.activityDetector,
       editPermissionService: this.editPermissionService,
+      syncManager: this.syncManager,
       cachedOrganization: this.cachedOrganization,
       getConnectionCount: () => this.getConnectionCount(),
+      flushPendingPersist: () => this.flushPendingPersist(),
       persistEditSessions: () => this.persistEditSessions(),
       persistPresence: () => this.persistPresence(),
       broadcastPresenceUpdate: (): void => {
