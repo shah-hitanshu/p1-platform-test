@@ -2150,6 +2150,14 @@
   color: var(--puck-css-text);
 }
 
+.merge-preview-document__row:hover {
+  background: var(--pds-color-interactive-background-hover, #f5f5f5);
+}
+
+.merge-preview-document__path {
+  font-weight: 500;
+}
+
 .merge-preview-document__row--expanded {
   border-radius: 0.375rem 0.375rem 0 0;
   border-bottom-color: transparent;

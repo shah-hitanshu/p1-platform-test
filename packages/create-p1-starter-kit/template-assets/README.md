@@ -58,7 +58,6 @@ app/
     (editor)/[[...p1]]/         # Dashboard at /p1, editor at /p1/<path>
     api/[...p1]/route.ts        # API handler for page data
     auth/[...action]/route.ts   # Login / logout callbacks
-    merge/                      # Branch merge review UI
 components/puck/                # Block definitions (Heading, Paragraph, Image, …)
 components/puck/blocks/         # Blocks installed from the P1 component registry
   index.ts                      #   where you register them (see "P1 blocks" below)

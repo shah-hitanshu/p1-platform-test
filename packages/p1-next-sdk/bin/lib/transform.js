@@ -514,9 +514,9 @@ export function buildLayoutFile() {
     "// Next keys segment cache nodes by param value.\n" +
     "//\n" +
     "// Scoping the layout to the (editor) group (instead of app/p1/layout.tsx) is\n" +
-    "// what keeps the editor off sibling routes: /p1/merge and future pages like\n" +
-    "// /p1/settings live outside the group and never render the editor. Add such\n" +
-    "// pages as siblings of (editor), not inside it.\n" +
+    "// what keeps the editor off sibling routes: a future page like /p1/settings\n" +
+    "// lives outside the group and never renders the editor. Add such pages as\n" +
+    "// siblings of (editor), not inside it.\n" +
     "export default pages.Layout;\n"
   );
 }

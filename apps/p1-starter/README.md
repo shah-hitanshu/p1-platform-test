@@ -50,7 +50,6 @@ app/
     (editor)/[[...p1]]/         # Dashboard at /p1, editor at /p1/<path>
     api/[...p1]/route.ts        # API handler (GET/POST/DELETE) for page data
     auth/[...action]/route.ts   # Login / logout callbacks
-    merge/                      # Branch merge review UI
 components/puck/                # Block definitions (Heading, Paragraph, Image, etc.)
 lib/remote-datasources.ts       # Datasource registry (SWAPI, Pokemon, articles, URL params)
 lib/remote-datasource-fetchers.ts  # Fetchers backing those datasources

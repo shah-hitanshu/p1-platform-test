@@ -11,11 +11,14 @@
  *
  * Mount that layout in an `(editor)` route group rather than directly at
  * `app/p1/layout.tsx`. A layout at `/p1` wraps EVERY route under it, so
- * sibling routes with their own pages (e.g. /p1/merge, /p1/settings) would
- * render the editor on top of themselves. Scoping the layout to the group
- * means only the catch-all page gets the editor; siblings placed outside the
- * group stay editor-free by construction. Route groups add no URL segment, so
- * /p1 and its subpaths are unchanged.
+ * sibling routes with their own pages (e.g. /p1/settings) would render the
+ * editor on top of themselves. Scoping the layout to the group means only
+ * the catch-all page gets the editor; siblings placed outside the group stay
+ * editor-free by construction. Route groups add no URL segment, so /p1 and
+ * its subpaths are unchanged.
+ *
+ * The catch-all is optional, so a /p1 subpath with no sibling page of its own
+ * is not a 404 — it opens the editor on a document of that path.
  *
  * Usage:
  *   // app/p1/(editor)/[[...p1]]/p1-pages.tsx (shared module)
@@ -30,8 +33,7 @@
  *   export const generateMetadata = pages.generateMetadata;
  *   export const dynamic = "force-dynamic";
  *
- *   // app/p1/merge/page.tsx        <- sibling OUTSIDE the group, no editor
- *   // app/p1/settings/page.tsx     <- future siblings: same, editor-free
+ *   // app/p1/settings/page.tsx     <- sibling OUTSIDE the group, no editor
  *
  * The editor must be mounted at `/p1`: the client derives the edited page
  * from the URL via editorPagePathFromUrlPath, whose basePath defaults to

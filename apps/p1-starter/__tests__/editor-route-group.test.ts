@@ -1,10 +1,10 @@
 /**
  * The persistent editor is scoped to the `(editor)` route group so it wraps
- * only the catch-all editor page — not sibling routes like /p1/merge (or a
- * future /p1/settings). This structure replaces the old NON_EDITOR_ROUTES
+ * only the catch-all editor page — not sibling routes under /p1 such as a
+ * future /p1/settings. This structure replaces the old NON_EDITOR_ROUTES
  * opt-out list: siblings stay editor-free by construction, not by enumeration.
  */
-import { existsSync, readFileSync } from "fs";
+import { existsSync, readdirSync, readFileSync } from "fs";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
 import { describe, expect, it } from "vitest";
@@ -29,9 +29,11 @@ describe("editor is scoped to the (editor) route group", () => {
     expect(existsSync(resolve(p1, "layout.tsx"))).toBe(false);
   });
 
-  it("keeps /p1/merge a sibling outside the group so the editor never wraps it", () => {
-    expect(existsSync(resolve(p1, "merge/page.tsx"))).toBe(true);
-    expect(existsSync(resolve(p1, "(editor)/merge/page.tsx"))).toBe(false);
+  it("holds nothing but the catch-all inside the group, so siblings stay editor-free", () => {
+    const inGroup = readdirSync(resolve(p1, "(editor)"), { withFileTypes: true })
+      .filter((e) => e.isDirectory())
+      .map((e) => e.name);
+    expect(inGroup).toEqual(["[[...p1]]"]);
   });
 
   it("no longer guards routes with a NON_EDITOR_ROUTES opt-out list", () => {

@@ -7,7 +7,7 @@ import { pages } from "./[[...p1]]/p1-pages";
 // Next keys segment cache nodes by param value.
 //
 // Scoping the layout to the (editor) group (instead of app/p1/layout.tsx) is
-// what keeps the editor off sibling routes: /p1/merge and future pages like
-// /p1/settings live outside the group and never render the editor. Add such
-// pages as siblings of (editor), not inside it.
+// what keeps the editor off sibling routes: a future page like /p1/settings
+// lives outside the group and never renders the editor. Add such pages as
+// siblings of (editor), not inside it.
 export default pages.Layout;
