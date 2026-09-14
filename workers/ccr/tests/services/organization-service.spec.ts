@@ -111,6 +111,24 @@ describe('Agent Politeness Phase 1.3: Organization Service', () => {
         }),
       ).rejects.toThrow(InvalidOrganizationParamsError);
     });
+
+    it('should throw InvalidOrganizationParamsError for a name over 255 characters', async () => {
+      const { createOrganization } = await import('../../src/services/organization-service');
+      const { InvalidOrganizationParamsError } = await import('../../src/services/errors');
+
+      await expect(
+        createOrganization({ name: 'a'.repeat(256) }),
+      ).rejects.toThrow(InvalidOrganizationParamsError);
+    });
+
+    it('should throw InvalidOrganizationParamsError for a name containing control characters', async () => {
+      const { createOrganization } = await import('../../src/services/organization-service');
+      const { InvalidOrganizationParamsError } = await import('../../src/services/errors');
+
+      await expect(
+        createOrganization({ name: 'Evil\r\nSubject: hijacked' }),
+      ).rejects.toThrow(InvalidOrganizationParamsError);
+    });
   });
 
   describe('getOrganizationById', () => {
@@ -209,6 +227,27 @@ describe('Agent Politeness Phase 1.3: Organization Service', () => {
           name: '',
         }),
       ).rejects.toThrow(InvalidOrganizationParamsError);
+    });
+
+    it('should throw InvalidOrganizationParamsError for a name over 255 characters', async () => {
+      const { updateOrganization } = await import('../../src/services/organization-service');
+      const { InvalidOrganizationParamsError } = await import('../../src/services/errors');
+
+      await expect(
+        updateOrganization('org-uuid-123', { name: 'a'.repeat(256) }),
+      ).rejects.toThrow(InvalidOrganizationParamsError);
+    });
+
+    it('should not validate name when the PATCH does not touch it', async () => {
+      const { updateOrganization } = await import('../../src/services/organization-service');
+      const db = await import('../../src/db');
+
+      const mockRow = createMockOrganizationRow();
+      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+
+      await expect(
+        updateOrganization('org-uuid-123', { settings: { agentIdleTimeoutMs: 1000 } }),
+      ).resolves.toBeDefined();
     });
   });
 
@@ -996,6 +1035,49 @@ describe('Agent Politeness Phase 1.3: Organization Service', () => {
       expect(result).toBeDefined();
     });
 
+    // Derived write: an invalid spaceName falls back to the sanitized
+    // email-derived name instead of throwing or storing the raw string.
+    it('should fall back to the derived name when spaceName is over 255 characters', async () => {
+      const { createOrgForUser } = await import('../../src/services/organization-service');
+      const db = await import('../../src/db');
+
+      const mockOrgRow = createMockOrganizationRow({ id: 'new-org-id', name: 'Pantheon' });
+
+      vi.mocked(db.query)
+        .mockResolvedValueOnce(undefined as never) // BEGIN
+        .mockResolvedValueOnce({ rows: [] }) // name uniqueness check
+        .mockResolvedValueOnce({ rows: [mockOrgRow] }) // INSERT org
+        .mockResolvedValueOnce({ rows: [{ id: 'member-id' }] }) // INSERT membership
+        .mockResolvedValueOnce(undefined as never); // COMMIT
+
+      const result = await createOrgForUser('user-uuid-123', 'user@pantheon.com', 'a'.repeat(256));
+
+      expect(result.name).toBe('Pantheon');
+      expect(db.query).toHaveBeenNthCalledWith(
+        3,
+        expect.stringContaining('INSERT INTO app.organizations'),
+        ['Pantheon', expect.any(String), null],
+      );
+    });
+
+    it('should fall back to the derived name when spaceName contains control characters', async () => {
+      const { createOrgForUser } = await import('../../src/services/organization-service');
+      const db = await import('../../src/db');
+
+      const mockOrgRow = createMockOrganizationRow({ id: 'new-org-id', name: 'Pantheon' });
+
+      vi.mocked(db.query)
+        .mockResolvedValueOnce(undefined as never) // BEGIN
+        .mockResolvedValueOnce({ rows: [] }) // name uniqueness check
+        .mockResolvedValueOnce({ rows: [mockOrgRow] }) // INSERT org
+        .mockResolvedValueOnce({ rows: [{ id: 'member-id' }] }) // INSERT membership
+        .mockResolvedValueOnce(undefined as never); // COMMIT
+
+      const result = await createOrgForUser('user-uuid-123', 'user@pantheon.com', 'Evil\r\nSubject: hijacked');
+
+      expect(result.name).toBe('Pantheon');
+    });
+
     it('should rollback on error', async () => {
       const { createOrgForUser } = await import('../../src/services/organization-service');
       const db = await import('../../src/db');
@@ -1076,6 +1158,45 @@ describe('Agent Politeness Phase 1.3: Organization Service', () => {
       expect(db.query).toHaveBeenCalledWith(
         expect.stringContaining('name = $3'),
         ['org-uuid-123', 'space_abc', 'My Space'],
+      );
+    });
+
+    // Derived write: an invalid name links without renaming rather than
+    // throwing, since both callers catch-and-log and would otherwise leave
+    // the user with no organization at all.
+    it('should link without renaming when spaceName is over 255 characters', async () => {
+      const db = await import('../../src/db');
+      const { linkOrgToSpace } = await import('../../src/services/organization-service');
+
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [{ id: 'org-uuid-123' }],
+        rowCount: 1,
+      });
+
+      const result = await linkOrgToSpace('org-uuid-123', 'space_abc', 'a'.repeat(256));
+
+      expect(result).toBe(true);
+      expect(db.query).toHaveBeenCalledWith(
+        expect.not.stringContaining('name = $3'),
+        ['org-uuid-123', 'space_abc'],
+      );
+    });
+
+    it('should link without renaming when spaceName contains control characters', async () => {
+      const db = await import('../../src/db');
+      const { linkOrgToSpace } = await import('../../src/services/organization-service');
+
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [{ id: 'org-uuid-123' }],
+        rowCount: 1,
+      });
+
+      const result = await linkOrgToSpace('org-uuid-123', 'space_abc', 'Evil\r\nSubject: hijacked');
+
+      expect(result).toBe(true);
+      expect(db.query).toHaveBeenCalledWith(
+        expect.not.stringContaining('name = $3'),
+        ['org-uuid-123', 'space_abc'],
       );
     });
   });

@@ -206,12 +206,36 @@ function isForeignKeyViolation(error: unknown): boolean {
   );
 }
 
+const MAX_ORG_NAME_LENGTH = 255;
+// Control characters, CR/LF included: an org name flows into an invite
+// email's subject line and into UI text, neither of which expects them.
+// eslint-disable-next-line no-control-regex -- deliberately matching control chars
+const ORG_NAME_CONTROL_CHAR_PATTERN = /[\x00-\x1F\x7F]/;
+
 /**
- * Validates organization name.
+ * Whether a string is safe to store as an organization name: non-empty after
+ * trim, within the 255-char cap `users-api.ts` already enforces on
+ * spaceName, and free of control characters.
+ */
+export function isValidOrgName(name: string): boolean {
+  return (
+    name.trim() !== ''
+    && name.length <= MAX_ORG_NAME_LENGTH
+    && !ORG_NAME_CONTROL_CHAR_PATTERN.test(name)
+  );
+}
+
+/**
+ * Validates organization name for the explicit create/update paths, which
+ * reject an invalid name outright. Derived paths (linkOrgToSpace,
+ * createOrgForUser) call isValidOrgName directly and degrade instead of
+ * throwing — see their own comments.
  */
 function validateName(name: string | undefined): void {
-  if (name?.trim() === '') {
-    throw new InvalidOrganizationParamsError('Organization name cannot be empty.');
+  if (name !== undefined && !isValidOrgName(name)) {
+    throw new InvalidOrganizationParamsError(
+      'Organization name must be non-empty, at most 255 characters, and free of control characters.',
+    );
   }
 }
 
@@ -999,11 +1023,17 @@ export async function isUserInOrganization(userId: string, organizationId: strin
  * @returns true if linked, false if already linked or org not found
  */
 export async function linkOrgToSpace(orgId: string, externalSpaceId: string, spaceName?: string): Promise<boolean> {
-  const setClause = spaceName !== undefined && spaceName.trim() !== ''
+  // An invalid name (too long, control characters) links without renaming
+  // rather than throwing: this is a derived write, and both callers catch
+  // and log, so throwing here would leave the user with no organization at
+  // all instead of one that's merely unrenamed.
+  const hasValidName = spaceName !== undefined && spaceName.trim() !== '' && isValidOrgName(spaceName);
+
+  const setClause = hasValidName
     ? 'external_space_id = $2, name = $3, updated_at = NOW()'
     : 'external_space_id = $2, updated_at = NOW()';
 
-  const params = spaceName !== undefined && spaceName.trim() !== ''
+  const params = hasValidName
     ? [orgId, externalSpaceId, spaceName]
     : [orgId, externalSpaceId];
 
@@ -1033,7 +1063,11 @@ export async function createOrgForUser(
   try {
     let orgName: string;
 
-    if (spaceName !== undefined && spaceName.trim() !== '') {
+    // An invalid spaceName (too long, control characters) falls back to the
+    // derived name below instead of throwing — this is a derived write, not
+    // a rejection point, so an attacker-controlled string is discarded
+    // rather than surfaced as a 500 or half-created account.
+    if (spaceName !== undefined && spaceName.trim() !== '' && isValidOrgName(spaceName)) {
       orgName = spaceName;
     } else {
       const baseName = deriveOrgNameFromEmail(email);
