@@ -3,7 +3,8 @@
  *
  * Documents and localization edges are site-scoped, so the listing is filtered to
  * the branch it was asked about: a variant authored on another branch, and an
- * archived one, are both left out.
+ * archived one, are both left out, while one the branch inherits published from
+ * main is listed.
  *
  * Prerequisites:
  * - PostgreSQL running: docker start css-postgres
@@ -19,10 +20,12 @@ import { createSite } from '../../src/services/site-service';
 import { createBranch } from '../../src/services/branch-service';
 import { createDocumentOnBranch } from '../../src/services/branch-document-service';
 import { createDocumentVersion } from '../../src/services/document-version-service';
+import { publishDocument } from '../../src/services/checkpoint-publish';
 import {
   createTranslation,
   listLocaleVariants,
 } from '../../src/services/create-translation-service';
+import { TranslationAlreadyExistsError } from '../../src/services/errors';
 
 const TEST_USER_ID = '77777777-7777-7777-7777-777777777777';
 const SITE_PREFIX = 'variant-scope-test';
@@ -169,5 +172,82 @@ describe('Locale-variant listing scope - Integration Tests', () => {
     const listed = variants.find((variant) => variant.document.id === mainVariantId);
     expect(listed?.localization.upstreamDocumentId).toBe(canonicalId);
     expect(listed?.localization.relationType).toBe('localization');
+  });
+
+  describe('A variant the branch holds no version of', () => {
+    let inheritedVariantId: string;
+    let draftVariantId: string;
+    let readerBranchId: string;
+
+    beforeAll(async () => {
+      await publishDocument({
+        siteId,
+        branchId: mainBranchId,
+        documentId: canonicalId,
+        createdById: TEST_USER_ID,
+        createdByType: 'user',
+      });
+
+      const inherited = await createTranslation({
+        canonicalDocumentId: canonicalId,
+        branchId: mainBranchId,
+        locale: 'it-IT',
+        createdById: TEST_USER_ID,
+        createdByType: 'user',
+      });
+      inheritedVariantId = inherited.document.id;
+      await publishDocument({
+        siteId,
+        branchId: mainBranchId,
+        documentId: inheritedVariantId,
+        createdById: TEST_USER_ID,
+        createdByType: 'user',
+      });
+
+      const draft = await createTranslation({
+        canonicalDocumentId: canonicalId,
+        branchId: mainBranchId,
+        locale: 'pt-BR',
+        createdById: TEST_USER_ID,
+        createdByType: 'user',
+      });
+      draftVariantId = draft.document.id;
+
+      const readerBranch = await createBranch({
+        siteId,
+        name: `reader-${String(Date.now())}`,
+        sourceBranchId: mainBranchId,
+        createdById: TEST_USER_ID,
+        createdByType: 'user',
+      });
+      readerBranchId = readerBranch.id;
+    });
+
+    it('lists one the branch inherits published from main', async () => {
+      const { variants } = await listLocaleVariants(canonicalId, readerBranchId);
+
+      expect(variants.map((variant) => variant.document.id)).toContain(inheritedVariantId);
+    });
+
+    it('leaves out one main holds only as a draft', async () => {
+      const { variants } = await listLocaleVariants(canonicalId, readerBranchId);
+
+      expect(variants.map((variant) => variant.document.id)).not.toContain(draftVariantId);
+    });
+
+    it('lists every locale it refuses a new translation in', async () => {
+      await expect(
+        createTranslation({
+          canonicalDocumentId: canonicalId,
+          branchId: readerBranchId,
+          locale: 'it-IT',
+          createdById: TEST_USER_ID,
+          createdByType: 'user',
+        }),
+      ).rejects.toThrow(TranslationAlreadyExistsError);
+
+      const { variants } = await listLocaleVariants(canonicalId, readerBranchId);
+      expect(variants.map((variant) => variant.document.locale)).toContain('it-IT');
+    });
   });
 });

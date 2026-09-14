@@ -40,6 +40,7 @@ vi.mock('../../src/services/relations-service', () => ({
     }),
   ),
   listLocalizationEdgesByUpstreamDocument: vi.fn(async () => []),
+  findTranslationInLocale: vi.fn(async () => null),
 }));
 
 const CANONICAL_ID = 'doc-canonical';
@@ -73,7 +74,6 @@ async function setupHappyPath(): Promise<void> {
 
   vi.mocked(db.query)
     .mockResolvedValueOnce({ rows: [{ id: CANONICAL_ID }] }) // SELECT ... FOR UPDATE
-    .mockResolvedValueOnce({ rows: [] }) // duplicate-locale check
     .mockResolvedValueOnce({
       rows: [
         {

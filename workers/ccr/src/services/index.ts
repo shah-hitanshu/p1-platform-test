@@ -45,6 +45,7 @@ export {
   ConflictAlreadyResolvedError,
   DuplicatePantheonSiteIdError,
   TranslationAlreadyExistsError,
+  TranslationVersionContentionError,
   DatasourceInUseError,
   MergeConflictsError,
   InvalidSlugError,

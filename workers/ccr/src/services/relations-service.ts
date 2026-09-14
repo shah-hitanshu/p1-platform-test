@@ -374,6 +374,99 @@ export async function listLocaleVariantsOnBranch(
 }
 
 /**
+ * A canonical's translation in one locale, wherever it was authored.
+ */
+export interface TranslationInLocale {
+  documentId: string;
+  /** Whether the branch serves the translation: its own live version, or main's published one. */
+  liveOnBranch: boolean;
+  syncedUpstreamVersion: number | null;
+  syncedUpstreamVersionId: string | null;
+}
+
+/**
+ * The translation of a canonical in the given locale, or null when the site holds
+ * none. Documents are site-scoped, so one row serves every branch and the locale
+ * is held at most once across the whole site.
+ *
+ * `liveOnBranch` applies the same visibility rule as {@link listLocaleVariantsOnBranch},
+ * so a caller deciding whether the locale is available and a caller listing what the
+ * branch holds answer from one rule.
+ */
+export async function findTranslationInLocale(
+  canonicalDocumentId: string,
+  locale: string,
+  branchId: string,
+  mainBranchId: string | undefined,
+): Promise<TranslationInLocale | null> {
+  const inherits = branchInheritsFromMain(branchId, mainBranchId);
+  const result = await query<{
+    id: string;
+    live_on_branch: boolean;
+    synced_version: number | null;
+    synced_version_id: string | null;
+  }>(
+    `SELECT d.id, dr.synced_version, dr.synced_version_id,
+            ${visibleOnBranch('d', inherits ? 'pub_d' : null, '$3', '$4')} AS live_on_branch
+       FROM app.documents d
+       JOIN app.document_relations dr
+         ON dr.source_document_id = d.id AND dr.relation_type = 'localization'
+       ${inherits ? publishedOnBranchJoin('pub_d', 'd', '$4') : ''}
+      WHERE dr.target_document_id = $1
+        AND d.locale = $2
+        AND d.archived_at IS NULL
+      -- Nothing constrains a canonical to one unarchived translation per locale, and
+      -- which row comes back decides both the answer and the document a take-over
+      -- versions. One the branch serves settles the locale as taken; an unordered
+      -- pick could answer from a second row and take over alongside it.
+      ORDER BY live_on_branch DESC
+      LIMIT 1`,
+    // The branch to inherit from binds last so that dropping it renumbers nothing.
+    inherits
+      ? [canonicalDocumentId, locale, branchId, mainBranchId]
+      : [canonicalDocumentId, locale, branchId],
+  );
+
+  const row = result.rows[0];
+  if (row === undefined) {
+    return null;
+  }
+  return {
+    documentId: row.id,
+    liveOnBranch: row.live_on_branch,
+    syncedUpstreamVersion: row.synced_version,
+    syncedUpstreamVersionId: row.synced_version_id,
+  };
+}
+
+/**
+ * The ids of a canonical's translations that the branch serves: the ones it holds a
+ * live version of, and the ones it inherits published from main. Answers for every
+ * locale at once, so a listing costs one query rather than one per variant.
+ */
+export async function listServedTranslationIds(
+  canonicalDocumentId: string,
+  branchId: string,
+  mainBranchId: string | undefined,
+): Promise<Set<string>> {
+  const inherits = branchInheritsFromMain(branchId, mainBranchId);
+  const result = await query<{ id: string }>(
+    `SELECT d.id
+       FROM app.documents d
+       JOIN app.document_relations dr
+         ON dr.source_document_id = d.id AND dr.relation_type = 'localization'
+       ${inherits ? publishedOnBranchJoin('pub_d', 'd', '$3') : ''}
+      WHERE dr.target_document_id = $1
+        AND d.archived_at IS NULL
+        AND ${visibleOnBranch('d', inherits ? 'pub_d' : null, '$2', '$3')}`,
+    // The branch to inherit from binds last so that dropping it renumbers nothing.
+    inherits ? [canonicalDocumentId, branchId, mainBranchId] : [canonicalDocumentId, branchId],
+  );
+
+  return new Set(result.rows.map((row) => row.id));
+}
+
+/**
  * Writes a localization edge from a translation (derived) to its canonical
  * (upstream). Runs on the caller's connection, so it participates in an ambient
  * transaction.

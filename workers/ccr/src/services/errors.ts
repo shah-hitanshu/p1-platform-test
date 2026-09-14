@@ -361,6 +361,25 @@ export class TranslationAlreadyExistsError extends HttpError {
   }
 }
 
+/**
+ * A translation's version could not be numbered because a write to the same
+ * document and branch kept taking the number first.
+ *
+ * Nothing is wrong with the request and the locale is free: repeating it is what
+ * resolves this, which is why it reads as a conflict rather than a failure.
+ */
+export class TranslationVersionContentionError extends HttpError {
+  readonly status = 409;
+  constructor(
+    public readonly canonicalDocumentId: string,
+    public readonly locale: string,
+  ) {
+    super(
+      `Another write to the "${locale}" translation of document "${canonicalDocumentId}" is in progress. Try again.`,
+    );
+  }
+}
+
 export class DatasourceInUseError extends HttpError {
   readonly status = 409;
   constructor(

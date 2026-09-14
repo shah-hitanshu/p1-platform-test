@@ -5,6 +5,7 @@
  */
 
 import { query } from '../db';
+import { driverErrorCode, violatedConstraint } from '../db/driver-error';
 import { getFirstRow } from './checkpoint-mappers';
 import { isUniqueConstraintViolation } from './document-types';
 import type { DocumentRow, DocumentVersionRow } from './document-types';
@@ -13,7 +14,7 @@ import {
   reconstructVersionSnapshot,
 } from './document-version-service';
 import { enforceUniqueSlotIds } from './slot-id-backstop';
-import { DuplicateDocumentPathError } from './errors';
+import { DuplicateDocumentPathError, VersionReconstructionError } from './errors';
 
 /** A cloned snapshot, and the version it was taken from. */
 export interface ClonedSnapshot {
@@ -63,6 +64,132 @@ export async function cloneLatestSnapshot(
     versionNumber: latest.version.versionNumber,
     versionId: latest.version.id,
   };
+}
+
+/**
+ * Reads one named version of a document and returns its snapshot, deep-cloned and
+ * safe to insert as another document's content. A version id names a version on
+ * whichever branch holds it, so `branchIds` says which of those branches the
+ * caller may read: content on a branch outside that list is unreleased work
+ * belonging to whoever holds it.
+ *
+ * Returns null when no version of this document on one of those branches has that
+ * id, or when its diff chain cannot be rebuilt.
+ */
+export async function cloneSnapshotAtVersion(
+  documentId: string,
+  versionId: string,
+  branchIds: string[],
+): Promise<ClonedSnapshot | null> {
+  const found = await query<{
+    branch_id: string;
+    version_number: number;
+    snapshot: Record<string, unknown> | null;
+  }>(
+    `SELECT branch_id, version_number, snapshot
+       FROM app.document_versions
+      WHERE id = $1 AND document_id = $2 AND branch_id = ANY($3)`,
+    [versionId, documentId, branchIds],
+  );
+  const row = found.rows[0];
+  if (row === undefined) {
+    return null;
+  }
+
+  const source = row.snapshot ?? (await rebuildOrNull(documentId, row));
+  if (source === null) {
+    return null;
+  }
+
+  return {
+    snapshot: enforceUniqueSlotIds(documentId, structuredClone(source)),
+    versionNumber: row.version_number,
+    versionId,
+  };
+}
+
+/**
+ * Rebuilds a version stored as a diff, reporting a chain too damaged to replay as
+ * nothing to clone rather than as an error. A caller naming one version out of a
+ * document's history has somewhere else to read from; the read failing is not the
+ * failure of whatever it was asked to do.
+ */
+async function rebuildOrNull(
+  documentId: string,
+  row: { branch_id: string; version_number: number },
+): Promise<Record<string, unknown> | null> {
+  try {
+    // A version stored as a diff rebuilds against the branch holding it, which is
+    // the branch the version id resolved to rather than any caller's.
+    return await reconstructVersionSnapshot(documentId, row.branch_id, row.version_number);
+  } catch (error) {
+    if (error instanceof VersionReconstructionError) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+/** An existing document and the content a branch starts its own history of it with. */
+export interface InsertVersionOnBranchParams {
+  documentId: string;
+  branchId: string;
+  snapshot: Record<string, unknown>;
+  createdById: string;
+  createdByType: 'user' | 'agent' | 'service';
+}
+
+/**
+ * Appends a version of an existing document on one branch, numbered after whatever
+ * that branch already holds of it. Version numbers run per branch, so a branch
+ * holding none of the document starts at 1 however long the document's history
+ * elsewhere.
+ *
+ * The number comes from a read of the current maximum, so two writers of the same
+ * document and branch can choose the same one. Holding the document row locked
+ * serializes callers that take that lock against each other; the ordinary version
+ * write does not take it, and absorbs the collision itself. A caller that cannot
+ * be serialized against every other writer handles the rejection instead, which
+ * {@link isVersionNumberCollision} recognizes.
+ */
+export async function insertVersionOnBranch(
+  params: InsertVersionOnBranchParams,
+): Promise<DocumentVersionRow[]> {
+  const versions = await query<DocumentVersionRow>(
+    `INSERT INTO app.document_versions (
+       document_id, branch_id, version_number, snapshot,
+       source, created_by_id, created_by_type
+     )
+     SELECT $1, $2, COALESCE(MAX(version_number), 0) + 1, $3, 'edit', $4, $5
+       FROM app.document_versions
+      WHERE document_id = $1 AND branch_id = $2
+     RETURNING *`,
+    [
+      params.documentId,
+      params.branchId,
+      params.snapshot,
+      params.createdById,
+      params.createdByType,
+    ],
+  );
+  return versions.rows;
+}
+
+/** The unique constraint that makes a version number unrepeatable per branch. */
+const VERSION_NUMBER_CONSTRAINT = 'document_versions_document_id_branch_id_version_number_key';
+
+/**
+ * Whether a rejected write is two writers having chosen one document, branch and
+ * version number. The number is the whole of what went wrong: the content was
+ * acceptable and a later number is free, so a caller can number it again.
+ *
+ * The constraint is named rather than the SQLSTATE matched alone, so a duplicate
+ * path or any other unique constraint on the way stays the failure it is.
+ */
+export function isVersionNumberCollision(error: unknown): boolean {
+  return (
+    driverErrorCode(error) === '23505' && violatedConstraint(error) === VERSION_NUMBER_CONSTRAINT
+  );
 }
 
 /** A new document and the content it starts life with. */

@@ -17,3 +17,19 @@ export function driverErrorCode(error: unknown): string | undefined {
   }
   return undefined;
 }
+
+/**
+ * The constraint a rejected query violated.
+ *
+ * Postgres names it in its own error, which the driver puts on `cause` alongside
+ * the SQLSTATE. It is what tells two unique constraints on the same table apart,
+ * and unlike the wrapper's message it carries no statement text.
+ */
+export function violatedConstraint(error: unknown): string | undefined {
+  for (let candidate: unknown = error; candidate instanceof Error; candidate = candidate.cause) {
+    if ('constraint_name' in candidate && typeof candidate.constraint_name === 'string') {
+      return candidate.constraint_name;
+    }
+  }
+  return undefined;
+}

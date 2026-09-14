@@ -19,12 +19,14 @@ import { setDatabaseInstance } from '../../src/db';
 import { createRealDatabaseConnection } from '../helpers/database';
 
 import { createSite } from '../../src/services/site-service';
-import { createBranch } from '../../src/services/branch-service';
+import { createBranch, deleteBranch } from '../../src/services/branch-service';
 import {
   createDocumentOnBranch,
+  deleteDocumentOnBranch,
   documentExistsOnBranch,
 } from '../../src/services/branch-document-service';
 import { getDocument } from '../../src/services/document-service';
+import { createDocumentVersion } from '../../src/services/document-version-service';
 import { publishDocument } from '../../src/services/checkpoint-publish';
 import {
   createTranslation,
@@ -291,6 +293,438 @@ describe('Create-translation service - Integration Tests', () => {
     it('authors the translation on the branch alone', async () => {
       expect(await documentExistsOnBranch(result.document.id, featureBranchId)).toBe(true);
       expect(await documentExistsOnBranch(result.document.id, branchId)).toBe(false);
+    });
+  });
+
+  describe('Taking over a translation of a canonical that has moved on since', () => {
+    let firstTranslation: Awaited<ReturnType<typeof createTranslation>>;
+    let takenOver: Awaited<ReturnType<typeof createTranslation>>;
+
+    beforeAll(async () => {
+      const canonical = await createDocumentOnBranch({
+        siteId,
+        branchId,
+        path: 'pages/moved-on',
+        snapshot: makeSnapshot([HEADING]),
+        createdById: TEST_USER_ID,
+        createdByType: 'user',
+      });
+      const canonicalId = canonical.document.id;
+      await publishDocument({
+        siteId,
+        branchId,
+        documentId: canonicalId,
+        createdById: TEST_USER_ID,
+        createdByType: 'user',
+      });
+
+      const firstBranch = await createBranch({
+        siteId,
+        name: `bookmarked-${String(Date.now())}`,
+        sourceBranchId: branchId,
+        createdById: TEST_USER_ID,
+        createdByType: 'user',
+      });
+      firstTranslation = await createTranslation({
+        canonicalDocumentId: canonicalId,
+        branchId: firstBranch.id,
+        locale: 'hu-HU',
+        createdById: TEST_USER_ID,
+        createdByType: 'user',
+      });
+
+      await createDocumentVersion({
+        documentId: canonicalId,
+        branchId,
+        snapshot: makeSnapshot([HEADING, IMAGE]),
+        source: 'edit',
+        createdById: TEST_USER_ID,
+        createdByType: 'user',
+      });
+      await publishDocument({
+        siteId,
+        branchId,
+        documentId: canonicalId,
+        createdById: TEST_USER_ID,
+        createdByType: 'user',
+      });
+
+      const secondBranch = await createBranch({
+        siteId,
+        name: `taking-over-${String(Date.now())}`,
+        sourceBranchId: branchId,
+        createdById: TEST_USER_ID,
+        createdByType: 'user',
+      });
+      takenOver = await createTranslation({
+        canonicalDocumentId: canonicalId,
+        branchId: secondBranch.id,
+        locale: 'hu-HU',
+        createdById: TEST_USER_ID,
+        createdByType: 'user',
+      });
+    });
+
+    it('seeds the canonical content the translation is aligned to', () => {
+      expect(extractComponentIds(takenOver.version.snapshot)).toEqual(['HeadingBlock-1']);
+    });
+
+    it('reports the alignment the seeded content matches', () => {
+      expect(takenOver.localization.syncedUpstreamVersionId).toBe(
+        firstTranslation.localization.syncedUpstreamVersionId,
+      );
+    });
+  });
+
+  describe('Taking over a translation aligned to a canonical draft another workstream holds', () => {
+    let firstTranslation: Awaited<ReturnType<typeof createTranslation>>;
+    let takenOver: Awaited<ReturnType<typeof createTranslation>>;
+    let draftVersionId: string;
+
+    beforeAll(async () => {
+      const canonical = await createDocumentOnBranch({
+        siteId,
+        branchId,
+        path: 'pages/private-draft',
+        snapshot: makeSnapshot([HEADING]),
+        createdById: TEST_USER_ID,
+        createdByType: 'user',
+      });
+      const canonicalId = canonical.document.id;
+      await publishDocument({
+        siteId,
+        branchId,
+        documentId: canonicalId,
+        createdById: TEST_USER_ID,
+        createdByType: 'user',
+      });
+
+      const firstBranch = await createBranch({
+        siteId,
+        name: `drafts-canonical-${String(Date.now())}`,
+        sourceBranchId: branchId,
+        createdById: TEST_USER_ID,
+        createdByType: 'user',
+      });
+      const draft = await createDocumentVersion({
+        documentId: canonicalId,
+        branchId: firstBranch.id,
+        snapshot: makeSnapshot([HEADING, CTA]),
+        source: 'edit',
+        createdById: TEST_USER_ID,
+        createdByType: 'user',
+      });
+      draftVersionId = draft.id;
+
+      firstTranslation = await createTranslation({
+        canonicalDocumentId: canonicalId,
+        branchId: firstBranch.id,
+        locale: 'ro-RO',
+        createdById: TEST_USER_ID,
+        createdByType: 'user',
+      });
+
+      const secondBranch = await createBranch({
+        siteId,
+        name: `takes-over-${String(Date.now())}`,
+        sourceBranchId: branchId,
+        createdById: TEST_USER_ID,
+        createdByType: 'user',
+      });
+      takenOver = await createTranslation({
+        canonicalDocumentId: canonicalId,
+        branchId: secondBranch.id,
+        locale: 'ro-RO',
+        createdById: TEST_USER_ID,
+        createdByType: 'user',
+      });
+    });
+
+    it('aligns a translation to the canonical draft its own workstream serves', () => {
+      expect(firstTranslation.localization.syncedUpstreamVersionId).toBe(draftVersionId);
+      expect(extractComponentIds(firstTranslation.version.snapshot)).toEqual([
+        'HeadingBlock-1',
+        'ButtonBlock-1',
+      ]);
+    });
+
+    it('seeds the canonical the taking-over workstream serves, not the draft the alignment names', () => {
+      expect(extractComponentIds(takenOver.version.snapshot)).toEqual(['HeadingBlock-1']);
+    });
+
+    it('leaves the alignment where the authoring workstream set it', () => {
+      expect(takenOver.localization.syncedUpstreamVersionId).toBe(draftVersionId);
+    });
+  });
+
+  describe('Creating a translation in a locale another branch holds', () => {
+    let canonicalId: string;
+    let firstBranchId: string;
+    let secondBranchId: string;
+
+    async function newBranch(label: string): Promise<string> {
+      const branch = await createBranch({
+        siteId,
+        name: `${label}-${String(Date.now())}-${String(Math.random()).slice(2, 8)}`,
+        sourceBranchId: branchId,
+        createdById: TEST_USER_ID,
+        createdByType: 'user',
+      });
+      return branch.id;
+    }
+
+    beforeAll(async () => {
+      const canonical = await createDocumentOnBranch({
+        siteId,
+        branchId,
+        path: 'pages/shared',
+        snapshot: makeSnapshot([HEADING, CTA]),
+        createdById: TEST_USER_ID,
+        createdByType: 'user',
+      });
+      canonicalId = canonical.document.id;
+
+      await publishDocument({
+        siteId,
+        branchId,
+        documentId: canonicalId,
+        createdById: TEST_USER_ID,
+        createdByType: 'user',
+      });
+
+      firstBranchId = await newBranch('holds-locale');
+      secondBranchId = await newBranch('wants-locale');
+    });
+
+    it('takes over the translation document the other branch authored', async () => {
+      const first = await createTranslation({
+        canonicalDocumentId: canonicalId,
+        branchId: firstBranchId,
+        locale: 'nl-NL',
+        createdById: TEST_USER_ID,
+        createdByType: 'user',
+      });
+
+      const second = await createTranslation({
+        canonicalDocumentId: canonicalId,
+        branchId: secondBranchId,
+        locale: 'nl-NL',
+        createdById: TEST_USER_ID,
+        createdByType: 'user',
+      });
+
+      expect(second.document.id).toBe(first.document.id);
+      expect(second.document.locale).toBe('nl-NL');
+    });
+
+    it('holds each branch its own version of a shared translation', async () => {
+      const created = await createTranslation({
+        canonicalDocumentId: canonicalId,
+        branchId: firstBranchId,
+        locale: 'nb-NO',
+        createdById: TEST_USER_ID,
+        createdByType: 'user',
+      });
+      await createTranslation({
+        canonicalDocumentId: canonicalId,
+        branchId: secondBranchId,
+        locale: 'nb-NO',
+        createdById: TEST_USER_ID,
+        createdByType: 'user',
+      });
+
+      expect(await documentExistsOnBranch(created.document.id, firstBranchId)).toBe(true);
+      expect(await documentExistsOnBranch(created.document.id, secondBranchId)).toBe(true);
+      expect(await documentExistsOnBranch(created.document.id, branchId)).toBe(false);
+    });
+
+    it('leaves the canonical a single localization edge per locale', async () => {
+      await createTranslation({
+        canonicalDocumentId: canonicalId,
+        branchId: firstBranchId,
+        locale: 'fi-FI',
+        createdById: TEST_USER_ID,
+        createdByType: 'user',
+      });
+      await createTranslation({
+        canonicalDocumentId: canonicalId,
+        branchId: secondBranchId,
+        locale: 'fi-FI',
+        createdById: TEST_USER_ID,
+        createdByType: 'user',
+      });
+
+      const edges = await listLocalizationEdgesByUpstreamDocument(canonicalId);
+      const documents = await Promise.all(edges.map((edge) => getDocument(edge.derivedDocumentId)));
+      expect(documents.filter((document) => document?.locale === 'fi-FI')).toHaveLength(1);
+    });
+
+    it('preserves the canonical slot ids in the adopting branch version', async () => {
+      await createTranslation({
+        canonicalDocumentId: canonicalId,
+        branchId: firstBranchId,
+        locale: 'pl-PL',
+        createdById: TEST_USER_ID,
+        createdByType: 'user',
+      });
+      const second = await createTranslation({
+        canonicalDocumentId: canonicalId,
+        branchId: secondBranchId,
+        locale: 'pl-PL',
+        createdById: TEST_USER_ID,
+        createdByType: 'user',
+      });
+
+      expect(extractComponentIds(second.version.snapshot)).toEqual([
+        'HeadingBlock-1',
+        'ButtonBlock-1',
+      ]);
+    });
+
+    it('rejects a locale the branch already holds itself', async () => {
+      await createTranslation({
+        canonicalDocumentId: canonicalId,
+        branchId: secondBranchId,
+        locale: 'sv-SE',
+        createdById: TEST_USER_ID,
+        createdByType: 'user',
+      });
+
+      await expect(
+        createTranslation({
+          canonicalDocumentId: canonicalId,
+          branchId: secondBranchId,
+          locale: 'sv-SE',
+          createdById: TEST_USER_ID,
+          createdByType: 'user',
+        }),
+      ).rejects.toThrow(TranslationAlreadyExistsError);
+    });
+
+    it('rejects a locale the branch inherits from main', async () => {
+      const onMain = await createTranslation({
+        canonicalDocumentId: canonicalId,
+        branchId,
+        locale: 'da-DK',
+        createdById: TEST_USER_ID,
+        createdByType: 'user',
+      });
+      await publishDocument({
+        siteId,
+        branchId,
+        documentId: onMain.document.id,
+        createdById: TEST_USER_ID,
+        createdByType: 'user',
+      });
+
+      const inheritingBranchId = await newBranch('inherits-locale');
+
+      await expect(
+        createTranslation({
+          canonicalDocumentId: canonicalId,
+          branchId: inheritingBranchId,
+          locale: 'da-DK',
+          createdById: TEST_USER_ID,
+          createdByType: 'user',
+        }),
+      ).rejects.toThrow(TranslationAlreadyExistsError);
+    });
+
+    it('takes the locale back after a published translation was deleted', async () => {
+      const published = await createTranslation({
+        canonicalDocumentId: canonicalId,
+        branchId,
+        locale: 'ro-RO',
+        createdById: TEST_USER_ID,
+        createdByType: 'user',
+      });
+      await publishDocument({
+        siteId,
+        branchId,
+        documentId: published.document.id,
+        createdById: TEST_USER_ID,
+        createdByType: 'user',
+      });
+      await deleteDocumentOnBranch({
+        documentId: published.document.id,
+        branchId,
+        deletedById: TEST_USER_ID,
+        deletedByType: 'user',
+      });
+
+      const retaken = await createTranslation({
+        canonicalDocumentId: canonicalId,
+        branchId,
+        locale: 'ro-RO',
+        createdById: TEST_USER_ID,
+        createdByType: 'user',
+      });
+
+      expect(retaken.document.id).toBe(published.document.id);
+      expect(await documentExistsOnBranch(retaken.document.id, branchId)).toBe(true);
+    });
+
+    it('keeps the publish history of a translation it takes back', async () => {
+      const published = await createTranslation({
+        canonicalDocumentId: canonicalId,
+        branchId,
+        locale: 'el-GR',
+        createdById: TEST_USER_ID,
+        createdByType: 'user',
+      });
+      await publishDocument({
+        siteId,
+        branchId,
+        documentId: published.document.id,
+        createdById: TEST_USER_ID,
+        createdByType: 'user',
+      });
+      await deleteDocumentOnBranch({
+        documentId: published.document.id,
+        branchId,
+        deletedById: TEST_USER_ID,
+        deletedByType: 'user',
+      });
+
+      await createTranslation({
+        canonicalDocumentId: canonicalId,
+        branchId,
+        locale: 'el-GR',
+        createdById: TEST_USER_ID,
+        createdByType: 'user',
+      });
+
+      const captured = await sql`
+        SELECT COUNT(*)::int AS count
+          FROM app.checkpoint_documents cd
+          JOIN app.document_versions dv ON dv.id = cd.document_version_id
+         WHERE dv.document_id = ${published.document.id}
+      `;
+      expect(captured[0].count).toBeGreaterThan(0);
+    });
+
+    it('frees the locale again once the only branch holding it is deleted', async () => {
+      const soleBranchId = await newBranch('sole-holder');
+      const abandoned = await createTranslation({
+        canonicalDocumentId: canonicalId,
+        branchId: soleBranchId,
+        locale: 'pt-PT',
+        createdById: TEST_USER_ID,
+        createdByType: 'user',
+      });
+
+      await deleteBranch(soleBranchId);
+
+      const recreated = await createTranslation({
+        canonicalDocumentId: canonicalId,
+        branchId,
+        locale: 'pt-PT',
+        createdById: TEST_USER_ID,
+        createdByType: 'user',
+      });
+
+      expect(recreated.document.id).toBe(abandoned.document.id);
+      expect(await documentExistsOnBranch(recreated.document.id, branchId)).toBe(true);
     });
   });
 });

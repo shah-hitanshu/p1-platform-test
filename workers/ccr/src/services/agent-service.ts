@@ -10,7 +10,7 @@
 import { and, asc, count, desc, eq, or, sql } from 'drizzle-orm';
 import type { PgUpdateSetSource } from 'drizzle-orm/pg-core';
 import type { RegisteredAgent, AgentSettings, AgentStatus } from '../types';
-import { driverErrorCode } from '../db/driver-error';
+import { driverErrorCode, violatedConstraint } from '../db/driver-error';
 import { agents } from '../db/schema';
 import { db } from '../db/scope';
 import {
@@ -111,22 +111,6 @@ function isForeignKeyViolation(error: unknown): boolean {
  */
 function isUniqueViolation(error: unknown): boolean {
   return driverErrorCode(error) === '23505';
-}
-
-/**
- * The constraint a rejected query violated.
- *
- * Postgres names it in its own error, which Drizzle puts on `cause` alongside the
- * SQLSTATE. It is what tells two unique constraints on the same table apart, and
- * unlike the wrapper's message it carries no statement text.
- */
-function violatedConstraint(error: unknown): string | undefined {
-  for (let candidate: unknown = error; candidate instanceof Error; candidate = candidate.cause) {
-    if ('constraint_name' in candidate && typeof candidate.constraint_name === 'string') {
-      return candidate.constraint_name;
-    }
-  }
-  return undefined;
 }
 
 /**
