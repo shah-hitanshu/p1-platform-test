@@ -101,4 +101,25 @@ describe('P1EditorSubheader feature actions', () => {
     expect(screen.getByTestId('p1-editor-subheader')).toBeDefined();
     expect(screen.queryByTestId('toolbar-feature-actions')).toBeNull();
   });
+
+  it('leaves the slot empty when every control it holds renders nothing', () => {
+    // Controls self-gate, so a contributed control that renders nothing leaves
+    // the container childless. `.featureActions:empty` is what keeps it and the
+    // rule beside it from taking toolbar room, and that hinges on this staying
+    // true — a placeholder wrapper here would defeat it.
+    const Silent = (): null => null;
+    render(
+      <P1EditorSubheader
+        {...defaultProps}
+        featureActions={
+          <>
+            <Silent />
+            <Silent />
+          </>
+        }
+      />,
+    );
+
+    expect(screen.getByTestId('toolbar-feature-actions')).toBeEmptyDOMElement();
+  });
 });

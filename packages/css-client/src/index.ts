@@ -125,6 +125,8 @@ export type {
   ChangeClassification,
   ChangeSummaryEntry,
   ChangeSummary,
+  UpstreamResolutions,
+  UpstreamResolutionTarget,
 } from './types.js';
 
 // Auth utilities

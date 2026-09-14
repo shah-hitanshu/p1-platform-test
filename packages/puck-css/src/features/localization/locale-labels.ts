@@ -31,6 +31,11 @@ export interface LocaleLabel {
   english: string;
   /** The badge, e.g. "FR". */
   tag: string;
+  /**
+   * The canonical BCP-47 tag, for an HTML `lang` attribute. Undefined when the
+   * market is not a tag at all, where declaring a language would be a guess.
+   */
+  lang: string | undefined;
   dir: 'ltr' | 'rtl';
 }
 
@@ -49,13 +54,32 @@ function displayName(of: string, inLocale: string): string | null {
   }
 }
 
+/**
+ * Direction follows the script, not the language: `az-Arab` reads right to left
+ * where `az-Latn` does not.
+ */
+function direction(locale: string, language: string): 'ltr' | 'rtl' {
+  try {
+    const parsed = new Intl.Locale(locale) as Intl.Locale & {
+      getTextInfo?: () => { direction?: string };
+    };
+    const reported = parsed.getTextInfo?.().direction;
+    if (reported === 'ltr' || reported === 'rtl') return reported;
+  } catch {
+    // Not a tag the runtime will parse.
+  }
+  return RTL_LANGUAGES.has(language) ? 'rtl' : 'ltr';
+}
+
 function build(locale: string): LocaleLabel {
   let language = '';
   let region: string | undefined;
+  let canonical: string | undefined;
   try {
     const parsed = new Intl.Locale(locale);
     language = parsed.language;
     region = parsed.region;
+    canonical = parsed.toString();
   } catch {
     // Not a tag at all — nothing to read off it.
   }
@@ -71,7 +95,8 @@ function build(locale: string): LocaleLabel {
     english: english ?? locale,
     // A locale the registry never bounded still has to fit the badge.
     tag: badge.slice(0, 3),
-    dir: RTL_LANGUAGES.has(language) ? 'rtl' : 'ltr',
+    lang: canonical,
+    dir: direction(locale, language),
   };
 }
 

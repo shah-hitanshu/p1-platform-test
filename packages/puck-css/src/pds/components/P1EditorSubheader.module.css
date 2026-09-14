@@ -50,6 +50,17 @@
   flex-shrink: 0;
 }
 
+/* Every control in the slot self-gates, so a slot that contributed nothing
+   leaves an empty container. Neither it nor the rule beside it should take
+   toolbar room. */
+.featureActions:empty {
+  display: none;
+}
+
+.divider:has(+ .featureActions:empty) {
+  display: none;
+}
+
 /* ── Spacer ──────────────────────────────────────────────────────────── */
 
 .spacer {

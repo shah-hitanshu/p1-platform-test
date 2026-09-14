@@ -40,10 +40,31 @@ describe('localeLabel', () => {
     expect(localeLabel('ja').tag).toBe('JA');
   });
 
+  it('names the whole market for a lang attribute, not its region', () => {
+    expect(localeLabel('pt-BR').lang).toBe('pt-BR');
+    expect(localeLabel('ar-AE').lang).toBe('ar-AE');
+    expect(localeLabel('ja').lang).toBe('ja');
+  });
+
+  it('canonicalises the case a lang attribute is declared in', () => {
+    expect(localeLabel('pt-br').lang).toBe('pt-BR');
+  });
+
+  it('declares no language for a tag that names none', () => {
+    expect(localeLabel('not a locale').lang).toBeUndefined();
+  });
+
   it('reads right to left where the language does', () => {
     expect(localeLabel('ar-AE').dir).toBe('rtl');
     expect(localeLabel('he-IL').dir).toBe('rtl');
     expect(localeLabel('fr-FR').dir).toBe('ltr');
+  });
+
+  it('reads right to left where only the script says so', () => {
+    // Azerbaijani and Punjabi are each written in more than one script.
+    expect(localeLabel('az-Arab').dir).toBe('rtl');
+    expect(localeLabel('pa-Arab').dir).toBe('rtl');
+    expect(localeLabel('az-Latn').dir).toBe('ltr');
   });
 
   it('falls back to the tag itself when it names no known language', () => {

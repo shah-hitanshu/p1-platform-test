@@ -3,7 +3,7 @@
  * Localization Feature Plugin Tests
  *
  * The localization plugin is always active and contributes the fields-panel
- * overrides.
+ * overrides and the upstream-changes panel.
  */
 
 import { describe, it, expect } from 'vitest';

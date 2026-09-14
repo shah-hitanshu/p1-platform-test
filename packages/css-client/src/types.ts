@@ -430,6 +430,12 @@ export interface ChangeSummaryEntry {
   authority?: PropAuthority;
   translatable?: boolean;
   structuralKind?: 'added' | 'removed' | 'moved';
+  /**
+   * The upstream version this change was reconciled at. Present only while that
+   * resolution still covers it: a change the upstream source makes again reads as
+   * outstanding once more.
+   */
+  resolvedAtVersion?: number;
 }
 
 /**
@@ -455,8 +461,32 @@ export interface ChangeSummary {
   toVersionId: string;
   /** Id-keyed structural delta */
   slotDelta: unknown;
+  /** Outstanding changes, plus the reconciled ones when they were asked for. */
   changes: ChangeSummaryEntry[];
+  /** Per-classification tally over `changes`. */
   counts: Record<ChangeClassification, number>;
+  /**
+   * How many changes a resolution covers, whether or not they are listed. Absent
+   * from a backend that predates per-change resolutions.
+   */
+  resolvedCount?: number;
+}
+
+/**
+ * The upstream version each reported change was last reconciled at on this branch,
+ * keyed by slot id then the pointer the change was reported at. A change with no
+ * entry has never been reconciled there.
+ */
+export interface UpstreamResolutions {
+  upstreamResolutions: Record<string, Record<string, number>>;
+}
+
+/** The reported change a resolution applies to. */
+export interface UpstreamResolutionTarget {
+  /** Slot id of the component the change is on, or '__root__' for a page prop. */
+  slotId: string;
+  /** The change's `propPath`, so settling one change leaves its siblings listed. */
+  propPath: string;
 }
 
 /**

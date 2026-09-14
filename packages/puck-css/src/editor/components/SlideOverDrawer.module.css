@@ -1,0 +1,134 @@
+/* ============================================================================
+ * SlideOverDrawer — CSS Module
+ *
+ * A panel that enters from the right over the editor. Timing and easing follow
+ * the editor's toasts, which enter the same edge.
+ * ============================================================================ */
+
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  justify-content: flex-end;
+  background: oklch(0.2046 0 0 / 22%);
+  animation: scrimIn 0.2s ease-out;
+}
+
+.scrimClosing {
+  animation: scrimOut 0.2s ease-in forwards;
+}
+
+@keyframes scrimIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes scrimOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+.drawer {
+  display: flex;
+  flex-direction: column;
+  width: min(47rem, 100vw);
+  height: 100%;
+  background: var(--pds-color-background-default, oklch(1 0 0));
+  border-left: 1px solid var(--pds-color-border-default, oklch(0.8853 0 0));
+  box-shadow: -0.5rem 0 2rem oklch(0.2046 0 0 / 12%);
+  font-family: var(--pds-typography-ff-default, 'Inter', sans-serif);
+  color: var(--pds-color-foreground-default, oklch(0.2046 0 0));
+  animation: drawerIn 0.2s ease-out;
+}
+
+.drawerClosing {
+  animation: drawerOut 0.2s ease-in forwards;
+}
+
+@keyframes drawerIn {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+@keyframes drawerOut {
+  from { transform: translateX(0); }
+  to { transform: translateX(100%); }
+}
+
+/* Kept as an animation rather than dropped: the close transition is what tells
+   the drawer it may unmount, so it has to still finish. */
+@media (prefers-reduced-motion: reduce) {
+  .scrim,
+  .scrimClosing,
+  .drawer,
+  .drawerClosing {
+    animation-duration: 0.01ms;
+  }
+}
+
+.head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pds-spacing-2xs, 0.5rem);
+  padding: var(--pds-spacing-m, 1.25rem);
+  border-bottom: 1px solid var(--pds-color-border-default, oklch(0.8853 0 0));
+}
+
+.headTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--pds-spacing-2xs, 0.5rem);
+}
+
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--pds-spacing-3xs, 0.3rem);
+  font-size: var(--pds-typography-size-2xs, 0.6875rem);
+  font-weight: var(--pds-typography-fw-semibold, 600);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--pds-color-foreground-subtle, oklch(0.55 0 0));
+}
+
+.close {
+  display: inline-flex;
+  padding: 0.25rem;
+  background: transparent;
+  border: 0;
+  border-radius: var(--pds-border-radius-s, 0.25rem);
+  color: var(--pds-color-foreground-subtle, oklch(0.55 0 0));
+  cursor: pointer;
+}
+
+.close:hover {
+  background: oklch(0.96 0 0);
+  color: var(--pds-color-foreground-default, oklch(0.2046 0 0));
+}
+
+.title {
+  margin: 0;
+  font-size: var(--pds-typography-size-xl, 1.375rem);
+  font-weight: var(--pds-typography-fw-semibold, 600);
+  line-height: 1.2;
+  text-wrap: balance;
+}
+
+.body {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--pds-spacing-m, 1.25rem);
+}
+
+.foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--pds-spacing-2xs, 0.5rem);
+  padding: var(--pds-spacing-s, 0.75rem) var(--pds-spacing-m, 1.25rem);
+  border-top: 1px solid var(--pds-color-border-default, oklch(0.8853 0 0));
+  font-size: var(--pds-typography-size-s, 0.875rem);
+  color: var(--pds-color-foreground-subtle, oklch(0.55 0 0));
+}
