@@ -28,7 +28,7 @@ vi.mock('../../src/services', async () => {
     listSites: vi.fn(),
     listBranches: vi.fn(),
     getMainBranch: vi.fn(),
-    getUserPrimaryOrg: vi.fn(),
+    getUserOwnedOrg: vi.fn(),
     linkSiteToOrganization: vi.fn(),
     isUserInOrganization: vi.fn(),
   };
@@ -2526,7 +2526,7 @@ describe('Phase 7.1.1b: Site API Routes', () => {
         archivedAt: null,
       });
 
-      vi.mocked(services.getUserPrimaryOrg).mockResolvedValueOnce('org-123');
+      vi.mocked(services.getUserOwnedOrg).mockResolvedValueOnce('org-123');
       vi.mocked(services.linkSiteToOrganization).mockResolvedValueOnce(true);
 
       const request = new Request('https://api.example.com/api/sites', {
@@ -2543,11 +2543,15 @@ describe('Phase 7.1.1b: Site API Routes', () => {
       });
 
       expect(response.status).toBe(201);
-      expect(services.getUserPrimaryOrg).toHaveBeenCalledWith('user-uuid-1');
+      expect(services.getUserOwnedOrg).toHaveBeenCalledWith('user-uuid-1');
       expect(services.linkSiteToOrganization).toHaveBeenCalledWith('site-new', 'org-123');
     });
 
-    it('should not assign org when creator has no membership', async () => {
+    // Covers both "no org at all" and "a member, not owner, of someone else's
+    // account" (the invitee-hijack case) — getUserOwnedOrg returns null for
+    // either, and the site is left unlinked rather than filed under an
+    // account this user doesn't own.
+    it('should not assign org when creator owns no org', async () => {
       const { handleSiteRoutes } = await import('../../src/routes/site-api');
       const services = await import('../../src/services');
 
@@ -2568,7 +2572,7 @@ describe('Phase 7.1.1b: Site API Routes', () => {
         archivedAt: null,
       });
 
-      vi.mocked(services.getUserPrimaryOrg).mockResolvedValueOnce(null);
+      vi.mocked(services.getUserOwnedOrg).mockResolvedValueOnce(null);
 
       const request = new Request('https://api.example.com/api/sites', {
         method: 'POST',
@@ -2584,7 +2588,7 @@ describe('Phase 7.1.1b: Site API Routes', () => {
       });
 
       expect(response.status).toBe(201);
-      expect(services.getUserPrimaryOrg).toHaveBeenCalledWith('user-uuid-1');
+      expect(services.getUserOwnedOrg).toHaveBeenCalledWith('user-uuid-1');
       expect(services.linkSiteToOrganization).not.toHaveBeenCalled();
     });
 
@@ -2609,7 +2613,7 @@ describe('Phase 7.1.1b: Site API Routes', () => {
         archivedAt: null,
       });
 
-      vi.mocked(services.getUserPrimaryOrg).mockResolvedValueOnce('org-123');
+      vi.mocked(services.getUserOwnedOrg).mockResolvedValueOnce('org-123');
       vi.mocked(services.linkSiteToOrganization).mockRejectedValueOnce(
         new Error('link failed'),
       );

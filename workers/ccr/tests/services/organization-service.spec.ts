@@ -799,29 +799,84 @@ describe('Agent Politeness Phase 1.3: Organization Service', () => {
     });
   });
 
-  describe('getUserPrimaryOrg', () => {
-    it('should return org id when user has membership', async () => {
-      const { getUserPrimaryOrg } = await import('../../src/services/organization-service');
+  describe('getUserOwnedOrg', () => {
+    it('should return the org id when the user owns one', async () => {
+      const { getUserOwnedOrg } = await import('../../src/services/organization-service');
       const db = await import('../../src/db');
 
       vi.mocked(db.query).mockResolvedValue({
         rows: [{ organization_id: 'org-uuid-123' }],
       });
 
-      const result = await getUserPrimaryOrg('user-uuid-123');
+      const result = await getUserOwnedOrg('user-uuid-123');
 
       expect(result).toBe('org-uuid-123');
+      const [sql] = vi.mocked(db.query).mock.calls[0];
+      expect(sql).toContain("role = 'owner'");
+      expect(sql).toContain('is_active = true');
     });
 
-    it('should return null when user has no membership', async () => {
-      const { getUserPrimaryOrg } = await import('../../src/services/organization-service');
+    it('should return null when the user owns no org', async () => {
+      const { getUserOwnedOrg } = await import('../../src/services/organization-service');
       const db = await import('../../src/db');
 
       vi.mocked(db.query).mockResolvedValue({ rows: [] });
 
-      const result = await getUserPrimaryOrg('user-with-no-org');
+      const result = await getUserOwnedOrg('user-with-no-org');
 
       expect(result).toBeNull();
+    });
+
+    // The hijack bug: an invitee is a member (not owner) of the inviting
+    // account, and used to be picked up as if it were theirs to relink.
+    it('should return null for a user who is only a member of someone else\'s org', async () => {
+      const { getUserOwnedOrg } = await import('../../src/services/organization-service');
+      const db = await import('../../src/db');
+
+      // A role-scoped, active-scoped query naturally excludes a 'member' row —
+      // simulate the DB returning nothing because the filter already excluded it.
+      vi.mocked(db.query).mockResolvedValue({ rows: [] });
+
+      const result = await getUserOwnedOrg('invitee-uuid');
+
+      expect(result).toBeNull();
+    });
+
+    it('should not select an inactive owner row', async () => {
+      const { getUserOwnedOrg } = await import('../../src/services/organization-service');
+      const db = await import('../../src/db');
+
+      // is_active = true is baked into the WHERE clause, so a deactivated
+      // owner membership never reaches the application layer as a row at all.
+      vi.mocked(db.query).mockResolvedValue({ rows: [] });
+
+      const result = await getUserOwnedOrg('deactivated-owner-uuid');
+
+      expect(result).toBeNull();
+      const [sql] = vi.mocked(db.query).mock.calls[0];
+      expect(sql).toContain('is_active = true');
+    });
+  });
+
+  describe('hasActiveOrgMembership', () => {
+    it('should return true when the user has any active membership', async () => {
+      const { hasActiveOrgMembership } = await import('../../src/services/organization-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValue({ rows: [{ found: true }] });
+
+      expect(await hasActiveOrgMembership('user-uuid-123')).toBe(true);
+    });
+
+    it('should return false when the user has no active membership', async () => {
+      const { hasActiveOrgMembership } = await import('../../src/services/organization-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValue({ rows: [{ found: false }] });
+
+      expect(await hasActiveOrgMembership('user-with-no-org')).toBe(false);
+      const [sql] = vi.mocked(db.query).mock.calls[0];
+      expect(sql).toContain('is_active = true');
     });
   });
 

@@ -939,18 +939,36 @@ export async function isEmailInAnyOrganization(email: string): Promise<boolean> 
 }
 
 /**
- * Returns the user's primary organization ID from organization_members.
- * Returns null if the user has no direct membership.
+ * Returns the org the user owns — the earliest active organization_members
+ * row with role = 'owner' — or null if they don't own one. Deliberately not
+ * "the earliest membership row": that includes accounts the user was invited
+ * into, which must never be treated as theirs to relink or rename.
  */
-export async function getUserPrimaryOrg(userId: string): Promise<string | null> {
+export async function getUserOwnedOrg(userId: string): Promise<string | null> {
   const result = await query<{ organization_id: string }>(`
     SELECT organization_id FROM app.organization_members
-    WHERE user_id = $1::uuid
+    WHERE user_id = $1::uuid AND is_active = true AND role = 'owner'
     ORDER BY created_at ASC
     LIMIT 1
   `, [userId]);
 
   return result.rows[0]?.organization_id ?? null;
+}
+
+/**
+ * Whether the user has any active membership at all, owned or not. Separates
+ * "genuinely orgless" from "a member of someone else's account" — the latter
+ * must not fall through to creating them a new one.
+ */
+export async function hasActiveOrgMembership(userId: string): Promise<boolean> {
+  const result = await query<{ found: boolean }>(`
+    SELECT EXISTS (
+      SELECT 1 FROM app.organization_members
+      WHERE user_id = $1::uuid AND is_active = true
+    ) AS found
+  `, [userId]);
+
+  return result.rows[0]?.found ?? false;
 }
 
 /**

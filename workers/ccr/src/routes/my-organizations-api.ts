@@ -9,7 +9,8 @@ import { getLogger } from '@pantheon-systems/p1-telemetry';
 import type { AuthenticatedPrincipal } from '../types';
 import {
   getOrganizationsForUser,
-  getUserPrimaryOrg,
+  getUserOwnedOrg,
+  hasActiveOrgMembership,
   linkOrgToSpace,
   createOrgForUser,
   listAllOrganizationsForSwitcher,
@@ -27,10 +28,15 @@ interface MyOrganizationsContext {
 
 /**
  * Ensures the user's P1 organization is linked to their PCC primary space:
- * links their existing org if they have one, otherwise creates one first.
+ * links their own org if they have one, creates one if they have no org at
+ * all, or does nothing if they're only a member of someone else's account.
  *
  * Rule 1: a user with a primary space in PCC (signaled by `spaceId` being
  * present) must have an organization in P1 — this never leaves them orgless.
+ *
+ * A member of someone else's account (an invitee) is not orgless — relinking
+ * or renaming that account on their behalf is exactly the hijack this
+ * function used to cause, so that case is a deliberate no-op.
  *
  * Best-effort: never throws. Failures (e.g. unique constraint violations)
  * are logged and swallowed so they don't block the organizations response.
@@ -41,9 +47,13 @@ export async function linkOrCreateOrgForSpace(
   spaceName: string | null,
 ): Promise<void> {
   try {
-    const primaryOrgId = await getUserPrimaryOrg(dbUserId);
-    if (primaryOrgId !== null) {
-      await linkOrgToSpace(primaryOrgId, spaceId, spaceName ?? undefined);
+    const ownedOrgId = await getUserOwnedOrg(dbUserId);
+    if (ownedOrgId !== null) {
+      await linkOrgToSpace(ownedOrgId, spaceId, spaceName ?? undefined);
+      return;
+    }
+
+    if (await hasActiveOrgMembership(dbUserId)) {
       return;
     }
 

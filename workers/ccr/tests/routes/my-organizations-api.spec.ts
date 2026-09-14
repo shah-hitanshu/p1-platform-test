@@ -17,7 +17,8 @@ vi.mock('../../src/services', async () => {
   return {
     ...actual,
     getOrganizationsForUser: vi.fn(),
-    getUserPrimaryOrg: vi.fn(),
+    getUserOwnedOrg: vi.fn(),
+    hasActiveOrgMembership: vi.fn(),
     linkOrgToSpace: vi.fn(),
     createOrgForUser: vi.fn(),
     listAllOrganizationsForSwitcher: vi.fn(),
@@ -51,25 +52,25 @@ describe('linkOrCreateOrgForSpace', () => {
     database = stubDatabase();
   });
 
-  it('links the user\'s existing primary org to the space', async () => {
+  it('links the user\'s own org to the space', async () => {
     const { linkOrCreateOrgForSpace } = await import('../../src/routes/my-organizations-api');
-    const { getUserPrimaryOrg, linkOrgToSpace, createOrgForUser } = await import('../../src/services');
+    const { getUserOwnedOrg, linkOrgToSpace, createOrgForUser } = await import('../../src/services');
 
-    vi.mocked(getUserPrimaryOrg).mockResolvedValue('org-uuid-123');
+    vi.mocked(getUserOwnedOrg).mockResolvedValue('org-uuid-123');
     vi.mocked(linkOrgToSpace).mockResolvedValue(true);
 
     await linkOrCreateOrgForSpace('user-uuid-123', 'space_abc', 'My Space');
 
-    expect(getUserPrimaryOrg).toHaveBeenCalledWith('user-uuid-123');
+    expect(getUserOwnedOrg).toHaveBeenCalledWith('user-uuid-123');
     expect(linkOrgToSpace).toHaveBeenCalledWith('org-uuid-123', 'space_abc', 'My Space');
     expect(createOrgForUser).not.toHaveBeenCalled();
   });
 
   it('passes undefined (not null) to linkOrgToSpace when spaceName is absent', async () => {
     const { linkOrCreateOrgForSpace } = await import('../../src/routes/my-organizations-api');
-    const { getUserPrimaryOrg, linkOrgToSpace } = await import('../../src/services');
+    const { getUserOwnedOrg, linkOrgToSpace } = await import('../../src/services');
 
-    vi.mocked(getUserPrimaryOrg).mockResolvedValue('org-uuid-123');
+    vi.mocked(getUserOwnedOrg).mockResolvedValue('org-uuid-123');
     vi.mocked(linkOrgToSpace).mockResolvedValue(true);
 
     await linkOrCreateOrgForSpace('user-uuid-123', 'space_abc', null);
@@ -77,11 +78,29 @@ describe('linkOrCreateOrgForSpace', () => {
     expect(linkOrgToSpace).toHaveBeenCalledWith('org-uuid-123', 'space_abc', undefined);
   });
 
-  it('Rule 1: creates an organization when the user has a primary space but no P1 org', async () => {
+  // The account-hijack bug: an invitee (member, not owner, of the inviting
+  // account) must be left alone, never relinked or renamed on their behalf.
+  it('does nothing when the user is a member (not owner) of another org', async () => {
     const { linkOrCreateOrgForSpace } = await import('../../src/routes/my-organizations-api');
-    const { getUserPrimaryOrg, linkOrgToSpace, createOrgForUser } = await import('../../src/services');
+    const { getUserOwnedOrg, hasActiveOrgMembership, linkOrgToSpace, createOrgForUser } =
+      await import('../../src/services');
 
-    vi.mocked(getUserPrimaryOrg).mockResolvedValue(null);
+    vi.mocked(getUserOwnedOrg).mockResolvedValue(null);
+    vi.mocked(hasActiveOrgMembership).mockResolvedValue(true);
+
+    await linkOrCreateOrgForSpace('invitee-uuid', 'space_abc', 'The Inviting Org');
+
+    expect(linkOrgToSpace).not.toHaveBeenCalled();
+    expect(createOrgForUser).not.toHaveBeenCalled();
+  });
+
+  it('Rule 1: creates an organization when the user has a primary space but no P1 org at all', async () => {
+    const { linkOrCreateOrgForSpace } = await import('../../src/routes/my-organizations-api');
+    const { getUserOwnedOrg, hasActiveOrgMembership, linkOrgToSpace, createOrgForUser } =
+      await import('../../src/services');
+
+    vi.mocked(getUserOwnedOrg).mockResolvedValue(null);
+    vi.mocked(hasActiveOrgMembership).mockResolvedValue(false);
     database.on(users).select.returns([{ email: 'user@pantheon.io' }]);
     vi.mocked(createOrgForUser).mockResolvedValue(mockOrg);
 
@@ -94,9 +113,10 @@ describe('linkOrCreateOrgForSpace', () => {
 
   it('Rule 1: does not call createOrgForUser when the user has no email on record', async () => {
     const { linkOrCreateOrgForSpace } = await import('../../src/routes/my-organizations-api');
-    const { getUserPrimaryOrg, createOrgForUser } = await import('../../src/services');
+    const { getUserOwnedOrg, hasActiveOrgMembership, createOrgForUser } = await import('../../src/services');
 
-    vi.mocked(getUserPrimaryOrg).mockResolvedValue(null);
+    vi.mocked(getUserOwnedOrg).mockResolvedValue(null);
+    vi.mocked(hasActiveOrgMembership).mockResolvedValue(false);
 
     await linkOrCreateOrgForSpace('user-uuid-123', 'space_abc', null);
 
@@ -105,9 +125,9 @@ describe('linkOrCreateOrgForSpace', () => {
 
   it('swallows errors from linking an existing org', async () => {
     const { linkOrCreateOrgForSpace } = await import('../../src/routes/my-organizations-api');
-    const { getUserPrimaryOrg, linkOrgToSpace } = await import('../../src/services');
+    const { getUserOwnedOrg, linkOrgToSpace } = await import('../../src/services');
 
-    vi.mocked(getUserPrimaryOrg).mockResolvedValue('org-uuid-123');
+    vi.mocked(getUserOwnedOrg).mockResolvedValue('org-uuid-123');
     vi.mocked(linkOrgToSpace).mockRejectedValue(new Error('unique constraint'));
 
     await expect(linkOrCreateOrgForSpace('user-uuid-123', 'space_abc', null)).resolves.toBeUndefined();
@@ -115,9 +135,10 @@ describe('linkOrCreateOrgForSpace', () => {
 
   it('swallows errors from creating an org for a spaceless user', async () => {
     const { linkOrCreateOrgForSpace } = await import('../../src/routes/my-organizations-api');
-    const { getUserPrimaryOrg, createOrgForUser } = await import('../../src/services');
+    const { getUserOwnedOrg, hasActiveOrgMembership, createOrgForUser } = await import('../../src/services');
 
-    vi.mocked(getUserPrimaryOrg).mockResolvedValue(null);
+    vi.mocked(getUserOwnedOrg).mockResolvedValue(null);
+    vi.mocked(hasActiveOrgMembership).mockResolvedValue(false);
     database.on(users).select.returns([{ email: 'user@pantheon.io' }]);
     vi.mocked(createOrgForUser).mockRejectedValue(new Error('unique constraint'));
 
@@ -263,9 +284,9 @@ describe('GET /api/organizations/mine', () => {
       const { handleMyOrganizationsRoute } = await import(
         '../../src/routes/my-organizations-api'
       );
-      const { getOrganizationsForUser, getUserPrimaryOrg, linkOrgToSpace } = await import('../../src/services');
+      const { getOrganizationsForUser, getUserOwnedOrg, linkOrgToSpace } = await import('../../src/services');
 
-      vi.mocked(getUserPrimaryOrg).mockResolvedValue('org-uuid-123');
+      vi.mocked(getUserOwnedOrg).mockResolvedValue('org-uuid-123');
       vi.mocked(linkOrgToSpace).mockResolvedValue(true);
       vi.mocked(getOrganizationsForUser).mockResolvedValue([mockOrg]);
 
@@ -279,7 +300,7 @@ describe('GET /api/organizations/mine', () => {
       });
 
       expect(response.status).toBe(200);
-      expect(getUserPrimaryOrg).toHaveBeenCalledWith('user-uuid-123');
+      expect(getUserOwnedOrg).toHaveBeenCalledWith('user-uuid-123');
       expect(linkOrgToSpace).toHaveBeenCalledWith('org-uuid-123', 'space_abc', 'My Space');
     });
 
@@ -287,7 +308,7 @@ describe('GET /api/organizations/mine', () => {
       const { handleMyOrganizationsRoute } = await import(
         '../../src/routes/my-organizations-api'
       );
-      const { getOrganizationsForUser, getUserPrimaryOrg } = await import('../../src/services');
+      const { getOrganizationsForUser, getUserOwnedOrg } = await import('../../src/services');
 
       vi.mocked(getOrganizationsForUser).mockResolvedValue([]);
 
@@ -300,7 +321,7 @@ describe('GET /api/organizations/mine', () => {
         },
       });
 
-      expect(getUserPrimaryOrg).not.toHaveBeenCalled();
+      expect(getUserOwnedOrg).not.toHaveBeenCalled();
     });
   });
 

@@ -16,7 +16,7 @@ import {
   listSites,
   listBranches,
   getMainBranch,
-  getUserPrimaryOrg,
+  getUserOwnedOrg,
   linkSiteToOrganization,
   DuplicatePantheonSiteIdError,
   HttpError,
@@ -151,7 +151,7 @@ async function handleCreateSite(
 
   if (context.principal.dbUserId !== undefined) {
     try {
-      const orgId = await getUserPrimaryOrg(context.principal.dbUserId);
+      const orgId = await getUserOwnedOrg(context.principal.dbUserId);
       if (orgId !== null) {
         await linkSiteToOrganization(site.id, orgId);
       }
