@@ -18,6 +18,12 @@ import { P1InspectorFields } from '../components/P1InspectorFields.js';
 import { CollapsibleFieldSection } from '../components/CollapsibleFieldSection.js';
 import { CollapsibleFieldContext } from '../components/collapsibleSectionContext.js';
 import { OutlinePanel } from '../components/OutlinePanel.js';
+import {
+  FieldTranslationGlyph,
+  TranslationGlyph,
+} from '../../features/localization/ui/TranslationGlyph.js';
+import { resolvePropTarget } from '../../features/localization/prop-target.js';
+import { FieldBindControl } from '../../p1/editor/connect/FieldBindControl.js';
 import { fieldGuidanceFieldTypes } from './fieldGuidance.js';
 // NOTE: PuckDataSynchronizer is NOT imported here - it's used in P1Plugin instead
 // because headerActions renders outside Puck's context where usePuck() doesn't work.
@@ -231,6 +237,15 @@ export function P1FieldLabel(props: FieldLabelOverrideProps): React.ReactElement
           label={props.label}
           defaultCollapsed={collapsible.defaultCollapsed}
           count={collapsible.count}
+          action={
+            collapsible.translationTarget ? (
+              <TranslationGlyph
+                target={collapsible.translationTarget}
+                label={props.label}
+                readOnly={props.readOnly}
+              />
+            ) : null
+          }
         >
           {props.children}
         </CollapsibleFieldSection>
@@ -238,7 +253,22 @@ export function P1FieldLabel(props: FieldLabelOverrideProps): React.ReactElement
     );
   }
 
-  return <FieldLabel {...props} icon={undefined} />;
+  // Puck renders `label` as a child of the label row, so a node passed here
+  // composes into that row alongside the read-only mark.
+  const label = (<span className="p1-field-label-text">{props.label}</span>) as unknown as string;
+
+  // The affordances sit beside the label row rather than inside it: Puck's
+  // `<label>` wraps the field's input, and a control inside a label joins the
+  // accessible name of the input that label names.
+  return (
+    <div className="p1-field-label-holder">
+      <FieldLabel {...props} icon={undefined} label={label} />
+      <span className="p1-field-label-actions">
+        <FieldTranslationGlyph label={props.label} readOnly={props.readOnly} />
+        <FieldBindControl />
+      </span>
+    </div>
+  );
 }
 
 export function createP1Overrides(options: P1OverridesOptions): PuckOverrides {
@@ -308,9 +338,13 @@ export function createP1Overrides(options: P1OverridesOptions): PuckOverrides {
       object: ({
         field,
         children,
+        id,
+        name,
       }: {
         field: CollapsibleObjectField;
         children: React.ReactNode;
+        id?: string;
+        name?: string;
       }) =>
         field.metadata?.collapsible ? (
           <CollapsibleFieldContext.Provider
@@ -319,6 +353,7 @@ export function createP1Overrides(options: P1OverridesOptions): PuckOverrides {
               // Derived from the resolved field set, so omitting a field — how
               // role gating will hide one — moves the count with it.
               count: Object.keys(field.objectFields ?? {}).length,
+              translationTarget: name ? resolvePropTarget(id, 'object', name) : null,
             }}
           >
             {children}

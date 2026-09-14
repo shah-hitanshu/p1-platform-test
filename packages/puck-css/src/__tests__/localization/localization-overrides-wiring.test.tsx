@@ -2,11 +2,10 @@
  * Localization Overrides Wiring Tests
  *
  * The localization feature plugin contributes per-prop fields-panel overrides
- * via the fieldTypes override (authority control and translatability toggle in
- * one connected control). These reach Puck as their own entry in the plugin
- * array, contributed by the always-active localization plugin; the authority
- * control self-gates on a translation, the translatability toggle on the
- * canonical page.
+ * via the fieldTypes override, which resolves the prop each field addresses and
+ * offers it to the label row. These reach Puck as their own entry in the plugin
+ * array, contributed by the always-active localization plugin; the glyph the
+ * label row draws self-gates on the open document.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -120,7 +119,10 @@ const mockClientMethods = {
     abortEdit: vi.fn(),
     stopAgent: vi.fn(),
   },
-  sites: { get: vi.fn().mockResolvedValue({ name: 'Test Site' }) },
+  sites: {
+    get: vi.fn().mockResolvedValue({ name: 'Test Site' }),
+    getSettings: vi.fn().mockResolvedValue({ settings: { locales: { markets: ['fr-FR'] } } }),
+  },
   translations: {
     getAuthorityOverrides: vi.fn().mockResolvedValue({ authorityOverrides: {} }),
     setAuthorityOverride: vi.fn(),
@@ -211,7 +213,7 @@ function translationContext(): P1PuckContextValue {
 }
 
 describe('the localization field renderer', () => {
-  it('renders its control around the base help text and the field', async () => {
+  it('marks the label row while the base help text and the field survive', async () => {
     let baseOverrides: PuckOverrides | undefined;
     function Reader() {
       baseOverrides = useP1Overrides();
@@ -246,6 +248,10 @@ describe('the localization field renderer', () => {
     ).text;
     expect(LocalizedText).toBeDefined();
 
+    const Label = (baseOverrides as PuckOverrides).fieldLabel as React.ComponentType<
+      Record<string, unknown>
+    >;
+
     render(
       <P1SdkQueryClientContext.Provider
         value={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
@@ -253,7 +259,9 @@ describe('the localization field renderer', () => {
         <P1PuckContext.Provider value={ctx}>
           <LocalizedText {...fieldProps}>
             <BaseText {...fieldProps}>
-              <input data-testid="the-field" defaultValue="Bonjour" />
+              <Label label="Title">
+                <input data-testid="the-field" defaultValue="Bonjour" />
+              </Label>
             </BaseText>
           </LocalizedText>
         </P1PuckContext.Provider>
@@ -262,6 +270,6 @@ describe('the localization field renderer', () => {
 
     expect(screen.getByTestId('the-field')).toBeTruthy();
     expect(screen.getByText('Shown under the input')).toBeTruthy();
-    await waitFor(() => expect(screen.getByTestId('loc-authority-break')).toBeTruthy());
+    await waitFor(() => expect(screen.getByTestId('loc-translation-glyph')).toBeTruthy());
   });
 });

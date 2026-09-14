@@ -7,7 +7,8 @@
  * page — handled by the caller via onToggle.
  */
 
-import React from 'react';
+import React, { useId, type ComponentPropsWithoutRef } from 'react';
+import { Switch } from '@pantheon-systems/pds-toolkit-react';
 
 interface TranslatabilityToggleProps {
   translatable: boolean;
@@ -20,29 +21,19 @@ export function TranslatabilityToggle({
   onToggle,
   readOnly,
 }: TranslatabilityToggleProps): React.ReactElement {
+  const id = useId();
   return (
-    <label
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: 4,
-        fontSize: 'var(--puck-font-size-xxxs, 12px)',
-        marginBlockEnd: 0,
-        color: 'var(--puck-color-grey-05, #767676)',
+    <Switch
+      id={id}
+      label="Translatable"
+      checked={translatable}
+      disabled={readOnly}
+      showStatusLabel={false}
+      inputProps={{ 'data-testid': 'loc-translatable-toggle' } as ComponentPropsWithoutRef<'input'>}
+      onChange={() => {
+        if (readOnly) return;
+        onToggle(!translatable);
       }}
-      title="Translatable text. Turn off for values that should not be translated (e.g. a date or SKU)."
-    >
-      <input
-        type="checkbox"
-        data-testid="loc-translatable-toggle"
-        checked={translatable}
-        disabled={readOnly}
-        onChange={() => {
-          if (readOnly) return;
-          onToggle(!translatable);
-        }}
-      />
-      <span>Translatable</span>
-    </label>
+    />
   );
 }

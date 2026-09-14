@@ -9,6 +9,7 @@ import type { RouteRow } from "../../../data/page-store";
 import { TemplateAutocompleteLayer } from "../template-autocomplete-layer";
 import { useLiveEditorContext } from "../hooks/useLiveEditorContext";
 import { ConnectFieldModal } from "./connect-field-modal";
+import { FieldBindProvider } from "./bind-context";
 
 type ScalarFieldProps = {
   children: ReactNode;
@@ -52,49 +53,27 @@ export function createFieldConnectPlugin(opts: {
     const registry = live.hasLoaded ? live.registry : fallbackRegistry;
     const routes = live.hasLoaded ? live.routes : fallbackRoutes;
 
+    // The control itself is drawn in the label row, which only P1FieldLabel
+    // receives — the field offers what it needs to draw and holds the modal.
+    const bindTarget = readOnly ? null : { bound: linked, openConnect: () => setOpen(true) };
+
     return (
       <TemplateAutocompleteLayer
         readOnly={readOnly}
         onChange={onChange}
         registry={registry}
       >
-        <div style={{ position: "relative", paddingBottom: 2 }}>
-          {children}
+        <div style={{ paddingBottom: 2 }}>
+          <FieldBindProvider target={bindTarget}>{children}</FieldBindProvider>
           {!readOnly && (
-            <>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setOpen(true);
-                }}
-                style={{
-                  position: "absolute",
-                  top: 4,
-                  right: 2,
-                  fontSize: 11,
-                  fontWeight: 500,
-                  color: "var(--puck-color-azure-04, #2563eb)",
-                  background: "rgba(255,255,255,0.92)",
-                  border: "1px solid var(--puck-color-grey-09, #e5e7eb)",
-                  borderRadius: 4,
-                  padding: "2px 6px",
-                  cursor: "pointer",
-                  zIndex: 3,
-                }}
-              >
-                {linked ? "Bound" : "Bind"}
-              </button>
-              <ConnectFieldModal
-                open={open}
-                onClose={() => setOpen(false)}
-                onConfirm={(t) => onChange(t)}
-                routes={routes}
-                config={config}
-                editorPath={editorPath}
-              />
-            </>
+            <ConnectFieldModal
+              open={open}
+              onClose={() => setOpen(false)}
+              onConfirm={(t) => onChange(t)}
+              routes={routes}
+              config={config}
+              editorPath={editorPath}
+            />
           )}
         </div>
       </TemplateAutocompleteLayer>

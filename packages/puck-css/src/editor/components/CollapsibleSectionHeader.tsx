@@ -19,6 +19,12 @@ export interface CollapsibleSectionHeaderProps {
   id?: string;
   /** Item count shown beside the chevron. Omitted when there is nothing to count. */
   count?: number;
+  /**
+   * A control for the section itself. It renders beside the toggle rather than
+   * inside it, since a control within the button would nest one interactive
+   * element in another.
+   */
+  action?: React.ReactNode;
 }
 
 export function CollapsibleSectionHeader({
@@ -28,8 +34,9 @@ export function CollapsibleSectionHeader({
   controlsId,
   id,
   count,
+  action,
 }: CollapsibleSectionHeaderProps): React.ReactElement {
-  return (
+  const toggle = (
     <button
       id={id}
       // Puck renders inspector fields inside a <form>; a submit-typed button
@@ -48,5 +55,14 @@ export function CollapsibleSectionHeader({
         <Icon iconName={open ? 'angleUp' : 'angleDown'} size="s" />
       </span>
     </button>
+  );
+
+  if (!action) return toggle;
+
+  return (
+    <div className={styles.header}>
+      {toggle}
+      <span className={styles.action}>{action}</span>
+    </div>
   );
 }

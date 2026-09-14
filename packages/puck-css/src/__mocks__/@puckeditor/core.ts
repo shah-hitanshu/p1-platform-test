@@ -1,3 +1,4 @@
+import { createElement } from 'react';
 import { vi } from 'vitest';
 
 const puckState = () => ({
@@ -19,6 +20,29 @@ export const usePuck = () => ({
   dispatch: vi.fn(),
   refreshPermissions: vi.fn().mockResolvedValue(undefined),
 });
+
+// FieldLabel stub: mirrors the real component's shape — the label row carries
+// the icon, the label, and a read-only mark, with the field below it.
+export const FieldLabel = ({
+  children,
+  icon,
+  label,
+  el = 'label',
+  className,
+}: {
+  children?: unknown;
+  icon?: unknown;
+  label?: unknown;
+  el?: 'label' | 'div';
+  readOnly?: boolean;
+  className?: string;
+}) =>
+  createElement(
+    el,
+    { className },
+    createElement('div', { className: 'Input-label' }, icon as never, label as never),
+    children as never,
+  );
 
 export const Render = ({ config: _config, data: _data }: { config: unknown; data: unknown }) => null;
 

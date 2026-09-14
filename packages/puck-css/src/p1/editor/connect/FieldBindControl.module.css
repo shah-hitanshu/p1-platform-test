@@ -1,0 +1,29 @@
+/* ============================================================================
+ * FieldBindControl — CSS Module
+ *
+ * An unbound field takes the label row's shared action box
+ * (`.p1-field-label-action` in styles.css). A bound one reads as a pill instead,
+ * since a binding is a state of the field rather than an action waiting on it.
+ * ============================================================================ */
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  appearance: none;
+  font-family: inherit;
+  line-height: 1;
+  gap: 5px;
+  padding: 3px 8px;
+  border: 1px solid #dbe2ff;
+  border-radius: 999px;
+  background: #eef3ff;
+  color: var(--puck-color-azure-04, #0158ad);
+  font-size: var(--puck-font-size-xxxs, 11.5px);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.pill svg {
+  width: 14px;
+  height: 14px;
+}

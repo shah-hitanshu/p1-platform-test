@@ -1,0 +1,33 @@
+/* ============================================================================
+ * TranslationGlyph — CSS Module
+ *
+ * The glyph's box and its reveal belong to the label row, shared with the row's
+ * other affordances (`.p1-field-label-action` in styles.css). What is left here
+ * is the popover it opens.
+ * ============================================================================ */
+
+/* The popover's own title runs larger than any type in the fields panel, whose
+   field labels are the largest thing in it. */
+.popover :global(.pds-popover__title) {
+  font-size: var(--puck-font-size-xxs, 12px);
+  font-weight: 600;
+}
+
+.slot {
+  display: inline-flex;
+  align-items: center;
+}
+
+.settings {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pds-spacing-2xs, 0.5rem);
+  min-width: 12rem;
+  max-width: 16rem;
+}
+
+.explanation {
+  margin: 0;
+  font-size: var(--pds-font-size-xs, 0.75rem);
+  color: var(--pds-color-text-subtle, #767676);
+}

@@ -7,6 +7,8 @@ export interface CollapsibleFieldSectionProps {
   defaultCollapsed?: boolean;
   /** Shown beside the chevron. Omitted when there is nothing to count. */
   count?: number;
+  /** A control governing the group as a whole. */
+  action?: React.ReactNode;
 }
 
 export function CollapsibleFieldSection({
@@ -14,6 +16,7 @@ export function CollapsibleFieldSection({
   label,
   defaultCollapsed = false,
   count,
+  action,
 }: CollapsibleFieldSectionProps): React.ReactElement {
   const [expanded, setExpanded] = useState(!defaultCollapsed);
   const contentId = useId();
@@ -26,6 +29,7 @@ export function CollapsibleFieldSection({
         onToggle={() => setExpanded((v) => !v)}
         controlsId={contentId}
         count={count}
+        action={action}
       />
       {expanded && <div id={contentId}>{children}</div>}
     </>

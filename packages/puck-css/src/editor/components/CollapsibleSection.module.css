@@ -62,9 +62,49 @@
   box-sizing: border-box;
 }
 
-/* Field groups sit inside Puck's field padding, unlike the drawer's categories.
-   The ancestor stays global — P1InspectorFields applies it as a string literal
-   and consumers theme against it. */
+/* Field groups already sit inside Puck's field padding, unlike the drawer's
+   categories, so they add none of their own and line up with the field labels
+   above and below them. The ancestor stays global — P1InspectorFields applies it
+   as a string literal and consumers theme against it. */
 :global(.p1-inspector-fields) .toggle {
-  padding: 10px 16px;
+  padding: 10px 0;
+}
+
+/* A section that carries its own control sits it beside the toggle rather than
+   inside it, since a control within the button would nest one interactive
+   element in another. The count and chevron keep the end of the row: the
+   control takes a slot the meta opens up before them, so it reads as part of
+   the same run. Like a field's affordances, it stays out of the panel until the
+   header is hovered or holds focus. */
+.header {
+  position: relative;
+
+  /* What the toggle ends with: an 18px count, an 8px gap, a 12px chevron. */
+  --section-meta-width: 38px;
+  --section-action-width: 28px;
+  --section-action-gap: 8px;
+}
+
+/* The meta opens the slot; the control sits in it. Both are measured from the
+   same two values, so the control lands flush against the space made for it.
+   A control that resolved to nothing leaves its span empty, and no slot opens. */
+.header:has(.action:not(:empty)) .meta {
+  padding-inline-start: calc(var(--section-action-width) + var(--section-action-gap));
+}
+
+.action {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-end: calc(var(--section-meta-width) + var(--section-action-gap));
+  display: flex;
+  align-items: center;
+  line-height: 0;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.header:hover .action,
+.header:focus-within .action,
+.action:has([data-open='true']) {
+  opacity: 1;
 }

@@ -159,7 +159,36 @@ export const Switch = (props: Record<string, unknown>) => {
     disabled: props.disabled,
     onChange: props.onChange,
     'aria-label': props.label,
+    ...(props.inputProps as Record<string, unknown> | undefined),
   });
+};
+
+// Popover stub: the real component portals its content and drives open state
+// through the controlled pair, so the stub renders the trigger in a button that
+// toggles it and the content only while open.
+export const Popover = (props: Record<string, unknown>) => {
+  const isOpen = props.popoverIsOpen as boolean;
+  const setOpen = props.setPopoverIsOpen as ((next: boolean) => void) | undefined;
+  return React.createElement(
+    'span',
+    { className: 'pds-popover' },
+    React.createElement(
+      'button',
+      {
+        type: 'button',
+        className: 'pds-popover__trigger',
+        onClick: () => setOpen?.(!isOpen),
+      },
+      props.customTrigger as React.ReactNode,
+    ),
+    isOpen
+      ? React.createElement(
+          'div',
+          { className: 'pds-popover__container', role: 'dialog', 'aria-label': props.title },
+          props.content as React.ReactNode,
+        )
+      : null,
+  );
 };
 
 export const Icon = () => null;

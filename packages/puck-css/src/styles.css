@@ -3219,8 +3219,109 @@
   padding-bottom: 8px;
 }
 
-.p1-inspector-fields [class*='_Input-label_']::after {
+/* On the label text where P1FieldLabel wraps it, since the row reserves space
+   for the field's affordances that the colon must not sit out beside. A field
+   rendering Puck's FieldLabel directly emits no such span and keeps the colon on
+   its row. */
+.p1-inspector-fields [class*='_Input-label_'] .p1-field-label-text::after,
+.p1-inspector-fields [class*='_Input-label_']:not(:has(.p1-field-label-text))::after {
   content: ':';
+}
+
+/* A <select> does not grow its block box for padding the way a text input
+   does, so Puck's input padding leaves it a content box shorter than its own
+   line and the option text clips. Hold it to the height the text input beside
+   it takes with that same padding. */
+.p1-inspector-fields select[class*='_Input-input_'] {
+  min-height: calc(1lh + 26px);
+}
+
+/* ============================================
+   Field Label Actions
+   ============================================ */
+
+/* The affordances a field's label row carries — its translation setting, its
+   data binding. They are laid into the row from outside the `<label>`, and the
+   row reserves the space they occupy. A panel of fields shows none of them until
+   one is hovered or takes focus, and the field whose setting is open holds its
+   row on screen. */
+.p1-field-label-holder {
+  position: relative;
+}
+
+/* The row keeps the height its affordances need, whether or not it has any, so
+   a field's label sits at the same place throughout the panel. */
+.p1-inspector-fields [class*='_Input-label_'] {
+  min-height: 32px;
+  padding-inline-end: 68px;
+}
+
+.p1-inspector-fields .p1-field-label-actions {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-end: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  /* The popover wraps its trigger in inline spans, whose line box would
+     otherwise stand the group taller than the controls in it. */
+  line-height: 0;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.p1-inspector-fields
+  [class*='_InputWrapper_']:hover:not(:has([class*='_InputWrapper_']:hover))
+  .p1-field-label-actions,
+.p1-inspector-fields
+  [class*='_InputWrapper_']:focus-within:not(:has([class*='_InputWrapper_']:focus-within))
+  .p1-field-label-actions,
+.p1-inspector-fields .p1-field-label-actions:has([data-open='true']) {
+  opacity: 1;
+}
+
+/* Scoped to the panel: Puck colours every descendant of a field
+   (`._PuckFields-field_ *`), which a bare class here would tie with and lose. */
+/* The popover pads its own trigger, which would stand its control 4px taller
+   than the one beside it. */
+.p1-inspector-fields .p1-field-label-actions .pds-popover__trigger {
+  padding: 0;
+}
+
+.p1-inspector-fields .p1-field-label-action {
+  box-sizing: border-box;
+  appearance: none;
+  padding: 0;
+  width: 28px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--puck-color-grey-09, #dcdcdc);
+  border-radius: 7px;
+  background: var(--puck-color-white, #fff);
+  color: var(--puck-color-grey-06, #949494);
+  cursor: pointer;
+  transition:
+    color 120ms ease,
+    border-color 120ms ease,
+    background 120ms ease;
+}
+
+.p1-inspector-fields .p1-field-label-action:hover,
+.p1-inspector-fields .p1-field-label-action[data-open='true'] {
+  color: var(--puck-color-azure-04, #0158ad);
+  border-color: var(--puck-color-azure-08, #c6d6ff);
+  background: var(--puck-color-azure-11, #eef3ff);
+}
+
+/* A setting that has left its default reads as changed the moment its row shows. */
+.p1-inspector-fields .p1-field-label-action[data-diverged='true'] {
+  color: var(--puck-color-azure-04, #0158ad);
+}
+
+.p1-inspector-fields .p1-field-label-action svg {
+  width: 14px;
+  height: 14px;
 }
 
 /* ============================================
