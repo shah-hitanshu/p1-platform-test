@@ -895,6 +895,37 @@ describe('Agent Politeness Phase 1.3: Organization Service', () => {
       const [sql] = vi.mocked(db.query).mock.calls[0];
       expect(sql).toContain('is_active = true');
     });
+
+    // PCC-3987: a plain created_at ASC LIMIT 1 with no other filtering could
+    // hand back an archived org. The query must exclude it, matching
+    // getOrganizationsForUser.
+    it('excludes archived organizations', async () => {
+      const { getUserOwnedOrg } = await import('../../src/services/organization-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValue({ rows: [] });
+
+      await getUserOwnedOrg('user-uuid-123');
+
+      const [sql] = vi.mocked(db.query).mock.calls[0];
+      expect(sql).toContain('o.archived_at IS NULL');
+    });
+
+    // PCC-3987: 068's backfill stamped many memberships with an identical
+    // created_at, so ties on created_at alone are arbitrary. The query needs
+    // a secondary, deterministic sort key so the same user always gets the
+    // same answer.
+    it('breaks created_at ties deterministically', async () => {
+      const { getUserOwnedOrg } = await import('../../src/services/organization-service');
+      const db = await import('../../src/db');
+
+      vi.mocked(db.query).mockResolvedValue({ rows: [] });
+
+      await getUserOwnedOrg('user-uuid-123');
+
+      const [sql] = vi.mocked(db.query).mock.calls[0];
+      expect(sql).toMatch(/ORDER BY\s+om\.created_at ASC,\s*om\.id ASC/);
+    });
   });
 
   describe('hasActiveOrgMembership', () => {

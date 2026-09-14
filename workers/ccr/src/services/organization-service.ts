@@ -967,12 +967,22 @@ export async function isEmailInAnyOrganization(email: string): Promise<boolean> 
  * row with role = 'owner' — or null if they don't own one. Deliberately not
  * "the earliest membership row": that includes accounts the user was invited
  * into, which must never be treated as theirs to relink or rename.
+ *
+ * PCC-3987: also excludes an archived org and adds a deterministic tiebreak.
+ * A dead org must not be "owned" just because its membership row sorts
+ * first, and 068's backfill stamped many memberships with the same
+ * created_at, so ties on created_at alone were arbitrary.
  */
 export async function getUserOwnedOrg(userId: string): Promise<string | null> {
   const result = await query<{ organization_id: string }>(`
-    SELECT organization_id FROM app.organization_members
-    WHERE user_id = $1::uuid AND is_active = true AND role = 'owner'
-    ORDER BY created_at ASC
+    SELECT om.organization_id
+    FROM app.organization_members om
+    JOIN app.organizations o ON o.id = om.organization_id
+    WHERE om.user_id = $1::uuid
+      AND om.is_active = true
+      AND om.role = 'owner'
+      AND o.archived_at IS NULL
+    ORDER BY om.created_at ASC, om.id ASC
     LIMIT 1
   `, [userId]);
 
