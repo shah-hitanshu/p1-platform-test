@@ -9,19 +9,28 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { DocumentVersionSource } from '../../src/types';
+import { stubDatabase, type DatabaseStub } from '../__stubs__/database';
+import { documentVersions } from '../../src/db/schema';
 
-// Mock database module
+// Mock database module. createDocumentVersion, getLatestDocumentVersion,
+// getLatestPublishedDocumentVersion, getDocumentVersionByNumber and
+// replayVersionChain still read through the legacy query() connection — see
+// the comments on those functions in document-version-service.ts. Everything
+// else reads through db() (Drizzle), stubbed below.
 vi.mock('../../src/db', () => ({
   query: vi.fn(),
 }));
 
 describe('Phase 3.3: Document Version Service', () => {
+  let database: DatabaseStub;
+
   beforeEach(() => {
     vi.resetAllMocks();
+    database = stubDatabase();
   });
 
   // Mock document version row type (database format)
-  interface MockDocumentVersionRow {
+  type MockDocumentVersionRow = {
     id: string;
     document_id: string;
     branch_id: string;
@@ -34,7 +43,7 @@ describe('Phase 3.3: Document Version Service', () => {
     patch?: unknown[] | null;
     action_type?: string | null;
     action_metadata?: Record<string, unknown> | null;
-  }
+  };
 
   // Helper to create a mock document version row
   function createMockVersionRow(overrides: Partial<MockDocumentVersionRow> = {}): MockDocumentVersionRow {
@@ -48,6 +57,33 @@ describe('Phase 3.3: Document Version Service', () => {
       created_by_id: 'user-uuid-001',
       created_by_type: 'user',
       created_at: '2026-01-23T10:00:00.000Z',
+      ...overrides,
+    };
+  }
+
+  // Row shape for the Drizzle-backed reads (getDocumentVersion,
+  // getLatestVersionsForBranch, listDocumentVersions): camelCase, plus the
+  // sourceBranchName/isPublished columns those queries add via join/subquery.
+  function createStubVersionRow(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+      id: 'version-uuid-123',
+      documentId: 'doc-uuid-456',
+      branchId: 'branch-uuid-789',
+      versionNumber: 1,
+      snapshot: { title: 'Test Document', content: [] },
+      patch: null,
+      actionType: null,
+      actionMetadata: null,
+      source: 'edit',
+      createdById: 'user-uuid-001',
+      createdByType: 'user',
+      createdAt: new Date('2026-01-23T10:00:00.000Z'),
+      isTombstone: false,
+      sourceBranchId: null,
+      sourceVersionId: null,
+      publishedToVersionId: null,
+      sourceBranchName: null,
+      isPublished: false,
       ...overrides,
     };
   }
@@ -388,10 +424,8 @@ describe('Phase 3.3: Document Version Service', () => {
   describe('getDocumentVersion', () => {
     it('should return a document version by ID', async () => {
       const { getDocumentVersion } = await import('../../src/services/document-version-service');
-      const db = await import('../../src/db');
 
-      const mockRow = createMockVersionRow();
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+      database.on(documentVersions).select.returnsRaw([createStubVersionRow()]);
 
       const result = await getDocumentVersion('version-uuid-123');
 
@@ -403,9 +437,6 @@ describe('Phase 3.3: Document Version Service', () => {
 
     it('should return null when version does not exist', async () => {
       const { getDocumentVersion } = await import('../../src/services/document-version-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
 
       const result = await getDocumentVersion('nonexistent-version');
 
@@ -442,14 +473,13 @@ describe('Phase 3.3: Document Version Service', () => {
   describe('getLatestVersionsForBranch', () => {
     it('should return latest versions for all documents on a branch', async () => {
       const { getLatestVersionsForBranch } = await import('../../src/services/document-version-service');
-      const db = await import('../../src/db');
 
       const mockRows = [
         createMockVersionRow({ id: 'v1', document_id: 'doc-1', version_number: 3 }),
         createMockVersionRow({ id: 'v2', document_id: 'doc-2', version_number: 1 }),
         createMockVersionRow({ id: 'v3', document_id: 'doc-3', version_number: 7 }),
       ];
-      vi.mocked(db.query).mockResolvedValue({ rows: mockRows });
+      database.on(documentVersions).select.returnsRaw(mockRows);
 
       const result = await getLatestVersionsForBranch('branch-uuid-789');
 
@@ -462,9 +492,6 @@ describe('Phase 3.3: Document Version Service', () => {
 
     it('should return empty array when no documents on branch', async () => {
       const { getLatestVersionsForBranch } = await import('../../src/services/document-version-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
 
       const result = await getLatestVersionsForBranch('branch-uuid-789');
 
@@ -475,14 +502,12 @@ describe('Phase 3.3: Document Version Service', () => {
   describe('listDocumentVersions', () => {
     it('should list all versions for a document on a branch in descending order', async () => {
       const { listDocumentVersions } = await import('../../src/services/document-version-service');
-      const db = await import('../../src/db');
 
-      const mockRows = [
-        createMockVersionRow({ version_number: 3 }),
-        createMockVersionRow({ version_number: 2 }),
-        createMockVersionRow({ version_number: 1 }),
-      ];
-      vi.mocked(db.query).mockResolvedValue({ rows: mockRows });
+      database.on(documentVersions).select.returnsRaw([
+        createStubVersionRow({ versionNumber: 3 }),
+        createStubVersionRow({ versionNumber: 2 }),
+        createStubVersionRow({ versionNumber: 1 }),
+      ]);
 
       const result = await listDocumentVersions('doc-uuid-456', 'branch-uuid-789');
 
@@ -494,44 +519,31 @@ describe('Phase 3.3: Document Version Service', () => {
 
     it('should support pagination with limit', async () => {
       const { listDocumentVersions } = await import('../../src/services/document-version-service');
-      const db = await import('../../src/db');
 
-      const mockRows = [
-        createMockVersionRow({ version_number: 3 }),
-        createMockVersionRow({ version_number: 2 }),
-      ];
-      vi.mocked(db.query).mockResolvedValue({ rows: mockRows });
+      database.on(documentVersions).select.returnsRaw([
+        createStubVersionRow({ versionNumber: 3 }),
+        createStubVersionRow({ versionNumber: 2 }),
+      ]);
 
       const result = await listDocumentVersions('doc-uuid-456', 'branch-uuid-789', { limit: 2 });
 
       expect(result).toHaveLength(2);
-      expect(db.query).toHaveBeenCalledWith(
-        expect.stringContaining('LIMIT'),
-        expect.any(Array),
-      );
+      expect(database.calls(documentVersions).select[0].sql).toContain('limit');
     });
 
     it('should support pagination with offset', async () => {
       const { listDocumentVersions } = await import('../../src/services/document-version-service');
-      const db = await import('../../src/db');
 
-      const mockRows = [createMockVersionRow({ version_number: 1 })];
-      vi.mocked(db.query).mockResolvedValue({ rows: mockRows });
+      database.on(documentVersions).select.returnsRaw([createStubVersionRow({ versionNumber: 1 })]);
 
       const result = await listDocumentVersions('doc-uuid-456', 'branch-uuid-789', { limit: 1, offset: 2 });
 
       expect(result).toHaveLength(1);
-      expect(db.query).toHaveBeenCalledWith(
-        expect.stringContaining('OFFSET'),
-        expect.any(Array),
-      );
+      expect(database.calls(documentVersions).select[0].sql).toContain('offset');
     });
 
     it('should return empty array when no versions exist', async () => {
       const { listDocumentVersions } = await import('../../src/services/document-version-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
 
       const result = await listDocumentVersions('doc-uuid-456', 'branch-uuid-789');
 

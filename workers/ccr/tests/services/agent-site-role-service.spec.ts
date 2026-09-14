@@ -5,41 +5,45 @@
  * getRolesForAgent (which maps agent roles to PantheonRole for the
  * AuthenticatedPrincipal).
  *
- * The service uses the `query` function from `../../src/db`.
+ * SQL correctness (ON CONFLICT targeting, the listRolesBySite UNION, joins)
+ * is covered against real Postgres in tests/integration/agent-auth-flow and
+ * tests/integration/global-agent-roles; this suite covers validation and
+ * row-to-domain-object mapping against the stub.
+ *
+ * grantRole still reads through the legacy query() connection: site-service.ts
+ * calls it from inside a raw BEGIN/COMMIT block on that connection, and a
+ * Drizzle insert would run on a separate connection unable to see the
+ * not-yet-committed site row it depends on.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { stubDatabase, type DatabaseStub } from '../__stubs__/database';
+import { agentSiteRoles } from '../../src/db/schema';
+import { query } from '../../src/db';
 
-// Mock database module
-vi.mock('../../src/db', () => ({
+vi.mock('../../src/db', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../../src/db')>(),
   query: vi.fn(),
 }));
 
 describe('Agent Site Role Service', () => {
+  let database: DatabaseStub;
+
   beforeEach(() => {
-    vi.resetAllMocks();
+    database = stubDatabase();
   });
 
-  // Database row format matching app.agent_site_roles schema
-  interface MockRoleRow {
-    id: string;
-    agent_id: string;
-    site_id: string;
-    role: 'viewer' | 'editor' | 'admin';
-    created_by_id: string;
-    created_at: string;
-    revoked_at: string | null;
-  }
+  const createdAt = new Date('2026-03-22T10:00:00.000Z');
 
-  function createMockRoleRow(overrides: Partial<MockRoleRow> = {}): MockRoleRow {
+  function createRoleRow(overrides: Record<string, unknown> = {}): Record<string, unknown> {
     return {
       id: 'role-uuid-001',
-      agent_id: 'agent-uuid-456',
-      site_id: 'site-uuid-789',
+      agentId: 'agent-uuid-456',
+      siteId: 'site-uuid-789',
       role: 'editor',
-      created_by_id: 'user-uuid-111',
-      created_at: '2026-03-22T10:00:00.000Z',
-      revoked_at: null,
+      createdById: 'user-uuid-111',
+      createdAt,
+      revokedAt: null,
       ...overrides,
     };
   }
@@ -51,10 +55,18 @@ describe('Agent Site Role Service', () => {
   describe('grantRole', () => {
     it('should grant a role and return the role object', async () => {
       const { grantRole } = await import('../../src/services/agent-site-role-service');
-      const db = await import('../../src/db');
 
-      const mockRow = createMockRoleRow();
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+      vi.mocked(query).mockResolvedValue({
+        rows: [{
+          id: 'role-uuid-001',
+          agent_id: 'agent-uuid-456',
+          site_id: 'site-uuid-789',
+          role: 'editor',
+          created_by_id: 'user-uuid-111',
+          created_at: '2026-03-22T10:00:00.000Z',
+          revoked_at: null,
+        }],
+      });
 
       const result = await grantRole({
         agentId: 'agent-uuid-456',
@@ -138,12 +150,19 @@ describe('Agent Site Role Service', () => {
       ).rejects.toThrow();
     });
 
-    it('should insert into app.agent_site_roles table', async () => {
+    it('should insert into agent_site_roles with the granted fields', async () => {
       const { grantRole } = await import('../../src/services/agent-site-role-service');
-      const db = await import('../../src/db');
-
-      const mockRow = createMockRoleRow();
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+      vi.mocked(query).mockResolvedValue({
+        rows: [{
+          id: 'role-uuid-001',
+          agent_id: 'agent-uuid-456',
+          site_id: 'site-uuid-789',
+          role: 'editor',
+          created_by_id: 'user-uuid-111',
+          created_at: '2026-03-22T10:00:00.000Z',
+          revoked_at: null,
+        }],
+      });
 
       await grantRole({
         agentId: 'agent-uuid-456',
@@ -152,10 +171,24 @@ describe('Agent Site Role Service', () => {
         grantedBy: 'user-uuid-111',
       });
 
-      expect(db.query).toHaveBeenCalledWith(
+      expect(query).toHaveBeenCalledWith(
         expect.stringContaining('app.agent_site_roles'),
         expect.arrayContaining(['agent-uuid-456', 'site-uuid-789', 'editor', 'user-uuid-111']),
       );
+    });
+
+    it('throws when the insert reports no row', async () => {
+      const { grantRole } = await import('../../src/services/agent-site-role-service');
+      vi.mocked(query).mockResolvedValue({ rows: [] });
+
+      await expect(
+        grantRole({
+          agentId: 'agent-uuid-456',
+          siteId: 'site-uuid-789',
+          role: 'editor',
+          grantedBy: 'user-uuid-111',
+        }),
+      ).rejects.toThrow('Failed to insert agent site role');
     });
   });
 
@@ -166,24 +199,19 @@ describe('Agent Site Role Service', () => {
   describe('revokeRole', () => {
     it('should revoke a role and return true', async () => {
       const { revokeRole } = await import('../../src/services/agent-site-role-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [], rowCount: 1 });
+      database.on(agentSiteRoles).update.returns([{ id: 'role-uuid-001' }]);
 
       const result = await revokeRole('role-uuid-001', 'agent-uuid-456');
 
       expect(result).toBe(true);
-      expect(db.query).toHaveBeenCalledWith(
-        expect.stringContaining('revoked_at'),
+      expect(database.calls(agentSiteRoles).update[0].params).toEqual(
         expect.arrayContaining(['role-uuid-001', 'agent-uuid-456']),
       );
     });
 
     it('should return false when role not found', async () => {
       const { revokeRole } = await import('../../src/services/agent-site-role-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [], rowCount: 0 });
+      database.on(agentSiteRoles).update.returns([]);
 
       const result = await revokeRole('non-existent-role', 'agent-uuid-456');
 
@@ -192,30 +220,75 @@ describe('Agent Site Role Service', () => {
 
     it('should scope revocation to the specified agent', async () => {
       const { revokeRole } = await import('../../src/services/agent-site-role-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [], rowCount: 1 });
+      database.on(agentSiteRoles).update.returns([{ id: 'role-uuid-001' }]);
 
       await revokeRole('role-uuid-001', 'agent-uuid-456');
 
-      expect(db.query).toHaveBeenCalledWith(
-        expect.stringContaining('agent_id'),
+      expect(database.calls(agentSiteRoles).update[0].sql).toMatch(/agent_id/i);
+      expect(database.calls(agentSiteRoles).update[0].params).toEqual(
         expect.arrayContaining(['agent-uuid-456']),
       );
     });
 
     it('should only revoke non-revoked roles', async () => {
       const { revokeRole } = await import('../../src/services/agent-site-role-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [], rowCount: 1 });
+      database.on(agentSiteRoles).update.returns([{ id: 'role-uuid-001' }]);
 
       await revokeRole('role-uuid-001', 'agent-uuid-456');
 
-      expect(db.query).toHaveBeenCalledWith(
-        expect.stringContaining('revoked_at IS NULL'),
-        expect.any(Array),
+      expect(database.calls(agentSiteRoles).update[0].sql).toMatch(/revoked_at.*is null/i);
+    });
+  });
+
+  // ===========================================================================
+  // revokeRoleBySite
+  // ===========================================================================
+
+  describe('revokeRoleBySite', () => {
+    it('should revoke a role scoped to the site and return true', async () => {
+      const { revokeRoleBySite } = await import('../../src/services/agent-site-role-service');
+      database.on(agentSiteRoles).update.returns([{ id: 'role-uuid-001' }]);
+
+      const result = await revokeRoleBySite('role-uuid-001', 'site-uuid-789');
+
+      expect(result).toBe(true);
+      expect(database.calls(agentSiteRoles).update[0].params).toEqual(
+        expect.arrayContaining(['role-uuid-001', 'site-uuid-789']),
       );
+    });
+
+    it('should return false when role not found', async () => {
+      const { revokeRoleBySite } = await import('../../src/services/agent-site-role-service');
+      database.on(agentSiteRoles).update.returns([]);
+
+      const result = await revokeRoleBySite('non-existent-role', 'site-uuid-789');
+
+      expect(result).toBe(false);
+    });
+  });
+
+  // ===========================================================================
+  // getAgentSiteRoleById
+  // ===========================================================================
+
+  describe('getAgentSiteRoleById', () => {
+    it('returns the role when found', async () => {
+      const { getAgentSiteRoleById } = await import('../../src/services/agent-site-role-service');
+      database.on(agentSiteRoles).select.returns([createRoleRow()]);
+
+      const result = await getAgentSiteRoleById('role-uuid-001', 'agent-uuid-456');
+
+      expect(result?.id).toBe('role-uuid-001');
+      expect(result?.siteId).toBe('site-uuid-789');
+    });
+
+    it('returns null when not found', async () => {
+      const { getAgentSiteRoleById } = await import('../../src/services/agent-site-role-service');
+      database.on(agentSiteRoles).select.returns([]);
+
+      const result = await getAgentSiteRoleById('missing', 'agent-uuid-456');
+
+      expect(result).toBeNull();
     });
   });
 
@@ -226,13 +299,11 @@ describe('Agent Site Role Service', () => {
   describe('listRoles', () => {
     it('should list active roles for an agent', async () => {
       const { listRoles } = await import('../../src/services/agent-site-role-service');
-      const db = await import('../../src/db');
 
-      const mockRows = [
-        createMockRoleRow({ id: 'role-1', site_id: 'site-aaa', role: 'admin' }),
-        createMockRoleRow({ id: 'role-2', site_id: 'site-bbb', role: 'viewer' }),
-      ];
-      vi.mocked(db.query).mockResolvedValue({ rows: mockRows });
+      database.on(agentSiteRoles).select.returns([
+        createRoleRow({ id: 'role-1', siteId: 'site-aaa', role: 'admin' }),
+        createRoleRow({ id: 'role-2', siteId: 'site-bbb', role: 'viewer' }),
+      ]);
 
       const result = await listRoles('agent-uuid-456');
 
@@ -247,9 +318,7 @@ describe('Agent Site Role Service', () => {
 
     it('should return empty array when no roles', async () => {
       const { listRoles } = await import('../../src/services/agent-site-role-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
+      database.on(agentSiteRoles).select.returns([]);
 
       const result = await listRoles('agent-with-no-roles');
 
@@ -258,44 +327,31 @@ describe('Agent Site Role Service', () => {
 
     it('should query by agent_id', async () => {
       const { listRoles } = await import('../../src/services/agent-site-role-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
+      database.on(agentSiteRoles).select.returns([]);
 
       await listRoles('agent-uuid-456');
 
-      expect(db.query).toHaveBeenCalledWith(
-        expect.stringContaining('agent_id'),
+      expect(database.calls(agentSiteRoles).select[0].params).toEqual(
         expect.arrayContaining(['agent-uuid-456']),
       );
     });
 
     it('should only return non-revoked roles', async () => {
       const { listRoles } = await import('../../src/services/agent-site-role-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
+      database.on(agentSiteRoles).select.returns([]);
 
       await listRoles('agent-uuid-456');
 
-      expect(db.query).toHaveBeenCalledWith(
-        expect.stringContaining('revoked_at IS NULL'),
-        expect.any(Array),
-      );
+      expect(database.calls(agentSiteRoles).select[0].sql).toMatch(/revoked_at.*is null/i);
     });
 
     it('should order by granted_at descending', async () => {
       const { listRoles } = await import('../../src/services/agent-site-role-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
+      database.on(agentSiteRoles).select.returns([]);
 
       await listRoles('agent-uuid-456');
 
-      expect(db.query).toHaveBeenCalledWith(
-        expect.stringContaining('ORDER BY created_at DESC'),
-        expect.any(Array),
-      );
+      expect(database.calls(agentSiteRoles).select[0].sql).toMatch(/order by.*created_at.*desc/i);
     });
   });
 
@@ -306,14 +362,12 @@ describe('Agent Site Role Service', () => {
   describe('getRolesForAgent', () => {
     it('should return pantheonSiteRoles map with correct role mapping', async () => {
       const { getRolesForAgent } = await import('../../src/services/agent-site-role-service');
-      const db = await import('../../src/db');
 
-      const mockRows = [
-        createMockRoleRow({ site_id: 'site-aaa', role: 'viewer' }),
-        createMockRoleRow({ site_id: 'site-bbb', role: 'editor' }),
-        createMockRoleRow({ site_id: 'site-ccc', role: 'admin' }),
-      ];
-      vi.mocked(db.query).mockResolvedValue({ rows: mockRows });
+      database.on(agentSiteRoles).select.returns([
+        createRoleRow({ siteId: 'site-aaa', role: 'viewer' }),
+        createRoleRow({ siteId: 'site-bbb', role: 'editor' }),
+        createRoleRow({ siteId: 'site-ccc', role: 'admin' }),
+      ]);
 
       const result = await getRolesForAgent('agent-uuid-456');
 
@@ -327,9 +381,7 @@ describe('Agent Site Role Service', () => {
 
     it('should return empty object when agent has no roles', async () => {
       const { getRolesForAgent } = await import('../../src/services/agent-site-role-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
+      database.on(agentSiteRoles).select.returns([]);
 
       const result = await getRolesForAgent('agent-with-no-roles');
 

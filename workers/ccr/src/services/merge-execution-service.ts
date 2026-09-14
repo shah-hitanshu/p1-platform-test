@@ -749,12 +749,16 @@ export async function applyPathOverridePromotion(
 
   // One statement rather than a loop: unnest pairs the id and path arrays into
   // rows the UPDATE joins against.
+  //
+  // Each array is bound through sql.param. Interpolated directly, the `sql` tag
+  // spreads an array into `($1, $2, $3)` — a row constructor, which unnest
+  // cannot cast to uuid[].
   await db().execute(sql`
     UPDATE app.documents d
     SET path = m.path
     FROM unnest(
-      ${moves.map((move) => move.documentId)}::uuid[],
-      ${moves.map((move) => move.newPath)}::text[]
+      ${sql.param(moves.map((move) => move.documentId))}::uuid[],
+      ${sql.param(moves.map((move) => move.newPath))}::text[]
     ) AS m(document_id, path)
     WHERE d.id = m.document_id
   `);

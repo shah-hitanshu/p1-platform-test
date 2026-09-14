@@ -8,49 +8,52 @@
  * These tests are written BEFORE implementation following TDD methodology.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-
-vi.mock('../../src/db', () => ({
-  query: vi.fn(),
-}));
+import { describe, it, expect, beforeEach } from 'vitest';
+import { stubDatabase, type DatabaseStub } from '../__stubs__/database';
+import { documentVersions } from '../../src/db/schema';
 
 describe('Document Version provenance field mapping', () => {
+  let database: DatabaseStub;
+
   beforeEach(() => {
-    vi.resetAllMocks();
-    vi.resetModules();
+    database = stubDatabase();
   });
 
-  interface BaseRow {
+  type BaseRow = {
     id: string;
-    document_id: string;
-    branch_id: string;
-    version_number: number;
+    documentId: string;
+    branchId: string;
+    versionNumber: number;
     snapshot: Record<string, unknown>;
     source: string;
-    created_by_id: string;
-    created_by_type: string;
-    created_at: string;
-    is_published: boolean;
-    is_tombstone: boolean;
-    source_branch_id?: string | null;
-    source_version_id?: string | null;
-    published_to_version_id?: string | null;
-    source_branch_name?: string | null;
-  }
+    createdById: string;
+    createdByType: string;
+    createdAt: Date;
+    isPublished: boolean;
+    isTombstone: boolean;
+    sourceBranchId?: string | null;
+    sourceVersionId?: string | null;
+    publishedToVersionId?: string | null;
+    sourceBranchName?: string | null;
+  };
 
   function createBaseRow(overrides: Partial<BaseRow> = {}): BaseRow {
     return {
       id: 'ver-1',
-      document_id: 'doc-1',
-      branch_id: 'branch-1',
-      version_number: 3,
+      documentId: 'doc-1',
+      branchId: 'branch-1',
+      versionNumber: 3,
       snapshot: { title: 'Hello' },
       source: 'edit',
-      created_by_id: 'user-1',
-      created_by_type: 'user',
-      created_at: '2026-01-01T00:00:00.000Z',
-      is_published: false,
-      is_tombstone: false,
+      createdById: 'user-1',
+      createdByType: 'user',
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      isPublished: false,
+      isTombstone: false,
+      sourceBranchId: null,
+      sourceVersionId: null,
+      publishedToVersionId: null,
+      sourceBranchName: null,
       ...overrides,
     };
   }
@@ -60,15 +63,10 @@ describe('Document Version provenance field mapping', () => {
       const { getDocumentVersion } = await import(
         '../../src/services/document-version-service'
       );
-      const db = await import('../../src/db');
 
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [
-          createBaseRow({
-            source_branch_id: 'branch-origin-uuid',
-          }),
-        ],
-      });
+      database.on(documentVersions).select.returnsRaw([
+        createBaseRow({ sourceBranchId: 'branch-origin-uuid' }),
+      ]);
 
       const result = await getDocumentVersion('ver-1');
 
@@ -81,15 +79,10 @@ describe('Document Version provenance field mapping', () => {
       const { getDocumentVersion } = await import(
         '../../src/services/document-version-service'
       );
-      const db = await import('../../src/db');
 
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [
-          createBaseRow({
-            source_version_id: 'version-origin-uuid',
-          }),
-        ],
-      });
+      database.on(documentVersions).select.returnsRaw([
+        createBaseRow({ sourceVersionId: 'version-origin-uuid' }),
+      ]);
 
       const result = await getDocumentVersion('ver-1');
 
@@ -102,15 +95,10 @@ describe('Document Version provenance field mapping', () => {
       const { getDocumentVersion } = await import(
         '../../src/services/document-version-service'
       );
-      const db = await import('../../src/db');
 
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [
-          createBaseRow({
-            published_to_version_id: 'main-version-uuid',
-          }),
-        ],
-      });
+      database.on(documentVersions).select.returnsRaw([
+        createBaseRow({ publishedToVersionId: 'main-version-uuid' }),
+      ]);
 
       const result = await getDocumentVersion('ver-1');
 
@@ -123,16 +111,13 @@ describe('Document Version provenance field mapping', () => {
       const { getDocumentVersion } = await import(
         '../../src/services/document-version-service'
       );
-      const db = await import('../../src/db');
 
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [
-          createBaseRow({
-            source_branch_id: 'branch-origin-uuid',
-            source_branch_name: 'feature/redesign',
-          }),
-        ],
-      });
+      database.on(documentVersions).select.returnsRaw([
+        createBaseRow({
+          sourceBranchId: 'branch-origin-uuid',
+          sourceBranchName: 'feature/redesign',
+        }),
+      ]);
 
       const result = await getDocumentVersion('ver-1');
 
@@ -145,18 +130,8 @@ describe('Document Version provenance field mapping', () => {
       const { getDocumentVersion } = await import(
         '../../src/services/document-version-service'
       );
-      const db = await import('../../src/db');
 
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [
-          createBaseRow({
-            source_branch_id: null,
-            source_version_id: null,
-            published_to_version_id: null,
-            source_branch_name: null,
-          }),
-        ],
-      });
+      database.on(documentVersions).select.returnsRaw([createBaseRow()]);
 
       const result = await getDocumentVersion('ver-1');
 

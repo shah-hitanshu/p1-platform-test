@@ -1,10 +1,14 @@
 /**
  * batchSyncToPostgres must store snapshot/action_metadata as real jsonb
- * objects, not double-encoded JSON strings. postgres.js's jsonb[] encoder
- * serializes each bound element itself, so pre-stringifying a jsonb[] bind
- * double-encodes it — Postgres stores a jsonb string scalar of escaped JSON,
- * and every consumer that reads the snapshot as an object (editor, diffing,
+ * objects, not double-encoded JSON strings. Get the encoding wrong in either
+ * direction and Postgres stores a jsonb string scalar of escaped JSON, and
+ * every consumer that reads the snapshot as an object (editor, diffing,
  * publish) gets a raw string instead.
+ *
+ * Which encoding is right depends on the connection: the Drizzle client parses
+ * and serializes json as identity, so each element is bound pre-stringified,
+ * while the legacy query() connection keeps postgres.js's own json serializer,
+ * where pre-stringifying double-encodes [PCC-3468].
  *
  * A mocked-query unit test sees only the value passed to the driver, never
  * what Postgres stores. Asserting on jsonb_typeof against a real connection
@@ -16,8 +20,11 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import postgres from 'postgres';
+import { drizzle } from 'drizzle-orm/postgres-js';
 import { setDatabaseInstance } from '../../src/db';
 import type { DatabaseConnection, QueryResult } from '../../src/db';
+import { installDatabase } from '../../src/db/scope';
+import * as schema from '../../src/db/schema';
 
 import { createSite } from '../../src/services/site-service';
 import { getMainBranch } from '../../src/services/branch-service';
@@ -82,10 +89,18 @@ async function storedVersion(documentId: string): Promise<{
   return { snapshotType: row.snapshot_type, actionMetadataType: row.action_metadata_type, snapshot: row.snapshot };
 }
 
+let drizzleClient: postgres.Sql;
+
 beforeAll(async () => {
   const { connection, sql: client } = realConnection(CONNECTION_STRING);
   sql = client;
   setDatabaseInstance(connection);
+
+  // batchSyncToPostgres reads through db() (Drizzle) now, which needs its own
+  // client — drizzle() replaces a client's timestamp parsers and json
+  // serializers, so it cannot share the raw `sql` connection above.
+  drizzleClient = postgres(CONNECTION_STRING, { transform: { undefined: null }, max: 1 });
+  installDatabase(drizzle(drizzleClient, { schema }));
 
   const site = await createSite({ pantheonSiteId: `${RUN}-site`, name: `${RUN}-site` });
   siteId = site.id;
@@ -104,6 +119,8 @@ afterAll(async () => {
   await sql`DELETE FROM app.branches WHERE site_id = ${siteId}`;
   await sql`DELETE FROM app.sites WHERE id = ${siteId}`;
   await sql.end();
+  installDatabase(null);
+  await drizzleClient.end();
 });
 
 describe('PCC-3468: batchSyncToPostgres stores real jsonb, not double-encoded strings', () => {

@@ -85,6 +85,14 @@ export interface InsertDocumentWithVersionParams {
  * The version rows come back unwrapped: only a caller that needs the inserted
  * version has reason to insist one came back.
  *
+ * Kept on the legacy query() connection deliberately: both callers wrap this in
+ * withTransaction on that connection, and createTranslation additionally holds a
+ * SELECT ... FOR UPDATE on the canonical row across it. On the Drizzle
+ * connection these rows would land outside the transaction, so a later failure
+ * would roll back the relation rows and leave the document and its version
+ * behind. Convert this alongside create-translation-service.ts and
+ * duplicate-document-service.ts.
+ *
  * @throws DuplicateDocumentPathError if another document already holds the path
  */
 export async function insertDocumentWithVersion(

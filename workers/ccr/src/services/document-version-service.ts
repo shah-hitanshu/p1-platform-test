@@ -7,8 +7,11 @@
  * @see collaborative-state-system-architecture-v2.2.md Section "Document Versions"
  */
 
+import { and, desc, eq, exists, gt, inArray, sql } from 'drizzle-orm';
 import type { DocumentVersion, DocumentVersionSource } from '../types';
 import { query } from '../db';
+import { branches, checkpointDocuments, checkpoints, documentVersions } from '../db/schema';
+import { db } from '../db/scope';
 import { compare as jsonPatchCompare, applyPatch } from 'fast-json-patch';
 import { classifyChange } from './action-classification';
 import type { PuckAction } from './action-classification';
@@ -79,7 +82,7 @@ export interface ListDocumentVersionsOptions {
 /**
  * Database row format for document versions.
  */
-interface DocumentVersionRow {
+type DocumentVersionRow = {
   id: string;
   document_id: string;
   branch_id: string;
@@ -98,11 +101,24 @@ interface DocumentVersionRow {
   patch: import('fast-json-patch').Operation[] | null;
   action_type: string | null;
   action_metadata: Record<string, unknown> | null;
-}
+};
 
 // =============================================================================
 // Helper Functions
 // =============================================================================
+
+/**
+ * Normalizes a timestamp column to ISO-8601.
+ *
+ * A row read through the query builder carries a Date; one read through
+ * db().execute() carries Postgres' own text form, because the Drizzle client
+ * parses timestamps as identity. DocumentVersion.createdAt is a string either
+ * way, so both are funnelled through here.
+ */
+function toIsoTimestamp(value: Date | string | null | undefined): string {
+  if (value === null || value === undefined) return '';
+  return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
+}
 
 /**
  * Maps a database row to a DocumentVersion domain object.
@@ -120,7 +136,7 @@ function mapRowToDocumentVersion(row: DocumentVersionRow): DocumentVersion {
     source: row.source,
     createdById: row.created_by_id,
     createdByType: row.created_by_type,
-    createdAt: row.created_at,
+    createdAt: toIsoTimestamp(row.created_at),
   };
   if (row.is_published !== undefined) {
     version.isPublished = row.is_published;
@@ -135,6 +151,89 @@ function mapRowToDocumentVersion(row: DocumentVersionRow): DocumentVersion {
     ...(row.published_to_version_id != null ? { publishedToVersionId: row.published_to_version_id } : {}),
     ...(('source_branch_name' in row && row.source_branch_name != null) ? { sourceBranchName: row.source_branch_name } : {}),
   };
+}
+
+/** Columns selected by the Drizzle-backed reads below, in the schema's property names. */
+const documentVersionColumns = {
+  id: documentVersions.id,
+  documentId: documentVersions.documentId,
+  branchId: documentVersions.branchId,
+  versionNumber: documentVersions.versionNumber,
+  snapshot: documentVersions.snapshot,
+  patch: documentVersions.patch,
+  actionType: documentVersions.actionType,
+  actionMetadata: documentVersions.actionMetadata,
+  source: documentVersions.source,
+  createdById: documentVersions.createdById,
+  createdByType: documentVersions.createdByType,
+  createdAt: documentVersions.createdAt,
+  isTombstone: documentVersions.isTombstone,
+  sourceBranchId: documentVersions.sourceBranchId,
+  sourceVersionId: documentVersions.sourceVersionId,
+  publishedToVersionId: documentVersions.publishedToVersionId,
+};
+
+interface DrizzleVersionRow {
+  id: string;
+  documentId: string;
+  branchId: string;
+  versionNumber: number;
+  snapshot: unknown;
+  patch: unknown;
+  actionType: string | null;
+  actionMetadata: unknown;
+  source: string;
+  createdById: string;
+  createdByType: string;
+  createdAt: Date | null;
+  isTombstone: boolean;
+  sourceBranchId: string | null;
+  sourceVersionId: string | null;
+  publishedToVersionId: string | null;
+  sourceBranchName?: string | null;
+  isPublished?: boolean;
+}
+
+/** Maps a row selected through {@link documentVersionColumns} to a DocumentVersion domain object. */
+function mapDrizzleRowToDocumentVersion(row: DrizzleVersionRow): DocumentVersion {
+  return {
+    id: row.id,
+    documentId: row.documentId,
+    branchId: row.branchId,
+    versionNumber: row.versionNumber,
+    snapshot: (row.snapshot as Record<string, unknown> | null) ?? undefined,
+    patch: (row.patch as unknown[] | null) ?? undefined,
+    actionType: row.actionType ?? undefined,
+    actionMetadata: (row.actionMetadata as Record<string, unknown> | null) ?? undefined,
+    source: row.source as DocumentVersionSource,
+    createdById: row.createdById,
+    createdByType: row.createdByType as DocumentVersion['createdByType'],
+    createdAt: toIsoTimestamp(row.createdAt),
+    isTombstone: row.isTombstone,
+    ...(row.isPublished !== undefined ? { isPublished: row.isPublished } : {}),
+    ...(row.sourceBranchId != null ? { sourceBranchId: row.sourceBranchId } : {}),
+    ...(row.sourceVersionId != null ? { sourceVersionId: row.sourceVersionId } : {}),
+    ...(row.publishedToVersionId != null ? { publishedToVersionId: row.publishedToVersionId } : {}),
+    ...(row.sourceBranchName != null ? { sourceBranchName: row.sourceBranchName } : {}),
+  };
+}
+
+/**
+ * Whether a publish checkpoint references a document_versions row. A
+ * correlated subquery rather than a join so it composes as a single selected
+ * column alongside the row it describes.
+ */
+function isPublishedExpr(): ReturnType<typeof sql<boolean>> {
+  return sql<boolean>`${exists(
+    db()
+      .select({ published: sql`1` })
+      .from(checkpointDocuments)
+      .innerJoin(checkpoints, eq(checkpoints.id, checkpointDocuments.checkpointId))
+      .where(and(
+        eq(checkpointDocuments.documentVersionId, documentVersions.id),
+        eq(checkpoints.checkpointType, 'publish'),
+      )),
+  )}`;
 }
 
 /**
@@ -441,27 +540,17 @@ export async function createDocumentVersion(
  * @returns The document version or null if not found
  */
 export async function getDocumentVersion(versionId: string): Promise<DocumentVersion | null> {
-  const result = await query<DocumentVersionRow>(
-    `SELECT dv.*,
-       dv.source_branch_id, dv.source_version_id, dv.published_to_version_id,
-       b.name AS source_branch_name,
-       EXISTS(
-         SELECT 1 FROM app.checkpoint_documents cd
-         JOIN app.checkpoints cp ON cp.id = cd.checkpoint_id
-         WHERE cd.document_version_id = dv.id
-           AND cp.checkpoint_type = 'publish'
-       ) AS is_published
-     FROM app.document_versions dv
-     LEFT JOIN app.branches b ON b.id = dv.source_branch_id
-     WHERE dv.id = $1`,
-    [versionId],
-  );
+  const [row] = await db()
+    .select({
+      ...documentVersionColumns,
+      sourceBranchName: branches.name,
+      isPublished: isPublishedExpr(),
+    })
+    .from(documentVersions)
+    .leftJoin(branches, eq(branches.id, documentVersions.sourceBranchId))
+    .where(eq(documentVersions.id, versionId));
 
-  if (result.rows.length === 0) {
-    return null;
-  }
-
-  return mapRowToDocumentVersion(getFirstRow(result.rows));
+  return row ? mapDrizzleRowToDocumentVersion(row) : null;
 }
 
 /**
@@ -519,16 +608,17 @@ export async function hasTombstoneAfterVersion(
   branchId: string,
   afterVersionNumber: number,
 ): Promise<boolean> {
-  const result = await query<{ exists: boolean }>(
-    `SELECT EXISTS(
-       SELECT 1 FROM app.document_versions
-       WHERE document_id = $1 AND branch_id = $2
-         AND is_tombstone = true
-         AND version_number > $3
-     ) AS exists`,
-    [documentId, branchId, afterVersionNumber],
-  );
-  return result.rows[0]?.exists === true;
+  const [row] = await db()
+    .select({ id: documentVersions.id })
+    .from(documentVersions)
+    .where(and(
+      eq(documentVersions.documentId, documentId),
+      eq(documentVersions.branchId, branchId),
+      eq(documentVersions.isTombstone, true),
+      gt(documentVersions.versionNumber, afterVersionNumber),
+    ))
+    .limit(1);
+  return row !== undefined;
 }
 
 /**
@@ -587,15 +677,15 @@ export async function getLatestPublishedDocumentVersion(
  * @returns Array of latest document versions
  */
 export async function getLatestVersionsForBranch(branchId: string): Promise<DocumentVersion[]> {
-  const result = await query<DocumentVersionRow>(
-    `SELECT DISTINCT ON (document_id) *
-     FROM app.document_versions
-     WHERE branch_id = $1 AND superseded_at IS NULL
-     ORDER BY document_id, version_number DESC`,
-    [branchId],
-  );
+  // DISTINCT ON has no equivalent in this drizzle-orm version's select builder — kept raw.
+  const rows = await db().execute<DocumentVersionRow>(sql`
+    SELECT DISTINCT ON (document_id) *
+    FROM app.document_versions
+    WHERE branch_id = ${branchId} AND superseded_at IS NULL
+    ORDER BY document_id, version_number DESC
+  `);
 
-  return result.rows.map(mapRowToDocumentVersion);
+  return rows.map(mapRowToDocumentVersion);
 }
 
 export async function getLatestVersionsForDocuments(
@@ -603,14 +693,14 @@ export async function getLatestVersionsForDocuments(
   branchId: string,
 ): Promise<DocumentVersion[]> {
   if (documentIds.length === 0) return [];
-  const result = await query<DocumentVersionRow>(
-    `SELECT DISTINCT ON (document_id) *
-     FROM app.document_versions
-     WHERE document_id = ANY($1) AND branch_id = $2 AND superseded_at IS NULL
-     ORDER BY document_id, version_number DESC`,
-    [documentIds, branchId],
-  );
-  return result.rows.map(mapRowToDocumentVersion);
+  // DISTINCT ON has no equivalent in this drizzle-orm version's select builder — kept raw.
+  const rows = await db().execute<DocumentVersionRow>(sql`
+    SELECT DISTINCT ON (document_id) *
+    FROM app.document_versions
+    WHERE ${inArray(documentVersions.documentId, documentIds)} AND branch_id = ${branchId} AND superseded_at IS NULL
+    ORDER BY document_id, version_number DESC
+  `);
+  return rows.map(mapRowToDocumentVersion);
 }
 
 /**
@@ -628,36 +718,28 @@ export async function listDocumentVersions(
 ): Promise<DocumentVersion[]> {
   const { limit, offset } = options;
 
-  let sql = `SELECT dv.*,
-       dv.source_branch_id, dv.source_version_id, dv.published_to_version_id,
-       b.name AS source_branch_name,
-       EXISTS(
-         SELECT 1 FROM app.checkpoint_documents cd
-         JOIN app.checkpoints cp ON cp.id = cd.checkpoint_id
-         WHERE cd.document_version_id = dv.id
-           AND cp.checkpoint_type = 'publish'
-       ) AS is_published
-     FROM app.document_versions dv
-     LEFT JOIN app.branches b ON b.id = dv.source_branch_id
-     WHERE dv.document_id = $1 AND dv.branch_id = $2
-     ORDER BY dv.version_number DESC`;
-  const params: unknown[] = [documentId, branchId];
-  let paramIndex = 3;
+  let versionsQuery = db()
+    .select({
+      ...documentVersionColumns,
+      sourceBranchName: branches.name,
+      isPublished: isPublishedExpr(),
+    })
+    .from(documentVersions)
+    .leftJoin(branches, eq(branches.id, documentVersions.sourceBranchId))
+    .where(and(eq(documentVersions.documentId, documentId), eq(documentVersions.branchId, branchId)))
+    .orderBy(desc(documentVersions.versionNumber))
+    .$dynamic();
 
   if (limit !== undefined) {
-    sql += ` LIMIT $${String(paramIndex)}`;
-    params.push(limit);
-    paramIndex++;
+    versionsQuery = versionsQuery.limit(limit);
   }
-
   if (offset !== undefined) {
-    sql += ` OFFSET $${String(paramIndex)}`;
-    params.push(offset);
+    versionsQuery = versionsQuery.offset(offset);
   }
 
-  const result = await query<DocumentVersionRow>(sql, params);
+  const rows = await versionsQuery;
 
-  return result.rows.map(mapRowToDocumentVersion);
+  return rows.map(mapDrizzleRowToDocumentVersion);
 }
 
 /**
@@ -1027,26 +1109,29 @@ export async function batchSyncToPostgres(
     }
   }
 
-  // Bind the raw object arrays to the jsonb[] params directly. postgres.js's
-  // jsonb[] encoder serializes each element itself, so pre-stringifying here
-  // would double-encode: Postgres would store a jsonb string scalar of escaped
-  // JSON rather than the object.
-  const snapshotsJson = snapshots;
-  const actionMetadatasJson = actionMetadatas;
+  // Each jsonb[] element is pre-stringified because the Drizzle client parses
+  // and serializes json as identity: its array serializer quotes each element
+  // for the array literal without encoding it first. The legacy query()
+  // connection keeps postgres.js's own json serializer, where pre-stringifying
+  // would double-encode instead [PCC-3468], so this is a property of the
+  // connection, not of postgres.js.
+  const snapshotsJson = snapshots.map((snapshot) => JSON.stringify(snapshot));
+  const actionMetadatasJson = actionMetadatas.map((metadata) => (metadata === null ? null : JSON.stringify(metadata)));
 
   // Use a CTE-based approach: for each input row, check if the latest snapshot
   // matches. If it does, skip the insert (dedup). Otherwise, compute the next
   // version number and insert as a baseline (full snapshot).
-  const result = await query<DocumentVersionRow>(
-    `WITH input_rows AS (
+  // A CTE unnesting parallel arrays into input rows — no builder equivalent — kept raw.
+  const rows = await db().execute<DocumentVersionRow>(sql`
+    WITH input_rows AS (
       SELECT
-        unnest($1::uuid[]) AS document_id,
-        unnest($2::uuid[]) AS branch_id,
-        unnest($3::jsonb[]) AS snapshot,
-        unnest($4::uuid[]) AS actor_id,
-        unnest($5::text[]) AS actor_type,
-        unnest($6::text[]) AS action_type,
-        unnest($7::jsonb[]) AS action_metadata
+        unnest(${sql.param(documentIds)}::uuid[]) AS document_id,
+        unnest(${sql.param(branchIds)}::uuid[]) AS branch_id,
+        unnest(${sql.param(snapshotsJson)}::jsonb[]) AS snapshot,
+        unnest(${sql.param(actorIds)}::uuid[]) AS actor_id,
+        unnest(${sql.param(actorTypes)}::text[]) AS actor_type,
+        unnest(${sql.param(actionTypes)}::text[]) AS action_type,
+        unnest(${sql.param(actionMetadatasJson)}::jsonb[]) AS action_metadata
     ),
     deduped AS (
       SELECT ir.*
@@ -1081,11 +1166,10 @@ export async function batchSyncToPostgres(
       d.actor_id,
       d.actor_type
     FROM deduped d
-    RETURNING *`,
-    [documentIds, branchIds, snapshotsJson, actorIds, actorTypes, actionTypes, actionMetadatasJson],
-  );
+    RETURNING *
+  `);
 
-  const inserted = result.rows.map(mapRowToDocumentVersion);
+  const inserted = rows.map(mapRowToDocumentVersion);
 
   // Post-insert: compute forward diffs and convert previous versions.
   // For each inserted version:
@@ -1094,15 +1178,17 @@ export async function batchSyncToPostgres(
   // 3. Null previous version's snapshot (unless it's v1, the permanent baseline)
   for (const insertedVersion of inserted) {
     try {
-      const prevResult = await query<DocumentVersionRow>(
-        `SELECT * FROM app.document_versions
-         WHERE document_id = $1 AND branch_id = $2 AND version_number = $3`,
-        [insertedVersion.documentId, insertedVersion.branchId, insertedVersion.versionNumber - 1],
-      );
-      const prevRow = prevResult.rows[0];
+      const [prevRow] = await db()
+        .select()
+        .from(documentVersions)
+        .where(and(
+          eq(documentVersions.documentId, insertedVersion.documentId),
+          eq(documentVersions.branchId, insertedVersion.branchId),
+          eq(documentVersions.versionNumber, insertedVersion.versionNumber - 1),
+        ));
       if (prevRow?.snapshot != null && insertedVersion.snapshot != null) {
         const patchOps = jsonPatchCompare(
-          prevRow.snapshot,
+          prevRow.snapshot as Record<string, unknown>,
           insertedVersion.snapshot,
         );
         if (patchOps.length > 0) {
@@ -1111,29 +1197,25 @@ export async function batchSyncToPostgres(
           // own to rebuild from. Pinned or publish-checkpointed rows are never
           // nulled [PCC-3652] — see createDocumentVersion's CTE for why both
           // tests are needed and why the checkpoint filter is publish-only.
-          const shouldNullPrev = prevRow.version_number > 1
-            && !isRebaselineVersion(prevRow.version_number)
+          const shouldNullPrev = prevRow.versionNumber > 1
+            && !isRebaselineVersion(prevRow.versionNumber)
             && prevRow.patch != null;
-          await query(
-            `WITH update_new AS (
-              UPDATE app.document_versions SET patch = $1 WHERE id = $2
+          // A CTE chaining the patch write and the conditional snapshot null
+          // into one statement — no builder equivalent — kept raw.
+          await db().execute(sql`
+            WITH update_new AS (
+              UPDATE app.document_versions SET patch = ${JSON.stringify(patchOps)} WHERE id = ${insertedVersion.id}
             )
             UPDATE app.document_versions SET snapshot = NULL
-            WHERE id = $3 AND $4::boolean = true AND patch IS NOT NULL
+            WHERE id = ${prevRow.id} AND ${shouldNullPrev}::boolean = true AND patch IS NOT NULL
               AND pinned_at IS NULL
               AND NOT EXISTS (
                 SELECT 1 FROM app.checkpoint_documents cd
                 JOIN app.checkpoints cp ON cp.id = cd.checkpoint_id
                 WHERE cd.document_version_id = document_versions.id
                   AND cp.checkpoint_type = 'publish'
-              )`,
-            [
-              JSON.stringify(patchOps),
-              insertedVersion.id,
-              prevRow.id,
-              shouldNullPrev,
-            ],
-          );
+              )
+          `);
         }
       }
     } catch (diffError) {

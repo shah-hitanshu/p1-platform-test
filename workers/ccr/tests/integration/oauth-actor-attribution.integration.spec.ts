@@ -21,7 +21,9 @@
  *     verified email (available at realtime connect), idempotently.
  *  4. A subject whose email matches a pre-provisioned user (principal_id NULL)
  *     links that row — admins can pre-create users — but NEVER hijacks a row
- *     already claimed by a different principal.
+ *     already claimed by a different principal. Two writers racing the JIT
+ *     insert for the SAME principal both resolve to the one row it creates,
+ *     rather than the loser reading its own principal as someone else's.
  *  5. An unresolvable actor skips ONLY its own payload (reported in
  *     result.unresolved); the rest of the batch persists. No more
  *     one-bad-actor-poisons-the-batch.
@@ -37,9 +39,10 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import postgres from 'postgres';
+import type postgres from 'postgres';
 import { setDatabaseInstance } from '../../src/db';
-import type { DatabaseConnection, QueryResult } from '../../src/db';
+import type { DatabaseConnection } from '../../src/db';
+import { createRealDatabaseConnection, asConcurrentRequests } from '../helpers/database';
 
 import { createSite } from '../../src/services/site-service';
 import { getMainBranch } from '../../src/services/branch-service';
@@ -51,7 +54,6 @@ import type { BatchSyncPayload } from '../../src/services/document-version-servi
 import { syncCrdtToPostgres } from '../../src/services/crdt-sync-service';
 import { providerSubToUuid } from '../../src/auth/uuid-v5';
 
-const CONNECTION_STRING = 'postgresql://cssuser:csspass@localhost:5432/cssdb';
 const RUN = `pcc3457-${String(Date.now())}`;
 
 // Production-shaped principals (PCC-3462: fixtures must match what production
@@ -64,35 +66,11 @@ const GOOGLE_SUBJECT = `google-oauth2|${RUN}1014943591`;
 const AGENT_NON_UUID = `agent|${RUN}-not-a-uuid`;
 
 let sql: postgres.Sql;
+let connection: DatabaseConnection;
 let siteId: string;
 let branchId: string;
 const docIds: string[] = [];
 let docCounter = 0;
-
-function realConnection(connectionString: string): {
-  connection: DatabaseConnection;
-  sql: postgres.Sql;
-} {
-  const client = postgres(connectionString, {
-    transform: { undefined: null },
-    max: 1,
-  });
-  const connection: DatabaseConnection = {
-    async query<T = Record<string, unknown>>(
-      sqlQuery: string,
-      params?: unknown[],
-    ): Promise<QueryResult<T>> {
-      const result = await client.unsafe<T[]>(
-        sqlQuery,
-        params as unknown as postgres.ParameterOrJSON<never>[],
-      );
-      const rows = [...result] as T[];
-      const withCount = result as unknown as { count?: number };
-      return { rows, rowCount: withCount.count ?? rows.length };
-    },
-  };
-  return { connection, sql: client };
-}
 
 /** Each test gets fresh documents so snapshot-dedup never interferes. */
 async function freshDoc(): Promise<string> {
@@ -137,8 +115,9 @@ async function versionCreator(documentId: string): Promise<string | undefined> {
 }
 
 beforeAll(async () => {
-  const { connection, sql: client } = realConnection(CONNECTION_STRING);
-  sql = client;
+  const real = createRealDatabaseConnection();
+  connection = real.connection;
+  sql = real.sql;
   setDatabaseInstance(connection);
 
   const site = await createSite({
@@ -164,7 +143,8 @@ afterAll(async () => {
   await sql`DELETE FROM app.branches WHERE site_id = ${siteId}`;
   await sql`DELETE FROM app.sites WHERE id = ${siteId}`;
   await sql`DELETE FROM app.users WHERE principal_id LIKE ${'%' + RUN + '%'} OR email LIKE ${'%' + RUN + '%'}`;
-  await sql.end();
+  setDatabaseInstance(null);
+  await connection.close();
 });
 
 describe('PCC-3457: batchSyncToPostgres actor resolution (queue path)', () => {
@@ -309,6 +289,50 @@ describe('PCC-3457: batchSyncToPostgres actor resolution (queue path)', () => {
     const owner = await sql<{ principal_id: string | null }[]>`
       SELECT principal_id FROM app.users WHERE email = ${email}`;
     expect(owner[0].principal_id).toBe(ownerUuid);
+  });
+
+  it('resolves two concurrent JIT provisions of the same never-before-seen principal to one user id', async () => {
+    // A sequential second call for an already-linked principal short-circuits
+    // on the principal_id lookup before ever reaching the upsert, so it can't
+    // exercise the guard this test is for. Only two writers racing the INSERT
+    // for the same subject can: the loser's own insert lands on the row the
+    // winner just created via ON CONFLICT (email), and the WHERE guard must
+    // read that row's principal_id (already the loser's own) as a match, not
+    // as someone else's claim.
+    const email = `race-${RUN}@example.test`;
+    const subject = `auth0|pn-${RUN}-race`;
+    const docA = await freshDoc();
+    const docB = await freshDoc();
+
+    let resultA: Awaited<ReturnType<typeof batchSyncToPostgres>> | undefined;
+    let resultB: Awaited<ReturnType<typeof batchSyncToPostgres>> | undefined;
+
+    await asConcurrentRequests(
+      async () => {
+        resultA = await batchSyncToPostgres([
+          payload(docA, subject, { actorEmail: email, actorName: 'Racer' }),
+        ]);
+      },
+      async () => {
+        resultB = await batchSyncToPostgres([
+          payload(docB, subject, { actorEmail: email, actorName: 'Racer' }),
+        ]);
+      },
+    );
+
+    expect(resultA?.unresolved).toEqual([]);
+    expect(resultB?.unresolved).toEqual([]);
+
+    const creatorA = await versionCreator(docA);
+    const creatorB = await versionCreator(docB);
+    expect(creatorA).toBeDefined();
+    expect(creatorA).toBe(creatorB);
+
+    const subjectUuid = await providerSubToUuid('auth0', subject);
+    const linked = await sql<{ id: string }[]>`
+      SELECT id FROM app.users WHERE principal_id = ${subjectUuid}`;
+    expect(linked).toHaveLength(1);
+    expect(linked[0].id).toBe(creatorA);
   });
 
   it('isolates an unresolvable actor to its own payload — the rest of the batch persists (no batch poisoning)', async () => {

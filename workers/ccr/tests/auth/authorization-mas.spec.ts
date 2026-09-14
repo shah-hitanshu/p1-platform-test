@@ -15,12 +15,11 @@ import {
   assertPermission,
   AuthorizationError,
 } from '../../src/auth/authorization';
-import { userSiteRoles } from '../../src/db/schema';
+import { agents, userSiteRoles } from '../../src/db/schema';
 import { stubDatabase, type DatabaseStub } from '../__stubs__/database';
 import { query } from '../../src/db';
 
-// The agent site-role resolver still reads through the legacy query path, which
-// the Drizzle stub does not see.
+// The legacy user_site_roles fallback path still reads through query().
 vi.mock('../../src/db', async (importOriginal) => ({
   ...await importOriginal<typeof import('../../src/db')>(),
   query: vi.fn(),
@@ -210,7 +209,7 @@ describe('Dual-Source Authorization (MAS Integration)', () => {
 
       const masClient = createMockMASClient();
 
-      vi.mocked(query).mockResolvedValueOnce({ rows: [{ role: 'editor', implicit: false }] });
+      database.on(agents).select.returnsRaw([{ role: 'editor', implicit: false }]);
 
       const result = await getEffectiveRole(
         principal, 'site-1', 'branch-1', masClient,

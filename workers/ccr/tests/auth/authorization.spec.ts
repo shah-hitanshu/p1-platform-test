@@ -15,12 +15,12 @@ import {
   hasServicePermission,
   AuthorizationError,
 } from '../../src/auth/authorization';
-import { branches } from '../../src/db/schema';
+import { agents, branches } from '../../src/db/schema';
 import { stubDatabase, type DatabaseStub } from '../__stubs__/database';
 import { query } from '../../src/db';
 
-// The agent site-role resolver still reads through the legacy query path, which
-// the Drizzle stub does not see.
+// user_site_roles and agent_site_roles reads go through the Drizzle stub;
+// the legacy user_site_roles fallback path below still reads through query().
 vi.mock('../../src/db', async (importOriginal) => ({
   ...await importOriginal<typeof import('../../src/db')>(),
   query: vi.fn(),
@@ -269,11 +269,13 @@ describe('Phase 2.2: Branch-Level Authorization', () => {
 
         await getSiteRole(principal, 'site-1');
 
-        const agentQuery = vi.mocked(query).mock.calls.find(
-          ([sql]) => typeof sql === 'string' && sql.includes('app.agent_site_roles'),
-        );
+        // resolveAgentSiteRole selects from agents with a left join to
+        // agent_site_roles, so the recorded statement is keyed by its FROM
+        // table (agents); the join carries the revoked_at exclusion.
+        const agentQuery = database.calls(agents).select[0];
         expect(agentQuery).toBeDefined();
-        expect(agentQuery?.[0]).toMatch(/revoked_at IS NULL/);
+        expect(agentQuery.sql).toContain('agent_site_roles');
+        expect(agentQuery.sql).toMatch(/revoked_at.*is null/i);
       });
     });
 

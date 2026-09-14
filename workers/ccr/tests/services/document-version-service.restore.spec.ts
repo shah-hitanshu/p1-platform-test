@@ -4,23 +4,31 @@
  * Covers: success path, patch-only snapshot reconstruction,
  * not-found, and branch/document mismatch validation.
  *
- * Mocks db.query directly (not the service module) so internal function
- * calls within the service are exercised as-is.
+ * restoreDocumentVersion's own initial read (getDocumentVersion) goes through
+ * db() (Drizzle), stubbed via stubDatabase(); reconstructVersionSnapshot and
+ * createDocumentVersion still read through the legacy query() connection (see
+ * the comments on those functions in document-version-service.ts) — mocking
+ * db.query directly (not the service module) exercises those calls as-is.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { DocumentVersionSource } from '../../src/types';
+import { stubDatabase, type DatabaseStub } from '../__stubs__/database';
+import { documentVersions } from '../../src/db/schema';
 
 vi.mock('../../src/db', () => ({
   query: vi.fn(),
 }));
 
 describe('restoreDocumentVersion', () => {
+  let database: DatabaseStub;
+
   beforeEach(() => {
     vi.resetAllMocks();
+    database = stubDatabase();
   });
 
-  interface MockDocumentVersionRow {
+  type MockDocumentVersionRow = {
     id: string;
     document_id: string;
     branch_id: string;
@@ -36,7 +44,7 @@ describe('restoreDocumentVersion', () => {
     source_version_id?: string | null;
     is_published?: boolean;
     is_tombstone?: boolean;
-  }
+  };
 
   function createMockRow(overrides: Partial<MockDocumentVersionRow> = {}): MockDocumentVersionRow {
     return {
@@ -56,6 +64,34 @@ describe('restoreDocumentVersion', () => {
     };
   }
 
+  /**
+   * restoreDocumentVersion's target-row read (getDocumentVersion) goes
+   * through the Drizzle query builder — camelCase columns — unlike the raw
+   * query() calls that follow it.
+   */
+  function stubTargetRow(row: MockDocumentVersionRow): void {
+    database.on(documentVersions).select.returnsRaw([{
+      id: row.id,
+      documentId: row.document_id,
+      branchId: row.branch_id,
+      versionNumber: row.version_number,
+      snapshot: row.snapshot,
+      patch: row.patch ?? null,
+      actionType: row.action_type ?? null,
+      actionMetadata: row.action_metadata ?? null,
+      source: row.source,
+      createdById: row.created_by_id,
+      createdByType: row.created_by_type,
+      createdAt: new Date(row.created_at),
+      isTombstone: row.is_tombstone ?? false,
+      sourceBranchId: null,
+      sourceVersionId: row.source_version_id ?? null,
+      publishedToVersionId: null,
+      sourceBranchName: null,
+      isPublished: row.is_published ?? false,
+    }]);
+  }
+
   it('should create a new version with source=revert and sourceVersionId pointing to the restored version', async () => {
     const { restoreDocumentVersion } = await import('../../src/services/document-version-service');
     const db = await import('../../src/db');
@@ -68,9 +104,8 @@ describe('restoreDocumentVersion', () => {
       source_version_id: 'target-version-uuid',
     });
 
-    // Query 1: getDocumentVersion SELECT by id
-    vi.mocked(db.query).mockResolvedValueOnce({ rows: [targetRow] });
-    // Query 2: createDocumentVersion INSERT (skipDuplicateCheck=true, no extra queries)
+    stubTargetRow(targetRow);
+    // createDocumentVersion INSERT (skipDuplicateCheck=true, no extra queries)
     vi.mocked(db.query).mockResolvedValueOnce({ rows: [newVersionRow] });
 
     const result = await restoreDocumentVersion({
@@ -112,11 +147,10 @@ describe('restoreDocumentVersion', () => {
       snapshot: reconstructedSnapshot,
     });
 
-    // Query 1: getDocumentVersion SELECT by id (null snapshot)
-    vi.mocked(db.query).mockResolvedValueOnce({ rows: [patchOnlyRow] });
-    // Query 2: getDocumentVersionByNumber inside reconstructVersionSnapshot (returns snapshot → early return)
+    stubTargetRow(patchOnlyRow);
+    // Query 1: getDocumentVersionByNumber inside reconstructVersionSnapshot (returns snapshot → early return)
     vi.mocked(db.query).mockResolvedValueOnce({ rows: [reconstructedRow] });
-    // Query 3: createDocumentVersion INSERT
+    // Query 2: createDocumentVersion INSERT
     vi.mocked(db.query).mockResolvedValueOnce({ rows: [newVersionRow] });
 
     const result = await restoreDocumentVersion({
@@ -136,10 +170,8 @@ describe('restoreDocumentVersion', () => {
   it('should throw RestoreVersionNotFoundError when the target version does not exist', async () => {
     const { restoreDocumentVersion } = await import('../../src/services/document-version-service');
     const { RestoreVersionNotFoundError } = await import('../../src/services/errors');
-    const db = await import('../../src/db');
 
-    // getDocumentVersion returns null (empty rows)
-    vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
+    // getDocumentVersion returns null (no matching row; default stub is empty)
 
     await expect(
       restoreDocumentVersion({
@@ -155,10 +187,9 @@ describe('restoreDocumentVersion', () => {
   it('should throw RestoreVersionNotFoundError when version belongs to a different document', async () => {
     const { restoreDocumentVersion } = await import('../../src/services/document-version-service');
     const { RestoreVersionNotFoundError } = await import('../../src/services/errors');
-    const db = await import('../../src/db');
 
     const wrongDocRow = createMockRow({ document_id: 'DIFFERENT-doc-uuid' });
-    vi.mocked(db.query).mockResolvedValueOnce({ rows: [wrongDocRow] });
+    stubTargetRow(wrongDocRow);
 
     await expect(
       restoreDocumentVersion({
@@ -174,10 +205,9 @@ describe('restoreDocumentVersion', () => {
   it('should throw RestoreVersionNotFoundError when version belongs to a different branch', async () => {
     const { restoreDocumentVersion } = await import('../../src/services/document-version-service');
     const { RestoreVersionNotFoundError } = await import('../../src/services/errors');
-    const db = await import('../../src/db');
 
     const wrongBranchRow = createMockRow({ branch_id: 'DIFFERENT-branch-uuid' });
-    vi.mocked(db.query).mockResolvedValueOnce({ rows: [wrongBranchRow] });
+    stubTargetRow(wrongBranchRow);
 
     await expect(
       restoreDocumentVersion({
@@ -193,14 +223,13 @@ describe('restoreDocumentVersion', () => {
   it('should throw RestoreVersionNotFoundError when the target version is a tombstone', async () => {
     const { restoreDocumentVersion } = await import('../../src/services/document-version-service');
     const { RestoreVersionNotFoundError } = await import('../../src/services/errors');
-    const db = await import('../../src/db');
 
     const tombstoneRow = createMockRow({
       id: 'tombstone-version-uuid',
       snapshot: null,
       is_tombstone: true,
     });
-    vi.mocked(db.query).mockResolvedValueOnce({ rows: [tombstoneRow] });
+    stubTargetRow(tombstoneRow);
 
     await expect(
       restoreDocumentVersion({
@@ -232,7 +261,7 @@ describe('restoreDocumentVersion', () => {
       source_version_id: null,
     });
 
-    vi.mocked(db.query).mockResolvedValueOnce({ rows: [targetRow] });
+    stubTargetRow(targetRow);
     vi.mocked(db.query).mockResolvedValueOnce({ rows: [unrelatedRow] });
 
     await expect(
@@ -257,9 +286,8 @@ describe('restoreDocumentVersion', () => {
       snapshot: null,
     });
 
-    // Query 1: getDocumentVersion (null snapshot)
-    vi.mocked(db.query).mockResolvedValueOnce({ rows: [patchOnlyRow] });
-    // Query 2: getDocumentVersionByNumber inside reconstructVersionSnapshot — returns null (not found)
+    stubTargetRow(patchOnlyRow);
+    // getDocumentVersionByNumber inside reconstructVersionSnapshot — returns null (not found)
     vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
 
     await expect(

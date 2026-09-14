@@ -8,12 +8,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { getEffectiveRole } from '../../src/auth/authorization';
 import { minRole } from '../../src/auth/roles';
-import { userSiteRoles } from '../../src/db/schema';
+import { agents, userSiteRoles } from '../../src/db/schema';
 import { stubDatabase, type DatabaseStub } from '../__stubs__/database';
 import { query } from '../../src/db';
 
-// The agent site-role resolver still reads through the legacy query path, which
-// the Drizzle stub does not see.
+// The legacy user_site_roles fallback path still reads through query().
 vi.mock('../../src/db', async (importOriginal) => ({
   ...await importOriginal<typeof import('../../src/db')>(),
   query: vi.fn(),
@@ -67,7 +66,7 @@ describe('Permission Intersection', () => {
 
     // Test 59: Agent with actingUserEmail gets min(agentRole, actingUserSiteRole)
     it('should apply permission intersection for agent with actingUserEmail', async () => {
-      vi.mocked(query).mockResolvedValueOnce({ rows: [{ role: 'admin', implicit: false }] });
+      database.on(agents).select.returnsRaw([{ role: 'admin', implicit: false }]);
       // The acting user's site role, reached through the users join.
       database.on(userSiteRoles).select.returns([{ role: 'team_member' }]);
 
@@ -90,7 +89,7 @@ describe('Permission Intersection', () => {
 
     // Test 60: Agent without actingUserEmail gets normal role
     it('should skip intersection when actingUserEmail is absent', async () => {
-      vi.mocked(query).mockResolvedValueOnce({ rows: [{ role: 'admin', implicit: false }] });
+      database.on(agents).select.returnsRaw([{ role: 'admin', implicit: false }]);
 
       const result = await getEffectiveRole(
         {
@@ -110,7 +109,7 @@ describe('Permission Intersection', () => {
 
     // Test 61: Acting user not in allowlist -> NO_ACCESS
     it('should return NO_ACCESS when acting user is not in allowlist', async () => {
-      vi.mocked(query).mockResolvedValueOnce({ rows: [{ role: 'admin', implicit: false }] });
+      database.on(agents).select.returnsRaw([{ role: 'admin', implicit: false }]);
       // An acting user outside the allowlist matches no row.
 
       const result = await getEffectiveRole(

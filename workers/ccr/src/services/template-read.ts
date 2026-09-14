@@ -10,7 +10,9 @@
  * reads downstream as "the template declares nothing" rather than as a failed read.
  */
 
-import { query } from '../db';
+import { and, eq } from 'drizzle-orm';
+import { documentVersions } from '../db/schema';
+import { db } from '../db/scope';
 import { getBranch, getMainBranch } from './branch-service';
 import { branchInheritsFromMain } from './document-queries';
 import {
@@ -68,10 +70,10 @@ export async function resolveTemplateReadBranch(
     return branchId;
   }
 
-  const local = await query(
-    `SELECT 1 FROM app.document_versions
-     WHERE document_id = $1 AND branch_id = $2 LIMIT 1`,
-    [templateId, branchId],
-  );
-  return local.rows.length > 0 ? branchId : mainBranchId;
+  const [local] = await db()
+    .select({ id: documentVersions.id })
+    .from(documentVersions)
+    .where(and(eq(documentVersions.documentId, templateId), eq(documentVersions.branchId, branchId)))
+    .limit(1);
+  return local !== undefined ? branchId : mainBranchId;
 }

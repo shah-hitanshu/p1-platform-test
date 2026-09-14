@@ -1,53 +1,42 @@
 /**
- * batchSyncToPostgres binds raw objects (not pre-stringified JSON) to its
- * jsonb[] params. postgres.js's jsonb[] encoder serializes each element
- * itself, so a pre-stringified element is JSON-encoded twice and Postgres
- * stores a jsonb string scalar of escaped JSON instead of the object.
+ * batchSyncToPostgres binds each jsonb[] element as a JSON string, because the
+ * Drizzle client parses and serializes json as identity: its array serializer
+ * quotes each element for the array literal without encoding it first, so an
+ * unstringified element crashes the serializer. On the legacy query()
+ * connection, which keeps postgres.js's own json serializer, the same
+ * pre-stringifying would double-encode instead [PCC-3468]. Which is correct
+ * depends on the connection the statement runs on.
  *
- * This test mocks query(), so it sees only the value handed to the driver,
- * never what Postgres stores — it cannot observe the double-encoding directly.
- * The database-backed guard is
+ * This test stubs the Drizzle connection, so it sees only the value handed to
+ * the driver, never what Postgres stores — it cannot observe how Postgres
+ * parses the bound string back into jsonb. The database-backed guard is
  * tests/integration/batch-sync.jsonb-serialization.integration.spec.ts.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-
-vi.mock('../../src/db', () => ({ query: vi.fn() }));
+import { describe, it, expect, beforeEach } from 'vitest';
+import { stubDatabase, type DatabaseStub } from '../__stubs__/database';
+import { documentVersions } from '../../src/db/schema';
 
 describe('PCC-3468: batchSyncToPostgres jsonb[] serialization', () => {
+  let database: DatabaseStub;
+
   beforeEach(() => {
-    vi.resetAllMocks();
+    database = stubDatabase();
   });
 
-  // Capture the parameters bound to the batch INSERT (the query containing the
-  // jsonb[] unnests). Uses a typed mockImplementation so the captured params
-  // are strongly typed without casting the untyped mock's call log.
-  async function captureInsertParams(): Promise<{
-    db: typeof import('../../src/db');
-    getParams: () => unknown[];
-  }> {
-    const db = await import('../../src/db');
-    let insertParams: unknown[] | undefined;
-    vi.mocked(db.query).mockImplementation((sql: string, params?: unknown[]) => {
-      if (sql.includes('unnest($3::jsonb[])')) {
-        insertParams = params;
-      }
-      return Promise.resolve({ rows: [] });
-    });
-    return {
-      db,
-      getParams: (): unknown[] => {
-        if (insertParams === undefined) {
-          throw new Error('batch insert query was not issued');
-        }
-        return insertParams;
-      },
-    };
+  // The batch INSERT binds documentIds, branchIds, snapshots, actorIds,
+  // actorTypes, actionTypes, actionMetadatas in that order (params[2] is the
+  // jsonb[] snapshot bind, params[6] the jsonb[] action_metadata bind).
+  function insertParams(): unknown[] {
+    const call = database.calls(documentVersions).insert[0];
+    if (call === undefined) {
+      throw new Error('batch insert query was not issued');
+    }
+    return call.params;
   }
 
-  it('binds snapshots ($3) and action_metadata ($7) as raw objects, never JSON strings', async () => {
+  it('binds snapshots ($3) and action_metadata ($7) as JSON strings, each parsing back to the original object', async () => {
     const { batchSyncToPostgres } = await import('../../src/services/document-version-service');
-    const { getParams } = await captureInsertParams();
 
     await batchSyncToPostgres([
       {
@@ -63,7 +52,7 @@ describe('PCC-3468: batchSyncToPostgres jsonb[] serialization', () => {
       },
     ]);
 
-    const params = getParams();
+    const params = insertParams();
     const snapshots = params[2];
     const actionMetadatas = params[6];
 
@@ -71,18 +60,17 @@ describe('PCC-3468: batchSyncToPostgres jsonb[] serialization', () => {
       throw new Error('expected snapshots and action_metadata binds to be arrays');
     }
 
-    // A pre-stringified element here double-encodes once Postgres's own
-    // jsonb[] driver serialization runs on top of it.
+    // Every element must be a JSON string — an object element crashes the
+    // jsonb[] array serializer rather than being encoded.
     for (const snapshot of snapshots) {
-      expect(typeof snapshot).toBe('object');
+      expect(typeof snapshot).toBe('string');
     }
-    expect(snapshots[0]).toEqual({ root: { props: { title: 'Doc 1' } }, content: [] });
-    expect(actionMetadatas[0]).toEqual({ componentType: 'Hero', zone: 'root' });
+    expect(JSON.parse(snapshots[0] as string)).toEqual({ root: { props: { title: 'Doc 1' } }, content: [] });
+    expect(JSON.parse(actionMetadatas[0] as string)).toEqual({ componentType: 'Hero', zone: 'root' });
   });
 
   it('binds absent action_metadata as SQL null, not the string "null"', async () => {
     const { batchSyncToPostgres } = await import('../../src/services/document-version-service');
-    const { getParams } = await captureInsertParams();
 
     await batchSyncToPostgres([
       {
@@ -95,7 +83,7 @@ describe('PCC-3468: batchSyncToPostgres jsonb[] serialization', () => {
       },
     ]);
 
-    const actionMetadatas = getParams()[6];
+    const actionMetadatas = insertParams()[6];
     if (!Array.isArray(actionMetadatas)) {
       throw new Error('expected action_metadata bind to be an array');
     }

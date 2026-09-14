@@ -51,6 +51,11 @@ export async function grantRole(params: GrantUserRoleParams): Promise<void> {
 
   const source = params.source ?? 'local';
 
+  // Kept on the legacy query() connection deliberately: site-service.ts's
+  // createSite calls this from inside a raw BEGIN/COMMIT block on that same
+  // connection. A Drizzle db() insert here would run on the separate Drizzle
+  // connection and could not see the just-inserted, not-yet-committed site
+  // row, failing its site_id foreign key. Convert this alongside site-service.ts.
   await query(
     `INSERT INTO app.user_site_roles (user_id, site_id, role, source, created_by_id, updated_at)
      VALUES ($1, $2, $3, $4, $5, NOW())

@@ -16,22 +16,22 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { DocumentVersionSource } from '../../src/types';
-
-// Mock database module
-vi.mock('../../src/db', () => ({
-  query: vi.fn(),
-}));
+import { stubDatabase, type DatabaseStub } from '../__stubs__/database';
+import { documentVersions } from '../../src/db/schema';
 
 describe('Phase 5.2: Batch Sync Function', () => {
+  let database: DatabaseStub;
+
   beforeEach(() => {
     vi.resetAllMocks();
+    database = stubDatabase();
   });
 
   // ===========================================================================
   // Types for testing
   // ===========================================================================
 
-  interface MockDocumentVersionRow {
+  type MockDocumentVersionRow = {
     id: string;
     document_id: string;
     branch_id: string;
@@ -41,7 +41,7 @@ describe('Phase 5.2: Batch Sync Function', () => {
     created_by_id: string;
     created_by_type: 'user' | 'agent' | 'system';
     created_at: string;
-  }
+  };
 
   function createMockVersionRow(
     overrides: Partial<MockDocumentVersionRow> = {},
@@ -75,7 +75,6 @@ describe('Phase 5.2: Batch Sync Function', () => {
       const { batchSyncToPostgres } = await import(
         '../../src/services/document-version-service'
       );
-      const db = await import('../../src/db');
 
       const mockRows = [
         createMockVersionRow({
@@ -97,7 +96,7 @@ describe('Phase 5.2: Batch Sync Function', () => {
           version_number: 2,
         }),
       ];
-      vi.mocked(db.query).mockResolvedValue({ rows: mockRows });
+      database.on(documentVersions).insert.returnsRaw(mockRows);
 
       const result = await batchSyncToPostgres([
         {
@@ -144,7 +143,6 @@ describe('Phase 5.2: Batch Sync Function', () => {
       const { batchSyncToPostgres } = await import(
         '../../src/services/document-version-service'
       );
-      const db = await import('../../src/db');
 
       const mockRow = createMockVersionRow({
         id: 'version-001',
@@ -152,7 +150,7 @@ describe('Phase 5.2: Batch Sync Function', () => {
         branch_id: 'branch-001',
         version_number: 5,
       });
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+      database.on(documentVersions).insert.returnsRaw([mockRow]);
 
       const result = await batchSyncToPostgres([
         {
@@ -172,7 +170,6 @@ describe('Phase 5.2: Batch Sync Function', () => {
       const { batchSyncToPostgres } = await import(
         '../../src/services/document-version-service'
       );
-      const db = await import('../../src/db');
 
       // Only 2 of 3 rows inserted (one deduped by the query)
       const mockRows = [
@@ -187,7 +184,7 @@ describe('Phase 5.2: Batch Sync Function', () => {
           version_number: 1,
         }),
       ];
-      vi.mocked(db.query).mockResolvedValue({ rows: mockRows });
+      database.on(documentVersions).insert.returnsRaw(mockRows);
 
       const result = await batchSyncToPostgres([
         {
@@ -221,10 +218,9 @@ describe('Phase 5.2: Batch Sync Function', () => {
       const { batchSyncToPostgres } = await import(
         '../../src/services/document-version-service'
       );
-      const db = await import('../../src/db');
 
       // No rows inserted (all deduped)
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
+      database.on(documentVersions).insert.returnsRaw([]);
 
       const result = await batchSyncToPostgres([
         {
@@ -251,12 +247,11 @@ describe('Phase 5.2: Batch Sync Function', () => {
       const { batchSyncToPostgres } = await import(
         '../../src/services/document-version-service'
       );
-      const db = await import('../../src/db');
 
       const mockRow = createMockVersionRow({
         source: 'realtime',
       });
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+      database.on(documentVersions).insert.returnsRaw([mockRow]);
 
       const result = await batchSyncToPostgres([
         {
@@ -275,9 +270,8 @@ describe('Phase 5.2: Batch Sync Function', () => {
       const { batchSyncToPostgres } = await import(
         '../../src/services/document-version-service'
       );
-      const db = await import('../../src/db');
 
-      vi.mocked(db.query).mockRejectedValue(new Error('connection refused'));
+      database.on(documentVersions).insert.rejects(new Error('connection refused'));
 
       await expect(
         batchSyncToPostgres([
@@ -297,7 +291,6 @@ describe('Phase 5.2: Batch Sync Function', () => {
       const { batchSyncToPostgres } = await import(
         '../../src/services/document-version-service'
       );
-      const db = await import('../../src/db');
 
       const mockRows = [
         createMockVersionRow({
@@ -313,7 +306,7 @@ describe('Phase 5.2: Batch Sync Function', () => {
           created_by_type: 'agent',
         }),
       ];
-      vi.mocked(db.query).mockResolvedValue({ rows: mockRows });
+      database.on(documentVersions).insert.returnsRaw(mockRows);
 
       const result = await batchSyncToPostgres([
         {
@@ -341,7 +334,6 @@ describe('Phase 5.2: Batch Sync Function', () => {
       const { batchSyncToPostgres } = await import(
         '../../src/services/document-version-service'
       );
-      const db = await import('../../src/db');
 
       const mockRows = [
         createMockVersionRow({
@@ -357,7 +349,7 @@ describe('Phase 5.2: Batch Sync Function', () => {
           version_number: 1,
         }),
       ];
-      vi.mocked(db.query).mockResolvedValue({ rows: mockRows });
+      database.on(documentVersions).insert.returnsRaw(mockRows);
 
       const result = await batchSyncToPostgres([
         {
@@ -403,9 +395,8 @@ describe('Phase 5.2: Batch Sync Function', () => {
       const { batchSyncToPostgres } = await import(
         '../../src/services/document-version-service'
       );
-      const db = await import('../../src/db');
 
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
+      database.on(documentVersions).insert.returnsRaw([]);
 
       const result = await batchSyncToPostgres([]);
 

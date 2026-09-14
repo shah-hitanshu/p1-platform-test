@@ -22,7 +22,11 @@
  * principal — the upsert only adopts rows whose principal_id is NULL.
  */
 
-import { query } from '../db';
+import { eq, sql } from 'drizzle-orm';
+import { getLogger } from '@pantheon-systems/p1-telemetry';
+import { driverErrorCode } from '../db/driver-error';
+import { users } from '../db/schema';
+import { db } from '../db/scope';
 import { providerSubToUuid } from '../auth/uuid-v5';
 import { UUID_RE } from '../utils/branch-ref';
 
@@ -49,19 +53,6 @@ export type ActorResolution =
 export type ActorResolver = (actor: ResolvableActor) => Promise<ActorResolution>;
 
 // =============================================================================
-// Helpers
-// =============================================================================
-
-/** Checks if an error is a PostgreSQL unique constraint violation. */
-function isUniqueViolation(error: unknown): boolean {
-  return (
-    error instanceof Error &&
-    'code' in error &&
-    (error as NodeJS.ErrnoException).code === '23505'
-  );
-}
-
-// =============================================================================
 // Resolution
 // =============================================================================
 
@@ -81,7 +72,7 @@ export async function resolveActor(actor: ResolvableActor): Promise<ActorResolut
   // as an unresolvable actor, instead of crashing on actorId.indexOf('|')
   // below with a TypeError. Log it: an empty id is a server-side defect.
   if (typeof actorId !== 'string' || actorId === '') {
-    console.warn('resolveActor received a missing or empty actorId', { actorType });
+    getLogger().warn('resolveActor received a missing or empty actorId', { actorType });
     return { resolved: false, reason: 'actor id is missing or empty' };
   }
 
@@ -112,13 +103,12 @@ export async function resolveActor(actor: ResolvableActor): Promise<ActorResolut
   const principalUuid = await providerSubToUuid('auth0', actorId);
 
   // Look up an already-provisioned user by principal.
-  const existing = await query<{ id: string }>(
-    'SELECT id FROM app.users WHERE principal_id = $1',
-    [principalUuid],
-  );
-  const existingId = existing.rows[0]?.id;
-  if (existingId !== undefined) {
-    return { resolved: true, actorId: existingId };
+  const [existing] = await db()
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.principalId, principalUuid));
+  if (existing !== undefined) {
+    return { resolved: true, actorId: existing.id };
   }
 
   // Normalize like every other email write path (users-api.ts, index.ts) —
@@ -145,11 +135,8 @@ export async function resolveActor(actor: ResolvableActor): Promise<ActorResolut
   // provisioning must never create that first row, or an incidental OAuth
   // edit in a fresh environment would lock everyone else out at login.
   // Mirrors the deliberate bootstrap handling in users-api.ts.
-  const anyUsers = await query<{ exists: boolean }>(
-    'SELECT EXISTS(SELECT 1 FROM app.users) AS exists',
-    [],
-  );
-  if (anyUsers.rows[0]?.exists !== true) {
+  const [anyUser] = await db().select({ id: users.id }).from(users).limit(1);
+  if (anyUser === undefined) {
     return {
       resolved: false,
       reason: 'users table is empty — JIT provisioning would activate the login allowlist',
@@ -162,35 +149,40 @@ export async function resolveActor(actor: ResolvableActor): Promise<ActorResolut
     // principal returns no row — never hijacked. The OR arm covers the
     // same-principal race: a concurrent batch that just linked this exact
     // principal must resolve, not skip.
-    const upserted = await query<{ id: string }>(
-      `INSERT INTO app.users (email, name, principal_id, auth_provider)
-       VALUES ($1, $2, $3, $4)
-       ON CONFLICT (email) DO UPDATE
-       SET principal_id = EXCLUDED.principal_id, auth_provider = EXCLUDED.auth_provider
-       WHERE app.users.principal_id IS NULL
-          OR app.users.principal_id = EXCLUDED.principal_id
-       RETURNING id`,
-      [normalizedEmail, actorName ?? null, principalUuid, authProvider],
-    );
-    const upsertedId = upserted.rows[0]?.id;
-    if (upsertedId !== undefined) {
-      return { resolved: true, actorId: upsertedId };
+    const [upserted] = await db()
+      .insert(users)
+      .values({
+        email: normalizedEmail,
+        name: actorName ?? null,
+        principalId: principalUuid,
+        authProvider,
+      })
+      .onConflictDoUpdate({
+        target: users.email,
+        set: {
+          principalId: sql`excluded.principal_id`,
+          authProvider: sql`excluded.auth_provider`,
+        },
+        setWhere: sql`${users.principalId} IS NULL OR ${users.principalId} = excluded.principal_id`,
+      })
+      .returning({ id: users.id });
+    if (upserted !== undefined) {
+      return { resolved: true, actorId: upserted.id };
     }
     return {
       resolved: false,
       reason: 'email is already linked to a different principal',
     };
   } catch (error) {
-    if (isUniqueViolation(error)) {
+    if (driverErrorCode(error) === '23505') {
       // Race: a concurrent writer provisioned the same principal_id between
       // our lookup and insert. The row exists now — re-run the lookup.
-      const retry = await query<{ id: string }>(
-        'SELECT id FROM app.users WHERE principal_id = $1',
-        [principalUuid],
-      );
-      const retryId = retry.rows[0]?.id;
-      if (retryId !== undefined) {
-        return { resolved: true, actorId: retryId };
+      const [retry] = await db()
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.principalId, principalUuid));
+      if (retry !== undefined) {
+        return { resolved: true, actorId: retry.id };
       }
       return {
         resolved: false,

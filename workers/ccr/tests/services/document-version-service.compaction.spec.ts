@@ -9,12 +9,18 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { stubDatabase, type DatabaseStub } from '../__stubs__/database';
+import { documentVersions } from '../../src/db/schema';
 
+// createDocumentVersion, reconstructVersionSnapshot and replayVersionChain
+// still read through the legacy query() connection (see the comments on those
+// functions in document-version-service.ts); batchSyncToPostgres reads
+// through db() (Drizzle), stubbed below.
 vi.mock('../../src/db', () => ({
   query: vi.fn(),
 }));
 
-interface MockVersionRow {
+type MockVersionRow = {
   id: string;
   document_id: string;
   branch_id: string;
@@ -26,7 +32,7 @@ interface MockVersionRow {
   created_by_type: string;
   created_at: string;
   is_tombstone?: boolean;
-}
+};
 
 function versionRow(overrides: Partial<MockVersionRow> = {}): MockVersionRow {
   return {
@@ -44,6 +50,26 @@ function versionRow(overrides: Partial<MockVersionRow> = {}): MockVersionRow {
   };
 }
 
+/**
+ * batchSyncToPostgres's own prev-version lookup reads through the Drizzle
+ * query builder (camelCase columns), unlike its raw INSERT/UPDATE statements.
+ */
+function drizzlePrevRow(row: MockVersionRow): Record<string, unknown> {
+  return {
+    id: row.id,
+    documentId: row.document_id,
+    branchId: row.branch_id,
+    versionNumber: row.version_number,
+    snapshot: row.snapshot,
+    patch: row.patch,
+    source: row.source,
+    createdById: row.created_by_id,
+    createdByType: row.created_by_type,
+    createdAt: row.created_at,
+    isTombstone: row.is_tombstone ?? false,
+  };
+}
+
 /** Params of the compacting statement, which is always the final query. */
 function lastQueryParams(mockQuery: { mock: { calls: unknown[][] } }): unknown[] {
   const calls = mockQuery.mock.calls;
@@ -51,8 +77,11 @@ function lastQueryParams(mockQuery: { mock: { calls: unknown[][] } }): unknown[]
 }
 
 describe('Version compaction', () => {
+  let database: DatabaseStub;
+
   beforeEach(() => {
     vi.resetAllMocks();
+    database = stubDatabase();
   });
 
   describe('createDocumentVersion', () => {
@@ -227,7 +256,6 @@ describe('Version compaction', () => {
   describe('batchSyncToPostgres', () => {
     it('leaves the previous snapshot in place when that row carries no patch', async () => {
       const { batchSyncToPostgres } = await import('../../src/services/document-version-service');
-      const db = await import('../../src/db');
 
       const inserted = versionRow({
         id: 'version-3',
@@ -236,10 +264,8 @@ describe('Version compaction', () => {
       });
       const previous = versionRow({ id: 'version-2', version_number: 2, patch: null });
 
-      vi.mocked(db.query)
-        .mockResolvedValueOnce({ rows: [inserted] })
-        .mockResolvedValueOnce({ rows: [previous] })
-        .mockResolvedValueOnce({ rows: [] });
+      database.on(documentVersions).insert.returnsRaw([inserted]);
+      database.on(documentVersions).select.returnsRaw([drizzlePrevRow(previous)]);
 
       await batchSyncToPostgres([
         {
@@ -251,13 +277,12 @@ describe('Version compaction', () => {
         },
       ]);
 
-      // $4 gates the nullify half of the compacting statement.
-      expect(lastQueryParams(vi.mocked(db.query))[3]).toBe(false);
+      // The 4th bind gates the nullify half of the compacting statement.
+      expect(database.calls(documentVersions).update[0].params[3]).toBe(false);
     });
 
     it('compacts the previous snapshot when that row carries a patch', async () => {
       const { batchSyncToPostgres } = await import('../../src/services/document-version-service');
-      const db = await import('../../src/db');
 
       const inserted = versionRow({
         id: 'version-3',
@@ -270,10 +295,8 @@ describe('Version compaction', () => {
         patch: [{ op: 'add', path: '/content/0', value: 'a' }],
       });
 
-      vi.mocked(db.query)
-        .mockResolvedValueOnce({ rows: [inserted] })
-        .mockResolvedValueOnce({ rows: [previous] })
-        .mockResolvedValueOnce({ rows: [] });
+      database.on(documentVersions).insert.returnsRaw([inserted]);
+      database.on(documentVersions).select.returnsRaw([drizzlePrevRow(previous)]);
 
       await batchSyncToPostgres([
         {
@@ -285,7 +308,7 @@ describe('Version compaction', () => {
         },
       ]);
 
-      expect(lastQueryParams(vi.mocked(db.query))[3]).toBe(true);
+      expect(database.calls(documentVersions).update[0].params[3]).toBe(true);
     });
   });
 
@@ -415,7 +438,6 @@ describe('Version compaction', () => {
     it('keeps the snapshot on every 25th version in the batch sync path', async () => {
       const { batchSyncToPostgres } =
         await import('../../src/services/document-version-service');
-      const db = await import('../../src/db');
 
       const inserted = versionRow({
         id: 'version-26',
@@ -428,10 +450,8 @@ describe('Version compaction', () => {
         patch: [{ op: 'add', path: '/content/0', value: 'a' }],
       });
 
-      vi.mocked(db.query)
-        .mockResolvedValueOnce({ rows: [inserted] })
-        .mockResolvedValueOnce({ rows: [previous] })
-        .mockResolvedValueOnce({ rows: [] });
+      database.on(documentVersions).insert.returnsRaw([inserted]);
+      database.on(documentVersions).select.returnsRaw([drizzlePrevRow(previous)]);
 
       await batchSyncToPostgres([
         {
@@ -443,7 +463,7 @@ describe('Version compaction', () => {
         },
       ]);
 
-      expect(lastQueryParams(vi.mocked(db.query))[3]).toBe(false);
+      expect(database.calls(documentVersions).update[0].params[3]).toBe(false);
     });
   });
 

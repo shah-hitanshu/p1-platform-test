@@ -9,6 +9,8 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { WorkflowSettings } from '../../src/types';
+import { stubDatabase, type DatabaseStub } from '../__stubs__/database';
+import { agents } from '../../src/db/schema';
 
 // Mock database module
 vi.mock('../../src/db', () => ({
@@ -45,8 +47,15 @@ function sitesQueryCall(calls: readonly (readonly unknown[])[]): {
 }
 
 describe('Phase 3.1: Site Service', () => {
+  // agent-site-role-service and user-site-role-service read through db()
+  // (Drizzle) now; stubDatabase() installs the fallback scope they resolve
+  // against, alongside the legacy query() mock createSite/listSites still
+  // use directly.
+  let database: DatabaseStub;
+
   beforeEach(() => {
     vi.resetAllMocks();
+    database = stubDatabase();
   });
 
   // Default workflow settings as defined in schema
@@ -981,9 +990,8 @@ describe('Phase 3.1: Site Service', () => {
       const { listSites } = await import('../../src/services/site-service');
       const db = await import('../../src/db');
 
-      vi.mocked(db.query)
-        .mockResolvedValueOnce({ rows: [{ is_global: true }] })
-        .mockResolvedValue({ rows: [] });
+      database.on(agents).select.returns([{ isGlobal: true }]);
+      vi.mocked(db.query).mockResolvedValue({ rows: [] });
 
       await listSites({
         principalId: 'agent-abc',
@@ -1017,9 +1025,8 @@ describe('Phase 3.1: Site Service', () => {
       const { listSites } = await import('../../src/services/site-service');
       const db = await import('../../src/db');
 
-      vi.mocked(db.query)
-        .mockResolvedValueOnce({ rows: [{ is_global: true }] })
-        .mockResolvedValue({ rows: [] });
+      database.on(agents).select.returns([{ isGlobal: true }]);
+      vi.mocked(db.query).mockResolvedValue({ rows: [] });
 
       await listSites({
         principalId: 'agent-abc',

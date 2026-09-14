@@ -15,8 +15,9 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import postgres from 'postgres';
+import type postgres from 'postgres';
 import { setDatabaseInstance, type DatabaseConnection } from '../../src/db';
+import { createRealDatabaseConnection } from '../helpers/database';
 import {
   createDocumentOnBranch,
   createDocumentVersion,
@@ -26,14 +27,11 @@ import {
 } from '../../src/services';
 import { batchSyncToPostgres } from '../../src/services/document-version-service';
 
-const TEST_DATABASE_URL =
-  process.env.POSTGRES_CONNECTION_STRING ??
-  'postgresql://cssuser:csspass@localhost:5432/cssdb';
-
 const PANTHEON_SITE_ID = 'test-published-version-pinning-site';
 const SYSTEM_ACTOR = '00000000-0000-0000-0000-000000000000';
 
 let sql: ReturnType<typeof postgres>;
+let connection: DatabaseConnection;
 let testSiteId: string;
 let mainBranchId: string;
 
@@ -113,19 +111,9 @@ async function publish(documentId: string): Promise<void> {
 }
 
 beforeAll(async () => {
-  sql = postgres(TEST_DATABASE_URL, { max: 1 });
-
-  const connection: DatabaseConnection = {
-    async query(sqlQuery, params) {
-      const result = await sql.unsafe(sqlQuery, params as postgres.ParameterOrJSON<never>[]);
-      const rows = [...result] as never[];
-      const resultWithCount = result as unknown as { count?: number };
-      return { rows, rowCount: resultWithCount.count ?? rows.length };
-    },
-    async close() {
-      // The suite owns the client's lifecycle; afterAll ends it.
-    },
-  };
+  const real = createRealDatabaseConnection();
+  connection = real.connection;
+  sql = real.sql;
   setDatabaseInstance(connection);
 
   const stale = await sql<{ id: string }[]>`
@@ -157,7 +145,7 @@ afterAll(async () => {
     // Ignore cleanup errors
   }
   setDatabaseInstance(null);
-  await sql.end();
+  await connection.close();
 });
 
 describe('Published version snapshot pinning [PCC-3652]', () => {

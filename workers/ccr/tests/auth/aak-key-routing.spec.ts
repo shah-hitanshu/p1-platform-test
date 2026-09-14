@@ -9,7 +9,6 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { AuthenticatedPrincipal } from '../../src/types';
-import { stubDatabase } from '../__stubs__/database';
 
 // Mock the database
 vi.mock('../../src/db', () => ({
@@ -202,9 +201,13 @@ describe('aak_ key routing (B4)', () => {
     passThroughOnException: vi.fn(),
   };
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.resetModules();
     vi.clearAllMocks();
+    // resetModules() drops the cached src/db/scope module, so a stubDatabase()
+    // bound to the pre-reset instance would install its fallback where the
+    // src/index re-imported below can never see it — re-import fresh.
+    const { stubDatabase } = await import('../__stubs__/database');
     stubDatabase();
   });
 

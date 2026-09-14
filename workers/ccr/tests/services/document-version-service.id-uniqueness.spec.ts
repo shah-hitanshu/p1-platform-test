@@ -11,6 +11,8 @@
 
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import type { DocumentVersionSource } from '../../src/types';
+import { stubDatabase, type DatabaseStub } from '../__stubs__/database';
+import { documentVersions } from '../../src/db/schema';
 
 vi.mock('../../src/db', () => ({
   query: vi.fn(),
@@ -27,7 +29,7 @@ function comp(type: string, id: string, extra: Record<string, unknown> = {}): Co
   return { type, props: { id, ...extra } };
 }
 
-interface MockVersionRow {
+type MockVersionRow = {
   id: string;
   document_id: string;
   branch_id: string;
@@ -40,7 +42,7 @@ interface MockVersionRow {
   patch?: unknown[] | null;
   action_type?: string | null;
   action_metadata?: Record<string, unknown> | null;
-}
+};
 
 function versionRow(overrides: Partial<MockVersionRow> = {}): MockVersionRow {
   return {
@@ -362,25 +364,35 @@ describe('createDocumentVersion within-document id uniqueness', () => {
 
 describe('batchSyncToPostgres within-document id uniqueness', () => {
   let warnSpy: Mock;
+  let database: DatabaseStub;
 
   beforeEach(() => {
     vi.resetAllMocks();
+    database = stubDatabase();
     warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     vi.spyOn(console, 'log').mockImplementation(() => undefined);
   });
 
+  /**
+   * The batch INSERT's jsonb[] snapshot bind (params[2]), parsed back from the
+   * JSON strings it binds each element as.
+   */
+  function insertedSnapshots(): Record<string, unknown>[] {
+    const call = database.calls(documentVersions).insert[0];
+    if (call === undefined) {
+      throw new Error('No batch INSERT into document_versions was captured');
+    }
+    const snapshotsJson = call.params[2] as string[];
+    return snapshotsJson.map((json) => JSON.parse(json) as Record<string, unknown>);
+  }
+
   it('re-mints later duplicates independently for each batched item', async () => {
     const { batchSyncToPostgres } = await import('../../src/services/document-version-service');
-    const db = await import('../../src/db');
-    const queryMock = vi.mocked(db.query);
 
-    queryMock.mockResolvedValue({ rows: [] });
-    queryMock.mockResolvedValueOnce({
-      rows: [
-        versionRow({ id: 'v1', document_id: 'doc-001', source: 'realtime', version_number: 1 }),
-        versionRow({ id: 'v2', document_id: 'doc-002', source: 'realtime', version_number: 1 }),
-      ],
-    });
+    database.on(documentVersions).insert.returnsRaw([
+      versionRow({ id: 'v1', document_id: 'doc-001', source: 'realtime', version_number: 1 }),
+      versionRow({ id: 'v2', document_id: 'doc-002', source: 'realtime', version_number: 1 }),
+    ]);
 
     await batchSyncToPostgres([
       {
@@ -409,7 +421,7 @@ describe('batchSyncToPostgres within-document id uniqueness', () => {
       },
     ]);
 
-    const snapshots = insertCallParams(queryMock)[2] as { content: Comp[] }[];
+    const snapshots = insertedSnapshots() as { content: Comp[] }[];
     expect(snapshots).toHaveLength(2);
 
     expect(snapshots[0].content[0].props.id).toBe('HeroBlock-dup');
@@ -425,13 +437,10 @@ describe('batchSyncToPostgres within-document id uniqueness', () => {
 
   it('logs a structured warning naming each affected document and its id pairs', async () => {
     const { batchSyncToPostgres } = await import('../../src/services/document-version-service');
-    const db = await import('../../src/db');
-    const queryMock = vi.mocked(db.query);
 
-    queryMock.mockResolvedValue({ rows: [] });
-    queryMock.mockResolvedValueOnce({
-      rows: [versionRow({ id: 'v1', document_id: 'doc-batch-777', source: 'realtime', version_number: 1 })],
-    });
+    database.on(documentVersions).insert.returnsRaw([
+      versionRow({ id: 'v1', document_id: 'doc-batch-777', source: 'realtime', version_number: 1 }),
+    ]);
 
     await batchSyncToPostgres([
       {
@@ -448,9 +457,7 @@ describe('batchSyncToPostgres within-document id uniqueness', () => {
       },
     ]);
 
-    const newId = (
-      (insertCallParams(queryMock)[2] as { content: Comp[] }[])[0]
-    ).content[1].props.id;
+    const newId = (insertedSnapshots()[0] as { content: Comp[] }).content[1].props.id;
     expect(warnSpy).toHaveBeenCalled();
     const output = warnOutput(warnSpy);
     expect(output).toContain('doc-batch-777');
@@ -460,13 +467,10 @@ describe('batchSyncToPostgres within-document id uniqueness', () => {
 
   it('persists batched snapshots with unique ids unchanged and does not warn', async () => {
     const { batchSyncToPostgres } = await import('../../src/services/document-version-service');
-    const db = await import('../../src/db');
-    const queryMock = vi.mocked(db.query);
 
-    queryMock.mockResolvedValue({ rows: [] });
-    queryMock.mockResolvedValueOnce({
-      rows: [versionRow({ id: 'v1', document_id: 'doc-001', source: 'realtime', version_number: 1 })],
-    });
+    database.on(documentVersions).insert.returnsRaw([
+      versionRow({ id: 'v1', document_id: 'doc-001', source: 'realtime', version_number: 1 }),
+    ]);
 
     const snapshot = {
       content: [
@@ -485,7 +489,7 @@ describe('batchSyncToPostgres within-document id uniqueness', () => {
       },
     ]);
 
-    const snapshots = insertCallParams(queryMock)[2] as Record<string, unknown>[];
+    const snapshots = insertedSnapshots();
     expect(snapshots[0]).toEqual(snapshot);
     expect(warnSpy).not.toHaveBeenCalled();
   });

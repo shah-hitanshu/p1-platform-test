@@ -8,9 +8,10 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import postgres from 'postgres';
+import type postgres from 'postgres';
 import { setDatabaseInstance } from '../../src/db';
-import type { DatabaseConnection, QueryResult } from '../../src/db';
+import type { DatabaseConnection } from '../../src/db';
+import { createRealDatabaseConnection } from '../helpers/database';
 import { createSite } from '../../src/services/site-service';
 import { createDocumentOnBranch } from '../../src/services/branch-document-service';
 import {
@@ -25,7 +26,6 @@ import {
   rollbackMigration,
 } from '../../src/services/migration-service';
 
-const CONNECTION_STRING = 'postgresql://cssuser:csspass@localhost:5432/cssdb';
 const TEST_USER_ID = '66666666-6666-6666-6666-666666666666';
 const SITE_PREFIX = 'branch-sync-test';
 
@@ -36,37 +36,17 @@ function makeSnapshot(components: unknown[]): Record<string, unknown> {
   return { content: components, root: { props: { title: 'Test' } }, zones: {} };
 }
 
-function createRealDatabaseConnection(connectionString: string): {
-  connection: DatabaseConnection;
-  sql: postgres.Sql;
-} {
-  const sql = postgres(connectionString, { transform: { undefined: null }, max: 1 });
-  const connection: DatabaseConnection = {
-    async query<T = Record<string, unknown>>(
-      sqlQuery: string,
-      params?: unknown[],
-    ): Promise<QueryResult<T>> {
-      const result = await sql.unsafe<T[]>(
-        sqlQuery,
-        params as unknown as postgres.ParameterOrJSON<never>[],
-      );
-      const rows = [...result] as T[];
-      const resultWithCount = result as unknown as { count?: number };
-      return { rows, rowCount: resultWithCount.count ?? rows.length };
-    },
-  };
-  return { connection, sql };
-}
-
 describe('Template sync — branch-scoped synced_version', () => {
   let sql: postgres.Sql;
+  let connection: DatabaseConnection;
   let siteId: string;
   let mainBranchId: string;
   let featureBranchId: string;
 
   beforeAll(async () => {
-    const { connection, sql: pgSql } = createRealDatabaseConnection(CONNECTION_STRING);
-    sql = pgSql;
+    const real = createRealDatabaseConnection();
+    connection = real.connection;
+    sql = real.sql;
     setDatabaseInstance(connection);
 
     await sql`
@@ -124,8 +104,8 @@ describe('Template sync — branch-scoped synced_version', () => {
     } catch {
       // Ignore cleanup errors
     }
-    await sql.end();
     setDatabaseInstance(null);
+    await connection.close();
   });
 
   /**

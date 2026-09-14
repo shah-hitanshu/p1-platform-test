@@ -6,7 +6,10 @@
  * Roles map to PantheonRole for authorization decisions.
  */
 
+import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import { query } from '../db';
+import { agentSiteRoles, agents } from '../db/schema';
+import { db } from '../db/scope';
 import type { PantheonRole } from '../types';
 
 // =============================================================================
@@ -39,13 +42,12 @@ export interface AgentSiteRole {
 
 interface RoleRow {
   id: string;
-  agent_id: string;
-  site_id: string;
-  role: 'viewer' | 'editor' | 'admin';
-  created_by_id: string;
-  created_at: string;
-  revoked_at: string | null;
-  is_global: boolean;
+  agentId: string;
+  siteId: string;
+  role: string;
+  createdById: string | null;
+  createdAt: Date | null;
+  revokedAt: Date | null;
 }
 
 // =============================================================================
@@ -67,16 +69,16 @@ const DEFAULT_GLOBAL_AGENT_ROLE: 'viewer' | 'editor' | 'admin' = 'editor';
 // Helpers
 // =============================================================================
 
-function mapRowToRole(row: RoleRow): AgentSiteRole {
+function mapRowToRole(row: RoleRow, isGlobal: boolean): AgentSiteRole {
   return {
     id: row.id,
-    agentId: row.agent_id,
-    siteId: row.site_id,
-    role: row.role,
-    grantedBy: row.created_by_id,
-    grantedAt: row.created_at,
-    revokedAt: row.revoked_at,
-    isGlobal: row.is_global,
+    agentId: row.agentId,
+    siteId: row.siteId,
+    role: row.role as 'viewer' | 'editor' | 'admin',
+    grantedBy: row.createdById ?? '',
+    grantedAt: row.createdAt?.toISOString() ?? '',
+    revokedAt: row.revokedAt?.toISOString() ?? null,
+    isGlobal,
   };
 }
 
@@ -108,7 +110,20 @@ export async function grantRole(
     throw new Error('grantedBy is required');
   }
 
-  const result = await query<RoleRow>(
+  // Kept on the legacy query() connection deliberately: site-service.ts's
+  // createSite calls this from inside a raw BEGIN/COMMIT block on that same
+  // connection. A Drizzle db() insert here would run on the separate Drizzle
+  // connection and could not see the just-inserted, not-yet-committed site
+  // row, failing its site_id foreign key. Convert this alongside site-service.ts.
+  const result = await query<{
+    id: string;
+    agent_id: string;
+    site_id: string;
+    role: 'viewer' | 'editor' | 'admin';
+    created_by_id: string;
+    created_at: string;
+    revoked_at: string | null;
+  }>(
     `INSERT INTO app.agent_site_roles (agent_id, site_id, role, created_by_id)
      VALUES ($1, $2, $3, $4)
      ON CONFLICT (agent_id, site_id) WHERE revoked_at IS NULL
@@ -122,7 +137,16 @@ export async function grantRole(
     throw new Error('Failed to insert agent site role');
   }
 
-  return mapRowToRole(row);
+  return {
+    id: row.id,
+    agentId: row.agent_id,
+    siteId: row.site_id,
+    role: row.role,
+    grantedBy: row.created_by_id,
+    grantedAt: row.created_at,
+    revokedAt: row.revoked_at,
+    isGlobal: false,
+  };
 }
 
 /**
@@ -134,14 +158,17 @@ export async function revokeRole(
   roleId: string,
   agentId: string,
 ): Promise<boolean> {
-  const result = await query(
-    `UPDATE app.agent_site_roles
-     SET revoked_at = NOW()
-     WHERE id = $1 AND agent_id = $2 AND revoked_at IS NULL`,
-    [roleId, agentId],
-  );
+  const rows = await db()
+    .update(agentSiteRoles)
+    .set({ revokedAt: sql`now()` })
+    .where(and(
+      eq(agentSiteRoles.id, roleId),
+      eq(agentSiteRoles.agentId, agentId),
+      isNull(agentSiteRoles.revokedAt),
+    ))
+    .returning({ id: agentSiteRoles.id });
 
-  return (result.rowCount ?? 0) > 0;
+  return rows.length > 0;
 }
 
 /**
@@ -155,68 +182,87 @@ export async function getAgentSiteRoleById(
   roleId: string,
   agentId: string,
 ): Promise<AgentSiteRole | null> {
-  const result = await query<RoleRow>(
-    `SELECT * FROM app.agent_site_roles
-     WHERE id = $1 AND agent_id = $2`,
-    [roleId, agentId],
-  );
+  const [row] = await db()
+    .select()
+    .from(agentSiteRoles)
+    .where(and(eq(agentSiteRoles.id, roleId), eq(agentSiteRoles.agentId, agentId)));
 
-  const row = result.rows[0];
-  return row ? mapRowToRole(row) : null;
+  return row ? mapRowToRole(row, false) : null;
 }
 
 /**
  * List active (non-revoked) site roles for an agent.
  */
 export async function listRoles(agentId: string): Promise<AgentSiteRole[]> {
-  const result = await query<RoleRow>(
-    `SELECT * FROM app.agent_site_roles
-     WHERE agent_id = $1 AND revoked_at IS NULL
-     ORDER BY created_at DESC`,
-    [agentId],
-  );
+  const rows = await db()
+    .select()
+    .from(agentSiteRoles)
+    .where(and(eq(agentSiteRoles.agentId, agentId), isNull(agentSiteRoles.revokedAt)))
+    .orderBy(desc(agentSiteRoles.createdAt));
 
-  return result.rows.map(mapRowToRole);
+  return rows.map((row) => mapRowToRole(row, false));
 }
 
 /**
  * List active (non-revoked) agent roles for a site, always including global
  * agents. Global agents appear even without an explicit grant so they show
  * as non-removable system entries in the UI.
+ *
+ * UNION ALL over two differently-shaped virtual rows (an explicit grant row,
+ * and a synthesized row per implicit global agent via COALESCE over a left
+ * join) — no natural select-builder form; kept raw.
  */
 export async function listRolesBySite(siteId: string): Promise<(AgentSiteRole & { agentName: string })[]> {
-  const result = await query<RoleRow & { agent_name: string }>(
-    `-- Explicitly granted roles for non-global agents
-     SELECT r.id::text, r.agent_id::text, r.site_id, r.role, r.created_by_id, r.created_at, r.revoked_at,
-            a.name AS agent_name, FALSE AS is_global
-     FROM app.agent_site_roles r
-     JOIN app.agents a ON a.id = r.agent_id
-     WHERE r.site_id = $1 AND r.revoked_at IS NULL AND a.is_global = FALSE
+  const statement = sql`
+    -- Explicitly granted roles for non-global agents
+    SELECT r.id::text, r.agent_id::text, r.site_id, r.role, r.created_by_id, r.created_at, r.revoked_at,
+           a.name AS agent_name, FALSE AS is_global
+    FROM app.agent_site_roles r
+    JOIN app.agents a ON a.id = r.agent_id
+    WHERE r.site_id = ${siteId} AND r.revoked_at IS NULL AND a.is_global = FALSE
 
-     UNION ALL
+    UNION ALL
 
-     -- Global agents always appear; use their explicit role if one exists,
-     -- otherwise the default system access level.
-     SELECT COALESCE(r.id::text, a.id::text) AS id,
-            a.id AS agent_id,
-            $1::uuid AS site_id,
-            COALESCE(r.role, $2) AS role,
-            COALESCE(r.created_by_id, '') AS created_by_id,
-            COALESCE(r.created_at, a.created_at) AS created_at,
-            NULL AS revoked_at,
-            a.name AS agent_name,
-            TRUE AS is_global
-     FROM app.agents a
-     LEFT JOIN app.agent_site_roles r
-       ON r.agent_id = a.id AND r.site_id = $1 AND r.revoked_at IS NULL
-     WHERE a.is_global = TRUE AND a.status = 'active'
+    -- Global agents always appear; use their explicit role if one exists,
+    -- otherwise the default system access level.
+    SELECT COALESCE(r.id::text, a.id::text) AS id,
+           a.id AS agent_id,
+           ${siteId}::uuid AS site_id,
+           COALESCE(r.role, ${DEFAULT_GLOBAL_AGENT_ROLE}) AS role,
+           COALESCE(r.created_by_id, '') AS created_by_id,
+           COALESCE(r.created_at, a.created_at) AS created_at,
+           NULL AS revoked_at,
+           a.name AS agent_name,
+           TRUE AS is_global
+    FROM app.agents a
+    LEFT JOIN app.agent_site_roles r
+      ON r.agent_id = a.id AND r.site_id = ${siteId} AND r.revoked_at IS NULL
+    WHERE a.is_global = TRUE AND a.status = 'active'
 
-     ORDER BY is_global DESC, created_at DESC`,
-    [siteId, DEFAULT_GLOBAL_AGENT_ROLE],
-  );
+    ORDER BY is_global DESC, created_at DESC
+  `;
 
-  return result.rows.map((row) => ({
-    ...mapRowToRole(row),
+  const rows = await db().execute<{
+    id: string;
+    agent_id: string;
+    site_id: string;
+    role: 'viewer' | 'editor' | 'admin';
+    created_by_id: string;
+    created_at: string;
+    revoked_at: string | null;
+    agent_name: string;
+    is_global: boolean;
+  }>(statement);
+
+  return rows.map((row) => ({
+    id: row.id,
+    agentId: row.agent_id,
+    siteId: row.site_id,
+    role: row.role,
+    grantedBy: row.created_by_id,
+    grantedAt: row.created_at,
+    revokedAt: row.revoked_at,
+    isGlobal: row.is_global,
     agentName: row.agent_name,
   }));
 }
@@ -241,19 +287,24 @@ export async function resolveAgentSiteRole(
 ): Promise<ResolvedAgentSiteRole | null> {
   // Revoked grants must not authorize; the partial unique index guarantees at
   // most one active row per agent and site.
-  const result = await query<{ role: 'viewer' | 'editor' | 'admin'; implicit: boolean }>(
-    `SELECT COALESCE(r.role, $3) AS role, r.id IS NULL AS implicit
-     FROM app.agents a
-     LEFT JOIN app.agent_site_roles r
-       ON r.agent_id = a.id AND r.site_id = $2 AND r.revoked_at IS NULL
-     WHERE a.id = $1
-       AND (r.id IS NOT NULL
-            OR ($4 AND a.is_global = TRUE AND a.status = 'active'))
-     LIMIT 1`,
-    [agentId, siteId, DEFAULT_GLOBAL_AGENT_ROLE, allowImplicit],
-  );
+  const [row] = await db()
+    .select({
+      role: sql<'viewer' | 'editor' | 'admin'>`coalesce(${agentSiteRoles.role}, ${DEFAULT_GLOBAL_AGENT_ROLE})`,
+      implicit: sql<boolean>`${agentSiteRoles.id} IS NULL`,
+    })
+    .from(agents)
+    .leftJoin(agentSiteRoles, and(
+      eq(agentSiteRoles.agentId, agents.id),
+      eq(agentSiteRoles.siteId, siteId),
+      isNull(agentSiteRoles.revokedAt),
+    ))
+    .where(and(
+      eq(agents.id, agentId),
+      sql`(${agentSiteRoles.id} IS NOT NULL
+        OR (${allowImplicit} AND ${agents.isGlobal} = TRUE AND ${agents.status} = 'active'))`,
+    ))
+    .limit(1);
 
-  const row = result.rows[0];
   return row ? { role: row.role, implicit: row.implicit } : null;
 }
 
@@ -266,13 +317,12 @@ export async function resolveAgentSiteRole(
  * authenticates, so a status-blind read would let it keep enumerating sites.
  */
 export async function isGlobalAgentId(id: string): Promise<boolean> {
-  const result = await query<{ is_global: boolean }>(
-    `SELECT is_global FROM app.agents
-     WHERE id = $1 AND is_global = TRUE AND status = 'active'`,
-    [id],
-  );
+  const [row] = await db()
+    .select({ isGlobal: agents.isGlobal })
+    .from(agents)
+    .where(and(eq(agents.id, id), eq(agents.isGlobal, true), eq(agents.status, 'active')));
 
-  return result.rows[0]?.is_global === true;
+  return row?.isGlobal === true;
 }
 
 /**
@@ -284,14 +334,17 @@ export async function revokeRoleBySite(
   roleId: string,
   siteId: string,
 ): Promise<boolean> {
-  const result = await query(
-    `UPDATE app.agent_site_roles
-     SET revoked_at = NOW()
-     WHERE id = $1 AND site_id = $2 AND revoked_at IS NULL`,
-    [roleId, siteId],
-  );
+  const rows = await db()
+    .update(agentSiteRoles)
+    .set({ revokedAt: sql`now()` })
+    .where(and(
+      eq(agentSiteRoles.id, roleId),
+      eq(agentSiteRoles.siteId, siteId),
+      isNull(agentSiteRoles.revokedAt),
+    ))
+    .returning({ id: agentSiteRoles.id });
 
-  return (result.rowCount ?? 0) > 0;
+  return rows.length > 0;
 }
 
 /**
@@ -307,17 +360,16 @@ export async function revokeRoleBySite(
 export async function getRolesForAgent(
   agentId: string,
 ): Promise<Record<string, PantheonRole>> {
-  const result = await query<RoleRow>(
-    `SELECT * FROM app.agent_site_roles
-     WHERE agent_id = $1 AND revoked_at IS NULL`,
-    [agentId],
-  );
+  const rows = await db()
+    .select()
+    .from(agentSiteRoles)
+    .where(and(eq(agentSiteRoles.agentId, agentId), isNull(agentSiteRoles.revokedAt)));
 
   const roleMap: Record<string, PantheonRole> = {};
-  for (const row of result.rows) {
+  for (const row of rows) {
     const mapped = ROLE_MAP[row.role];
     if (mapped) {
-      roleMap[row.site_id] = mapped;
+      roleMap[row.siteId] = mapped;
     }
   }
   return roleMap;
