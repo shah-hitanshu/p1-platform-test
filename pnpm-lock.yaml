@@ -143,8 +143,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/p1-next-sdk
       '@pantheon-systems/pds-toolkit-react':
-        specifier: 2.0.0-alpha.66
-        version: 2.0.0-alpha.66(@types/react@19.2.17)(prop-types@15.8.1)(react-dom@19.2.7(react@19.2.7))(react-is@18.3.1)(react@19.2.7)(redux@5.0.1)
+        specifier: 2.0.0-alpha.67
+        version: 2.0.0-alpha.67(@types/react@19.2.17)(prop-types@15.8.1)(react-dom@19.2.7(react@19.2.7))(react-is@18.3.1)(react@19.2.7)(redux@5.0.1)
       '@pantheon-systems/puck-css':
         specifier: workspace:*
         version: link:../../packages/puck-css
@@ -346,8 +346,8 @@ importers:
         specifier: workspace:*
         version: link:../eslint-config
       '@pantheon-systems/pds-toolkit-react':
-        specifier: 2.0.0-alpha.66
-        version: 2.0.0-alpha.66(@types/react@19.2.17)(prop-types@15.8.1)(react-dom@19.2.7(react@19.2.7))(react-is@18.3.1)(react@19.2.7)(redux@5.0.1)
+        specifier: 2.0.0-alpha.67
+        version: 2.0.0-alpha.67(@types/react@19.2.17)(prop-types@15.8.1)(react-dom@19.2.7(react@19.2.7))(react-is@18.3.1)(react@19.2.7)(redux@5.0.1)
       '@pantheon-systems/puck-css':
         specifier: workspace:*
         version: link:../puck-css
@@ -654,8 +654,8 @@ importers:
         specifier: workspace:*
         version: link:../eslint-config
       '@pantheon-systems/pds-toolkit-react':
-        specifier: 2.0.0-alpha.66
-        version: 2.0.0-alpha.66(@types/react@19.2.17)(prop-types@15.8.1)(react-dom@19.2.7(react@19.2.7))(react-is@18.3.1)(react@19.2.7)(redux@5.0.1)
+        specifier: 2.0.0-alpha.67
+        version: 2.0.0-alpha.67(@types/react@19.2.17)(prop-types@15.8.1)(react-dom@19.2.7(react@19.2.7))(react-is@18.3.1)(react@19.2.7)(redux@5.0.1)
       '@tanstack/react-query':
         specifier: ^5.99.0
         version: 5.101.3(@types/react@19.2.17)(react@19.2.7)
@@ -2278,8 +2278,8 @@ packages:
   '@pantheon-systems/pds-design-tokens@2.0.0-alpha.67':
     resolution: {integrity: sha512-cR1ObD4sqFIeaCbraZHFL/1cmB7YyVA+94K8bI1zWZ/fxuqp1AhB8dQ6+shfvSENW/9RX2pXETiIk9VFm5YJIQ==}
 
-  '@pantheon-systems/pds-toolkit-react@2.0.0-alpha.66':
-    resolution: {integrity: sha512-3+ZtIKBSypRYvXPhYF5EhgvS8KLma00vLVva5FvMm1R2eecsMlsGoygh1MISsjksA075OpEAIkO3ml5kflKIDQ==}
+  '@pantheon-systems/pds-toolkit-react@2.0.0-alpha.67':
+    resolution: {integrity: sha512-dmqMIeB7WqJK4ILLhIHAwBQRIOBCxEOZI89Om81VTYeik3gi+qLZdV3Xc+oxzV336z8sfE3J5He67k9Cuwwr/A==}
     engines: {node: '>=18.0.0 <=24.x'}
     hasBin: true
     peerDependencies:
@@ -9206,7 +9206,7 @@ snapshots:
 
   '@pantheon-systems/pds-design-tokens@2.0.0-alpha.67': {}
 
-  '@pantheon-systems/pds-toolkit-react@2.0.0-alpha.66(@types/react@19.2.17)(prop-types@15.8.1)(react-dom@19.2.7(react@19.2.7))(react-is@18.3.1)(react@19.2.7)(redux@5.0.1)':
+  '@pantheon-systems/pds-toolkit-react@2.0.0-alpha.67(@types/react@19.2.17)(prop-types@15.8.1)(react-dom@19.2.7(react@19.2.7))(react-is@18.3.1)(react@19.2.7)(redux@5.0.1)':
     dependencies:
       '@dnd-kit/core': 6.3.1(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       '@dnd-kit/sortable': 10.0.0(@dnd-kit/core@6.3.1(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(react@19.2.7)
