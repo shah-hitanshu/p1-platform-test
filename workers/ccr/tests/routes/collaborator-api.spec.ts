@@ -8,11 +8,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { AuthenticatedPrincipal } from '../../src/types';
 import { readJson } from '../helpers/http';
 import { makeBranch } from '../helpers/branch';
-
-// Mock the db module
-vi.mock('../../src/db', () => ({
-  query: vi.fn(),
-}));
+import { userSiteRoles } from '../../src/db/schema';
+import { stubDatabase, type DatabaseStub } from '../__stubs__/database';
 
 // Mock services (for getMainBranch)
 vi.mock('../../src/services', () => ({
@@ -45,15 +42,16 @@ describe('Collaborator API Routes', () => {
     authProvider: 'auth0',
   };
 
+  let database: DatabaseStub;
+
   beforeEach(() => {
-    vi.resetModules();
     vi.clearAllMocks();
+    database = stubDatabase();
   });
 
   describe('POST /api/sites/{siteId}/collaborators', () => {
     it('should grant site access with valid body', async () => {
       const { handleCollaboratorRoutes } = await import('../../src/routes/collaborator-api');
-      const db = await import('../../src/db');
       const services = await import('../../src/services');
 
       vi.mocked(services.getMainBranch).mockResolvedValue(makeBranch({
@@ -68,17 +66,15 @@ describe('Collaborator API Routes', () => {
         updatedAt: '2026-01-01T00:00:00Z',
       }));
 
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [{
-          id: 'role-1',
-          user_id: 'user-2',
-          site_id: 'site-1',
-          role: 'developer',
-          source: 'local',
-          created_at: '2026-01-01T00:00:00Z',
-          updated_at: '2026-01-01T00:00:00Z',
-        }],
-      });
+      database.on(userSiteRoles).insert.returns([{
+        id: 'role-1',
+        userId: 'user-2',
+        siteId: 'site-1',
+        role: 'developer',
+        source: 'local',
+        createdAt: new Date('2026-01-01T00:00:00Z'),
+        updatedAt: new Date('2026-01-01T00:00:00Z'),
+      }]);
 
       const request = new Request(
         'https://api.example.com/api/sites/site-1/collaborators',
@@ -106,7 +102,6 @@ describe('Collaborator API Routes', () => {
 
     it.each(['author', 'editor'])('should grant site access with custom role %s', async (role) => {
       const { handleCollaboratorRoutes } = await import('../../src/routes/collaborator-api');
-      const db = await import('../../src/db');
       const services = await import('../../src/services');
 
       vi.mocked(services.getMainBranch).mockResolvedValue(makeBranch({
@@ -121,17 +116,15 @@ describe('Collaborator API Routes', () => {
         updatedAt: '2026-01-01T00:00:00Z',
       }));
 
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [{
-          id: 'role-1',
-          user_id: 'user-2',
-          site_id: 'site-1',
-          role,
-          source: 'local',
-          created_at: '2026-01-01T00:00:00Z',
-          updated_at: '2026-01-01T00:00:00Z',
-        }],
-      });
+      database.on(userSiteRoles).insert.returns([{
+        id: 'role-1',
+        userId: 'user-2',
+        siteId: 'site-1',
+        role,
+        source: 'local',
+        createdAt: new Date('2026-01-01T00:00:00Z'),
+        updatedAt: new Date('2026-01-01T00:00:00Z'),
+      }]);
 
       const request = new Request(
         'https://api.example.com/api/sites/site-1/collaborators',
@@ -226,7 +219,6 @@ describe('Collaborator API Routes', () => {
   describe('GET /api/sites/{siteId}/collaborators', () => {
     it('should list all collaborators', async () => {
       const { handleCollaboratorRoutes } = await import('../../src/routes/collaborator-api');
-      const db = await import('../../src/db');
       const services = await import('../../src/services');
 
       vi.mocked(services.getMainBranch).mockResolvedValue(makeBranch({
@@ -241,28 +233,32 @@ describe('Collaborator API Routes', () => {
         updatedAt: '2026-01-01T00:00:00Z',
       }));
 
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [
-          {
-            id: 'role-1',
-            user_id: 'user-1',
-            site_id: 'site-1',
-            role: 'admin',
-            source: 'local',
-            created_at: '2026-01-01T00:00:00Z',
-            updated_at: '2026-01-01T00:00:00Z',
-          },
-          {
-            id: 'role-2',
-            user_id: 'user-2',
-            site_id: 'site-1',
-            role: 'developer',
-            source: 'mas',
-            created_at: '2026-01-02T00:00:00Z',
-            updated_at: '2026-01-02T00:00:00Z',
-          },
-        ],
-      });
+      // The listing joins in users.email/name, a shape the user_site_roles
+      // schema alone cannot describe, so the stub rows are given raw.
+      database.on(userSiteRoles).select.returnsRaw([
+        {
+          id: 'role-1',
+          userId: 'user-1',
+          siteId: 'site-1',
+          role: 'admin',
+          source: 'local',
+          createdAt: '2026-01-01T00:00:00Z',
+          updatedAt: '2026-01-01T00:00:00Z',
+          email: 'user1@example.com',
+          name: 'User One',
+        },
+        {
+          id: 'role-2',
+          userId: 'user-2',
+          siteId: 'site-1',
+          role: 'developer',
+          source: 'mas',
+          createdAt: '2026-01-02T00:00:00Z',
+          updatedAt: '2026-01-02T00:00:00Z',
+          email: 'user2@example.com',
+          name: 'User Two',
+        },
+      ]);
 
       const request = new Request(
         'https://api.example.com/api/sites/site-1/collaborators',
@@ -285,7 +281,6 @@ describe('Collaborator API Routes', () => {
   describe('DELETE /api/sites/{siteId}/collaborators/{userId}', () => {
     it('should remove a local collaborator grant', async () => {
       const { handleCollaboratorRoutes } = await import('../../src/routes/collaborator-api');
-      const db = await import('../../src/db');
       const services = await import('../../src/services');
 
       vi.mocked(services.getMainBranch).mockResolvedValue(makeBranch({
@@ -300,10 +295,18 @@ describe('Collaborator API Routes', () => {
         updatedAt: '2026-01-01T00:00:00Z',
       }));
 
-      // Owner count: 2 owners exist, safe to remove
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ count: '2' }] });
-      // Delete succeeds
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [], rowCount: 1 });
+      // Owner count: 2 owners exist, safe to remove — the target-role check is
+      // never reached, so it needs no stub of its own.
+      database.on(userSiteRoles).select.returnsRaw([{ count: 2 }]);
+      database.on(userSiteRoles).delete.returns([{
+        id: 'role-2',
+        userId: 'user-2',
+        siteId: 'site-1',
+        role: 'developer',
+        source: 'local',
+        createdAt: new Date('2026-01-01T00:00:00Z'),
+        updatedAt: new Date('2026-01-01T00:00:00Z'),
+      }]);
 
       const request = new Request(
         'https://api.example.com/api/sites/site-1/collaborators/user-2',
@@ -321,7 +324,6 @@ describe('Collaborator API Routes', () => {
 
     it('should return 404 when local grant not found', async () => {
       const { handleCollaboratorRoutes } = await import('../../src/routes/collaborator-api');
-      const db = await import('../../src/db');
       const services = await import('../../src/services');
 
       vi.mocked(services.getMainBranch).mockResolvedValue(makeBranch({
@@ -336,10 +338,9 @@ describe('Collaborator API Routes', () => {
         updatedAt: '2026-01-01T00:00:00Z',
       }));
 
-      // Owner count: 2 owners, safe to proceed
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ count: '2' }] });
-      // Delete finds nothing
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      // Owner count: 2 owners, safe to proceed. Delete finds nothing (default:
+      // an unstubbed delete returns no rows).
+      database.on(userSiteRoles).select.returnsRaw([{ count: 2 }]);
 
       const request = new Request(
         'https://api.example.com/api/sites/site-1/collaborators/user-2',
@@ -357,7 +358,6 @@ describe('Collaborator API Routes', () => {
 
     it('should prevent removing the last owner', async () => {
       const { handleCollaboratorRoutes } = await import('../../src/routes/collaborator-api');
-      const db = await import('../../src/db');
       const services = await import('../../src/services');
 
       vi.mocked(services.getMainBranch).mockResolvedValue(makeBranch({
@@ -372,14 +372,9 @@ describe('Collaborator API Routes', () => {
         updatedAt: '2026-01-01T00:00:00Z',
       }));
 
-      // Count query returns 1 owner
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [{ count: '1' }],
-      });
-      // Target role check — this user is the owner
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [{ role: 'owner' }],
-      });
+      // Both the owner count and the target-role check land on the same
+      // user_site_roles.select stub, so one row carries the fields each reads.
+      database.on(userSiteRoles).select.returnsRaw([{ count: 1, role: 'owner' }]);
 
       const request = new Request(
         'https://api.example.com/api/sites/site-1/collaborators/user-1',
@@ -399,7 +394,6 @@ describe('Collaborator API Routes', () => {
 
     it('should allow removing an owner when another owner exists', async () => {
       const { handleCollaboratorRoutes } = await import('../../src/routes/collaborator-api');
-      const db = await import('../../src/db');
       const services = await import('../../src/services');
 
       vi.mocked(services.getMainBranch).mockResolvedValue(makeBranch({
@@ -414,12 +408,16 @@ describe('Collaborator API Routes', () => {
         updatedAt: '2026-01-01T00:00:00Z',
       }));
 
-      // Count query returns 2 owners
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [{ count: '2' }],
-      });
-      // Delete succeeds
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [], rowCount: 1 });
+      database.on(userSiteRoles).select.returnsRaw([{ count: 2 }]);
+      database.on(userSiteRoles).delete.returns([{
+        id: 'role-1',
+        userId: 'user-1',
+        siteId: 'site-1',
+        role: 'owner',
+        source: 'local',
+        createdAt: new Date('2026-01-01T00:00:00Z'),
+        updatedAt: new Date('2026-01-01T00:00:00Z'),
+      }]);
 
       const request = new Request(
         'https://api.example.com/api/sites/site-1/collaborators/user-1',

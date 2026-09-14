@@ -53,7 +53,6 @@ vi.mock('../../src/services/agent-service', () => ({
 
 vi.mock('../../src/db', () => ({
   runWithConnection: vi.fn(),
-  query: vi.fn(),
   setDatabaseInstance: vi.fn(),
   getDatabaseInstance: vi.fn(),
   initializeDatabaseFromConnectionString: vi.fn(),

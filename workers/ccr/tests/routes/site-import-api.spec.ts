@@ -36,7 +36,7 @@ vi.mock('../../src/auth/authorization', () => ({
     constructor(message: string) { super(message); this.name = 'AuthorizationError'; }
   },
 }));
-vi.mock('../../src/db', () => ({ query: vi.fn().mockResolvedValue({ rows: [], rowCount: 0 }) }));
+import { stubDatabase } from '../__stubs__/database';
 
 import { getSite, updateSite } from '../../src/services/site-service';
 import { getMainBranch, listBranches } from '../../src/services/branch-service';
@@ -53,11 +53,9 @@ import {
 const mockVerifyBundleSignature = vi.mocked(verifyBundleSignature);
 import { assertPermission, AuthorizationError } from '../../src/auth/authorization';
 import { createCheckpoint } from '../../src/services/checkpoint-service';
-import { query } from '../../src/db';
 import { handleSiteImportRoute } from '../../src/routes/site-import-api';
 
 const mockCreateCheckpoint = vi.mocked(createCheckpoint);
-const mockQuery = vi.mocked(query);
 
 const mockGetSite = vi.mocked(getSite);
 const mockGetMainBranch = vi.mocked(getMainBranch);
@@ -151,8 +149,8 @@ describe('handleSiteImportRoute', () => {
 
   beforeEach(() => {
     vi.resetAllMocks();
+    stubDatabase();
     // Restore defaults wiped by resetAllMocks
-    mockQuery.mockResolvedValue({ rows: [], rowCount: 0 });
     mockCreateCheckpoint.mockResolvedValue({ checkpoint: { id: 'mock-checkpoint-id' } } as never);
     mockVerifyBundleSignature.mockResolvedValue(true);
   });

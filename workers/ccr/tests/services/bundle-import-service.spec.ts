@@ -1,11 +1,8 @@
 /**
  * Bundle Import Service Tests (PCC-3249)
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 
-vi.mock('../../src/db', () => ({ query: vi.fn() }));
-
-import { query } from '../../src/db';
 import {
   resolveCreatedByRefToId,
   validateBundleManifest,
@@ -16,8 +13,8 @@ import {
   type ImportProgress,
 } from '../../src/services/bundle-import-service';
 import { signBundleJson } from '../../src/services/bundle-export-service';
-
-const mockQuery = vi.mocked(query);
+import { agents, users } from '../../src/db/schema';
+import { stubDatabase, type DatabaseStub } from '../__stubs__/database';
 
 describe('buildImportKey', () => {
   it('returns a deterministic key', () => {
@@ -122,39 +119,36 @@ describe('validateBundleManifest', () => {
 
 describe('resolveCreatedByRefToId', () => {
   const SYSTEM_UUID = '00000000-0000-0000-0000-000000000000';
+  let database: DatabaseStub;
 
-  beforeEach(() => { vi.resetAllMocks(); });
+  beforeEach(() => { database = stubDatabase(); });
 
   it('returns system UUID for {type:"system"}', async () => {
     const id = await resolveCreatedByRefToId({ type: 'system' });
     expect(id).toBe(SYSTEM_UUID);
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(database.statements).toHaveLength(0);
   });
 
   it('resolves user email to UUID from app.users', async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [{ id: 'user-target-uuid' }], rowCount: 1 });
+    database.on(users).select.returns([{ id: 'user-target-uuid' }]);
     const id = await resolveCreatedByRefToId({ type: 'user', email: 'chris@example.com' });
     expect(id).toBe('user-target-uuid');
-    expect(mockQuery).toHaveBeenCalledWith(
-      expect.stringContaining('app.users'),
-      ['chris@example.com'],
-    );
+    expect(database.calls(users).select[0].params).toEqual(['chris@example.com']);
   });
 
   it('returns system UUID when user email is null', async () => {
     const id = await resolveCreatedByRefToId({ type: 'user', email: null });
     expect(id).toBe(SYSTEM_UUID);
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(database.statements).toHaveLength(0);
   });
 
   it('returns system UUID when user email not found', async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     const id = await resolveCreatedByRefToId({ type: 'user', email: 'unknown@example.com' });
     expect(id).toBe(SYSTEM_UUID);
   });
 
   it('resolves agent name to UUID from app.agents', async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [{ id: 'agent-target-uuid' }], rowCount: 1 });
+    database.on(agents).select.returns([{ id: 'agent-target-uuid' }]);
     const id = await resolveCreatedByRefToId({ type: 'agent', name: 'Zappy AI' });
     expect(id).toBe('agent-target-uuid');
   });
@@ -165,7 +159,6 @@ describe('resolveCreatedByRefToId', () => {
   });
 
   it('returns system UUID when agent name not found', async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     const id = await resolveCreatedByRefToId({ type: 'agent', name: 'Unknown Agent' });
     expect(id).toBe(SYSTEM_UUID);
   });

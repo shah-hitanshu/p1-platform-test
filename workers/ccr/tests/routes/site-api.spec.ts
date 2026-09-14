@@ -9,6 +9,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { readJson } from '../helpers/http';
 import { makePrincipal } from '../helpers/principal';
 import { makeBranch } from '../helpers/branch';
+import { users } from '../../src/db/schema';
+import { stubDatabase, type DatabaseStub } from '../__stubs__/database';
 
 // Mock the services
 vi.mock('../../src/services', async () => {
@@ -42,11 +44,6 @@ vi.mock('../../src/auth/authorization', async () => {
   };
 });
 
-// Mock db (used by the route layer for the acting-user email -> users.id lookup)
-vi.mock('../../src/db', () => ({
-  query: vi.fn(),
-}));
-
 // Mock the shared org gate. PCC-3874: the org-scoped listing moved off the raw
 // isUserInOrganization membership lookup onto canAccessOrganization, which is
 // where the superadmin bypass lives.
@@ -61,9 +58,11 @@ vi.mock('../../src/utils/admin-check', async () => {
 });
 
 describe('Phase 7.1.1b: Site API Routes', () => {
+  let database: DatabaseStub;
+
   beforeEach(() => {
-    vi.resetModules();
     vi.clearAllMocks();
+    database = stubDatabase();
   });
 
   // ===========================================================================
@@ -535,10 +534,8 @@ describe('Phase 7.1.1b: Site API Routes', () => {
       it('should return empty result and not call listSites when acting user is not in app.users allowlist', async () => {
         const { handleSiteRoutes } = await import('../../src/routes/site-api');
         const services = await import('../../src/services');
-        const db = await import('../../src/db');
 
-        // Acting-user lookup returns no row -> user is not in the allowlist
-        vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
+        // Acting-user lookup returns no row -> user is not in the allowlist (default: unstubbed query returns none)
 
         const request = new Request('https://api.example.com/api/sites', {
           method: 'GET',
@@ -564,12 +561,9 @@ describe('Phase 7.1.1b: Site API Routes', () => {
       it('should pass actingUserId to listSites when acting user is in the allowlist', async () => {
         const { handleSiteRoutes } = await import('../../src/routes/site-api');
         const services = await import('../../src/services');
-        const db = await import('../../src/db');
 
         // Acting-user lookup returns a row -> user is in the allowlist
-        vi.mocked(db.query).mockResolvedValueOnce({
-          rows: [{ id: 'db-acting-user-id' }],
-        });
+        database.on(users).select.returns([{ id: 'db-acting-user-id' }]);
         vi.mocked(services.listSites).mockResolvedValueOnce([]);
 
         const request = new Request('https://api.example.com/api/sites', {
@@ -596,12 +590,9 @@ describe('Phase 7.1.1b: Site API Routes', () => {
 
       it('should lowercase the acting user email when looking up the allowlist', async () => {
         const { handleSiteRoutes } = await import('../../src/routes/site-api');
-        const db = await import('../../src/db');
         const services = await import('../../src/services');
 
-        vi.mocked(db.query).mockResolvedValueOnce({
-          rows: [{ id: 'db-acting-user-id' }],
-        });
+        database.on(users).select.returns([{ id: 'db-acting-user-id' }]);
         vi.mocked(services.listSites).mockResolvedValueOnce([]);
 
         const request = new Request('https://api.example.com/api/sites', {
@@ -619,14 +610,12 @@ describe('Phase 7.1.1b: Site API Routes', () => {
 
         // The lookup must use the lowercased email so it matches the storage
         // convention used elsewhere in the codebase (see app.users.email).
-        const queryCall = vi.mocked(db.query).mock.calls[0];
-        expect(queryCall[1]).toContain('known-user@example.com');
+        expect(database.calls(users).select[0].params).toContain('known-user@example.com');
       });
 
       it('should NOT add actingUserId for agent without actingUserEmail (legacy direct agent traffic)', async () => {
         const { handleSiteRoutes } = await import('../../src/routes/site-api');
         const services = await import('../../src/services');
-        const db = await import('../../src/db');
 
         vi.mocked(services.listSites).mockResolvedValueOnce([]);
 
@@ -640,7 +629,7 @@ describe('Phase 7.1.1b: Site API Routes', () => {
 
         // Behavior unchanged for legacy agent calls: no email lookup happens
         // and listSites is called without actingUserId.
-        expect(db.query).not.toHaveBeenCalled();
+        expect(database.statements).toHaveLength(0);
         const listCall = vi.mocked(services.listSites).mock.calls[0][0];
         expect(listCall.actingUserId).toBeUndefined();
       });
@@ -648,7 +637,6 @@ describe('Phase 7.1.1b: Site API Routes', () => {
       it('should NOT add actingUserId for user principals', async () => {
         const { handleSiteRoutes } = await import('../../src/routes/site-api');
         const services = await import('../../src/services');
-        const db = await import('../../src/db');
 
         vi.mocked(services.listSites).mockResolvedValueOnce([]);
 
@@ -666,7 +654,7 @@ describe('Phase 7.1.1b: Site API Routes', () => {
 
         // User principals never carry the acting-user concept; no email lookup
         // should occur and listSites should be called without actingUserId.
-        expect(db.query).not.toHaveBeenCalled();
+        expect(database.statements).toHaveLength(0);
         const listCall = vi.mocked(services.listSites).mock.calls[0][0];
         expect(listCall.actingUserId).toBeUndefined();
       });
@@ -718,10 +706,9 @@ describe('Phase 7.1.1b: Site API Routes', () => {
         const { handleSiteRoutes } = await import('../../src/routes/site-api');
         const services = await import('../../src/services');
         const orgAccess = await import('../../src/utils/org-access');
-        const db = await import('../../src/db');
 
         // Acting-user email -> app.users.id lookup
-        vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ id: 'db-acting-user-id' }] });
+        database.on(users).select.returns([{ id: 'db-acting-user-id' }]);
         vi.mocked(orgAccess.canAccessOrganization).mockResolvedValueOnce(true);
         vi.mocked(services.listSites).mockResolvedValueOnce([]);
 

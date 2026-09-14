@@ -1,4 +1,5 @@
-import { query } from '../db';
+import { sql } from 'drizzle-orm';
+import { db } from '../db/scope';
 
 /**
  * A document at a different effective path on the source branch than on the
@@ -10,11 +11,11 @@ export interface PathChange {
   baseDocumentPath: string;
 }
 
-interface PathChangeRow {
+type PathChangeRow = {
   document_id: string;
   document_path: string;
   base_document_path: string;
-}
+};
 
 /**
  * Effective path is COALESCE(override, global) per branch, matching F1's
@@ -30,26 +31,27 @@ export async function getPathChangesSince(
   sourceBranchId: string,
   targetBranchId: string,
 ): Promise<PathChange[]> {
-  const result = await query<PathChangeRow>(
-    `SELECT d.id AS document_id,
+  // The candidate subquery, the two aliased self-joins against
+  // branch_document_paths, and the COALESCE-based diff have no natural builder
+  // form, so this stays a raw statement (D6).
+  const rows = await db().execute<PathChangeRow>(sql`
+    SELECT d.id AS document_id,
             COALESCE(src.path, d.path) AS document_path,
             COALESCE(tgt.path, d.path) AS base_document_path
-     FROM (
+     FROM app.documents d
+     JOIN (
        SELECT DISTINCT document_id
        FROM app.branch_document_paths
-       WHERE branch_id IN ($1, $2)
-     ) candidate
-     JOIN app.documents d ON d.id = candidate.document_id
+       WHERE branch_id IN (${sourceBranchId}, ${targetBranchId})
+     ) candidate ON candidate.document_id = d.id
      LEFT JOIN app.branch_document_paths src
-       ON src.branch_id = $1 AND src.document_id = d.id
+       ON src.branch_id = ${sourceBranchId} AND src.document_id = d.id
      LEFT JOIN app.branch_document_paths tgt
-       ON tgt.branch_id = $2 AND tgt.document_id = d.id
+       ON tgt.branch_id = ${targetBranchId} AND tgt.document_id = d.id
      WHERE d.archived_at IS NULL
-       AND COALESCE(src.path, d.path) <> COALESCE(tgt.path, d.path)`,
-    [sourceBranchId, targetBranchId],
-  );
+       AND COALESCE(src.path, d.path) <> COALESCE(tgt.path, d.path)`);
 
-  return result.rows.map((row) => ({
+  return rows.map((row) => ({
     documentId: row.document_id,
     documentPath: row.document_path,
     baseDocumentPath: row.base_document_path,

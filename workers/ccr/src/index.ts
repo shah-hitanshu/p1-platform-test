@@ -15,8 +15,10 @@ import {
 } from '@pantheon-systems/p1-telemetry';
 import {
   runWithConnection,
-  query,
 } from './db';
+import { eq, sql } from 'drizzle-orm';
+import { users, userSiteRoles } from './db/schema';
+import { db } from './db/scope';
 import { resolveConnection } from './db/resolve-connection';
 import { forwardToCachedContent, isCacheableContentRequest } from './routes/cached-content-forward';
 import type { AuthenticatedPrincipal } from './types';
@@ -539,16 +541,19 @@ async function handleRequest(
 }
 
 /** Columns the access gate reads and enriches the principal from. */
-interface AccessUserRow {
-  id: string;
-  principal_id: string | null;
-  system_role: string;
-  is_active: boolean;
-  name: string | null;
-  avatar_url: string | null;
-}
+type AccessUserRow = Pick<
+  typeof users.$inferSelect,
+  'id' | 'principalId' | 'systemRole' | 'isActive' | 'name' | 'avatarUrl'
+>;
 
-const ACCESS_USER_COLUMNS = 'id, principal_id, system_role, is_active, name, avatar_url';
+const ACCESS_USER_COLUMNS = {
+  id: users.id,
+  principalId: users.principalId,
+  systemRole: users.systemRole,
+  isActive: users.isActive,
+  name: users.name,
+  avatarUrl: users.avatarUrl,
+} as const;
 
 /**
  * PCC-3479: self-service onboarding.
@@ -591,30 +596,27 @@ async function provisionUserFromFeatureFlag(
     // PCC-3457: stamp the normalized (UUIDv5) principal id, never the raw
     // OAuth subject — the persistence actor resolver looks this column up by
     // UUIDv5 (incident PCC-3464).
-    const inserted = await query<AccessUserRow>(
-      `INSERT INTO app.users (email, name, avatar_url, principal_id, auth_provider, system_role, is_active)
-       VALUES ($1, $2, $3, $4, $5, 'member', true)
-       ON CONFLICT (email) DO NOTHING
-       RETURNING ${ACCESS_USER_COLUMNS}`,
-      [
+    const inserted = await db()
+      .insert(users)
+      .values({
         email,
-        principal.name ?? null,
-        principal.avatarUrl ?? null,
-        await normalizePrincipalIdForDb(principal.id),
-        principal.authProvider ?? 'unknown',
-      ],
-    );
+        name: principal.name ?? null,
+        avatarUrl: principal.avatarUrl ?? null,
+        principalId: await normalizePrincipalIdForDb(principal.id),
+        authProvider: principal.authProvider ?? 'unknown',
+        systemRole: 'member',
+        isActive: true,
+      })
+      .onConflictDoNothing({ target: users.email })
+      .returning(ACCESS_USER_COLUMNS);
 
-    if (inserted.rows[0] !== undefined) {
-      return inserted.rows[0];
+    if (inserted[0] !== undefined) {
+      return inserted[0];
     }
 
     // Lost a race with a concurrent first request — read the winner's row.
-    const existing = await query<AccessUserRow>(
-      `SELECT ${ACCESS_USER_COLUMNS} FROM app.users WHERE email = $1`,
-      [email],
-    );
-    return existing.rows[0];
+    const existing = await db().select(ACCESS_USER_COLUMNS).from(users).where(eq(users.email, email));
+    return existing[0];
   } catch (error) {
     getLogger().error('Self-service user provisioning failed', error instanceof Error ? error : new Error(String(error)), {});
     return undefined;
@@ -774,19 +776,17 @@ async function checkUserAccess(
   principal: AuthenticatedPrincipal,
   subjectEmail: string,
 ): Promise<Response | null> {
-  // EXISTS, not COUNT(*): this only asks whether the allowlist is populated,
+  // LIMIT 1, not COUNT(*): this only asks whether the allowlist is populated,
   // and /api/auth/me now runs it on every editor mount and token refresh.
-  const allowlistProbe = await query<{ populated: boolean }>(
-    'SELECT EXISTS (SELECT 1 FROM app.users) AS populated',
-  );
+  const allowlistProbe = await db().select({ id: users.id }).from(users).limit(1);
 
-  if (allowlistProbe.rows[0]?.populated === true) {
-    const userResult = await query<AccessUserRow>(
-      `SELECT ${ACCESS_USER_COLUMNS} FROM app.users WHERE email = $1`,
-      [subjectEmail.toLowerCase()],
-    );
+  if (allowlistProbe.length > 0) {
+    const userResult = await db()
+      .select(ACCESS_USER_COLUMNS)
+      .from(users)
+      .where(eq(users.email, subjectEmail.toLowerCase()));
 
-    let userRow: AccessUserRow | undefined = userResult.rows[0];
+    let userRow: AccessUserRow | undefined = userResult[0];
 
     // No row at all: the P1V0 flag decides, not the allowlist (PCC-3479).
     // A row that exists but is deactivated is a deliberate revocation — the
@@ -798,7 +798,7 @@ async function checkUserAccess(
       subjectEmail,
     );
 
-    if (userRow?.is_active !== true) {
+    if (userRow?.isActive !== true) {
       return errorResponse('User not authorized', 403);
     }
 
@@ -816,7 +816,7 @@ async function checkUserAccess(
     const resolvedAvatarUrl =
       principal.authProvider === 'broker'
         ? principal.avatarUrl ?? null
-        : principal.avatarUrl ?? userRow.avatar_url;
+        : principal.avatarUrl ?? userRow.avatarUrl;
     principal.avatarUrl = resolvedAvatarUrl ?? undefined;
 
     // Link principal_id on first login, and update name/avatar_url.
@@ -824,11 +824,17 @@ async function checkUserAccess(
     // subject — the persistence actor resolver looks this column up by
     // UUIDv5, and a raw stamp recreates the unmatchable rows migration 045
     // backfills (incident PCC-3464).
-    if (userRow.principal_id === null) {
-      await query(
-        'UPDATE app.users SET principal_id = $1, auth_provider = $2, name = COALESCE($3, name), avatar_url = $4, updated_at = NOW() WHERE id = $5',
-        [await normalizePrincipalIdForDb(principal.id), principal.authProvider ?? 'unknown', principal.name ?? null, resolvedAvatarUrl, userRow.id],
-      );
+    if (userRow.principalId === null) {
+      await db()
+        .update(users)
+        .set({
+          principalId: await normalizePrincipalIdForDb(principal.id),
+          authProvider: principal.authProvider ?? 'unknown',
+          name: sql`COALESCE(${principal.name ?? null}, ${users.name})`,
+          avatarUrl: resolvedAvatarUrl,
+          updatedAt: sql`NOW()`,
+        })
+        .where(eq(users.id, userRow.id));
 
       // Self-heal orphan user_site_roles rows from before dbUserId was used.
       // Historical writes stored principal.id where users.id was expected.
@@ -836,37 +842,42 @@ async function checkUserAccess(
       // those rows so authorization and listing queries find them.
       // Drop orphans that would collide with an existing canonical row first
       // to satisfy the (user_id, site_id, source) unique constraint.
-      await query(
-        `DELETE FROM app.user_site_roles orphan
+      //
+      // DELETE ... USING has no builder equivalent, so this stays a raw
+      // statement (D6).
+      await db().execute(sql`
+        DELETE FROM app.user_site_roles orphan
          USING app.user_site_roles canonical
-         WHERE orphan.user_id = $1
-           AND canonical.user_id = $2
+         WHERE orphan.user_id = ${principal.id}
+           AND canonical.user_id = ${userRow.id}
            AND canonical.site_id = orphan.site_id
-           AND canonical.source = orphan.source`,
-        [principal.id, userRow.id],
-      );
-      await query(
-        'UPDATE app.user_site_roles SET user_id = $1 WHERE user_id = $2',
-        [userRow.id, principal.id],
-      );
+           AND canonical.source = orphan.source`);
+      await db()
+        .update(userSiteRoles)
+        .set({ userId: userRow.id })
+        .where(eq(userSiteRoles.userId, principal.id));
     }
 
     // Refresh DB name/avatar when returning user's JWT has newer values
-    if (userRow.principal_id !== null) {
+    if (userRow.principalId !== null) {
       const nameChanged = principal.name !== undefined && principal.name !== userRow.name;
-      const avatarChanged = resolvedAvatarUrl !== userRow.avatar_url;
+      const avatarChanged = resolvedAvatarUrl !== userRow.avatarUrl;
       if (nameChanged || avatarChanged) {
-        await query(
-          'UPDATE app.users SET name = COALESCE($1, name), avatar_url = $2, updated_at = NOW() WHERE id = $3',
-          [principal.name ?? null, resolvedAvatarUrl, userRow.id],
-        );
+        await db()
+          .update(users)
+          .set({
+            name: sql`COALESCE(${principal.name ?? null}, ${users.name})`,
+            avatarUrl: resolvedAvatarUrl,
+            updatedAt: sql`NOW()`,
+          })
+          .where(eq(users.id, userRow.id));
       }
     }
 
     // Store DB user ID for authorization queries (role tables reference users.id, not the UUIDv5 principal id)
     principal.dbUserId = userRow.id;
     // Attach system role to principal for downstream use
-    principal.systemRole = userRow.system_role;
+    principal.systemRole = userRow.systemRole;
   }
 
   return null;

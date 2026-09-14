@@ -7,7 +7,9 @@
  */
 
 import type { AuthenticatedPrincipal } from '../types';
-import { query } from '../db';
+import { asc, isNull } from 'drizzle-orm';
+import { sites } from '../db/schema';
+import { db } from '../db/scope';
 import { getMainBranch } from '../services/branch-service';
 import { listDocumentsOnBranch } from '../services/branch-document-service';
 import { onTemplateCreated } from '../services/template-hooks';
@@ -49,17 +51,20 @@ export async function handleBackfillDatasources(
   );
   const offset = Math.max(0, parseInt(url.searchParams.get('offset') ?? '0', 10) || 0);
 
-  const sitesResult = await query<{ id: string; name: string }>(
-    'SELECT id, name FROM app.sites WHERE archived_at IS NULL ORDER BY created_at LIMIT $1 OFFSET $2',
-    [batchSize, offset],
-  );
+  const sitesRows = await db()
+    .select({ id: sites.id, name: sites.name })
+    .from(sites)
+    .where(isNull(sites.archivedAt))
+    .orderBy(asc(sites.createdAt))
+    .limit(batchSize)
+    .offset(offset);
 
   let sitesProcessed = 0;
   let sitesSkipped = 0;
   let templatesProcessed = 0;
   const errors: BackfillError[] = [];
 
-  for (const site of sitesResult.rows) {
+  for (const site of sitesRows) {
     const mainBranch = await getMainBranch(site.id);
     if (mainBranch === null) {
       sitesSkipped++;
@@ -103,7 +108,7 @@ export async function handleBackfillDatasources(
     }
   }
 
-  const hasMore = sitesResult.rows.length === batchSize;
+  const hasMore = sitesRows.length === batchSize;
 
   return jsonResponse({
     sitesProcessed,
@@ -113,7 +118,7 @@ export async function handleBackfillDatasources(
     batch: {
       offset,
       batchSize,
-      returnedSites: sitesResult.rows.length,
+      returnedSites: sitesRows.length,
       hasMore,
       nextOffset: hasMore ? offset + batchSize : undefined,
     },

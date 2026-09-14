@@ -8,6 +8,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { parseRoute } from '../../src/routes/route-parser';
 import type { Organization } from '../../src/types';
+import { users } from '../../src/db/schema';
+import { stubDatabase, type DatabaseStub } from '../__stubs__/database';
 
 // Mock services
 vi.mock('../../src/services', async () => {
@@ -30,12 +32,6 @@ vi.mock('../../src/utils/admin-check', () => ({
   getSystemRole: vi.fn(async () => 'member'),
 }));
 
-// Mock db (used for the email lookup when creating an org for a user with
-// a primary space but no existing org — see Rule 1 below)
-vi.mock('../../src/db', () => ({
-  query: vi.fn(),
-}));
-
 const mockOrg = {
   id: 'new-org-id',
   name: 'My Space',
@@ -48,9 +44,11 @@ const mockOrg = {
 };
 
 describe('linkOrCreateOrgForSpace', () => {
+  let database: DatabaseStub;
+
   beforeEach(() => {
-    vi.resetModules();
     vi.clearAllMocks();
+    database = stubDatabase();
   });
 
   it('links the user\'s existing primary org to the space', async () => {
@@ -82,15 +80,14 @@ describe('linkOrCreateOrgForSpace', () => {
   it('Rule 1: creates an organization when the user has a primary space but no P1 org', async () => {
     const { linkOrCreateOrgForSpace } = await import('../../src/routes/my-organizations-api');
     const { getUserPrimaryOrg, linkOrgToSpace, createOrgForUser } = await import('../../src/services');
-    const db = await import('../../src/db');
 
     vi.mocked(getUserPrimaryOrg).mockResolvedValue(null);
-    vi.mocked(db.query).mockResolvedValue({ rows: [{ email: 'user@pantheon.io' }] });
+    database.on(users).select.returns([{ email: 'user@pantheon.io' }]);
     vi.mocked(createOrgForUser).mockResolvedValue(mockOrg);
 
     await linkOrCreateOrgForSpace('user-uuid-123', 'space_abc', 'My Space');
 
-    expect(db.query).toHaveBeenCalledWith(expect.stringContaining('SELECT email'), ['user-uuid-123']);
+    expect(database.calls(users).select[0].params).toEqual(['user-uuid-123']);
     expect(createOrgForUser).toHaveBeenCalledWith('user-uuid-123', 'user@pantheon.io', 'My Space', 'space_abc');
     expect(linkOrgToSpace).not.toHaveBeenCalled();
   });
@@ -98,10 +95,8 @@ describe('linkOrCreateOrgForSpace', () => {
   it('Rule 1: does not call createOrgForUser when the user has no email on record', async () => {
     const { linkOrCreateOrgForSpace } = await import('../../src/routes/my-organizations-api');
     const { getUserPrimaryOrg, createOrgForUser } = await import('../../src/services');
-    const db = await import('../../src/db');
 
     vi.mocked(getUserPrimaryOrg).mockResolvedValue(null);
-    vi.mocked(db.query).mockResolvedValue({ rows: [] });
 
     await linkOrCreateOrgForSpace('user-uuid-123', 'space_abc', null);
 
@@ -121,10 +116,9 @@ describe('linkOrCreateOrgForSpace', () => {
   it('swallows errors from creating an org for a spaceless user', async () => {
     const { linkOrCreateOrgForSpace } = await import('../../src/routes/my-organizations-api');
     const { getUserPrimaryOrg, createOrgForUser } = await import('../../src/services');
-    const db = await import('../../src/db');
 
     vi.mocked(getUserPrimaryOrg).mockResolvedValue(null);
-    vi.mocked(db.query).mockResolvedValue({ rows: [{ email: 'user@pantheon.io' }] });
+    database.on(users).select.returns([{ email: 'user@pantheon.io' }]);
     vi.mocked(createOrgForUser).mockRejectedValue(new Error('unique constraint'));
 
     await expect(linkOrCreateOrgForSpace('user-uuid-123', 'space_abc', null)).resolves.toBeUndefined();
@@ -133,8 +127,8 @@ describe('linkOrCreateOrgForSpace', () => {
 
 describe('GET /api/organizations/mine', () => {
   beforeEach(() => {
-    vi.resetModules();
     vi.clearAllMocks();
+    stubDatabase();
   });
 
   describe('route parsing', () => {

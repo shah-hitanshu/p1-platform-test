@@ -17,7 +17,9 @@ import {
 } from '../services';
 import { isSuperAdmin } from '../utils/admin-check';
 import { errorResponse } from '../utils/http-helpers';
-import { query } from '../db';
+import { eq } from 'drizzle-orm';
+import { users } from '../db/schema';
+import { db } from '../db/scope';
 
 interface MyOrganizationsContext {
   principal: Pick<AuthenticatedPrincipal, 'id' | 'type' | 'dbUserId' | 'systemRole'>;
@@ -45,11 +47,8 @@ export async function linkOrCreateOrgForSpace(
       return;
     }
 
-    const userRow = await query<{ email: string }>(
-      'SELECT email FROM app.users WHERE id = $1',
-      [dbUserId],
-    );
-    const email = userRow.rows[0]?.email;
+    const userRows = await db().select({ email: users.email }).from(users).where(eq(users.id, dbUserId));
+    const email = userRows[0]?.email;
     if (email !== undefined) {
       await createOrgForUser(dbUserId, email, spaceName ?? undefined, spaceId);
     }

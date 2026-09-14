@@ -9,7 +9,11 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import postgres from 'postgres';
+import { drizzle } from 'drizzle-orm/postgres-js';
 import { setDatabaseInstance, type DatabaseConnection } from '../../src/db';
+import type { Database } from '../../src/db/executor';
+import { installDatabase } from '../../src/db/scope';
+import * as schema from '../../src/db/schema';
 import {
   createDocumentOnBranch,
   createDocumentVersion,
@@ -25,6 +29,8 @@ const PANTHEON_SITE_ID = 'test-published-snapshot-repair-site';
 const SYSTEM_ACTOR = '00000000-0000-0000-0000-000000000000';
 
 let sql: ReturnType<typeof postgres>;
+let drizzleClient: ReturnType<typeof postgres>;
+let db: Database;
 let testSiteId: string;
 let mainBranchId: string;
 
@@ -90,6 +96,11 @@ async function getSnapshot(documentId: string, versionNumber: number): Promise<u
 
 beforeAll(async () => {
   sql = postgres(TEST_DATABASE_URL, { max: 1 });
+  // drizzle() replaces its client's timestamp parsers and json serializers with
+  // identity functions, so it gets a client of its own.
+  drizzleClient = postgres(TEST_DATABASE_URL, { max: 1 });
+  db = drizzle(drizzleClient, { schema });
+  installDatabase(db);
 
   const connection: DatabaseConnection = {
     async query(sqlQuery, params) {
@@ -132,8 +143,9 @@ afterAll(async () => {
   } catch {
     // Ignore cleanup errors
   }
+  installDatabase(null);
   setDatabaseInstance(null);
-  await sql.end();
+  await Promise.allSettled([sql.end(), drizzleClient.end()]);
 });
 
 describe('Published snapshot repair [PCC-3652]', () => {

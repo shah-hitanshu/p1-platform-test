@@ -7,15 +7,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { AuthenticatedPrincipal } from '../../src/types';
 import { readJson } from '../helpers/http';
-
-// This file mocks '../../src/db' as a module (for the legacy query() calls
-// users-api.ts still makes), so the Drizzle handle threaded into route
-// contexts below is a separate stub kept under its own name.
-
-// Mock the db module
-vi.mock('../../src/db', () => ({
-  query: vi.fn(),
-}));
+import { users } from '../../src/db/schema';
+import { stubDatabase, type DatabaseStub } from '../__stubs__/database';
 
 // Mock the organization service for auto-create org
 vi.mock('../../src/services/organization-service', async () => {
@@ -40,28 +33,28 @@ describe('Users API Routes', () => {
     id: 'user-uuid-1',
     email: 'test@example.com',
     name: 'Test User',
-    principal_id: null,
-    auth_provider: null,
-    system_role: 'member',
-    is_active: true,
-    created_at: '2026-01-01T00:00:00Z',
-    updated_at: '2026-01-01T00:00:00Z',
+    principalId: null,
+    authProvider: null,
+    systemRole: 'member',
+    isActive: true,
+    createdAt: new Date('2026-01-01T00:00:00Z'),
+    updatedAt: new Date('2026-01-01T00:00:00Z'),
   };
 
+  let database: DatabaseStub;
+
   beforeEach(() => {
-    vi.resetModules();
     vi.clearAllMocks();
+    database = stubDatabase();
   });
 
   describe('Admin access control', () => {
     it('should allow access when no users exist (bootstrap mode)', async () => {
       const { handleUsersRoutes } = await import('../../src/routes/users-api');
-      const db = await import('../../src/db');
 
-      // Count query: no users
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ count: '0' }] });
-      // List query
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
+      // isSystemAdmin's bootstrap check and handleListUsers' own select share
+      // the users.select stub; an empty table (the default, unstubbed) passes
+      // both trivially.
 
       const request = new Request(
         'https://api.example.com/api/admin/users',
@@ -77,12 +70,10 @@ describe('Users API Routes', () => {
 
     it('should deny access when principal is not a system admin', async () => {
       const { handleUsersRoutes } = await import('../../src/routes/users-api');
-      const db = await import('../../src/db');
 
-      // Count query: users exist
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ count: '1' }] });
-      // Admin check: not found
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
+      // A populated table with no row naming this principal: not bootstrap,
+      // and the role lookup (same stub) finds no systemRole for it.
+      database.on(users).select.returns([{ id: 'someone-else' }]);
 
       const request = new Request(
         'https://api.example.com/api/admin/users',
@@ -100,14 +91,10 @@ describe('Users API Routes', () => {
 
     it('should allow access when principal is a system admin', async () => {
       const { handleUsersRoutes } = await import('../../src/routes/users-api');
-      const db = await import('../../src/db');
 
-      // Count query: users exist
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ count: '1' }] });
-      // Admin check: found with the platform admin role
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ system_role: 'superadmin' }] });
-      // List query
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [mockUserRow] });
+      // isSystemAdmin's bootstrap check, its role lookup, and handleListUsers'
+      // own select all read this one stubbed row.
+      database.on(users).select.returns([{ ...mockUserRow, systemRole: 'superadmin' }]);
 
       const request = new Request(
         'https://api.example.com/api/admin/users',
@@ -125,23 +112,20 @@ describe('Users API Routes', () => {
   describe('GET /api/admin/users', () => {
     it('should list all users', async () => {
       const { handleUsersRoutes } = await import('../../src/routes/users-api');
-      const db = await import('../../src/db');
 
-      // Count query: no users (bootstrap)
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ count: '0' }] });
-      // List query
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [
-          mockUserRow,
-          {
-            ...mockUserRow,
-            id: 'user-uuid-2',
-            email: 'admin@example.com',
-            name: 'Admin User',
-            system_role: 'superadmin',
-          },
-        ],
-      });
+      // The admin gate's own bootstrap check reads the same stubbed rows, so
+      // the principal carries its role directly rather than depending on a
+      // lookup against the row this test is really about: the listing.
+      database.on(users).select.returns([
+        mockUserRow,
+        {
+          ...mockUserRow,
+          id: 'user-uuid-2',
+          email: 'admin@example.com',
+          name: 'Admin User',
+          systemRole: 'superadmin',
+        },
+      ]);
 
       const request = new Request(
         'https://api.example.com/api/admin/users',
@@ -149,7 +133,7 @@ describe('Users API Routes', () => {
       );
 
       const response = await handleUsersRoutes(request, {
-        principal: adminPrincipal,
+        principal: { ...adminPrincipal, systemRole: 'superadmin' },
       });
 
       expect(response.status).toBe(200);
@@ -162,12 +146,6 @@ describe('Users API Routes', () => {
 
     it('should return empty array when no users exist', async () => {
       const { handleUsersRoutes } = await import('../../src/routes/users-api');
-      const db = await import('../../src/db');
-
-      // Count query: no users (bootstrap)
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ count: '0' }] });
-      // List query
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
 
       const request = new Request(
         'https://api.example.com/api/admin/users',
@@ -187,18 +165,8 @@ describe('Users API Routes', () => {
   describe('POST /api/admin/users', () => {
     it('should add a user with valid body', async () => {
       const { handleUsersRoutes } = await import('../../src/routes/users-api');
-      const db = await import('../../src/db');
 
-      // isSystemAdmin count query: no users (bootstrap)
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ count: '0' }] });
-      // handleAddUser bootstrap count query
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ count: '0' }] });
-      // Auto-insert principal as admin (different email from test@example.com)
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
-      // Duplicate check
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
-      // Insert
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [mockUserRow] });
+      database.on(users).insert.returns([mockUserRow]);
 
       const request = new Request(
         'https://api.example.com/api/admin/users',
@@ -227,10 +195,6 @@ describe('Users API Routes', () => {
 
     it('should return 400 when email is missing', async () => {
       const { handleUsersRoutes } = await import('../../src/routes/users-api');
-      const db = await import('../../src/db');
-
-      // Count query: no users (bootstrap)
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ count: '0' }] });
 
       const request = new Request(
         'https://api.example.com/api/admin/users',
@@ -252,10 +216,6 @@ describe('Users API Routes', () => {
 
     it('should return 400 when systemRole is invalid', async () => {
       const { handleUsersRoutes } = await import('../../src/routes/users-api');
-      const db = await import('../../src/db');
-
-      // Count query: no users (bootstrap)
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ count: '0' }] });
 
       const request = new Request(
         'https://api.example.com/api/admin/users',
@@ -279,20 +239,10 @@ describe('Users API Routes', () => {
     // platform-admin surface (the org-scoped user API refuses to grant it).
     it('should accept the superadmin systemRole', async () => {
       const { handleUsersRoutes } = await import('../../src/routes/users-api');
-      const db = await import('../../src/db');
 
-      // isSystemAdmin count query: no users (bootstrap)
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ count: '0' }] });
-      // handleAddUser bootstrap count query
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ count: '0' }] });
-      // Auto-insert principal as admin (different email from root@example.com)
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
-      // Duplicate check
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
-      // Insert
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [{ ...mockUserRow, email: 'root@example.com', system_role: 'superadmin' }],
-      });
+      database.on(users).insert.returns([
+        { ...mockUserRow, email: 'root@example.com', systemRole: 'superadmin' },
+      ]);
 
       const request = new Request(
         'https://api.example.com/api/admin/users',
@@ -314,16 +264,11 @@ describe('Users API Routes', () => {
 
     it('should return 409 when email already exists', async () => {
       const { handleUsersRoutes } = await import('../../src/routes/users-api');
-      const db = await import('../../src/db');
 
-      // isSystemAdmin count query: no users (bootstrap)
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ count: '0' }] });
-      // handleAddUser bootstrap count query
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ count: '0' }] });
-      // Auto-insert principal as admin
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
-      // Duplicate check: found
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ id: 'existing-id' }] });
+      // The admin gate's bootstrap check and the duplicate-email check share
+      // the users.select stub; the principal carries its role directly so a
+      // populated result here only has to answer the duplicate check.
+      database.on(users).select.returns([{ id: 'existing-id' }]);
 
       const request = new Request(
         'https://api.example.com/api/admin/users',
@@ -335,7 +280,7 @@ describe('Users API Routes', () => {
       );
 
       const response = await handleUsersRoutes(request, {
-        principal: adminPrincipal,
+        principal: { ...adminPrincipal, systemRole: 'superadmin' },
       });
 
       expect(response.status).toBe(409);
@@ -347,14 +292,8 @@ describe('Users API Routes', () => {
   describe('PATCH /api/admin/users/:userId', () => {
     it('should update user role', async () => {
       const { handleUsersRoutes } = await import('../../src/routes/users-api');
-      const db = await import('../../src/db');
 
-      // Count query: no users (bootstrap)
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ count: '0' }] });
-      // Update query
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [{ ...mockUserRow, system_role: 'superadmin' }],
-      });
+      database.on(users).update.returns([{ ...mockUserRow, systemRole: 'superadmin' }]);
 
       const request = new Request(
         'https://api.example.com/api/admin/users/user-uuid-1',
@@ -379,10 +318,6 @@ describe('Users API Routes', () => {
     // something this surface can assign.
     it('refuses to assign the retired admin role', async () => {
       const { handleUsersRoutes } = await import('../../src/routes/users-api');
-      const db = await import('../../src/db');
-
-      // Count query: no users (bootstrap)
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ count: '0' }] });
 
       const request = new Request(
         'https://api.example.com/api/admin/users/user-uuid-1',
@@ -405,14 +340,8 @@ describe('Users API Routes', () => {
 
     it('should update user active status', async () => {
       const { handleUsersRoutes } = await import('../../src/routes/users-api');
-      const db = await import('../../src/db');
 
-      // Count query: no users (bootstrap)
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ count: '0' }] });
-      // Update query
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [{ ...mockUserRow, is_active: false }],
-      });
+      database.on(users).update.returns([{ ...mockUserRow, isActive: false }]);
 
       const request = new Request(
         'https://api.example.com/api/admin/users/user-uuid-1',
@@ -435,10 +364,6 @@ describe('Users API Routes', () => {
 
     it('should return 400 when no fields to update', async () => {
       const { handleUsersRoutes } = await import('../../src/routes/users-api');
-      const db = await import('../../src/db');
-
-      // Count query: no users (bootstrap)
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ count: '0' }] });
 
       const request = new Request(
         'https://api.example.com/api/admin/users/user-uuid-1',
@@ -461,12 +386,8 @@ describe('Users API Routes', () => {
 
     it('should return 404 when user not found', async () => {
       const { handleUsersRoutes } = await import('../../src/routes/users-api');
-      const db = await import('../../src/db');
 
-      // Count query: no users (bootstrap)
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ count: '0' }] });
-      // Update query: no rows returned
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
+      // Update matches no row (default: an unstubbed update returns none).
 
       const request = new Request(
         'https://api.example.com/api/admin/users/nonexistent',
@@ -489,12 +410,8 @@ describe('Users API Routes', () => {
   describe('DELETE /api/admin/users/:userId', () => {
     it('should remove a user', async () => {
       const { handleUsersRoutes } = await import('../../src/routes/users-api');
-      const db = await import('../../src/db');
 
-      // Count query: no users (bootstrap)
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ count: '0' }] });
-      // Delete query
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [], rowCount: 1 });
+      database.on(users).delete.returns([{ email: mockUserRow.email }]);
 
       const request = new Request(
         'https://api.example.com/api/admin/users/user-uuid-1',
@@ -511,12 +428,8 @@ describe('Users API Routes', () => {
 
     it('should return 404 when user not found', async () => {
       const { handleUsersRoutes } = await import('../../src/routes/users-api');
-      const db = await import('../../src/db');
 
-      // Count query: no users (bootstrap)
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ count: '0' }] });
-      // Delete query: no rows deleted
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      // Delete matches no row (default: an unstubbed delete returns none).
 
       const request = new Request(
         'https://api.example.com/api/admin/users/nonexistent',
@@ -535,10 +448,6 @@ describe('Users API Routes', () => {
   describe('Method not allowed', () => {
     it('should return 405 for unsupported methods on collection', async () => {
       const { handleUsersRoutes } = await import('../../src/routes/users-api');
-      const db = await import('../../src/db');
-
-      // Count query: no users (bootstrap)
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ count: '0' }] });
 
       const request = new Request(
         'https://api.example.com/api/admin/users',
@@ -554,10 +463,6 @@ describe('Users API Routes', () => {
 
     it('should return 405 for unsupported methods on single user', async () => {
       const { handleUsersRoutes } = await import('../../src/routes/users-api');
-      const db = await import('../../src/db');
-
-      // Count query: no users (bootstrap)
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ count: '0' }] });
 
       const request = new Request(
         'https://api.example.com/api/admin/users/user-uuid-1',
@@ -580,21 +485,10 @@ describe('Users API Routes', () => {
   describe('POST /api/admin/users - auto-create org', () => {
     it('should auto-create org after adding user', async () => {
       const { handleUsersRoutes } = await import('../../src/routes/users-api');
-      const db = await import('../../src/db');
       const { createOrgForUser } = await import('../../src/services/organization-service');
 
-      // isSystemAdmin count query: no users (bootstrap)
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ count: '0' }] });
-      // handleAddUser bootstrap count query
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ count: '0' }] });
-      // Auto-insert principal as admin
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
-      // Duplicate check
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
-      // Insert user
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [mockUserRow] });
+      database.on(users).insert.returns([mockUserRow]);
 
-      // createOrgForUser mock
       vi.mocked(createOrgForUser).mockResolvedValueOnce({
         id: 'org-new',
         name: 'Example',
@@ -632,19 +526,9 @@ describe('Users API Routes', () => {
 
     it('should pass spaceName and externalSpaceId when provided', async () => {
       const { handleUsersRoutes } = await import('../../src/routes/users-api');
-      const db = await import('../../src/db');
       const { createOrgForUser } = await import('../../src/services/organization-service');
 
-      // isSystemAdmin count query: no users (bootstrap)
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ count: '0' }] });
-      // handleAddUser bootstrap count query
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ count: '0' }] });
-      // Auto-insert principal as admin
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
-      // Duplicate check
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
-      // Insert user
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [mockUserRow] });
+      database.on(users).insert.returns([mockUserRow]);
 
       vi.mocked(createOrgForUser).mockResolvedValueOnce({
         id: 'org-new',
@@ -685,19 +569,9 @@ describe('Users API Routes', () => {
 
     it('should still succeed if org creation fails', async () => {
       const { handleUsersRoutes } = await import('../../src/routes/users-api');
-      const db = await import('../../src/db');
       const { createOrgForUser } = await import('../../src/services/organization-service');
 
-      // isSystemAdmin count query: no users (bootstrap)
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ count: '0' }] });
-      // handleAddUser bootstrap count query
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ count: '0' }] });
-      // Auto-insert principal as admin
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
-      // Duplicate check
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
-      // Insert user
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [mockUserRow] });
+      database.on(users).insert.returns([mockUserRow]);
 
       // Org creation fails — user creation should still succeed
       vi.mocked(createOrgForUser).mockRejectedValueOnce(new Error('org creation failed'));
@@ -745,7 +619,6 @@ describe('Users API Routes', () => {
 
     it('reports a superadmin as a platform admin', async () => {
       const { handleCurrentUserRoute } = await import('../../src/routes/users-api');
-      const db = await import('../../src/db');
 
       const response = await handleCurrentUserRoute(meRequest(), {
         principal: enriched({ systemRole: 'superadmin' }),
@@ -756,7 +629,7 @@ describe('Users API Routes', () => {
       expect(body.systemRole).toBe('superadmin');
       expect(body.isSystemAdmin).toBe(true);
       // The request gate already resolved the role, so nothing is re-read.
-      expect(db.query).not.toHaveBeenCalled();
+      expect(database.statements).toHaveLength(0);
     });
 
     // PCC-3479: `admin` is a legacy system_role that nothing reads any more.
@@ -787,18 +660,15 @@ describe('Users API Routes', () => {
 
     it('falls back to a lookup for a principal the gate did not enrich', async () => {
       const { handleCurrentUserRoute } = await import('../../src/routes/users-api');
-      const db = await import('../../src/db');
 
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [{ ...mockUserRow, system_role: 'superadmin' }],
-      });
+      database.on(users).select.returns([{ ...mockUserRow, systemRole: 'superadmin' }]);
 
       const response = await handleCurrentUserRoute(meRequest(), {
         principal: adminPrincipal,
       });
 
       const body = await readJson(response);
-      expect(db.query).toHaveBeenCalledTimes(1);
+      expect(database.calls(users).select).toHaveLength(1);
       expect(body.id).toBe('user-uuid-1');
       expect(body.email).toBe('test@example.com');
       expect(body.isSystemAdmin).toBe(true);
@@ -806,9 +676,8 @@ describe('Users API Routes', () => {
 
     it('reports no role for a user with no row yet', async () => {
       const { handleCurrentUserRoute } = await import('../../src/routes/users-api');
-      const db = await import('../../src/db');
 
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
+      // No stubbed row (default: an unstubbed select returns none).
 
       const response = await handleCurrentUserRoute(meRequest(), {
         principal: adminPrincipal,
@@ -821,7 +690,6 @@ describe('Users API Routes', () => {
 
     it('never treats an agent principal as an admin', async () => {
       const { handleCurrentUserRoute } = await import('../../src/routes/users-api');
-      const db = await import('../../src/db');
 
       const response = await handleCurrentUserRoute(meRequest(), {
         principal: { ...adminPrincipal, type: 'agent', systemRole: 'superadmin' },
@@ -830,7 +698,7 @@ describe('Users API Routes', () => {
       const body = await readJson(response);
       expect(body.systemRole).toBeNull();
       expect(body.isSystemAdmin).toBe(false);
-      expect(db.query).not.toHaveBeenCalled();
+      expect(database.statements).toHaveLength(0);
     });
 
     it('rejects a non-GET method', async () => {
@@ -845,10 +713,9 @@ describe('Users API Routes', () => {
 
     it('returns 500 when the lookup throws', async () => {
       const { handleCurrentUserRoute } = await import('../../src/routes/users-api');
-      const db = await import('../../src/db');
 
       vi.spyOn(console, 'error').mockImplementationOnce(() => undefined);
-      vi.mocked(db.query).mockRejectedValueOnce(new Error('DB down'));
+      database.on(users).select.rejects(new Error('DB down'));
 
       const response = await handleCurrentUserRoute(meRequest(), {
         principal: adminPrincipal,

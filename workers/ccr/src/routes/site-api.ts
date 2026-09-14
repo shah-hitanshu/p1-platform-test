@@ -26,7 +26,9 @@ import { assertPermission, getSiteRole } from '../auth/authorization';
 import { canAccessOrganization } from '../utils/org-access';
 import { isSuperAdmin } from '../utils/admin-check';
 import type { ScreenshotProducerEnv } from '../queues/screenshot-producer';
-import { query } from '../db';
+import { and, eq } from 'drizzle-orm';
+import { users } from '../db/schema';
+import { db } from '../db/scope';
 import { validatePagination, validateAllowedOriginPatterns } from './validation';
 
 /**
@@ -199,11 +201,16 @@ async function handleListSites(
     && context.principal.actingUserEmail !== undefined
     && context.principal.actingUserEmail !== ''
   ) {
-    const actingUserResult = await query<{ id: string }>(
-      'SELECT id FROM app.users WHERE email = $1 AND is_active = true',
-      [context.principal.actingUserEmail.toLowerCase()],
-    );
-    const actingUserRow = actingUserResult.rows[0];
+    const actingUserRows = await db()
+      .select({ id: users.id })
+      .from(users)
+      .where(
+        and(
+          eq(users.email, context.principal.actingUserEmail.toLowerCase()),
+          eq(users.isActive, true),
+        ),
+      );
+    const actingUserRow = actingUserRows[0];
     if (actingUserRow === undefined) {
       return jsonResponse({ sites: [] });
     }

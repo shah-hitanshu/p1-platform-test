@@ -4,7 +4,9 @@
  * Validates and processes a site export bundle.
  * UUID remapping, SHA-256 validation, KV progress tracking.
  */
-import { query } from '../db';
+import { eq } from 'drizzle-orm';
+import { agents, users } from '../db/schema';
+import { db } from '../db/scope';
 import type { CreatedByRef } from './bundle-export-service';
 import { sha256Hex, hmacSha256 } from '../utils/hash';
 
@@ -72,11 +74,8 @@ export async function resolveCreatedByRefToId(ref: CreatedByRef): Promise<string
 
   if (ref.type === 'user') {
     if (ref.email == null || ref.email === '') return SYSTEM_UUID;
-    const result = await query<{ id: string }>(
-      'SELECT id FROM app.users WHERE email = $1',
-      [ref.email],
-    );
-    const row = result.rows[0];
+    const rows = await db().select({ id: users.id }).from(users).where(eq(users.email, ref.email));
+    const row = rows[0];
     if (row == null) {
       console.warn(`[bundle-import] User "${ref.email}" not found — attribution set to system`);
       return SYSTEM_UUID;
@@ -86,11 +85,8 @@ export async function resolveCreatedByRefToId(ref: CreatedByRef): Promise<string
 
   // agent
   if (ref.name == null || ref.name === '') return SYSTEM_UUID;
-  const result = await query<{ id: string }>(
-    'SELECT id FROM app.agents WHERE name = $1',
-    [ref.name],
-  );
-  const row = result.rows[0];
+  const rows = await db().select({ id: agents.id }).from(agents).where(eq(agents.name, ref.name));
+  const row = rows[0];
   if (row == null) {
     console.warn(`[bundle-import] Agent "${ref.name}" not found — attribution set to system`);
     return SYSTEM_UUID;

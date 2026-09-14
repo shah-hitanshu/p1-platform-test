@@ -8,6 +8,8 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { readJson } from '../helpers/http';
+import { users } from '../../src/db/schema';
+import { stubDatabase, type DatabaseStub } from '../__stubs__/database';
 
 // Every route here needs the admin role *in this organization*, so the default
 // caller is one. The permission block opts out explicitly.
@@ -15,10 +17,6 @@ vi.mock('../../src/utils/org-access', () => ({
   isOrgAdmin: vi.fn(async () => true),
   // Mirrors the real one: prefer what the gate attached, look it up otherwise.
   resolveUserId: vi.fn(async (principal: { dbUserId?: string }) => principal.dbUserId),
-}));
-
-vi.mock('../../src/db', () => ({
-  query: vi.fn(),
 }));
 
 vi.mock('../../src/services', () => ({
@@ -66,28 +64,22 @@ function userRow(overrides: Record<string, unknown> = {}): Record<string, unknow
     id: 'user-uuid-1',
     email: 'member@example.com',
     name: 'Member',
-    principal_id: null,
-    auth_provider: null,
-    system_role: 'member',
-    is_active: true,
-    created_at: '2026-01-01T00:00:00.000Z',
-    updated_at: '2026-01-01T00:00:00.000Z',
+    principalId: null,
+    authProvider: null,
+    systemRole: 'member',
+    isActive: true,
+    createdAt: new Date('2026-01-01T00:00:00.000Z'),
+    updatedAt: new Date('2026-01-01T00:00:00.000Z'),
     ...overrides,
   };
 }
 
-/** The email lookup DELETE runs so the audit entry can name the target. */
-function removedEmail(email = 'member@example.com'): {
-  rows: { email: string }[];
-  rowCount: number;
-} {
-  return { rows: [{ email }], rowCount: 1 };
-}
-
 describe('Organization users API', () => {
+  let database: DatabaseStub;
+
   beforeEach(() => {
-    vi.resetModules();
     vi.clearAllMocks();
+    database = stubDatabase();
   });
 
   describe('access control', () => {
@@ -267,12 +259,11 @@ describe('Organization users API', () => {
     it('creates the user and joins them to the organization', async () => {
       const { handleOrgUsersRoutes } = await import('../../src/routes/org-users-api');
       const services = await import('../../src/services');
-      const { query } = await import('../../src/db');
 
       vi.mocked(services.getOrganizationById).mockResolvedValueOnce({
         id: ORG_ID,
       } as never);
-      vi.mocked(query).mockResolvedValueOnce({ rows: [userRow()], rowCount: 1 });
+      database.on(users).insert.returns([userRow()]);
       vi.mocked(services.addUserToOrganization).mockResolvedValueOnce(true);
 
       const response = await handleOrgUsersRoutes(
@@ -283,7 +274,7 @@ describe('Organization users API', () => {
       expect(response.status).toBe(201);
       // Email is normalized before it reaches the unique index, and the new
       // app.users row is left at the default platform role.
-      expect(vi.mocked(query).mock.calls[0]?.[1]).toEqual([
+      expect(database.calls(users).insert[0].params).toEqual([
         'member@example.com',
         'Member',
       ]);
@@ -297,15 +288,12 @@ describe('Organization users API', () => {
     it('joins an email already known to P1 rather than failing on the unique index', async () => {
       const { handleOrgUsersRoutes } = await import('../../src/routes/org-users-api');
       const services = await import('../../src/services');
-      const { query } = await import('../../src/db');
 
       vi.mocked(services.getOrganizationById).mockResolvedValueOnce({
         id: ORG_ID,
       } as never);
       // INSERT ... ON CONFLICT DO NOTHING returns nothing, then the SELECT finds it.
-      vi.mocked(query)
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 })
-        .mockResolvedValueOnce({ rows: [userRow()], rowCount: 1 });
+      database.on(users).select.returns([userRow()]);
       vi.mocked(services.isUserInOrganization).mockResolvedValueOnce(false);
       vi.mocked(services.addUserToOrganization).mockResolvedValueOnce(true);
 
@@ -325,12 +313,11 @@ describe('Organization users API', () => {
     it('joins the user as an admin when asked', async () => {
       const { handleOrgUsersRoutes } = await import('../../src/routes/org-users-api');
       const services = await import('../../src/services');
-      const { query } = await import('../../src/db');
 
       vi.mocked(services.getOrganizationById).mockResolvedValueOnce({
         id: ORG_ID,
       } as never);
-      vi.mocked(query).mockResolvedValueOnce({ rows: [userRow()], rowCount: 1 });
+      database.on(users).insert.returns([userRow()]);
       vi.mocked(services.addUserToOrganization).mockResolvedValueOnce(true);
 
       const response = await handleOrgUsersRoutes(
@@ -354,14 +341,11 @@ describe('Organization users API', () => {
     it('returns 409 when the user is already in this organization', async () => {
       const { handleOrgUsersRoutes } = await import('../../src/routes/org-users-api');
       const services = await import('../../src/services');
-      const { query } = await import('../../src/db');
 
       vi.mocked(services.getOrganizationById).mockResolvedValueOnce({
         id: ORG_ID,
       } as never);
-      vi.mocked(query)
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 })
-        .mockResolvedValueOnce({ rows: [userRow()], rowCount: 1 });
+      database.on(users).select.returns([userRow()]);
       vi.mocked(services.isUserInOrganization).mockResolvedValueOnce(true);
 
       const response = await handleOrgUsersRoutes(
@@ -435,14 +419,13 @@ describe('Organization users API', () => {
     it('deactivates a user in the organization', async () => {
       const { handleOrgUsersRoutes } = await import('../../src/routes/org-users-api');
       const services = await import('../../src/services');
-      const { query } = await import('../../src/db');
 
       vi.mocked(services.isUserInOrganization).mockResolvedValueOnce(true);
       vi.mocked(services.updateOrganizationMember).mockResolvedValueOnce({
         role: 'member',
         isActive: false,
       });
-      vi.mocked(query).mockResolvedValueOnce({ rows: [userRow()], rowCount: 1 });
+      database.on(users).select.returns([userRow()]);
 
       const response = await handleOrgUsersRoutes(
         makeRequest('PATCH', { isActive: false }),
@@ -500,7 +483,6 @@ describe('Organization users API', () => {
     it('writes role and isActive in a single statement', async () => {
       const { handleOrgUsersRoutes } = await import('../../src/routes/org-users-api');
       const services = await import('../../src/services');
-      const { query } = await import('../../src/db');
 
       vi.mocked(services.isUserInOrganization).mockResolvedValueOnce(true);
       vi.mocked(services.getOrganizationRole).mockResolvedValue('admin');
@@ -508,7 +490,7 @@ describe('Organization users API', () => {
         role: 'admin',
         isActive: false,
       });
-      vi.mocked(query).mockResolvedValueOnce({ rows: [userRow()], rowCount: 1 });
+      database.on(users).select.returns([userRow()]);
 
       const response = await handleOrgUsersRoutes(
         makeRequest('PATCH', { role: 'admin', isActive: false }),
@@ -542,11 +524,10 @@ describe('Organization users API', () => {
     it('promotes a member to admin of this organization', async () => {
       const { handleOrgUsersRoutes } = await import('../../src/routes/org-users-api');
       const services = await import('../../src/services');
-      const { query } = await import('../../src/db');
 
       vi.mocked(services.isUserInOrganization).mockResolvedValueOnce(true);
       vi.mocked(services.getOrganizationRole).mockResolvedValue('admin');
-      vi.mocked(query).mockResolvedValueOnce({ rows: [userRow()], rowCount: 1 });
+      database.on(users).select.returns([userRow()]);
 
       const response = await handleOrgUsersRoutes(
         makeRequest('PATCH', { role: 'admin' }),
@@ -569,11 +550,10 @@ describe('Organization users API', () => {
     it('does not write the platform role', async () => {
       const { handleOrgUsersRoutes } = await import('../../src/routes/org-users-api');
       const services = await import('../../src/services');
-      const { query } = await import('../../src/db');
 
       vi.mocked(services.isUserInOrganization).mockResolvedValueOnce(true);
       vi.mocked(services.getOrganizationRole).mockResolvedValue('admin');
-      vi.mocked(query).mockResolvedValueOnce({ rows: [userRow()], rowCount: 1 });
+      database.on(users).select.returns([userRow()]);
 
       const response = await handleOrgUsersRoutes(
         makeRequest('PATCH', { role: 'admin' }),
@@ -581,8 +561,9 @@ describe('Organization users API', () => {
       );
 
       expect(response.status).toBe(200);
-      const statements = vi.mocked(query).mock.calls.map((call) => call[0]);
-      expect(statements.some((sql) => sql.includes('system_role ='))).toBe(false);
+      // Role lives on organization_members (updateOrganizationMember, mocked
+      // above); nothing here writes app.users at all.
+      expect(database.calls(users).update).toHaveLength(0);
     });
 
     // Ownership moves by transfer, not by an admin editing the roster — no
@@ -680,7 +661,6 @@ describe('Organization users API', () => {
     it('deactivates an admin while another remains', async () => {
       const { handleOrgUsersRoutes } = await import('../../src/routes/org-users-api');
       const services = await import('../../src/services');
-      const { query } = await import('../../src/db');
 
       vi.mocked(services.isUserInOrganization).mockResolvedValueOnce(true);
       vi.mocked(services.getOrganizationRole).mockResolvedValue('admin');
@@ -689,7 +669,7 @@ describe('Organization users API', () => {
         role: 'admin',
         isActive: false,
       });
-      vi.mocked(query).mockResolvedValueOnce({ rows: [userRow()], rowCount: 1 });
+      database.on(users).select.returns([userRow()]);
 
       const response = await handleOrgUsersRoutes(
         makeRequest('PATCH', { isActive: false }),
@@ -702,14 +682,13 @@ describe('Organization users API', () => {
     it('demotes an admin while another remains', async () => {
       const { handleOrgUsersRoutes } = await import('../../src/routes/org-users-api');
       const services = await import('../../src/services');
-      const { query } = await import('../../src/db');
 
       vi.mocked(services.isUserInOrganization).mockResolvedValueOnce(true);
       vi.mocked(services.getOrganizationRole)
         .mockResolvedValueOnce('admin')
         .mockResolvedValueOnce('member');
       vi.mocked(services.countOrganizationAdmins).mockResolvedValueOnce(2);
-      vi.mocked(query).mockResolvedValueOnce({ rows: [userRow()], rowCount: 1 });
+      database.on(users).select.returns([userRow()]);
 
       const response = await handleOrgUsersRoutes(
         makeRequest('PATCH', { role: 'member' }),
@@ -837,11 +816,10 @@ describe('Organization users API', () => {
     it('removes the membership', async () => {
       const { handleOrgUsersRoutes } = await import('../../src/routes/org-users-api');
       const services = await import('../../src/services');
-      const db = await import('../../src/db');
 
       vi.mocked(services.countOrganizationMembers).mockResolvedValueOnce(3);
       vi.mocked(services.removeUserFromOrganization).mockResolvedValueOnce(true);
-      vi.mocked(db.query).mockResolvedValueOnce(removedEmail());
+      database.on(users).select.returns([{ email: 'member@example.com' }]);
 
       const response = await handleOrgUsersRoutes(makeRequest('DELETE'), {
         organizationId: ORG_ID,
@@ -917,13 +895,12 @@ describe('Organization users API', () => {
     it('removes an admin while another remains', async () => {
       const { handleOrgUsersRoutes } = await import('../../src/routes/org-users-api');
       const services = await import('../../src/services');
-      const db = await import('../../src/db');
 
       vi.mocked(services.countOrganizationMembers).mockResolvedValueOnce(3);
       vi.mocked(services.getOrganizationRole).mockResolvedValueOnce('admin');
       vi.mocked(services.countOrganizationAdmins).mockResolvedValueOnce(2);
       vi.mocked(services.removeUserFromOrganization).mockResolvedValueOnce(true);
-      vi.mocked(db.query).mockResolvedValueOnce(removedEmail());
+      database.on(users).select.returns([{ email: 'member@example.com' }]);
 
       const response = await handleOrgUsersRoutes(makeRequest('DELETE'), {
         organizationId: ORG_ID,
@@ -939,7 +916,6 @@ describe('Organization users API', () => {
     it('records an audit entry naming the actor and their platform role', async () => {
       const { handleOrgUsersRoutes } = await import('../../src/routes/org-users-api');
       const services = await import('../../src/services');
-      const db = await import('../../src/db');
 
       vi.mocked(services.countOrganizationMembers).mockResolvedValueOnce(3);
       // Set explicitly rather than left to the module default: clearAllMocks
@@ -947,7 +923,7 @@ describe('Organization users API', () => {
       // can otherwise arrive here and change the role this asserts on.
       vi.mocked(services.getOrganizationRole).mockResolvedValueOnce('member');
       vi.mocked(services.removeUserFromOrganization).mockResolvedValueOnce(true);
-      vi.mocked(db.query).mockResolvedValueOnce(removedEmail('removed@example.com'));
+      database.on(users).select.returns([{ email: 'removed@example.com' }]);
 
       const response = await handleOrgUsersRoutes(makeRequest('DELETE'), {
         organizationId: ORG_ID,

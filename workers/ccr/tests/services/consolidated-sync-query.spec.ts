@@ -15,11 +15,8 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { DocumentVersionSource } from '../../src/types';
-
-// Mock database module
-vi.mock('../../src/db', () => ({
-  query: vi.fn(),
-}));
+import { documentVersions } from '../../src/db/schema';
+import { stubDatabase, type DatabaseStub } from '../__stubs__/database';
 
 // Mock document service (used by the existing syncCrdtToPostgres for validation)
 vi.mock('../../src/services/document-service', () => ({
@@ -33,8 +30,11 @@ vi.mock('../../src/services/document-version-service', () => ({
 }));
 
 describe('Phase 5.2: Consolidated Sync Query', () => {
+  let database: DatabaseStub;
+
   beforeEach(() => {
     vi.resetAllMocks();
+    database = stubDatabase();
   });
 
   // ===========================================================================
@@ -85,13 +85,12 @@ describe('Phase 5.2: Consolidated Sync Query', () => {
       const { syncCrdtToPostgresConsolidated } = await import(
         '../../src/services/crdt-sync-service'
       );
-      const db = await import('../../src/db');
 
       const mockRow = createMockVersionRow({
         version_number: 3,
         snapshot: { root: { title: 'New Content' } },
       });
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+      database.on(documentVersions).insert.returnsRaw([mockRow]);
 
       const result = await syncCrdtToPostgresConsolidated({
         documentId: 'doc-uuid-123',
@@ -111,17 +110,15 @@ describe('Phase 5.2: Consolidated Sync Query', () => {
       expect(result.source).toBe('realtime');
 
       // Verify only ONE query was executed (not 2-3)
-      expect(db.query).toHaveBeenCalledTimes(1);
+      expect(database.calls(documentVersions).insert).toHaveLength(1);
     });
 
     it('should return null when snapshot is unchanged (dedup)', async () => {
       const { syncCrdtToPostgresConsolidated } = await import(
         '../../src/services/crdt-sync-service'
       );
-      const db = await import('../../src/db');
 
-      // CTE query returns empty result when snapshot matches latest
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
+      // CTE query returns empty result when snapshot matches latest (default: unstubbed insert returns no rows)
 
       const result = await syncCrdtToPostgresConsolidated({
         documentId: 'doc-uuid-123',
@@ -133,17 +130,16 @@ describe('Phase 5.2: Consolidated Sync Query', () => {
       });
 
       expect(result).toBeNull();
-      expect(db.query).toHaveBeenCalledTimes(1);
+      expect(database.calls(documentVersions).insert).toHaveLength(1);
     });
 
     it('should execute a CTE query with correct parameters', async () => {
       const { syncCrdtToPostgresConsolidated } = await import(
         '../../src/services/crdt-sync-service'
       );
-      const db = await import('../../src/db');
 
       const mockRow = createMockVersionRow();
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+      database.on(documentVersions).insert.returnsRaw([mockRow]);
 
       await syncCrdtToPostgresConsolidated({
         documentId: 'doc-uuid-123',
@@ -155,30 +151,28 @@ describe('Phase 5.2: Consolidated Sync Query', () => {
       });
 
       // Verify the query uses a CTE pattern
-      const call = vi.mocked(db.query).mock.calls[0] as [string, unknown[]];
-      const queryStr = call[0];
-      const queryParams = call[1];
-      expect(queryStr).toContain('WITH');
-      expect(queryStr).toContain('INSERT INTO app.document_versions');
-      expect(queryStr).toContain('RETURNING');
+      const call = database.calls(documentVersions).insert[0];
+      expect(call.sql).toContain('WITH');
+      expect(call.sql).toContain('INSERT INTO app.document_versions');
+      expect(call.sql).toContain('RETURNING');
 
-      // Verify parameters: documentId, branchId, snapshot, actorId, actorType
-      expect(queryParams[0]).toBe('doc-uuid-123'); // documentId
-      expect(queryParams[1]).toBe('branch-uuid-456'); // branchId
-      // snapshot should be JSON
-      expect(queryParams[2]).toEqual({ root: { title: 'Test' } });
-      expect(queryParams[3]).toBe('user-uuid-001'); // actorId
-      expect(queryParams[4]).toBe('user'); // actorType
+      // Verify the values the statement carries: documentId, branchId,
+      // snapshot (as JSON text — the jsonb column is stringified before
+      // binding), actorId, actorType.
+      expect(call.params).toContain('doc-uuid-123');
+      expect(call.params).toContain('branch-uuid-456');
+      expect(call.params).toContain(JSON.stringify({ root: { title: 'Test' } }));
+      expect(call.params).toContain('user-uuid-001');
+      expect(call.params).toContain('user');
     });
 
     it('should create first version when no prior versions exist', async () => {
       const { syncCrdtToPostgresConsolidated } = await import(
         '../../src/services/crdt-sync-service'
       );
-      const db = await import('../../src/db');
 
       const mockRow = createMockVersionRow({ version_number: 1 });
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+      database.on(documentVersions).insert.returnsRaw([mockRow]);
 
       const result = await syncCrdtToPostgresConsolidated({
         documentId: 'doc-uuid-123',
@@ -199,13 +193,12 @@ describe('Phase 5.2: Consolidated Sync Query', () => {
       const { syncCrdtToPostgresConsolidated } = await import(
         '../../src/services/crdt-sync-service'
       );
-      const db = await import('../../src/db');
 
       const mockRow = createMockVersionRow({
         created_by_id: 'agent-uuid-001',
         created_by_type: 'agent',
       });
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+      database.on(documentVersions).insert.returnsRaw([mockRow]);
 
       const result = await syncCrdtToPostgresConsolidated({
         documentId: 'doc-uuid-123',
@@ -227,9 +220,8 @@ describe('Phase 5.2: Consolidated Sync Query', () => {
       const { syncCrdtToPostgresConsolidated } = await import(
         '../../src/services/crdt-sync-service'
       );
-      const db = await import('../../src/db');
 
-      vi.mocked(db.query).mockRejectedValue(new Error('connection refused'));
+      database.on(documentVersions).insert.rejects(new Error('connection refused'));
 
       await expect(
         syncCrdtToPostgresConsolidated({
@@ -295,10 +287,9 @@ describe('Phase 5.2: Consolidated Sync Query', () => {
       const { syncCrdtToPostgresConsolidated } = await import(
         '../../src/services/crdt-sync-service'
       );
-      const db = await import('../../src/db');
 
       const mockRow = createMockVersionRow();
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+      database.on(documentVersions).insert.returnsRaw([mockRow]);
 
       // Should work without siteId — no getDocument() call needed
       const result = await syncCrdtToPostgresConsolidated({

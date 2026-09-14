@@ -9,11 +9,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { AuthenticatedPrincipal } from '../../src/types';
 import { readJson } from '../helpers/http';
 
-// Mock the database
+// Mock the database. This suite runs with no Auth0/broker env vars, so
+// hasRealAuthProviders() is false and the allowlist gate (db()) never runs.
 vi.mock('../../src/db', () => ({
   initializeDatabaseFromConnectionString: vi.fn(),
   runWithConnection: vi.fn().mockImplementation((_connStr: string, _opts: unknown, fn: () => unknown) => fn()),
-  query: vi.fn().mockResolvedValue({ rows: [{ now: new Date().toISOString() }] }),
 }));
 
 // Mock all route handlers (not under test, but required by index.ts imports)

@@ -1,5 +1,7 @@
 import type { AuthenticatedPrincipal } from '../types';
-import { query } from '../db';
+import { and, eq } from 'drizzle-orm';
+import { users } from '../db/schema';
+import { db } from '../db/scope';
 import { normalizePrincipalIdForDb } from '../auth/principal-id-normalization';
 
 /**
@@ -43,12 +45,17 @@ export async function getSystemRole(
   // PCC-3457: principal_id is stored normalized (UUIDv5) — look it up by the
   // same key the writers stamp, or a broker-authenticated admin (raw
   // `provider|subject` principal.id) can never match its own row.
-  const result = await query<{ system_role: string }>(
-    'SELECT system_role FROM app.users WHERE principal_id = $1 AND is_active = true',
-    [await normalizePrincipalIdForDb(principal.id)],
-  );
+  const rows = await db()
+    .select({ systemRole: users.systemRole })
+    .from(users)
+    .where(
+      and(
+        eq(users.principalId, await normalizePrincipalIdForDb(principal.id)),
+        eq(users.isActive, true),
+      ),
+    );
 
-  return result.rows[0]?.system_role ?? null;
+  return rows[0]?.systemRole ?? null;
 }
 
 /**
@@ -74,17 +81,10 @@ export async function isSuperAdmin(
 export async function isSystemAdmin(
   principal: Pick<AuthenticatedPrincipal, 'id' | 'systemRole'>,
 ): Promise<boolean> {
-  const countResult = await query<{ count: string }>(
-    'SELECT COUNT(*) as count FROM app.users',
-  );
-  const countRow = countResult.rows[0];
-  if (countRow === undefined) {
-    return false;
-  }
-  const userCount = parseInt(countRow.count, 10);
+  const anyUserRows = await db().select({ id: users.id }).from(users).limit(1);
 
   // If no users exist, treat current principal as admin (bootstrap mode)
-  if (userCount === 0) {
+  if (anyUserRows.length === 0) {
     return true;
   }
 

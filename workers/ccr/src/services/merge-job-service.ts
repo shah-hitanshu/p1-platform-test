@@ -19,7 +19,9 @@
  */
 
 import { getLogger } from '@pantheon-systems/p1-telemetry';
-import { query } from '../db';
+import { and, asc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
+import { mergeJobDocuments, mergeJobs } from '../db/schema';
+import { db } from '../db/scope';
 import type { ConflictResolutionStrategy } from '../types';
 import {
   createDocumentVersion,
@@ -55,7 +57,6 @@ import {
 } from './errors';
 import type {
   MergeJob,
-  MergeJobRow,
   MergeJobDocumentRow,
   MergeJobProjection,
   MergeJobStatus,
@@ -87,27 +88,22 @@ export {
 
 export async function createMergeJob(params: CreateMergeJobParams): Promise<MergeJob> {
   try {
-    const result = await query<MergeJobRow>(
-      `INSERT INTO app.merge_jobs (
-         id, merge_request_id, site_id, source_branch_id, target_branch_id,
-         prior_mr_status, resolution_strategy, resolutions,
-         triggered_by_id, triggered_by_type
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-       RETURNING *`,
-      [
-        params.jobId,
-        params.mergeRequestId ?? null,
-        params.siteId,
-        params.sourceBranchId,
-        params.targetBranchId,
-        params.priorMrStatus ?? null,
-        params.resolutionStrategy ?? null,
-        params.resolutions !== undefined ? JSON.stringify(params.resolutions) : null,
-        params.triggeredById,
-        params.triggeredByType,
-      ],
-    );
-    const row = result.rows[0];
+    const rows = await db()
+      .insert(mergeJobs)
+      .values({
+        id: params.jobId,
+        mergeRequestId: params.mergeRequestId ?? null,
+        siteId: params.siteId,
+        sourceBranchId: params.sourceBranchId,
+        targetBranchId: params.targetBranchId,
+        priorMrStatus: params.priorMrStatus ?? null,
+        resolutionStrategy: params.resolutionStrategy ?? null,
+        resolutions: params.resolutions ?? null,
+        triggeredById: params.triggeredById,
+        triggeredByType: params.triggeredByType,
+      })
+      .returning();
+    const row = rows[0];
     if (!row) {
       throw new MergeExecutionError(params.mergeRequestId ?? params.jobId, 'merge job insert returned no row');
     }
@@ -131,30 +127,33 @@ export async function findActiveMergeJob(params: {
   targetBranchId: string;
 }): Promise<MergeJob | null> {
   const statuses = [...ACTIVE_MERGE_JOB_STATUSES];
-  const result =
+  const rows =
     params.mergeRequestId !== undefined
-      ? await query<MergeJobRow>(
-        'SELECT * FROM app.merge_jobs WHERE merge_request_id = $1 AND status = ANY($2) LIMIT 1',
-        [params.mergeRequestId, statuses],
-      )
-      : await query<MergeJobRow>(
-        `SELECT * FROM app.merge_jobs
-         WHERE merge_request_id IS NULL
-           AND site_id = $1 AND source_branch_id = $2 AND target_branch_id = $3
-           AND status = ANY($4)
-         LIMIT 1`,
-        [params.siteId, params.sourceBranchId, params.targetBranchId, statuses],
-      );
-  const row = result.rows[0];
+      ? await db()
+        .select()
+        .from(mergeJobs)
+        .where(and(eq(mergeJobs.mergeRequestId, params.mergeRequestId), inArray(mergeJobs.status, statuses)))
+        .limit(1)
+      : await db()
+        .select()
+        .from(mergeJobs)
+        .where(
+          and(
+            isNull(mergeJobs.mergeRequestId),
+            eq(mergeJobs.siteId, params.siteId),
+            eq(mergeJobs.sourceBranchId, params.sourceBranchId),
+            eq(mergeJobs.targetBranchId, params.targetBranchId),
+            inArray(mergeJobs.status, statuses),
+          ),
+        )
+        .limit(1);
+  const row = rows[0];
   return row ? rowToMergeJob(row) : null;
 }
 
 export async function getMergeJob(jobId: string): Promise<MergeJob | null> {
-  const result = await query<MergeJobRow>(
-    'SELECT * FROM app.merge_jobs WHERE id = $1',
-    [jobId],
-  );
-  const row = result.rows[0];
+  const rows = await db().select().from(mergeJobs).where(eq(mergeJobs.id, jobId));
+  const row = rows[0];
   return row ? rowToMergeJob(row) : null;
 }
 
@@ -177,16 +176,20 @@ export async function getMergeJobProjection(
   if (job.siteId !== siteId) {
     return null;
   }
-  const failed = await query<{ document_id: string; document_path: string; error: string | null }>(
-    `SELECT document_id, document_path, error FROM app.merge_job_documents
-     WHERE job_id = $1 AND status = 'failed' ORDER BY document_path`,
-    [jobId],
-  );
+  const failed = await db()
+    .select({
+      documentId: mergeJobDocuments.documentId,
+      documentPath: mergeJobDocuments.documentPath,
+      error: mergeJobDocuments.error,
+    })
+    .from(mergeJobDocuments)
+    .where(and(eq(mergeJobDocuments.jobId, jobId), eq(mergeJobDocuments.status, 'failed')))
+    .orderBy(asc(mergeJobDocuments.documentPath));
   return {
     ...job,
-    failedDocumentDetails: failed.rows.map((r) => ({
-      documentId: r.document_id,
-      path: r.document_path,
+    failedDocumentDetails: failed.map((r) => ({
+      documentId: r.documentId,
+      path: r.documentPath,
       error: r.error,
     })),
   };
@@ -199,17 +202,22 @@ export async function getMergeJobProjection(
  * falsely report a cancellation that cannot happen.
  */
 export async function requestMergeJobCancel(jobId: string, siteId: string): Promise<boolean> {
-  const result = await query<{ id: string }>(
-    `UPDATE app.merge_jobs SET cancel_requested = true
-     WHERE id = $1 AND site_id = $2 AND status = ANY($3)
-     RETURNING id`,
-    [jobId, siteId, ['queued', 'planning', 'running']],
-  );
-  return result.rows.length > 0;
+  const rows = await db()
+    .update(mergeJobs)
+    .set({ cancelRequested: true })
+    .where(
+      and(
+        eq(mergeJobs.id, jobId),
+        eq(mergeJobs.siteId, siteId),
+        inArray(mergeJobs.status, ['queued', 'planning', 'running']),
+      ),
+    )
+    .returning({ id: mergeJobs.id });
+  return rows.length > 0;
 }
 
 async function setJobStatus(jobId: string, status: MergeJobStatus): Promise<void> {
-  await query('UPDATE app.merge_jobs SET status = $2 WHERE id = $1', [jobId, status]);
+  await db().update(mergeJobs).set({ status }).where(eq(mergeJobs.id, jobId));
 }
 
 /** Restores an MR from 'merging' back to the job's prior status. No-op if it moved on. */
@@ -240,11 +248,10 @@ export async function planMergeJob(jobId: string): Promise<PlanOutcome> {
       : { outcome: 'superseded' };
   }
 
-  await query(
-    `UPDATE app.merge_jobs SET status = 'planning', started_at = COALESCE(started_at, NOW())
-     WHERE id = $1 AND status = 'queued'`,
-    [jobId],
-  );
+  await db()
+    .update(mergeJobs)
+    .set({ status: 'planning', startedAt: sql`COALESCE(started_at, NOW())` })
+    .where(and(eq(mergeJobs.id, jobId), eq(mergeJobs.status, 'queued')));
 
   // MR-backed jobs must still own the 'merging' claim; anything else means a
   // second actor moved the MR and this job is superseded (ends successfully
@@ -252,10 +259,14 @@ export async function planMergeJob(jobId: string): Promise<PlanOutcome> {
   if (job.mergeRequestId !== null) {
     const mergeRequest = await getMergeRequest(job.mergeRequestId);
     if (mergeRequest?.status !== 'merging') {
-      await query(
-        'UPDATE app.merge_jobs SET status = \'failed\', error = $2, finished_at = NOW() WHERE id = $1',
-        [jobId, 'superseded: merge request is no longer in merging status'],
-      );
+      await db()
+        .update(mergeJobs)
+        .set({
+          status: 'failed',
+          error: 'superseded: merge request is no longer in merging status',
+          finishedAt: sql`NOW()`,
+        })
+        .where(eq(mergeJobs.id, jobId));
       return { outcome: 'superseded' };
     }
   }
@@ -264,20 +275,20 @@ export async function planMergeJob(jobId: string): Promise<PlanOutcome> {
   // source branch may have moved, and re-freezing would mix snapshots and
   // overwrite total_documents out of sync with the ledger. Resume from the
   // ledger instead.
-  const frozen = await query<{ total: string; conflicts: string }>(
-    `SELECT COUNT(*) AS total,
-            COUNT(*) FILTER (WHERE kind = 'conflict') AS conflicts
-     FROM app.merge_job_documents WHERE job_id = $1`,
-    [jobId],
-  );
-  const frozenTotal = parseInt(frozen.rows[0]?.total ?? '0', 10);
+  const frozen = await db()
+    .select({
+      total: sql<number>`COUNT(*)::int`,
+      conflicts: sql<number>`(COUNT(*) FILTER (WHERE ${mergeJobDocuments.kind} = 'conflict'))::int`,
+    })
+    .from(mergeJobDocuments)
+    .where(eq(mergeJobDocuments.jobId, jobId));
+  const frozenTotal = frozen[0]?.total ?? 0;
   if (frozenTotal > 0) {
-    const frozenConflicts = parseInt(frozen.rows[0]?.conflicts ?? '0', 10);
-    await query(
-      `UPDATE app.merge_jobs SET status = 'running', total_documents = $2
-       WHERE id = $1 AND status IN ('queued', 'planning', 'running')`,
-      [jobId, frozenTotal],
-    );
+    const frozenConflicts = frozen[0]?.conflicts ?? 0;
+    await db()
+      .update(mergeJobs)
+      .set({ status: 'running', totalDocuments: frozenTotal })
+      .where(and(eq(mergeJobs.id, jobId), inArray(mergeJobs.status, ['queued', 'planning', 'running'])));
     return {
       outcome: 'planned',
       totalDocuments: frozenTotal,
@@ -317,11 +328,14 @@ export async function planMergeJob(jobId: string): Promise<PlanOutcome> {
         await updateMergeRequestConflicts(job.mergeRequestId, detection.conflicts);
         await markMergeRequestConflictedFromMerging(job.mergeRequestId);
       }
-      await query(
-        `UPDATE app.merge_jobs SET status = 'blocked_on_conflicts', error = $2, finished_at = NOW()
-         WHERE id = $1`,
-        [jobId, `${String(uncovered.length)} unresolved conflict(s)`],
-      );
+      await db()
+        .update(mergeJobs)
+        .set({
+          status: 'blocked_on_conflicts',
+          error: `${String(uncovered.length)} unresolved conflict(s)`,
+          finishedAt: sql`NOW()`,
+        })
+        .where(eq(mergeJobs.id, jobId));
       logger.info('merge job blocked on conflicts', {
         job_id: jobId,
         conflict_count: uncovered.length,
@@ -377,34 +391,35 @@ export async function planMergeJob(jobId: string): Promise<PlanOutcome> {
   }
 
   if (rows.length > 0) {
-    // ON CONFLICT DO NOTHING keeps a plan-step retry idempotent: rows frozen
-    // by a previous attempt (and possibly already applied) are never reset.
-    await query(
-      `INSERT INTO app.merge_job_documents
+    // A bulk INSERT...SELECT sourced from unnest() has no builder equivalent,
+    // so this stays a raw statement (D6). ON CONFLICT DO NOTHING keeps a
+    // plan-step retry idempotent: rows frozen by a previous attempt (and
+    // possibly already applied) are never reset.
+    // A bare array interpolated into `sql` is spread as a parenthesized,
+    // comma-joined parameter list (built for `IN (...)`) rather than bound as
+    // one array-typed parameter, so unnest()'s array arguments need
+    // sql.param() to reach the driver as real Postgres arrays.
+    await db().execute(sql`
+      INSERT INTO app.merge_job_documents
          (job_id, document_id, document_path, kind, resolution_strategy,
           conflict_type, source_version_id, target_version_id)
-       SELECT $1, * FROM unnest(
-         $2::uuid[], $3::text[], $4::text[], $5::text[], $6::text[], $7::uuid[], $8::uuid[]
+       SELECT ${jobId}, * FROM unnest(
+         ${sql.param(rows.map((r) => r.documentId))}::uuid[],
+         ${sql.param(rows.map((r) => r.path))}::text[],
+         ${sql.param(rows.map((r) => r.kind))}::text[],
+         ${sql.param(rows.map((r) => r.strategy))}::text[],
+         ${sql.param(rows.map((r) => r.conflictType))}::text[],
+         ${sql.param(rows.map((r) => r.sourceVersionId))}::uuid[],
+         ${sql.param(rows.map((r) => r.targetVersionId))}::uuid[]
        ) AS t(document_id, document_path, kind, resolution_strategy,
               conflict_type, source_version_id, target_version_id)
-       ON CONFLICT (job_id, document_id) DO NOTHING`,
-      [
-        jobId,
-        rows.map((r) => r.documentId),
-        rows.map((r) => r.path),
-        rows.map((r) => r.kind),
-        rows.map((r) => r.strategy),
-        rows.map((r) => r.conflictType),
-        rows.map((r) => r.sourceVersionId),
-        rows.map((r) => r.targetVersionId),
-      ],
-    );
+       ON CONFLICT (job_id, document_id) DO NOTHING`);
   }
 
-  await query(
-    'UPDATE app.merge_jobs SET status = \'running\', total_documents = $2 WHERE id = $1',
-    [jobId, rows.length],
-  );
+  await db()
+    .update(mergeJobs)
+    .set({ status: 'running', totalDocuments: rows.length })
+    .where(eq(mergeJobs.id, jobId));
 
   const conflictCount = detection.conflicts.documentConflicts.length;
   logger.info('merge job planned', {
@@ -445,28 +460,31 @@ async function markLedgerRow(
   resultVersionId: string | null,
   error: string | null,
 ): Promise<void> {
-  await query(
-    `UPDATE app.merge_job_documents
-     SET status = $3, result_version_id = $4, error = $5,
-         attempts = attempts + 1, updated_at = NOW()
-     WHERE job_id = $1 AND document_id = $2`,
-    [jobId, documentId, status, resultVersionId, error],
-  );
+  await db()
+    .update(mergeJobDocuments)
+    .set({
+      status,
+      resultVersionId,
+      error,
+      attempts: sql`${mergeJobDocuments.attempts} + 1`,
+      updatedAt: sql`NOW()`,
+    })
+    .where(and(eq(mergeJobDocuments.jobId, jobId), eq(mergeJobDocuments.documentId, documentId)));
 }
 
 /** Recounts job counters from the ledger — idempotent, no drift on retries. */
 async function refreshJobCounters(jobId: string): Promise<void> {
-  await query(
-    `UPDATE app.merge_jobs SET
-       processed_documents =
-         (SELECT COUNT(*) FROM app.merge_job_documents WHERE job_id = $1 AND status = 'done'),
-       failed_documents =
-         (SELECT COUNT(*) FROM app.merge_job_documents WHERE job_id = $1 AND status = 'failed'),
-       noop_documents =
-         (SELECT COUNT(*) FROM app.merge_job_documents WHERE job_id = $1 AND status = 'skipped_noop')
-     WHERE id = $1`,
-    [jobId],
-  );
+  const countByStatus = (status: string): ReturnType<typeof sql> =>
+    sql`(SELECT COUNT(*) FROM app.merge_job_documents WHERE job_id = ${jobId} AND status = ${status})`;
+
+  await db()
+    .update(mergeJobs)
+    .set({
+      processedDocuments: countByStatus('done'),
+      failedDocuments: countByStatus('failed'),
+      noopDocuments: countByStatus('skipped_noop'),
+    })
+    .where(eq(mergeJobs.id, jobId));
 }
 
 async function applyCopyRow(job: MergeJob, row: MergeJobDocumentRow): Promise<{
@@ -474,13 +492,13 @@ async function applyCopyRow(job: MergeJob, row: MergeJobDocumentRow): Promise<{
   resultVersionId: string | null;
   error: string | null;
 }> {
-  if (row.source_version_id === null) {
+  if (row.sourceVersionId === null) {
     return { status: 'failed', resultVersionId: null, error: 'copy row has no source version id' };
   }
 
   // One read serves both idempotency layers: the Layer-2 replay probe and the
   // pre-existing-latest no-op check (checkpoint-pollution guard).
-  const latest = await getLatestDocumentVersion(row.document_id, job.targetBranchId);
+  const latest = await getLatestDocumentVersion(row.documentId, job.targetBranchId);
 
   // Layer-2 probe: the latest target version is already this exact planned
   // write — a replay across the INSERT-vs-ledger crash window or a fresh job
@@ -488,18 +506,18 @@ async function applyCopyRow(job: MergeJob, row: MergeJobDocumentRow): Promise<{
   if (
     latest !== null &&
     latest.source === 'merge' &&
-    latest.sourceVersionId === row.source_version_id
+    latest.sourceVersionId === row.sourceVersionId
   ) {
     return { status: 'done', resultVersionId: latest.id, error: null };
   }
 
-  const sourceVersion = await getDocumentVersion(row.source_version_id);
+  const sourceVersion = await getDocumentVersion(row.sourceVersionId);
   if (sourceVersion === null) {
     return { status: 'failed', resultVersionId: null, error: 'source version no longer exists' };
   }
 
   const newVersion = await createDocumentVersion({
-    documentId: row.document_id,
+    documentId: row.documentId,
     branchId: job.targetBranchId,
     snapshot: sourceVersion.snapshot ?? {},
     source: 'merge',
@@ -512,7 +530,7 @@ async function applyCopyRow(job: MergeJob, row: MergeJobDocumentRow): Promise<{
     skipCompaction: true,
     isTombstone: sourceVersion.isTombstone,
     // Insert-time provenance stamp — what the probe reads on the next replay.
-    sourceVersionId: row.source_version_id,
+    sourceVersionId: row.sourceVersionId,
   });
 
   // Pre-existing no-op: createDocumentVersion's unique-violation fallback
@@ -529,14 +547,14 @@ async function applyConflictRow(job: MergeJob, row: MergeJobDocumentRow): Promis
   resultVersionId: string | null;
   error: string | null;
 }> {
-  const strategy = row.resolution_strategy;
+  const strategy = row.resolutionStrategy as ConflictResolutionStrategy | null;
   if (strategy === null) {
     return { status: 'failed', resultVersionId: null, error: 'conflict row has no resolution strategy' };
   }
 
-  const latest = await getLatestDocumentVersion(row.document_id, job.targetBranchId);
+  const latest = await getLatestDocumentVersion(row.documentId, job.targetBranchId);
   const isPreExistingTargetVersionId = (versionId: string): boolean =>
-    latest?.id === versionId || row.target_version_id === versionId;
+    latest?.id === versionId || row.targetVersionId === versionId;
 
   // Layer-2 probe for take-source, mirroring copy rows: the latest target
   // version already IS this planned write (a crash-window replay). Without
@@ -545,16 +563,16 @@ async function applyConflictRow(job: MergeJob, row: MergeJobDocumentRow): Promis
   // document from the checkpoint and publish.
   if (
     strategy === 'take-source' &&
-    row.source_version_id !== null &&
+    row.sourceVersionId !== null &&
     latest !== null &&
     latest.source === 'merge' &&
-    latest.sourceVersionId === row.source_version_id
+    latest.sourceVersionId === row.sourceVersionId
   ) {
     return { status: 'done', resultVersionId: latest.id, error: null };
   }
 
   if (strategy === 'manual') {
-    const resolution = (job.resolutions ?? []).find((r) => r.documentId === row.document_id);
+    const resolution = (job.resolutions ?? []).find((r) => r.documentId === row.documentId);
     if (resolution?.resolvedSnapshot === undefined) {
       return {
         status: 'failed',
@@ -563,7 +581,7 @@ async function applyConflictRow(job: MergeJob, row: MergeJobDocumentRow): Promis
       };
     }
     const manualVersion = await createDocumentVersion({
-      documentId: row.document_id,
+      documentId: row.documentId,
       branchId: job.targetBranchId,
       snapshot: resolution.resolvedSnapshot,
       source: 'merge',
@@ -582,11 +600,11 @@ async function applyConflictRow(job: MergeJob, row: MergeJobDocumentRow): Promis
     sourceBranchId: job.sourceBranchId,
     targetBranchId: job.targetBranchId,
     conflicts: [{
-      documentId: row.document_id,
-      documentPath: row.document_path,
-      conflictType: (row.conflict_type ?? 'both-modified') as 'both-modified' | 'deleted-in-source' | 'deleted-in-target',
-      sourceVersionId: row.source_version_id ?? '',
-      targetVersionId: row.target_version_id ?? '',
+      documentId: row.documentId,
+      documentPath: row.documentPath,
+      conflictType: (row.conflictType ?? 'both-modified') as 'both-modified' | 'deleted-in-source' | 'deleted-in-target',
+      sourceVersionId: row.sourceVersionId ?? '',
+      targetVersionId: row.targetVersionId ?? '',
     }],
     strategy,
     resolvedById: job.triggeredById,
@@ -633,20 +651,19 @@ export async function applyMergeChunk(
   // performance.now(): monotonic, and made for measuring an operation.
   const start = performance.now();
 
-  const pending = await query<MergeJobDocumentRow>(
-    `SELECT * FROM app.merge_job_documents
-     WHERE job_id = $1 AND status = 'pending'
-     ORDER BY document_path
-     LIMIT $2`,
-    [jobId, chunkSize],
-  );
+  const pending = await db()
+    .select()
+    .from(mergeJobDocuments)
+    .where(and(eq(mergeJobDocuments.jobId, jobId), eq(mergeJobDocuments.status, 'pending')))
+    .orderBy(asc(mergeJobDocuments.documentPath))
+    .limit(chunkSize);
 
   let done = 0;
   let failed = 0;
   let noop = 0;
   let applied = 0;
 
-  for (const row of pending.rows) {
+  for (const row of pending) {
     // Wall-clock guard: never hold a connection long under a degraded DB.
     if (applied > 0 && performance.now() - start > wallClockMs) {
       break;
@@ -656,7 +673,7 @@ export async function applyMergeChunk(
     try {
       const result =
         row.kind === 'copy' ? await applyCopyRow(job, row) : await applyConflictRow(job, row);
-      await markLedgerRow(jobId, row.document_id, result.status, result.resultVersionId, result.error);
+      await markLedgerRow(jobId, row.documentId, result.status, result.resultVersionId, result.error);
       if (result.status === 'done') done++;
       else if (result.status === 'skipped_noop') noop++;
       else failed++;
@@ -667,11 +684,11 @@ export async function applyMergeChunk(
         throw error;
       }
       const message = error instanceof Error ? error.message : 'unknown error';
-      await markLedgerRow(jobId, row.document_id, 'failed', null, message);
+      await markLedgerRow(jobId, row.documentId, 'failed', null, message);
       failed++;
       logger.warn('merge job document failed', {
         job_id: jobId,
-        document_id: row.document_id,
+        document_id: row.documentId,
         reason: message,
       });
     }
@@ -679,11 +696,11 @@ export async function applyMergeChunk(
 
   await refreshJobCounters(jobId);
 
-  const remainingResult = await query<{ count: string }>(
-    'SELECT COUNT(*) AS count FROM app.merge_job_documents WHERE job_id = $1 AND status = \'pending\'',
-    [jobId],
-  );
-  const remaining = parseInt(remainingResult.rows[0]?.count ?? '0', 10);
+  const remainingRows = await db()
+    .select({ count: sql<number>`COUNT(*)::int` })
+    .from(mergeJobDocuments)
+    .where(and(eq(mergeJobDocuments.jobId, jobId), eq(mergeJobDocuments.status, 'pending')));
+  const remaining = remainingRows[0]?.count ?? 0;
   const avgMsPerDoc = applied > 0 ? Math.round((performance.now() - start) / applied) : 0;
 
   return { done, failed, noop, remaining, avgMsPerDoc, cancelled: false };
@@ -700,24 +717,28 @@ interface DoneLedgerEntry {
 }
 
 async function getDoneLedgerEntries(jobId: string): Promise<DoneLedgerEntry[]> {
-  const result = await query<{
-    document_id: string;
-    result_version_id: string | null;
-    source_version_id: string | null;
-  }>(
-    `SELECT document_id, result_version_id, source_version_id
-     FROM app.merge_job_documents
-     WHERE job_id = $1 AND status = 'done' AND result_version_id IS NOT NULL
-     ORDER BY document_path`,
-    [jobId],
-  );
-  return result.rows.flatMap((r) =>
-    r.result_version_id === null
+  const rows = await db()
+    .select({
+      documentId: mergeJobDocuments.documentId,
+      resultVersionId: mergeJobDocuments.resultVersionId,
+      sourceVersionId: mergeJobDocuments.sourceVersionId,
+    })
+    .from(mergeJobDocuments)
+    .where(
+      and(
+        eq(mergeJobDocuments.jobId, jobId),
+        eq(mergeJobDocuments.status, 'done'),
+        isNotNull(mergeJobDocuments.resultVersionId),
+      ),
+    )
+    .orderBy(asc(mergeJobDocuments.documentPath));
+  return rows.flatMap((r) =>
+    r.resultVersionId === null
       ? []
       : [{
-        documentId: r.document_id,
-        documentVersionId: r.result_version_id,
-        sourceVersionId: r.source_version_id,
+        documentId: r.documentId,
+        documentVersionId: r.resultVersionId,
+        sourceVersionId: r.sourceVersionId,
       }],
   );
 }
@@ -728,14 +749,17 @@ async function getDoneLedgerEntries(jobId: string): Promise<DoneLedgerEntry[]> {
  * ledger result to be recognised by.
  */
 async function getConflictsKeepingTarget(jobId: string): Promise<string[]> {
-  const result = await query<{ document_id: string }>(
-    `SELECT document_id
-       FROM app.merge_job_documents
-      WHERE job_id = $1 AND kind = 'conflict'
-        AND resolution_strategy IN ('manual', 'take-target')`,
-    [jobId],
-  );
-  return result.rows.map((r) => r.document_id);
+  const rows = await db()
+    .select({ documentId: mergeJobDocuments.documentId })
+    .from(mergeJobDocuments)
+    .where(
+      and(
+        eq(mergeJobDocuments.jobId, jobId),
+        eq(mergeJobDocuments.kind, 'conflict'),
+        inArray(mergeJobDocuments.resolutionStrategy, ['manual', 'take-target']),
+      ),
+    );
+  return rows.map((r) => r.documentId);
 }
 
 /**
@@ -744,15 +768,15 @@ async function getConflictsKeepingTarget(jobId: string): Promise<string[]> {
  * and the job ends completed_with_errors with the failures listed.
  */
 async function isFinalizable(job: MergeJob): Promise<boolean> {
-  const counts = await query<{ failed: string; pending: string }>(
-    `SELECT
-       COUNT(*) FILTER (WHERE status = 'failed') AS failed,
-       COUNT(*) FILTER (WHERE status = 'pending') AS pending
-     FROM app.merge_job_documents WHERE job_id = $1`,
-    [job.id],
-  );
-  const row = counts.rows[0];
-  return row?.failed === '0' && row.pending === '0';
+  const counts = await db()
+    .select({
+      failed: sql<number>`(COUNT(*) FILTER (WHERE ${mergeJobDocuments.status} = 'failed'))::int`,
+      pending: sql<number>`(COUNT(*) FILTER (WHERE ${mergeJobDocuments.status} = 'pending'))::int`,
+    })
+    .from(mergeJobDocuments)
+    .where(eq(mergeJobDocuments.jobId, job.id));
+  const row = counts[0];
+  return row?.failed === 0 && row.pending === 0;
 }
 
 /**
@@ -815,10 +839,10 @@ export async function finalizeMergeCheckpoint(
     })),
   });
 
-  await query(
-    'UPDATE app.merge_jobs SET post_merge_checkpoint_id = $2 WHERE id = $1',
-    [jobId, checkpointResult.checkpoint.id],
-  );
+  await db()
+    .update(mergeJobs)
+    .set({ postMergeCheckpointId: checkpointResult.checkpoint.id })
+    .where(eq(mergeJobs.id, jobId));
 
   return { checkpointId: checkpointResult.checkpoint.id, finalized: true, mergedCount: entries.length };
 }
@@ -897,10 +921,10 @@ export async function finalizeMergePublish(jobId: string): Promise<FinalizePubli
       mergeTitle,
     });
     if (publishResult.checkpointId !== undefined) {
-      await query(
-        'UPDATE app.merge_jobs SET publish_checkpoint_id = $2 WHERE id = $1',
-        [jobId, publishResult.checkpointId],
-      );
+      await db()
+        .update(mergeJobs)
+        .set({ publishCheckpointId: publishResult.checkpointId })
+        .where(eq(mergeJobs.id, jobId));
     }
     return {
       publishCheckpointId: publishResult.checkpointId ?? null,
@@ -910,7 +934,7 @@ export async function finalizeMergePublish(jobId: string): Promise<FinalizePubli
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : 'publish failed';
-    await query('UPDATE app.merge_jobs SET publish_error = $2 WHERE id = $1', [jobId, message]);
+    await db().update(mergeJobs).set({ publishError: message }).where(eq(mergeJobs.id, jobId));
     getLogger().error('merge job publish failed', error, { job_id: jobId });
     return {
       publishCheckpointId: null,
@@ -923,12 +947,19 @@ export async function finalizeMergePublish(jobId: string): Promise<FinalizePubli
 
 /** Template document ids from the ledger, for the notify step's migrations. */
 export async function getMergedTemplateDocumentIds(jobId: string): Promise<string[]> {
-  const result = await query<{ document_id: string }>(
-    `SELECT document_id FROM app.merge_job_documents
-     WHERE job_id = $1 AND status = 'done' AND document_path LIKE '\\_registry/templates/%' ESCAPE '\\'`,
-    [jobId],
-  );
-  return result.rows.map((r) => r.document_id);
+  const rows = await db()
+    .select({ documentId: mergeJobDocuments.documentId })
+    .from(mergeJobDocuments)
+    .where(
+      and(
+        eq(mergeJobDocuments.jobId, jobId),
+        eq(mergeJobDocuments.status, 'done'),
+        // LIKE's escape character has no dedicated builder operator, so this
+        // one predicate stays a sql fragment (D1).
+        sql`${mergeJobDocuments.documentPath} LIKE '\\_registry/templates/%' ESCAPE '\\'`,
+      ),
+    );
+  return rows.map((r) => r.documentId);
 }
 
 export { runPostMergeTemplateMigrations };
@@ -938,10 +969,10 @@ export async function finalizeMergeJobRecord(jobId: string): Promise<MergeJobSta
   const job = await requireMergeJob(jobId);
   const finalizable = await isFinalizable(job);
   const status: MergeJobStatus = finalizable ? 'completed' : 'completed_with_errors';
-  await query(
-    'UPDATE app.merge_jobs SET status = $2, finished_at = NOW() WHERE id = $1',
-    [jobId, status],
-  );
+  await db()
+    .update(mergeJobs)
+    .set({ status, finishedAt: sql`NOW()` })
+    .where(eq(mergeJobs.id, jobId));
   return status;
 }
 
@@ -950,19 +981,19 @@ export async function finalizeMergeJobRecord(jobId: string): Promise<MergeJobSta
  *  platform never deletes by default). */
 export async function cancelMergeJob(jobId: string): Promise<void> {
   const job = await requireMergeJob(jobId);
-  await query(
-    'UPDATE app.merge_jobs SET status = \'cancelled\', finished_at = NOW() WHERE id = $1',
-    [jobId],
-  );
+  await db()
+    .update(mergeJobs)
+    .set({ status: 'cancelled', finishedAt: sql`NOW()` })
+    .where(eq(mergeJobs.id, jobId));
   await restoreMergeRequestStatus(job);
 }
 
 /** Failure epilogue: engine retries exhausted or a non-retryable error. */
 export async function failMergeJob(jobId: string, errorMessage: string): Promise<void> {
   const job = await requireMergeJob(jobId);
-  await query(
-    'UPDATE app.merge_jobs SET status = \'failed\', error = $2, finished_at = NOW() WHERE id = $1',
-    [jobId, errorMessage],
-  );
+  await db()
+    .update(mergeJobs)
+    .set({ status: 'failed', error: errorMessage, finishedAt: sql`NOW()` })
+    .where(eq(mergeJobs.id, jobId));
   await restoreMergeRequestStatus(job);
 }

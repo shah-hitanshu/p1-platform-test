@@ -8,7 +8,10 @@
 import type { AuthenticatedPrincipal } from '../types';
 import { toDocumentActorType } from '../types';
 import type { Env } from '../index';
-import { runWithConnection, query } from '../db';
+import { runWithConnection } from '../db';
+import { and, count, eq, isNull } from 'drizzle-orm';
+import { documentRelations, documents, migrationJobs } from '../db/schema';
+import { db } from '../db/scope';
 import {
   createDocumentOnBranch,
   getLatestTemplateVersionWithFallback,
@@ -25,7 +28,6 @@ import {
 } from '../services';
 import { assertPermission, getEffectiveRole, AuthorizationError } from '../auth/authorization';
 import { isManifestShapedSnapshot, convertManifestToContent } from '../services/template-content-backfill';
-import { TEMPLATE_RELATION_INNER_JOIN } from '../services/document-queries';
 import { onTemplateCreated } from '../services/template-hooks';
 import {
   triggerMigration,
@@ -571,15 +573,19 @@ async function handleDeleteTemplate(
   }
 
   // Check if any documents reference this template
-  const refs = await query(
-    `SELECT COUNT(*) as count
-     FROM app.documents d
-     ${TEMPLATE_RELATION_INNER_JOIN}
-     WHERE dr.target_document_id = $1 AND d.archived_at IS NULL`,
-    [templateId],
-  );
+  const refs = await db()
+    .select({ count: count() })
+    .from(documents)
+    .innerJoin(
+      documentRelations,
+      and(
+        eq(documentRelations.sourceDocumentId, documents.id),
+        eq(documentRelations.relationType, 'template'),
+      ),
+    )
+    .where(and(eq(documentRelations.targetDocumentId, templateId), isNull(documents.archivedAt)));
 
-  const refCount = parseInt((refs.rows[0]?.count ?? '0') as string, 10);
+  const refCount = refs[0]?.count ?? 0;
   if (refCount > 0) {
     return errorResponse(
       'Cannot delete template: ' + String(refCount) + ' document(s) still reference it',
@@ -694,7 +700,7 @@ async function handleMigrateTemplate(
         console.error('Background migration failed:', err);
         try {
           await runWithConnection(connectionString, { isHyperdrive: env.HYPERDRIVE !== undefined }, () =>
-            query('UPDATE app.migration_jobs SET status = \'failed\' WHERE id = $1', [job.id]),
+            db().update(migrationJobs).set({ status: 'failed' }).where(eq(migrationJobs.id, job.id)),
           );
         } catch (updateErr: unknown) {
           console.error('Failed to update job status after background failure:', updateErr);

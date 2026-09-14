@@ -14,7 +14,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Mock dependencies before importing the module under test
 vi.mock('../../src/db', () => ({
-  query: vi.fn(),
   runWithConnection: vi.fn(),
 }));
 
@@ -56,19 +55,21 @@ vi.mock('../../src/services/migration-service', () => ({
 
 import { handleTemplateRequest } from '../../src/routes/template-api';
 import type { TemplateRouteContext } from '../../src/routes/template-api';
-import { runWithConnection, query } from '../../src/db';
+import { runWithConnection } from '../../src/db';
 import { getBranch } from '../../src/services';
 import { assertPermission, getEffectiveRole } from '../../src/auth/authorization';
 import { ROLES } from '../../src/auth/roles';
 import { triggerMigration, processMigration } from '../../src/services/migration-service';
 import { readJson } from '../helpers/http';
 import { makeBranch } from '../helpers/branch';
-import { stubDatabase } from '../__stubs__/database';
+import { stubDatabase, type DatabaseStub } from '../__stubs__/database';
+import { migrationJobs } from '../../src/db/schema';
 
 describe('handleMigrateTemplate — 202/waitUntil path', () => {
   const siteId = 'site-uuid-001';
   const branchId = 'b0000000-0000-0000-0000-000000000001';
   const templateId = 'tmpl-uuid-001';
+  let database: DatabaseStub;
 
   function makeRequest(body: Record<string, unknown>): Request {
     return new Request('http://localhost/api/sites/' + siteId + '/branches/' + branchId + '/templates/' + templateId + '/migrate', {
@@ -96,7 +97,7 @@ describe('handleMigrateTemplate — 202/waitUntil path', () => {
 
   beforeEach(() => {
     vi.resetAllMocks();
-    stubDatabase();
+    database = stubDatabase();
 
     // Re-set authorization mocks after resetAllMocks clears them
     vi.mocked(assertPermission).mockResolvedValue(undefined);
@@ -224,7 +225,6 @@ describe('handleMigrateTemplate — 202/waitUntil path', () => {
       // Second call: update job status to 'failed'
       return fn();
     });
-    vi.mocked(query).mockResolvedValue({ rows: [], rowCount: 1 });
 
     const context = makeContext({ ctx, env: env as unknown as TemplateRouteContext['env'] });
     const request = makeRequest({ fromVersion: 1, toVersion: 2 });
@@ -237,10 +237,7 @@ describe('handleMigrateTemplate — 202/waitUntil path', () => {
 
     // The second runWithConnection call should have marked the job as failed
     expect(runWithConnection).toHaveBeenCalledTimes(2);
-    expect(query).toHaveBeenCalledWith(
-      expect.stringContaining('failed'),
-      ['job-001'],
-    );
+    expect(database.calls(migrationJobs).update[0]?.params).toContain('job-001');
   });
 
   it('falls back to synchronous processMigration without ctx/env', async () => {

@@ -6,10 +6,8 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { readJson } from '../helpers/http';
-
-vi.mock('../../src/db', () => ({
-  query: vi.fn(),
-}));
+import { sites, users } from '../../src/db/schema';
+import { stubDatabase, type DatabaseStub } from '../__stubs__/database';
 
 vi.mock('../../src/services/branch-service', () => ({
   getMainBranch: vi.fn(),
@@ -31,19 +29,21 @@ const adminPrincipal = { id: 'admin-1', type: 'user', dbUserId: 'admin-1' } as n
 const nonAdminPrincipal = { id: 'user-1', type: 'user', dbUserId: 'user-1' } as never;
 
 describe('backfill-datasources-api', () => {
+  let database: DatabaseStub;
+
   beforeEach(() => {
     vi.resetAllMocks();
+    database = stubDatabase();
   });
 
   describe('handleBackfillDatasources', () => {
     it('should reject non-admin users', async () => {
       const { handleBackfillDatasources } = await import('../../src/routes/backfill-datasources-api');
-      const db = await import('../../src/db');
 
-      // No users in table (bootstrap mode would allow, but we have users)
-      vi.mocked(db.query)
-        .mockResolvedValueOnce({ rows: [{ count: '5' }], command: '', rowCount: 0, oid: 0, fields: [] })
-        .mockResolvedValueOnce({ rows: [{ system_role: 'member' }], command: '', rowCount: 0, oid: 0, fields: [] });
+      // No users in table (bootstrap mode would allow, but we have users). Both
+      // isSystemAdmin queries land on the same users.select stub, so one row
+      // carries the fields each of them reads.
+      database.on(users).select.returnsRaw([{ count: 5, systemRole: 'member' }]);
 
       const request = new Request('http://localhost/api/admin/backfill-datasources', {
         method: 'POST',
@@ -55,23 +55,17 @@ describe('backfill-datasources-api', () => {
 
     it('should backfill datasources and queries for templates missing them', async () => {
       const { handleBackfillDatasources } = await import('../../src/routes/backfill-datasources-api');
-      const db = await import('../../src/db');
       const branchService = await import('../../src/services/branch-service');
       const branchDocService = await import('../../src/services/branch-document-service');
       const templateHooks = await import('../../src/services/template-hooks');
 
       // Admin check: user count > 0, user is admin
-      vi.mocked(db.query)
-        .mockResolvedValueOnce({ rows: [{ count: '1' }], command: '', rowCount: 0, oid: 0, fields: [] })
-        .mockResolvedValueOnce({ rows: [{ system_role: 'superadmin' }], command: '', rowCount: 0, oid: 0, fields: [] })
-        // List all active sites
-        .mockResolvedValueOnce({
-          rows: [
-            { id: 'site-1', name: 'Site One' },
-            { id: 'site-2', name: 'Site Two' },
-          ],
-          command: '', rowCount: 0, oid: 0, fields: [],
-        });
+      database.on(users).select.returnsRaw([{ count: 1, systemRole: 'superadmin' }]);
+      // List all active sites
+      database.on(sites).select.returns([
+        { id: 'site-1', name: 'Site One' },
+        { id: 'site-2', name: 'Site Two' },
+      ]);
 
       // Site 1 has main branch, Site 2 has no main branch
       vi.mocked(branchService.getMainBranch)
@@ -121,15 +115,12 @@ describe('backfill-datasources-api', () => {
 
     it('should be idempotent — re-running produces zero errors', async () => {
       const { handleBackfillDatasources } = await import('../../src/routes/backfill-datasources-api');
-      const db = await import('../../src/db');
       const branchService = await import('../../src/services/branch-service');
       const branchDocService = await import('../../src/services/branch-document-service');
       const templateHooks = await import('../../src/services/template-hooks');
 
-      vi.mocked(db.query)
-        .mockResolvedValueOnce({ rows: [{ count: '1' }], command: '', rowCount: 0, oid: 0, fields: [] })
-        .mockResolvedValueOnce({ rows: [{ system_role: 'superadmin' }], command: '', rowCount: 0, oid: 0, fields: [] })
-        .mockResolvedValueOnce({ rows: [{ id: 'site-1', name: 'Site One' }], command: '', rowCount: 0, oid: 0, fields: [] });
+      database.on(users).select.returnsRaw([{ count: 1, systemRole: 'superadmin' }]);
+      database.on(sites).select.returns([{ id: 'site-1', name: 'Site One' }]);
 
       vi.mocked(branchService.getMainBranch)
         .mockResolvedValueOnce({ id: 'branch-1', siteId: 'site-1', name: 'main', isMain: true } as never);
@@ -155,15 +146,12 @@ describe('backfill-datasources-api', () => {
 
     it('should report errors per-template without aborting the batch', async () => {
       const { handleBackfillDatasources } = await import('../../src/routes/backfill-datasources-api');
-      const db = await import('../../src/db');
       const branchService = await import('../../src/services/branch-service');
       const branchDocService = await import('../../src/services/branch-document-service');
       const templateHooks = await import('../../src/services/template-hooks');
 
-      vi.mocked(db.query)
-        .mockResolvedValueOnce({ rows: [{ count: '1' }], command: '', rowCount: 0, oid: 0, fields: [] })
-        .mockResolvedValueOnce({ rows: [{ system_role: 'superadmin' }], command: '', rowCount: 0, oid: 0, fields: [] })
-        .mockResolvedValueOnce({ rows: [{ id: 'site-1', name: 'Site One' }], command: '', rowCount: 0, oid: 0, fields: [] });
+      database.on(users).select.returnsRaw([{ count: 1, systemRole: 'superadmin' }]);
+      database.on(sites).select.returns([{ id: 'site-1', name: 'Site One' }]);
 
       vi.mocked(branchService.getMainBranch)
         .mockResolvedValueOnce({ id: 'branch-1', siteId: 'site-1', name: 'main', isMain: true } as never);
@@ -195,10 +183,9 @@ describe('backfill-datasources-api', () => {
 
     it('should reject non-POST methods', async () => {
       const { handleBackfillDatasources } = await import('../../src/routes/backfill-datasources-api');
-      const db = await import('../../src/db');
 
-      vi.mocked(db.query)
-        .mockResolvedValueOnce({ rows: [{ count: '0' }], command: '', rowCount: 0, oid: 0, fields: [] });
+      // Bootstrap mode: no users yet, so isSystemAdmin passes without a second query
+      // (the default: an unstubbed select returns no rows).
 
       const request = new Request('http://localhost/api/admin/backfill-datasources', {
         method: 'GET',

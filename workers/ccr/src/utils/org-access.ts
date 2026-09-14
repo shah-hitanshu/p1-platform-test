@@ -8,13 +8,15 @@
  */
 
 import type { AuthenticatedPrincipal } from '../types';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 import {
   ORG_ADMIN_ROLES,
 } from '../services/organization-service';
 import { getAgentById } from '../services/agent-service';
 import { isSuperAdmin } from './admin-check';
 import { normalizePrincipalIdForDb } from '../auth/principal-id-normalization';
-import { query } from '../db';
+import { organizationMembers, sites, userSiteRoles, users } from '../db/schema';
+import { db } from '../db/scope';
 
 /** The principal fields an org access check needs. */
 export type OrgAccessPrincipal = Pick<
@@ -39,11 +41,16 @@ export async function resolveUserId(
   if (principal.type !== 'user') {
     return undefined;
   }
-  const result = await query<{ id: string }>(
-    'SELECT id FROM app.users WHERE principal_id = $1 AND is_active = true',
-    [await normalizePrincipalIdForDb(principal.id)],
-  );
-  return result.rows[0]?.id;
+  const rows = await db()
+    .select({ id: users.id })
+    .from(users)
+    .where(
+      and(
+        eq(users.principalId, await normalizePrincipalIdForDb(principal.id)),
+        eq(users.isActive, true),
+      ),
+    );
+  return rows[0]?.id;
 }
 
 /**
@@ -96,11 +103,11 @@ export async function canAccessOrganization(
     && principal.actingUserEmail !== undefined
     && principal.actingUserEmail !== ''
   ) {
-    const actingUser = await query<{ id: string }>(
-      'SELECT id FROM app.users WHERE LOWER(email) = $1 AND is_active = true',
-      [principal.actingUserEmail.toLowerCase()],
-    );
-    userId = actingUser.rows[0]?.id;
+    const actingUserRows = await db()
+      .select({ id: users.id })
+      .from(users)
+      .where(and(eq(sql`lower(${users.email})`, principal.actingUserEmail.toLowerCase()), eq(users.isActive, true)));
+    userId = actingUserRows[0]?.id;
   }
 
   if (userId === undefined) {
@@ -110,18 +117,29 @@ export async function canAccessOrganization(
   // Check active direct membership OR site-role access. A deactivated direct
   // member can still reach the org through a site grant, but not through their
   // (suspended) membership row alone.
-  const result = await query<{ found: boolean }>(`
-    SELECT EXISTS (
-      SELECT 1 FROM app.organization_members om
-      WHERE om.user_id = $1::uuid AND om.organization_id = $2::uuid AND om.is_active = true
-    ) OR EXISTS (
-      SELECT 1 FROM app.user_site_roles usr
-      INNER JOIN app.users u ON u.id::text = usr.user_id
-      INNER JOIN app.sites s ON s.id = usr.site_id
-      WHERE u.id = $1::uuid AND s.organization_id = $2::uuid AND s.archived_at IS NULL
-    ) AS found
-  `, [userId, organizationId]);
-  return result.rows[0]?.found ?? false;
+  const membershipRows = await db()
+    .select({ id: organizationMembers.id })
+    .from(organizationMembers)
+    .where(
+      and(
+        eq(organizationMembers.userId, userId),
+        eq(organizationMembers.organizationId, organizationId),
+        eq(organizationMembers.isActive, true),
+      ),
+    )
+    .limit(1);
+  if (membershipRows.length > 0) {
+    return true;
+  }
+
+  const siteRoleRows = await db()
+    .select({ id: userSiteRoles.id })
+    .from(userSiteRoles)
+    .innerJoin(users, sql`${users.id}::text = ${userSiteRoles.userId}`)
+    .innerJoin(sites, eq(sites.id, userSiteRoles.siteId))
+    .where(and(eq(users.id, userId), eq(sites.organizationId, organizationId), isNull(sites.archivedAt)))
+    .limit(1);
+  return siteRoleRows.length > 0;
 }
 
 /**
@@ -164,10 +182,16 @@ export async function isOrgAdmin(
 
   // Deactivated members lose their admin authority; the membership row exists
   // but is_active = false means "suspended from this account".
-  const result = await query<{ role: string }>(
-    'SELECT role FROM app.organization_members WHERE organization_id = $1::uuid AND user_id = $2::uuid AND is_active = true',
-    [organizationId, userId],
-  );
-  const role = result.rows[0]?.role;
+  const rows = await db()
+    .select({ role: organizationMembers.role })
+    .from(organizationMembers)
+    .where(
+      and(
+        eq(organizationMembers.organizationId, organizationId),
+        eq(organizationMembers.userId, userId),
+        eq(organizationMembers.isActive, true),
+      ),
+    );
+  const role = rows[0]?.role;
   return role !== undefined && ORG_ADMIN_ROLES.includes(role as typeof ORG_ADMIN_ROLES[number]);
 }

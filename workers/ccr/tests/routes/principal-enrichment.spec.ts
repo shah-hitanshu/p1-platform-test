@@ -9,6 +9,8 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { AuthenticatedPrincipal } from '../../src/types';
+import { users } from '../../src/db/schema';
+import { stubDatabase, type DatabaseStub } from '../__stubs__/database';
 
 // The UUIDv5-derived principal ID (from google + subject)
 const PROVIDER_DERIVED_ID = '3f5f62dd-27bd-528d-94d7-015b99a0c90e';
@@ -30,29 +32,10 @@ const mockPrincipal: AuthenticatedPrincipal = {
 // Track the principal passed to route handlers
 let capturedPrincipal: AuthenticatedPrincipal | null = null;
 
-// Mock the database with query-aware responses
+// Mock the connection lifecycle only; db() reaches the stub installed below.
 vi.mock('../../src/db', () => ({
   initializeDatabaseFromConnectionString: vi.fn(),
   runWithConnection: vi.fn().mockImplementation((_connStr: string, _opts: unknown, fn: () => unknown) => fn()),
-  query: vi.fn().mockImplementation((sql: string) => {
-    if (sql.includes('SELECT EXISTS')) {
-      return Promise.resolve({ rows: [{ populated: true }] });
-    }
-    if (sql.includes('FROM app.users WHERE email')) {
-      return Promise.resolve({
-        rows: [{
-          id: DB_USER_ID,
-          principal_id: PROVIDER_DERIVED_ID,
-          system_role: 'member',
-          is_active: true,
-          name: 'Alice Developer',
-          avatar_url: 'https://example.com/alice.jpg',
-        }],
-      });
-    }
-    // Default for health check / other queries
-    return Promise.resolve({ rows: [{ now: new Date().toISOString() }] });
-  }),
 }));
 
 // Mock route handlers to capture the principal
@@ -189,10 +172,20 @@ describe('Principal ID Enrichment', () => {
     passThroughOnException: vi.fn(),
   };
 
+  let database: DatabaseStub;
+
   beforeEach(() => {
-    vi.resetModules();
     vi.clearAllMocks();
     capturedPrincipal = null;
+    database = stubDatabase();
+    database.on(users).select.returns([{
+      id: DB_USER_ID,
+      principalId: PROVIDER_DERIVED_ID,
+      systemRole: 'member',
+      isActive: true,
+      name: 'Alice Developer',
+      avatarUrl: 'https://example.com/alice.jpg',
+    }]);
   });
 
   it('should set dbUserId to DB users.id while preserving principal.id', async () => {

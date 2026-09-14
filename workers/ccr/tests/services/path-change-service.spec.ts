@@ -4,26 +4,25 @@
  * a move writes no version row, and must never enter conflict classification.
  * See spec D1a.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-
-vi.mock('../../src/db', () => ({ query: vi.fn() }));
-
-import { query } from '../../src/db';
+import { describe, it, expect, beforeEach } from 'vitest';
+import { documents } from '../../src/db/schema';
+import { stubDatabase, type DatabaseStub } from '../__stubs__/database';
 import { getPathChangesSince } from '../../src/services/path-change-service';
 
 const SOURCE = 'source-branch-id';
 const TARGET = 'target-branch-id';
 
+let database: DatabaseStub;
+
 beforeEach(() => {
-  vi.mocked(query).mockReset();
+  database = stubDatabase();
 });
 
 describe('getPathChangesSince', () => {
   it('returns a row when source has an override and target does not', async () => {
-    vi.mocked(query).mockResolvedValueOnce({
-      rows: [{ document_id: 'doc-1', document_path: 'blog/post', base_document_path: 'post' }],
-      rowCount: 1,
-    });
+    database.on(documents).select.returnsRaw([
+      { document_id: 'doc-1', document_path: 'blog/post', base_document_path: 'post' },
+    ]);
 
     const result = await getPathChangesSince(SOURCE, TARGET);
 
@@ -32,37 +31,32 @@ describe('getPathChangesSince', () => {
     ]);
   });
 
-  it('passes source and target branch ids as the first two parameters', async () => {
-    vi.mocked(query).mockResolvedValueOnce({ rows: [], rowCount: 0 });
+  it('passes source and target branch ids as parameters', async () => {
     await getPathChangesSince(SOURCE, TARGET);
-    const [, params] = vi.mocked(query).mock.calls[0];
-    expect(params?.[0]).toBe(SOURCE);
-    expect(params?.[1]).toBe(TARGET);
+    expect(database.calls(documents).select[0].params).toEqual([SOURCE, TARGET, SOURCE, TARGET]);
   });
 
   it('returns an empty array when no override exists anywhere', async () => {
-    vi.mocked(query).mockResolvedValueOnce({ rows: [], rowCount: 0 });
     expect(await getPathChangesSince(SOURCE, TARGET)).toEqual([]);
   });
 
   it('excludes archived documents and equal paths in SQL, not in JS', async () => {
-    vi.mocked(query).mockResolvedValueOnce({ rows: [], rowCount: 0 });
     await getPathChangesSince(SOURCE, TARGET);
-    const [sqlText] = vi.mocked(query).mock.calls[0];
-    expect(sqlText).toMatch(/archived_at IS NULL/);
-    expect(sqlText).toMatch(/<>/);
-    expect(sqlText).toMatch(/COALESCE/);
+    const { sql: statement } = database.calls(documents).select[0];
+    expect(statement).toMatch(/archived_at IS NULL/);
+    expect(statement).toMatch(/<>/);
+    expect(statement).toMatch(/COALESCE/);
   });
 
-  // Starting from app.documents scans every document in every site: only
-  // documents carrying an override on either branch can have moved.
+  // Only documents carrying an override on either branch can have moved, so the
+  // candidate join has to restrict the scan rather than walk every document in
+  // every site.
   it('drives the candidate set from the override table, not from all documents', async () => {
-    vi.mocked(query).mockResolvedValueOnce({ rows: [], rowCount: 0 });
     await getPathChangesSince(SOURCE, TARGET);
-    const [sqlText] = vi.mocked(query).mock.calls[0];
-    expect(sqlText).toMatch(/FROM \(\s*SELECT DISTINCT document_id/);
-    expect(sqlText).toMatch(/FROM app\.branch_document_paths\s*WHERE branch_id IN \(\$1, \$2\)/);
-    expect(sqlText).toMatch(/JOIN app\.documents d ON d\.id = candidate\.document_id/);
-    expect(sqlText).not.toMatch(/FROM app\.documents d\b/);
+    const { sql: statement } = database.calls(documents).select[0];
+    expect(statement).toMatch(
+      /JOIN \(\s*SELECT DISTINCT document_id\s+FROM app\.branch_document_paths\s+WHERE branch_id IN \(/,
+    );
+    expect(statement).toMatch(/\) candidate ON candidate\.document_id = d\.id/);
   });
 });

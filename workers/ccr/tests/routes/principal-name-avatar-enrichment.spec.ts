@@ -12,6 +12,8 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { AuthenticatedPrincipal } from '../../src/types';
+import { users } from '../../src/db/schema';
+import { stubDatabase, type DatabaseStub } from '../__stubs__/database';
 
 const PROVIDER_DERIVED_ID = '3f5f62dd-27bd-528d-94d7-015b99a0c90e';
 const DB_USER_ID = '6624d07e-aab3-4bde-a48a-5db1ccffffa0';
@@ -19,28 +21,14 @@ const DB_USER_ID = '6624d07e-aab3-4bde-a48a-5db1ccffffa0';
 // Mutable per-test state
 let testPrincipalOverrides: Partial<AuthenticatedPrincipal> = {};
 let mockUserRow: Record<string, unknown> = {};
-let executedQueries: { sql: string; params: unknown[] }[] = [];
+let database: DatabaseStub;
 let capturedPrincipal: AuthenticatedPrincipal | null = null;
 
-// Mock DB with query tracking
 vi.mock('../../src/db', () => ({
   initializeDatabaseFromConnectionString: vi.fn(),
   runWithConnection: vi.fn().mockImplementation(
     (_connStr: string, _opts: unknown, fn: () => unknown) => fn(),
   ),
-  query: vi.fn().mockImplementation((sql: string, params?: unknown[]) => {
-    executedQueries.push({ sql, params: params ?? [] });
-    if (sql.includes('SELECT EXISTS')) {
-      return Promise.resolve({ rows: [{ populated: true }] });
-    }
-    if (sql.includes('FROM app.users WHERE email')) {
-      return Promise.resolve({ rows: [mockUserRow] });
-    }
-    if (sql.includes('UPDATE app.users')) {
-      return Promise.resolve({ rows: [] });
-    }
-    return Promise.resolve({ rows: [{ now: new Date().toISOString() }] });
-  }),
 }));
 
 // Mock route handlers to capture the enriched principal
@@ -210,18 +198,17 @@ describe('Principal Name/Avatar Enrichment from Database', () => {
   }
 
   beforeEach(() => {
-    vi.resetModules();
     vi.clearAllMocks();
     capturedPrincipal = null;
-    executedQueries = [];
+    database = stubDatabase();
     testPrincipalOverrides = {};
     mockUserRow = {
       id: DB_USER_ID,
-      principal_id: PROVIDER_DERIVED_ID,
-      system_role: 'member',
-      is_active: true,
+      principalId: PROVIDER_DERIVED_ID,
+      systemRole: 'member',
+      isActive: true,
       name: null,
-      avatar_url: null,
+      avatarUrl: null,
     };
   });
 
@@ -232,8 +219,9 @@ describe('Principal Name/Avatar Enrichment from Database', () => {
     mockUserRow = {
       ...mockUserRow,
       name: 'Alice from DB',
-      avatar_url: 'https://db.example.com/alice.jpg',
+      avatarUrl: 'https://db.example.com/alice.jpg',
     };
+    database.on(users).select.returns([mockUserRow]);
 
     const module = await import('../../src/index');
     const response = await module.default.fetch(makeRequest(), mockEnv, mockContext);
@@ -256,8 +244,9 @@ describe('Principal Name/Avatar Enrichment from Database', () => {
     mockUserRow = {
       ...mockUserRow,
       name: 'Alice from DB',
-      avatar_url: 'https://db.example.com/alice.jpg',
+      avatarUrl: 'https://db.example.com/alice.jpg',
     };
+    database.on(users).select.returns([mockUserRow]);
 
     const module = await import('../../src/index');
     const response = await module.default.fetch(makeRequest(), mockEnv, mockContext);
@@ -279,21 +268,20 @@ describe('Principal Name/Avatar Enrichment from Database', () => {
     // First login: principal_id is null
     mockUserRow = {
       ...mockUserRow,
-      principal_id: null,
+      principalId: null,
       name: 'Alice Existing',
-      avatar_url: 'https://existing.example.com/alice.jpg',
+      avatarUrl: 'https://existing.example.com/alice.jpg',
     };
+    database.on(users).select.returns([mockUserRow]);
 
     const module = await import('../../src/index');
     await module.default.fetch(makeRequest(), mockEnv, mockContext);
 
-    // Find the UPDATE query for first login
-    const updateQueries = executedQueries.filter((q) =>
-      q.sql.includes('UPDATE app.users') && q.sql.includes('principal_id'),
-    );
+    // The one UPDATE this request issues is the first-login principal_id link.
+    const updateQueries = database.calls(users).update;
     expect(updateQueries.length).toBe(1);
     // The stored value is written back, not clobbered with null.
-    expect(updateQueries[0].params[3]).toBe('https://existing.example.com/alice.jpg');
+    expect(updateQueries[0].params).toContain('https://existing.example.com/alice.jpg');
   });
 
   // Only the broker JWT carries the upstream photo, so an absent one there means
@@ -306,19 +294,20 @@ describe('Principal Name/Avatar Enrichment from Database', () => {
     };
     mockUserRow = {
       ...mockUserRow,
-      principal_id: PROVIDER_DERIVED_ID,
+      principalId: PROVIDER_DERIVED_ID,
       name: 'Alice Broker',
-      avatar_url: 'https://db.example.com/removed.jpg',
+      avatarUrl: 'https://db.example.com/removed.jpg',
     };
+    database.on(users).select.returns([mockUserRow]);
 
     const module = await import('../../src/index');
     await module.default.fetch(makeRequest(), mockEnv, mockContext);
 
-    const refreshQueries = executedQueries.filter((q) =>
-      q.sql.includes('UPDATE app.users') && !q.sql.includes('principal_id'),
-    );
+    // A row already linked (principal_id set) only ever gets the name/avatar
+    // refresh update, never the first-login link.
+    const refreshQueries = database.calls(users).update;
     expect(refreshQueries.length).toBe(1);
-    expect(refreshQueries[0].params[1]).toBeNull();
+    expect(refreshQueries[0].params).toContain(null);
     // ...and the principal falls back to initials rather than the stale photo.
     if (capturedPrincipal === null) {
       throw new Error('Expected capturedPrincipal to be set');
@@ -330,9 +319,10 @@ describe('Principal Name/Avatar Enrichment from Database', () => {
     testPrincipalOverrides = { authProvider: 'auth0', avatarUrl: undefined };
     mockUserRow = {
       ...mockUserRow,
-      principal_id: PROVIDER_DERIVED_ID,
-      avatar_url: 'https://db.example.com/alice.jpg',
+      principalId: PROVIDER_DERIVED_ID,
+      avatarUrl: 'https://db.example.com/alice.jpg',
     };
+    database.on(users).select.returns([mockUserRow]);
 
     const module = await import('../../src/index');
     await module.default.fetch(makeRequest(), mockEnv, mockContext);
@@ -342,7 +332,7 @@ describe('Principal Name/Avatar Enrichment from Database', () => {
     }
     expect(capturedPrincipal.avatarUrl).toBe('https://db.example.com/alice.jpg');
     // Nothing changed, so no write.
-    expect(executedQueries.filter((q) => q.sql.includes('UPDATE app.users')).length).toBe(0);
+    expect(database.calls(users).update).toHaveLength(0);
   });
 
   it('should update DB when returning user has changed name', async () => {
@@ -354,18 +344,18 @@ describe('Principal Name/Avatar Enrichment from Database', () => {
     // Returning user with old values
     mockUserRow = {
       ...mockUserRow,
-      principal_id: PROVIDER_DERIVED_ID,
+      principalId: PROVIDER_DERIVED_ID,
       name: 'Alice Old Name',
-      avatar_url: 'https://db.example.com/old.jpg',
+      avatarUrl: 'https://db.example.com/old.jpg',
     };
+    database.on(users).select.returns([mockUserRow]);
 
     const module = await import('../../src/index');
     await module.default.fetch(makeRequest(), mockEnv, mockContext);
 
-    // Should find an UPDATE query for name/avatar refresh (not the principal_id linking one)
-    const refreshQueries = executedQueries.filter((q) =>
-      q.sql.includes('UPDATE app.users') && !q.sql.includes('principal_id'),
-    );
+    // A row already linked (principal_id set) only ever gets the name/avatar
+    // refresh update, never the first-login link.
+    const refreshQueries = database.calls(users).update;
     expect(refreshQueries.length).toBe(1);
     expect(refreshQueries[0].params).toContain('Alice New Name');
   });
@@ -379,19 +369,17 @@ describe('Principal Name/Avatar Enrichment from Database', () => {
     // DB has same values
     mockUserRow = {
       ...mockUserRow,
-      principal_id: PROVIDER_DERIVED_ID,
+      principalId: PROVIDER_DERIVED_ID,
       name: 'Alice Same',
-      avatar_url: 'https://same.example.com/alice.jpg',
+      avatarUrl: 'https://same.example.com/alice.jpg',
     };
+    database.on(users).select.returns([mockUserRow]);
 
     const module = await import('../../src/index');
     await module.default.fetch(makeRequest(), mockEnv, mockContext);
 
     // No UPDATE queries should have been executed
-    const updateQueries = executedQueries.filter((q) =>
-      q.sql.includes('UPDATE app.users'),
-    );
-    expect(updateQueries.length).toBe(0);
+    expect(database.calls(users).update).toHaveLength(0);
   });
 
   it('should not enrich when DB has null name and avatar_url', async () => {
@@ -401,8 +389,9 @@ describe('Principal Name/Avatar Enrichment from Database', () => {
     mockUserRow = {
       ...mockUserRow,
       name: null,
-      avatar_url: null,
+      avatarUrl: null,
     };
+    database.on(users).select.returns([mockUserRow]);
 
     const module = await import('../../src/index');
     await module.default.fetch(makeRequest(), mockEnv, mockContext);
@@ -421,8 +410,9 @@ describe('Principal Name/Avatar Enrichment from Database', () => {
     mockUserRow = {
       ...mockUserRow,
       name: 'Alice from DB',
-      avatar_url: 'https://db.example.com/alice.jpg',
+      avatarUrl: 'https://db.example.com/alice.jpg',
     };
+    database.on(users).select.returns([mockUserRow]);
 
     const module = await import('../../src/index');
     const response = await module.default.fetch(
@@ -446,7 +436,8 @@ describe('Principal Name/Avatar Enrichment from Database', () => {
   // The allowlist rejection path had no coverage, and /api/auth/me now shares
   // the same gate as dispatched routes — an inactive row must refuse both.
   it('refuses /api/auth/me with 403 when the user row is not active', async () => {
-    mockUserRow = { ...mockUserRow, is_active: false };
+    mockUserRow = { ...mockUserRow, isActive: false };
+    database.on(users).select.returns([mockUserRow]);
 
     const module = await import('../../src/index');
     const response = await module.default.fetch(
@@ -467,7 +458,8 @@ describe('Principal Name/Avatar Enrichment from Database', () => {
   });
 
   it('refuses a dispatched route with 403 when the user row is not active', async () => {
-    mockUserRow = { ...mockUserRow, is_active: false };
+    mockUserRow = { ...mockUserRow, isActive: false };
+    database.on(users).select.returns([mockUserRow]);
 
     const module = await import('../../src/index');
     const response = await module.default.fetch(makeRequest(), mockEnv, mockContext);

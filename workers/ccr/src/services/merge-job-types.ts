@@ -7,6 +7,8 @@
  * the service so readers of the model never wade through query code.
  */
 
+import type { InferSelectModel } from 'drizzle-orm';
+import type { mergeJobDocuments, mergeJobs } from '../db/schema';
 import type { ConflictResolutionStrategy } from '../types';
 import type { DocumentResolution } from './merge-execution-service';
 
@@ -37,31 +39,11 @@ export const TERMINAL_MERGE_JOB_STATUSES: readonly MergeJobStatus[] = [
   'cancelled',
 ];
 
-export interface MergeJobRow {
-  id: string;
-  merge_request_id: string | null;
-  site_id: string;
-  source_branch_id: string;
-  target_branch_id: string;
-  status: MergeJobStatus;
-  prior_mr_status: string | null;
-  resolution_strategy: ConflictResolutionStrategy | null;
-  resolutions: DocumentResolution[] | string | null;
-  total_documents: number;
-  processed_documents: number;
-  failed_documents: number;
-  noop_documents: number;
-  cancel_requested: boolean;
-  post_merge_checkpoint_id: string | null;
-  publish_checkpoint_id: string | null;
-  publish_error: string | null;
-  error: string | null;
-  triggered_by_id: string;
-  triggered_by_type: 'user' | 'agent';
-  created_at: string;
-  started_at: string | null;
-  finished_at: string | null;
-}
+/** Raw select shape from app.merge_jobs (all columns). */
+export type MergeJobRow = InferSelectModel<typeof mergeJobs>;
+
+/** Raw select shape from app.merge_job_documents (all columns). */
+export type MergeJobDocumentRow = InferSelectModel<typeof mergeJobDocuments>;
 
 export interface MergeJob {
   id: string;
@@ -84,24 +66,9 @@ export interface MergeJob {
   error: string | null;
   triggeredById: string;
   triggeredByType: 'user' | 'agent';
-  createdAt: string;
-  startedAt: string | null;
-  finishedAt: string | null;
-}
-
-export interface MergeJobDocumentRow {
-  job_id: string;
-  document_id: string;
-  document_path: string;
-  kind: 'copy' | 'conflict';
-  resolution_strategy: ConflictResolutionStrategy | null;
-  conflict_type: string | null;
-  source_version_id: string | null;
-  target_version_id: string | null;
-  status: 'pending' | 'done' | 'skipped_noop' | 'failed';
-  result_version_id: string | null;
-  error: string | null;
-  attempts: number;
+  createdAt: Date;
+  startedAt: Date | null;
+  finishedAt: Date | null;
 }
 
 /** The API/MCP-facing status projection, including per-document failures. */
@@ -109,38 +76,19 @@ export interface MergeJobProjection extends MergeJob {
   failedDocumentDetails: { documentId: string; path: string; error: string | null }[];
 }
 
+/**
+ * The row's field names already match the domain shape (both are camelCase),
+ * so the only real work is narrowing the columns the schema can't type as a
+ * union, and typing the jsonb resolutions column — Drizzle deserializes it
+ * for us, unlike the driver's raw string form the legacy `query()` returned.
+ */
 export function rowToMergeJob(row: MergeJobRow): MergeJob {
-  let resolutions: DocumentResolution[] | null = null;
-  if (row.resolutions !== null) {
-    resolutions =
-      typeof row.resolutions === 'string'
-        ? (JSON.parse(row.resolutions) as DocumentResolution[])
-        : row.resolutions;
-  }
   return {
-    id: row.id,
-    mergeRequestId: row.merge_request_id,
-    siteId: row.site_id,
-    sourceBranchId: row.source_branch_id,
-    targetBranchId: row.target_branch_id,
-    status: row.status,
-    priorMrStatus: row.prior_mr_status,
-    resolutionStrategy: row.resolution_strategy,
-    resolutions,
-    totalDocuments: row.total_documents,
-    processedDocuments: row.processed_documents,
-    failedDocuments: row.failed_documents,
-    noopDocuments: row.noop_documents,
-    cancelRequested: row.cancel_requested,
-    postMergeCheckpointId: row.post_merge_checkpoint_id,
-    publishCheckpointId: row.publish_checkpoint_id,
-    publishError: row.publish_error,
-    error: row.error,
-    triggeredById: row.triggered_by_id,
-    triggeredByType: row.triggered_by_type,
-    createdAt: row.created_at,
-    startedAt: row.started_at,
-    finishedAt: row.finished_at,
+    ...row,
+    status: row.status as MergeJobStatus,
+    resolutionStrategy: row.resolutionStrategy as ConflictResolutionStrategy | null,
+    resolutions: row.resolutions as DocumentResolution[] | null,
+    triggeredByType: row.triggeredByType as 'user' | 'agent',
   };
 }
 

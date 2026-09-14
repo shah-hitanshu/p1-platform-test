@@ -6,14 +6,14 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-
-vi.mock('../../src/db', () => ({
-  query: vi.fn(),
-}));
+import { auditLog } from '../../src/db/schema';
+import { stubDatabase, type DatabaseStub } from '../__stubs__/database';
 
 describe('Audit Log Service', () => {
+  let database: DatabaseStub;
+
   beforeEach(() => {
-    vi.resetAllMocks();
+    database = stubDatabase();
   });
 
   const actor = {
@@ -25,9 +25,8 @@ describe('Audit Log Service', () => {
   describe('recordAuditEntry', () => {
     it('should insert the action, actor and target', async () => {
       const { recordAuditEntry } = await import('../../src/services/audit-log-service');
-      const db = await import('../../src/db');
 
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [], rowCount: 1 });
+      database.on(auditLog).insert.returns([]);
 
       await recordAuditEntry({
         action: 'org_user.remove',
@@ -39,11 +38,8 @@ describe('Audit Log Service', () => {
         details: { role: 'admin' },
       });
 
-      expect(db.query).toHaveBeenCalledTimes(1);
-      const [sql, params] = vi.mocked(db.query).mock.calls[0] as [string, unknown[]];
-
-      expect(sql).toContain('INSERT INTO app.audit_log');
-      expect(params).toEqual([
+      expect(database.calls(auditLog).insert).toHaveLength(1);
+      expect(database.calls(auditLog).insert[0].params).toEqual([
         'org_user.remove',
         'actor-uuid',
         'staff@pantheon.io',
@@ -52,9 +48,9 @@ describe('Audit Log Service', () => {
         'user',
         'target-uuid',
         'removed@example.com',
-        // The object itself, not a JSON string: the driver serializes into the
-        // jsonb column, and pre-stringifying makes details->>'field' null.
-        { role: 'admin' },
+        // Drizzle stringifies the jsonb column itself and hands the driver a
+        // plain string, so the recorded parameter is JSON text, not an object.
+        JSON.stringify({ role: 'admin' }),
       ]);
     });
 
@@ -62,9 +58,8 @@ describe('Audit Log Service', () => {
     // is still worth recording — neither should turn into a dropped entry.
     it('should record nulls for the optional fields and default details to {}', async () => {
       const { recordAuditEntry } = await import('../../src/services/audit-log-service');
-      const db = await import('../../src/db');
 
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [], rowCount: 1 });
+      database.on(auditLog).insert.returns([]);
 
       await recordAuditEntry({
         action: 'user.remove',
@@ -72,8 +67,7 @@ describe('Audit Log Service', () => {
         targetType: 'user',
       });
 
-      const [, params] = vi.mocked(db.query).mock.calls[0] as [string, unknown[]];
-      expect(params).toEqual([
+      expect(database.calls(auditLog).insert[0].params).toEqual([
         'user.remove',
         null,
         null,
@@ -82,7 +76,7 @@ describe('Audit Log Service', () => {
         'user',
         null,
         null,
-        {},
+        JSON.stringify({}),
       ]);
     });
 
@@ -90,9 +84,8 @@ describe('Audit Log Service', () => {
     // roll back, so a failed write must not become a failed request.
     it('should swallow a database failure', async () => {
       const { recordAuditEntry } = await import('../../src/services/audit-log-service');
-      const db = await import('../../src/db');
 
-      vi.mocked(db.query).mockRejectedValueOnce(new Error('relation "app.audit_log" does not exist'));
+      database.on(auditLog).insert.rejects(new Error('relation "app.audit_log" does not exist'));
       const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
 
       await expect(

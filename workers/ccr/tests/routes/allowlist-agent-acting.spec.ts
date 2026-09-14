@@ -14,6 +14,8 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { AuthenticatedPrincipal } from '../../src/types';
+import { users } from '../../src/db/schema';
+import { stubDatabase, type DatabaseStub } from '../__stubs__/database';
 
 const AGENT_ID = 'agent-uuid-01010101-0101-0101-0101-010101010101';
 const ACTING_USER_EMAIL = 'acting-user@example.com';
@@ -21,9 +23,7 @@ const ACTING_USER_ID = 'acting-user-provider-id';
 const ACTING_DB_USER_ID = 'db-acting-user-id-22222222';
 
 let agentPrincipalOverrides: Partial<AuthenticatedPrincipal> = {};
-let allowlistPopulated = true; // by default the allowlist has rows
-let allowlistRow: Record<string, unknown> | null = null;
-let executedQueries: { sql: string; params: unknown[] }[] = [];
+let database: DatabaseStub;
 let siteApiCalled = false;
 let capturedSiteApiPrincipal: AuthenticatedPrincipal | null = null;
 
@@ -32,23 +32,21 @@ vi.mock('../../src/db', () => ({
   runWithConnection: vi.fn().mockImplementation(
     (_connStr: string, _opts: unknown, fn: () => unknown) => fn(),
   ),
-  query: vi.fn().mockImplementation((sql: string, params?: unknown[]) => {
-    executedQueries.push({ sql, params: params ?? [] });
-    if (sql.includes('SELECT EXISTS') && sql.includes('app.users')) {
-      return Promise.resolve({ rows: [{ populated: allowlistPopulated }] });
-    }
-    if (sql.includes('FROM app.users WHERE email')) {
-      return Promise.resolve({ rows: allowlistRow !== null ? [allowlistRow] : [] });
-    }
-    if (sql.includes('UPDATE app.users')) {
-      return Promise.resolve({ rows: [] });
-    }
-    if (sql.includes('user_site_roles')) {
-      return Promise.resolve({ rows: [], rowCount: 0 });
-    }
-    return Promise.resolve({ rows: [{ now: new Date().toISOString() }] });
-  }),
 }));
+
+/**
+ * checkUserAccess's allowlist-populated check and its acting-user email
+ * lookup share the users.select stub. `populated: false` represents a
+ * genuinely empty allowlist (both checks see no rows); otherwise the one
+ * stubbed row answers both — present-and-matching when `row` is given,
+ * present-but-unrelated (populated, not found) when it is null.
+ */
+function stubAllowlist(populated: boolean, row: Record<string, unknown> | null): void {
+  if (!populated) {
+    return;
+  }
+  database.on(users).select.returns([row ?? { id: 'unrelated-row' }]);
+}
 
 vi.mock('../../src/routes/site-api', () => ({
   handleSiteRoutes: vi.fn().mockImplementation(
@@ -215,28 +213,26 @@ describe('PCC-3190: allowlist gate for agent principals with acting user', () =>
     });
   }
 
+  const defaultAllowlistRow = {
+    id: ACTING_DB_USER_ID,
+    principalId: ACTING_USER_ID,
+    systemRole: 'member',
+    isActive: true,
+    name: null,
+    avatarUrl: null,
+  };
+
   beforeEach(() => {
-    vi.resetModules();
     vi.clearAllMocks();
-    executedQueries = [];
+    database = stubDatabase();
     siteApiCalled = false;
     capturedSiteApiPrincipal = null;
     agentPrincipalOverrides = {};
-    allowlistPopulated = true;
-    allowlistRow = {
-      id: ACTING_DB_USER_ID,
-      principal_id: ACTING_USER_ID,
-      system_role: 'member',
-      is_active: true,
-      name: null,
-      avatar_url: null,
-    };
   });
 
   it('rejects with 403 when agent acts on behalf of a user that is NOT in the allowlist', async () => {
     // Allowlist is non-empty but the acting user is not in it.
-    allowlistPopulated = true;
-    allowlistRow = null;
+    stubAllowlist(true, null);
 
     const module = await import('../../src/index');
     const response = await module.default.fetch(
@@ -248,24 +244,15 @@ describe('PCC-3190: allowlist gate for agent principals with acting user', () =>
     expect(response.status).toBe(403);
     expect(siteApiCalled).toBe(false);
 
-    // The gate must look up the acting user's email, not the (absent) agent email.
-    const userLookup = executedQueries.find((q) =>
-      q.sql.includes('FROM app.users WHERE email'),
-    );
+    // The gate must look up the acting user's email, not the (absent) agent
+    // email. Index 1: index 0 is checkUserAccess's own allowlist-populated check.
+    const userLookup = database.calls(users).select[1];
     expect(userLookup).toBeDefined();
     expect(userLookup?.params).toContain(ACTING_USER_EMAIL.toLowerCase());
   });
 
   it('rejects with 403 when agent acts on behalf of an inactive allowlisted user', async () => {
-    allowlistPopulated = true;
-    allowlistRow = {
-      id: ACTING_DB_USER_ID,
-      principal_id: ACTING_USER_ID,
-      system_role: 'member',
-      is_active: false,
-      name: null,
-      avatar_url: null,
-    };
+    stubAllowlist(true, { ...defaultAllowlistRow, isActive: false });
 
     const module = await import('../../src/index');
     const response = await module.default.fetch(
@@ -279,8 +266,7 @@ describe('PCC-3190: allowlist gate for agent principals with acting user', () =>
   });
 
   it('passes the gate and reaches the route handler when acting user IS in the allowlist', async () => {
-    allowlistPopulated = true;
-    // Default allowlistRow set in beforeEach: active user.
+    stubAllowlist(true, defaultAllowlistRow);
 
     const module = await import('../../src/index');
     const response = await module.default.fetch(
@@ -301,7 +287,7 @@ describe('PCC-3190: allowlist gate for agent principals with acting user', () =>
   it('does NOT mutate principal.dbUserId or systemRole from the acting user row', async () => {
     // Regression guard: the agent path must not adopt the acting user's DB
     // identity, otherwise downstream agent-keyed authorization breaks.
-    allowlistPopulated = true;
+    stubAllowlist(true, defaultAllowlistRow);
 
     const module = await import('../../src/index');
     await module.default.fetch(
@@ -316,9 +302,10 @@ describe('PCC-3190: allowlist gate for agent principals with acting user', () =>
   });
 
   it('preserves legacy agent traffic (no acting user) by NOT applying the allowlist gate', async () => {
-    // Agent without acting-user headers -- the gate stays bypassed exactly as it did before.
-    allowlistPopulated = true;
-    allowlistRow = null; // even with no allowlist row, the gate must not engage.
+    // Agent without acting-user headers -- the gate stays bypassed exactly as
+    // it did before. Even a populated, unrelated-row allowlist must not
+    // engage, since no acting-user email lookup should run at all.
+    stubAllowlist(true, null);
 
     const module = await import('../../src/index');
     const response = await module.default.fetch(
@@ -330,18 +317,15 @@ describe('PCC-3190: allowlist gate for agent principals with acting user', () =>
     expect(response.status).toBe(200);
     expect(siteApiCalled).toBe(true);
 
-    // No app.users SELECT email lookup must have happened for the legacy path.
-    const userLookup = executedQueries.find((q) =>
-      q.sql.includes('FROM app.users WHERE email'),
-    );
-    expect(userLookup).toBeUndefined();
+    // A bare agent has no subject email to check, so the gate (and its
+    // allowlist-populated check) never runs at all for the legacy path.
+    expect(database.calls(users).select).toHaveLength(0);
   });
 
   it('skips the gate entirely when the allowlist is empty (count=0)', async () => {
     // When app.users has no rows the allowlist is treated as "open" --
     // this preserves the existing behavior for fresh dev/test databases.
-    allowlistPopulated = false;
-    allowlistRow = null;
+    stubAllowlist(false, null);
 
     const module = await import('../../src/index');
     const response = await module.default.fetch(
@@ -353,11 +337,8 @@ describe('PCC-3190: allowlist gate for agent principals with acting user', () =>
     expect(response.status).toBe(200);
     expect(siteApiCalled).toBe(true);
 
-    // The COUNT(*) should have been executed, but no email lookup.
-    const userLookup = executedQueries.find((q) =>
-      q.sql.includes('FROM app.users WHERE email'),
-    );
-    expect(userLookup).toBeUndefined();
+    // The allowlist-populated check ran (and found it empty), but no email lookup.
+    expect(database.calls(users).select).toHaveLength(1);
   });
 
   // The user-principal allowlist behavior is covered by the existing

@@ -39,7 +39,9 @@ import {
 } from '../services/bundle-import-service';
 import type { CreatedByRef } from '../services/bundle-export-service';
 import { assertPermission, AuthorizationError } from '../auth/authorization';
-import { query } from '../db';
+import { and, count, eq } from 'drizzle-orm';
+import { checkpointDocuments, checkpoints, documentVersions, documents, importIdMaps } from '../db/schema';
+import { db } from '../db/scope';
 import { purgeContentCache } from '../cache/purge';
 import { jsonResponse, errorResponse } from '../utils/http-helpers';
 
@@ -201,12 +203,18 @@ export async function handleSiteImportRoute(
     if (!hasCompletedPhase(progress, 'branches')) {
       // Get-or-create the import base checkpoint. A partial previous run may have
       // already created it, so look it up before inserting to avoid duplicates.
-      const existingCp = await query<{ id: string }>(
-        `SELECT id FROM app.checkpoints WHERE branch_id = $1 AND name = 'Import base'
-         AND message = $2 LIMIT 1`,
-        [mainBranch.id, `Import base for bundle exported at ${manifest.exportedAt}`],
-      );
-      const importBaseCheckpointId = existingCp.rows[0]?.id
+      const existingCpRows = await db()
+        .select({ id: checkpoints.id })
+        .from(checkpoints)
+        .where(
+          and(
+            eq(checkpoints.branchId, mainBranch.id),
+            eq(checkpoints.name, 'Import base'),
+            eq(checkpoints.message, `Import base for bundle exported at ${manifest.exportedAt}`),
+          ),
+        )
+        .limit(1);
+      const importBaseCheckpointId = existingCpRows[0]?.id
         ?? (await createCheckpoint({
           branchId: mainBranch.id,
           name: 'Import base',
@@ -250,11 +258,10 @@ export async function handleSiteImportRoute(
         }
         branchNameToTargetId.set(srcBranch.name, targetBranchId);
         // ON CONFLICT DO NOTHING is idempotent across partial runs
-        await query(
-          `INSERT INTO app.import_id_maps (import_key, source_id, target_id, entity_type)
-           VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`,
-          [importKey, srcBranch.id, targetBranchId, 'branch'],
-        );
+        await db()
+          .insert(importIdMaps)
+          .values({ importKey, sourceId: srcBranch.id, targetId: targetBranchId, entityType: 'branch' })
+          .onConflictDoNothing();
       }
       progress = markPhaseComplete(progress, 'branches');
       await saveImportProgress(env.CONFIG_KV, importKey, progress);
@@ -281,21 +288,20 @@ export async function handleSiteImportRoute(
 
       // get-or-create: a partial previous run may have created this document.
       // createDocument would throw a unique-constraint error on retry without this.
-      const existingDocRow = await query<{ id: string }>(
-        'SELECT id FROM app.documents WHERE site_id = $1 AND path = $2',
-        [siteId, docPath],
-      );
-      const newDoc = existingDocRow.rows[0] ?? await createDocument({ siteId, path: docPath });
+      const existingDocRows = await db()
+        .select({ id: documents.id })
+        .from(documents)
+        .where(and(eq(documents.siteId, siteId), eq(documents.path, docPath)));
+      const newDoc = existingDocRows[0] ?? await createDocument({ siteId, path: docPath });
 
       // Store source→target document mapping
       const metaBytes = zipContents[`documents/${docPath}/meta.json`];
       if (metaBytes !== undefined) {
         const meta = JSON.parse(new TextDecoder().decode(metaBytes)) as { id: string };
-        await query(
-          `INSERT INTO app.import_id_maps (import_key, source_id, target_id, entity_type)
-           VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`,
-          [importKey, meta.id, newDoc.id, 'document'],
-        );
+        await db()
+          .insert(importIdMaps)
+          .values({ importKey, sourceId: meta.id, targetId: newDoc.id, entityType: 'document' })
+          .onConflictDoNothing();
       }
 
       // Parse versions.jsonl — lines sorted by createdAt ASC
@@ -343,11 +349,11 @@ export async function handleSiteImportRoute(
           // Skip versions already inserted in a partial previous run.
           // createDocumentVersion assigns sequential numbers (1, 2, 3...); count
           // what already exists to know where to resume.
-          const existingVersionCount = await query<{ cnt: string }>(
-            'SELECT COUNT(*)::text AS cnt FROM app.document_versions WHERE document_id = $1 AND branch_id = $2',
-            [newDoc.id, targetBranchId],
-          );
-          const alreadyInserted = parseInt(existingVersionCount.rows[0]?.cnt ?? '0', 10);
+          const existingVersionCountRows = await db()
+            .select({ cnt: count() })
+            .from(documentVersions)
+            .where(and(eq(documentVersions.documentId, newDoc.id), eq(documentVersions.branchId, targetBranchId)));
+          const alreadyInserted = existingVersionCountRows[0]?.cnt ?? 0;
           const entriesToInsert = entries.slice(alreadyInserted);
 
           for (const entry of entriesToInsert) {
@@ -366,20 +372,19 @@ export async function handleSiteImportRoute(
             });
 
             // Store source version number mapping
-            await query(
-              `INSERT INTO app.import_id_maps (import_key, source_id, target_id, entity_type)
-               VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`,
-              [
+            await db()
+              .insert(importIdMaps)
+              .values({
                 importKey,
                 // Include docPath so version keys are unique across documents.
                 // Without it, every doc independently starts at v1 so 'main:1'
                 // collides across all docs and ON CONFLICT DO NOTHING silently
                 // drops all but the first mapping.
-                `${docPath}:${entry.branchName}:${String(entry.versionNumber)}`,
-                String(newVersion.versionNumber),
-                'version',
-              ],
-            );
+                sourceId: `${docPath}:${entry.branchName}:${String(entry.versionNumber)}`,
+                targetId: String(newVersion.versionNumber),
+                entityType: 'version',
+              })
+              .onConflictDoNothing();
 
             // Create publish checkpoint if this version was published.
             // NOTE: publish_checkpoints.jsonl in the bundle is exported for human inspection
@@ -390,20 +395,24 @@ export async function handleSiteImportRoute(
             //   branch_id, name, checkpoint_type, created_by_id, created_by_type, status
             // Match the pattern used in checkpoint-publish.ts.
             if (entry.isPublished) {
-              const cpResult = await query<{ id: string }>(
-                `INSERT INTO app.checkpoints
-                   (branch_id, name, checkpoint_type, created_by_id, created_by_type, status)
-                 VALUES ($1, $2, 'publish', $3, $4, 'completed')
-                 RETURNING id`,
-                [targetBranchId, `Import: ${docPath} v${String(newVersion.versionNumber)}`, createdById, createdByType],
-              );
-              const cpId = cpResult.rows[0]?.id;
+              const cpRows = await db()
+                .insert(checkpoints)
+                .values({
+                  branchId: targetBranchId,
+                  name: `Import: ${docPath} v${String(newVersion.versionNumber)}`,
+                  checkpointType: 'publish',
+                  createdById,
+                  createdByType,
+                  status: 'completed',
+                })
+                .returning({ id: checkpoints.id });
+              const cpId = cpRows[0]?.id;
               if (cpId !== undefined) {
-                await query(
-                  `INSERT INTO app.checkpoint_documents (checkpoint_id, document_id, document_version_id)
-                   VALUES ($1, $2, $3)`,
-                  [cpId, newDoc.id, newVersion.id],
-                );
+                await db().insert(checkpointDocuments).values({
+                  checkpointId: cpId,
+                  documentId: newDoc.id,
+                  documentVersionId: newVersion.id,
+                });
               }
             }
           }

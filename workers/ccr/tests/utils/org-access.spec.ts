@@ -11,6 +11,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 import type { RegisteredAgent } from '../../src/types';
+import { organizationMembers, userSiteRoles, users } from '../../src/db/schema';
+import { stubDatabase, type DatabaseStub } from '../__stubs__/database';
 
 vi.mock('../../src/services/organization-service', () => ({
   // Not a stub: isOrgAdmin reads this to decide which roles administer an
@@ -30,44 +32,7 @@ vi.mock('../../src/auth/principal-id-normalization', () => ({
   normalizePrincipalIdForDb: vi.fn(async (id: string) => `normalized:${id}`),
 }));
 
-vi.mock('../../src/db', () => ({
-  query: vi.fn(async () => ({ rows: [], rowCount: 0 })),
-}));
-
 const ORG_ID = 'org-uuid-123';
-
-
-/**
- * Both checks read the membership table directly, so the tests answer by SQL
- * rather than by call order — is_active moved into these statements and a
- * positional mock would not have noticed.
- */
-async function stubDb(answers: {
-  /** app.organization_members row behind isOrgAdmin, keyed by organization id. */
-  role?: (organizationId: string) => string | undefined;
-  /** Result of canAccessOrganization's membership-or-site-role probe. */
-  access?: boolean;
-  /** app.users id for the acting-user or principal_id lookup. */
-  userId?: string;
-}) {
-  const { query } = await import('../../src/db');
-  vi.mocked(query).mockImplementation(async (sql: string, params?: unknown[]) => {
-    if (sql.includes('SELECT role FROM app.organization_members')) {
-      const role = answers.role?.(String(params?.[0]));
-      return { rows: role === undefined ? [] : [{ role }], rowCount: role === undefined ? 0 : 1 };
-    }
-    if (sql.includes('SELECT EXISTS')) {
-      return { rows: [{ found: answers.access ?? false }], rowCount: 1 };
-    }
-    if (sql.includes('FROM app.users')) {
-      return answers.userId === undefined
-        ? { rows: [], rowCount: 0 }
-        : { rows: [{ id: answers.userId }], rowCount: 1 };
-    }
-    return { rows: [], rowCount: 0 };
-  });
-  return query;
-}
 
 const user = {
   id: 'user-principal-1',
@@ -98,41 +63,45 @@ const agentRecord = (
 });
 
 describe('canAccessOrganization', () => {
+  let database: DatabaseStub;
+
   beforeEach(() => {
-    vi.resetModules();
     vi.clearAllMocks();
+    database = stubDatabase();
   });
 
   it('passes a direct member', async () => {
     const { canAccessOrganization } = await import('../../src/utils/org-access');
-    const query = await stubDb({ access: true });
+    database.on(organizationMembers).select.returns([{ id: 'member-row-1' }]);
 
     expect(await canAccessOrganization(user, ORG_ID)).toBe(true);
     // A deactivated membership is not access, so the statement has to say so.
-    expect(query).toHaveBeenCalledWith(
-      expect.stringContaining('om.is_active = true'),
-      ['user-uuid-1', ORG_ID],
-    );
+    expect(database.calls(organizationMembers).select[0].params).toEqual([
+      'user-uuid-1',
+      ORG_ID,
+      true,
+      1,
+    ]);
   });
 
   it('refuses a non-member', async () => {
     const { canAccessOrganization } = await import('../../src/utils/org-access');
-    await stubDb({ access: false });
 
     expect(await canAccessOrganization(user, ORG_ID)).toBe(false);
   });
 
   it('refuses an empty organization id without querying', async () => {
     const { canAccessOrganization } = await import('../../src/utils/org-access');
-    const query = await stubDb({ access: true });
+    database.on(organizationMembers).select.returns([{ id: 'member-row-1' }]);
 
     expect(await canAccessOrganization(user, '')).toBe(false);
-    expect(query).not.toHaveBeenCalled();
+    expect(database.statements).toHaveLength(0);
   });
 
   it('resolves an agent through the user it is acting for', async () => {
     const { canAccessOrganization } = await import('../../src/utils/org-access');
-    const query = await stubDb({ access: true, userId: 'acting-user-uuid' });
+    database.on(users).select.returns([{ id: 'acting-user-uuid' }]);
+    database.on(userSiteRoles).select.returns([{ id: 'role-row-1' }]);
 
     const agent = {
       id: 'agent-principal-1',
@@ -143,14 +112,8 @@ describe('canAccessOrganization', () => {
 
     expect(await canAccessOrganization(agent, ORG_ID)).toBe(true);
     // Looked up by the lowercased acting-user email, then checked as that user.
-    expect(query).toHaveBeenCalledWith(
-      expect.stringContaining('WHERE LOWER(email) = $1'),
-      ['acting@example.com'],
-    );
-    expect(query).toHaveBeenCalledWith(
-      expect.stringContaining('SELECT EXISTS'),
-      ['acting-user-uuid', ORG_ID],
-    );
+    expect(database.calls(users).select[0].params).toContain('acting@example.com');
+    expect(database.calls(userSiteRoles).select[0].params).toContain('acting-user-uuid');
   });
 
   // The principal css-client actually presents: an agent API key resolves to
@@ -201,22 +164,25 @@ describe('canAccessOrganization', () => {
 });
 
 describe('isOrgAdmin', () => {
+  let database: DatabaseStub;
+
   beforeEach(() => {
-    vi.resetModules();
     vi.clearAllMocks();
+    database = stubDatabase();
   });
 
   it('passes an admin of that organization', async () => {
     const { isOrgAdmin } = await import('../../src/utils/org-access');
-    const query = await stubDb({ role: () => 'admin' });
+    database.on(organizationMembers).select.returns([{ role: 'admin' }]);
 
     expect(await isOrgAdmin(user, ORG_ID)).toBe(true);
     // A deactivated admin is suspended from the account, so the statement has
     // to exclude them or the last-admin guard counts authority nobody holds.
-    expect(query).toHaveBeenCalledWith(
-      expect.stringContaining('is_active = true'),
-      [ORG_ID, 'user-uuid-1'],
-    );
+    expect(database.calls(organizationMembers).select[0].params).toEqual([
+      ORG_ID,
+      'user-uuid-1',
+      true,
+    ]);
   });
 
   // createOrgForUser makes the creator the owner and no separate admin, so an
@@ -224,16 +190,14 @@ describe('isOrgAdmin', () => {
   // own roster.
   it('passes the owner of that organization', async () => {
     const { isOrgAdmin } = await import('../../src/utils/org-access');
-
-    await stubDb({ role: () => 'owner' });
+    database.on(organizationMembers).select.returns([{ role: 'owner' }]);
 
     expect(await isOrgAdmin(user, ORG_ID)).toBe(true);
   });
 
   it('refuses a plain member', async () => {
     const { isOrgAdmin } = await import('../../src/utils/org-access');
-
-    await stubDb({ role: () => 'member' });
+    database.on(organizationMembers).select.returns([{ role: 'member' }]);
 
     expect(await isOrgAdmin(user, ORG_ID)).toBe(false);
   });
@@ -242,11 +206,10 @@ describe('isOrgAdmin', () => {
   it('asks about the organization it was given, not any other', async () => {
     const { isOrgAdmin } = await import('../../src/utils/org-access');
 
-    await stubDb({
-      role: (organizationId) => (organizationId === 'org-mine' ? 'admin' : 'member'),
-    });
-
+    database.on(organizationMembers).select.returns([{ role: 'admin' }]);
     expect(await isOrgAdmin(user, 'org-mine')).toBe(true);
+
+    database.on(organizationMembers).select.returns([{ role: 'member' }]);
     expect(await isOrgAdmin(user, 'org-invited')).toBe(false);
   });
 
@@ -254,27 +217,24 @@ describe('isOrgAdmin', () => {
   it('refuses someone who reaches the org only through a site role', async () => {
     const { isOrgAdmin } = await import('../../src/utils/org-access');
 
-    await stubDb({ role: () => undefined });
-
     expect(await isOrgAdmin(user, ORG_ID)).toBe(false);
   });
 
   it('passes a superadmin without a membership row', async () => {
     const { isOrgAdmin } = await import('../../src/utils/org-access');
     const { isSuperAdmin } = await import('../../src/utils/admin-check');
-    const query = await stubDb({ role: () => undefined });
 
     vi.mocked(isSuperAdmin).mockResolvedValueOnce(true);
 
     expect(await isOrgAdmin({ ...user, systemRole: 'superadmin' }, ORG_ID)).toBe(true);
-    expect(query).not.toHaveBeenCalled();
+    expect(database.statements).toHaveLength(0);
   });
 
   // The platform admin role reaches the staff tools, not other people's
   // business accounts — that separation is the whole point of the split.
   it('does not pass a platform admin who is only a member of the account', async () => {
     const { isOrgAdmin } = await import('../../src/utils/org-access');
-    await stubDb({ role: () => 'member' });
+    database.on(organizationMembers).select.returns([{ role: 'member' }]);
 
     expect(await isOrgAdmin({ ...user, systemRole: 'admin' }, ORG_ID)).toBe(false);
   });
@@ -283,7 +243,7 @@ describe('isOrgAdmin', () => {
   // never administers an account on a person's behalf.
   it('refuses an agent acting for a user', async () => {
     const { isOrgAdmin } = await import('../../src/utils/org-access');
-    const query = await stubDb({ role: () => 'admin' });
+    database.on(organizationMembers).select.returns([{ role: 'admin' }]);
 
     const agent = {
       id: 'agent-principal-1',
@@ -293,14 +253,14 @@ describe('isOrgAdmin', () => {
     };
 
     expect(await isOrgAdmin(agent, ORG_ID)).toBe(false);
-    expect(query).not.toHaveBeenCalled();
+    expect(database.statements).toHaveLength(0);
   });
 
   it('refuses an empty organization id without querying', async () => {
     const { isOrgAdmin } = await import('../../src/utils/org-access');
-    const query = await stubDb({ role: () => 'admin' });
+    database.on(organizationMembers).select.returns([{ role: 'admin' }]);
 
     expect(await isOrgAdmin(user, '')).toBe(false);
-    expect(query).not.toHaveBeenCalled();
+    expect(database.statements).toHaveLength(0);
   });
 });

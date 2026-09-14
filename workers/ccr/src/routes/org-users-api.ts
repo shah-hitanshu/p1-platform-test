@@ -30,7 +30,9 @@
 import { getLogger } from '@pantheon-systems/p1-telemetry';
 import type { AuthenticatedPrincipal } from '../types';
 import type { OrganizationRole } from '../services';
-import { query } from '../db';
+import { eq, sql } from 'drizzle-orm';
+import { users } from '../db/schema';
+import { db } from '../db/scope';
 import {
   getUsersForOrganization,
   addUserToOrganization,
@@ -103,20 +105,22 @@ interface UpdateOrgUserBody {
   isActive?: boolean;
 }
 
-interface UserRow {
-  id: string;
-  email: string;
-  name: string | null;
-  principal_id: string | null;
-  auth_provider: string | null;
-  system_role: string;
-  is_active: boolean;
-  created_at: string;
-  updated_at: string;
-}
+type UserRow = Pick<
+  typeof users.$inferSelect,
+  'id' | 'email' | 'name' | 'principalId' | 'authProvider' | 'systemRole' | 'isActive' | 'createdAt' | 'updatedAt'
+>;
 
-const USER_COLUMNS =
-  'id, email, name, principal_id, auth_provider, system_role, is_active, created_at, updated_at';
+const USER_COLUMNS = {
+  id: users.id,
+  email: users.email,
+  name: users.name,
+  principalId: users.principalId,
+  authProvider: users.authProvider,
+  systemRole: users.systemRole,
+  isActive: users.isActive,
+  createdAt: users.createdAt,
+  updatedAt: users.updatedAt,
+} as const;
 
 /**
  * A typo here mints an app.users row nothing in this API can delete again.
@@ -168,14 +172,14 @@ function serializeUser(
     id: row.id,
     email: row.email,
     name: row.name,
-    principalId: row.principal_id,
-    authProvider: row.auth_provider,
+    principalId: row.principalId,
+    authProvider: row.authProvider,
     role,
-    systemRole: row.system_role,
+    systemRole: row.systemRole,
     isActive,
     isDirectMember,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
   };
 }
 
@@ -230,21 +234,16 @@ async function handleAddOrgUser(
   // Reuse the existing row when the email is already known to P1 — a user can
   // belong to more than one organization, and re-inviting must not 409 on the
   // app.users unique index.
-  const inserted = await query<UserRow>(
-    `INSERT INTO app.users (email, name)
-     VALUES ($1, $2)
-     ON CONFLICT (email) DO NOTHING
-     RETURNING ${USER_COLUMNS}`,
-    [email, name ?? null],
-  );
+  const inserted = await db()
+    .insert(users)
+    .values({ email, name: name ?? null })
+    .onConflictDoNothing({ target: users.email })
+    .returning(USER_COLUMNS);
 
-  let userRow = inserted.rows[0];
+  let userRow = inserted[0];
   if (userRow === undefined) {
-    const existing = await query<UserRow>(
-      `SELECT ${USER_COLUMNS} FROM app.users WHERE email = $1`,
-      [email],
-    );
-    userRow = existing.rows[0];
+    const existing = await db().select(USER_COLUMNS).from(users).where(eq(users.email, email));
+    userRow = existing[0];
     if (userRow === undefined) {
       return errorResponse('Failed to add user', 500);
     }
@@ -255,11 +254,12 @@ async function handleAddOrgUser(
 
     // Fill in a name we were given for a user who never supplied one.
     if (name !== undefined && name !== '' && userRow.name === null) {
-      const updated = await query<UserRow>(
-        `UPDATE app.users SET name = $1, updated_at = NOW() WHERE id = $2 RETURNING ${USER_COLUMNS}`,
-        [name, userRow.id],
-      );
-      userRow = updated.rows[0] ?? userRow;
+      const updated = await db()
+        .update(users)
+        .set({ name, updatedAt: sql`NOW()` })
+        .where(eq(users.id, userRow.id))
+        .returning(USER_COLUMNS);
+      userRow = updated[0] ?? userRow;
     }
   }
 
@@ -394,34 +394,18 @@ async function handleUpdateOrgUser(
   const isActive = memberResult?.isActive
     ?? await isOrganizationMemberActive(context.organizationId, targetUserId);
 
-  const updates: string[] = [];
-  const values: unknown[] = [];
-  let paramIndex = 1;
-
-  if (body.name !== undefined) {
-    updates.push(`name = $${String(paramIndex++)}`);
-    values.push(body.name.trim());
-  }
-
   let row: UserRow | undefined;
 
-  if (updates.length > 0) {
-    updates.push('updated_at = NOW()');
-    values.push(targetUserId);
-
-    const result = await query<UserRow>(
-      `UPDATE app.users SET ${updates.join(', ')}
-       WHERE id = $${String(paramIndex)}
-       RETURNING ${USER_COLUMNS}`,
-      values,
-    );
-    row = result.rows[0];
+  if (body.name !== undefined) {
+    const result = await db()
+      .update(users)
+      .set({ name: body.name.trim(), updatedAt: sql`NOW()` })
+      .where(eq(users.id, targetUserId))
+      .returning(USER_COLUMNS);
+    row = result[0];
   } else {
-    const result = await query<UserRow>(
-      `SELECT ${USER_COLUMNS} FROM app.users WHERE id = $1`,
-      [targetUserId],
-    );
-    row = result.rows[0];
+    const result = await db().select(USER_COLUMNS).from(users).where(eq(users.id, targetUserId));
+    row = result[0];
   }
 
   if (row === undefined) {
@@ -521,10 +505,7 @@ async function handleRemoveOrgUser(context: OrgUsersRouteContext): Promise<Respo
 
   // Read the email for the audit label: the response is a 204 and nothing else
   // in this handler needs the user row, so it is fetched here or not at all.
-  const removedUser = await query<{ email: string }>(
-    'SELECT email FROM app.users WHERE id = $1::uuid',
-    [targetUserId],
-  );
+  const removedUserRows = await db().select({ email: users.email }).from(users).where(eq(users.id, targetUserId));
 
   await recordAuditEntry({
     action: 'org_user.remove',
@@ -532,7 +513,7 @@ async function handleRemoveOrgUser(context: OrgUsersRouteContext): Promise<Respo
     organizationId: context.organizationId,
     targetType: 'user',
     targetId: targetUserId,
-    targetLabel: removedUser.rows[0]?.email,
+    targetLabel: removedUserRows[0]?.email,
     details: { role: targetRole },
   });
 

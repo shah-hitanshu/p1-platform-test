@@ -6,7 +6,9 @@
  */
 
 import type { AuthenticatedPrincipal, PantheonRole } from '../types';
-import { query } from '../db';
+import { and, asc, count, eq, sql } from 'drizzle-orm';
+import { userSiteRoles, users } from '../db/schema';
+import { db } from '../db/scope';
 import { assertPermission, AuthorizationError } from '../auth/authorization';
 import { GRANTABLE_USER_ROLES } from '../auth/role-catalog';
 import { getMainBranch } from '../services';
@@ -88,40 +90,35 @@ async function handleGrantAccess(
   }
 
   // Upsert into user_site_roles with source='local'
-  const result = await query<{
-    id: string;
-    user_id: string;
-    site_id: string;
-    role: string;
-    source: string;
-    created_at: string;
-    updated_at: string;
-  }>(
-    `INSERT INTO app.user_site_roles (user_id, site_id, role, source, created_by_id, updated_at)
-     VALUES ($1, $2, $3, 'local', $4, NOW())
-     ON CONFLICT (user_id, site_id, source)
-     DO UPDATE SET role = EXCLUDED.role, updated_at = NOW()
-     RETURNING id, user_id, site_id, role, source, created_at, updated_at`,
-    [body.userId, context.siteId, body.role, context.principal.id],
-  );
+  const rows = await db()
+    .insert(userSiteRoles)
+    .values({
+      userId: body.userId,
+      siteId: context.siteId,
+      role: body.role,
+      source: 'local',
+      createdById: context.principal.id,
+      updatedAt: sql`NOW()`,
+    })
+    .onConflictDoUpdate({
+      target: [userSiteRoles.userId, userSiteRoles.siteId, userSiteRoles.source],
+      set: { role: sql`excluded.role`, updatedAt: sql`NOW()` },
+    })
+    .returning();
 
-  if (result.rows.length === 0) {
-    return errorResponse('Failed to grant access', 500);
-  }
-
-  const row = result.rows[0];
+  const row = rows[0];
   if (!row) {
     return errorResponse('Failed to grant access', 500);
   }
   return jsonResponse(
     {
       id: row.id,
-      userId: row.user_id,
-      siteId: row.site_id,
+      userId: row.userId,
+      siteId: row.siteId,
       role: row.role,
       source: row.source,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
     },
     201,
   );
@@ -133,37 +130,33 @@ async function handleGrantAccess(
 async function handleListCollaborators(
   context: CollaboratorRouteContext,
 ): Promise<Response> {
-  const result = await query<{
-    id: string;
-    user_id: string;
-    site_id: string;
-    role: string;
-    source: string;
-    created_at: string;
-    updated_at: string;
-    email: string | null;
-    name: string | null;
-  }>(
-    `SELECT usr.id, usr.user_id, usr.site_id, usr.role, usr.source,
-            usr.created_at, usr.updated_at,
-            u.email, u.name
-     FROM app.user_site_roles usr
-     LEFT JOIN app.users u ON u.id::text = usr.user_id
-     WHERE usr.site_id = $1
-     ORDER BY usr.created_at ASC`,
-    [context.siteId],
-  );
+  const rows = await db()
+    .select({
+      id: userSiteRoles.id,
+      userId: userSiteRoles.userId,
+      siteId: userSiteRoles.siteId,
+      role: userSiteRoles.role,
+      source: userSiteRoles.source,
+      createdAt: userSiteRoles.createdAt,
+      updatedAt: userSiteRoles.updatedAt,
+      email: users.email,
+      name: users.name,
+    })
+    .from(userSiteRoles)
+    .leftJoin(users, sql`${users.id}::text = ${userSiteRoles.userId}`)
+    .where(eq(userSiteRoles.siteId, context.siteId))
+    .orderBy(asc(userSiteRoles.createdAt));
 
-  const collaborators = result.rows.map((row) => ({
+  const collaborators = rows.map((row) => ({
     id: row.id,
-    userId: row.user_id,
-    siteId: row.site_id,
+    userId: row.userId,
+    siteId: row.siteId,
     role: row.role,
     source: row.source,
-    email: row.email,
-    name: row.name,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
+    email: row.email ?? null,
+    name: row.name ?? null,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
   }));
 
   return jsonResponse({ collaborators });
@@ -180,31 +173,34 @@ async function handleRemoveCollaborator(
   }
 
   // Prevent removing the last owner — the site would become unmanageable
-  const ownerCount = await query<{ count: string }>(
-    `SELECT COUNT(*) AS count FROM app.user_site_roles
-     WHERE site_id = $1 AND role = 'owner'`,
-    [context.siteId],
-  );
-  const count = Number(ownerCount.rows[0]?.count ?? '0');
-  if (count <= 1) {
+  const ownerCountRows = await db()
+    .select({ count: count() })
+    .from(userSiteRoles)
+    .where(and(eq(userSiteRoles.siteId, context.siteId), eq(userSiteRoles.role, 'owner')));
+  const ownerCount = ownerCountRows[0]?.count ?? 0;
+  if (ownerCount <= 1) {
     // Check if the user being removed is an owner
-    const targetRole = await query<{ role: string }>(
-      `SELECT role FROM app.user_site_roles
-       WHERE user_id = $1 AND site_id = $2`,
-      [context.userId, context.siteId],
-    );
-    if (targetRole.rows[0]?.role === 'owner') {
+    const targetRoleRows = await db()
+      .select({ role: userSiteRoles.role })
+      .from(userSiteRoles)
+      .where(and(eq(userSiteRoles.userId, context.userId), eq(userSiteRoles.siteId, context.siteId)));
+    if (targetRoleRows[0]?.role === 'owner') {
       return errorResponse('Cannot remove the last owner of a site', 409);
     }
   }
 
-  const result = await query(
-    `DELETE FROM app.user_site_roles
-     WHERE user_id = $1 AND site_id = $2 AND source = 'local'`,
-    [context.userId, context.siteId],
-  );
+  const deleted = await db()
+    .delete(userSiteRoles)
+    .where(
+      and(
+        eq(userSiteRoles.userId, context.userId),
+        eq(userSiteRoles.siteId, context.siteId),
+        eq(userSiteRoles.source, 'local'),
+      ),
+    )
+    .returning({ id: userSiteRoles.id });
 
-  if (result.rowCount === 0) {
+  if (deleted.length === 0) {
     return errorResponse('Local collaborator grant not found', 404);
   }
 

@@ -11,7 +11,8 @@
  */
 
 import type { DocumentVersion, DocumentVersionSource } from '../types';
-import { query } from '../db';
+import { sql } from 'drizzle-orm';
+import { db } from '../db/scope';
 import { getDocument } from './document-service';
 import {
   createDocumentVersion,
@@ -203,7 +204,7 @@ export async function loadLatestCrdtState(
 /**
  * Database row format for document versions (used by consolidated query).
  */
-interface DocumentVersionRow {
+type DocumentVersionRow = {
   id: string;
   document_id: string;
   branch_id: string;
@@ -213,7 +214,7 @@ interface DocumentVersionRow {
   created_by_id: string;
   created_by_type: 'user' | 'agent' | 'system';
   created_at: string;
-}
+};
 
 /**
  * Maps a database row to a DocumentVersion domain object.
@@ -278,39 +279,30 @@ export async function syncCrdtToPostgresConsolidated(
     );
   }
   const snapshot = enforceUniqueSlotIds(params.documentId, params.snapshot);
+  const snapshotJson = JSON.stringify(snapshot);
 
-  const result = await query<DocumentVersionRow>(
-    `WITH latest AS (
+  // A CTE feeding both the dedup check and the conditional insert-select has no
+  // builder equivalent, so this stays a raw statement (D6).
+  const rows = await db().execute<DocumentVersionRow>(sql`
+    WITH latest AS (
       SELECT snapshot FROM app.document_versions
-      WHERE document_id = $1 AND branch_id = $2
+      WHERE document_id = ${params.documentId} AND branch_id = ${params.branchId}
       ORDER BY version_number DESC LIMIT 1
     )
     INSERT INTO app.document_versions (
       document_id, branch_id, version_number, snapshot,
       source, created_by_id, created_by_type
     )
-    SELECT $1, $2, COALESCE(MAX(version_number), 0) + 1,
-      $3, 'realtime', $4, $5
+    SELECT ${params.documentId}, ${params.branchId}, COALESCE(MAX(version_number), 0) + 1,
+      ${snapshotJson}::jsonb, 'realtime', ${resolution.actorId}, ${params.actorType}
     FROM app.document_versions
-    WHERE document_id = $1 AND branch_id = $2
+    WHERE document_id = ${params.documentId} AND branch_id = ${params.branchId}
       AND NOT EXISTS (
-        SELECT 1 FROM latest WHERE latest.snapshot = $3
+        SELECT 1 FROM latest WHERE latest.snapshot = ${snapshotJson}::jsonb
       )
-    RETURNING *`,
-    [
-      params.documentId,
-      params.branchId,
-      snapshot,
-      resolution.actorId,
-      params.actorType,
-    ],
-  );
+    RETURNING *`);
 
-  if (result.rows.length === 0) {
-    return null;
-  }
-
-  const row = result.rows[0];
+  const row = rows[0];
   if (row === undefined) {
     return null;
   }

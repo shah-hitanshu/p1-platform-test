@@ -19,7 +19,10 @@
  * write and not its neighbours'.
  */
 
-import { query } from '../db';
+import { and, asc, eq, isNull, notLike, sql } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
+import { documentVersions, documents } from '../db/schema';
+import { db } from '../db/scope';
 import { applyPatch } from 'fast-json-patch';
 import type { Operation } from 'fast-json-patch';
 
@@ -57,47 +60,14 @@ interface VersionHistoryRepairResult {
   fallbackRows: number;
 }
 
-interface StrippedRow {
-  id: string;
-  document_id: string;
-  branch_id: string;
-  version_number: number;
-  site_id: string;
-  path: string;
-  successor_snapshot: Record<string, unknown> | null;
-  successor_patch: unknown;
+interface StrippedRow extends RepairEntry {
+  successorSnapshot: Record<string, unknown> | null;
+  successorPatch: unknown;
 }
 
 interface PendingWrite {
   entry: RepairEntry;
   snapshot: Record<string, unknown>;
-}
-
-// The driver binds a string parameter as a JSON string, so a bare ::jsonb cast
-// yields a scalar and jsonb_to_recordset rejects it. Going through ::text
-// parses the payload as the array it is.
-const BATCH_UPDATE = `
-  UPDATE app.document_versions dv
-  SET snapshot = u.snapshot
-  FROM jsonb_to_recordset($1::text::jsonb) AS u(id uuid, snapshot jsonb)
-  WHERE dv.id = u.id AND dv.snapshot IS NULL AND dv.patch IS NULL`;
-
-// The guard keeps a concurrent write's snapshot: a row that gained content
-// since the SELECT is no longer this repair's to fill.
-const SINGLE_UPDATE = `
-  UPDATE app.document_versions
-  SET snapshot = $1
-  WHERE id = $2 AND snapshot IS NULL AND patch IS NULL`;
-
-function toEntry(row: StrippedRow): RepairEntry {
-  return {
-    versionId: row.id,
-    documentId: row.document_id,
-    branchId: row.branch_id,
-    versionNumber: row.version_number,
-    siteId: row.site_id,
-    path: row.path,
-  };
 }
 
 function messageOf(error: unknown): string {
@@ -157,14 +127,34 @@ async function writeBatch(
   );
 
   try {
-    await query(BATCH_UPDATE, [payload]);
+    // A bulk UPDATE...FROM sourced from jsonb_to_recordset() has no builder
+    // equivalent, so this stays a raw statement (D6). The driver binds a
+    // string parameter as a JSON string, so a bare ::jsonb cast yields a
+    // scalar and jsonb_to_recordset rejects it; going through ::text parses
+    // the payload as the array it is.
+    await db().execute(sql`
+      UPDATE app.document_versions dv
+      SET snapshot = u.snapshot
+      FROM jsonb_to_recordset(${payload}::text::jsonb) AS u(id uuid, snapshot jsonb)
+      WHERE dv.id = u.id AND dv.snapshot IS NULL AND dv.patch IS NULL`);
     return { written: pending.map(({ entry }) => entry), failed: [], fallbackRows: 0 };
   } catch {
     const written: RepairEntry[] = [];
     const failed: SkippedEntry[] = [];
     for (const { entry, snapshot } of pending) {
       try {
-        await query(SINGLE_UPDATE, [snapshot, entry.versionId]);
+        // The guard keeps a concurrent write's snapshot: a row that gained
+        // content since the SELECT is no longer this repair's to fill.
+        await db()
+          .update(documentVersions)
+          .set({ snapshot })
+          .where(
+            and(
+              eq(documentVersions.id, entry.versionId),
+              isNull(documentVersions.snapshot),
+              isNull(documentVersions.patch),
+            ),
+          );
         written.push(entry);
       } catch (error) {
         failed.push({ ...entry, reason: `write failed: ${messageOf(error)}` });
@@ -184,40 +174,58 @@ async function writeBatch(
 export async function repairVersionHistorySnapshots(
   options: { dryRun: boolean; siteId?: string; limit?: number; skipRegistry?: boolean },
 ): Promise<VersionHistoryRepairResult> {
-  const params: unknown[] = [];
-  const siteFilter = options.siteId !== undefined
-    ? `AND d.site_id = $${String(params.push(options.siteId))}`
-    : '';
-  const registryFilter = options.skipRegistry === true
-    ? "AND d.path NOT LIKE '\\_registry/%'"
-    : '';
-  const limitClause = options.limit !== undefined
-    ? `LIMIT $${String(params.push(options.limit))}`
-    : '';
+  const successor = alias(documentVersions, 'n');
 
-  const stripped = await query<StrippedRow>(
-    `SELECT v.id, v.document_id, v.branch_id, v.version_number,
-            d.site_id, d.path,
-            n.snapshot AS successor_snapshot,
-            CASE WHEN jsonb_typeof(n.patch) = 'string'
-                 THEN (n.patch #>> '{}')::jsonb
-                 ELSE n.patch
-            END AS successor_patch
-     FROM app.document_versions v
-     JOIN app.documents d ON d.id = v.document_id
-     LEFT JOIN app.document_versions n
-       ON n.document_id = v.document_id
-      AND n.branch_id = v.branch_id
-      AND n.version_number = v.version_number + 1
-     WHERE v.snapshot IS NULL
-       AND v.patch IS NULL
-       AND v.is_tombstone = false
-       ${siteFilter}
-       ${registryFilter}
-     ORDER BY d.site_id, v.document_id, v.branch_id, v.version_number
-     ${limitClause}`,
-    params,
-  );
+  const conditions = [
+    isNull(documentVersions.snapshot),
+    isNull(documentVersions.patch),
+    eq(documentVersions.isTombstone, false),
+  ];
+  if (options.siteId !== undefined) {
+    conditions.push(eq(documents.siteId, options.siteId));
+  }
+  if (options.skipRegistry === true) {
+    conditions.push(notLike(documents.path, '\\_registry/%'));
+  }
+
+  const strippedQuery = db()
+    .select({
+      versionId: documentVersions.id,
+      documentId: documentVersions.documentId,
+      branchId: documentVersions.branchId,
+      versionNumber: documentVersions.versionNumber,
+      siteId: documents.siteId,
+      path: documents.path,
+      successorSnapshot: successor.snapshot,
+      successorPatch: sql<unknown>`CASE WHEN jsonb_typeof(${successor.patch}) = 'string'
+                 THEN (${successor.patch} #>> '{}')::jsonb
+                 ELSE ${successor.patch}
+            END`,
+    })
+    .from(documentVersions)
+    .innerJoin(documents, eq(documents.id, documentVersions.documentId))
+    .leftJoin(
+      successor,
+      and(
+        eq(successor.documentId, documentVersions.documentId),
+        eq(successor.branchId, documentVersions.branchId),
+        eq(successor.versionNumber, sql`${documentVersions.versionNumber} + 1`),
+      ),
+    )
+    .where(and(...conditions))
+    .orderBy(
+      asc(documents.siteId),
+      asc(documentVersions.documentId),
+      asc(documentVersions.branchId),
+      asc(documentVersions.versionNumber),
+    );
+
+  // successorSnapshot/successorPatch are jsonb columns Drizzle can only type as
+  // unknown without a schema-level $type() annotation; StrippedRow states the
+  // shape this repair actually relies on.
+  const stripped = (options.limit !== undefined
+    ? await strippedQuery.limit(options.limit)
+    : await strippedQuery) as StrippedRow[];
 
   const result: VersionHistoryRepairResult = {
     repaired: [],
@@ -228,7 +236,9 @@ export async function repairVersionHistorySnapshots(
   };
 
   if (!options.dryRun) {
-    await query(`SET lock_timeout = '${LOCK_TIMEOUT}'`);
+    // SET does not accept a bind parameter, and LOCK_TIMEOUT is a fixed
+    // in-module constant rather than request input.
+    await db().execute(sql.raw(`SET lock_timeout = '${LOCK_TIMEOUT}'`));
   }
 
   let pending: PendingWrite[] = [];
@@ -241,10 +251,17 @@ export async function repairVersionHistorySnapshots(
     pending = [];
   };
 
-  for (const row of stripped.rows) {
-    const entry = toEntry(row);
+  for (const row of stripped) {
+    const entry: RepairEntry = {
+      versionId: row.versionId,
+      documentId: row.documentId,
+      branchId: row.branchId,
+      versionNumber: row.versionNumber,
+      siteId: row.siteId,
+      path: row.path,
+    };
 
-    if (row.successor_snapshot === null) {
+    if (row.successorSnapshot === null) {
       result.chainBlocked.push({
         ...entry,
         reason: 'the version above holds no snapshot to rebuild from',
@@ -252,7 +269,7 @@ export async function repairVersionHistorySnapshots(
       continue;
     }
 
-    const ops = parseOperations(row.successor_patch);
+    const ops = parseOperations(row.successorPatch);
     if (ops === null) {
       result.chainBlocked.push({
         ...entry,
@@ -273,13 +290,13 @@ export async function repairVersionHistorySnapshots(
     let rebuilt: Record<string, unknown>;
     try {
       rebuilt = applyPatch(
-        structuredClone(row.successor_snapshot),
+        structuredClone(row.successorSnapshot),
         inverted,
         false,
         false,
       ).newDocument;
       const roundTrip = applyPatch(structuredClone(rebuilt), ops, false, false).newDocument;
-      if (!deepEqual(roundTrip, row.successor_snapshot)) {
+      if (!deepEqual(roundTrip, row.successorSnapshot)) {
         result.nonInvertible.push({
           ...entry,
           reason: 're-applying the forward diff did not reproduce the version above',

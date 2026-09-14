@@ -9,35 +9,21 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { AuthenticatedPrincipal } from '../../src/types';
+import { users, userSiteRoles } from '../../src/db/schema';
+import { stubDatabase, type DatabaseStub } from '../__stubs__/database';
 
 const PROVIDER_DERIVED_ID = '3f5f62dd-27bd-528d-94d7-015b99a0c90e';
 const DB_USER_ID = '6624d07e-aab3-4bde-a48a-5db1ccffffa0';
 
 let testPrincipalOverrides: Partial<AuthenticatedPrincipal> = {};
 let mockUserRow: Record<string, unknown> = {};
-let executedQueries: { sql: string; params: unknown[] }[] = [];
+let database: DatabaseStub;
 
 vi.mock('../../src/db', () => ({
   initializeDatabaseFromConnectionString: vi.fn(),
   runWithConnection: vi.fn().mockImplementation(
     (_connStr: string, _opts: unknown, fn: () => unknown) => fn(),
   ),
-  query: vi.fn().mockImplementation((sql: string, params?: unknown[]) => {
-    executedQueries.push({ sql, params: params ?? [] });
-    if (sql.includes('SELECT EXISTS')) {
-      return Promise.resolve({ rows: [{ populated: true }] });
-    }
-    if (sql.includes('FROM app.users WHERE email')) {
-      return Promise.resolve({ rows: [mockUserRow] });
-    }
-    if (sql.includes('UPDATE app.users')) {
-      return Promise.resolve({ rows: [] });
-    }
-    if (sql.includes('user_site_roles')) {
-      return Promise.resolve({ rows: [], rowCount: 0 });
-    }
-    return Promise.resolve({ rows: [{ now: new Date().toISOString() }] });
-  }),
 }));
 
 vi.mock('../../src/routes/site-api', () => ({
@@ -193,31 +179,28 @@ describe('Orphan user_site_roles self-heal on first login', () => {
   }
 
   beforeEach(() => {
-    vi.resetModules();
     vi.clearAllMocks();
-    executedQueries = [];
+    database = stubDatabase();
     testPrincipalOverrides = {};
     mockUserRow = {
       id: DB_USER_ID,
-      principal_id: null,
-      system_role: 'member',
-      is_active: true,
+      principalId: null,
+      systemRole: 'member',
+      isActive: true,
       name: null,
-      avatar_url: null,
+      avatarUrl: null,
     };
   });
 
   it('should rewrite orphan user_site_roles rows on first login', async () => {
     // First login: principal_id is null
-    mockUserRow = { ...mockUserRow, principal_id: null };
+    mockUserRow = { ...mockUserRow, principalId: null };
+    database.on(users).select.returns([mockUserRow]);
 
     const module = await import('../../src/index');
     await module.default.fetch(makeRequest(), mockEnv, mockContext);
 
-    const updateRoleQueries = executedQueries.filter((q) =>
-      q.sql.includes('UPDATE app.user_site_roles')
-      && q.sql.includes('SET user_id'),
-    );
+    const updateRoleQueries = database.calls(userSiteRoles).update;
     expect(updateRoleQueries).toHaveLength(1);
     // Targets the canonical users.id, sourced from the principal.id
     expect(updateRoleQueries[0].params).toEqual([DB_USER_ID, PROVIDER_DERIVED_ID]);
@@ -225,12 +208,13 @@ describe('Orphan user_site_roles self-heal on first login', () => {
 
   it('should drop colliding orphan rows before rewriting', async () => {
     // First login: principal_id is null
-    mockUserRow = { ...mockUserRow, principal_id: null };
+    mockUserRow = { ...mockUserRow, principalId: null };
+    database.on(users).select.returns([mockUserRow]);
 
     const module = await import('../../src/index');
     await module.default.fetch(makeRequest(), mockEnv, mockContext);
 
-    const deleteOrphanQueries = executedQueries.filter((q) =>
+    const deleteOrphanQueries = database.statements.filter((q) =>
       q.sql.includes('DELETE FROM app.user_site_roles')
       && q.sql.includes('orphan')
       && q.sql.includes('canonical'),
@@ -240,28 +224,29 @@ describe('Orphan user_site_roles self-heal on first login', () => {
   });
 
   it('should run delete-then-update in order', async () => {
-    mockUserRow = { ...mockUserRow, principal_id: null };
+    mockUserRow = { ...mockUserRow, principalId: null };
+    database.on(users).select.returns([mockUserRow]);
 
     const module = await import('../../src/index');
     await module.default.fetch(makeRequest(), mockEnv, mockContext);
 
-    const orphanQueries = executedQueries.filter((q) =>
-      q.sql.includes('app.user_site_roles')
-      && (q.sql.includes('orphan') || q.sql.includes('SET user_id')),
+    const orphanQueries = database.statements.filter((q) =>
+      q.sql.includes('user_site_roles') && (q.sql.includes('orphan') || /^update/i.test(q.sql.trim())),
     );
     expect(orphanQueries).toHaveLength(2);
-    expect(orphanQueries[0].sql).toContain('DELETE');
-    expect(orphanQueries[1].sql).toContain('UPDATE');
+    expect(orphanQueries[0].sql).toMatch(/^\s*DELETE/i);
+    expect(orphanQueries[1].sql).toMatch(/^update/i);
   });
 
   it('should not touch user_site_roles for returning users', async () => {
     // Returning user: principal_id already set
-    mockUserRow = { ...mockUserRow, principal_id: PROVIDER_DERIVED_ID };
+    mockUserRow = { ...mockUserRow, principalId: PROVIDER_DERIVED_ID };
+    database.on(users).select.returns([mockUserRow]);
 
     const module = await import('../../src/index');
     await module.default.fetch(makeRequest(), mockEnv, mockContext);
 
-    const roleQueries = executedQueries.filter((q) =>
+    const roleQueries = database.statements.filter((q) =>
       q.sql.includes('app.user_site_roles'),
     );
     expect(roleQueries).toHaveLength(0);

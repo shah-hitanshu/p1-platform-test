@@ -14,7 +14,10 @@
 
 import { getLogger } from '@pantheon-systems/p1-telemetry';
 import type { AuthenticatedPrincipal } from '../types';
-import { query } from '../db';
+import { asc, eq, sql } from 'drizzle-orm';
+import type { PgUpdateSetSource } from 'drizzle-orm/pg-core';
+import { users } from '../db/schema';
+import { db } from '../db/scope';
 import { createOrgForUser } from '../services/organization-service';
 import { recordAuditEntry } from '../services/audit-log-service';
 import { isAdminSystemRole, isSystemAdmin } from '../utils/admin-check';
@@ -83,6 +86,18 @@ interface AddUserBody {
  */
 const VALID_SYSTEM_ROLES = ['member', 'superadmin'];
 
+const USER_COLUMNS = {
+  id: users.id,
+  email: users.email,
+  name: users.name,
+  principalId: users.principalId,
+  authProvider: users.authProvider,
+  systemRole: users.systemRole,
+  isActive: users.isActive,
+  createdAt: users.createdAt,
+  updatedAt: users.updatedAt,
+} as const;
+
 /**
  * Handle POST /api/admin/users - Add a user to the allowlist
  */
@@ -120,10 +135,8 @@ async function handleAddUser(
 
   // Bootstrap: if this is the first user being added, auto-add the current
   // principal as admin so they don't get locked out when the allowlist activates.
-  const countResult = await query<{ populated: boolean }>(
-    'SELECT EXISTS (SELECT 1 FROM app.users) AS populated',
-  );
-  const isPopulated = countResult.rows[0]?.populated ?? false;
+  const anyUserRows = await db().select({ id: users.id }).from(users).limit(1);
+  const isPopulated = anyUserRows.length > 0;
 
   if (!isPopulated && context.principal.email !== undefined) {
     const principalEmail = context.principal.email.toLowerCase();
@@ -131,42 +144,30 @@ async function handleAddUser(
       // PCC-3457: stamp the normalized (UUIDv5) form, never a raw OAuth
       // subject — the persistence actor resolver looks principal_id up by
       // UUIDv5 (see auth/principal-id-normalization.ts).
-      await query(
-        `INSERT INTO app.users (email, principal_id, auth_provider, system_role)
-         VALUES ($1, $2, $3, 'superadmin')
-         ON CONFLICT (email) DO NOTHING`,
-        [principalEmail, await normalizePrincipalIdForDb(context.principal.id), context.principal.authProvider ?? 'unknown'],
-      );
+      await db()
+        .insert(users)
+        .values({
+          email: principalEmail,
+          principalId: await normalizePrincipalIdForDb(context.principal.id),
+          authProvider: context.principal.authProvider ?? 'unknown',
+          systemRole: 'superadmin',
+        })
+        .onConflictDoNothing({ target: users.email });
     }
   }
 
   // Check for duplicate email
-  const existing = await query<{ id: string }>(
-    'SELECT id FROM app.users WHERE email = $1',
-    [email],
-  );
-  if (existing.rows.length > 0) {
+  const existing = await db().select({ id: users.id }).from(users).where(eq(users.email, email));
+  if (existing.length > 0) {
     return errorResponse('A user with this email already exists', 409);
   }
 
-  const result = await query<{
-    id: string;
-    email: string;
-    name: string | null;
-    principal_id: string | null;
-    auth_provider: string | null;
-    system_role: string;
-    is_active: boolean;
-    created_at: string;
-    updated_at: string;
-  }>(
-    `INSERT INTO app.users (email, name, system_role)
-     VALUES ($1, $2, $3)
-     RETURNING id, email, name, principal_id, auth_provider, system_role, is_active, created_at, updated_at`,
-    [email, name, systemRole],
-  );
+  const inserted = await db()
+    .insert(users)
+    .values({ email, name, systemRole })
+    .returning(USER_COLUMNS);
 
-  const row = result.rows[0];
+  const row = inserted[0];
   if (row === undefined) {
     return errorResponse('Failed to add user', 500);
   }
@@ -183,7 +184,7 @@ async function handleAddUser(
     targetType: 'user',
     targetId: row.id,
     targetLabel: row.email,
-    details: { systemRole: row.system_role },
+    details: { systemRole: row.systemRole },
   });
 
   return jsonResponse(
@@ -191,12 +192,12 @@ async function handleAddUser(
       id: row.id,
       email: row.email,
       name: row.name,
-      principalId: row.principal_id,
-      authProvider: row.auth_provider,
-      systemRole: row.system_role,
-      isActive: row.is_active,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at,
+      principalId: row.principalId,
+      authProvider: row.authProvider,
+      systemRole: row.systemRole,
+      isActive: row.isActive,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
     },
     201,
   );
@@ -208,35 +209,24 @@ async function handleAddUser(
 async function handleListUsers(
   _context: UsersRouteContext,
 ): Promise<Response> {
-  const result = await query<{
-    id: string;
-    email: string;
-    name: string | null;
-    principal_id: string | null;
-    auth_provider: string | null;
-    system_role: string;
-    is_active: boolean;
-    created_at: string;
-    updated_at: string;
-  }>(
-    `SELECT id, email, name, principal_id, auth_provider, system_role, is_active, created_at, updated_at
-     FROM app.users
-     ORDER BY created_at ASC`,
-  );
+  const rows = await db()
+    .select(USER_COLUMNS)
+    .from(users)
+    .orderBy(asc(users.createdAt));
 
-  const users = result.rows.map((row) => ({
+  const userList = rows.map((row) => ({
     id: row.id,
     email: row.email,
     name: row.name,
-    principalId: row.principal_id,
-    authProvider: row.auth_provider,
-    systemRole: row.system_role,
-    isActive: row.is_active,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
+    principalId: row.principalId,
+    authProvider: row.authProvider,
+    systemRole: row.systemRole,
+    isActive: row.isActive,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
   }));
 
-  return jsonResponse({ users });
+  return jsonResponse({ users: userList });
 }
 
 /**
@@ -257,13 +247,10 @@ async function handleUpdateUser(
   }>(request);
 
   // Build dynamic update
-  const updates: string[] = [];
-  const values: unknown[] = [];
-  let paramIndex = 1;
+  const updates: PgUpdateSetSource<typeof users> = {};
 
   if (body.name !== undefined) {
-    updates.push(`name = $${String(paramIndex++)}`);
-    values.push(body.name.trim());
+    updates.name = body.name.trim();
   }
 
   if (body.systemRole !== undefined) {
@@ -274,40 +261,26 @@ async function handleUpdateUser(
         400,
       );
     }
-    updates.push(`system_role = $${String(paramIndex++)}`);
-    values.push(body.systemRole);
+    updates.systemRole = body.systemRole;
   }
 
   if (body.isActive !== undefined) {
-    updates.push(`is_active = $${String(paramIndex++)}`);
-    values.push(body.isActive);
+    updates.isActive = body.isActive;
   }
 
-  if (updates.length === 0) {
+  if (Object.keys(updates).length === 0) {
     return errorResponse('No fields to update', 400);
   }
 
-  updates.push('updated_at = NOW()');
-  values.push(context.userId);
+  updates.updatedAt = sql`NOW()`;
 
-  const result = await query<{
-    id: string;
-    email: string;
-    name: string | null;
-    principal_id: string | null;
-    auth_provider: string | null;
-    system_role: string;
-    is_active: boolean;
-    created_at: string;
-    updated_at: string;
-  }>(
-    `UPDATE app.users SET ${updates.join(', ')}
-     WHERE id = $${String(paramIndex)}
-     RETURNING id, email, name, principal_id, auth_provider, system_role, is_active, created_at, updated_at`,
-    values,
-  );
+  const updated = await db()
+    .update(users)
+    .set(updates)
+    .where(eq(users.id, context.userId))
+    .returning(USER_COLUMNS);
 
-  const row = result.rows[0];
+  const row = updated[0];
   if (row === undefined) {
     return errorResponse('User not found', 404);
   }
@@ -321,8 +294,8 @@ async function handleUpdateUser(
     // Only the fields the request actually set — an absent key means untouched.
     details: {
       ...(body.name !== undefined && { name: row.name }),
-      ...(body.systemRole !== undefined && { systemRole: row.system_role }),
-      ...(body.isActive !== undefined && { isActive: row.is_active }),
+      ...(body.systemRole !== undefined && { systemRole: row.systemRole }),
+      ...(body.isActive !== undefined && { isActive: row.isActive }),
     },
   });
 
@@ -330,12 +303,12 @@ async function handleUpdateUser(
     id: row.id,
     email: row.email,
     name: row.name,
-    principalId: row.principal_id,
-    authProvider: row.auth_provider,
-    systemRole: row.system_role,
-    isActive: row.is_active,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
+    principalId: row.principalId,
+    authProvider: row.authProvider,
+    systemRole: row.systemRole,
+    isActive: row.isActive,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
   });
 }
 
@@ -351,12 +324,12 @@ async function handleRemoveUser(
 
   // RETURNING email so the audit entry can name who was deleted: the row is
   // gone afterwards, and the id on its own resolves to nothing.
-  const result = await query<{ email: string }>(
-    'DELETE FROM app.users WHERE id = $1 RETURNING email',
-    [context.userId],
-  );
+  const deleted = await db()
+    .delete(users)
+    .where(eq(users.id, context.userId))
+    .returning({ email: users.email });
 
-  if (result.rowCount === 0) {
+  if (deleted.length === 0) {
     return errorResponse('User not found', 404);
   }
 
@@ -365,7 +338,7 @@ async function handleRemoveUser(
     actor: context.principal,
     targetType: 'user',
     targetId: context.userId,
-    targetLabel: result.rows[0]?.email,
+    targetLabel: deleted[0]?.email,
   });
 
   return new Response(null, { status: 204 });
@@ -405,30 +378,24 @@ export async function handleCurrentUserRoute(
     // The request gate already resolved this row, so prefer what it attached
     // and only fall back to a query for principals that bypassed enrichment.
     let row:
-      | {
-          id: string;
-          email: string;
-          name: string | null;
-          system_role: string;
-          is_active: boolean;
-        }
+      | Pick<typeof users.$inferSelect, 'id' | 'email' | 'name' | 'systemRole' | 'isActive'>
       | undefined;
 
     if (principal.dbUserId === undefined || principal.systemRole === undefined) {
-      const result = await query<{
-        id: string;
-        email: string;
-        name: string | null;
-        system_role: string;
-        is_active: boolean;
-      }>(
-        'SELECT id, email, name, system_role, is_active FROM app.users WHERE principal_id = $1',
-        [await normalizePrincipalIdForDb(principal.id)],
-      );
-      row = result.rows[0];
+      const result = await db()
+        .select({
+          id: users.id,
+          email: users.email,
+          name: users.name,
+          systemRole: users.systemRole,
+          isActive: users.isActive,
+        })
+        .from(users)
+        .where(eq(users.principalId, await normalizePrincipalIdForDb(principal.id)));
+      row = result[0];
     }
 
-    const systemRole = row?.system_role ?? principal.systemRole ?? null;
+    const systemRole = row?.systemRole ?? principal.systemRole ?? null;
 
     return jsonResponse({
       id: row?.id ?? principal.dbUserId ?? null,
@@ -438,7 +405,7 @@ export async function handleCurrentUserRoute(
       // Precomputed so the frontend never has to keep its own copy of which
       // roles count as administrative.
       isSystemAdmin: isAdminSystemRole(systemRole),
-      isActive: row?.is_active ?? true,
+      isActive: row?.isActive ?? true,
     });
   } catch (error) {
     getLogger().error('Current user API error', error instanceof Error ? error : new Error(String(error)), {});

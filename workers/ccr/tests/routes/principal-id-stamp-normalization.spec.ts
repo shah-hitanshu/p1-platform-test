@@ -20,6 +20,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { AuthenticatedPrincipal } from '../../src/types';
 import { providerSubToUuid } from '../../src/auth/uuid-v5';
+import { users } from '../../src/db/schema';
+import { stubDatabase, type DatabaseStub } from '../__stubs__/database';
 
 // Production-shaped raw OAuth subject (same shape as the incident's actor).
 const RAW_SUBJECT = 'google-oauth2|107221644627712432289';
@@ -36,32 +38,14 @@ const mockPrincipal: AuthenticatedPrincipal = {
   tokenExpiry: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
 };
 
-// Record every query so tests can assert on the stamped parameters.
-let recordedQueries: { sql: string; params: unknown[] }[] = [];
+let database: DatabaseStub;
 
 vi.mock('../../src/db', () => ({
   initializeDatabaseFromConnectionString: vi.fn(),
   runWithConnection: vi.fn().mockImplementation((_connStr: string, _opts: unknown, fn: () => unknown) => fn()),
-  query: vi.fn().mockImplementation((sql: string, params?: unknown[]) => {
-    recordedQueries.push({ sql, params: params ?? [] });
-    if (sql.includes('SELECT EXISTS')) {
-      return Promise.resolve({ rows: [{ populated: true }] });
-    }
-    if (sql.includes('FROM app.users WHERE email')) {
-      // First login: allowlist row exists but has never been linked.
-      return Promise.resolve({
-        rows: [{
-          id: DB_USER_ID,
-          principal_id: null,
-          system_role: 'member',
-          is_active: true,
-          name: 'Alice Developer',
-          avatar_url: null,
-        }],
-      });
-    }
-    return Promise.resolve({ rows: [] });
-  }),
+  // organization-service.ts (out of this port's scope) still calls the
+  // legacy query() when handleAddUser auto-creates an org for a new user.
+  query: vi.fn().mockResolvedValue({ rows: [] }),
 }));
 
 // Mock route handlers so dispatch terminates without real services.
@@ -186,12 +170,20 @@ describe('principal_id stamp normalization (PCC-3457)', () => {
   };
 
   beforeEach(() => {
-    vi.resetModules();
     vi.clearAllMocks();
-    recordedQueries = [];
+    database = stubDatabase();
   });
 
   it('first-login linking stamps the UUIDv5 of a raw OAuth subject, never the raw subject', async () => {
+    database.on(users).select.returns([{
+      id: DB_USER_ID,
+      principalId: null,
+      systemRole: 'member',
+      isActive: true,
+      name: 'Alice Developer',
+      avatarUrl: null,
+    }]);
+
     const module = await import('../../src/index');
 
     const request = new Request('https://api.example.com/api/sites', {
@@ -205,9 +197,7 @@ describe('principal_id stamp normalization (PCC-3457)', () => {
     const response = await module.default.fetch(request, mockEnv, mockContext);
     expect(response.status).toBe(200);
 
-    const stampQuery = recordedQueries.find(
-      (q) => q.sql.includes('UPDATE app.users SET principal_id'),
-    );
+    const stampQuery = database.calls(users).update[0];
     if (stampQuery === undefined) {
       throw new Error('Expected the first-login principal_id stamp to run');
     }
@@ -216,8 +206,8 @@ describe('principal_id stamp normalization (PCC-3457)', () => {
     // looks up (providerSubToUuid('auth0', <full raw subject>)). Stamping the
     // raw subject instead recreates the unmatchable rows behind PCC-3464.
     const expectedKey = await providerSubToUuid('auth0', RAW_SUBJECT);
-    expect(stampQuery.params[0]).toBe(expectedKey);
-    expect(stampQuery.params[0]).not.toBe(RAW_SUBJECT);
+    expect(stampQuery.params).toContain(expectedKey);
+    expect(stampQuery.params).not.toContain(RAW_SUBJECT);
   });
 
   it('bootstrap self-add in users-api stamps the UUIDv5 of a raw OAuth subject', async () => {
@@ -236,39 +226,30 @@ describe('principal_id stamp normalization (PCC-3457)', () => {
       },
     );
 
-    // Override count queries: empty users table triggers bootstrap self-add.
-    const db = await import('../../src/db');
-    vi.mocked(db.query).mockImplementation((sql: string, params?: unknown[]) => {
-      recordedQueries.push({ sql, params: params ?? [] });
-      if (sql.includes('SELECT COUNT(*)')) {
-        return Promise.resolve({ rows: [{ count: '0' }] });
-      }
-      if (sql.includes('INSERT INTO app.users') && sql.includes('RETURNING')) {
-        return Promise.resolve({
-          rows: [{
-            id: DB_USER_ID,
-            email: 'someone-else@example.com',
-            name: 'Someone Else',
-            principal_id: null,
-            auth_provider: null,
-            system_role: 'member',
-            is_active: true,
-            created_at: '2026-01-01T00:00:00Z',
-            updated_at: '2026-01-01T00:00:00Z',
-          }],
-        });
-      }
-      return Promise.resolve({ rows: [] });
-    });
+    // Empty users table: isSystemAdmin's bootstrap check and handleAddUser's
+    // own populated check both pass trivially, so the bootstrap self-add
+    // insert runs before the real one.
+    database.on(users).insert.returns([{
+      id: DB_USER_ID,
+      email: 'someone-else@example.com',
+      name: 'Someone Else',
+      principalId: null,
+      authProvider: null,
+      systemRole: 'member',
+      isActive: true,
+      createdAt: new Date('2026-01-01T00:00:00Z'),
+      updatedAt: new Date('2026-01-01T00:00:00Z'),
+    }]);
 
     const response = await handleUsersRoutes(request, {
       principal: { ...mockPrincipal },
     });
     expect(response.status).toBe(201);
 
-    const bootstrapInsert = recordedQueries.find(
-      (q) => q.sql.includes('INSERT INTO app.users (email, principal_id'),
-    );
+    // The bootstrap self-add insert (email, principal_id, auth_provider,
+    // system_role) runs first; the real user insert (email, name,
+    // system_role) runs second.
+    const bootstrapInsert = database.calls(users).insert[0];
     if (bootstrapInsert === undefined) {
       throw new Error('Expected the bootstrap self-add insert to run');
     }
@@ -280,7 +261,6 @@ describe('principal_id stamp normalization (PCC-3457)', () => {
 
   it('isSystemAdmin looks up principal_id by the normalized (UUIDv5) key for raw OAuth subjects', async () => {
     const { handleUsersRoutes } = await import('../../src/routes/users-api');
-    const db = await import('../../src/db');
 
     // Once app.users.principal_id is uniformly normalized (migration 045 +
     // the stamp fixes above), a reader that queries by the RAW subject can
@@ -288,21 +268,9 @@ describe('principal_id stamp normalization (PCC-3457)', () => {
     // (fail-closed 403). The lookup must use the same normalized key the
     // writers stamp.
     const expectedKey = await providerSubToUuid('auth0', RAW_SUBJECT);
-    vi.mocked(db.query).mockImplementation((sql: string, params?: unknown[]) => {
-      recordedQueries.push({ sql, params: params ?? [] });
-      if (sql.includes('SELECT COUNT(*)')) {
-        return Promise.resolve({ rows: [{ count: '1' }] });
-      }
-      if (sql.includes('WHERE principal_id = $1 AND is_active = true')) {
-        // The normalized row exists; only the normalized key can find it.
-        return Promise.resolve(
-          params?.[0] === expectedKey
-            ? { rows: [{ system_role: 'superadmin' }] }
-            : { rows: [] },
-        );
-      }
-      return Promise.resolve({ rows: [] });
-    });
+    // A populated table, so isSystemAdmin proceeds to the role lookup, which
+    // shares this stub; handleListUsers' own select reads it too.
+    database.on(users).select.returns([{ id: 'row-1', systemRole: 'superadmin' }]);
 
     const response = await handleUsersRoutes(
       new Request('https://api.example.com/api/admin/users', { method: 'GET' }),
@@ -311,9 +279,7 @@ describe('principal_id stamp normalization (PCC-3457)', () => {
 
     // Raw-subject lookup would miss the normalized row and 403 here.
     expect(response.status).toBe(200);
-    const lookup = recordedQueries.find(
-      (q) => q.sql.includes('WHERE principal_id = $1 AND is_active = true'),
-    );
+    const lookup = database.calls(users).select.find((c) => c.sql.includes('principal_id'));
     if (lookup === undefined) {
       throw new Error('Expected the isSystemAdmin principal_id lookup to run');
     }
@@ -323,7 +289,6 @@ describe('principal_id stamp normalization (PCC-3457)', () => {
 
   it('bootstrap self-add leaves uuid and legacy principal ids unchanged', async () => {
     const { handleUsersRoutes } = await import('../../src/routes/users-api');
-    const db = await import('../../src/db');
 
     // A uuid principal.id (auth0-provider principals are already the UUIDv5
     // of their subject) and a legacy no-pipe id must both pass through
@@ -332,29 +297,18 @@ describe('principal_id stamp normalization (PCC-3457)', () => {
       '3f5f62dd-27bd-528d-94d7-015b99a0c90e',
       'legacy-test-user',
     ]) {
-      recordedQueries = [];
-      vi.mocked(db.query).mockImplementation((sql: string, params?: unknown[]) => {
-        recordedQueries.push({ sql, params: params ?? [] });
-        if (sql.includes('SELECT COUNT(*)')) {
-          return Promise.resolve({ rows: [{ count: '0' }] });
-        }
-        if (sql.includes('INSERT INTO app.users') && sql.includes('RETURNING')) {
-          return Promise.resolve({
-            rows: [{
-              id: DB_USER_ID,
-              email: 'someone-else@example.com',
-              name: 'Someone Else',
-              principal_id: null,
-              auth_provider: null,
-              system_role: 'member',
-              is_active: true,
-              created_at: '2026-01-01T00:00:00Z',
-              updated_at: '2026-01-01T00:00:00Z',
-            }],
-          });
-        }
-        return Promise.resolve({ rows: [] });
-      });
+      database = stubDatabase();
+      database.on(users).insert.returns([{
+        id: DB_USER_ID,
+        email: 'someone-else@example.com',
+        name: 'Someone Else',
+        principalId: null,
+        authProvider: null,
+        systemRole: 'member',
+        isActive: true,
+        createdAt: new Date('2026-01-01T00:00:00Z'),
+        updatedAt: new Date('2026-01-01T00:00:00Z'),
+      }]);
 
       const response = await handleUsersRoutes(
         new Request('https://api.example.com/api/admin/users', {
@@ -370,9 +324,7 @@ describe('principal_id stamp normalization (PCC-3457)', () => {
       );
       expect(response.status).toBe(201);
 
-      const bootstrapInsert = recordedQueries.find(
-        (q) => q.sql.includes('INSERT INTO app.users (email, principal_id'),
-      );
+      const bootstrapInsert = database.calls(users).insert[0];
       if (bootstrapInsert === undefined) {
         throw new Error('Expected the bootstrap self-add insert to run');
       }

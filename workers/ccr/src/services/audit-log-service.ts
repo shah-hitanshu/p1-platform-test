@@ -12,7 +12,8 @@
 
 import { getLogger } from '@pantheon-systems/p1-telemetry';
 import type { AuthenticatedPrincipal } from '../types';
-import { query } from '../db';
+import { auditLog } from '../db/schema';
+import { db } from '../db/scope';
 
 export interface AuditEntry {
   /** '<entity>.<verb>', e.g. 'org_user.remove'. */
@@ -39,26 +40,17 @@ export interface AuditEntry {
  */
 export async function recordAuditEntry(entry: AuditEntry): Promise<void> {
   try {
-    await query(
-      `INSERT INTO app.audit_log
-         (action, actor_user_id, actor_email, actor_system_role,
-          organization_id, target_type, target_id, target_label, details)
-       VALUES ($1, $2::uuid, $3, $4, $5::uuid, $6, $7, $8, $9::jsonb)`,
-      [
-        entry.action,
-        entry.actor.dbUserId ?? null,
-        entry.actor.email ?? null,
-        entry.actor.systemRole ?? null,
-        entry.organizationId ?? null,
-        entry.targetType,
-        entry.targetId ?? null,
-        entry.targetLabel ?? null,
-        // The driver serializes an object into the jsonb column. Stringifying
-        // first stores a JSON *string*, which makes details->>'field' null and
-        // the column unqueryable.
-        entry.details ?? {},
-      ],
-    );
+    await db().insert(auditLog).values({
+      action: entry.action,
+      actorUserId: entry.actor.dbUserId ?? null,
+      actorEmail: entry.actor.email ?? null,
+      actorSystemRole: entry.actor.systemRole ?? null,
+      organizationId: entry.organizationId ?? null,
+      targetType: entry.targetType,
+      targetId: entry.targetId ?? null,
+      targetLabel: entry.targetLabel ?? null,
+      details: entry.details ?? {},
+    });
   } catch (error) {
     getLogger().error('Audit log write failed', error instanceof Error ? error : new Error(String(error)), { action: entry.action });
   }
