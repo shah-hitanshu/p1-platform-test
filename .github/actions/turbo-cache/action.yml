@@ -1,0 +1,45 @@
+# Carries turbo's local cache across CI runs. Turbo already skips any task
+# whose inputs it has seen, but on a fresh runner it has seen nothing, so every
+# run rebuilt, re-typechecked, re-linted, and retested every package. Restoring
+# `.turbo/cache` from a previous run makes unchanged packages cache hits.
+#
+# The key ends in the commit SHA so every run saves what it added; restore falls
+# back to the newest cache for the same job and lockfile, and GitHub lets a pull
+# request read caches saved on its base branch, so a first push already starts
+# from main's work. Scoping by job keeps the eight jobs from racing to save one
+# key. Scoping by lockfile bounds growth: a dependency change invalidates most
+# of turbo's hashes anyway, so the chain of ever-larger caches restarts there
+# instead of accumulating dead artifacts (there is no garbage collection in the
+# local cache). Two packages build with `cache: false` for reasons documented in
+# their own turbo.json files; they always rebuild, cache or not.
+#
+# Restore and save are separate actions because `actions/cache` saves from a
+# post step declared `post-if: success()`, which skips the save when a job fails
+# or is cancelled. Turbo only writes a cache entry for a task that exits 0, so a
+# red job's cache holds no failures — only the build and the suites that passed
+# before the failing one. Discarding it makes the next push to a red PR rebuild
+# from scratch, and `concurrency.cancel-in-progress` means consecutive merges
+# cancel each other, so main's chain — the one every PR restores from — would
+# refresh far less often than every merge. Pair this with `turbo-cache-save`
+# (`if: always()`) as the last step of the job.
+name: turbo cache
+description: Restore turbo's local cache from earlier runs
+runs:
+  using: composite
+  steps:
+    # Computed once here and read back by `turbo-cache-save`, so the two
+    # actions cannot drift onto different keys — a mismatch would never fail a
+    # job, it would just silently stop restoring.
+    - name: Derive this job's cache key
+      shell: bash
+      run: |
+        prefix='turbo-${{ github.job }}-${{ hashFiles('pnpm-lock.yaml') }}-'
+        {
+          echo "TURBO_CACHE_RESTORE_PREFIX=$prefix"
+          echo "TURBO_CACHE_KEY=${prefix}${{ github.sha }}"
+        } >> "$GITHUB_ENV"
+    - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: .turbo/cache
+        key: ${{ env.TURBO_CACHE_KEY }}
+        restore-keys: ${{ env.TURBO_CACHE_RESTORE_PREFIX }}

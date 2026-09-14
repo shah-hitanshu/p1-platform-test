@@ -4,6 +4,13 @@
 # Every package is linted and type-checked, with no exclusions. Test-only type
 # errors in workers/ccr are held to a committed ceiling by
 # `check:typecheck-tests` rather than ignored.
+#
+# Every job that runs turbo restores turbo's local cache from earlier runs
+# (.github/actions/turbo-cache), so a package nothing touched is a cache hit
+# for build, typecheck, lint, and test rather than a rerun. Each job ends by
+# saving what it added (.github/actions/turbo-cache-save), including when the
+# job failed or was cancelled — turbo caches no failures, so the work a red run
+# did finish is still worth keeping.
 name: ci
 
 on:
@@ -47,7 +54,7 @@ jobs:
           bash .github/scripts/ci-affected.sh
 
   verify:
-    name: build / typecheck / lint / test (hard gates)
+    name: build / test (hard gates)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -57,6 +64,7 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/turbo-cache
       - name: Build everything
         run: pnpm exec turbo run build
       # PCC-3819: catch internal-architecture leaks at PR time, not at release
@@ -67,12 +75,6 @@ jobs:
         run: |
           bash .github/scripts/check-npm-leaks.sh --self-test
           bash .github/scripts/check-npm-leaks.sh
-      - name: Every package has a lint and typecheck task
-        run: pnpm check:task-coverage
-      - name: Typecheck
-        run: pnpm exec turbo run typecheck
-      - name: Lint
-        run: pnpm exec turbo run lint lint:root
       # The packer applies wrangler's module rules and resolves the entry
       # point's whole import graph, so a worker that typechecks and lints clean
       # can still fail to bundle. Without this the deploy on main is the first
@@ -87,6 +89,34 @@ jobs:
         run: pnpm exec turbo run test --filter='!@p1/agent' --filter='!@pantheon-systems/puck-css' --concurrency=4
       - name: Test type errors stay at or below the committed ceiling
         run: pnpm check:typecheck-tests
+      - uses: ./.github/actions/turbo-cache-save
+        if: always()
+
+  # Hard gate, split out of `verify` so typecheck and lint run beside the test
+  # step instead of ahead of it. One turbo invocation for both lets turbo
+  # overlap them across the package graph.
+  check:
+    name: typecheck / lint (hard gate)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/turbo-cache
+      # Type-aware lint rules need the workspace built first or they report
+      # against `any`.
+      - name: Build everything
+        run: pnpm exec turbo run build
+      - name: Every package has a lint and typecheck task
+        run: pnpm check:task-coverage
+      - name: Typecheck and lint
+        run: pnpm exec turbo run typecheck lint lint:root
+      - uses: ./.github/actions/turbo-cache-save
+        if: always()
 
   # Hard gate, split out of `verify` so the repo's largest suite gets a runner
   # to itself instead of contending with ccr-worker for the same four vCPUs.
@@ -101,10 +131,13 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/turbo-cache
       - name: Build puck-css dependencies
         run: pnpm exec turbo run build --filter='@pantheon-systems/puck-css^...'
       - name: Test
         run: pnpm exec turbo run test --filter='@pantheon-systems/puck-css'
+      - uses: ./.github/actions/turbo-cache-save
+        if: always()
 
   # Warnings are not a hard gate, so they need somewhere to be visible other
   # than a log nobody reads. Code scanning annotates them on the lines a PR
@@ -125,9 +158,10 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/turbo-cache
       - name: Build everything
         run: pnpm exec turbo run build
-      # Findings, not pass/fail — the hard gate is the `verify` job. Type-aware
+      # Findings, not pass/fail — the hard gate is the `check` job. Type-aware
       # rules need the workspace built first or they report against `any`.
       - name: Lint to SARIF
         run: pnpm lint:sarif
@@ -136,6 +170,8 @@ jobs:
         with:
           sarif_file: sarif/eslint.sarif
           category: eslint
+      - uses: ./.github/actions/turbo-cache-save
+        if: always()
 
   integration-db:
     name: postgres integration (CCR worker)
@@ -161,6 +197,7 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/turbo-cache
       - name: Build worker dependencies
         run: pnpm exec turbo run build --filter='ccr-worker^...'
       - name: Migrations (fresh schema)
@@ -173,6 +210,8 @@ jobs:
         run: |
           pnpm --filter ccr-worker test:db
           pnpm --filter ccr-worker test:integration
+      - uses: ./.github/actions/turbo-cache-save
+        if: always()
 
   # Nothing else ever installs a generated project, so a template that scaffolds
   # into something that cannot `pnpm install` (it has happened — PCC-3623) is
@@ -194,6 +233,7 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/turbo-cache
       - name: Build the packages the scaffold consumes
         run: pnpm exec turbo run build --filter='@pantheon-systems/css-client' --filter='@pantheon-systems/puck-css' --filter='@pantheon-systems/p1-next-sdk' --filter='@pantheon-systems/p1-ai-chat' --filter='@pantheon-systems/p1-media'
       # Also lints the built template before scaffolding: a monorepo-relative path
@@ -201,6 +241,8 @@ jobs:
       # only fails on a customer's machine.
       - name: Scaffold a project and install/build/typecheck/test it against packed tarballs
         run: pnpm --filter @pantheon-systems/create-p1-starter-kit test:scaffold
+      - uses: ./.github/actions/turbo-cache-save
+        if: always()
 
   e2e:
     name: playwright e2e (starter app vs mock backend)
@@ -215,6 +257,7 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/turbo-cache
       - name: Build starter dependencies
         run: pnpm exec turbo run build --filter='@pantheon-systems/p1-starter^...'
       - run: pnpm exec playwright install chromium
@@ -225,6 +268,8 @@ jobs:
           name: playwright-report
           path: playwright-report/
           retention-days: 7
+      - uses: ./.github/actions/turbo-cache-save
+        if: always()
 
   starter-components:
     name: starter-components (storybook + registry build)
@@ -239,6 +284,7 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/turbo-cache
       # Chromium is installed here and not in `verify` so the repo's main
       # gate keeps its current runtime. No `--with-deps`: it runs `apt-get
       # update` across every repo configured on the runner, and a bad index on
@@ -282,3 +328,5 @@ jobs:
           name: starter-components-storybook
           path: packages/p1-starter-components/storybook-static/
           retention-days: 7
+      - uses: ./.github/actions/turbo-cache-save
+        if: always()

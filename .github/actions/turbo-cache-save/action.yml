@@ -1,0 +1,15 @@
+# The save half of `.github/actions/turbo-cache`; see that file for why the two
+# are split and why the save runs on failed and cancelled jobs. Run this as the
+# last step of every job that restores, under `if: always()`.
+name: turbo cache save
+description: Save what this run added to turbo's local cache, including when the job failed or was cancelled
+runs:
+  using: composite
+  steps:
+    # Empty when the job was cancelled before `turbo-cache` ran; there is
+    # nothing to save then, and `save` errors on a blank key.
+    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      if: env.TURBO_CACHE_KEY != ''
+      with:
+        path: .turbo/cache
+        key: ${{ env.TURBO_CACHE_KEY }}

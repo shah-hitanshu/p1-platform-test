@@ -30,6 +30,7 @@ scope_packages() {
 # attribute them. `//#lint:root` in turbo.json covers the same blind spot.
 ROOT_PATHS='
 ^\.github/workflows/ci\.yml$
+^\.github/actions/
 ^\.github/scripts/ci-affected\.sh$
 '
 scope_paths() {
@@ -81,6 +82,7 @@ self_test() {
   assert starter-components out-of-scope 'e2e/p1-starter.spec.ts'
   for scope in $SCOPES; do
     assert "$scope" in-scope '.github/workflows/ci.yml'
+    assert "$scope" in-scope '.github/actions/turbo-cache/action.yml'
     assert "$scope" out-of-scope 'docs/migration/STATUS.md'
     assert "$scope" out-of-scope 'workers/ccr/src/index.ts'
   done
