@@ -10,3 +10,16 @@ export function getFirstRow<T>(rows: T[]): T {
   }
   return first;
 }
+
+/**
+ * Normalizes a timestamp column to ISO-8601.
+ *
+ * A row read through the query builder carries a Date; one read through
+ * db().execute() carries Postgres' own text form, because the Drizzle client
+ * parses timestamps as identity. The domain types declare these fields as
+ * strings, so both are funnelled through here.
+ */
+export function toIsoTimestamp(value: Date | string | null | undefined): string {
+  if (value === null || value === undefined) return '';
+  return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
+}

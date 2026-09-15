@@ -24,15 +24,21 @@ import type {
   CheckpointStatus,
   DocumentVersionSource,
 } from '../../src/types';
+import { checkpointDocuments, checkpoints, documentVersions } from '../../src/db/schema';
+import { stubDatabase, type DatabaseStub, type RecordedCall } from '../__stubs__/database';
 
-// Mock database module
-vi.mock('../../src/db', () => ({
-  query: vi.fn(),
-}));
+/**
+ * The capture query reads from a derived table, so it is keyed by that name:
+ * no schema table describes what it selects.
+ */
+const CAPTURE = 'latest';
 
 describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
+  let database: DatabaseStub;
+
   beforeEach(() => {
     vi.resetAllMocks();
+    database = stubDatabase();
   });
 
   // =========================================================================
@@ -42,7 +48,9 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
   /**
    * Standard checkpoint row returned by SELECT queries.
    */
-  interface MockCheckpointRow {
+  // A type alias rather than an interface: the stub takes Record<string,
+  // unknown>, which an interface cannot satisfy — it carries no index signature.
+  type MockCheckpointRow = {
     id: string;
     branch_id: string;
     name: string | null;
@@ -60,7 +68,7 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
     rolled_back_by_id: string | null;
     rolled_back_at: string | null;
     parent_checkpoint_id: string | null;
-  }
+  };
 
   /**
    * Row returned by the CTE-based INSERT in createCheckpoint. The CTE embeds
@@ -68,7 +76,7 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
    */
   type MockCheckpointInsertRow = MockCheckpointRow;
 
-  interface MockVersionWithDocumentRow {
+  type MockVersionWithDocumentRow = {
     id: string;
     document_id: string;
     branch_id: string;
@@ -79,9 +87,38 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
     created_by_type: 'user' | 'agent' | 'system';
     created_at: string;
     document_path: string;
+  };
+
+  /** A checkpoint read through the query builder, in the schema's property names. */
+  function createMockCheckpointRow(
+    overrides: Record<string, unknown> = {},
+  ): Record<string, unknown> {
+    const row = createMockInsertRow();
+    return {
+      id: row.id,
+      branchId: row.branch_id,
+      name: row.name,
+      message: row.message,
+      checkpointType: row.checkpoint_type,
+      createdById: row.created_by_id,
+      createdByType: row.created_by_type,
+      createdAt: new Date(row.created_at),
+      description: row.description,
+      trigger: row.trigger,
+      requestedById: row.requested_by_id,
+      operationType: row.operation_type,
+      affectedRegions: row.affected_regions,
+      status: row.status,
+      rolledBackById: row.rolled_back_by_id,
+      rolledBackAt: null,
+      parentCheckpointId: row.parent_checkpoint_id,
+      isFullSnapshot: true,
+      ...overrides,
+    };
   }
 
-  function createMockCheckpointRow(
+  /** The checkpoint INSERT returns *, so its row is in column names. */
+  function insertedCheckpointRow(
     overrides: Partial<MockCheckpointRow> = {},
   ): MockCheckpointRow {
     return {
@@ -113,9 +150,7 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
   function createMockInsertRow(
     overrides: Partial<MockCheckpointInsertRow> = {},
   ): MockCheckpointInsertRow {
-    return {
-      ...createMockCheckpointRow(overrides),
-    };
+    return insertedCheckpointRow(overrides);
   }
 
   function createMockVersionWithDocument(
@@ -136,6 +171,22 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
     };
   }
 
+  /** The same row as read through the query builder, in schema property names. */
+  function asBuilderRow(row: MockVersionWithDocumentRow): Record<string, unknown> {
+    return {
+      id: row.id,
+      documentId: row.document_id,
+      branchId: row.branch_id,
+      versionNumber: row.version_number,
+      snapshot: row.snapshot,
+      source: row.source,
+      createdById: row.created_by_id,
+      createdByType: row.created_by_type,
+      createdAt: new Date(row.created_at),
+      documentPath: row.document_path,
+    };
+  }
+
   // =========================================================================
   // Phase 6.1: Incremental Checkpoints
   // =========================================================================
@@ -144,7 +195,6 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
     describe('createCheckpoint with incremental support', () => {
       it('should create a full checkpoint when no previous checkpoint exists', async () => {
         const { createCheckpoint } = await import('../../src/services/checkpoint-service');
-        const db = await import('../../src/db');
 
         const mockInsertRow = createMockInsertRow({
           parent_checkpoint_id: null,
@@ -158,20 +208,12 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
         // 5. INSERT checkpoint structures
         // 6. INSERT checkpoint metadata
         // 7. COMMIT
-        vi.mocked(db.query)
-          .mockResolvedValueOnce({ rows: [] }) // BEGIN
-          .mockResolvedValueOnce({ rows: [mockInsertRow] }) // INSERT with CTE
-          .mockResolvedValueOnce({
-            rows: [
-              { document_id: 'doc-1', document_version_id: 'v-1' },
-              { document_id: 'doc-2', document_version_id: 'v-2' },
-              { document_id: 'doc-3', document_version_id: 'v-3' },
-            ],
-          }) // Get ALL latest versions
-          .mockResolvedValueOnce({ rows: [] }) // INSERT checkpoint_documents
-          .mockResolvedValueOnce({ rows: [] }) // INSERT checkpoint structures
-          .mockResolvedValueOnce({ rows: [] }) // INSERT checkpoint metadata
-          .mockResolvedValueOnce({ rows: [] }); // COMMIT
+        database.on(checkpoints).insert.returnsRaw([mockInsertRow]);
+        database.on(CAPTURE).select.returnsRaw([
+          { document_id: 'doc-1', document_version_id: 'v-1' },
+          { document_id: 'doc-2', document_version_id: 'v-2' },
+          { document_id: 'doc-3', document_version_id: 'v-3' },
+        ]);
 
         const result = await createCheckpoint({
           branchId: 'branch-uuid-789',
@@ -187,7 +229,6 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
 
       it('should create an incremental checkpoint capturing only changed documents', async () => {
         const { createCheckpoint } = await import('../../src/services/checkpoint-service');
-        const db = await import('../../src/db');
 
         const mockInsertRow = createMockInsertRow({
           id: 'incremental-checkpoint-id',
@@ -202,18 +243,10 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
         // 5. INSERT checkpoint structures
         // 6. INSERT checkpoint metadata
         // 7. COMMIT
-        vi.mocked(db.query)
-          .mockResolvedValueOnce({ rows: [] }) // BEGIN
-          .mockResolvedValueOnce({ rows: [mockInsertRow] }) // INSERT with CTE
-          .mockResolvedValueOnce({
-            rows: [
-              { document_id: 'doc-1', document_version_id: 'v-1-new' },
-            ],
-          }) // Get CHANGED versions only
-          .mockResolvedValueOnce({ rows: [] }) // INSERT checkpoint_documents
-          .mockResolvedValueOnce({ rows: [] }) // INSERT checkpoint structures
-          .mockResolvedValueOnce({ rows: [] }) // INSERT checkpoint metadata
-          .mockResolvedValueOnce({ rows: [] }); // COMMIT
+        database.on(checkpoints).insert.returnsRaw([mockInsertRow]);
+        database.on(CAPTURE).select.returnsRaw([
+          { document_id: 'doc-1', document_version_id: 'v-1-new' },
+        ]);
 
         const result = await createCheckpoint({
           branchId: 'branch-uuid-789',
@@ -228,16 +261,14 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
         // The delta is defined against the parent chain's recorded versions,
         // not against a timestamp — a clock boundary races the parent's own
         // transaction.
-        const queryCalls = vi.mocked(db.query).mock.calls;
-        const versionQueryCall = queryCalls[2]; // 3rd call (index 2)
-        const versionSql = versionQueryCall[0];
-        expect(versionSql).toContain('WITH RECURSIVE chain');
-        expect(versionSql).toContain(
+        const [capture] = database.calls(CAPTURE).select;
+        expect(capture.sql).toContain('WITH RECURSIVE chain');
+        expect(capture.sql).toContain(
           'nearest.document_version_id IS DISTINCT FROM latest.document_version_id',
         );
-        expect(versionSql).not.toContain('created_at >');
+        expect(capture.sql).not.toContain('created_at >');
         // Bound to the parent checkpoint, and to the branch being captured.
-        expect(versionQueryCall[1]).toEqual([
+        expect(capture.params).toEqual([
           'parent-checkpoint-id',
           'branch-uuid-789',
           '\\_registry/%',
@@ -247,7 +278,6 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
 
       it('should create an incremental checkpoint with zero documents when nothing changed', async () => {
         const { createCheckpoint } = await import('../../src/services/checkpoint-service');
-        const db = await import('../../src/db');
 
         const mockInsertRow = createMockInsertRow({
           id: 'incremental-checkpoint-id',
@@ -255,14 +285,7 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
         });
 
         // No docs changed: checkpoint_documents INSERT is skipped
-        vi.mocked(db.query)
-          .mockResolvedValueOnce({ rows: [] }) // BEGIN
-          .mockResolvedValueOnce({ rows: [mockInsertRow] }) // INSERT with CTE
-          .mockResolvedValueOnce({ rows: [] }) // No changed documents
-          // No INSERT checkpoint_documents (0 rows -> skipped)
-          .mockResolvedValueOnce({ rows: [] }) // INSERT checkpoint structures
-          .mockResolvedValueOnce({ rows: [] }) // INSERT checkpoint metadata
-          .mockResolvedValueOnce({ rows: [] }); // COMMIT
+        database.on(checkpoints).insert.returnsRaw([mockInsertRow]);
 
         const result = await createCheckpoint({
           branchId: 'branch-uuid-789',
@@ -277,7 +300,6 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
 
       it('should create a full checkpoint for merge operations regardless of existing checkpoints', async () => {
         const { createCheckpoint } = await import('../../src/services/checkpoint-service');
-        const db = await import('../../src/db');
 
         // CTE may find a parent, but CASE expression nullifies parent_checkpoint_id for merge
         const mockInsertRow = createMockInsertRow({
@@ -286,20 +308,12 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
           parent_checkpoint_id: null, // CASE nullified for merge type
         });
 
-        vi.mocked(db.query)
-          .mockResolvedValueOnce({ rows: [] }) // BEGIN
-          .mockResolvedValueOnce({ rows: [mockInsertRow] }) // INSERT with CTE
-          .mockResolvedValueOnce({
-            rows: [
-              { document_id: 'doc-1', document_version_id: 'v-1' },
-              { document_id: 'doc-2', document_version_id: 'v-2' },
-              { document_id: 'doc-3', document_version_id: 'v-3' },
-            ],
-          }) // Get ALL latest versions (full snapshot for merge)
-          .mockResolvedValueOnce({ rows: [] }) // INSERT checkpoint_documents
-          .mockResolvedValueOnce({ rows: [] }) // INSERT checkpoint structures
-          .mockResolvedValueOnce({ rows: [] }) // INSERT checkpoint metadata
-          .mockResolvedValueOnce({ rows: [] }); // COMMIT
+        database.on(checkpoints).insert.returnsRaw([mockInsertRow]);
+        database.on(CAPTURE).select.returnsRaw([
+          { document_id: 'doc-1', document_version_id: 'v-1' },
+          { document_id: 'doc-2', document_version_id: 'v-2' },
+          { document_id: 'doc-3', document_version_id: 'v-3' },
+        ]);
 
         const result = await createCheckpoint({
           branchId: 'branch-uuid-789',
@@ -315,7 +329,6 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
 
       it('should create a full checkpoint for pre_merge operations', async () => {
         const { createCheckpoint } = await import('../../src/services/checkpoint-service');
-        const db = await import('../../src/db');
 
         const mockInsertRow = createMockInsertRow({
           id: 'pre-merge-checkpoint-id',
@@ -323,19 +336,11 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
           parent_checkpoint_id: null,
         });
 
-        vi.mocked(db.query)
-          .mockResolvedValueOnce({ rows: [] }) // BEGIN
-          .mockResolvedValueOnce({ rows: [mockInsertRow] }) // INSERT with CTE
-          .mockResolvedValueOnce({
-            rows: [
-              { document_id: 'doc-1', document_version_id: 'v-1' },
-              { document_id: 'doc-2', document_version_id: 'v-2' },
-            ],
-          }) // Get ALL latest versions
-          .mockResolvedValueOnce({ rows: [] }) // INSERT checkpoint_documents
-          .mockResolvedValueOnce({ rows: [] }) // INSERT checkpoint structures
-          .mockResolvedValueOnce({ rows: [] }) // INSERT checkpoint metadata
-          .mockResolvedValueOnce({ rows: [] }); // COMMIT
+        database.on(checkpoints).insert.returnsRaw([mockInsertRow]);
+        database.on(CAPTURE).select.returnsRaw([
+          { document_id: 'doc-1', document_version_id: 'v-1' },
+          { document_id: 'doc-2', document_version_id: 'v-2' },
+        ]);
 
         const result = await createCheckpoint({
           branchId: 'branch-uuid-789',
@@ -356,48 +361,39 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
       // tests/integration/checkpoint-chain-resolution.integration.spec.ts.
       it('resolves in a single query that walks the parent chain', async () => {
         const { resolveCheckpointDocuments } = await import('../../src/services/checkpoint-service');
-        const db = await import('../../src/db');
 
-        vi.mocked(db.query).mockResolvedValueOnce({
-          rows: [
-            createMockVersionWithDocument({ document_id: 'doc-1', document_path: 'pages/home' }),
-            createMockVersionWithDocument({ document_id: 'doc-2', document_path: 'pages/about' }),
-          ],
-        });
+        database.on(documentVersions).select.returnsRaw([
+          createMockVersionWithDocument({ document_id: 'doc-1', document_path: 'pages/home' }),
+          createMockVersionWithDocument({ document_id: 'doc-2', document_path: 'pages/about' }),
+        ]);
 
         const result = await resolveCheckpointDocuments('incremental-checkpoint');
 
-        expect(vi.mocked(db.query)).toHaveBeenCalledTimes(1);
+        expect(database.statements).toHaveLength(1);
         expect(result).toHaveLength(2);
         expect(result.map((d: { documentId: string }) => d.documentId)).toEqual(['doc-1', 'doc-2']);
 
-        const [sql, params] = vi.mocked(db.query).mock.calls[0]!;
-        expect(sql).toContain('WITH RECURSIVE chain');
-        expect(sql).toContain('parent.id = chain.parent_checkpoint_id');
-        expect(params).toEqual(['incremental-checkpoint']);
+        const [resolve] = database.calls(documentVersions).select;
+        expect(resolve.sql).toContain('WITH RECURSIVE chain');
+        expect(resolve.sql).toContain('parent.id = chain.parent_checkpoint_id');
+        expect(resolve.params).toEqual(['incremental-checkpoint']);
       });
 
       it('stops the walk at the nearest full snapshot', async () => {
         const { resolveCheckpointDocuments } = await import('../../src/services/checkpoint-service');
-        const db = await import('../../src/db');
-
-        vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
 
         await resolveCheckpointDocuments('incremental-checkpoint');
 
-        const [sql] = vi.mocked(db.query).mock.calls[0]!;
+        const [resolve] = database.calls(documentVersions).select;
         // Recursion continues only through deltas.
-        expect(sql).toContain('WHERE chain.is_full_snapshot = false');
+        expect(resolve.sql).toContain('WHERE chain.is_full_snapshot = false');
         // Nearest checkpoint in the chain wins for a given document.
-        expect(sql).toContain('DISTINCT ON (cd.document_id)');
-        expect(sql).toContain('ORDER BY cd.document_id, chain.depth ASC');
+        expect(resolve.sql).toContain('DISTINCT ON (cd.document_id)');
+        expect(resolve.sql).toContain('ORDER BY cd.document_id, chain.depth ASC');
       });
 
       it('should handle resolving a checkpoint that has no documents', async () => {
         const { resolveCheckpointDocuments } = await import('../../src/services/checkpoint-service');
-        const db = await import('../../src/db');
-
-        vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
 
         const result = await resolveCheckpointDocuments('empty-checkpoint');
 
@@ -408,7 +404,6 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
     describe('getDocumentsAtCheckpoint backward compatibility', () => {
       it('should still work for old checkpoints without parent_checkpoint_id', async () => {
         const { getDocumentsAtCheckpoint } = await import('../../src/services/checkpoint-service');
-        const db = await import('../../src/db');
 
         // Old-style checkpoint (pre-incremental) — no parent_checkpoint_id column
         const documents = [
@@ -422,7 +417,7 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
           }),
         ];
 
-        vi.mocked(db.query).mockResolvedValueOnce({ rows: documents });
+        database.on(checkpointDocuments).select.returnsRaw(documents.map(asBuilderRow));
 
         const result = await getDocumentsAtCheckpoint('old-checkpoint');
 
@@ -434,14 +429,13 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
     describe('Checkpoint parentCheckpointId in Checkpoint type', () => {
       it('should include parentCheckpointId in checkpoint result when present', async () => {
         const { getCheckpoint } = await import('../../src/services/checkpoint-service');
-        const db = await import('../../src/db');
 
         const mockRow = createMockCheckpointRow({
           id: 'incremental-cp',
-          parent_checkpoint_id: 'parent-cp',
+          parentCheckpointId: 'parent-cp',
         });
 
-        vi.mocked(db.query).mockResolvedValueOnce({ rows: [mockRow] });
+        database.on(checkpoints).select.returnsRaw([mockRow]);
 
         const result = await getCheckpoint('incremental-cp');
 
@@ -451,14 +445,13 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
 
       it('should have undefined parentCheckpointId for full checkpoints', async () => {
         const { getCheckpoint } = await import('../../src/services/checkpoint-service');
-        const db = await import('../../src/db');
 
         const mockRow = createMockCheckpointRow({
           id: 'full-cp',
-          parent_checkpoint_id: null,
+          parentCheckpointId: null,
         });
 
-        vi.mocked(db.query).mockResolvedValueOnce({ rows: [mockRow] });
+        database.on(checkpoints).select.returnsRaw([mockRow]);
 
         const result = await getCheckpoint('full-cp');
 
@@ -475,11 +468,10 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
   describe('Phase 6.2: Batch Revert Operations', () => {
     it('should use a single bulk INSERT...SELECT instead of a loop for revert', async () => {
       const { revertToCheckpoint } = await import('../../src/services/checkpoint-service');
-      const db = await import('../../src/db');
 
       const mockCheckpointRow = createMockCheckpointRow({
         id: 'checkpoint-to-revert',
-        parent_checkpoint_id: null,
+        parentCheckpointId: null,
       });
 
       const newCheckpointInsertRow = createMockInsertRow({
@@ -487,32 +479,13 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
         message: 'Reverted to checkpoint: v1.0 (checkpoint-to-revert)',
       });
 
-      vi.mocked(db.query)
-        .mockResolvedValueOnce({ rows: [mockCheckpointRow] }) // Get checkpoint
-        .mockResolvedValueOnce({
-          rows: [
-            createMockVersionWithDocument({ document_id: 'doc-1' }),
-            createMockVersionWithDocument({ document_id: 'doc-2' }),
-            createMockVersionWithDocument({ document_id: 'doc-3' }),
-          ],
-        }) // getDocumentsAtCheckpoint
-        .mockResolvedValueOnce({ rows: [] }) // Resolve deletions across the chain
-        .mockResolvedValueOnce({ rows: [] }) // BEGIN
-        .mockResolvedValueOnce({ rows: [], rowCount: 3 }) // Bulk INSERT...SELECT for all docs at once
-        .mockResolvedValueOnce({ rows: [] }) // Get structures at checkpoint
-        .mockResolvedValueOnce({ rows: [] }) // Delete current structures
-        .mockResolvedValueOnce({ rows: [] }) // Restore structures
-        .mockResolvedValueOnce({ rows: [] }) // Delete current metadata
-        .mockResolvedValueOnce({ rows: [] }) // Restore metadata
-        .mockResolvedValueOnce({ rows: [] }) // UPDATE checkpoint status
-        .mockResolvedValueOnce({ rows: [] }) // COMMIT
-        // createCheckpoint sub-transaction (CTE-based, no separate get-latest)
-        .mockResolvedValueOnce({ rows: [] }) // BEGIN
-        .mockResolvedValueOnce({ rows: [newCheckpointInsertRow] }) // INSERT with CTE
-        .mockResolvedValueOnce({ rows: [] }) // Get latest versions
-        .mockResolvedValueOnce({ rows: [] }) // INSERT structures
-        .mockResolvedValueOnce({ rows: [] }) // INSERT metadata
-        .mockResolvedValueOnce({ rows: [] }); // COMMIT
+      database.on(checkpoints).select.returnsRaw([mockCheckpointRow]);
+      database.on(documentVersions).select.returnsRaw([
+        createMockVersionWithDocument({ document_id: 'doc-1' }),
+        createMockVersionWithDocument({ document_id: 'doc-2' }),
+        createMockVersionWithDocument({ document_id: 'doc-3' }),
+      ]);
+      database.on(checkpoints).insert.returnsRaw([newCheckpointInsertRow]);
 
       const result = await revertToCheckpoint({
         checkpointId: 'checkpoint-to-revert',
@@ -522,33 +495,25 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
 
       expect(result.documentsReverted).toBe(3);
 
-      // Verify that between BEGIN and structure operations there is only ONE
-      // bulk INSERT query (not 3 individual ones)
-      const queryCalls = vi.mocked(db.query).mock.calls;
-      const beginIndex = queryCalls.findIndex(
-        (call) => typeof call[0] === 'string' && call[0] === 'BEGIN',
-      );
-
-      // The query after BEGIN should be a bulk INSERT...SELECT with JOIN LATERAL
-      const bulkInsertCall = queryCalls[beginIndex + 1];
-      expect(typeof bulkInsertCall[0]).toBe('string');
-      const bulkInsertSql = bulkInsertCall[0];
-      expect(bulkInsertSql).toContain('INSERT INTO app.document_versions');
-      expect(bulkInsertSql).toContain('JOIN LATERAL');
+      // Three documents take the bulk path, so there is one INSERT, not three.
+      const inserts = database.calls(documentVersions).insert;
+      expect(inserts).toHaveLength(1);
+      const [bulkInsert] = inserts;
+      expect(bulkInsert.sql).toContain('INSERT INTO app.document_versions');
+      expect(bulkInsert.sql).toContain('JOIN LATERAL');
       // Driven by the resolved document set, so an incremental checkpoint
       // reverts its whole branch rather than just its own delta.
-      expect(bulkInsertSql).toContain('unnest($4::uuid[], $5::uuid[])');
-      expect(bulkInsertSql).not.toContain('checkpoint_documents');
+      expect(bulkInsert.sql).toMatch(/unnest\(\s*\$4::uuid\[\],\s*\$5::uuid\[\]\s*\)/);
+      expect(bulkInsert.sql).not.toContain('checkpoint_documents');
     });
 
     it('should correctly pass checkpoint ID and branch parameters to the bulk revert query', async () => {
       const { revertToCheckpoint } = await import('../../src/services/checkpoint-service');
-      const db = await import('../../src/db');
 
       const mockCheckpointRow = createMockCheckpointRow({
         id: 'cp-to-revert',
-        branch_id: 'target-branch',
-        parent_checkpoint_id: null,
+        branchId: 'target-branch',
+        parentCheckpointId: null,
       });
 
       const newCheckpointInsertRow = createMockInsertRow({
@@ -556,32 +521,13 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
       });
 
       // Use 3+ documents to trigger the batch INSERT path (threshold = 3)
-      vi.mocked(db.query)
-        .mockResolvedValueOnce({ rows: [mockCheckpointRow] }) // Get checkpoint
-        .mockResolvedValueOnce({
-          rows: [
-            createMockVersionWithDocument({ document_id: 'doc-1' }),
-            createMockVersionWithDocument({ document_id: 'doc-2' }),
-            createMockVersionWithDocument({ document_id: 'doc-3' }),
-          ],
-        }) // getDocumentsAtCheckpoint
-        .mockResolvedValueOnce({ rows: [] }) // Resolve deletions across the chain
-        .mockResolvedValueOnce({ rows: [] }) // BEGIN
-        .mockResolvedValueOnce({ rows: [], rowCount: 3 }) // Bulk INSERT...SELECT
-        .mockResolvedValueOnce({ rows: [] }) // Get structures
-        .mockResolvedValueOnce({ rows: [] }) // Delete structures
-        .mockResolvedValueOnce({ rows: [] }) // Restore structures
-        .mockResolvedValueOnce({ rows: [] }) // Delete metadata
-        .mockResolvedValueOnce({ rows: [] }) // Restore metadata
-        .mockResolvedValueOnce({ rows: [] }) // UPDATE checkpoint status
-        .mockResolvedValueOnce({ rows: [] }) // COMMIT
-        // createCheckpoint sub-transaction
-        .mockResolvedValueOnce({ rows: [] }) // BEGIN
-        .mockResolvedValueOnce({ rows: [newCheckpointInsertRow] }) // INSERT with CTE
-        .mockResolvedValueOnce({ rows: [] }) // Get latest versions
-        .mockResolvedValueOnce({ rows: [] }) // INSERT structures
-        .mockResolvedValueOnce({ rows: [] }) // INSERT metadata
-        .mockResolvedValueOnce({ rows: [] }); // COMMIT
+      database.on(checkpoints).select.returnsRaw([mockCheckpointRow]);
+      database.on(documentVersions).select.returnsRaw([
+        createMockVersionWithDocument({ document_id: 'doc-1' }),
+        createMockVersionWithDocument({ document_id: 'doc-2' }),
+        createMockVersionWithDocument({ document_id: 'doc-3' }),
+      ]);
+      database.on(checkpoints).insert.returnsRaw([newCheckpointInsertRow]);
 
       await revertToCheckpoint({
         checkpointId: 'cp-to-revert',
@@ -590,16 +536,13 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
       });
 
       // Verify the bulk insert query was called with the correct parameters
-      const queryCalls = vi.mocked(db.query).mock.calls;
-      const bulkInsertCall = queryCalls.find(
-        (call) =>
-          typeof call[0] === 'string' &&
-          call[0].includes('JOIN LATERAL'),
+      const bulkInsertCall = database.statements.find(
+        (call) => call.sql.includes('JOIN LATERAL'),
       );
 
       expect(bulkInsertCall).toBeDefined();
 
-      const params = bulkInsertCall![1];
+      const params = bulkInsertCall!.params;
       expect(params).toContain('target-branch'); // branch_id
       expect(params).toContain('user-uuid-001'); // created_by_id
       expect(params).toContain('user'); // created_by_type
@@ -613,37 +556,18 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
 
     it('should handle revert with zero documents gracefully', async () => {
       const { revertToCheckpoint } = await import('../../src/services/checkpoint-service');
-      const db = await import('../../src/db');
 
       const mockCheckpointRow = createMockCheckpointRow({
         id: 'empty-checkpoint',
-        parent_checkpoint_id: null,
+        parentCheckpointId: null,
       });
 
       const newCheckpointInsertRow = createMockInsertRow({
         id: 'new-cp-after-revert',
       });
 
-      vi.mocked(db.query)
-        .mockResolvedValueOnce({ rows: [mockCheckpointRow] }) // Get checkpoint
-        .mockResolvedValueOnce({ rows: [] }) // No documents at checkpoint
-        .mockResolvedValueOnce({ rows: [] }) // Resolve deletions across the chain
-        .mockResolvedValueOnce({ rows: [] }) // BEGIN
-        // No bulk INSERT (0 documents -> skipped for backward compatibility)
-        .mockResolvedValueOnce({ rows: [] }) // Get structures
-        .mockResolvedValueOnce({ rows: [] }) // Delete structures
-        .mockResolvedValueOnce({ rows: [] }) // Restore structures
-        .mockResolvedValueOnce({ rows: [] }) // Delete metadata
-        .mockResolvedValueOnce({ rows: [] }) // Restore metadata
-        .mockResolvedValueOnce({ rows: [] }) // UPDATE checkpoint status
-        .mockResolvedValueOnce({ rows: [] }) // COMMIT
-        // createCheckpoint sub-transaction
-        .mockResolvedValueOnce({ rows: [] }) // BEGIN
-        .mockResolvedValueOnce({ rows: [newCheckpointInsertRow] }) // INSERT with CTE
-        .mockResolvedValueOnce({ rows: [] }) // Get latest versions
-        .mockResolvedValueOnce({ rows: [] }) // INSERT structures
-        .mockResolvedValueOnce({ rows: [] }) // INSERT metadata
-        .mockResolvedValueOnce({ rows: [] }); // COMMIT
+      database.on(checkpoints).select.returnsRaw([mockCheckpointRow]);
+      database.on(checkpoints).insert.returnsRaw([newCheckpointInsertRow]);
 
       const result = await revertToCheckpoint({
         checkpointId: 'empty-checkpoint',
@@ -656,12 +580,11 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
 
     it('should still create a new checkpoint after batch revert', async () => {
       const { revertToCheckpoint } = await import('../../src/services/checkpoint-service');
-      const db = await import('../../src/db');
 
       const mockCheckpointRow = createMockCheckpointRow({
         id: 'cp-to-revert',
         name: 'Stable Release',
-        parent_checkpoint_id: null,
+        parentCheckpointId: null,
       });
 
       const newCheckpointInsertRow = createMockInsertRow({
@@ -671,32 +594,13 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
       });
 
       // Use 3+ documents to trigger the batch INSERT path (threshold = 3)
-      vi.mocked(db.query)
-        .mockResolvedValueOnce({ rows: [mockCheckpointRow] }) // Get checkpoint
-        .mockResolvedValueOnce({
-          rows: [
-            createMockVersionWithDocument({ document_id: 'doc-1' }),
-            createMockVersionWithDocument({ document_id: 'doc-2' }),
-            createMockVersionWithDocument({ document_id: 'doc-3' }),
-          ],
-        })
-        .mockResolvedValueOnce({ rows: [] }) // Resolve deletions across the chain
-        .mockResolvedValueOnce({ rows: [] }) // BEGIN
-        .mockResolvedValueOnce({ rows: [], rowCount: 3 }) // Bulk INSERT
-        .mockResolvedValueOnce({ rows: [] }) // Get structures
-        .mockResolvedValueOnce({ rows: [] }) // Delete structures
-        .mockResolvedValueOnce({ rows: [] }) // Restore structures
-        .mockResolvedValueOnce({ rows: [] }) // Delete metadata
-        .mockResolvedValueOnce({ rows: [] }) // Restore metadata
-        .mockResolvedValueOnce({ rows: [] }) // UPDATE status
-        .mockResolvedValueOnce({ rows: [] }) // COMMIT
-        // createCheckpoint sub-transaction
-        .mockResolvedValueOnce({ rows: [] }) // BEGIN
-        .mockResolvedValueOnce({ rows: [newCheckpointInsertRow] }) // INSERT with CTE
-        .mockResolvedValueOnce({ rows: [] }) // Get latest versions
-        .mockResolvedValueOnce({ rows: [] }) // INSERT structures
-        .mockResolvedValueOnce({ rows: [] }) // INSERT metadata
-        .mockResolvedValueOnce({ rows: [] }); // COMMIT
+      database.on(checkpoints).select.returnsRaw([mockCheckpointRow]);
+      database.on(documentVersions).select.returnsRaw([
+        createMockVersionWithDocument({ document_id: 'doc-1' }),
+        createMockVersionWithDocument({ document_id: 'doc-2' }),
+        createMockVersionWithDocument({ document_id: 'doc-3' }),
+      ]);
+      database.on(checkpoints).insert.returnsRaw([newCheckpointInsertRow]);
 
       const result = await revertToCheckpoint({
         checkpointId: 'cp-to-revert',
@@ -713,9 +617,6 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
       const { revertToCheckpoint, CheckpointNotFoundError } = await import(
         '../../src/services/checkpoint-service'
       );
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
 
       await expect(
         revertToCheckpoint({
@@ -753,48 +654,22 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
     // are user-authored content and must keep reverting normally — the same
     // exception capture applies.
 
-    function mockRevertFlow(
-      db: { query: unknown },
-      docs: MockVersionWithDocumentRow[],
-      documentInsertCount: number,
-    ): void {
-      let chain = vi
-        .mocked(db.query as ReturnType<typeof vi.fn>)
-        .mockResolvedValueOnce({ rows: [createMockCheckpointRow({ id: 'cp-old', parent_checkpoint_id: null })] }) // getCheckpoint
-        .mockResolvedValueOnce({ rows: docs }) // resolveCheckpointDocuments
-        .mockResolvedValueOnce({ rows: [] }) // resolveCheckpointDeletions
-        .mockResolvedValueOnce({ rows: [] }); // BEGIN
-      for (let i = 0; i < documentInsertCount; i++) {
-        chain = chain.mockResolvedValueOnce({ rows: [] }); // document_versions INSERT(s)
-      }
-      chain
-        .mockResolvedValueOnce({ rows: [] }) // getStructuresAtCheckpoint
-        .mockResolvedValueOnce({ rows: [] }) // DELETE structures
-        .mockResolvedValueOnce({ rows: [] }) // INSERT structures
-        .mockResolvedValueOnce({ rows: [] }) // DELETE metadata
-        .mockResolvedValueOnce({ rows: [] }) // INSERT metadata
-        .mockResolvedValueOnce({ rows: [] }) // UPDATE checkpoint status
-        .mockResolvedValueOnce({ rows: [] }) // COMMIT
-        .mockResolvedValueOnce({ rows: [] }) // createCheckpoint BEGIN
-        .mockResolvedValueOnce({ rows: [createMockInsertRow({ id: 'cp-after-revert' })] }) // INSERT with CTE
-        .mockResolvedValueOnce({ rows: [] }) // get latest versions
-        .mockResolvedValueOnce({ rows: [] }) // INSERT structures
-        .mockResolvedValueOnce({ rows: [] }) // INSERT metadata
-        .mockResolvedValueOnce({ rows: [] }); // COMMIT
+    function stubRevertFlow(docs: MockVersionWithDocumentRow[]): void {
+      database.on(checkpoints).select.returnsRaw([
+        createMockCheckpointRow({ id: 'cp-old', parentCheckpointId: null }),
+      ]);
+      database.on(documentVersions).select.returnsRaw(docs);
+      database.on(checkpoints).insert.returnsRaw([
+        createMockInsertRow({ id: 'cp-after-revert' }),
+      ]);
     }
 
-    function documentVersionInsertCalls(db: { query: unknown }): unknown[][] {
-      return vi
-        .mocked(db.query as ReturnType<typeof vi.fn>)
-        .mock.calls.filter(
-          (call) =>
-            typeof call[0] === 'string' && (call[0]).includes('INSERT INTO app.document_versions'),
-        );
+    function documentVersionInsertCalls(): RecordedCall[] {
+      return database.calls(documentVersions).insert;
     }
 
     it('excludes registry documents from a batch revert and reports them as skipped', async () => {
       const { revertToCheckpoint } = await import('../../src/services/checkpoint-service');
-      const db = await import('../../src/db');
 
       const docs = [
         createMockVersionWithDocument({ document_id: 'doc-1', document_path: 'pages/home' }),
@@ -803,7 +678,7 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
         createMockVersionWithDocument({ document_id: 'doc-4', document_path: '_registry/components/heroblock' }),
         createMockVersionWithDocument({ document_id: 'doc-5', document_path: '_registry/index' }),
       ];
-      mockRevertFlow(db, docs, 1);
+      stubRevertFlow(docs);
 
       const result = await revertToCheckpoint({
         checkpointId: 'cp-old',
@@ -814,18 +689,15 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
       expect(result.documentsReverted).toBe(3);
       expect(result.documentsSkipped).toBe(2);
 
-      const [bulkInsert] = documentVersionInsertCalls(db);
-      const sql = bulkInsert[0] as string;
-      expect(sql).toContain('JOIN app.documents');
-      expect(sql).toContain('NOT LIKE');
-      const params = bulkInsert[1] as unknown[];
-      expect(params).toContain('\\_registry/%');
-      expect(params).toContain('\\_registry/templates/%');
+      const [bulkInsert] = documentVersionInsertCalls();
+      expect(bulkInsert.sql).toContain('JOIN app.documents');
+      expect(bulkInsert.sql).toContain('NOT LIKE');
+      expect(bulkInsert.params).toContain('\\_registry/%');
+      expect(bulkInsert.params).toContain('\\_registry/templates/%');
     });
 
     it('keeps registry template documents revertible', async () => {
       const { revertToCheckpoint } = await import('../../src/services/checkpoint-service');
-      const db = await import('../../src/db');
 
       const docs = [
         createMockVersionWithDocument({ document_id: 'doc-1', document_path: 'pages/home' }),
@@ -833,7 +705,7 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
         createMockVersionWithDocument({ document_id: 'doc-3', document_path: '_registry/templates/press-release' }),
         createMockVersionWithDocument({ document_id: 'doc-4', document_path: '_registry/components/heroblock' }),
       ];
-      mockRevertFlow(db, docs, 1);
+      stubRevertFlow(docs);
 
       const result = await revertToCheckpoint({
         checkpointId: 'cp-old',
@@ -851,7 +723,6 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
       // revert (migration 068 moved them). They are user-derived content and
       // must revert like any page.
       const { revertToCheckpoint } = await import('../../src/services/checkpoint-service');
-      const db = await import('../../src/db');
 
       const docs = [
         createMockVersionWithDocument({ document_id: 'doc-1', document_path: 'pages/home' }),
@@ -859,7 +730,7 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
         createMockVersionWithDocument({ document_id: 'doc-3', document_path: '_queries/blog' }),
         createMockVersionWithDocument({ document_id: 'doc-4', document_path: '_registry/index' }),
       ];
-      mockRevertFlow(db, docs, 1);
+      stubRevertFlow(docs);
 
       const result = await revertToCheckpoint({
         checkpointId: 'cp-old',
@@ -873,7 +744,6 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
 
     it('applies the batch threshold to the filtered count, not the raw row count', async () => {
       const { revertToCheckpoint } = await import('../../src/services/checkpoint-service');
-      const db = await import('../../src/db');
 
       // 4 raw rows would take the batch path; only 2 survive filtering, so
       // the per-document path must be used, inserting exactly the survivors.
@@ -883,7 +753,7 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
         createMockVersionWithDocument({ document_id: 'doc-3', document_path: '_registry/components/heroblock' }),
         createMockVersionWithDocument({ document_id: 'doc-4', document_path: '_registry/index' }),
       ];
-      mockRevertFlow(db, docs, 2);
+      stubRevertFlow(docs);
 
       const result = await revertToCheckpoint({
         checkpointId: 'cp-old',
@@ -894,21 +764,19 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
       expect(result.documentsReverted).toBe(2);
       expect(result.documentsSkipped).toBe(2);
 
-      const inserts = documentVersionInsertCalls(db);
+      const inserts = documentVersionInsertCalls();
       expect(inserts).toHaveLength(2);
-      const insertedDocIds = inserts.map((call) => (call[1] as unknown[])[0]);
-      expect(insertedDocIds).toEqual(['doc-1', 'doc-2']);
+      expect(inserts.map((call) => call.params[0])).toEqual(['doc-1', 'doc-2']);
     });
 
     it('restores structures but writes no document versions when a checkpoint holds only registry documents', async () => {
       const { revertToCheckpoint } = await import('../../src/services/checkpoint-service');
-      const db = await import('../../src/db');
 
       const docs = [
         createMockVersionWithDocument({ document_id: 'doc-1', document_path: '_registry/components/heroblock' }),
         createMockVersionWithDocument({ document_id: 'doc-2', document_path: '_registry/index' }),
       ];
-      mockRevertFlow(db, docs, 0);
+      stubRevertFlow(docs);
 
       const result = await revertToCheckpoint({
         checkpointId: 'cp-old',
@@ -918,20 +786,19 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
 
       expect(result.documentsReverted).toBe(0);
       expect(result.documentsSkipped).toBe(2);
-      expect(documentVersionInsertCalls(db)).toHaveLength(0);
+      expect(documentVersionInsertCalls()).toHaveLength(0);
       expect(result.checkpoint.id).toBe('cp-after-revert');
     });
 
     it('warns when registry documents are skipped', async () => {
       const { revertToCheckpoint } = await import('../../src/services/checkpoint-service');
-      const db = await import('../../src/db');
       const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
 
       const docs = [
         createMockVersionWithDocument({ document_id: 'doc-1', document_path: 'pages/home' }),
         createMockVersionWithDocument({ document_id: 'doc-2', document_path: '_registry/index' }),
       ];
-      mockRevertFlow(db, docs, 1);
+      stubRevertFlow(docs);
 
       await revertToCheckpoint({
         checkpointId: 'cp-old',
@@ -945,14 +812,13 @@ describe('Phase 6.1-6.2: Checkpoint Scaling Optimizations', () => {
 
     it('does not warn when nothing is skipped', async () => {
       const { revertToCheckpoint } = await import('../../src/services/checkpoint-service');
-      const db = await import('../../src/db');
       const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
 
       const docs = [
         createMockVersionWithDocument({ document_id: 'doc-1', document_path: 'pages/home' }),
         createMockVersionWithDocument({ document_id: 'doc-2', document_path: 'pages/about' }),
       ];
-      mockRevertFlow(db, docs, 2);
+      stubRevertFlow(docs);
 
       await revertToCheckpoint({
         checkpointId: 'cp-old',

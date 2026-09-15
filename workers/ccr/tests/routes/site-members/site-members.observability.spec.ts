@@ -11,6 +11,7 @@ import type { AuthenticatedPrincipal } from '../../../src/types';
 import type { MASClient } from '../../../src/services/mas-client';
 import { resetSiteRosterCacheForTests } from '../../../src/services/mas-roster-cache';
 import { makeBranch } from '../../helpers/branch';
+import { stubDatabase } from '../../__stubs__/database';
 
 const logger = vi.hoisted(() => ({
   info: vi.fn(),
@@ -23,10 +24,6 @@ vi.mock('@pantheon-systems/p1-telemetry', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@pantheon-systems/p1-telemetry')>();
   return { ...actual, getLogger: () => logger };
 });
-
-vi.mock('../../../src/db', () => ({
-  query: vi.fn(),
-}));
 
 vi.mock('../../../src/services/branch-service', () => ({
   getMainBranch: vi.fn(),
@@ -73,13 +70,12 @@ describe('site members served log line', () => {
 
     const branches = await import('../../../src/services/branch-service');
     const agentRoles = await import('../../../src/services/agent-site-role-service');
-    const db = await import('../../../src/db');
+    stubDatabase();
 
     vi.mocked(branches.getMainBranch).mockResolvedValue(
       makeBranch({ id: 'branch-main', siteId: 'site-1' }),
     );
     vi.mocked(agentRoles.listRolesBySite).mockResolvedValue([]);
-    vi.mocked(db.query).mockResolvedValue({ rows: [] });
   });
 
   afterEach(() => {

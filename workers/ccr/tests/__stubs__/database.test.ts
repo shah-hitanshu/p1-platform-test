@@ -25,6 +25,26 @@ describe('stubDatabase', () => {
     expect(rows).toEqual([]);
   });
 
+  it('answers by the parameters a query binds when one table serves two questions', async () => {
+    const { db, on } = stubDatabase();
+    on(sites).select.whenBound(['site-1']).returns([{ id: 'site-1', name: 'Docs' }]);
+    on(sites).select.whenBound(['site-2']).returns([{ id: 'site-2', name: 'Blog' }]);
+
+    expect(await db.select({ id: sites.id, name: sites.name }).from(sites).where(eq(sites.id, 'site-2')))
+      .toEqual([{ id: 'site-2', name: 'Blog' }]);
+    expect(await db.select({ id: sites.id, name: sites.name }).from(sites).where(eq(sites.id, 'site-1')))
+      .toEqual([{ id: 'site-1', name: 'Docs' }]);
+  });
+
+  it('falls back to the unconditional stub when no bound stub matches', async () => {
+    const { db, on } = stubDatabase();
+    on(sites).select.returns([{ id: 'fallback' }]);
+    on(sites).select.whenBound(['site-1']).returns([{ id: 'site-1' }]);
+
+    expect(await db.select({ id: sites.id }).from(sites).where(eq(sites.id, 'site-9')))
+      .toEqual([{ id: 'fallback' }]);
+  });
+
   it('keeps stubs separate per operation', async () => {
     const { db, on } = stubDatabase();
     on(sites).select.returns([{ id: 'existing' }]);

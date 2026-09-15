@@ -7,6 +7,8 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
 import * as Y from 'yjs';
+import { stubDatabase, type DatabaseStub } from '../__stubs__/database';
+import { insertedVersion } from '../helpers/direct-sync';
 
 vi.mock('cloudflare:workers', () => ({
   DurableObject: class DurableObject {
@@ -21,7 +23,6 @@ vi.mock('cloudflare:workers', () => ({
 
 vi.mock('../../src/db', () => ({
   runWithConnection: vi.fn(),
-  query: vi.fn(),
   setDatabaseInstance: vi.fn(),
   getDatabaseInstance: vi.fn(),
   initializeDatabaseFromConnectionString: vi.fn(),
@@ -144,9 +145,11 @@ describe('HTTP /apply sync attribution', () => {
 
 describe('Direct-Hyperdrive flush attribution', () => {
   let originalFetch: typeof globalThis.fetch;
+  let database: DatabaseStub;
 
   beforeEach(async () => {
     vi.resetAllMocks();
+    database = stubDatabase();
     originalFetch = globalThis.fetch;
     globalThis.fetch = vi.fn().mockImplementation((url: string | URL | Request) => {
       const s = typeof url === 'string' ? url : url instanceof URL ? url.toString() : url.url;
@@ -163,7 +166,6 @@ describe('Direct-Hyperdrive flush attribution', () => {
     (db.runWithConnection as Mock).mockImplementation(
       async (_conn: string, _opts: unknown, fn: () => Promise<unknown>) => fn(),
     );
-    (db.query as Mock).mockResolvedValue({ rows: [], rowCount: 0 });
   });
 
   afterEach(() => {
@@ -172,7 +174,6 @@ describe('Direct-Hyperdrive flush attribution', () => {
 
   it('writes the resolved dbUserId to created_by_id via the direct INSERT', async () => {
     const { DocumentSession } = await import('../../src/durable-objects/document-session');
-    const db = await import('../../src/db');
     const mockState = createMockState();
     const session = new DocumentSession(
       mockState,
@@ -198,12 +199,8 @@ describe('Direct-Hyperdrive flush attribution', () => {
       timestamp: Date.now(),
     }));
 
-    const insert = (db.query as Mock).mock.calls.find(
-      (c: unknown[]) => typeof c[0] === 'string' && (c[0]).includes('INSERT INTO app.document_versions'),
-    );
-    if (insert === undefined) throw new Error('expected direct INSERT into document_versions');
-    // params: [documentId, branchId, snapshot, created_by_id, created_by_type]
-    expect((insert[1] as unknown[])[3]).toBe(DB_USER_ID);
-    expect((insert[1] as unknown[])[3]).not.toBe(RAW_SUBJECT);
+    const { createdById } = insertedVersion(database);
+    expect(createdById).toBe(DB_USER_ID);
+    expect(createdById).not.toBe(RAW_SUBJECT);
   });
 });

@@ -9,8 +9,10 @@
  */
 
 import { getLogger } from '@pantheon-systems/p1-telemetry';
+import { asc, eq, sql } from 'drizzle-orm';
 import { mapPantheonRole, maxRole } from '../auth/roles';
-import { query } from '../db';
+import { db } from '../db/scope';
+import { users, userSiteRoles } from '../db/schema';
 import type { AgentSiteRole, PantheonRole } from '../types';
 import { listRolesBySite } from './agent-site-role-service';
 import type { MASClient } from './mas-client';
@@ -57,14 +59,14 @@ export interface SiteMembers {
 /** Members keyed by user id, so two rows for one person can be folded. */
 type MemberIndex = Map<string, SiteMemberUser>;
 
-/** The LEFT JOIN, not the columns, is why name, email and avatar_url are nullable here. */
+/** The LEFT JOIN, not the columns, is why name, email and avatarUrl are nullable here. */
 interface MemberRow {
-  user_id: string;
+  userId: string;
   role: PantheonRole;
   source: string;
   name: string | null;
   email: string | null;
-  avatar_url: string | null;
+  avatarUrl: string | null;
 }
 
 /** The agent half shares no input with the human half, so the two I/O paths run together. */
@@ -118,34 +120,40 @@ export function normalizeSource(source: string): SiteMemberSource {
  * planner.
  */
 async function loadLocalMembers(siteId: string): Promise<MemberIndex> {
-  const result = await query<MemberRow>(
-    `SELECT usr.user_id, usr.role, usr.source,
-            u.name, u.email, u.avatar_url
-     FROM app.user_site_roles usr
-     LEFT JOIN app.users u ON u.id::text = usr.user_id
-     WHERE usr.site_id = $1
-     ORDER BY usr.created_at ASC`,
-    [siteId],
-  );
+  // app.users.id is uuid and user_site_roles.user_id is text, so the join casts
+  // rather than comparing across types.
+  const rows: MemberRow[] = await db()
+    .select({
+      userId: userSiteRoles.userId,
+      role: sql<PantheonRole>`${userSiteRoles.role}`,
+      source: userSiteRoles.source,
+      name: users.name,
+      email: users.email,
+      avatarUrl: users.avatarUrl,
+    })
+    .from(userSiteRoles)
+    .leftJoin(users, eq(sql`${users.id}::text`, userSiteRoles.userId))
+    .where(eq(userSiteRoles.siteId, siteId))
+    .orderBy(asc(userSiteRoles.createdAt));
 
   const members: MemberIndex = new Map();
 
-  for (const row of result.rows) {
+  for (const row of rows) {
     const grant = { role: row.role, source: normalizeSource(row.source) };
-    const existing = members.get(row.user_id);
+    const existing = members.get(row.userId);
 
     if (existing === undefined) {
-      members.set(row.user_id, {
-        id: row.user_id,
+      members.set(row.userId, {
+        id: row.userId,
         name: row.name,
         email: row.email,
-        avatar: row.avatar_url,
+        avatar: row.avatarUrl,
         ...grant,
       });
       continue;
     }
 
-    members.set(row.user_id, { ...existing, ...strongerGrant(existing, grant) });
+    members.set(row.userId, { ...existing, ...strongerGrant(existing, grant) });
   }
 
   return members;
@@ -205,19 +213,20 @@ async function mergeUpstreamMembers(
 async function hydrateIntroduced(userIds: string[], members: MemberIndex): Promise<void> {
   if (userIds.length === 0) return;
 
-  const result = await query<{
-    id: string;
-    name: string | null;
-    email: string | null;
-    avatar_url: string | null;
-  }>(
-    `SELECT id::text AS id, name, email, avatar_url
-     FROM app.users
-     WHERE id::text = ANY($1)`,
-    [userIds],
-  );
+  // The ids arrive as text and the column is uuid. The array is bound through
+  // sql.param: interpolated directly, the sql tag spreads it into a row
+  // constructor, which ANY cannot read as an array.
+  const rows = await db()
+    .select({
+      id: sql<string>`${users.id}::text`,
+      name: users.name,
+      email: users.email,
+      avatarUrl: users.avatarUrl,
+    })
+    .from(users)
+    .where(sql`${users.id}::text = ANY(${sql.param(userIds)}::text[])`);
 
-  for (const row of result.rows) {
+  for (const row of rows) {
     const member = members.get(row.id);
     if (member === undefined) continue;
 
@@ -225,7 +234,7 @@ async function hydrateIntroduced(userIds: string[], members: MemberIndex): Promi
       ...member,
       name: row.name,
       email: row.email,
-      avatar: row.avatar_url,
+      avatar: row.avatarUrl,
     });
   }
 }

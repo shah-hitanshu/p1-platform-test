@@ -10,12 +10,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { WorkflowSettings } from '../../src/types';
 import { stubDatabase, type DatabaseStub } from '../__stubs__/database';
-import { agents } from '../../src/db/schema';
-
-// Mock database module
-vi.mock('../../src/db', () => ({
-  query: vi.fn(),
-}));
+import { agents, agentSiteRoles, branches, sites, userSiteRoles } from '../../src/db/schema';
 
 // Mock the screenshot producer so we can assert when the trigger fires.
 vi.mock('../../src/queues/screenshot-producer', () => ({
@@ -23,7 +18,7 @@ vi.mock('../../src/queues/screenshot-producer', () => ({
 }));
 
 // Mock the branch-document-service and checkpoint-publish so root-page seeding
-// inside createSite does not add unexpected query() calls to the mock.
+// inside createSite does not add unexpected statements.
 vi.mock('../../src/services/branch-document-service', () => ({
   createDocumentOnBranch: vi.fn().mockResolvedValue({ document: { id: 'seeded-doc' }, version: { id: 'v1' } }),
 }));
@@ -31,30 +26,11 @@ vi.mock('../../src/services/checkpoint-publish', () => ({
   publishDocument: vi.fn().mockResolvedValue({ checkpoint: { id: 'cp1' } }),
 }));
 
-// listSites asks whether an agent principal is global before it builds the
-// sites query, so the sites query is not necessarily the first call.
-function sitesQueryCall(calls: readonly (readonly unknown[])[]): {
-  sql: string;
-  params: unknown[];
-} {
-  for (const call of calls) {
-    const [sql, params] = call;
-    if (typeof sql === 'string' && sql.includes('app.sites')) {
-      return { sql, params: (params as unknown[] | undefined) ?? [] };
-    }
-  }
-  throw new Error('listSites issued no query against app.sites');
-}
-
 describe('Phase 3.1: Site Service', () => {
-  // agent-site-role-service and user-site-role-service read through db()
-  // (Drizzle) now; stubDatabase() installs the fallback scope they resolve
-  // against, alongside the legacy query() mock createSite/listSites still
-  // use directly.
   let database: DatabaseStub;
 
   beforeEach(() => {
-    vi.resetAllMocks();
+    vi.clearAllMocks();
     database = stubDatabase();
   });
 
@@ -67,38 +43,64 @@ describe('Phase 3.1: Site Service', () => {
     approverMinRole: 'EDITOR',
   };
 
-  // Mock site row type (database format)
-  interface MockSiteRow {
-    id: string;
-    pantheon_site_id: string | null;
-    name: string;
-    workflow_settings: WorkflowSettings;
-    allowed_origins: string[] | null;
-    created_at: string;
-    updated_at: string;
-  }
-
-  // Helper to create a mock site row (database format)
-  function createMockSiteRow(overrides: Partial<MockSiteRow> = {}): MockSiteRow {
+  /** A site row in the schema's property names. */
+  function siteRow(overrides: Record<string, unknown> = {}): Record<string, unknown> {
     return {
       id: 'site-uuid-123',
-      pantheon_site_id: 'pantheon-site-abc',
+      pantheonSiteId: 'pantheon-site-abc',
+      organizationId: null,
       name: 'Test Site',
-      workflow_settings: defaultWorkflowSettings,
-      allowed_origins: [],
-      created_at: '2026-01-23T10:00:00.000Z',
-      updated_at: '2026-01-23T10:00:00.000Z',
+      url: null,
+      workflowSettings: defaultWorkflowSettings,
+      settings: {},
+      allowedOrigins: [],
+      createdAt: '2026-01-23T10:00:00.000Z',
+      updatedAt: '2026-01-23T10:00:00.000Z',
+      archivedAt: null,
       ...overrides,
     };
+  }
+
+  function mainBranchRow(siteId: string, createdById = 'creator-user-id'): Record<string, unknown> {
+    return {
+      id: 'branch-1',
+      siteId,
+      name: 'main',
+      description: 'Main branch',
+      status: 'active',
+      isMain: true,
+      sourceBranchId: null,
+      sourceCheckpointId: null,
+      createdById,
+      createdByType: 'user',
+      createdAt: '2026-01-23T10:00:00.000Z',
+      updatedAt: '2026-01-23T10:00:00.000Z',
+      archivedAt: null,
+    };
+  }
+
+  /** What an UPDATE assigns, without the RETURNING list that follows it. */
+  function setClause(sql: string): string {
+    return sql.slice(sql.indexOf(' set '), sql.indexOf(' where '));
+  }
+
+  /** A driver error carrying a SQLSTATE, as the stub will wrap it. */
+  function driverError(code: string): Error {
+    const error = new Error('constraint violation') as NodeJS.ErrnoException;
+    error.code = code;
+    return error;
+  }
+
+  /** The site insert and main-branch insert every creation makes. */
+  function stubSiteCreation(row: Record<string, unknown>): void {
+    database.on(sites).insert.returns([row]);
+    database.on(branches).insert.returns([mainBranchRow(row.id as string)]);
   }
 
   describe('createSite', () => {
     it('should create a site with all fields', async () => {
       const { createSite } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
-
-      const mockRow = createMockSiteRow();
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+      stubSiteCreation(siteRow());
 
       const result = await createSite({
         pantheonSiteId: 'pantheon-site-abc',
@@ -119,10 +121,7 @@ describe('Phase 3.1: Site Service', () => {
 
     it('should create a site with default workflow settings when not provided', async () => {
       const { createSite } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
-
-      const mockRow = createMockSiteRow();
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+      stubSiteCreation(siteRow());
 
       const result = await createSite({
         pantheonSiteId: 'pantheon-site-xyz',
@@ -134,15 +133,12 @@ describe('Phase 3.1: Site Service', () => {
 
     it('should merge partial workflow settings with defaults', async () => {
       const { createSite } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
-
       const customSettings: WorkflowSettings = {
         ...defaultWorkflowSettings,
         mergeApprovalMode: 'required',
         minApprovers: 3,
       };
-      const mockRow = createMockSiteRow({ workflow_settings: customSettings });
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+      stubSiteCreation(siteRow({ workflowSettings: customSettings }));
 
       const result = await createSite({
         pantheonSiteId: 'pantheon-site-xyz',
@@ -162,15 +158,7 @@ describe('Phase 3.1: Site Service', () => {
     it('should throw DuplicatePantheonSiteIdError for duplicate pantheonSiteId', async () => {
       const { createSite } = await import('../../src/services/site-service');
       const { DuplicatePantheonSiteIdError } = await import('../../src/services/errors');
-      const db = await import('../../src/db');
-
-      // Simulate unique constraint violation
-      const error = new Error('duplicate key value violates unique constraint');
-      (error as NodeJS.ErrnoException).code = '23505';
-      vi.mocked(db.query)
-        .mockResolvedValueOnce({ rows: [] }) // BEGIN
-        .mockRejectedValueOnce(error)        // INSERT site fails
-        .mockResolvedValueOnce({ rows: [] }); // ROLLBACK
+      database.on(sites).insert.rejects(driverError('23505'));
 
       await expect(
         createSite({
@@ -182,33 +170,23 @@ describe('Phase 3.1: Site Service', () => {
 
     it('should create a site without a pantheonSiteId, storing null', async () => {
       const { createSite } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
-
-      const mockRow = createMockSiteRow({ pantheon_site_id: null });
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+      stubSiteCreation(siteRow({ pantheonSiteId: null }));
 
       const result = await createSite({ name: 'Unlinked Site' });
 
       expect(result.pantheonSiteId).toBeUndefined();
-      const insertCall = vi
-        .mocked(db.query)
-        .mock.calls.find(([sql]) => sql.includes('INSERT INTO app.sites'));
-      expect(insertCall?.[1]?.[0]).toBeNull();
+      const [insert] = database.calls(sites).insert;
+      expect(insert?.params[0]).toBeNull();
     });
 
     it('should store null when pantheonSiteId is blank', async () => {
       const { createSite } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
-
-      const mockRow = createMockSiteRow({ pantheon_site_id: null });
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+      stubSiteCreation(siteRow({ pantheonSiteId: null }));
 
       await createSite({ pantheonSiteId: '   ', name: 'Site' });
 
-      const insertCall = vi
-        .mocked(db.query)
-        .mock.calls.find(([sql]) => sql.includes('INSERT INTO app.sites'));
-      expect(insertCall?.[1]?.[0]).toBeNull();
+      const [insert] = database.calls(sites).insert;
+      expect(insert?.params[0]).toBeNull();
     });
 
     it('should validate required name field', async () => {
@@ -225,34 +203,22 @@ describe('Phase 3.1: Site Service', () => {
 
     it('should include INSERT query with correct columns', async () => {
       const { createSite } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
-
-      const mockRow = createMockSiteRow();
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+      stubSiteCreation(siteRow());
 
       await createSite({
         pantheonSiteId: 'pantheon-site-abc',
         name: 'Test Site',
       });
 
-      expect(db.query).toHaveBeenCalledWith(
-        expect.stringContaining('INSERT INTO'),
+      const [insert] = database.calls(sites).insert;
+      expect(insert?.params).toEqual(
         expect.arrayContaining(['pantheon-site-abc', 'Test Site']),
       );
     });
 
     it('should insert owner role in user_site_roles when creatorId is provided', async () => {
       const { createSite } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
-
-      const mockRow = createMockSiteRow({ id: 'site-new-123' });
-      // BEGIN, INSERT site, INSERT user_site_roles, INSERT main branch, COMMIT
-      vi.mocked(db.query)
-        .mockResolvedValueOnce({ rows: [] })        // BEGIN
-        .mockResolvedValueOnce({ rows: [mockRow] })  // INSERT site
-        .mockResolvedValueOnce({ rows: [] })          // INSERT user_site_roles
-        .mockResolvedValueOnce({ rows: [{ id: 'branch-1', site_id: 'site-new-123', name: 'main', description: 'Main branch', status: 'active', is_main: true, source_branch_id: null, source_checkpoint_id: null, created_by_id: 'creator-user-id', created_by_type: 'user', created_at: '2026-01-23T10:00:00.000Z', updated_at: '2026-01-23T10:00:00.000Z' }] }) // INSERT main branch
-        .mockResolvedValueOnce({ rows: [] });         // COMMIT
+      stubSiteCreation(siteRow({ id: 'site-new-123' }));
 
       await createSite({
         pantheonSiteId: 'pantheon-site-abc',
@@ -260,45 +226,43 @@ describe('Phase 3.1: Site Service', () => {
         creatorId: 'creator-user-id',
       });
 
-      expect(db.query).toHaveBeenCalledTimes(5);
-      const calls = vi.mocked(db.query).mock.calls;
-      expect(calls[2][0]).toEqual(expect.stringContaining('INSERT INTO app.user_site_roles'));
-      expect(calls[2][1]).toEqual(['creator-user-id', 'site-new-123', 'owner', 'local', 'creator-user-id']);
+      // The site, the role grant and the main branch, and nothing else.
+      expect(database.statements).toHaveLength(3);
+      const [grant] = database.calls(userSiteRoles).insert;
+      expect(grant?.params).toEqual(
+        expect.arrayContaining(['creator-user-id', 'site-new-123', 'owner', 'local']),
+      );
     });
 
     it('should not insert any role when creatorId is omitted', async () => {
       const { createSite } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
-
-      const mockRow = createMockSiteRow();
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+      stubSiteCreation(siteRow());
 
       await createSite({
         pantheonSiteId: 'pantheon-site-abc',
         name: 'Test Site',
       });
 
-      // BEGIN, INSERT site, INSERT main branch, COMMIT — no role INSERT
-      expect(db.query).toHaveBeenCalledTimes(4);
-      const calls = vi.mocked(db.query).mock.calls;
-      const hasRoleInsert = calls.some(
-        (call) => typeof call[0] === 'string' && (call[0].includes('user_site_roles') || call[0].includes('agent_site_roles')),
-      );
-      expect(hasRoleInsert).toBe(false);
+      // The site and the main branch — no role grant.
+      expect(database.statements).toHaveLength(2);
+      expect(database.calls(userSiteRoles).insert).toHaveLength(0);
+      expect(database.calls(agentSiteRoles).insert).toHaveLength(0);
     });
 
     it('should insert admin role in agent_site_roles when createdByType is agent', async () => {
       const { createSite } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
-
-      const mockRow = createMockSiteRow({ id: 'site-agent-123' });
-      // BEGIN, INSERT site, INSERT agent_site_roles (grantRole), INSERT main branch, COMMIT
-      vi.mocked(db.query)
-        .mockResolvedValueOnce({ rows: [] })        // BEGIN
-        .mockResolvedValueOnce({ rows: [mockRow] })  // INSERT site
-        .mockResolvedValueOnce({ rows: [{ id: 'role-1', agent_id: 'agent-1', site_id: 'site-agent-123', role: 'admin', created_by_id: 'agent-1', created_at: '2026-01-23T10:00:00.000Z', revoked_at: null }] }) // INSERT agent_site_roles
-        .mockResolvedValueOnce({ rows: [{ id: 'branch-1', site_id: 'site-agent-123', name: 'main', description: 'Main branch', status: 'active', is_main: true, source_branch_id: null, source_checkpoint_id: null, created_by_id: 'agent-1', created_by_type: 'agent', created_at: '2026-01-23T10:00:00.000Z', updated_at: '2026-01-23T10:00:00.000Z' }] }) // INSERT main branch
-        .mockResolvedValueOnce({ rows: [] });         // COMMIT
+      stubSiteCreation(siteRow({ id: 'site-agent-123' }));
+      database.on(agentSiteRoles).insert.returns([
+        {
+          id: 'role-1',
+          agentId: 'agent-1',
+          siteId: 'site-agent-123',
+          role: 'admin',
+          createdById: 'agent-1',
+          createdAt: new Date('2026-01-23T10:00:00.000Z'),
+          revokedAt: null,
+        },
+      ]);
 
       await createSite({
         pantheonSiteId: 'pantheon-site-abc',
@@ -307,22 +271,27 @@ describe('Phase 3.1: Site Service', () => {
         createdByType: 'agent',
       });
 
-      expect(db.query).toHaveBeenCalledTimes(5);
-      const calls = vi.mocked(db.query).mock.calls;
-      expect(calls[2][0]).toEqual(expect.stringContaining('INSERT INTO app.agent_site_roles'));
+      expect(database.statements).toHaveLength(3);
+      const [grant] = database.calls(agentSiteRoles).insert;
+      expect(grant?.params).toEqual(
+        expect.arrayContaining(['agent-1', 'site-agent-123', 'admin']),
+      );
     });
 
     it('should not insert into user_site_roles when createdByType is agent', async () => {
       const { createSite } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
-
-      const mockRow = createMockSiteRow({ id: 'site-agent-456' });
-      vi.mocked(db.query)
-        .mockResolvedValueOnce({ rows: [] })        // BEGIN
-        .mockResolvedValueOnce({ rows: [mockRow] })  // INSERT site
-        .mockResolvedValueOnce({ rows: [{ id: 'role-1', agent_id: 'agent-1', site_id: 'site-agent-456', role: 'admin', created_by_id: 'agent-1', created_at: '2026-01-23T10:00:00.000Z', revoked_at: null }] }) // INSERT agent_site_roles
-        .mockResolvedValueOnce({ rows: [{ id: 'branch-1', site_id: 'site-agent-456', name: 'main', description: 'Main branch', status: 'active', is_main: true, source_branch_id: null, source_checkpoint_id: null, created_by_id: 'agent-1', created_by_type: 'agent', created_at: '2026-01-23T10:00:00.000Z', updated_at: '2026-01-23T10:00:00.000Z' }] }) // INSERT main branch
-        .mockResolvedValueOnce({ rows: [] });         // COMMIT
+      stubSiteCreation(siteRow({ id: 'site-agent-456' }));
+      database.on(agentSiteRoles).insert.returns([
+        {
+          id: 'role-1',
+          agentId: 'agent-1',
+          siteId: 'site-agent-456',
+          role: 'admin',
+          createdById: 'agent-1',
+          createdAt: new Date('2026-01-23T10:00:00.000Z'),
+          revokedAt: null,
+        },
+      ]);
 
       await createSite({
         pantheonSiteId: 'pantheon-site-abc',
@@ -331,21 +300,14 @@ describe('Phase 3.1: Site Service', () => {
         createdByType: 'agent',
       });
 
-      const calls = vi.mocked(db.query).mock.calls;
-      const hasUserRoleInsert = calls.some(
-        (call) => typeof call[0] === 'string' && call[0].includes('user_site_roles'),
-      );
-      expect(hasUserRoleInsert).toBe(false);
+      expect(database.calls(userSiteRoles).insert).toHaveLength(0);
     });
   });
 
   describe('getSite', () => {
     it('should return site when found', async () => {
       const { getSite } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
-
-      const mockRow = createMockSiteRow({ id: 'site-123' });
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+      database.on(sites).select.returns([siteRow({ id: 'site-123' })]);
 
       const result = await getSite('site-123');
 
@@ -357,9 +319,6 @@ describe('Phase 3.1: Site Service', () => {
 
     it('should return null when site not found', async () => {
       const { getSite } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
 
       const result = await getSite('non-existent-id');
 
@@ -368,8 +327,6 @@ describe('Phase 3.1: Site Service', () => {
 
     it('should include workflow settings in response', async () => {
       const { getSite } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
-
       const customSettings: WorkflowSettings = {
         mergeApprovalMode: 'required',
         minApprovers: 2,
@@ -377,8 +334,7 @@ describe('Phase 3.1: Site Service', () => {
         approverMode: 'explicit',
         approverMinRole: 'ADMIN',
       };
-      const mockRow = createMockSiteRow({ workflow_settings: customSettings });
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+      database.on(sites).select.returns([siteRow({ workflowSettings: customSettings })]);
 
       const result = await getSite('site-123');
 
@@ -387,26 +343,19 @@ describe('Phase 3.1: Site Service', () => {
 
     it('should query by site ID', async () => {
       const { getSite } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
 
       await getSite('site-uuid-456');
 
-      expect(db.query).toHaveBeenCalledWith(
-        expect.stringContaining('id'),
-        expect.arrayContaining(['site-uuid-456']),
-      );
+      const [call] = database.calls(sites).select;
+      expect(call?.sql).toContain('"id"');
+      expect(call?.params).toEqual(expect.arrayContaining(['site-uuid-456']));
     });
   });
 
   describe('getSiteByPantheonId', () => {
     it('should return site when found by Pantheon ID', async () => {
       const { getSiteByPantheonId } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
-
-      const mockRow = createMockSiteRow({ pantheon_site_id: 'my-pantheon-site' });
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+      database.on(sites).select.returns([siteRow({ pantheonSiteId: 'my-pantheon-site' })]);
 
       const result = await getSiteByPantheonId('my-pantheon-site');
 
@@ -416,9 +365,6 @@ describe('Phase 3.1: Site Service', () => {
 
     it('should return null when Pantheon ID not found', async () => {
       const { getSiteByPantheonId } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
 
       const result = await getSiteByPantheonId('non-existent-pantheon-id');
 
@@ -427,30 +373,21 @@ describe('Phase 3.1: Site Service', () => {
 
     it('should query by pantheon_site_id column', async () => {
       const { getSiteByPantheonId } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
 
       await getSiteByPantheonId('pantheon-abc');
 
-      expect(db.query).toHaveBeenCalledWith(
-        expect.stringContaining('pantheon_site_id'),
-        expect.arrayContaining(['pantheon-abc']),
-      );
+      const [call] = database.calls(sites).select;
+      expect(call?.sql).toContain('"pantheon_site_id"');
+      expect(call?.params).toEqual(expect.arrayContaining(['pantheon-abc']));
     });
   });
 
   describe('updateSite', () => {
     it('should update site name', async () => {
       const { updateSite } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
-
-      const updatedRow = createMockSiteRow({
-        id: 'site-123',
-        name: 'Updated Name',
-        updated_at: '2026-01-23T12:00:00.000Z',
-      });
-      vi.mocked(db.query).mockResolvedValue({ rows: [updatedRow] });
+      database.on(sites).update.returns([
+        siteRow({ id: 'site-123', name: 'Updated Name', updatedAt: '2026-01-23T12:00:00.000Z' }),
+      ]);
 
       const result = await updateSite('site-123', { name: 'Updated Name' });
 
@@ -460,17 +397,10 @@ describe('Phase 3.1: Site Service', () => {
 
     it('should update workflow settings partially', async () => {
       const { updateSite } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
-
-      const updatedSettings: WorkflowSettings = {
-        ...defaultWorkflowSettings,
-        minApprovers: 5,
-      };
-      const updatedRow = createMockSiteRow({
-        id: 'site-123',
-        workflow_settings: updatedSettings,
-      });
-      vi.mocked(db.query).mockResolvedValue({ rows: [updatedRow] });
+      database.on(sites).select.returns([siteRow({ id: 'site-123' })]);
+      database.on(sites).update.returns([
+        siteRow({ id: 'site-123', workflowSettings: { ...defaultWorkflowSettings, minApprovers: 5 } }),
+      ]);
 
       const result = await updateSite('site-123', {
         workflowSettings: { minApprovers: 5 },
@@ -481,22 +411,13 @@ describe('Phase 3.1: Site Service', () => {
 
     it('should merge workflow settings without overwriting entire object', async () => {
       const { updateSite } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
-
-      // First call returns current site state
-      const currentRow = createMockSiteRow({ id: 'site-123' });
-      // Second call returns updated site
-      const updatedRow = createMockSiteRow({
-        id: 'site-123',
-        workflow_settings: {
-          ...defaultWorkflowSettings,
-          mergeApprovalMode: 'required',
-        },
-      });
-
-      vi.mocked(db.query)
-        .mockResolvedValueOnce({ rows: [currentRow] })
-        .mockResolvedValueOnce({ rows: [updatedRow] });
+      database.on(sites).select.returns([siteRow({ id: 'site-123' })]);
+      database.on(sites).update.returns([
+        siteRow({
+          id: 'site-123',
+          workflowSettings: { ...defaultWorkflowSettings, mergeApprovalMode: 'required' },
+        }),
+      ]);
 
       const result = await updateSite('site-123', {
         workflowSettings: { mergeApprovalMode: 'required' },
@@ -505,73 +426,58 @@ describe('Phase 3.1: Site Service', () => {
       // Should preserve existing settings not being updated
       expect(result?.workflowSettings.allowSelfApproval).toBe(true);
       expect(result?.workflowSettings.mergeApprovalMode).toBe('required');
+      // The merge happens here, not in the statement: the whole object is
+      // written, serialized as jsonb.
+      const [update] = database.calls(sites).update;
+      expect(update?.params).toContain(
+        JSON.stringify({ ...defaultWorkflowSettings, mergeApprovalMode: 'required' }),
+      );
     });
 
     it('should update pantheonSiteId', async () => {
       const { updateSite } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
+      database.on(sites).update.returns([
+        siteRow({ id: 'site-123', pantheonSiteId: 'new-pantheon-id' }),
+      ]);
 
-      const updatedRow = createMockSiteRow({
-        id: 'site-123',
-        pantheon_site_id: 'new-pantheon-id',
-      });
-      vi.mocked(db.query).mockResolvedValue({ rows: [updatedRow] });
-
-      const result = await updateSite('site-123', {
-        pantheonSiteId: 'new-pantheon-id',
-      });
+      const result = await updateSite('site-123', { pantheonSiteId: 'new-pantheon-id' });
 
       expect(result?.pantheonSiteId).toBe('new-pantheon-id');
-      const [sql, values] = vi.mocked(db.query).mock.calls[0] ?? [];
-      expect(sql).toContain('pantheon_site_id = CASE');
-      expect(values).toContain('new-pantheon-id');
+      const [update] = database.calls(sites).update;
+      expect(update?.sql).toContain('"pantheon_site_id"');
+      expect(update?.params).toContain('new-pantheon-id');
     });
 
     it('should clear pantheonSiteId when null is passed', async () => {
       const { updateSite } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
-
-      const updatedRow = createMockSiteRow({
-        id: 'site-123',
-        pantheon_site_id: null,
-      });
-      vi.mocked(db.query).mockResolvedValue({ rows: [updatedRow] });
+      database.on(sites).update.returns([siteRow({ id: 'site-123', pantheonSiteId: null })]);
 
       const result = await updateSite('site-123', { pantheonSiteId: null });
 
       expect(result?.pantheonSiteId).toBeUndefined();
-      // The presence flag ($4) must be true so the CASE writes the null ($5).
-      const [, values] = vi.mocked(db.query).mock.calls[0] ?? [];
-      expect(values?.[3]).toBe(true);
-      expect(values?.[4]).toBeNull();
+      const [update] = database.calls(sites).update;
+      expect(update?.sql).toContain('"pantheon_site_id"');
+      expect(update?.params).toContain(null);
     });
 
     it('should leave pantheonSiteId untouched when omitted', async () => {
       const { updateSite } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
-
-      const updatedRow = createMockSiteRow({ id: 'site-123' });
-      vi.mocked(db.query).mockResolvedValue({ rows: [updatedRow] });
+      database.on(sites).update.returns([siteRow({ id: 'site-123' })]);
 
       await updateSite('site-123', { name: 'New Name' });
 
-      // The presence flag ($4) must be false so the CASE keeps the column.
-      const [, values] = vi.mocked(db.query).mock.calls[0] ?? [];
-      expect(values?.[3]).toBe(false);
+      // A column the caller did not name is not assigned at all. RETURNING
+      // still lists it, so only the SET clause answers this.
+      const [update] = database.calls(sites).update;
+      expect(setClause(update?.sql ?? '')).not.toContain('"pantheon_site_id"');
     });
 
     it('should update pantheonSiteId alongside workflowSettings', async () => {
       const { updateSite } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
-
-      const currentRow = createMockSiteRow({ id: 'site-123' });
-      const updatedRow = createMockSiteRow({
-        id: 'site-123',
-        pantheon_site_id: 'new-pantheon-id',
-      });
-      vi.mocked(db.query)
-        .mockResolvedValueOnce({ rows: [currentRow] })
-        .mockResolvedValueOnce({ rows: [updatedRow] });
+      database.on(sites).select.returns([siteRow({ id: 'site-123' })]);
+      database.on(sites).update.returns([
+        siteRow({ id: 'site-123', pantheonSiteId: 'new-pantheon-id' }),
+      ]);
 
       const result = await updateSite('site-123', {
         workflowSettings: { mergeApprovalMode: 'required' },
@@ -579,21 +485,18 @@ describe('Phase 3.1: Site Service', () => {
       });
 
       expect(result?.pantheonSiteId).toBe('new-pantheon-id');
-      const [sql, values] = vi.mocked(db.query).mock.calls[1] ?? [];
-      expect(sql).toContain('pantheon_site_id = CASE');
-      expect(values?.[3]).toBe(true);
-      expect(values?.[4]).toBe('new-pantheon-id');
-      expect(values?.[7]).toBe('site-123');
+      const [update] = database.calls(sites).update;
+      expect(update?.sql).toContain('"pantheon_site_id"');
+      expect(update?.sql).toContain('"workflow_settings"');
+      expect(update?.params).toEqual(
+        expect.arrayContaining(['new-pantheon-id', 'site-123']),
+      );
     });
 
     it('should throw DuplicatePantheonSiteIdError when the new id is taken', async () => {
       const { updateSite } = await import('../../src/services/site-service');
       const { DuplicatePantheonSiteIdError } = await import('../../src/services/errors');
-      const db = await import('../../src/db');
-
-      const error = new Error('duplicate key value violates unique constraint');
-      (error as NodeJS.ErrnoException).code = '23505';
-      vi.mocked(db.query).mockRejectedValue(error);
+      database.on(sites).update.rejects(driverError('23505'));
 
       await expect(
         updateSite('site-123', { pantheonSiteId: 'taken-id' }),
@@ -602,17 +505,11 @@ describe('Phase 3.1: Site Service', () => {
 
     it('should update updatedAt timestamp', async () => {
       const { updateSite } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
-
       const originalTime = '2026-01-23T10:00:00.000Z';
       const updatedTime = '2026-01-23T14:00:00.000Z';
-
-      const updatedRow = createMockSiteRow({
-        id: 'site-123',
-        created_at: originalTime,
-        updated_at: updatedTime,
-      });
-      vi.mocked(db.query).mockResolvedValue({ rows: [updatedRow] });
+      database.on(sites).update.returns([
+        siteRow({ id: 'site-123', createdAt: originalTime, updatedAt: updatedTime }),
+      ]);
 
       const result = await updateSite('site-123', { name: 'New Name' });
 
@@ -622,9 +519,6 @@ describe('Phase 3.1: Site Service', () => {
 
     it('should return null when site not found', async () => {
       const { updateSite } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
 
       const result = await updateSite('non-existent', { name: 'New Name' });
 
@@ -633,14 +527,14 @@ describe('Phase 3.1: Site Service', () => {
 
     it('should update both name and workflow settings in single call', async () => {
       const { updateSite } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
-
-      const updatedRow = createMockSiteRow({
-        id: 'site-123',
-        name: 'New Site Name',
-        workflow_settings: { ...defaultWorkflowSettings, minApprovers: 3 },
-      });
-      vi.mocked(db.query).mockResolvedValue({ rows: [updatedRow] });
+      database.on(sites).select.returns([siteRow({ id: 'site-123' })]);
+      database.on(sites).update.returns([
+        siteRow({
+          id: 'site-123',
+          name: 'New Site Name',
+          workflowSettings: { ...defaultWorkflowSettings, minApprovers: 3 },
+        }),
+      ]);
 
       const result = await updateSite('site-123', {
         name: 'New Site Name',
@@ -652,36 +546,25 @@ describe('Phase 3.1: Site Service', () => {
     });
 
     it('should clear allowedOrigins when passed an empty array', async () => {
-      // Verifies the COALESCE($2::text[], allowed_origins) path:
-      // passing [] should overwrite existing allowed_origins to empty (clear behaviour).
       const { updateSite } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
-
-      // The DB returns a row with allowed_origins = [] after the UPDATE
-      const updatedRow = createMockSiteRow({
-        id: 'site-123',
-        allowed_origins: [],
-      });
-      vi.mocked(db.query).mockResolvedValue({ rows: [updatedRow] });
+      database.on(sites).update.returns([siteRow({ id: 'site-123', allowedOrigins: [] })]);
 
       const result = await updateSite('site-123', { allowedOrigins: [] });
 
       expect(result).not.toBeNull();
       expect(result?.allowedOrigins).toEqual([]);
+      // An empty array is a value, not an omission: it overwrites.
+      const [update] = database.calls(sites).update;
+      expect(update?.sql).toContain('"allowed_origins"');
     });
   });
 
   describe('deleteSite', () => {
     it('should delete site and related data when found', async () => {
       const { deleteSite } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
-
-      // Mock getSite returns a site
-      const mockSiteRow = createMockSiteRow({ id: 'site-123' });
-      vi.mocked(db.query)
-        .mockResolvedValueOnce({ rows: [mockSiteRow] }) // getSite
-        .mockResolvedValueOnce({ rows: [{ id: 'branch-1' }] }) // get branch IDs
-        .mockResolvedValue({ rows: [], rowCount: 1 }); // all delete queries
+      database.on(sites).select.returns([siteRow({ id: 'site-123' })]);
+      database.on(branches).select.returns([{ id: 'branch-1' }]);
+      database.on(sites).delete.returns([{ id: 'site-123' }]);
 
       const result = await deleteSite('site-123');
 
@@ -690,10 +573,6 @@ describe('Phase 3.1: Site Service', () => {
 
     it('should return false when site not found', async () => {
       const { deleteSite } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
-
-      // Mock getSite returns no site
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
 
       const result = await deleteSite('non-existent');
 
@@ -702,40 +581,40 @@ describe('Phase 3.1: Site Service', () => {
 
     it('should cascade delete branches and related data', async () => {
       const { deleteSite } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
-
-      const mockSiteRow = createMockSiteRow({ id: 'site-to-delete' });
-      vi.mocked(db.query)
-        .mockResolvedValueOnce({ rows: [mockSiteRow] }) // getSite
-        .mockResolvedValueOnce({ rows: [{ id: 'branch-1' }, { id: 'branch-2' }] }) // get branch IDs
-        .mockResolvedValue({ rows: [], rowCount: 1 }); // all subsequent delete queries
+      database.on(sites).select.returns([siteRow({ id: 'site-to-delete' })]);
+      database.on(branches).select.returns([{ id: 'branch-1' }, { id: 'branch-2' }]);
+      database.on(sites).delete.returns([{ id: 'site-to-delete' }]);
 
       await deleteSite('site-to-delete');
 
-      // Verify final DELETE on sites table was called
-      const calls = vi.mocked(db.query).mock.calls;
-      const deleteCall = calls.find(
-        (call) =>
-          typeof call[0] === 'string' &&
-          call[0].includes('DELETE') &&
-          call[0].includes('app.sites'),
+      // Everything that references the site goes first, the site itself last.
+      const deleted = database.statements
+        .filter((statement) => statement.sql.startsWith('delete from'))
+        .map((statement) => statement.sql);
+      expect(deleted[deleted.length - 1]).toContain('"app"."sites"');
+      expect(deleted).toEqual(
+        expect.arrayContaining([
+          expect.stringContaining('"app"."merge_requests"'),
+          expect.stringContaining('"app"."branch_document_paths"'),
+          expect.stringContaining('"app"."checkpoints"'),
+          expect.stringContaining('"app"."document_versions"'),
+          expect.stringContaining('"app"."branches"'),
+          expect.stringContaining('"app"."documents"'),
+        ]),
       );
-      expect(deleteCall).toBeDefined();
-      expect(deleteCall?.[1]).toContain('site-to-delete');
+      const [siteDelete] = database.calls(sites).delete;
+      expect(siteDelete?.params).toContain('site-to-delete');
     });
   });
 
   describe('listSites', () => {
     it('should return sites for the given user', async () => {
       const { listSites } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
-
-      const mockRows = [
-        createMockSiteRow({ id: 'site-1', name: 'Site 1' }),
-        createMockSiteRow({ id: 'site-2', name: 'Site 2' }),
-        createMockSiteRow({ id: 'site-3', name: 'Site 3' }),
-      ];
-      vi.mocked(db.query).mockResolvedValue({ rows: mockRows });
+      database.on(sites).select.returns([
+        siteRow({ id: 'site-1', name: 'Site 1' }),
+        siteRow({ id: 'site-2', name: 'Site 2' }),
+        siteRow({ id: 'site-3', name: 'Site 3' }),
+      ]);
 
       const result = await listSites({ principalId: 'user-1' });
 
@@ -747,55 +626,36 @@ describe('Phase 3.1: Site Service', () => {
 
     it('should support limit option', async () => {
       const { listSites } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
-
-      const mockRows = [
-        createMockSiteRow({ id: 'site-1' }),
-        createMockSiteRow({ id: 'site-2' }),
-      ];
-      vi.mocked(db.query).mockResolvedValue({ rows: mockRows });
 
       await listSites({ principalId: 'user-1', limit: 2 });
 
-      expect(db.query).toHaveBeenCalledWith(
-        expect.stringContaining('LIMIT'),
-        expect.arrayContaining([2]),
-      );
+      const [call] = database.calls(sites).select;
+      expect(call?.sql).toMatch(/limit/i);
+      expect(call?.params).toEqual(expect.arrayContaining([2]));
     });
 
     it('should support offset option', async () => {
       const { listSites } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
 
       await listSites({ principalId: 'user-1', offset: 10 });
 
-      expect(db.query).toHaveBeenCalledWith(
-        expect.stringContaining('OFFSET'),
-        expect.arrayContaining([10]),
-      );
+      const [call] = database.calls(sites).select;
+      expect(call?.sql).toMatch(/offset/i);
+      expect(call?.params).toEqual(expect.arrayContaining([10]));
     });
 
     it('should support both limit and offset options', async () => {
       const { listSites } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
 
       await listSites({ principalId: 'user-1', limit: 25, offset: 50 });
 
-      expect(db.query).toHaveBeenCalledWith(
-        expect.stringMatching(/LIMIT.*OFFSET|OFFSET.*LIMIT/),
-        expect.arrayContaining([25, 50]),
-      );
+      const [call] = database.calls(sites).select;
+      expect(call?.sql).toMatch(/limit.*offset|offset.*limit/i);
+      expect(call?.params).toEqual(expect.arrayContaining([25, 50]));
     });
 
     it('should return empty array when user has no sites', async () => {
       const { listSites } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
 
       const result = await listSites({ principalId: 'user-1' });
 
@@ -804,16 +664,9 @@ describe('Phase 3.1: Site Service', () => {
 
     it('should map all rows to Site objects', async () => {
       const { listSites } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
-
-      const mockRows = [
-        createMockSiteRow({
-          id: 'site-1',
-          pantheon_site_id: 'pantheon-1',
-          name: 'First Site',
-        }),
-      ];
-      vi.mocked(db.query).mockResolvedValue({ rows: mockRows });
+      database.on(sites).select.returns([
+        siteRow({ id: 'site-1', pantheonSiteId: 'pantheon-1', name: 'First Site' }),
+      ]);
 
       const result = await listSites({ principalId: 'user-1' });
 
@@ -826,41 +679,29 @@ describe('Phase 3.1: Site Service', () => {
 
     it('should filter by principalId when provided', async () => {
       const { listSites } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
-
-      const mockRows = [
-        createMockSiteRow({ id: 'site-1', name: 'My Site' }),
-      ];
-      vi.mocked(db.query).mockResolvedValue({ rows: mockRows });
+      database.on(sites).select.returns([siteRow({ id: 'site-1', name: 'My Site' })]);
 
       const result = await listSites({ principalId: 'user-abc' });
 
       expect(result).toHaveLength(1);
-      expect(db.query).toHaveBeenCalledWith(
-        expect.stringContaining('INNER JOIN app.user_site_roles'),
-        expect.arrayContaining(['user-abc']),
-      );
+      const [call] = database.calls(sites).select;
+      expect(call?.sql).toContain('"app"."user_site_roles"');
+      expect(call?.params).toEqual(expect.arrayContaining(['user-abc']));
     });
 
     it('should support pagination with principalId filtering', async () => {
       const { listSites } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
 
       await listSites({ principalId: 'user-abc', limit: 10, offset: 20 });
 
-      const sql = vi.mocked(db.query).mock.calls[0][0];
-      expect(sql).toContain('INNER JOIN app.user_site_roles');
-      expect(sql).toContain('LIMIT');
-      expect(sql).toContain('OFFSET');
+      const [call] = database.calls(sites).select;
+      expect(call?.sql).toContain('"app"."user_site_roles"');
+      expect(call?.sql).toMatch(/limit/i);
+      expect(call?.sql).toMatch(/offset/i);
     });
 
     it('should return empty array when user has no site roles', async () => {
       const { listSites } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
 
       const result = await listSites({ principalId: 'user-no-sites' });
 
@@ -873,10 +714,7 @@ describe('Phase 3.1: Site Service', () => {
     describe('includeAllOrgSites', () => {
       it('should list every site in the organization without joining site roles', async () => {
         const { listSites } = await import('../../src/services/site-service');
-        const db = await import('../../src/db');
-
-        const mockRows = [createMockSiteRow({ id: 'site-1', name: 'Someone Elses Site' })];
-        vi.mocked(db.query).mockResolvedValue({ rows: mockRows });
+        database.on(sites).select.returns([siteRow({ id: 'site-1', name: 'Someone Elses Site' })]);
 
         const result = await listSites({
           principalId: 'superadmin-with-no-role-here',
@@ -885,18 +723,15 @@ describe('Phase 3.1: Site Service', () => {
         });
 
         expect(result).toHaveLength(1);
-        const [sql, params] = vi.mocked(db.query).mock.calls[0];
-        expect(sql).not.toContain('user_site_roles');
-        expect(sql).toContain('s.organization_id = $1');
+        const [call] = database.calls(sites).select;
+        expect(call?.sql).not.toContain('user_site_roles');
+        expect(call?.sql).toContain('"organization_id"');
         // The principal is not a bind parameter on this path.
-        expect(params).toEqual(['org-1']);
+        expect(call?.params).toEqual(['org-1']);
       });
 
       it('should still filter by archived status and paginate', async () => {
         const { listSites } = await import('../../src/services/site-service');
-        const db = await import('../../src/db');
-
-        vi.mocked(db.query).mockResolvedValue({ rows: [] });
 
         await listSites({
           principalId: 'admin-1',
@@ -907,91 +742,68 @@ describe('Phase 3.1: Site Service', () => {
           offset: 20,
         });
 
-        const [sql, params] = vi.mocked(db.query).mock.calls[0];
-        expect(sql).toContain('s.archived_at IS NOT NULL');
-        expect(sql).toContain('LIMIT');
-        expect(sql).toContain('OFFSET');
-        expect(params).toEqual(['org-1', 10, 20]);
+        const [call] = database.calls(sites).select;
+        expect(call?.sql).toContain('"archived_at" is not null');
+        expect(call?.params).toEqual(['org-1', 10, 20]);
       });
 
       it('should keep the site-role join when the flag is not set', async () => {
         const { listSites } = await import('../../src/services/site-service');
-        const db = await import('../../src/db');
-
-        vi.mocked(db.query).mockResolvedValue({ rows: [] });
 
         await listSites({ principalId: 'user-abc', organizationId: 'org-1' });
 
-        const [sql, params] = vi.mocked(db.query).mock.calls[0];
-        expect(sql).toContain('INNER JOIN app.user_site_roles');
-        expect(params).toEqual(['user-abc', 'org-1']);
+        const [call] = database.calls(sites).select;
+        expect(call?.sql).toContain('"app"."user_site_roles"');
+        expect(call?.params).toEqual(['user-abc', 'org-1']);
       });
 
       it('should ignore the flag without an organizationId', async () => {
         const { listSites } = await import('../../src/services/site-service');
-        const db = await import('../../src/db');
-
-        vi.mocked(db.query).mockResolvedValue({ rows: [] });
 
         await listSites({ principalId: 'admin-1', includeAllOrgSites: true });
 
-        const [sql, params] = vi.mocked(db.query).mock.calls[0];
-        expect(sql).toContain('INNER JOIN app.user_site_roles');
-        expect(params).toEqual(['admin-1']);
+        const [call] = database.calls(sites).select;
+        expect(call?.sql).toContain('"app"."user_site_roles"');
+        expect(call?.params).toEqual(['admin-1']);
       });
     });
 
     it('should use DISTINCT to deduplicate multi-source roles', async () => {
       const { listSites } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
 
       await listSites({ principalId: 'user-abc' });
 
-      const sql = vi.mocked(db.query).mock.calls[0][0];
-      expect(sql).toContain('DISTINCT');
+      const [call] = database.calls(sites).select;
+      expect(call?.sql).toMatch(/select distinct/i);
     });
 
     it('should query agent_site_roles when principalType is agent', async () => {
       const { listSites } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
 
       await listSites({ principalId: 'agent-abc', principalType: 'agent' });
 
-      const { sql } = sitesQueryCall(vi.mocked(db.query).mock.calls);
-      expect(sql).toContain('INNER JOIN app.agent_site_roles');
-      expect(sql).toContain('revoked_at IS NULL');
-      expect(db.query).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.arrayContaining(['agent-abc']),
-      );
+      const [call] = database.calls(sites).select;
+      expect(call?.sql).toContain('"app"."agent_site_roles"');
+      expect(call?.sql).toContain('"revoked_at" is null');
+      expect(call?.params).toEqual(expect.arrayContaining(['agent-abc']));
     });
 
     it('should support pagination with agent principalType', async () => {
       const { listSites } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
 
       await listSites({ principalId: 'agent-abc', principalType: 'agent', limit: 10, offset: 20 });
 
-      const { sql } = sitesQueryCall(vi.mocked(db.query).mock.calls);
-      expect(sql).toContain('INNER JOIN app.agent_site_roles');
-      expect(sql).toContain('LIMIT');
-      expect(sql).toContain('OFFSET');
+      const [call] = database.calls(sites).select;
+      expect(call?.sql).toContain('"app"."agent_site_roles"');
+      expect(call?.sql).toMatch(/limit/i);
+      expect(call?.sql).toMatch(/offset/i);
     });
 
     // A global agent's implicit access is delegated from the acting user, so its
     // listing is that user's sites rather than its own grants.
     it('lists by the acting user, not the agent grant, for a global agent', async () => {
       const { listSites } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
-
       database.on(agents).select.returns([{ isGlobal: true }]);
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
 
       await listSites({
         principalId: 'agent-abc',
@@ -999,34 +811,28 @@ describe('Phase 3.1: Site Service', () => {
         actingUserId: 'db-user-xyz',
       });
 
-      const { sql, params } = sitesQueryCall(vi.mocked(db.query).mock.calls);
-      expect(sql).not.toContain('app.agent_site_roles');
-      expect(sql).toContain('INNER JOIN app.user_site_roles');
-      expect(params).toContain('db-user-xyz');
-      expect(params).not.toContain('agent-abc');
+      const [call] = database.calls(sites).select;
+      expect(call?.sql).not.toContain('agent_site_roles');
+      expect(call?.sql).toContain('"app"."user_site_roles"');
+      expect(call?.params).toContain('db-user-xyz');
+      expect(call?.params).not.toContain('agent-abc');
     });
 
     // Without an acting user there is nothing to bound the widening, so it must
     // not happen at all — one key would otherwise enumerate every site.
     it('does not widen for a global agent with no acting user', async () => {
       const { listSites } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
 
       await listSites({ principalId: 'agent-abc', principalType: 'agent' });
 
-      const { sql, params } = sitesQueryCall(vi.mocked(db.query).mock.calls);
-      expect(sql).toContain('INNER JOIN app.agent_site_roles');
-      expect(params).toContain('agent-abc');
+      const [call] = database.calls(sites).select;
+      expect(call?.sql).toContain('"app"."agent_site_roles"');
+      expect(call?.params).toContain('agent-abc');
     });
 
-    it('numbers the org and acting-user placeholders independently', async () => {
+    it('binds the organization and the acting user as separate parameters', async () => {
       const { listSites } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
-
       database.on(agents).select.returns([{ isGlobal: true }]);
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
 
       await listSites({
         principalId: 'agent-abc',
@@ -1035,10 +841,8 @@ describe('Phase 3.1: Site Service', () => {
         organizationId: 'org-1',
       });
 
-      const { sql, params } = sitesQueryCall(vi.mocked(db.query).mock.calls);
-      expect(sql).toContain('s.organization_id = $1');
-      expect(sql).toContain('usr.user_id = $2');
-      expect(params).toEqual(['org-1', 'db-user-xyz']);
+      const [call] = database.calls(sites).select;
+      expect(call?.params).toEqual(['db-user-xyz', 'org-1']);
     });
 
     // ---------------------------------------------------------------------
@@ -1049,9 +853,6 @@ describe('Phase 3.1: Site Service', () => {
     describe('PCC-3190: agent + actingUserId intersection', () => {
       it('should join user_site_roles when actingUserId is provided with agent principal', async () => {
         const { listSites } = await import('../../src/services/site-service');
-        const db = await import('../../src/db');
-
-        vi.mocked(db.query).mockResolvedValue({ rows: [] });
 
         await listSites({
           principalId: 'agent-abc',
@@ -1059,40 +860,32 @@ describe('Phase 3.1: Site Service', () => {
           actingUserId: 'db-user-xyz',
         });
 
-        const { sql, params } = sitesQueryCall(vi.mocked(db.query).mock.calls);
-
+        const [call] = database.calls(sites).select;
         // Both joins must be present so the result intersects agent + user roles.
-        expect(sql).toContain('INNER JOIN app.agent_site_roles');
-        expect(sql).toContain('INNER JOIN app.user_site_roles');
+        expect(call?.sql).toContain('"app"."agent_site_roles"');
+        expect(call?.sql).toContain('"app"."user_site_roles"');
         // Both ids must be in the parameter list.
-        expect(params).toContain('agent-abc');
-        expect(params).toContain('db-user-xyz');
+        expect(call?.params).toContain('agent-abc');
+        expect(call?.params).toContain('db-user-xyz');
       });
 
       it('should NOT join user_site_roles when actingUserId is absent (legacy agent path)', async () => {
         const { listSites } = await import('../../src/services/site-service');
-        const db = await import('../../src/db');
-
-        vi.mocked(db.query).mockResolvedValue({ rows: [] });
 
         await listSites({
           principalId: 'agent-abc',
           principalType: 'agent',
         });
 
-        const { sql } = sitesQueryCall(vi.mocked(db.query).mock.calls);
-
-        // Legacy agent calls (no acting user) keep the original SQL shape so
-        // direct agent traffic continues to work as before.
-        expect(sql).toContain('INNER JOIN app.agent_site_roles');
-        expect(sql).not.toContain('INNER JOIN app.user_site_roles');
+        const [call] = database.calls(sites).select;
+        // Legacy agent calls (no acting user) keep the original shape so direct
+        // agent traffic continues to work as before.
+        expect(call?.sql).toContain('"app"."agent_site_roles"');
+        expect(call?.sql).not.toContain('"app"."user_site_roles"');
       });
 
       it('should ignore actingUserId for user principals (not used in user-scoped flow)', async () => {
         const { listSites } = await import('../../src/services/site-service');
-        const db = await import('../../src/db');
-
-        vi.mocked(db.query).mockResolvedValue({ rows: [] });
 
         await listSites({
           principalId: 'user-1',
@@ -1100,21 +893,16 @@ describe('Phase 3.1: Site Service', () => {
           actingUserId: 'should-be-ignored',
         });
 
-        const sql = vi.mocked(db.query).mock.calls[0][0];
-        const params = vi.mocked(db.query).mock.calls[0][1];
-
+        const [call] = database.calls(sites).select;
         // User principals already filter by the user's own role table; the
         // actingUserId concept does not apply to them.
-        expect(sql).toContain('INNER JOIN app.user_site_roles');
-        expect(sql).not.toContain('app.agent_site_roles');
-        expect(params).not.toContain('should-be-ignored');
+        expect(call?.sql).toContain('"app"."user_site_roles"');
+        expect(call?.sql).not.toContain('agent_site_roles');
+        expect(call?.params).not.toContain('should-be-ignored');
       });
 
       it('should support pagination with agent + actingUserId intersection', async () => {
         const { listSites } = await import('../../src/services/site-service');
-        const db = await import('../../src/db');
-
-        vi.mocked(db.query).mockResolvedValue({ rows: [] });
 
         await listSites({
           principalId: 'agent-abc',
@@ -1124,18 +912,15 @@ describe('Phase 3.1: Site Service', () => {
           offset: 20,
         });
 
-        const { sql } = sitesQueryCall(vi.mocked(db.query).mock.calls);
-        expect(sql).toContain('INNER JOIN app.agent_site_roles');
-        expect(sql).toContain('INNER JOIN app.user_site_roles');
-        expect(sql).toContain('LIMIT');
-        expect(sql).toContain('OFFSET');
+        const [call] = database.calls(sites).select;
+        expect(call?.sql).toContain('"app"."agent_site_roles"');
+        expect(call?.sql).toContain('"app"."user_site_roles"');
+        expect(call?.sql).toMatch(/limit/i);
+        expect(call?.sql).toMatch(/offset/i);
       });
 
       it('should still respect agent_site_roles.revoked_at IS NULL when intersecting', async () => {
         const { listSites } = await import('../../src/services/site-service');
-        const db = await import('../../src/db');
-
-        vi.mocked(db.query).mockResolvedValue({ rows: [] });
 
         await listSites({
           principalId: 'agent-abc',
@@ -1143,10 +928,10 @@ describe('Phase 3.1: Site Service', () => {
           actingUserId: 'db-user-xyz',
         });
 
-        const { sql } = sitesQueryCall(vi.mocked(db.query).mock.calls);
+        const [call] = database.calls(sites).select;
         // The revoked_at filter must remain even with the user join, otherwise
         // revoked agent grants could come back through the intersection.
-        expect(sql).toContain('revoked_at IS NULL');
+        expect(call?.sql).toContain('"revoked_at" is null');
       });
     });
   });
@@ -1154,11 +939,9 @@ describe('Phase 3.1: Site Service', () => {
   describe('getSiteAllowedOrigins', () => {
     it('should return string[] for a known site with origins configured', async () => {
       const { getSiteAllowedOrigins } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({
-        rows: [{ allowed_origins: ['https://mysite.com', '*-mysite.pantheonsite.io'] }],
-      });
+      database.on(sites).select.returns([
+        { allowedOrigins: ['https://mysite.com', '*-mysite.pantheonsite.io'] },
+      ]);
 
       const result = await getSiteAllowedOrigins('site-123');
 
@@ -1167,35 +950,17 @@ describe('Phase 3.1: Site Service', () => {
 
     it('should return null for an unknown siteId (site not found)', async () => {
       const { getSiteAllowedOrigins } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
 
       const result = await getSiteAllowedOrigins('non-existent-site');
 
       expect(result).toBeNull();
     });
 
-    it('should return empty array for a site with no allowed_origins configured (null in DB)', async () => {
-      const { getSiteAllowedOrigins } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({
-        rows: [{ allowed_origins: null }],
-      });
-
-      const result = await getSiteAllowedOrigins('site-empty');
-
-      expect(result).toEqual([]);
-    });
-
+    // app.sites.allowed_origins is NOT NULL DEFAULT '{}', so a site that
+    // configured none reads as an empty array rather than a missing one.
     it('should return empty array for a site with an empty allowed_origins array in DB', async () => {
       const { getSiteAllowedOrigins } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({
-        rows: [{ allowed_origins: [] }],
-      });
+      database.on(sites).select.returns([{ allowedOrigins: [] }]);
 
       const result = await getSiteAllowedOrigins('site-no-origins');
 
@@ -1204,25 +969,19 @@ describe('Phase 3.1: Site Service', () => {
 
     it('should propagate DB errors', async () => {
       const { getSiteAllowedOrigins } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
+      database.on(sites).select.rejects(new Error('DB connection error'));
 
-      vi.mocked(db.query).mockRejectedValue(new Error('DB connection error'));
-
-      await expect(getSiteAllowedOrigins('site-123')).rejects.toThrow('DB connection error');
+      await expect(getSiteAllowedOrigins('site-123')).rejects.toThrow();
     });
 
     it('should query by site ID with correct column', async () => {
       const { getSiteAllowedOrigins } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
 
       await getSiteAllowedOrigins('site-uuid-456');
 
-      expect(db.query).toHaveBeenCalledWith(
-        expect.stringContaining('allowed_origins'),
-        expect.arrayContaining(['site-uuid-456']),
-      );
+      const [call] = database.calls(sites).select;
+      expect(call?.sql).toContain('"allowed_origins"');
+      expect(call?.params).toEqual(expect.arrayContaining(['site-uuid-456']));
     });
   });
 
@@ -1251,13 +1010,7 @@ describe('Phase 3.1: Site Service', () => {
   describe('Site url field', () => {
     it('should persist url on createSite', async () => {
       const { createSite } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
-
-      const mockRow: MockSiteRow & { url: string } = {
-        ...createMockSiteRow(),
-        url: 'https://example.com',
-      };
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+      stubSiteCreation(siteRow({ url: 'https://example.com' }));
 
       const result = await createSite({
         pantheonSiteId: 'pantheon-site-abc',
@@ -1266,18 +1019,13 @@ describe('Phase 3.1: Site Service', () => {
       });
 
       expect(result.url).toBe('https://example.com');
-      expect(db.query).toHaveBeenCalledWith(
-        expect.stringContaining('INSERT INTO'),
-        expect.arrayContaining(['https://example.com']),
-      );
+      const [insert] = database.calls(sites).insert;
+      expect(insert?.params).toEqual(expect.arrayContaining(['https://example.com']));
     });
 
     it('should accept createSite without a url', async () => {
       const { createSite } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
-
-      const mockRow = createMockSiteRow();
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+      stubSiteCreation(siteRow());
 
       const result = await createSite({
         pantheonSiteId: 'pantheon-site-abc',
@@ -1302,24 +1050,15 @@ describe('Phase 3.1: Site Service', () => {
 
     it('should persist url on updateSite', async () => {
       const { updateSite } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
+      database.on(sites).update.returns([
+        siteRow({ id: 'site-123', url: 'https://new.example.com' }),
+      ]);
 
-      const updatedRow: MockSiteRow & { url: string } = {
-        ...createMockSiteRow({ id: 'site-123' }),
-        url: 'https://new.example.com',
-      };
-      vi.mocked(db.query).mockResolvedValue({ rows: [updatedRow] });
-
-      const result = await updateSite('site-123', {
-        url: 'https://new.example.com',
-      });
+      const result = await updateSite('site-123', { url: 'https://new.example.com' });
 
       expect(result?.url).toBe('https://new.example.com');
-      const calls = vi.mocked(db.query).mock.calls;
-      const updateCall = calls.find(
-        (c) => typeof c[0] === 'string' && c[0].includes('UPDATE app.sites'),
-      );
-      expect(updateCall?.[1]).toEqual(expect.arrayContaining(['https://new.example.com']));
+      const [update] = database.calls(sites).update;
+      expect(update?.params).toEqual(expect.arrayContaining(['https://new.example.com']));
     });
 
     it('should reject updateSite when url is malformed', async () => {
@@ -1333,13 +1072,9 @@ describe('Phase 3.1: Site Service', () => {
 
     it('should include url in getSite result when present in row', async () => {
       const { getSite } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
-
-      const row: MockSiteRow & { url: string } = {
-        ...createMockSiteRow({ id: 'site-123' }),
-        url: 'https://example.com',
-      };
-      vi.mocked(db.query).mockResolvedValue({ rows: [row] });
+      database.on(sites).select.returns([
+        siteRow({ id: 'site-123', url: 'https://example.com' }),
+      ]);
 
       const result = await getSite('site-123');
 
@@ -1352,14 +1087,8 @@ describe('Phase 3.1: Site Service', () => {
 
     it('createSite with env and a url enqueues a screenshot request', async () => {
       const { createSite } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
       const { requestSiteScreenshot } = await import('../../src/queues/screenshot-producer');
-
-      const mockRow: MockSiteRow & { url: string } = {
-        ...createMockSiteRow({ id: 'site-99' }),
-        url: 'https://example.com',
-      };
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+      stubSiteCreation(siteRow({ id: 'site-99', url: 'https://example.com' }));
 
       await createSite(
         { pantheonSiteId: 'p1', name: 'S', url: 'https://example.com' },
@@ -1375,14 +1104,8 @@ describe('Phase 3.1: Site Service', () => {
 
     it('createSite without env never triggers a screenshot', async () => {
       const { createSite } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
       const { requestSiteScreenshot } = await import('../../src/queues/screenshot-producer');
-
-      const mockRow: MockSiteRow & { url: string } = {
-        ...createMockSiteRow({ id: 'site-99' }),
-        url: 'https://example.com',
-      };
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+      stubSiteCreation(siteRow({ id: 'site-99', url: 'https://example.com' }));
 
       await createSite({ pantheonSiteId: 'p1', name: 'S', url: 'https://example.com' });
 
@@ -1391,10 +1114,8 @@ describe('Phase 3.1: Site Service', () => {
 
     it('createSite with env but no url does not trigger', async () => {
       const { createSite } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
       const { requestSiteScreenshot } = await import('../../src/queues/screenshot-producer');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [createMockSiteRow()] });
+      stubSiteCreation(siteRow());
 
       await createSite(
         { pantheonSiteId: 'p1', name: 'S' },
@@ -1406,20 +1127,9 @@ describe('Phase 3.1: Site Service', () => {
 
     it('updateSite triggers when url is set to a new value', async () => {
       const { updateSite } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
       const { requestSiteScreenshot } = await import('../../src/queues/screenshot-producer');
-
-      const priorRow: MockSiteRow & { url: string | null } = {
-        ...createMockSiteRow({ id: 'site-77' }),
-        url: 'https://old.example.com',
-      };
-      const updatedRow: MockSiteRow & { url: string } = {
-        ...createMockSiteRow({ id: 'site-77' }),
-        url: 'https://new.example.com',
-      };
-      vi.mocked(db.query)
-        .mockResolvedValueOnce({ rows: [priorRow] }) // getSite for prior url
-        .mockResolvedValueOnce({ rows: [updatedRow] }); // UPDATE result
+      database.on(sites).select.returns([siteRow({ id: 'site-77', url: 'https://old.example.com' })]);
+      database.on(sites).update.returns([siteRow({ id: 'site-77', url: 'https://new.example.com' })]);
 
       await updateSite(
         'site-77',
@@ -1436,21 +1146,10 @@ describe('Phase 3.1: Site Service', () => {
 
     it('updateSite does not trigger when url is unchanged', async () => {
       const { updateSite } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
       const { requestSiteScreenshot } = await import('../../src/queues/screenshot-producer');
-
       const sameUrl = 'https://example.com';
-      const priorRow: MockSiteRow & { url: string } = {
-        ...createMockSiteRow({ id: 'site-77' }),
-        url: sameUrl,
-      };
-      const updatedRow: MockSiteRow & { url: string } = {
-        ...createMockSiteRow({ id: 'site-77' }),
-        url: sameUrl,
-      };
-      vi.mocked(db.query)
-        .mockResolvedValueOnce({ rows: [priorRow] })
-        .mockResolvedValueOnce({ rows: [updatedRow] });
+      database.on(sites).select.returns([siteRow({ id: 'site-77', url: sameUrl })]);
+      database.on(sites).update.returns([siteRow({ id: 'site-77', url: sameUrl })]);
 
       await updateSite(
         'site-77',
@@ -1463,14 +1162,8 @@ describe('Phase 3.1: Site Service', () => {
 
     it('updateSite without env never triggers', async () => {
       const { updateSite } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
       const { requestSiteScreenshot } = await import('../../src/queues/screenshot-producer');
-
-      const updatedRow: MockSiteRow & { url: string } = {
-        ...createMockSiteRow({ id: 'site-77' }),
-        url: 'https://new.example.com',
-      };
-      vi.mocked(db.query).mockResolvedValue({ rows: [updatedRow] });
+      database.on(sites).update.returns([siteRow({ id: 'site-77', url: 'https://new.example.com' })]);
 
       await updateSite('site-77', { url: 'https://new.example.com' });
 
@@ -1483,19 +1176,13 @@ describe('Phase 3.1: Site Service', () => {
   // ===========================================================================
 
   describe('archiveSite', () => {
-    const txOk = { rows: [], rowCount: 0 }; // mock for BEGIN / COMMIT
+    const archiveTs = new Date('2026-05-17T10:00:00.000Z');
+    // Drizzle binds a timestamp column as the text Postgres parses.
+    const boundTs = archiveTs.toISOString();
 
     it('should set archived_at on the site and cascade to branches and documents', async () => {
       const { archiveSite } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
-
-      const archiveTs = '2026-05-17T10:00:00.000Z';
-      vi.mocked(db.query)
-        .mockResolvedValueOnce(txOk) // BEGIN
-        .mockResolvedValueOnce({ rows: [{ archived_at: archiveTs }], rowCount: 1 }) // UPDATE sites
-        .mockResolvedValueOnce({ rows: [], rowCount: 2 }) // UPDATE branches
-        .mockResolvedValueOnce({ rows: [], rowCount: 3 }) // UPDATE documents
-        .mockResolvedValueOnce(txOk); // COMMIT
+      database.on(sites).update.returns([{ archivedAt: archiveTs }]);
 
       const result = await archiveSite('site-123');
 
@@ -1504,13 +1191,6 @@ describe('Phase 3.1: Site Service', () => {
 
     it('should return false when site does not exist', async () => {
       const { archiveSite } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query)
-        .mockResolvedValueOnce(txOk) // BEGIN
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // UPDATE sites (no match)
-        .mockResolvedValueOnce({ rows: [] }) // SELECT id (not found)
-        .mockResolvedValueOnce(txOk); // COMMIT
 
       const result = await archiveSite('non-existent');
 
@@ -1519,13 +1199,7 @@ describe('Phase 3.1: Site Service', () => {
 
     it('should return already_archived when site exists but is already archived', async () => {
       const { archiveSite } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query)
-        .mockResolvedValueOnce(txOk) // BEGIN
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // UPDATE sites (no match: already archived)
-        .mockResolvedValueOnce({ rows: [{ id: 'site-123' }] }) // SELECT id (exists)
-        .mockResolvedValueOnce(txOk); // COMMIT
+      database.on(sites).select.returns([{ id: 'site-123' }]);
 
       const result = await archiveSite('site-123');
 
@@ -1534,48 +1208,25 @@ describe('Phase 3.1: Site Service', () => {
 
     it('should cascade archived_at to branches and documents using the same timestamp', async () => {
       const { archiveSite } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
-
-      const archiveTs = '2026-05-17T10:00:00.000Z';
-      vi.mocked(db.query)
-        .mockResolvedValueOnce(txOk) // BEGIN
-        .mockResolvedValueOnce({ rows: [{ archived_at: archiveTs }], rowCount: 1 }) // UPDATE sites
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // UPDATE branches
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // UPDATE documents
-        .mockResolvedValueOnce(txOk); // COMMIT
+      database.on(sites).update.returns([{ archivedAt: archiveTs }]);
 
       await archiveSite('site-123');
 
-      const calls = vi.mocked(db.query).mock.calls;
-      const branchCall = calls.find(
-        (c) => typeof c[0] === 'string' && c[0].includes('app.branches') && c[0].includes('archived_at'),
-      );
-      const documentCall = calls.find(
-        (c) => typeof c[0] === 'string' && c[0].includes('app.documents') && c[0].includes('archived_at'),
-      );
-      expect(branchCall).toBeDefined();
-      expect(documentCall).toBeDefined();
-      expect(branchCall?.[1]).toContain(archiveTs);
-      expect(documentCall?.[1]).toContain(archiveTs);
+      const [branchUpdate] = database.calls(branches).update;
+      const [documentUpdate] = database.calls('documents').update;
+      expect(branchUpdate?.params).toContain(boundTs);
+      expect(documentUpdate?.params).toContain(boundTs);
     });
   });
 
   describe('restoreSite', () => {
-    const txOk = { rows: [], rowCount: 0 }; // mock for BEGIN / COMMIT
+    const archiveTs = new Date('2026-05-17T10:00:00.000Z');
+    const boundTs = archiveTs.toISOString();
 
     it('should clear archived_at on site and restore cascade-archived branches and documents', async () => {
       const { restoreSite } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
-
-      const archiveTs = '2026-05-17T10:00:00.000Z';
-      const mockSiteRow = { ...createMockSiteRow({ id: 'site-123' }), archived_at: archiveTs };
-      vi.mocked(db.query)
-        .mockResolvedValueOnce({ rows: [mockSiteRow] }) // SELECT (check archived_at)
-        .mockResolvedValueOnce(txOk) // BEGIN
-        .mockResolvedValueOnce({ rows: [{ ...mockSiteRow, archived_at: null }], rowCount: 1 }) // UPDATE sites
-        .mockResolvedValueOnce({ rows: [], rowCount: 2 }) // UPDATE branches
-        .mockResolvedValueOnce({ rows: [], rowCount: 1 }) // UPDATE documents
-        .mockResolvedValueOnce(txOk); // COMMIT
+      database.on(sites).select.returns([siteRow({ id: 'site-123', archivedAt: archiveTs })]);
+      database.on(sites).update.returns([siteRow({ id: 'site-123', archivedAt: null })]);
 
       const result = await restoreSite('site-123');
 
@@ -1585,9 +1236,6 @@ describe('Phase 3.1: Site Service', () => {
 
     it('should return null when site not found', async () => {
       const { restoreSite } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] }); // SELECT → not found
 
       const result = await restoreSite('non-existent');
 
@@ -1596,10 +1244,7 @@ describe('Phase 3.1: Site Service', () => {
 
     it('should return null when site is not archived', async () => {
       const { restoreSite } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
-
-      const mockSiteRow = { ...createMockSiteRow({ id: 'site-123' }), archived_at: null };
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [mockSiteRow] }); // SELECT → active site
+      database.on(sites).select.returns([siteRow({ id: 'site-123', archivedAt: null })]);
 
       const result = await restoreSite('site-123');
 
@@ -1608,53 +1253,31 @@ describe('Phase 3.1: Site Service', () => {
 
     it('should only restore branches/docs archived at the same timestamp (not independently-archived ones)', async () => {
       const { restoreSite } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
-
-      const archiveTs = '2026-05-17T10:00:00.000Z';
-      const mockSiteRow = { ...createMockSiteRow({ id: 'site-123' }), archived_at: archiveTs };
-      vi.mocked(db.query)
-        .mockResolvedValueOnce({ rows: [mockSiteRow] }) // SELECT
-        .mockResolvedValueOnce(txOk) // BEGIN
-        .mockResolvedValueOnce({ rows: [{ ...mockSiteRow, archived_at: null }], rowCount: 1 }) // UPDATE sites
-        .mockResolvedValueOnce({ rows: [], rowCount: 1 }) // UPDATE branches
-        .mockResolvedValueOnce({ rows: [], rowCount: 1 }) // UPDATE documents
-        .mockResolvedValueOnce(txOk); // COMMIT
+      database.on(sites).select.returns([siteRow({ id: 'site-123', archivedAt: archiveTs })]);
+      database.on(sites).update.returns([siteRow({ id: 'site-123', archivedAt: null })]);
 
       await restoreSite('site-123');
 
-      const calls = vi.mocked(db.query).mock.calls;
-      const branchRestoreCall = calls.find(
-        (c) =>
-          typeof c[0] === 'string' &&
-          c[0].includes('app.branches') &&
-          c[0].includes('archived_at = NULL'),
-      );
-      expect(branchRestoreCall).toBeDefined();
-      expect(branchRestoreCall?.[1]).toContain(archiveTs);
+      const [branchRestore] = database.calls(branches).update;
+      expect(branchRestore?.sql).toContain('"archived_at"');
+      expect(branchRestore?.params).toContain(boundTs);
     });
   });
 
   describe('getCachedSiteAllowedOrigins (PCC-3334)', () => {
     it('should return origins from DB on first call', async () => {
       const { getCachedSiteAllowedOrigins } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [{ allowed_origins: ['https://custom.example.com'] }],
-      });
+      database.on(sites).select.returns([{ allowedOrigins: ['https://custom.example.com'] }]);
 
       const result = await getCachedSiteAllowedOrigins('site-123');
+
       expect(result).toEqual(['https://custom.example.com']);
-      expect(db.query).toHaveBeenCalledTimes(1);
+      expect(database.calls(sites).select).toHaveLength(1);
     });
 
     it('should return cached result on second call without querying DB again', async () => {
       const { getCachedSiteAllowedOrigins } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [{ allowed_origins: ['https://cached.example.com'] }],
-      });
+      database.on(sites).select.returns([{ allowedOrigins: ['https://cached.example.com'] }]);
 
       // First call — hits DB
       await getCachedSiteAllowedOrigins('site-cache-test');
@@ -1662,58 +1285,47 @@ describe('Phase 3.1: Site Service', () => {
       const result = await getCachedSiteAllowedOrigins('site-cache-test');
 
       expect(result).toEqual(['https://cached.example.com']);
-      expect(db.query).toHaveBeenCalledTimes(1);
+      expect(database.calls(sites).select).toHaveLength(1);
     });
 
     it('should return null for unknown site and not cache it', async () => {
       const { getCachedSiteAllowedOrigins } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
 
       const result = await getCachedSiteAllowedOrigins('nonexistent-site');
       expect(result).toBeNull();
 
       // Second call should also hit DB since null is not cached
       await getCachedSiteAllowedOrigins('nonexistent-site');
-      expect(db.query).toHaveBeenCalledTimes(2);
+      expect(database.calls(sites).select).toHaveLength(2);
     });
   });
 
   describe('listSites — archived filter (PCC-3211)', () => {
     it('should exclude archived sites by default', async () => {
       const { listSites } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
 
       await listSites({ principalId: 'user-1' });
 
-      const sql = vi.mocked(db.query).mock.calls[0][0];
-      expect(sql).toContain('archived_at IS NULL');
+      const [call] = database.calls(sites).select;
+      expect(call?.sql).toContain('"archived_at" is null');
     });
 
     it('should return only archived sites when archived=true', async () => {
       const { listSites } = await import('../../src/services/site-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
 
       await listSites({ principalId: 'user-1', archived: true });
 
-      const sql = vi.mocked(db.query).mock.calls[0][0];
-      expect(sql).toContain('archived_at IS NOT NULL');
+      const [call] = database.calls(sites).select;
+      expect(call?.sql).toContain('"archived_at" is not null');
     });
   });
 
   describe('getSiteOwner', () => {
     it('returns the owner display name and avatar', async () => {
-      const db = await import('../../src/db');
       const { getSiteOwner } = await import('../../src/services/site-service');
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [{ owner_name: 'Alice Smith', avatar_url: 'https://example.com/a.png' }],
-        rowCount: 1,
-      });
+      database.on(userSiteRoles).select.returnsRaw([
+        { ownerName: 'Alice Smith', avatarUrl: 'https://example.com/a.png' },
+      ]);
 
       await expect(getSiteOwner('site-1')).resolves.toEqual({
         name: 'Alice Smith',
@@ -1722,12 +1334,10 @@ describe('Phase 3.1: Site Service', () => {
     });
 
     it('returns a null avatar when the user has no picture', async () => {
-      const db = await import('../../src/db');
       const { getSiteOwner } = await import('../../src/services/site-service');
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [{ owner_name: 'Alice Smith', avatar_url: null }],
-        rowCount: 1,
-      });
+      database.on(userSiteRoles).select.returnsRaw([
+        { ownerName: 'Alice Smith', avatarUrl: null },
+      ]);
 
       await expect(getSiteOwner('site-1')).resolves.toEqual({
         name: 'Alice Smith',
@@ -1736,12 +1346,10 @@ describe('Phase 3.1: Site Service', () => {
     });
 
     it('falls back to the email when the user has no name set', async () => {
-      const db = await import('../../src/db');
       const { getSiteOwner } = await import('../../src/services/site-service');
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [{ owner_name: 'alice@example.com', avatar_url: null }],
-        rowCount: 1,
-      });
+      database.on(userSiteRoles).select.returnsRaw([
+        { ownerName: 'alice@example.com', avatarUrl: null },
+      ]);
 
       await expect(getSiteOwner('site-1')).resolves.toMatchObject({
         name: 'alice@example.com',
@@ -1749,31 +1357,23 @@ describe('Phase 3.1: Site Service', () => {
     });
 
     it('casts users.id to text — the join column is TEXT, not UUID', async () => {
-      const db = await import('../../src/db');
       const { getSiteOwner } = await import('../../src/services/site-service');
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
       await getSiteOwner('site-1');
 
-      const [sql] = vi.mocked(db.query).mock.calls[0];
-      expect(sql).toContain('u.id::text = usr.user_id');
+      const [call] = database.calls(userSiteRoles).select;
+      expect(call?.sql).toContain('::text');
     });
 
     it('returns null for a site with no owner row', async () => {
-      const db = await import('../../src/db');
       const { getSiteOwner } = await import('../../src/services/site-service');
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
       await expect(getSiteOwner('site-1')).resolves.toBeNull();
     });
 
     it('returns null when the owner grant has no matching user row', async () => {
-      const db = await import('../../src/db');
       const { getSiteOwner } = await import('../../src/services/site-service');
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [{ owner_name: null, avatar_url: null }],
-        rowCount: 1,
-      });
+      database.on(userSiteRoles).select.returnsRaw([{ ownerName: null, avatarUrl: null }]);
 
       await expect(getSiteOwner('site-1')).resolves.toBeNull();
     });

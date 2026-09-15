@@ -9,6 +9,9 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
 import * as Y from 'yjs';
+import { documentVersions } from '../../src/db/schema';
+import { stubDatabase, type DatabaseStub } from '../__stubs__/database';
+import { insertedVersion } from '../helpers/direct-sync';
 
 vi.mock('cloudflare:workers', () => ({
   DurableObject: class DurableObject {
@@ -23,7 +26,6 @@ vi.mock('cloudflare:workers', () => ({
 
 vi.mock('../../src/db', () => ({
   runWithConnection: vi.fn(),
-  query: vi.fn(),
   setDatabaseInstance: vi.fn(),
   getDatabaseInstance: vi.fn(),
   initializeDatabaseFromConnectionString: vi.fn(),
@@ -89,24 +91,21 @@ async function buildManager(ydoc: Y.Doc, storage: MockStorage): Promise<Manager>
   );
 }
 
-/** Params of the query call that inserts into document_versions. */
-function insertVersionParams(queryMock: Mock): unknown[] {
-  const call = queryMock.mock.calls.find(
-    (c) => typeof c[0] === 'string' && c[0].includes('INSERT INTO app.document_versions'),
-  );
-  if (call === undefined) {
-    throw new Error('No INSERT INTO app.document_versions call was captured');
-  }
-  return call[1] as unknown[];
-}
-
+/**
+ * What the direct-sync INSERT bound, by what each value carries. The statement
+ * names its parameters only by position, so the positions are read once here
+ * rather than in every assertion.
+ */
 describe('Flushing a session to PostgreSQL', () => {
   let storage: MockStorage;
   let ydoc: Y.Doc;
+  let database: DatabaseStub;
   const originalFetch = globalThis.fetch;
 
   beforeEach(async () => {
     vi.resetAllMocks();
+    database = stubDatabase();
+    database.on(documentVersions).insert.returnsRaw([{ id: 'version-1' }]);
     storage = createMockStorage();
     ydoc = new Y.Doc();
     ydoc.getMap('root').set('title', 'Hello');
@@ -121,7 +120,6 @@ describe('Flushing a session to PostgreSQL', () => {
     (db.runWithConnection as Mock).mockImplementation(
       async (_connStr: string, _opts: unknown, fn: () => Promise<unknown>) => fn(),
     );
-    (db.query as Mock).mockResolvedValue({ rows: [{ id: 'version-1' }], rowCount: 1 });
   });
 
   afterEach(() => {
@@ -131,7 +129,6 @@ describe('Flushing a session to PostgreSQL', () => {
 
   describe('Puck action metadata', () => {
     it('classifies the version from the actions the pending sync carries', async () => {
-      const db = await import('../../src/db');
       await storage.put('syncSchedule', {
         actorId: ACTOR_UUID,
         actorType: 'user',
@@ -145,15 +142,14 @@ describe('Flushing a session to PostgreSQL', () => {
         { actorId: ACTOR_UUID, actorType: 'user' },
       );
 
-      const params = insertVersionParams(db.query as Mock);
-      expect(params[5]).toBe('structural');
-      expect(JSON.parse(params[6] as string)).toEqual({
+      const version = insertedVersion(database);
+      expect(version.actionType).toBe('structural');
+      expect(JSON.parse(version.actionMetadata as string)).toEqual({
         puckActions: [{ type: 'reorder', from: 0, to: 2 }],
       });
     });
 
     it('classifies the version from actions held in memory when no sync is owed', async () => {
-      const db = await import('../../src/db');
       const manager = await buildManager(ydoc, storage);
       manager.pendingPuckActions = [{ type: 'set', propName: 'title' }];
 
@@ -162,12 +158,10 @@ describe('Flushing a session to PostgreSQL', () => {
         { actorId: ACTOR_UUID, actorType: 'user' },
       );
 
-      const params = insertVersionParams(db.query as Mock);
-      expect(params[5]).toBe('prop_update');
+      expect(insertedVersion(database).actionType).toBe('prop_update');
     });
 
     it('leaves the version unclassified when the edit carries no actions', async () => {
-      const db = await import('../../src/db');
       const manager = await buildManager(ydoc, storage);
 
       await manager.flushAndSync(
@@ -175,9 +169,9 @@ describe('Flushing a session to PostgreSQL', () => {
         { actorId: ACTOR_UUID, actorType: 'user' },
       );
 
-      const params = insertVersionParams(db.query as Mock);
-      expect(params[5]).toBeNull();
-      expect(params[6]).toBeNull();
+      const version = insertedVersion(database);
+      expect(version.actionType).toBeNull();
+      expect(version.actionMetadata).toBeNull();
     });
 
     it('sends the actions to the internal API when the actor is resolved server-side', async () => {

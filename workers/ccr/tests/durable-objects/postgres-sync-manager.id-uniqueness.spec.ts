@@ -11,6 +11,8 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
 import * as Y from 'yjs';
+import { stubDatabase, type DatabaseStub } from '../__stubs__/database';
+import { insertedVersion } from '../helpers/direct-sync';
 
 vi.mock('cloudflare:workers', () => ({
   DurableObject: class DurableObject {
@@ -25,7 +27,6 @@ vi.mock('cloudflare:workers', () => ({
 
 vi.mock('../../src/db', () => ({
   runWithConnection: vi.fn(),
-  query: vi.fn(),
   setDatabaseInstance: vi.fn(),
   getDatabaseInstance: vi.fn(),
   initializeDatabaseFromConnectionString: vi.fn(),
@@ -89,17 +90,6 @@ function createEnv(overrides: Partial<MockEnv> = {}): MockEnv {
   };
 }
 
-/** Params array of the query call that inserts into document_versions. */
-function insertVersionParams(queryMock: Mock): unknown[] {
-  const call = queryMock.mock.calls.find(
-    (c) => typeof c[0] === 'string' && (c[0]).includes('INSERT INTO app.document_versions'),
-  );
-  if (call === undefined) {
-    throw new Error('No INSERT INTO app.document_versions call was captured');
-  }
-  return call[1] as unknown[];
-}
-
 async function buildManager(
   env: MockEnv,
   ydoc: Y.Doc,
@@ -120,10 +110,12 @@ describe('executeDirectSync within-document id uniqueness', () => {
   let storage: MockStorage;
   let ydoc: Y.Doc;
   let warnSpy: Mock;
+  let database: DatabaseStub;
   const originalFetch = globalThis.fetch;
 
   beforeEach(async () => {
     vi.resetAllMocks();
+    database = stubDatabase();
     storage = createMockStorage();
     ydoc = new Y.Doc();
     warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
@@ -137,7 +129,6 @@ describe('executeDirectSync within-document id uniqueness', () => {
     (db.runWithConnection as Mock).mockImplementation(
       async (_connStr: string, _opts: unknown, fn: () => Promise<unknown>) => fn(),
     );
-    (db.query as Mock).mockResolvedValue({ rows: [], rowCount: 0 });
   });
 
   afterEach(() => {
@@ -146,9 +137,6 @@ describe('executeDirectSync within-document id uniqueness', () => {
   });
 
   it('re-mints later duplicates in content while the first occurrence keeps its id', async () => {
-    const db = await import('../../src/db');
-    const queryMock = db.query as Mock;
-
     const root = ydoc.getMap('root');
     root.set('content', [
       comp('HeroBlock', 'HeroBlock-dup', { title: 'First' }),
@@ -158,7 +146,7 @@ describe('executeDirectSync within-document id uniqueness', () => {
     const manager = await buildManager(createEnv(), ydoc, storage);
     await manager.performDirectSync('http://localhost:8787', 'test-secret', ACTOR_UUID, 'user');
 
-    const persisted = insertVersionParams(queryMock)[2] as { content: Comp[] };
+    const persisted = insertedVersion(database).snapshot as { content: Comp[] };
     expect(persisted.content).toHaveLength(2);
     expect(persisted.content[0].props.id).toBe('HeroBlock-dup');
     expect(persisted.content[1].props.id).not.toBe('HeroBlock-dup');
@@ -168,9 +156,6 @@ describe('executeDirectSync within-document id uniqueness', () => {
   });
 
   it('walks content before zones so a content occurrence keeps the id over a zones duplicate', async () => {
-    const db = await import('../../src/db');
-    const queryMock = db.query as Mock;
-
     const root = ydoc.getMap('root');
     root.set('content', [comp('HeroBlock', 'shared-slot', { title: 'In content' })]);
     root.set('zones', {
@@ -180,7 +165,7 @@ describe('executeDirectSync within-document id uniqueness', () => {
     const manager = await buildManager(createEnv(), ydoc, storage);
     await manager.performDirectSync('http://localhost:8787', 'test-secret', ACTOR_UUID, 'user');
 
-    const persisted = insertVersionParams(queryMock)[2] as {
+    const persisted = insertedVersion(database).snapshot as {
       content: Comp[];
       zones: Record<string, Comp[]>;
     };
@@ -190,9 +175,6 @@ describe('executeDirectSync within-document id uniqueness', () => {
   });
 
   it('logs a structured warning naming the document and the previous and new ids', async () => {
-    const db = await import('../../src/db');
-    const queryMock = db.query as Mock;
-
     const root = ydoc.getMap('root');
     root.set('content', [
       comp('HeroBlock', 'HeroBlock-dup', { title: 'First' }),
@@ -202,7 +184,7 @@ describe('executeDirectSync within-document id uniqueness', () => {
     const manager = await buildManager(createEnv(), ydoc, storage);
     await manager.performDirectSync('http://localhost:8787', 'test-secret', ACTOR_UUID, 'user');
 
-    const newId = (insertVersionParams(queryMock)[2] as { content: Comp[] }).content[1].props.id;
+    const newId = (insertedVersion(database).snapshot as { content: Comp[] }).content[1].props.id;
     expect(warnSpy).toHaveBeenCalled();
     const output = JSON.stringify(warnSpy.mock.calls);
     expect(output).toContain('doc-direct-333');
@@ -211,9 +193,6 @@ describe('executeDirectSync within-document id uniqueness', () => {
   });
 
   it('writes a snapshot with unique ids unchanged and does not warn', async () => {
-    const db = await import('../../src/db');
-    const queryMock = db.query as Mock;
-
     const snapshot = {
       content: [
         comp('HeroBlock', 'HeroBlock-a', { title: 'A' }),
@@ -231,7 +210,7 @@ describe('executeDirectSync within-document id uniqueness', () => {
     const manager = await buildManager(createEnv(), ydoc, storage);
     await manager.performDirectSync('http://localhost:8787', 'test-secret', ACTOR_UUID, 'user');
 
-    const persisted = insertVersionParams(queryMock)[2];
+    const persisted = insertedVersion(database).snapshot;
     expect(persisted).toEqual(snapshot);
     expect(warnSpy).not.toHaveBeenCalled();
   });

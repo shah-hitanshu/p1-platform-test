@@ -155,8 +155,12 @@ export interface PublishDocumentResult {
 
 /**
  * Database row format for checkpoints.
+ *
+ * A type alias rather than an interface: db().execute<T>() constrains T to
+ * Record<string, unknown>, which an interface cannot satisfy because it carries
+ * no implicit index signature.
  */
-export interface CheckpointRow {
+export type CheckpointRow = {
   id: string;
   branch_id: string;
   name: string | null;
@@ -177,7 +181,7 @@ export interface CheckpointRow {
   // Incremental checkpoint support (Phase 6.1)
   parent_checkpoint_id: string | null;
   is_full_snapshot: boolean;
-}
+};
 
 /**
  * Row returned by the CTE-based INSERT in createCheckpoint. The CTE embeds the
@@ -188,8 +192,12 @@ export type CheckpointInsertRow = CheckpointRow;
 
 /**
  * Database row for document versions with document path (joined).
+ *
+ * A type alias rather than an interface: db().execute<T>() constrains T to
+ * Record<string, unknown>, which an interface cannot satisfy because it carries
+ * no implicit index signature.
  */
-export interface VersionWithDocumentRow {
+export type VersionWithDocumentRow = {
   id: string;
   document_id: string;
   branch_id: string;
@@ -200,7 +208,7 @@ export interface VersionWithDocumentRow {
   created_by_type: 'user' | 'agent' | 'system';
   created_at: string;
   document_path: string;
-}
+};
 
 /**
  * Database row for checkpoint structures.

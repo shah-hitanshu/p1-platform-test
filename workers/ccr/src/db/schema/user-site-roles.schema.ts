@@ -4,6 +4,10 @@ import { sites } from './sites.schema';
 
 export const userSiteRoles = app.table('user_site_roles', {
   id: uuid().defaultRandom().primaryKey().notNull(),
+  // TODO(PCC-3903): user_id and created_by_id are text while app.users.id is
+  // uuid, so every join to users casts `users.id::text` and cannot use the
+  // users primary key index. Not a straight type change — the column also
+  // holds raw OAuth subjects, which no uuid cast accepts.
   userId: text('user_id').notNull(),
   siteId: uuid('site_id').notNull(),
   role: text().notNull(),

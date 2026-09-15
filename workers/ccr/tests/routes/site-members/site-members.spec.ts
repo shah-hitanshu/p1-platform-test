@@ -10,10 +10,8 @@ import type { SiteMembersResponse } from '../../../src/routes/site-members';
 import { resetSiteRosterCacheForTests } from '../../../src/services/mas-roster-cache';
 import { readJson } from '../../helpers/http';
 import { makeBranch } from '../../helpers/branch';
-
-vi.mock('../../../src/db', () => ({
-  query: vi.fn(),
-}));
+import { users, userSiteRoles } from '../../../src/db/schema';
+import { stubDatabase, type DatabaseStub } from '../../__stubs__/database';
 
 vi.mock('../../../src/services/branch-service', () => ({
   getMainBranch: vi.fn(),
@@ -56,7 +54,6 @@ async function loadRoute() {
 
 async function mocks() {
   return {
-    db: await import('../../../src/db'),
     branches: await import('../../../src/services/branch-service'),
     agentRoles: await import('../../../src/services/agent-site-role-service'),
     authorization: await import('../../../src/auth/authorization'),
@@ -65,19 +62,22 @@ async function mocks() {
 
 function memberRow(overrides: Record<string, unknown> = {}) {
   return {
-    user_id: 'user-1',
+    userId: 'user-1',
     role: 'developer',
     source: 'local',
     name: 'Ada Lovelace',
     email: 'ada@example.com',
-    avatar_url: 'https://cdn.example.com/ada.png',
+    avatarUrl: 'https://cdn.example.com/ada.png',
     ...overrides,
   };
 }
 
 describe('GET /api/sites/{siteId}/members', () => {
+  let database: DatabaseStub;
+
   beforeEach(async () => {
     vi.clearAllMocks();
+    database = stubDatabase();
     // The roster memo is module state: without this, one test's upstream read
     // answers the next test's request and the call-count assertions go quiet.
     resetSiteRosterCacheForTests();
@@ -90,9 +90,9 @@ describe('GET /api/sites/{siteId}/members', () => {
 
   it('returns members and agents as two arrays', async () => {
     const { handleSiteMembersRoutes } = await loadRoute();
-    const { db, agentRoles } = await mocks();
+    const { agentRoles } = await mocks();
 
-    vi.mocked(db.query).mockResolvedValueOnce({ rows: [memberRow()] });
+    database.on(userSiteRoles).select.returnsRaw([memberRow()]);
     vi.mocked(agentRoles.listRolesBySite).mockResolvedValue([
       {
         id: 'grant-1',
@@ -138,9 +138,7 @@ describe('GET /api/sites/{siteId}/members', () => {
 
   it('requires only canView, not grant management', async () => {
     const { handleSiteMembersRoutes } = await loadRoute();
-    const { db, authorization } = await mocks();
-
-    vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
+    const { authorization } = await mocks();
 
     await handleSiteMembersRoutes(membersRequest(), {
       siteId: 'site-1',
@@ -158,14 +156,10 @@ describe('GET /api/sites/{siteId}/members', () => {
 
   it('folds the local and MAS rows for one person into a single member', async () => {
     const { handleSiteMembersRoutes } = await loadRoute();
-    const { db } = await mocks();
-
-    vi.mocked(db.query).mockResolvedValueOnce({
-      rows: [
-        memberRow({ role: 'team_member', source: 'local' }),
-        memberRow({ role: 'admin', source: 'mas' }),
-      ],
-    });
+    database.on(userSiteRoles).select.returnsRaw([
+      memberRow({ role: 'team_member', source: 'local' }),
+      memberRow({ role: 'admin', source: 'mas' }),
+    ]);
 
     const response = await handleSiteMembersRoutes(membersRequest(), {
       siteId: 'site-1',
@@ -185,14 +179,10 @@ describe('GET /api/sites/{siteId}/members', () => {
 
   it('keeps the local grant when both sources rank the same tier', async () => {
     const { handleSiteMembersRoutes } = await loadRoute();
-    const { db } = await mocks();
-
-    vi.mocked(db.query).mockResolvedValueOnce({
-      rows: [
-        memberRow({ role: 'developer', source: 'local' }),
-        memberRow({ role: 'editor', source: 'mas' }),
-      ],
-    });
+    database.on(userSiteRoles).select.returnsRaw([
+      memberRow({ role: 'developer', source: 'local' }),
+      memberRow({ role: 'editor', source: 'mas' }),
+    ]);
 
     const response = await handleSiteMembersRoutes(membersRequest(), {
       siteId: 'site-1',
@@ -207,20 +197,15 @@ describe('GET /api/sites/{siteId}/members', () => {
 
   it('adds upstream MAS members that hold no local role row', async () => {
     const { handleSiteMembersRoutes } = await loadRoute();
-    const { db } = await mocks();
-
-    vi.mocked(db.query)
-      .mockResolvedValueOnce({ rows: [memberRow()] })
-      .mockResolvedValueOnce({
-        rows: [
-          {
-            id: 'user-2',
-            name: 'Grace Hopper',
-            email: 'grace@example.com',
-            avatar_url: null,
-          },
-        ],
-      });
+    database.on(userSiteRoles).select.returnsRaw([memberRow()]);
+    database.on(users).select.returnsRaw([
+      {
+        id: 'user-2',
+        name: 'Grace Hopper',
+        email: 'grace@example.com',
+        avatarUrl: null,
+      },
+    ]);
 
     const masClient = {
       getSiteMemberships: vi.fn().mockResolvedValue([{ userId: 'user-2', role: 'admin' }]),
@@ -248,11 +233,6 @@ describe('GET /api/sites/{siteId}/members', () => {
 
   it('reports a MAS-only member with no local account as a null name and avatar', async () => {
     const { handleSiteMembersRoutes } = await loadRoute();
-    const { db } = await mocks();
-
-    vi.mocked(db.query)
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [] });
 
     const masClient = {
       getSiteMemberships: vi.fn().mockResolvedValue([{ userId: 'user-9', role: 'editor' }]),
@@ -280,9 +260,7 @@ describe('GET /api/sites/{siteId}/members', () => {
 
   it('serves the local members when the MAS roster is unavailable', async () => {
     const { handleSiteMembersRoutes } = await loadRoute();
-    const { db } = await mocks();
-
-    vi.mocked(db.query).mockResolvedValueOnce({ rows: [memberRow()] });
+    database.on(userSiteRoles).select.returnsRaw([memberRow()]);
 
     const masClient = {
       getSiteMemberships: vi.fn().mockResolvedValue(null),
@@ -301,9 +279,7 @@ describe('GET /api/sites/{siteId}/members', () => {
 
   it('forbids a shared cache in front of the worker from storing the roster', async () => {
     const { handleSiteMembersRoutes } = await loadRoute();
-    const { db } = await mocks();
-
-    vi.mocked(db.query).mockResolvedValueOnce({ rows: [memberRow()] });
+    database.on(userSiteRoles).select.returnsRaw([memberRow()]);
 
     const response = await handleSiteMembersRoutes(membersRequest(), {
       siteId: 'site-1',
@@ -315,9 +291,7 @@ describe('GET /api/sites/{siteId}/members', () => {
 
   it('reads the upstream roster once for two requests on the same site', async () => {
     const { handleSiteMembersRoutes } = await loadRoute();
-    const { db } = await mocks();
-
-    vi.mocked(db.query).mockResolvedValue({ rows: [memberRow()] });
+    database.on(userSiteRoles).select.returnsRaw([memberRow()]);
 
     const masClient = {
       getSiteMemberships: vi.fn().mockResolvedValue([{ userId: 'user-1', role: 'admin' }]),

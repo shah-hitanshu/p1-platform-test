@@ -9,22 +9,11 @@
  * is covered against real Postgres in tests/integration/agent-auth-flow and
  * tests/integration/global-agent-roles; this suite covers validation and
  * row-to-domain-object mapping against the stub.
- *
- * grantRole still reads through the legacy query() connection: site-service.ts
- * calls it from inside a raw BEGIN/COMMIT block on that connection, and a
- * Drizzle insert would run on a separate connection unable to see the
- * not-yet-committed site row it depends on.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { stubDatabase, type DatabaseStub } from '../__stubs__/database';
 import { agentSiteRoles } from '../../src/db/schema';
-import { query } from '../../src/db';
-
-vi.mock('../../src/db', async (importOriginal) => ({
-  ...await importOriginal<typeof import('../../src/db')>(),
-  query: vi.fn(),
-}));
 
 describe('Agent Site Role Service', () => {
   let database: DatabaseStub;
@@ -56,17 +45,7 @@ describe('Agent Site Role Service', () => {
     it('should grant a role and return the role object', async () => {
       const { grantRole } = await import('../../src/services/agent-site-role-service');
 
-      vi.mocked(query).mockResolvedValue({
-        rows: [{
-          id: 'role-uuid-001',
-          agent_id: 'agent-uuid-456',
-          site_id: 'site-uuid-789',
-          role: 'editor',
-          created_by_id: 'user-uuid-111',
-          created_at: '2026-03-22T10:00:00.000Z',
-          revoked_at: null,
-        }],
-      });
+      database.on(agentSiteRoles).insert.returns([createRoleRow()]);
 
       const result = await grantRole({
         agentId: 'agent-uuid-456',
@@ -152,17 +131,7 @@ describe('Agent Site Role Service', () => {
 
     it('should insert into agent_site_roles with the granted fields', async () => {
       const { grantRole } = await import('../../src/services/agent-site-role-service');
-      vi.mocked(query).mockResolvedValue({
-        rows: [{
-          id: 'role-uuid-001',
-          agent_id: 'agent-uuid-456',
-          site_id: 'site-uuid-789',
-          role: 'editor',
-          created_by_id: 'user-uuid-111',
-          created_at: '2026-03-22T10:00:00.000Z',
-          revoked_at: null,
-        }],
-      });
+      database.on(agentSiteRoles).insert.returns([createRoleRow()]);
 
       await grantRole({
         agentId: 'agent-uuid-456',
@@ -171,15 +140,17 @@ describe('Agent Site Role Service', () => {
         grantedBy: 'user-uuid-111',
       });
 
-      expect(query).toHaveBeenCalledWith(
-        expect.stringContaining('app.agent_site_roles'),
+      const [call] = database.calls(agentSiteRoles).insert;
+      expect(call?.params).toEqual(
         expect.arrayContaining(['agent-uuid-456', 'site-uuid-789', 'editor', 'user-uuid-111']),
       );
+      // The unique index the upsert targets is partial, so a revoked grant is a
+      // separate row rather than one to update.
+      expect(call?.sql).toContain('"revoked_at" is null');
     });
 
     it('throws when the insert reports no row', async () => {
       const { grantRole } = await import('../../src/services/agent-site-role-service');
-      vi.mocked(query).mockResolvedValue({ rows: [] });
 
       await expect(
         grantRole({

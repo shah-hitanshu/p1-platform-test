@@ -10,9 +10,10 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
-import postgres from 'postgres';
+import type postgres from 'postgres';
 import { setDatabaseInstance, getDatabaseInstance } from '../../src/db';
-import type { DatabaseConnection, QueryResult } from '../../src/db';
+import type { DatabaseConnection } from '../../src/db';
+import { createRealDatabaseConnection } from '../helpers/database';
 
 // Import site service for setting up test sites
 import { createSite } from '../../src/services/site-service';
@@ -38,7 +39,6 @@ import {
 } from '../../src/services/errors';
 
 // Test configuration
-const CONNECTION_STRING = 'postgresql://cssuser:csspass@localhost:5432/cssdb';
 
 // Use valid UUIDs for created_by_id fields (database expects UUID type)
 const TEST_USER_ID = '00000000-0000-0000-0000-000000000001';
@@ -74,48 +74,16 @@ function assertDefined<T>(value: T | null | undefined, message = 'Expected value
 /**
  * Creates a real database connection adapter for testing.
  */
-function createRealDatabaseConnection(connectionString: string): {
-  connection: DatabaseConnection;
-  sql: postgres.Sql;
-} {
-  const sql = postgres(connectionString, {
-    transform: {
-      undefined: null,
-    },
-    // Use max: 1 to ensure all queries use the same connection.
-    // This is required for manual transaction handling (BEGIN/COMMIT/ROLLBACK)
-    // to work correctly, as transactions are connection-scoped.
-    max: 1,
-  });
-
-  const connection: DatabaseConnection = {
-    async query<T = Record<string, unknown>>(
-      sqlQuery: string,
-      params?: unknown[],
-    ): Promise<QueryResult<T>> {
-      const result = await sql.unsafe<T[]>(sqlQuery, params as unknown as postgres.ParameterOrJSON<never>[]);
-      const rows = [...result] as T[];
-      const resultWithCount = result as unknown as { count?: number };
-      const rowCount = resultWithCount.count ?? rows.length;
-
-      return {
-        rows,
-        rowCount,
-      };
-    },
-  };
-
-  return { connection, sql };
-}
-
 describe('Phase 3.2: Integration Tests - Branch Service', () => {
   let sql: postgres.Sql;
+  let connection: DatabaseConnection;
   let testSiteId: string;
 
   beforeAll(async () => {
     // Create real database connection
-    const { connection, sql: pgSql } = createRealDatabaseConnection(CONNECTION_STRING);
-    sql = pgSql;
+    const handles = createRealDatabaseConnection();
+    sql = handles.sql;
+    connection = handles.connection;
     setDatabaseInstance(connection);
 
     // Verify connection
@@ -178,8 +146,7 @@ describe('Phase 3.2: Integration Tests - Branch Service', () => {
 
     // Close database connection
     setDatabaseInstance(null);
-    await sql.end();
-    console.log('Database connection closed, test data cleaned up');
+    await connection.close();
   });
 
   beforeEach(() => {

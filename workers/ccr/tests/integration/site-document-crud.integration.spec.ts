@@ -10,9 +10,10 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
-import postgres from 'postgres';
+import type postgres from 'postgres';
 import { setDatabaseInstance, getDatabaseInstance } from '../../src/db';
-import type { DatabaseConnection, QueryResult } from '../../src/db';
+import type { DatabaseConnection } from '../../src/db';
+import { createRealDatabaseConnection } from '../helpers/database';
 
 // Import services
 import {
@@ -37,7 +38,6 @@ import {
 import { DuplicatePantheonSiteIdError, InvalidSiteParamsError, SiteNotFoundError } from '../../src/services/errors';
 
 // Test configuration
-const CONNECTION_STRING = 'postgresql://cssuser:csspass@localhost:5432/cssdb';
 
 // Track created resources for cleanup
 const createdSiteIds: string[] = [];
@@ -58,55 +58,15 @@ function getFirst<T>(arr: T[]): T {
 /**
  * Creates a real database connection adapter for testing.
  */
-function createRealDatabaseConnection(connectionString: string): {
-  connection: DatabaseConnection;
-  sql: postgres.Sql;
-} {
-  const sql = postgres(connectionString, {
-    transform: {
-      // Automatically parse JSONB columns
-      undefined: null,
-    },
-    // Use max: 1 to ensure all queries use the same connection.
-    // This is required for manual transaction handling (BEGIN/COMMIT/ROLLBACK)
-    // to work correctly, as transactions are connection-scoped.
-    max: 1,
-  });
-
-  const connection: DatabaseConnection = {
-    async query<T = Record<string, unknown>>(
-      sqlQuery: string,
-      params?: unknown[],
-    ): Promise<QueryResult<T>> {
-      // Execute the query using postgres template literal format
-      const result = await sql.unsafe<T[]>(sqlQuery, params as unknown as postgres.ParameterOrJSON<never>[]);
-
-      // The postgres package returns a Result object that extends Array
-      // For INSERT/UPDATE/DELETE with RETURNING, rows are in the array
-      // For DELETE without RETURNING, we get the count from result.count
-      const rows = [...result] as T[];
-
-      // Get row count - for DELETE/UPDATE, use result.count; for SELECT, use rows.length
-      const resultWithCount = result as unknown as { count?: number };
-      const rowCount = resultWithCount.count ?? rows.length;
-
-      return {
-        rows,
-        rowCount,
-      };
-    },
-  };
-
-  return { connection, sql };
-}
-
 describe('Phase 3.1: Integration Tests - Site and Document CRUD', () => {
   let sql: postgres.Sql;
+  let connection: DatabaseConnection;
 
   beforeAll(async () => {
     // Create real database connection
-    const { connection, sql: pgSql } = createRealDatabaseConnection(CONNECTION_STRING);
-    sql = pgSql;
+    const handles = createRealDatabaseConnection();
+    sql = handles.sql;
+    connection = handles.connection;
     setDatabaseInstance(connection);
 
     // Verify connection
@@ -164,8 +124,7 @@ describe('Phase 3.1: Integration Tests - Site and Document CRUD', () => {
 
     // Close database connection
     setDatabaseInstance(null);
-    await sql.end();
-    console.log('Database connection closed, test data cleaned up');
+    await connection.close();
   });
 
   beforeEach(() => {

@@ -13,6 +13,8 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
 import * as Y from 'yjs';
+import { branches, documentVersions } from '../../src/db/schema';
+import { stubDatabase, type DatabaseStub } from '../__stubs__/database';
 
 // ---------------------------------------------------------------------------
 // Mock cloudflare:workers — required because document-session-types imports
@@ -36,7 +38,6 @@ vi.mock('cloudflare:workers', () => ({
 // ---------------------------------------------------------------------------
 vi.mock('../../src/db', () => ({
   runWithConnection: vi.fn(),
-  query: vi.fn(),
   setDatabaseInstance: vi.fn(),
   getDatabaseInstance: vi.fn(),
   initializeDatabaseFromConnectionString: vi.fn(),
@@ -106,10 +107,12 @@ function createEnvWithHyperdrive(overrides: Partial<MockEnv> = {}): MockEnv {
 describe('PostgresSyncManager: CoW fallback in initializeFromHyperdrive()', () => {
   let storage: MockDurableObjectStorage;
   let ydoc: Y.Doc;
+  let database: DatabaseStub;
   const originalFetch = globalThis.fetch;
 
   beforeEach(async () => {
     vi.resetAllMocks();
+    database = stubDatabase();
 
     storage = createMockStorage();
     ydoc = new Y.Doc();
@@ -131,8 +134,6 @@ describe('PostgresSyncManager: CoW fallback in initializeFromHyperdrive()', () =
         fn: () => Promise<unknown>,
       ) => fn(),
     );
-    // Default query result — tests override this as needed.
-    (db.query as Mock).mockResolvedValue({ rows: [], rowCount: 0 });
   });
 
   afterEach(() => {
@@ -171,40 +172,18 @@ describe('PostgresSyncManager: CoW fallback in initializeFromHyperdrive()', () =
   // Test 1: CoW fallback applied — source branch has a published snapshot
   // =========================================================================
   it('applies snapshot from source branch when branch-specific query returns 0 rows', async () => {
-    const db = await import('../../src/db');
     const { applySnapshotToYMap } = await import(
       '../../src/durable-objects/crdt-operations'
     );
 
     const sourceBranchSnapshot = { title: 'From source branch via CoW' };
 
-    // Sequence of dbQuery calls inside the single runWithConnection callback:
-    //   Call 1: branch version query → 0 rows  (no version on this branch)
-    //   Call 2: branch lookup query  → { source_branch_id: 'branch-source', is_main: false }
-    //   Call 3: CoW version query    → { snapshot: sourceBranchSnapshot }
-    let callCount = 0;
-    (db.query as Mock).mockImplementation(() => {
-      callCount++;
-      if (callCount === 1) {
-        // Branch-specific document_versions query — no rows
-        return Promise.resolve({ rows: [], rowCount: 0 });
-      }
-      if (callCount === 2) {
-        // Branch metadata lookup
-        return Promise.resolve({
-          rows: [{ source_branch_id: 'branch-source', is_main: false }],
-          rowCount: 1,
-        });
-      }
-      if (callCount === 3) {
-        // CoW fallback query against source branch
-        return Promise.resolve({
-          rows: [{ snapshot: sourceBranchSnapshot }],
-          rowCount: 1,
-        });
-      }
-      return Promise.resolve({ rows: [], rowCount: 0 });
-    });
+    // The branch holds no version of its own, so the source branch it was cut
+    // from is what the second document_versions read is keyed on.
+    database.on(branches).select.returnsRaw([{ sourceBranchId: 'branch-source' }]);
+    database.on(documentVersions).select.whenBound(['branch-source']).returnsRaw([
+      { snapshot: sourceBranchSnapshot, versionNumber: 4 },
+    ]);
 
     const manager = await buildManager(createEnvWithHyperdrive());
 
@@ -216,31 +195,23 @@ describe('PostgresSyncManager: CoW fallback in initializeFromHyperdrive()', () =
       expect.anything(),
       sourceBranchSnapshot,
     );
-    // Confirm we issued at least 3 DB queries (branch, branch lookup, CoW)
-    expect(callCount).toBeGreaterThanOrEqual(3);
+    expect(database.calls(documentVersions).select).toHaveLength(2);
+    expect(database.calls(branches).select).toHaveLength(1);
   });
 
   // =========================================================================
   // Test 2: No CoW when branch version exists — first query succeeds
   // =========================================================================
   it('does not run CoW queries when the branch-specific query returns a row', async () => {
-    const db = await import('../../src/db');
     const { applySnapshotToYMap } = await import(
       '../../src/durable-objects/crdt-operations'
     );
 
     const branchSnapshot = { title: 'Direct branch snapshot' };
 
-    let callCount = 0;
-    (db.query as Mock).mockImplementation(() => {
-      callCount++;
-      if (callCount === 1) {
-        // Branch-specific version exists — 1 row returned
-        return Promise.resolve({ rows: [{ snapshot: branchSnapshot }], rowCount: 1 });
-      }
-      // Any subsequent call would be unexpected
-      return Promise.resolve({ rows: [], rowCount: 0 });
-    });
+    database.on(documentVersions).select.returnsRaw([
+      { snapshot: branchSnapshot, versionNumber: 2 },
+    ]);
 
     const manager = await buildManager(createEnvWithHyperdrive());
     await manager.initializeFromPostgres();
@@ -250,41 +221,30 @@ describe('PostgresSyncManager: CoW fallback in initializeFromHyperdrive()', () =
       expect.anything(),
       branchSnapshot,
     );
-    // Only ONE db query should have been run — no branch lookup, no CoW query
-    expect(callCount).toBe(1);
+    // The branch's own version answers, so neither the source-branch lookup nor
+    // the CoW read is issued.
+    expect(database.calls(documentVersions).select).toHaveLength(1);
+    expect(database.calls(branches).select).toHaveLength(0);
   });
 
   // =========================================================================
   // Test 3: No CoW for main branch (source_branch_id is null / is_main = true)
   // =========================================================================
   it('returns false without applying a snapshot when the branch has no source_branch_id', async () => {
-    const db = await import('../../src/db');
     const { applySnapshotToYMap } = await import(
       '../../src/durable-objects/crdt-operations'
     );
 
-    let callCount = 0;
-    (db.query as Mock).mockImplementation(() => {
-      callCount++;
-      if (callCount === 1) {
-        // No version on this branch
-        return Promise.resolve({ rows: [], rowCount: 0 });
-      }
-      if (callCount === 2) {
-        // Branch lookup — SQL filters is_main=false AND source_branch_id IS NOT NULL,
-        // so a main branch returns 0 rows (not a row with nulls).
-        return Promise.resolve({ rows: [], rowCount: 0 });
-      }
-      return Promise.resolve({ rows: [], rowCount: 0 });
-    });
-
+    // The lookup filters is_main = false AND source_branch_id IS NOT NULL, so a
+    // main branch matches nothing rather than returning a row of nulls.
     const manager = await buildManager(createEnvWithHyperdrive());
     await manager.initializeFromPostgres();
 
     // No snapshot should have been applied
     expect(applySnapshotToYMap).not.toHaveBeenCalled();
-    // The branch lookup query must have been issued (call 2) but no CoW query
-    expect(callCount).toBe(2);
+    // The source-branch lookup ran and found nothing, so no CoW read followed.
+    expect(database.calls(branches).select).toHaveLength(1);
+    expect(database.calls(documentVersions).select).toHaveLength(1);
     // Storage put (persist) must NOT have been called because nothing was loaded
     expect(storage.put).not.toHaveBeenCalled();
   });
@@ -293,39 +253,20 @@ describe('PostgresSyncManager: CoW fallback in initializeFromHyperdrive()', () =
   // Test 4: No CoW when source branch has no published version
   // =========================================================================
   it('returns false without applying a snapshot when the CoW query returns 0 rows', async () => {
-    const db = await import('../../src/db');
     const { applySnapshotToYMap } = await import(
       '../../src/durable-objects/crdt-operations'
     );
 
-    let callCount = 0;
-    (db.query as Mock).mockImplementation(() => {
-      callCount++;
-      if (callCount === 1) {
-        // No version on this branch
-        return Promise.resolve({ rows: [], rowCount: 0 });
-      }
-      if (callCount === 2) {
-        // Branch has a source branch
-        return Promise.resolve({
-          rows: [{ source_branch_id: 'branch-source', is_main: false }],
-          rowCount: 1,
-        });
-      }
-      if (callCount === 3) {
-        // No checkpointed version found on source branch
-        return Promise.resolve({ rows: [], rowCount: 0 });
-      }
-      return Promise.resolve({ rows: [], rowCount: 0 });
-    });
+    // A source branch exists but holds no published version of the document.
+    database.on(branches).select.returnsRaw([{ sourceBranchId: 'branch-source' }]);
 
     const manager = await buildManager(createEnvWithHyperdrive());
     await manager.initializeFromPostgres();
 
     // No snapshot should have been applied
     expect(applySnapshotToYMap).not.toHaveBeenCalled();
-    // All 3 queries must have been issued
-    expect(callCount).toBe(3);
+    expect(database.calls(documentVersions).select).toHaveLength(2);
+    expect(database.calls(branches).select).toHaveLength(1);
     // Storage put (persist) must NOT have been called
     expect(storage.put).not.toHaveBeenCalled();
   });

@@ -30,7 +30,6 @@ vi.mock('../../src/auth/authorization', () => ({
   },
 }));
 vi.mock('../../src/storage/r2-presign', () => ({ signR2GetUrl: vi.fn() }));
-vi.mock('../../src/db', () => ({ query: vi.fn().mockResolvedValue({ rows: [], rowCount: 0 }) }));
 
 import { getSite } from '../../src/services/site-service';
 import { listBranches, getMainBranch } from '../../src/services/branch-service';
@@ -43,8 +42,8 @@ import {
 } from '../../src/services/bundle-export-service';
 import { assertPermission, AuthorizationError } from '../../src/auth/authorization';
 import { signR2GetUrl } from '../../src/storage/r2-presign';
-import { query } from '../../src/db';
 import { listRolesBySite } from '../../src/services/agent-site-role-service';
+import { stubDatabase } from '../__stubs__/database';
 import { handleSiteExportRoute } from '../../src/routes/site-export-api';
 
 const mockGetSite = vi.mocked(getSite);
@@ -57,7 +56,6 @@ const mockGetCheckpoints = vi.mocked(getPublishCheckpointsForDocument);
 const mockSignBundleJson = vi.mocked(signBundleJson);
 const mockAssertPermission = vi.mocked(assertPermission);
 const mockSignR2 = vi.mocked(signR2GetUrl);
-const mockQuery = vi.mocked(query);
 const mockListAgentRoles = vi.mocked(listRolesBySite);
 
 function createPrincipal(): AuthenticatedPrincipal {
@@ -114,8 +112,8 @@ const MOCK_MAIN_BRANCH = {
 describe('handleSiteExportRoute', () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    stubDatabase();
     // Restore defaults wiped by resetAllMocks
-    mockQuery.mockResolvedValue({ rows: [], rowCount: 0 });
     mockListAgentRoles.mockResolvedValue([]);
     mockResolveRefsBatch.mockResolvedValue(new Map());
     mockGetCheckpoints.mockResolvedValue([]);

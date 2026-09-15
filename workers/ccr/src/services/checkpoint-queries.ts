@@ -5,23 +5,32 @@
  * documents at checkpoints, and structures at checkpoints.
  */
 
+import { and, asc, count, desc, eq, sql, type SQL } from 'drizzle-orm';
 import type { Checkpoint, CheckpointStatus } from '../types';
-import { query } from '../db';
+import { db, transaction } from '../db/scope';
+import {
+  checkpointDocuments,
+  checkpoints,
+  checkpointStructures,
+  documents,
+  documentVersions,
+} from '../db/schema';
 import type {
   CheckpointDocumentVersion,
-  CheckpointRow,
   CheckpointStructure,
-  CheckpointStructureRow,
   ListCheckpointsOptions,
   ListCheckpointsByAgentOptions,
   VersionWithDocumentRow,
 } from './checkpoint-types';
 import { CheckpointNotFoundError } from './errors';
 import {
-  getFirstRow,
-  mapRowToCheckpoint,
+  checkpointColumns,
+  checkpointDocumentVersionColumns,
+  checkpointStructureColumns,
+  mapDrizzleRowToCheckpoint,
+  mapDrizzleRowToCheckpointDocumentVersion,
+  mapDrizzleRowToCheckpointStructure,
   mapRowToCheckpointDocumentVersion,
-  mapRowToCheckpointStructure,
 } from './checkpoint-mappers';
 import { normalizePath } from './document-types';
 
@@ -32,16 +41,12 @@ import { normalizePath } from './document-types';
  * @returns The checkpoint or null if not found
  */
 export async function getCheckpoint(checkpointId: string): Promise<Checkpoint | null> {
-  const result = await query<CheckpointRow>(
-    'SELECT * FROM app.checkpoints WHERE id = $1',
-    [checkpointId],
-  );
+  const [row] = await db()
+    .select(checkpointColumns)
+    .from(checkpoints)
+    .where(eq(checkpoints.id, checkpointId));
 
-  if (result.rows.length === 0) {
-    return null;
-  }
-
-  return mapRowToCheckpoint(getFirstRow(result.rows));
+  return row === undefined ? null : mapDrizzleRowToCheckpoint(row);
 }
 
 /**
@@ -57,32 +62,26 @@ export async function listCheckpoints(
 ): Promise<Checkpoint[]> {
   const { checkpointType, limit, offset } = options;
 
-  let sql = 'SELECT * FROM app.checkpoints WHERE branch_id = $1';
-  const params: unknown[] = [branchId];
-  let paramIndex = 2;
-
+  const conditions = [eq(checkpoints.branchId, branchId)];
   if (checkpointType !== undefined) {
-    sql += ` AND checkpoint_type = $${String(paramIndex)}`;
-    params.push(checkpointType);
-    paramIndex++;
+    conditions.push(eq(checkpoints.checkpointType, checkpointType));
   }
 
-  sql += ' ORDER BY created_at DESC';
+  let statement = db()
+    .select(checkpointColumns)
+    .from(checkpoints)
+    .where(and(...conditions))
+    .orderBy(desc(checkpoints.createdAt))
+    .$dynamic();
 
   if (limit !== undefined) {
-    sql += ` LIMIT $${String(paramIndex)}`;
-    params.push(limit);
-    paramIndex++;
+    statement = statement.limit(limit);
   }
-
   if (offset !== undefined) {
-    sql += ` OFFSET $${String(paramIndex)}`;
-    params.push(offset);
+    statement = statement.offset(offset);
   }
 
-  const result = await query<CheckpointRow>(sql, params);
-
-  return result.rows.map(mapRowToCheckpoint);
+  return (await statement).map(mapDrizzleRowToCheckpoint);
 }
 
 /**
@@ -100,17 +99,15 @@ export async function listCheckpoints(
 export async function getDocumentsAtCheckpoint(
   checkpointId: string,
 ): Promise<CheckpointDocumentVersion[]> {
-  const result = await query<VersionWithDocumentRow>(
-    `SELECT dv.*, d.path as document_path
-     FROM app.checkpoint_documents cd
-     JOIN app.document_versions dv ON cd.document_version_id = dv.id
-     JOIN app.documents d ON cd.document_id = d.id
-     WHERE cd.checkpoint_id = $1
-     ORDER BY d.path`,
-    [checkpointId],
-  );
+  const rows = await db()
+    .select(checkpointDocumentVersionColumns)
+    .from(checkpointDocuments)
+    .innerJoin(documentVersions, eq(checkpointDocuments.documentVersionId, documentVersions.id))
+    .innerJoin(documents, eq(checkpointDocuments.documentId, documents.id))
+    .where(eq(checkpointDocuments.checkpointId, checkpointId))
+    .orderBy(asc(documents.path));
 
-  return result.rows.map(mapRowToCheckpointDocumentVersion);
+  return rows.map(mapDrizzleRowToCheckpointDocumentVersion);
 }
 
 /**
@@ -128,20 +125,17 @@ export async function getDocumentAtCheckpoint(
   documentPath: string,
 ): Promise<CheckpointDocumentVersion | null> {
   const normalizedPath = normalizePath(documentPath);
-  const result = await query<VersionWithDocumentRow>(
-    `SELECT dv.*, d.path as document_path
-     FROM app.checkpoint_documents cd
-     JOIN app.document_versions dv ON cd.document_version_id = dv.id
-     JOIN app.documents d ON cd.document_id = d.id
-     WHERE cd.checkpoint_id = $1 AND d.path = $2`,
-    [checkpointId, normalizedPath],
-  );
+  const [row] = await db()
+    .select(checkpointDocumentVersionColumns)
+    .from(checkpointDocuments)
+    .innerJoin(documentVersions, eq(checkpointDocuments.documentVersionId, documentVersions.id))
+    .innerJoin(documents, eq(checkpointDocuments.documentId, documents.id))
+    .where(and(
+      eq(checkpointDocuments.checkpointId, checkpointId),
+      eq(documents.path, normalizedPath),
+    ));
 
-  if (result.rows.length === 0) {
-    return null;
-  }
-
-  return mapRowToCheckpointDocumentVersion(getFirstRow(result.rows));
+  return row === undefined ? null : mapDrizzleRowToCheckpointDocumentVersion(row);
 }
 
 /**
@@ -154,10 +148,11 @@ export async function getDocumentAtCheckpoint(
  * `nearest` picks each document's entry from the closest checkpoint that
  * mentions it, which is what makes a delta override its parent.
  */
-export const NEAREST_CHECKPOINT_CHAIN_ENTRIES = `WITH RECURSIVE chain AS (
+export function nearestCheckpointChainEntries(checkpointId: string): SQL {
+  return sql`WITH RECURSIVE chain AS (
        SELECT c.id, c.parent_checkpoint_id, c.is_full_snapshot, 0 AS depth
        FROM app.checkpoints c
-       WHERE c.id = $1
+       WHERE c.id = ${checkpointId}
      UNION ALL
        SELECT parent.id, parent.parent_checkpoint_id, parent.is_full_snapshot, chain.depth + 1
        FROM chain
@@ -170,6 +165,7 @@ export const NEAREST_CHECKPOINT_CHAIN_ENTRIES = `WITH RECURSIVE chain AS (
        JOIN app.checkpoint_documents cd ON cd.checkpoint_id = chain.id
        ORDER BY cd.document_id, chain.depth ASC
      )`;
+}
 
 /**
  * Resolves the live document set for a checkpoint, walking the parent chain for
@@ -185,18 +181,20 @@ export const NEAREST_CHECKPOINT_CHAIN_ENTRIES = `WITH RECURSIVE chain AS (
 export async function resolveCheckpointDocuments(
   checkpointId: string,
 ): Promise<CheckpointDocumentVersion[]> {
-  const result = await query<VersionWithDocumentRow>(
-    `${NEAREST_CHECKPOINT_CHAIN_ENTRIES}
-     SELECT dv.*, d.path as document_path
-     FROM nearest
-     JOIN app.document_versions dv ON dv.id = nearest.document_version_id
-     JOIN app.documents d ON d.id = nearest.document_id
-     WHERE dv.is_tombstone = false
-     ORDER BY d.path`,
-    [checkpointId],
-  );
+  // A recursive CTE has no builder form, so the chain walk stays raw (D6). Its
+  // rows come back in the column names the statement gives them, which is why
+  // they take the snake_case mapper.
+  const rows = await db().execute<VersionWithDocumentRow>(sql`
+    ${nearestCheckpointChainEntries(checkpointId)}
+    SELECT dv.*, d.path as document_path
+    FROM app.document_versions dv
+    JOIN nearest ON nearest.document_version_id = dv.id
+    JOIN app.documents d ON d.id = nearest.document_id
+    WHERE dv.is_tombstone = false
+    ORDER BY d.path
+  `);
 
-  return result.rows.map(mapRowToCheckpointDocumentVersion);
+  return rows.map(mapRowToCheckpointDocumentVersion);
 }
 
 /**
@@ -213,18 +211,17 @@ export async function resolveCheckpointDocuments(
 export async function resolveCheckpointDeletions(
   checkpointId: string,
 ): Promise<{ documentId: string; documentPath: string }[]> {
-  const result = await query<{ document_id: string; document_path: string }>(
-    `${NEAREST_CHECKPOINT_CHAIN_ENTRIES}
-     SELECT nearest.document_id, d.path as document_path
-     FROM nearest
-     JOIN app.document_versions dv ON dv.id = nearest.document_version_id
-     JOIN app.documents d ON d.id = nearest.document_id
-     WHERE dv.is_tombstone = true
-     ORDER BY d.path`,
-    [checkpointId],
-  );
+  const rows = await db().execute<{ document_id: string; document_path: string }>(sql`
+    ${nearestCheckpointChainEntries(checkpointId)}
+    SELECT nearest.document_id, d.path as document_path
+    FROM app.documents d
+    JOIN nearest ON nearest.document_id = d.id
+    JOIN app.document_versions dv ON dv.id = nearest.document_version_id
+    WHERE dv.is_tombstone = true
+    ORDER BY d.path
+  `);
 
-  return result.rows.map((row) => ({
+  return rows.map((row) => ({
     documentId: row.document_id,
     documentPath: row.document_path,
   }));
@@ -239,14 +236,13 @@ export async function resolveCheckpointDeletions(
 export async function getStructuresAtCheckpoint(
   checkpointId: string,
 ): Promise<CheckpointStructure[]> {
-  const result = await query<CheckpointStructureRow>(
-    `SELECT * FROM app.checkpoint_structures
-     WHERE checkpoint_id = $1
-     ORDER BY name`,
-    [checkpointId],
-  );
+  const rows = await db()
+    .select(checkpointStructureColumns)
+    .from(checkpointStructures)
+    .where(eq(checkpointStructures.checkpointId, checkpointId))
+    .orderBy(asc(checkpointStructures.name));
 
-  return result.rows.map(mapRowToCheckpointStructure);
+  return rows.map(mapDrizzleRowToCheckpointStructure);
 }
 
 /**
@@ -260,17 +256,15 @@ export async function getStructureAtCheckpoint(
   checkpointId: string,
   structureId: string,
 ): Promise<CheckpointStructure | null> {
-  const result = await query<CheckpointStructureRow>(
-    `SELECT * FROM app.checkpoint_structures
-     WHERE checkpoint_id = $1 AND structure_id = $2`,
-    [checkpointId, structureId],
-  );
+  const [row] = await db()
+    .select(checkpointStructureColumns)
+    .from(checkpointStructures)
+    .where(and(
+      eq(checkpointStructures.checkpointId, checkpointId),
+      eq(checkpointStructures.structureId, structureId),
+    ));
 
-  if (result.rows.length === 0) {
-    return null;
-  }
-
-  return mapRowToCheckpointStructure(getFirstRow(result.rows));
+  return row === undefined ? null : mapDrizzleRowToCheckpointStructure(row);
 }
 
 /**
@@ -280,19 +274,14 @@ export async function getStructureAtCheckpoint(
  * @returns The latest checkpoint or null if none exist
  */
 export async function getLatestCheckpoint(branchId: string): Promise<Checkpoint | null> {
-  const result = await query<CheckpointRow>(
-    `SELECT * FROM app.checkpoints
-     WHERE branch_id = $1
-     ORDER BY created_at DESC
-     LIMIT 1`,
-    [branchId],
-  );
+  const [row] = await db()
+    .select(checkpointColumns)
+    .from(checkpoints)
+    .where(eq(checkpoints.branchId, branchId))
+    .orderBy(desc(checkpoints.createdAt))
+    .limit(1);
 
-  if (result.rows.length === 0) {
-    return null;
-  }
-
-  return mapRowToCheckpoint(getFirstRow(result.rows));
+  return row === undefined ? null : mapDrizzleRowToCheckpoint(row);
 }
 
 /**
@@ -302,12 +291,12 @@ export async function getLatestCheckpoint(branchId: string): Promise<Checkpoint 
  * @returns The document count
  */
 export async function getCheckpointDocumentCount(checkpointId: string): Promise<number> {
-  const result = await query<{ count: string }>(
-    'SELECT COUNT(*) as count FROM app.checkpoint_documents WHERE checkpoint_id = $1',
-    [checkpointId],
-  );
+  const [row] = await db()
+    .select({ count: count() })
+    .from(checkpointDocuments)
+    .where(eq(checkpointDocuments.checkpointId, checkpointId));
 
-  return parseInt(getFirstRow(result.rows).count, 10);
+  return row?.count ?? 0;
 }
 
 /**
@@ -317,27 +306,19 @@ export async function getCheckpointDocumentCount(checkpointId: string): Promise<
  * @returns True if deleted, false if not found
  */
 export async function deleteCheckpoint(checkpointId: string): Promise<boolean> {
-  try {
-    await query('BEGIN');
-
+  return transaction(async () => {
     // Delete checkpoint_documents first (foreign key)
-    await query(
-      'DELETE FROM app.checkpoint_documents WHERE checkpoint_id = $1',
-      [checkpointId],
-    );
+    await db()
+      .delete(checkpointDocuments)
+      .where(eq(checkpointDocuments.checkpointId, checkpointId));
 
-    // Delete the checkpoint
-    const result = await query(
-      'DELETE FROM app.checkpoints WHERE id = $1',
-      [checkpointId],
-    );
+    const deleted = await db()
+      .delete(checkpoints)
+      .where(eq(checkpoints.id, checkpointId))
+      .returning({ id: checkpoints.id });
 
-    await query('COMMIT');
-    return (result.rowCount ?? 0) > 0;
-  } catch (error) {
-    await query('ROLLBACK');
-    throw error;
-  }
+    return deleted.length > 0;
+  });
 }
 
 /**
@@ -355,21 +336,19 @@ export async function updateCheckpointStatus(
   status: CheckpointStatus,
   rolledBackById?: string,
 ): Promise<Checkpoint> {
-  const rolledBackAt = status === 'rolled_back' ? new Date().toISOString() : null;
+  const rolledBackAt = status === 'rolled_back' ? new Date() : null;
 
-  const result = await query<CheckpointRow>(
-    `UPDATE app.checkpoints
-     SET status = $2, rolled_back_by_id = $3, rolled_back_at = $4
-     WHERE id = $1
-     RETURNING *`,
-    [checkpointId, status, rolledBackById ?? null, rolledBackAt],
-  );
+  const [row] = await db()
+    .update(checkpoints)
+    .set({ status, rolledBackById: rolledBackById ?? null, rolledBackAt })
+    .where(eq(checkpoints.id, checkpointId))
+    .returning(checkpointColumns);
 
-  if (result.rows.length === 0) {
+  if (row === undefined) {
     throw new CheckpointNotFoundError(checkpointId);
   }
 
-  return mapRowToCheckpoint(getFirstRow(result.rows));
+  return mapDrizzleRowToCheckpoint(row);
 }
 
 /**
@@ -385,51 +364,30 @@ export async function listCheckpointsByAgent(
 ): Promise<Checkpoint[]> {
   const { limit, offset, branchId, operationType, trigger, status } = options;
 
-  let sql = `SELECT * FROM app.checkpoints
-     WHERE created_by_id = $1 AND created_by_type = 'agent'`;
-  const params: unknown[] = [agentId];
-  let paramIndex = 2;
+  const conditions = [
+    eq(checkpoints.createdById, agentId),
+    eq(checkpoints.createdByType, 'agent'),
+  ];
+  if (branchId !== undefined) conditions.push(eq(checkpoints.branchId, branchId));
+  if (operationType !== undefined) conditions.push(eq(checkpoints.operationType, operationType));
+  if (trigger !== undefined) conditions.push(eq(checkpoints.trigger, trigger));
+  if (status !== undefined) conditions.push(eq(checkpoints.status, status));
 
-  if (branchId !== undefined) {
-    sql += ` AND branch_id = $${String(paramIndex)}`;
-    params.push(branchId);
-    paramIndex++;
-  }
-
-  if (operationType !== undefined) {
-    sql += ` AND operation_type = $${String(paramIndex)}`;
-    params.push(operationType);
-    paramIndex++;
-  }
-
-  if (trigger !== undefined) {
-    sql += ` AND trigger = $${String(paramIndex)}`;
-    params.push(trigger);
-    paramIndex++;
-  }
-
-  if (status !== undefined) {
-    sql += ` AND status = $${String(paramIndex)}`;
-    params.push(status);
-    paramIndex++;
-  }
-
-  sql += ' ORDER BY created_at DESC';
+  let statement = db()
+    .select(checkpointColumns)
+    .from(checkpoints)
+    .where(and(...conditions))
+    .orderBy(desc(checkpoints.createdAt))
+    .$dynamic();
 
   if (limit !== undefined) {
-    sql += ` LIMIT $${String(paramIndex)}`;
-    params.push(limit);
-    paramIndex++;
+    statement = statement.limit(limit);
   }
-
   if (offset !== undefined) {
-    sql += ` OFFSET $${String(paramIndex)}`;
-    params.push(offset);
+    statement = statement.offset(offset);
   }
 
-  const result = await query<CheckpointRow>(sql, params);
-
-  return result.rows.map(mapRowToCheckpoint);
+  return (await statement).map(mapDrizzleRowToCheckpoint);
 }
 
 /**
@@ -447,25 +405,22 @@ export async function listCheckpointsByOperationType(
 ): Promise<Checkpoint[]> {
   const { limit, offset } = options;
 
-  let sql = `SELECT * FROM app.checkpoints
-     WHERE branch_id = $1 AND operation_type = $2`;
-  const params: unknown[] = [branchId, operationType];
-  let paramIndex = 3;
-
-  sql += ' ORDER BY created_at DESC';
+  let statement = db()
+    .select(checkpointColumns)
+    .from(checkpoints)
+    .where(and(
+      eq(checkpoints.branchId, branchId),
+      eq(checkpoints.operationType, operationType),
+    ))
+    .orderBy(desc(checkpoints.createdAt))
+    .$dynamic();
 
   if (limit !== undefined) {
-    sql += ` LIMIT $${String(paramIndex)}`;
-    params.push(limit);
-    paramIndex++;
+    statement = statement.limit(limit);
   }
-
   if (offset !== undefined) {
-    sql += ` OFFSET $${String(paramIndex)}`;
-    params.push(offset);
+    statement = statement.offset(offset);
   }
 
-  const result = await query<CheckpointRow>(sql, params);
-
-  return result.rows.map(mapRowToCheckpoint);
+  return (await statement).map(mapDrizzleRowToCheckpoint);
 }

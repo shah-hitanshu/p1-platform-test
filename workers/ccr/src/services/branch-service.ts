@@ -7,8 +7,23 @@
  * @see collaborative-state-system-architecture-v2.2.md Section "Branches"
  */
 
+import { and, desc, eq, inArray, isNotNull, isNull, or, sql, type InferSelectModel } from 'drizzle-orm';
 import type { Branch, BranchStatus } from '../types';
-import { query } from '../db';
+import { driverErrorCode } from '../db/driver-error';
+import { toIsoTimestamp } from '../db/helpers';
+import { db, transaction } from '../db/scope';
+import {
+  branchDocumentMetadata,
+  branchStructureState,
+  branches,
+  checkpointDocumentMetadata,
+  checkpointDocuments,
+  checkpointStructures,
+  checkpoints,
+  documentVersions,
+  mergeRequests,
+  sites,
+} from '../db/schema';
 import {
   SiteNotFoundError,
   DuplicateBranchNameError,
@@ -64,24 +79,8 @@ export interface ListBranchesOptions {
   archived?: boolean;
 }
 
-/**
- * Database row format for branches.
- */
-interface BranchRow {
-  id: string;
-  site_id: string;
-  name: string;
-  description: string | null;
-  status: BranchStatus;
-  is_main: boolean;
-  source_branch_id: string | null;
-  source_checkpoint_id: string | null;
-  created_by_id: string;
-  created_by_type: 'user' | 'agent';
-  created_at: string;
-  updated_at: string;
-  archived_at: string | null;
-}
+/** A branch row as the schema declares it. */
+type BranchRow = InferSelectModel<typeof branches>;
 
 // =============================================================================
 // Status Transition Rules
@@ -124,18 +123,18 @@ export function isValidStatusTransition(from: BranchStatus, to: BranchStatus): b
 function mapRowToBranch(row: BranchRow): Branch {
   return {
     id: row.id,
-    siteId: row.site_id,
+    siteId: row.siteId,
     name: row.name,
     description: row.description ?? undefined,
-    status: row.status,
-    isMain: row.is_main,
-    sourceBranchId: row.source_branch_id ?? undefined,
-    sourceCheckpointId: row.source_checkpoint_id ?? undefined,
-    createdById: row.created_by_id,
-    createdByType: row.created_by_type,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-    archivedAt: row.archived_at ?? null,
+    status: row.status as BranchStatus,
+    isMain: row.isMain,
+    sourceBranchId: row.sourceBranchId ?? undefined,
+    sourceCheckpointId: row.sourceCheckpointId ?? undefined,
+    createdById: row.createdById,
+    createdByType: row.createdByType as Branch['createdByType'],
+    createdAt: toIsoTimestamp(row.createdAt),
+    updatedAt: toIsoTimestamp(row.updatedAt),
+    archivedAt: row.archivedAt === null ? null : toIsoTimestamp(row.archivedAt),
   };
 }
 
@@ -155,22 +154,14 @@ function getFirstRow<T>(rows: T[]): T {
  * Checks if an error is a PostgreSQL unique constraint violation.
  */
 function isUniqueConstraintViolation(error: unknown): boolean {
-  return (
-    error instanceof Error &&
-    'code' in error &&
-    (error as NodeJS.ErrnoException).code === '23505'
-  );
+  return driverErrorCode(error) === '23505';
 }
 
 /**
  * Checks if an error is a PostgreSQL foreign key constraint violation.
  */
 function isForeignKeyViolation(error: unknown): boolean {
-  return (
-    error instanceof Error &&
-    'code' in error &&
-    (error as NodeJS.ErrnoException).code === '23503'
-  );
+  return driverErrorCode(error) === '23503';
 }
 
 // =============================================================================
@@ -276,99 +267,90 @@ export async function createBranch(params: CreateBranchParams): Promise<Branch> 
   }
 
   try {
-    await query('BEGIN');
+    const created = await transaction(async () => {
+      // Validate source branch is the main branch (copy-on-write: branches only from main)
+      const [sourceBranch] = await db()
+        .select({ id: branches.id, isMain: branches.isMain })
+        .from(branches)
+        .where(eq(branches.id, params.sourceBranchId));
 
-    // Validate source branch is the main branch (copy-on-write: branches only from main)
-    const sourceBranchResult = await query<{ id: string; is_main: boolean }>(
-      'SELECT id, is_main FROM app.branches WHERE id = $1',
-      [params.sourceBranchId],
-    );
+      if (sourceBranch?.isMain !== true) {
+        throw new MainBranchOnlyError(params.sourceBranchId);
+      }
 
-    if (sourceBranchResult.rows.length === 0 || sourceBranchResult.rows[0]?.is_main !== true) {
-      await query('ROLLBACK');
-      throw new MainBranchOnlyError(params.sourceBranchId);
-    }
+      const inserted = await db()
+        .insert(branches)
+        .values({
+          siteId: params.siteId,
+          name: params.name.trim(),
+          description: params.description ?? null,
+          status: 'active',
+          isMain: false,
+          sourceBranchId: params.sourceBranchId,
+          sourceCheckpointId: params.sourceCheckpointId ?? null,
+          createdById: params.createdById,
+          createdByType: params.createdByType,
+        })
+        .returning();
 
-    const result = await query<BranchRow>(
-      `INSERT INTO app.branches (
-        site_id, name, description, status, is_main,
-        source_branch_id, source_checkpoint_id,
-        created_by_id, created_by_type
-      )
-      VALUES ($1, $2, $3, 'active', FALSE, $4, $5, $6, $7)
-      RETURNING *`,
-      [
-        params.siteId,
-        params.name.trim(),
-        params.description ?? null,
-        params.sourceBranchId,
-        params.sourceCheckpointId ?? null,
-        params.createdById,
-        params.createdByType,
-      ],
-    );
+      const branch = mapRowToBranch(getFirstRow(inserted));
 
-    const branch = mapRowToBranch(getFirstRow(result.rows));
+      // Copy-on-write: only copy structure state (navigation tree must be independent per branch)
+      // Document versions and metadata are NOT copied — they inherit from main via fallback
+      if (params.sourceCheckpointId !== undefined) {
+        // Copy structure from checkpoint
+        await db().execute(sql`
+          INSERT INTO app.branch_structure_state (
+            branch_id, structure_id, name, slug, description, structure_type,
+            structure_tree, metadata_schema, schema_enforcement
+          )
+          SELECT ${branch.id}::uuid, cs.structure_id, cs.name, cs.slug, cs.description, cs.structure_type,
+                 cs.structure_tree, cs.metadata_schema, cs.schema_enforcement
+          FROM app.checkpoint_structures cs
+          WHERE cs.checkpoint_id = ${params.sourceCheckpointId}::uuid
+        `);
+      } else {
+        // Copy structure from current branch state
+        await db().execute(sql`
+          INSERT INTO app.branch_structure_state (
+            branch_id, structure_id, name, slug, description, structure_type,
+            structure_tree, metadata_schema, schema_enforcement
+          )
+          SELECT ${branch.id}::uuid, bss.structure_id, bss.name, bss.slug, bss.description, bss.structure_type,
+                 bss.structure_tree, bss.metadata_schema, bss.schema_enforcement
+          FROM app.branch_structure_state bss
+          WHERE bss.branch_id = ${params.sourceBranchId}::uuid
+        `);
 
-    // Copy-on-write: only copy structure state (navigation tree must be independent per branch)
-    // Document versions and metadata are NOT copied — they inherit from main via fallback
-    if (params.sourceCheckpointId !== undefined) {
-      // Copy structure from checkpoint
-      await query(
-        `INSERT INTO app.branch_structure_state (
-          branch_id, structure_id, name, slug, description, structure_type,
-          structure_tree, metadata_schema, schema_enforcement
-        )
-        SELECT $1, cs.structure_id, cs.name, cs.slug, cs.description, cs.structure_type,
-               cs.structure_tree, cs.metadata_schema, cs.schema_enforcement
-        FROM app.checkpoint_structures cs
-        WHERE cs.checkpoint_id = $2`,
-        [branch.id, params.sourceCheckpointId],
-      );
-    } else {
-      // Copy structure from current branch state
-      await query(
-        `INSERT INTO app.branch_structure_state (
-          branch_id, structure_id, name, slug, description, structure_type,
-          structure_tree, metadata_schema, schema_enforcement
-        )
-        SELECT $1, bss.structure_id, bss.name, bss.slug, bss.description, bss.structure_type,
-               bss.structure_tree, bss.metadata_schema, bss.schema_enforcement
-        FROM app.branch_structure_state bss
-        WHERE bss.branch_id = $2`,
-        [branch.id, params.sourceBranchId],
-      );
+        // Auto-resolve source_checkpoint_id from latest checkpoint on source branch
+        const [latestCheckpoint] = await db()
+          .select({ id: checkpoints.id })
+          .from(checkpoints)
+          .where(eq(checkpoints.branchId, params.sourceBranchId))
+          .orderBy(desc(checkpoints.createdAt))
+          .limit(1);
 
-      // Auto-resolve source_checkpoint_id from latest checkpoint on source branch
-      const latestCheckpoint = await query<{ id: string }>(
-        'SELECT id FROM app.checkpoints WHERE branch_id = $1 ORDER BY created_at DESC LIMIT 1',
-        [params.sourceBranchId],
-      );
-
-      const latestCheckpointRow = latestCheckpoint.rows[0];
-      if (latestCheckpointRow) {
-        const updatedResult = await query<BranchRow>(
-          'UPDATE app.branches SET source_checkpoint_id = $1 WHERE id = $2 RETURNING *',
-          [latestCheckpointRow.id, branch.id],
-        );
-        const updatedRow = updatedResult.rows[0];
-        if (updatedRow) {
-          await query('COMMIT');
-          clearBranchCache();
-          return mapRowToBranch(updatedRow);
+        if (latestCheckpoint) {
+          const [updatedRow] = await db()
+            .update(branches)
+            .set({ sourceCheckpointId: latestCheckpoint.id })
+            .where(eq(branches.id, branch.id))
+            .returning();
+          if (updatedRow) {
+            return mapRowToBranch(updatedRow);
+          }
         }
       }
-    }
 
-    await query('COMMIT');
+      return branch;
+    });
+
     clearBranchCache();
-
-    return branch;
+    return created;
   } catch (error) {
     if (error instanceof MainBranchOnlyError) {
       throw error;
     }
-    await query('ROLLBACK');
     console.error('createBranch error:', error);
     if (isUniqueConstraintViolation(error)) {
       throw new DuplicateBranchNameError(params.siteId, params.name);
@@ -391,19 +373,23 @@ export async function createBranch(params: CreateBranchParams): Promise<Branch> 
  */
 export async function createMainBranch(params: CreateMainBranchParams): Promise<Branch> {
   try {
-    const result = await query<BranchRow>(
-      `INSERT INTO app.branches (
-        site_id, name, description, status, is_main,
-        source_branch_id, source_checkpoint_id,
-        created_by_id, created_by_type
-      )
-      VALUES ($1, 'main', 'Main branch', 'active', TRUE, NULL, NULL, $2, $3)
-      RETURNING *`,
-      [params.siteId, params.createdById, params.createdByType],
-    );
+    const inserted = await db()
+      .insert(branches)
+      .values({
+        siteId: params.siteId,
+        name: 'main',
+        description: 'Main branch',
+        status: 'active',
+        isMain: true,
+        sourceBranchId: null,
+        sourceCheckpointId: null,
+        createdById: params.createdById,
+        createdByType: params.createdByType,
+      })
+      .returning();
 
     clearBranchCache();
-    return mapRowToBranch(getFirstRow(result.rows));
+    return mapRowToBranch(getFirstRow(inserted));
   } catch (error) {
     console.error('createMainBranch error:', error);
     if (isUniqueConstraintViolation(error)) {
@@ -418,16 +404,9 @@ export async function createMainBranch(params: CreateMainBranchParams): Promise<
 
 /** Uncached lookup by id — used by mutation paths, which must not act on stale rows. */
 async function queryBranchById(branchId: string): Promise<Branch | null> {
-  const result = await query<BranchRow>(
-    'SELECT * FROM app.branches WHERE id = $1',
-    [branchId],
-  );
+  const [row] = await db().select().from(branches).where(eq(branches.id, branchId));
 
-  if (result.rows.length === 0) {
-    return null;
-  }
-
-  return mapRowToBranch(getFirstRow(result.rows));
+  return row === undefined ? null : mapRowToBranch(row);
 }
 
 /**
@@ -453,16 +432,12 @@ export function getBranch(branchId: string): Promise<Branch | null> {
  */
 export function getBranchByName(siteId: string, name: string): Promise<Branch | null> {
   return memoizedBranchLookup(`name:${siteId}:${name}`, async () => {
-    const result = await query<BranchRow>(
-      'SELECT * FROM app.branches WHERE site_id = $1 AND name = $2',
-      [siteId, name],
-    );
+    const [row] = await db()
+      .select()
+      .from(branches)
+      .where(and(eq(branches.siteId, siteId), eq(branches.name, name)));
 
-    if (result.rows.length === 0) {
-      return null;
-    }
-
-    return mapRowToBranch(getFirstRow(result.rows));
+    return row === undefined ? null : mapRowToBranch(row);
   });
 }
 
@@ -476,16 +451,12 @@ export function getBranchByName(siteId: string, name: string): Promise<Branch | 
  */
 export function getMainBranch(siteId: string): Promise<Branch | null> {
   return memoizedBranchLookup(`main:${siteId}`, async () => {
-    const result = await query<BranchRow>(
-      'SELECT * FROM app.branches WHERE site_id = $1 AND is_main = TRUE',
-      [siteId],
-    );
+    const [row] = await db()
+      .select()
+      .from(branches)
+      .where(and(eq(branches.siteId, siteId), eq(branches.isMain, true)));
 
-    if (result.rows.length === 0) {
-      return null;
-    }
-
-    return mapRowToBranch(getFirstRow(result.rows));
+    return row === undefined ? null : mapRowToBranch(row);
   });
 }
 
@@ -502,21 +473,16 @@ export async function archiveBranch(branchId: string): Promise<boolean | 'alread
   if (branch.isMain) {
     throw new MainBranchProtectionError('archive');
   }
-  await query('BEGIN');
-  try {
-    const result = await query<{ id: string }>(
-      `UPDATE app.branches SET archived_at = NOW()
-       WHERE id = $1 AND archived_at IS NULL
-       RETURNING id`,
-      [branchId],
-    );
-    await query('COMMIT');
-    clearBranchCache();
-    return (result.rowCount ?? 0) > 0 ? true : 'already_archived';
-  } catch (error) {
-    await query('ROLLBACK');
-    throw error;
-  }
+  const archived = await transaction(() =>
+    db()
+      .update(branches)
+      .set({ archivedAt: sql`NOW()` })
+      .where(and(eq(branches.id, branchId), isNull(branches.archivedAt)))
+      .returning({ id: branches.id }),
+  );
+
+  clearBranchCache();
+  return archived.length > 0 ? true : 'already_archived';
 }
 
 /**
@@ -524,39 +490,33 @@ export async function archiveBranch(branchId: string): Promise<boolean | 'alread
  * or if the parent site is archived.
  */
 export async function restoreBranch(branchId: string): Promise<Branch | null> {
-  const selectResult = await query<BranchRow>(
-    'SELECT * FROM app.branches WHERE id = $1',
-    [branchId],
-  );
-  const row = selectResult.rows[0];
-  if (row?.archived_at == null) {
+  const [row] = await db().select().from(branches).where(eq(branches.id, branchId));
+  if (row?.archivedAt == null) {
     return null;
   }
   // Refuse to restore a branch whose site is archived
-  const siteResult = await query<{ archived_at: string | null }>(
-    'SELECT archived_at FROM app.sites WHERE id = $1',
-    [row.site_id],
-  );
-  if (siteResult.rows[0]?.archived_at != null) {
+  const [site] = await db()
+    .select({ archivedAt: sites.archivedAt })
+    .from(sites)
+    .where(eq(sites.id, row.siteId));
+  if (site?.archivedAt != null) {
     return null;
   }
-  await query('BEGIN');
-  try {
-    const updateResult = await query<BranchRow>(
-      'UPDATE app.branches SET archived_at = NULL WHERE id = $1 RETURNING *',
-      [branchId],
-    );
-    await query('COMMIT');
-    clearBranchCache();
-    const updatedRow = updateResult.rows[0];
-    if (!updatedRow) {
-      return null;
-    }
-    return mapRowToBranch(updatedRow);
-  } catch (error) {
-    await query('ROLLBACK');
-    throw error;
+
+  const restored = await transaction(() =>
+    db()
+      .update(branches)
+      .set({ archivedAt: null })
+      .where(eq(branches.id, branchId))
+      .returning(),
+  );
+
+  clearBranchCache();
+  const updatedRow = restored[0];
+  if (!updatedRow) {
+    return null;
   }
+  return mapRowToBranch(updatedRow);
 }
 
 /**
@@ -572,33 +532,29 @@ export async function listBranches(
 ): Promise<Branch[]> {
   const { status, limit, offset, archived } = options;
 
-  const archivedFilter = archived === true ? ' AND b.archived_at IS NOT NULL' : ' AND b.archived_at IS NULL';
-  let sql = `SELECT b.* FROM app.branches b WHERE b.site_id = $1${archivedFilter}`;
-  const params: unknown[] = [siteId];
-  let paramIndex = 2;
-
-  if (status !== undefined) {
-    sql += ` AND b.status = $${String(paramIndex)}`;
-    params.push(status);
-    paramIndex++;
-  }
-
-  sql += ' ORDER BY b.created_at DESC';
+  let listing = db()
+    .select()
+    .from(branches)
+    .where(
+      and(
+        eq(branches.siteId, siteId),
+        archived === true ? isNotNull(branches.archivedAt) : isNull(branches.archivedAt),
+        status === undefined ? undefined : eq(branches.status, status),
+      ),
+    )
+    .orderBy(desc(branches.createdAt))
+    .$dynamic();
 
   if (limit !== undefined) {
-    sql += ` LIMIT $${String(paramIndex)}`;
-    params.push(limit);
-    paramIndex++;
+    listing = listing.limit(limit);
   }
-
   if (offset !== undefined) {
-    sql += ` OFFSET $${String(paramIndex)}`;
-    params.push(offset);
+    listing = listing.offset(offset);
   }
 
-  const result = await query<BranchRow>(sql, params);
+  const rows = await listing;
 
-  return result.rows.map(mapRowToBranch);
+  return rows.map(mapRowToBranch);
 }
 
 /**
@@ -623,22 +579,22 @@ export async function updateBranch(
   const description = updates.description === '' ? null : updates.description;
 
   try {
-    const result = await query<BranchRow>(
-      `UPDATE app.branches
-       SET name = COALESCE($1, name),
-           description = COALESCE($2, description),
-           updated_at = NOW()
-       WHERE id = $3
-       RETURNING *`,
-      [updates.name ?? null, description ?? null, branchId],
-    );
+    const updated = await db()
+      .update(branches)
+      .set({
+        name: sql`COALESCE(${updates.name ?? null}::text, ${branches.name})`,
+        description: sql`COALESCE(${description ?? null}::text, ${branches.description})`,
+        updatedAt: sql`NOW()`,
+      })
+      .where(eq(branches.id, branchId))
+      .returning();
 
-    if (result.rows.length === 0) {
+    if (updated.length === 0) {
       return null;
     }
 
     clearBranchCache();
-    return mapRowToBranch(getFirstRow(result.rows));
+    return mapRowToBranch(getFirstRow(updated));
   } catch (error) {
     if (isUniqueConstraintViolation(error)) {
       throw new DuplicateBranchNameError('unknown', updates.name ?? '');
@@ -682,21 +638,18 @@ export async function updateBranchStatus(
     return current;
   }
 
-  const result = await query<BranchRow>(
-    `UPDATE app.branches
-     SET status = $1,
-         updated_at = NOW()
-     WHERE id = $2
-     RETURNING *`,
-    [newStatus, branchId],
-  );
+  const updated = await db()
+    .update(branches)
+    .set({ status: newStatus, updatedAt: sql`NOW()` })
+    .where(eq(branches.id, branchId))
+    .returning();
 
-  if (result.rows.length === 0) {
+  if (updated.length === 0) {
     return null;
   }
 
   clearBranchCache();
-  return mapRowToBranch(getFirstRow(result.rows));
+  return mapRowToBranch(getFirstRow(updated));
 }
 
 /**
@@ -721,63 +674,54 @@ export async function deleteBranch(branchId: string): Promise<boolean> {
   // Delete related data in order to avoid foreign key constraint violations
   // Note: branch_grants and guest_links have ON DELETE CASCADE, so they are handled automatically
 
+  const checkpointsOnBranch = db()
+    .select({ id: checkpoints.id })
+    .from(checkpoints)
+    .where(eq(checkpoints.branchId, branchId));
+
   // 1. Delete merge requests where this branch is source or target
-  await query(
-    'DELETE FROM app.merge_requests WHERE source_branch_id = $1 OR target_branch_id = $1',
-    [branchId],
-  );
+  await db()
+    .delete(mergeRequests)
+    .where(
+      or(
+        eq(mergeRequests.sourceBranchId, branchId),
+        eq(mergeRequests.targetBranchId, branchId),
+      ),
+    );
 
   // 2. Delete branch document metadata
-  await query(
-    'DELETE FROM app.branch_document_metadata WHERE branch_id = $1',
-    [branchId],
-  );
+  await db().delete(branchDocumentMetadata).where(eq(branchDocumentMetadata.branchId, branchId));
 
   // 3. Delete branch structure state
-  await query(
-    'DELETE FROM app.branch_structure_state WHERE branch_id = $1',
-    [branchId],
-  );
+  await db().delete(branchStructureState).where(eq(branchStructureState.branchId, branchId));
 
   // 4. Delete checkpoint documents for checkpoints on this branch
-  await query(
-    `DELETE FROM app.checkpoint_documents
-     WHERE checkpoint_id IN (SELECT id FROM app.checkpoints WHERE branch_id = $1)`,
-    [branchId],
-  );
+  await db()
+    .delete(checkpointDocuments)
+    .where(inArray(checkpointDocuments.checkpointId, checkpointsOnBranch));
 
   // 5. Delete checkpoint structures for checkpoints on this branch
-  await query(
-    `DELETE FROM app.checkpoint_structures
-     WHERE checkpoint_id IN (SELECT id FROM app.checkpoints WHERE branch_id = $1)`,
-    [branchId],
-  );
+  await db()
+    .delete(checkpointStructures)
+    .where(inArray(checkpointStructures.checkpointId, checkpointsOnBranch));
 
   // 6. Delete checkpoint document metadata for checkpoints on this branch
-  await query(
-    `DELETE FROM app.checkpoint_document_metadata
-     WHERE checkpoint_id IN (SELECT id FROM app.checkpoints WHERE branch_id = $1)`,
-    [branchId],
-  );
+  await db()
+    .delete(checkpointDocumentMetadata)
+    .where(inArray(checkpointDocumentMetadata.checkpointId, checkpointsOnBranch));
 
   // 7. Delete checkpoints
-  await query(
-    'DELETE FROM app.checkpoints WHERE branch_id = $1',
-    [branchId],
-  );
+  await db().delete(checkpoints).where(eq(checkpoints.branchId, branchId));
 
   // 8. Delete document versions
-  await query(
-    'DELETE FROM app.document_versions WHERE branch_id = $1',
-    [branchId],
-  );
+  await db().delete(documentVersions).where(eq(documentVersions.branchId, branchId));
 
   // 9. Finally, delete the branch
-  const result = await query(
-    'DELETE FROM app.branches WHERE id = $1',
-    [branchId],
-  );
+  const deleted = await db()
+    .delete(branches)
+    .where(eq(branches.id, branchId))
+    .returning({ id: branches.id });
 
   clearBranchCache();
-  return (result.rowCount ?? 0) > 0;
+  return deleted.length > 0;
 }

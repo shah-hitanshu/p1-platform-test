@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
-import postgres from 'postgres';
+import type postgres from 'postgres';
 import { setDatabaseInstance } from '../../src/db';
+import type { DatabaseConnection } from '../../src/db';
+import { createRealDatabaseConnection } from '../helpers/database';
 import {
   moveDocumentOnBranch,
   moveDocumentGlobally,
@@ -9,11 +11,8 @@ import {
   DuplicateDocumentPathError,
 } from '../../src/services';
 
-const TEST_DATABASE_URL =
-  process.env.POSTGRES_CONNECTION_STRING ??
-  'postgresql://cssuser:csspass@localhost:5432/cssdb';
-
-let sql: ReturnType<typeof postgres>;
+let sql: postgres.Sql;
+let connection: DatabaseConnection;
 let siteId: string;
 let mainBranchId: string;
 let workstreamId: string;
@@ -58,18 +57,18 @@ async function seedDoc(path: string): Promise<string> {
 }
 
 beforeAll(async () => {
-  sql = postgres(TEST_DATABASE_URL, { max: 1 });
+  const handles = createRealDatabaseConnection();
+  sql = handles.sql;
+  connection = handles.connection;
+  // The raw connection is wrapped so a test can count the statements the
+  // services issue through it.
   setDatabaseInstance({
-    async query(sqlQuery: string, params?: unknown[]) {
+    ...connection,
+    query(sqlQuery: string, params?: unknown[]) {
       statements.push(sqlQuery);
-      const result = await sql.unsafe(
-        sqlQuery,
-        params as unknown as postgres.ParameterOrJSON<never>[],
-      );
-      const rows = [...result];
-      return { rows, rowCount: (result as unknown as { count?: number }).count ?? rows.length };
+      return connection.query(sqlQuery, params);
     },
-  } as never);
+  });
 
   await purgeSite();
 
@@ -104,7 +103,8 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await purgeSite();
-  await sql.end();
+  setDatabaseInstance(null);
+  await connection.close();
 });
 
 beforeEach(async () => {

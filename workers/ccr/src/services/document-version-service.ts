@@ -12,6 +12,7 @@ import type { DocumentVersion, DocumentVersionSource } from '../types';
 import { query } from '../db';
 import { branches, checkpointDocuments, checkpoints, documentVersions } from '../db/schema';
 import { db } from '../db/scope';
+import { toIsoTimestamp } from '../db/helpers';
 import { compare as jsonPatchCompare, applyPatch } from 'fast-json-patch';
 import { classifyChange } from './action-classification';
 import type { PuckAction } from './action-classification';
@@ -106,19 +107,6 @@ type DocumentVersionRow = {
 // =============================================================================
 // Helper Functions
 // =============================================================================
-
-/**
- * Normalizes a timestamp column to ISO-8601.
- *
- * A row read through the query builder carries a Date; one read through
- * db().execute() carries Postgres' own text form, because the Drizzle client
- * parses timestamps as identity. DocumentVersion.createdAt is a string either
- * way, so both are funnelled through here.
- */
-function toIsoTimestamp(value: Date | string | null | undefined): string {
-  if (value === null || value === undefined) return '';
-  return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
-}
 
 /**
  * Maps a database row to a DocumentVersion domain object.

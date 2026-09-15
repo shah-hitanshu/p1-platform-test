@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
-import postgres from 'postgres';
+import type postgres from 'postgres';
 import { setDatabaseInstance } from '../../src/db';
+import type { DatabaseConnection } from '../../src/db';
+import { createRealDatabaseConnection } from '../helpers/database';
 import {
   createCheckpoint,
   resolveCheckpointDeletions,
@@ -8,11 +10,8 @@ import {
   revertToCheckpoint,
 } from '../../src/services';
 
-const TEST_DATABASE_URL =
-  process.env.POSTGRES_CONNECTION_STRING ??
-  'postgresql://cssuser:csspass@localhost:5432/cssdb';
-
-let sql: ReturnType<typeof postgres>;
+let connection: DatabaseConnection;
+let sql: postgres.Sql;
 let siteId: string;
 let branchId: string;
 
@@ -65,23 +64,16 @@ async function titlesAtCheckpoint(checkpointId: string): Promise<Record<string, 
   );
 }
 
-beforeAll(async () => {
-  sql = postgres(TEST_DATABASE_URL, { max: 1 });
-  setDatabaseInstance({
-    async query(sqlQuery: string, params?: unknown[]) {
-      const result = await sql.unsafe(
-        sqlQuery,
-        params as unknown as postgres.ParameterOrJSON<never>[],
-      );
-      const rows = [...result];
-      return { rows, rowCount: (result as unknown as { count?: number }).count ?? rows.length };
-    },
-  } as never);
+beforeAll(() => {
+  const real = createRealDatabaseConnection();
+  connection = real.connection;
+  sql = real.sql;
+  setDatabaseInstance(connection);
 });
 
 afterAll(async () => {
   await purgeSite();
-  await sql.end();
+  await connection.close();
 });
 
 beforeEach(async () => {

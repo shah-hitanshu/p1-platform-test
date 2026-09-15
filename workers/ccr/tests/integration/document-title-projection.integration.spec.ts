@@ -16,9 +16,10 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import postgres from 'postgres';
+import type postgres from 'postgres';
 import { setDatabaseInstance } from '../../src/db';
-import type { DatabaseConnection, QueryResult } from '../../src/db';
+import type { DatabaseConnection } from '../../src/db';
+import { createRealDatabaseConnection } from '../helpers/database';
 
 import { createSite } from '../../src/services/site-service';
 import {
@@ -26,46 +27,19 @@ import {
   listDocumentsOnBranch,
 } from '../../src/services/branch-document-service';
 
-const CONNECTION_STRING = 'postgresql://cssuser:csspass@localhost:5432/cssdb';
 const TEST_USER_ID = '77777777-7777-7777-7777-777777777777';
 const SITE_PREFIX = 'title-projection-test';
 
-function createRealDatabaseConnection(connectionString: string): {
-  connection: DatabaseConnection;
-  sql: postgres.Sql;
-} {
-  const sql = postgres(connectionString, {
-    transform: { undefined: null },
-    max: 1,
-  });
-
-  const connection: DatabaseConnection = {
-    async query<T>(text: string, params: unknown[] = []): Promise<QueryResult<T>> {
-      const result = await sql.unsafe(
-        text,
-        params as unknown as postgres.ParameterOrJSON<never>[],
-      );
-      const rows = [...result] as T[];
-      const resultWithCount = result as unknown as { count?: number };
-      const rowCount = resultWithCount.count ?? rows.length;
-      return { rows, rowCount };
-    },
-    async close(): Promise<void> {
-      await sql.end();
-    },
-  };
-
-  return { connection, sql };
-}
-
 describe('Page title listing projection - Integration Tests', () => {
   let sql: postgres.Sql;
+  let connection: DatabaseConnection;
   let siteId: string;
   let branchId: string;
 
   beforeAll(async () => {
-    const { connection, sql: pgSql } = createRealDatabaseConnection(CONNECTION_STRING);
-    sql = pgSql;
+    const handles = createRealDatabaseConnection();
+    sql = handles.sql;
+    connection = handles.connection;
     setDatabaseInstance(connection);
 
     await sql`SELECT 1`;

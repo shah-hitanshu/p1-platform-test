@@ -13,6 +13,8 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
 import { readJson } from '../helpers/http';
+import { documentVersions } from '../../src/db/schema';
+import { stubDatabase, type DatabaseStub } from '../__stubs__/database';
 // Mock cloudflare:workers DurableObject base class
 vi.mock('cloudflare:workers', () => ({
   DurableObject: class DurableObject {
@@ -28,7 +30,6 @@ vi.mock('cloudflare:workers', () => ({
 // Mock the db module for direct Hyperdrive access
 vi.mock('../../src/db', () => ({
   runWithConnection: vi.fn(),
-  query: vi.fn(),
   setDatabaseInstance: vi.fn(),
   getDatabaseInstance: vi.fn(),
   initializeDatabaseFromConnectionString: vi.fn(),
@@ -114,10 +115,12 @@ function createMockEnv(overrides: Partial<MockEnv> = {}): MockEnv {
 
 describe('Phase 5.3: Direct Hyperdrive from DOs', () => {
   let mockState: MockDurableObjectState;
+  let database: DatabaseStub;
   const originalFetch = globalThis.fetch;
 
   beforeEach(async () => {
     vi.resetAllMocks();
+    database = stubDatabase();
 
     mockState = createMockState();
 
@@ -131,7 +134,6 @@ describe('Phase 5.3: Direct Hyperdrive from DOs', () => {
     (db.runWithConnection as ReturnType<typeof vi.fn>).mockImplementation(
       async (_connStr: string, _opts: unknown, fn: () => Promise<unknown>) => fn(),
     );
-    (db.query as ReturnType<typeof vi.fn>).mockResolvedValue({ rows: [], rowCount: 0 });
   });
 
   afterEach(() => {
@@ -146,12 +148,9 @@ describe('Phase 5.3: Direct Hyperdrive from DOs', () => {
       (db.runWithConnection as ReturnType<typeof vi.fn>).mockImplementation(
         async (_connStr: string, _opts: unknown, fn: () => Promise<unknown>) => fn(),
       );
-      (db.query as ReturnType<typeof vi.fn>).mockResolvedValue({
-        rows: [{
-          snapshot: { title: 'From DB' },
-        }],
-        rowCount: 1,
-      });
+      database.on(documentVersions).select.returnsRaw([
+        { snapshot: { title: 'From DB' }, versionNumber: 1 },
+      ]);
 
       const env = createMockEnv({
         HYPERDRIVE: { connectionString: 'postgresql://user:pass@host:5432/db' },
@@ -178,12 +177,9 @@ describe('Phase 5.3: Direct Hyperdrive from DOs', () => {
       (db.runWithConnection as ReturnType<typeof vi.fn>).mockImplementation(
         async (_connStr: string, _opts: unknown, fn: () => Promise<unknown>) => fn(),
       );
-      (db.query as ReturnType<typeof vi.fn>).mockResolvedValue({
-        rows: [{
-          snapshot: { title: 'Snapshot Only' },
-        }],
-        rowCount: 1,
-      });
+      database.on(documentVersions).select.returnsRaw([
+        { snapshot: { title: 'Snapshot Only' }, versionNumber: 1 },
+      ]);
 
       const env = createMockEnv({
         HYPERDRIVE: { connectionString: 'postgresql://user:pass@host:5432/db' },
@@ -274,11 +270,6 @@ describe('Phase 5.3: Direct Hyperdrive from DOs', () => {
       (db.runWithConnection as ReturnType<typeof vi.fn>).mockImplementation(
         async (_connStr: string, _opts: unknown, fn: () => Promise<unknown>) => fn(),
       );
-      (db.query as ReturnType<typeof vi.fn>).mockResolvedValue({
-        rows: [],
-        rowCount: 0,
-      });
-
       const env = createMockEnv({
         HYPERDRIVE: { connectionString: 'postgresql://user:pass@host:5432/db' },
       });

@@ -7,6 +7,8 @@
 
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import * as Y from 'yjs';
+import { branches, documentVersions } from '../../src/db/schema';
+import { stubDatabase, type DatabaseStub } from '../__stubs__/database';
 
 vi.mock('cloudflare:workers', () => ({
   DurableObject: class DurableObject {
@@ -21,7 +23,6 @@ vi.mock('cloudflare:workers', () => ({
 
 vi.mock('../../src/db', () => ({
   runWithConnection: vi.fn(),
-  query: vi.fn(),
   setDatabaseInstance: vi.fn(),
   getDatabaseInstance: vi.fn(),
   initializeDatabaseFromConnectionString: vi.fn(),
@@ -64,9 +65,11 @@ async function buildManager(storage: MockStorage, ydoc: Y.Doc, env: unknown) {
 
 describe('PostgresSyncManager baselineSource', () => {
   let ydoc: Y.Doc;
+  let database: DatabaseStub;
 
   beforeEach(() => {
     vi.resetAllMocks();
+    database = stubDatabase();
     ydoc = new Y.Doc();
   });
 
@@ -76,13 +79,13 @@ describe('PostgresSyncManager baselineSource', () => {
   });
 
   it("records 'branch' when the branch has its own version", async () => {
-    const { runWithConnection, query } = await import('../../src/db');
+    const { runWithConnection } = await import('../../src/db');
     (runWithConnection as Mock).mockImplementation(
       (_conn: string, _opts: unknown, cb: () => Promise<boolean>) => cb(),
     );
-    (query as Mock).mockResolvedValueOnce({
-      rows: [{ snapshot: { content: [] }, version_number: 3 }],
-    });
+    database.on(documentVersions).select.returnsRaw([
+      { snapshot: { content: [] }, versionNumber: 3 },
+    ]);
 
     const manager = await buildManager(createMockStorage(), ydoc, {
       HYPERDRIVE: { connectionString: 'postgresql://x' },
@@ -93,14 +96,16 @@ describe('PostgresSyncManager baselineSource', () => {
   });
 
   it("records 'cow' when the baseline comes from the source branch", async () => {
-    const { runWithConnection, query } = await import('../../src/db');
+    const { runWithConnection } = await import('../../src/db');
     (runWithConnection as Mock).mockImplementation(
       (_conn: string, _opts: unknown, cb: () => Promise<boolean>) => cb(),
     );
-    (query as Mock)
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [{ source_branch_id: 'branch-source' }] })
-      .mockResolvedValueOnce({ rows: [{ snapshot: { content: [] }, version_number: 7 }] });
+    // The branch holds no version of its own; the CoW lookup reads the source
+    // branch, which is what tells the two document_versions reads apart.
+    database.on(branches).select.returnsRaw([{ sourceBranchId: 'branch-source' }]);
+    database.on(documentVersions).select.whenBound(['branch-source']).returnsRaw([
+      { snapshot: { content: [] }, versionNumber: 7 },
+    ]);
 
     const manager = await buildManager(createMockStorage(), ydoc, {
       HYPERDRIVE: { connectionString: 'postgresql://x' },
@@ -111,13 +116,10 @@ describe('PostgresSyncManager baselineSource', () => {
   });
 
   it("records 'none' when neither the branch nor a CoW source has a version", async () => {
-    const { runWithConnection, query } = await import('../../src/db');
+    const { runWithConnection } = await import('../../src/db');
     (runWithConnection as Mock).mockImplementation(
       (_conn: string, _opts: unknown, cb: () => Promise<boolean>) => cb(),
     );
-    (query as Mock)
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [] });
 
     const manager = await buildManager(createMockStorage(), ydoc, {
       HYPERDRIVE: { connectionString: 'postgresql://x' },

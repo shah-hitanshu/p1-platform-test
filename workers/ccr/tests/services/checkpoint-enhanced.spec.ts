@@ -13,19 +13,21 @@ import type {
   CheckpointTrigger,
   CheckpointStatus,
 } from '../../src/types';
-
-// Mock database module
-vi.mock('../../src/db', () => ({
-  query: vi.fn(),
-}));
+import { checkpoints } from '../../src/db/schema';
+import { stubDatabase, type DatabaseStub } from '../__stubs__/database';
 
 describe('Agent Politeness Phase 3: Enhanced Checkpoint Service', () => {
+  let database: DatabaseStub;
+
   beforeEach(() => {
     vi.resetAllMocks();
+    database = stubDatabase();
   });
 
   // Enhanced mock checkpoint row type with agent politeness fields
-  interface MockEnhancedCheckpointRow {
+  // A type alias rather than an interface: the stub takes Record<string,
+  // unknown>, which an interface cannot satisfy — it carries no index signature.
+  type MockEnhancedCheckpointRow = {
     id: string;
     branch_id: string;
     name: string | null;
@@ -42,10 +44,36 @@ describe('Agent Politeness Phase 3: Enhanced Checkpoint Service', () => {
     created_by_id: string;
     created_by_type: 'user' | 'agent' | 'system';
     created_at: string;
+  };
+
+  /** A checkpoint read through the query builder, in the schema's property names. */
+  function checkpointRow(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+    const row = insertedCheckpointRow();
+    return {
+      id: row.id,
+      branchId: row.branch_id,
+      name: row.name,
+      message: row.message,
+      description: row.description,
+      checkpointType: row.checkpoint_type,
+      trigger: row.trigger,
+      requestedById: row.requested_by_id,
+      operationType: row.operation_type,
+      affectedRegions: row.affected_regions,
+      status: row.status,
+      rolledBackById: row.rolled_back_by_id,
+      rolledBackAt: null,
+      createdById: row.created_by_id,
+      createdByType: row.created_by_type,
+      createdAt: new Date(row.created_at),
+      parentCheckpointId: null,
+      isFullSnapshot: true,
+      ...overrides,
+    };
   }
 
-  // Helper to create a mock enhanced checkpoint row
-  function createMockEnhancedCheckpointRow(
+  /** The checkpoint INSERT returns *, so its row is in column names. */
+  function insertedCheckpointRow(
     overrides: Partial<MockEnhancedCheckpointRow> = {},
   ): MockEnhancedCheckpointRow {
     return {
@@ -71,22 +99,15 @@ describe('Agent Politeness Phase 3: Enhanced Checkpoint Service', () => {
 
   describe('createCheckpoint with enhanced fields', () => {
     it('should accept description field', async () => {
-      const { query } = await import('../../src/db');
       const { createCheckpoint } = await import(
         '../../src/services/checkpoint-service'
       );
 
-      const mockRow = createMockEnhancedCheckpointRow({
+      const mockRow = insertedCheckpointRow({
         description: 'Detailed description of changes',
       });
 
-      vi.mocked(query)
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // BEGIN
-        .mockResolvedValueOnce({ rows: [mockRow], rowCount: 1 }) // INSERT checkpoint
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // Get latest versions
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // Insert structures
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // Insert metadata
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 }); // COMMIT
+      database.on(checkpoints).insert.returnsRaw([mockRow]);
 
       const result = await createCheckpoint({
         branchId: 'branch-uuid-789',
@@ -100,22 +121,15 @@ describe('Agent Politeness Phase 3: Enhanced Checkpoint Service', () => {
     });
 
     it('should accept trigger field', async () => {
-      const { query } = await import('../../src/db');
       const { createCheckpoint } = await import(
         '../../src/services/checkpoint-service'
       );
 
-      const mockRow = createMockEnhancedCheckpointRow({
+      const mockRow = insertedCheckpointRow({
         trigger: 'human_requested',
       });
 
-      vi.mocked(query)
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // BEGIN
-        .mockResolvedValueOnce({ rows: [mockRow], rowCount: 1 }) // INSERT checkpoint
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // Get latest versions
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // Insert structures
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // Insert metadata
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 }); // COMMIT
+      database.on(checkpoints).insert.returnsRaw([mockRow]);
 
       const result = await createCheckpoint({
         branchId: 'branch-uuid-789',
@@ -129,23 +143,16 @@ describe('Agent Politeness Phase 3: Enhanced Checkpoint Service', () => {
     });
 
     it('should accept requestedById field', async () => {
-      const { query } = await import('../../src/db');
       const { createCheckpoint } = await import(
         '../../src/services/checkpoint-service'
       );
 
-      const mockRow = createMockEnhancedCheckpointRow({
+      const mockRow = insertedCheckpointRow({
         trigger: 'human_requested',
         requested_by_id: 'user-uuid-123',
       });
 
-      vi.mocked(query)
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // BEGIN
-        .mockResolvedValueOnce({ rows: [mockRow], rowCount: 1 }) // INSERT checkpoint
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // Get latest versions
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // Insert structures
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // Insert metadata
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 }); // COMMIT
+      database.on(checkpoints).insert.returnsRaw([mockRow]);
 
       const result = await createCheckpoint({
         branchId: 'branch-uuid-789',
@@ -160,22 +167,15 @@ describe('Agent Politeness Phase 3: Enhanced Checkpoint Service', () => {
     });
 
     it('should accept operationType field', async () => {
-      const { query } = await import('../../src/db');
       const { createCheckpoint } = await import(
         '../../src/services/checkpoint-service'
       );
 
-      const mockRow = createMockEnhancedCheckpointRow({
+      const mockRow = insertedCheckpointRow({
         operation_type: 'layout_optimization',
       });
 
-      vi.mocked(query)
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // BEGIN
-        .mockResolvedValueOnce({ rows: [mockRow], rowCount: 1 }) // INSERT checkpoint
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // Get latest versions
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // Insert structures
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // Insert metadata
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 }); // COMMIT
+      database.on(checkpoints).insert.returnsRaw([mockRow]);
 
       const result = await createCheckpoint({
         branchId: 'branch-uuid-789',
@@ -189,22 +189,15 @@ describe('Agent Politeness Phase 3: Enhanced Checkpoint Service', () => {
     });
 
     it('should accept affectedRegions field', async () => {
-      const { query } = await import('../../src/db');
       const { createCheckpoint } = await import(
         '../../src/services/checkpoint-service'
       );
 
-      const mockRow = createMockEnhancedCheckpointRow({
+      const mockRow = insertedCheckpointRow({
         affected_regions: ['/content/0', '/content/1/props'],
       });
 
-      vi.mocked(query)
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // BEGIN
-        .mockResolvedValueOnce({ rows: [mockRow], rowCount: 1 }) // INSERT checkpoint
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // Get latest versions
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // Insert structures
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // Insert metadata
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 }); // COMMIT
+      database.on(checkpoints).insert.returnsRaw([mockRow]);
 
       const result = await createCheckpoint({
         branchId: 'branch-uuid-789',
@@ -218,22 +211,15 @@ describe('Agent Politeness Phase 3: Enhanced Checkpoint Service', () => {
     });
 
     it('should default trigger to manual when not provided', async () => {
-      const { query } = await import('../../src/db');
       const { createCheckpoint } = await import(
         '../../src/services/checkpoint-service'
       );
 
-      const mockRow = createMockEnhancedCheckpointRow({
+      const mockRow = insertedCheckpointRow({
         trigger: 'manual',
       });
 
-      vi.mocked(query)
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // BEGIN
-        .mockResolvedValueOnce({ rows: [mockRow], rowCount: 1 }) // INSERT checkpoint
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // Get latest versions
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // Insert structures
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // Insert metadata
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 }); // COMMIT
+      database.on(checkpoints).insert.returnsRaw([mockRow]);
 
       const result = await createCheckpoint({
         branchId: 'branch-uuid-789',
@@ -247,22 +233,15 @@ describe('Agent Politeness Phase 3: Enhanced Checkpoint Service', () => {
     });
 
     it('should default status to completed when not provided', async () => {
-      const { query } = await import('../../src/db');
       const { createCheckpoint } = await import(
         '../../src/services/checkpoint-service'
       );
 
-      const mockRow = createMockEnhancedCheckpointRow({
+      const mockRow = insertedCheckpointRow({
         status: 'completed',
       });
 
-      vi.mocked(query)
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // BEGIN
-        .mockResolvedValueOnce({ rows: [mockRow], rowCount: 1 }) // INSERT checkpoint
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // Get latest versions
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // Insert structures
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // Insert metadata
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 }); // COMMIT
+      database.on(checkpoints).insert.returnsRaw([mockRow]);
 
       const result = await createCheckpoint({
         branchId: 'branch-uuid-789',
@@ -277,18 +256,17 @@ describe('Agent Politeness Phase 3: Enhanced Checkpoint Service', () => {
 
   describe('updateCheckpointStatus', () => {
     it('should update checkpoint status to rolled_back', async () => {
-      const { query } = await import('../../src/db');
       const { updateCheckpointStatus } = await import(
         '../../src/services/checkpoint-service'
       );
 
-      const mockRow = createMockEnhancedCheckpointRow({
+      const mockRow = checkpointRow({
         status: 'rolled_back',
-        rolled_back_by_id: 'user-uuid-123',
-        rolled_back_at: '2026-01-26T11:00:00.000Z',
+        rolledBackById: 'user-uuid-123',
+        rolledBackAt: '2026-01-26T11:00:00.000Z',
       });
 
-      vi.mocked(query).mockResolvedValueOnce({ rows: [mockRow], rowCount: 1 });
+      database.on(checkpoints).update.returnsRaw([mockRow]);
 
       const result = await updateCheckpointStatus(
         'checkpoint-uuid-123',
@@ -302,16 +280,15 @@ describe('Agent Politeness Phase 3: Enhanced Checkpoint Service', () => {
     });
 
     it('should update checkpoint status to partial', async () => {
-      const { query } = await import('../../src/db');
       const { updateCheckpointStatus } = await import(
         '../../src/services/checkpoint-service'
       );
 
-      const mockRow = createMockEnhancedCheckpointRow({
+      const mockRow = checkpointRow({
         status: 'partial',
       });
 
-      vi.mocked(query).mockResolvedValueOnce({ rows: [mockRow], rowCount: 1 });
+      database.on(checkpoints).update.returnsRaw([mockRow]);
 
       const result = await updateCheckpointStatus('checkpoint-uuid-123', 'partial');
 
@@ -319,12 +296,10 @@ describe('Agent Politeness Phase 3: Enhanced Checkpoint Service', () => {
     });
 
     it('should throw when checkpoint not found', async () => {
-      const { query } = await import('../../src/db');
       const { updateCheckpointStatus, CheckpointNotFoundError } = await import(
         '../../src/services/checkpoint-service'
       );
 
-      vi.mocked(query).mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
       await expect(
         updateCheckpointStatus('nonexistent-id', 'rolled_back'),
@@ -332,40 +307,37 @@ describe('Agent Politeness Phase 3: Enhanced Checkpoint Service', () => {
     });
 
     it('should include rolled_back_by_id when provided', async () => {
-      const { query } = await import('../../src/db');
       const { updateCheckpointStatus } = await import(
         '../../src/services/checkpoint-service'
       );
 
-      const mockRow = createMockEnhancedCheckpointRow({
+      const mockRow = checkpointRow({
         status: 'rolled_back',
-        rolled_back_by_id: 'admin-uuid-999',
+        rolledBackById: 'admin-uuid-999',
       });
 
-      vi.mocked(query).mockResolvedValueOnce({ rows: [mockRow], rowCount: 1 });
+      database.on(checkpoints).update.returnsRaw([mockRow]);
 
       await updateCheckpointStatus('checkpoint-uuid-123', 'rolled_back', 'admin-uuid-999');
 
-      expect(vi.mocked(query)).toHaveBeenCalledWith(
-        expect.stringContaining('rolled_back_by_id'),
-        expect.arrayContaining(['admin-uuid-999']),
-      );
+      const [update] = database.calls(checkpoints).update;
+      expect(update.sql).toContain('rolled_back_by_id');
+      expect(update.params).toContain('admin-uuid-999');
     });
   });
 
   describe('listCheckpointsByAgent', () => {
     it('should list all checkpoints created by an agent', async () => {
-      const { query } = await import('../../src/db');
       const { listCheckpointsByAgent } = await import(
         '../../src/services/checkpoint-service'
       );
 
       const mockRows = [
-        createMockEnhancedCheckpointRow({ id: 'checkpoint-1' }),
-        createMockEnhancedCheckpointRow({ id: 'checkpoint-2' }),
+        checkpointRow({ id: 'checkpoint-1' }),
+        checkpointRow({ id: 'checkpoint-2' }),
       ];
 
-      vi.mocked(query).mockResolvedValueOnce({ rows: mockRows, rowCount: 2 });
+      database.on(checkpoints).select.returnsRaw(mockRows);
 
       const result = await listCheckpointsByAgent('agent-uuid-001');
 
@@ -375,76 +347,61 @@ describe('Agent Politeness Phase 3: Enhanced Checkpoint Service', () => {
     });
 
     it('should filter by branch when provided', async () => {
-      const { query } = await import('../../src/db');
       const { listCheckpointsByAgent } = await import(
         '../../src/services/checkpoint-service'
       );
 
-      vi.mocked(query).mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
       await listCheckpointsByAgent('agent-uuid-001', { branchId: 'branch-123' });
 
-      expect(vi.mocked(query)).toHaveBeenCalledWith(
-        expect.stringContaining('branch_id'),
-        expect.arrayContaining(['branch-123']),
-      );
+      const [listing] = database.calls(checkpoints).select;
+      expect(listing.sql).toContain('branch_id');
+      expect(listing.params).toContain('branch-123');
     });
 
     it('should filter by status when provided', async () => {
-      const { query } = await import('../../src/db');
       const { listCheckpointsByAgent } = await import(
         '../../src/services/checkpoint-service'
       );
 
-      vi.mocked(query).mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
       await listCheckpointsByAgent('agent-uuid-001', { status: 'rolled_back' });
 
-      expect(vi.mocked(query)).toHaveBeenCalledWith(
-        expect.stringContaining('status'),
-        expect.arrayContaining(['rolled_back']),
-      );
+      const [listing] = database.calls(checkpoints).select;
+      expect(listing.sql).toContain('status');
+      expect(listing.params).toContain('rolled_back');
     });
 
     it('should filter by trigger when provided', async () => {
-      const { query } = await import('../../src/db');
       const { listCheckpointsByAgent } = await import(
         '../../src/services/checkpoint-service'
       );
 
-      vi.mocked(query).mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
       await listCheckpointsByAgent('agent-uuid-001', { trigger: 'autonomous' });
 
-      expect(vi.mocked(query)).toHaveBeenCalledWith(
-        expect.stringContaining('trigger'),
-        expect.arrayContaining(['autonomous']),
-      );
+      const [listing] = database.calls(checkpoints).select;
+      expect(listing.sql).toContain('trigger');
+      expect(listing.params).toContain('autonomous');
     });
 
     it('should support limit and offset', async () => {
-      const { query } = await import('../../src/db');
       const { listCheckpointsByAgent } = await import(
         '../../src/services/checkpoint-service'
       );
 
-      vi.mocked(query).mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
       await listCheckpointsByAgent('agent-uuid-001', { limit: 10, offset: 20 });
 
-      expect(vi.mocked(query)).toHaveBeenCalledWith(
-        expect.stringContaining('LIMIT'),
-        expect.arrayContaining([10, 20]),
-      );
+      const [listing] = database.calls(checkpoints).select;
+      expect(listing.params).toEqual(expect.arrayContaining([10, 20]));
     });
 
     it('should return empty array when no checkpoints found', async () => {
-      const { query } = await import('../../src/db');
       const { listCheckpointsByAgent } = await import(
         '../../src/services/checkpoint-service'
       );
 
-      vi.mocked(query).mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
       const result = await listCheckpointsByAgent('agent-with-no-checkpoints');
 
@@ -454,23 +411,22 @@ describe('Agent Politeness Phase 3: Enhanced Checkpoint Service', () => {
 
   describe('listCheckpointsByOperationType', () => {
     it('should list checkpoints by operation type on a branch', async () => {
-      const { query } = await import('../../src/db');
       const { listCheckpointsByOperationType } = await import(
         '../../src/services/checkpoint-service'
       );
 
       const mockRows = [
-        createMockEnhancedCheckpointRow({
+        checkpointRow({
           id: 'checkpoint-1',
-          operation_type: 'layout_optimization',
+          operationType: 'layout_optimization',
         }),
-        createMockEnhancedCheckpointRow({
+        checkpointRow({
           id: 'checkpoint-2',
-          operation_type: 'layout_optimization',
+          operationType: 'layout_optimization',
         }),
       ];
 
-      vi.mocked(query).mockResolvedValueOnce({ rows: mockRows, rowCount: 2 });
+      database.on(checkpoints).select.returnsRaw(mockRows);
 
       const result = await listCheckpointsByOperationType(
         'branch-uuid-789',
@@ -482,12 +438,10 @@ describe('Agent Politeness Phase 3: Enhanced Checkpoint Service', () => {
     });
 
     it('should return empty array when no matching checkpoints', async () => {
-      const { query } = await import('../../src/db');
       const { listCheckpointsByOperationType } = await import(
         '../../src/services/checkpoint-service'
       );
 
-      vi.mocked(query).mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
       const result = await listCheckpointsByOperationType(
         'branch-uuid-789',
@@ -498,75 +452,35 @@ describe('Agent Politeness Phase 3: Enhanced Checkpoint Service', () => {
     });
 
     it('should order by created_at descending', async () => {
-      const { query } = await import('../../src/db');
       const { listCheckpointsByOperationType } = await import(
         '../../src/services/checkpoint-service'
       );
 
-      vi.mocked(query).mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
       await listCheckpointsByOperationType('branch-uuid-789', 'content_edit');
 
-      expect(vi.mocked(query)).toHaveBeenCalledWith(
-        expect.stringContaining('ORDER BY'),
-        expect.any(Array),
-      );
+      expect(database.calls(checkpoints).select[0].sql).toContain('order by');
     });
   });
 
   describe('revertToCheckpoint with status tracking', () => {
     it('should update original checkpoint status to rolled_back', async () => {
-      const { query } = await import('../../src/db');
       const { revertToCheckpoint } = await import(
         '../../src/services/checkpoint-service'
       );
 
-      const originalCheckpoint = createMockEnhancedCheckpointRow({
+      const originalCheckpoint = checkpointRow({
         id: 'original-checkpoint',
         status: 'completed',
       });
 
-      const newCheckpoint = createMockEnhancedCheckpointRow({
+      const newCheckpoint = insertedCheckpointRow({
         id: 'revert-checkpoint',
         message: 'Reverted to checkpoint: Agent checkpoint (original-checkpoint)',
       });
 
-      // Mock sequence of queries for revert
-      vi.mocked(query)
-        // getCheckpoint
-        .mockResolvedValueOnce({ rows: [originalCheckpoint], rowCount: 1 })
-        // resolveCheckpointDocuments
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 })
-        // resolveCheckpointDeletions
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 })
-        // revertToCheckpoint: BEGIN
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 })
-        // getStructuresAtCheckpoint
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 })
-        // Delete structure state
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 })
-        // Restore structure state
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 })
-        // Delete metadata
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 })
-        // Restore metadata
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 })
-        // inline UPDATE checkpoint status to rolled_back
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 })
-        // revertToCheckpoint: COMMIT
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 })
-        // createCheckpoint: BEGIN
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 })
-        // Create new checkpoint
-        .mockResolvedValueOnce({ rows: [newCheckpoint], rowCount: 1 })
-        // Get latest versions
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 })
-        // Insert structures
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 })
-        // Insert metadata
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 })
-        // createCheckpoint: COMMIT
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      database.on(checkpoints).select.returnsRaw([originalCheckpoint]);
+      database.on(checkpoints).insert.returnsRaw([newCheckpoint]);
 
       await revertToCheckpoint({
         checkpointId: 'original-checkpoint',
@@ -575,65 +489,25 @@ describe('Agent Politeness Phase 3: Enhanced Checkpoint Service', () => {
       });
 
       // Verify that the original checkpoint status was updated
-      const updateCall = vi.mocked(query).mock.calls.find(
-        (call) =>
-          typeof call[0] === 'string' &&
-          call[0].includes('UPDATE') &&
-          call[0].includes('status'),
-      );
-      expect(updateCall).toBeDefined();
+      const [update] = database.calls(checkpoints).update;
+      expect(update.params).toContain('rolled_back');
     });
 
     it('should record who performed the rollback', async () => {
-      const { query } = await import('../../src/db');
       const { revertToCheckpoint } = await import(
         '../../src/services/checkpoint-service'
       );
 
-      const originalCheckpoint = createMockEnhancedCheckpointRow({
+      const originalCheckpoint = checkpointRow({
         id: 'original-checkpoint',
       });
 
-      const newCheckpoint = createMockEnhancedCheckpointRow({
+      const newCheckpoint = insertedCheckpointRow({
         id: 'revert-checkpoint',
       });
 
-      // Mock sequence of queries for revert
-      vi.mocked(query)
-        // getCheckpoint
-        .mockResolvedValueOnce({ rows: [originalCheckpoint], rowCount: 1 })
-        // resolveCheckpointDocuments
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 })
-        // resolveCheckpointDeletions
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 })
-        // revertToCheckpoint: BEGIN
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 })
-        // getStructuresAtCheckpoint
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 })
-        // Delete structure state
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 })
-        // Restore structure state
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 })
-        // Delete metadata
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 })
-        // Restore metadata
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 })
-        // inline UPDATE checkpoint status to rolled_back
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 })
-        // revertToCheckpoint: COMMIT
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 })
-        // createCheckpoint: BEGIN
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 })
-        // Create new checkpoint
-        .mockResolvedValueOnce({ rows: [newCheckpoint], rowCount: 1 })
-        // Select document versions
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 })
-        // Structure capture
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 })
-        // Metadata capture
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 })
-        // createCheckpoint: COMMIT
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      database.on(checkpoints).select.returnsRaw([originalCheckpoint]);
+      database.on(checkpoints).insert.returnsRaw([newCheckpoint]);
 
       await revertToCheckpoint({
         checkpointId: 'original-checkpoint',
@@ -642,64 +516,26 @@ describe('Agent Politeness Phase 3: Enhanced Checkpoint Service', () => {
       });
 
       // Verify rolled_back_by_id was included in the update
-      const updateCall = vi.mocked(query).mock.calls.find(
-        (call) =>
-          typeof call[0] === 'string' &&
-          call[0].includes('rolled_back_by_id'),
-      );
-      expect(updateCall).toBeDefined();
+      const [update] = database.calls(checkpoints).update;
+      expect(update.sql).toContain('rolled_back_by_id');
+      expect(update.params).toContain('admin-uuid-999');
     });
 
     it('should record rollback timestamp', async () => {
-      const { query } = await import('../../src/db');
       const { revertToCheckpoint } = await import(
         '../../src/services/checkpoint-service'
       );
 
-      const originalCheckpoint = createMockEnhancedCheckpointRow({
+      const originalCheckpoint = checkpointRow({
         id: 'original-checkpoint',
       });
 
-      const newCheckpoint = createMockEnhancedCheckpointRow({
+      const newCheckpoint = insertedCheckpointRow({
         id: 'revert-checkpoint',
       });
 
-      // Mock sequence of queries for revert
-      vi.mocked(query)
-        // getCheckpoint
-        .mockResolvedValueOnce({ rows: [originalCheckpoint], rowCount: 1 })
-        // resolveCheckpointDocuments
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 })
-        // resolveCheckpointDeletions
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 })
-        // revertToCheckpoint: BEGIN
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 })
-        // getStructuresAtCheckpoint
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 })
-        // Delete structure state
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 })
-        // Restore structure state
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 })
-        // Delete metadata
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 })
-        // Restore metadata
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 })
-        // inline UPDATE checkpoint status to rolled_back
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 })
-        // revertToCheckpoint: COMMIT
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 })
-        // createCheckpoint: BEGIN
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 })
-        // Create new checkpoint
-        .mockResolvedValueOnce({ rows: [newCheckpoint], rowCount: 1 })
-        // Select document versions
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 })
-        // Structure capture
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 })
-        // Metadata capture
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 })
-        // createCheckpoint: COMMIT
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      database.on(checkpoints).select.returnsRaw([originalCheckpoint]);
+      database.on(checkpoints).insert.returnsRaw([newCheckpoint]);
 
       await revertToCheckpoint({
         checkpointId: 'original-checkpoint',
@@ -708,32 +544,31 @@ describe('Agent Politeness Phase 3: Enhanced Checkpoint Service', () => {
       });
 
       // Verify rolled_back_at was included in the update
-      const updateCall = vi.mocked(query).mock.calls.find(
-        (call) =>
-          typeof call[0] === 'string' &&
-          call[0].includes('rolled_back_at'),
-      );
-      expect(updateCall).toBeDefined();
+      const [update] = database.calls(checkpoints).update;
+      expect(update.sql).toContain('rolled_back_at');
+      // The driver binds a timestamp as text, so the moment is in the params.
+      expect(update.params.some(
+        (param) => typeof param === 'string' && !Number.isNaN(Date.parse(param)),
+      )).toBe(true);
     });
   });
 
   describe('getCheckpoint with enhanced fields', () => {
     it('should return checkpoint with all enhanced fields', async () => {
-      const { query } = await import('../../src/db');
       const { getCheckpoint } = await import(
         '../../src/services/checkpoint-service'
       );
 
-      const mockRow = createMockEnhancedCheckpointRow({
+      const mockRow = checkpointRow({
         description: 'Test description',
         trigger: 'autonomous',
-        requested_by_id: 'user-123',
-        operation_type: 'content_edit',
-        affected_regions: ['/content/0'],
+        requestedById: 'user-123',
+        operationType: 'content_edit',
+        affectedRegions: ['/content/0'],
         status: 'completed',
       });
 
-      vi.mocked(query).mockResolvedValueOnce({ rows: [mockRow], rowCount: 1 });
+      database.on(checkpoints).select.returnsRaw([mockRow]);
 
       const result = await getCheckpoint('checkpoint-uuid-123');
 
@@ -747,18 +582,17 @@ describe('Agent Politeness Phase 3: Enhanced Checkpoint Service', () => {
     });
 
     it('should return checkpoint with rollback information', async () => {
-      const { query } = await import('../../src/db');
       const { getCheckpoint } = await import(
         '../../src/services/checkpoint-service'
       );
 
-      const mockRow = createMockEnhancedCheckpointRow({
+      const mockRow = checkpointRow({
         status: 'rolled_back',
-        rolled_back_by_id: 'admin-uuid',
-        rolled_back_at: '2026-01-26T15:00:00.000Z',
+        rolledBackById: 'admin-uuid',
+        rolledBackAt: '2026-01-26T15:00:00.000Z',
       });
 
-      vi.mocked(query).mockResolvedValueOnce({ rows: [mockRow], rowCount: 1 });
+      database.on(checkpoints).select.returnsRaw([mockRow]);
 
       const result = await getCheckpoint('checkpoint-uuid-123');
 

@@ -12,9 +12,10 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
-import postgres from 'postgres';
+import type postgres from 'postgres';
 import { setDatabaseInstance } from '../../src/db';
-import type { DatabaseConnection, QueryResult } from '../../src/db';
+import type { DatabaseConnection } from '../../src/db';
+import { createRealDatabaseConnection } from '../helpers/database';
 
 import {
   createSite,
@@ -35,39 +36,11 @@ import type { Branch } from '../../src/types';
 
 import { createDocument } from '../../src/services/document-service';
 
-const CONNECTION_STRING = 'postgresql://cssuser:csspass@localhost:5432/cssdb';
 const TEST_PREFIX = 'soft-delete-integ';
 const SYSTEM_ID = '00000000-0000-0000-0000-000000000000';
 const ALICE_ID = '11111111-1111-1111-1111-111111111111';
 
 const createdSiteIds: string[] = [];
-
-function createRealDatabaseConnection(connectionString: string): {
-  connection: DatabaseConnection;
-  sql: postgres.Sql;
-} {
-  const sql = postgres(connectionString, {
-    transform: { undefined: null },
-    max: 1,
-  });
-
-  const connection: DatabaseConnection = {
-    async query<T = Record<string, unknown>>(
-      sqlQuery: string,
-      params?: unknown[],
-    ): Promise<QueryResult<T>> {
-      const result = await sql.unsafe<T[]>(
-        sqlQuery,
-        params as unknown as postgres.ParameterOrJSON<never>[],
-      );
-      const rows = [...result] as T[];
-      const resultWithCount = result as unknown as { count?: number };
-      return { rows, rowCount: resultWithCount.count ?? rows.length };
-    },
-  };
-
-  return { connection, sql };
-}
 
 /** Create a feature branch off the site's main branch. */
 async function createFeatureBranch(siteId: string, name: string): Promise<Branch> {
@@ -84,12 +57,13 @@ async function createFeatureBranch(siteId: string, name: string): Promise<Branch
 
 describe('PCC-3211: Soft Delete Integration Tests', () => {
   let sql: postgres.Sql;
+  let connection: DatabaseConnection;
 
   beforeAll(() => {
-    const { connection, sql: pgSql } = createRealDatabaseConnection(CONNECTION_STRING);
-    sql = pgSql;
+    const handles = createRealDatabaseConnection();
+    sql = handles.sql;
+    connection = handles.connection;
     setDatabaseInstance(connection);
-    console.log('Database connection established');
   });
 
   afterAll(async () => {
@@ -101,8 +75,7 @@ describe('PCC-3211: Soft Delete Integration Tests', () => {
       }
     }
     setDatabaseInstance(null);
-    await sql.end();
-    console.log('Database connection closed, test data cleaned up');
+    await connection.close();
   });
 
   beforeEach(() => {

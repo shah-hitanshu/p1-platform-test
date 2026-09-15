@@ -7,8 +7,31 @@
  * @see collaborative-state-system-architecture-v2.2.md Section "Sites"
  */
 
+import { and, desc, eq, getTableColumns, inArray, isNotNull, isNull, or, sql, type InferSelectModel } from 'drizzle-orm';
+import type { PgSelect } from 'drizzle-orm/pg-core';
 import type { Site, WorkflowSettings } from '../types';
-import { query } from '../db';
+import { driverErrorCode } from '../db/driver-error';
+import { toIsoTimestamp } from '../db/helpers';
+import { db, transaction } from '../db/scope';
+import {
+  agentSiteRoles,
+  branchDocumentMetadata,
+  branchDocumentPaths,
+  branchStructureState,
+  branches,
+  checkpointDocumentMetadata,
+  checkpointDocuments,
+  checkpointStructures,
+  checkpoints,
+  documentVersions,
+  documents,
+  mergeRequests,
+  siteStructures,
+  sites,
+  structureNodes,
+  userSiteRoles,
+  users,
+} from '../db/schema';
 import { createMainBranch, clearBranchCache } from './branch-service';
 import { createDocumentOnBranch } from './branch-document-service';
 import { publishDocument } from './checkpoint-publish';
@@ -83,22 +106,8 @@ export interface ListSitesOptions {
   includeAllOrgSites?: boolean;
 }
 
-/**
- * Database row format for sites.
- * workflow_settings can be returned as string or object depending on DB driver.
- */
-interface SiteRow {
-  id: string;
-  pantheon_site_id: string | null;
-  organization_id: string | null;
-  name: string;
-  url: string | null;
-  workflow_settings: WorkflowSettings | string;
-  allowed_origins: string[] | null;
-  created_at: string;
-  updated_at: string;
-  archived_at: string | null;
-}
+/** A site row as the schema declares it. */
+type SiteRow = InferSelectModel<typeof sites>;
 
 // =============================================================================
 // Default Values
@@ -123,11 +132,11 @@ const DEFAULT_WORKFLOW_SETTINGS: WorkflowSettings = {
  * Parses workflow settings from database.
  * Handles both string and object formats for JSONB columns.
  */
-function parseWorkflowSettings(value: WorkflowSettings | string): WorkflowSettings {
+function parseWorkflowSettings(value: unknown): WorkflowSettings {
   if (typeof value === 'string') {
     return JSON.parse(value) as WorkflowSettings;
   }
-  return value;
+  return value as WorkflowSettings;
 }
 
 /**
@@ -136,15 +145,15 @@ function parseWorkflowSettings(value: WorkflowSettings | string): WorkflowSettin
 function mapRowToSite(row: SiteRow): Site {
   return {
     id: row.id,
-    pantheonSiteId: row.pantheon_site_id ?? undefined,
-    organizationId: row.organization_id ?? undefined,
+    pantheonSiteId: row.pantheonSiteId ?? undefined,
+    organizationId: row.organizationId ?? undefined,
     name: row.name,
     url: row.url ?? undefined,
-    workflowSettings: parseWorkflowSettings(row.workflow_settings),
-    allowedOrigins: row.allowed_origins ?? [],
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-    archivedAt: row.archived_at ?? null,
+    workflowSettings: parseWorkflowSettings(row.workflowSettings),
+    allowedOrigins: row.allowedOrigins,
+    createdAt: toIsoTimestamp(row.createdAt),
+    updatedAt: toIsoTimestamp(row.updatedAt),
+    archivedAt: row.archivedAt === null ? null : toIsoTimestamp(row.archivedAt),
   };
 }
 
@@ -177,9 +186,7 @@ function normalizePantheonSiteId(value: string | null | undefined): string | nul
  * Checks if an error is a PostgreSQL unique constraint violation.
  */
 function isUniqueConstraintViolation(error: unknown): boolean {
-  return (
-    error instanceof Error && 'code' in error && (error as NodeJS.ErrnoException).code === '23505'
-  );
+  return driverErrorCode(error) === '23505';
 }
 
 const DEFAULT_SYSTEM_USER_ID = '00000000-0000-0000-0000-000000000001';
@@ -247,52 +254,52 @@ export async function createSite(
     ...params.workflowSettings,
   };
 
-  await query('BEGIN');
   try {
-    const result = await query<SiteRow>(
-      `INSERT INTO app.sites (pantheon_site_id, name, url, workflow_settings, allowed_origins)
-       VALUES ($1, $2, $3, $4, $5)
-       RETURNING *`,
-      [
-        pantheonSiteId,
-        params.name,
-        params.url ?? null,
-        JSON.stringify(workflowSettings),
-        params.allowedOrigins ?? [],
-      ],
-    );
+    const { site, mainBranch } = await transaction(async () => {
+      const inserted = await db()
+        .insert(sites)
+        .values({
+          pantheonSiteId,
+          name: params.name,
+          url: params.url ?? null,
+          workflowSettings,
+          allowedOrigins: params.allowedOrigins ?? [],
+        })
+        .returning();
 
-    const site = mapRowToSite(getFirstRow(result.rows));
+      const created = mapRowToSite(getFirstRow(inserted));
 
-    if (params.creatorId !== undefined) {
-      if (params.createdByType === 'agent') {
-        await grantAgentRole({
-          agentId: params.creatorId,
-          siteId: site.id,
-          role: 'admin',
-          grantedBy: params.creatorId,
-        });
-      } else {
-        await grantUserRole({
-          userId: params.creatorId,
-          siteId: site.id,
-          role: 'owner',
-          grantedBy: params.creatorId,
-        });
+      if (params.creatorId !== undefined) {
+        if (params.createdByType === 'agent') {
+          await grantAgentRole({
+            agentId: params.creatorId,
+            siteId: created.id,
+            role: 'admin',
+            grantedBy: params.creatorId,
+          });
+        } else {
+          await grantUserRole({
+            userId: params.creatorId,
+            siteId: created.id,
+            role: 'owner',
+            grantedBy: params.creatorId,
+          });
+        }
       }
-    }
 
-    // Create the main branch for the site
-    const mainBranch = await createMainBranch({
-      siteId: site.id,
-      createdById: params.creatorId ?? DEFAULT_SYSTEM_USER_ID,
-      createdByType: params.createdByType ?? 'user',
+      // Create the main branch for the site
+      const branch = await createMainBranch({
+        siteId: created.id,
+        createdById: params.creatorId ?? DEFAULT_SYSTEM_USER_ID,
+        createdByType: params.createdByType ?? 'user',
+      });
+
+      return { site: created, mainBranch: branch };
     });
 
-    await query('COMMIT');
-    // createMainBranch cleared the cache before this outer COMMIT; a lookup
-    // in that window could have cached a negative for the new site's main
-    // branch, so clear again now that the row is committed.
+    // createMainBranch cleared the cache before this commit; a lookup in that
+    // window could have cached a negative for the new site's main branch, so
+    // clear again now that the row is committed.
     clearBranchCache();
 
     // Seed a default root page so the site has content immediately.
@@ -329,7 +336,6 @@ export async function createSite(
 
     return site;
   } catch (error) {
-    await query('ROLLBACK');
     if (isUniqueConstraintViolation(error) && pantheonSiteId !== null) {
       throw new DuplicatePantheonSiteIdError(pantheonSiteId);
     }
@@ -344,17 +350,9 @@ export async function createSite(
  * @returns The site or null if not found
  */
 export async function getSite(siteId: string): Promise<Site | null> {
-  const result = await query<SiteRow>('SELECT * FROM app.sites WHERE id = $1', [siteId]);
+  const [siteRow] = await db().select().from(sites).where(eq(sites.id, siteId));
 
-  if (result.rows.length === 0) {
-    return null;
-  }
-
-  const siteRow = result.rows[0];
-  if (!siteRow) {
-    return null;
-  }
-  return mapRowToSite(siteRow);
+  return siteRow === undefined ? null : mapRowToSite(siteRow);
 }
 
 /**
@@ -364,19 +362,12 @@ export async function getSite(siteId: string): Promise<Site | null> {
  * @returns The site or null if not found
  */
 export async function getSiteByPantheonId(pantheonSiteId: string): Promise<Site | null> {
-  const result = await query<SiteRow>('SELECT * FROM app.sites WHERE pantheon_site_id = $1', [
-    pantheonSiteId,
-  ]);
+  const [pantheonRow] = await db()
+    .select()
+    .from(sites)
+    .where(eq(sites.pantheonSiteId, pantheonSiteId));
 
-  if (result.rows.length === 0) {
-    return null;
-  }
-
-  const pantheonRow = result.rows[0];
-  if (!pantheonRow) {
-    return null;
-  }
-  return mapRowToSite(pantheonRow);
+  return pantheonRow === undefined ? null : mapRowToSite(pantheonRow);
 }
 
 /**
@@ -419,29 +410,18 @@ export async function updateSite(
     };
 
     const result = await runSiteUpdate(
-      `UPDATE app.sites
-       SET name = COALESCE($1, name),
-           url = CASE WHEN $2::boolean THEN $3 ELSE url END,
-           pantheon_site_id = CASE WHEN $4::boolean THEN $5 ELSE pantheon_site_id END,
-           workflow_settings = $6,
-           allowed_origins = COALESCE($7::text[], allowed_origins),
-           updated_at = NOW()
-       WHERE id = $8
-       RETURNING *`,
-      [
-        updates.name ?? null,
-        urlProvided,
-        urlValue,
-        pantheonSiteIdProvided,
-        pantheonSiteIdValue,
-        JSON.stringify(mergedSettings),
-        updates.allowedOrigins ?? null,
-        siteId,
-      ],
+      siteId,
+      {
+        ...(updates.name === undefined ? {} : { name: updates.name }),
+        ...(urlProvided ? { url: urlValue } : {}),
+        ...(pantheonSiteIdProvided ? { pantheonSiteId: pantheonSiteIdValue } : {}),
+        workflowSettings: mergedSettings,
+        ...(updates.allowedOrigins === undefined ? {} : { allowedOrigins: updates.allowedOrigins }),
+      },
       pantheonSiteIdValue,
     );
 
-    const updatedRow1 = result.rows[0];
+    const updatedRow1 = result[0];
     if (!updatedRow1) {
       return null;
     }
@@ -457,27 +437,17 @@ export async function updateSite(
   }
 
   const result = await runSiteUpdate(
-    `UPDATE app.sites
-     SET name = COALESCE($1, name),
-         url = CASE WHEN $2::boolean THEN $3 ELSE url END,
-         pantheon_site_id = CASE WHEN $4::boolean THEN $5 ELSE pantheon_site_id END,
-         allowed_origins = COALESCE($6::text[], allowed_origins),
-         updated_at = NOW()
-     WHERE id = $7
-     RETURNING *`,
-    [
-      updates.name ?? null,
-      urlProvided,
-      urlValue,
-      pantheonSiteIdProvided,
-      pantheonSiteIdValue,
-      updates.allowedOrigins ?? null,
-      siteId,
-    ],
+    siteId,
+    {
+      ...(updates.name === undefined ? {} : { name: updates.name }),
+      ...(urlProvided ? { url: urlValue } : {}),
+      ...(pantheonSiteIdProvided ? { pantheonSiteId: pantheonSiteIdValue } : {}),
+      ...(updates.allowedOrigins === undefined ? {} : { allowedOrigins: updates.allowedOrigins }),
+    },
     pantheonSiteIdValue,
   );
 
-  const updatedRow2 = result.rows[0];
+  const updatedRow2 = result[0];
   if (!updatedRow2) {
     return null;
   }
@@ -487,15 +457,20 @@ export async function updateSite(
   return updated;
 }
 
-// Runs an update statement that may touch pantheon_site_id, translating its
+// Runs an update that may touch pantheon_site_id, translating its
 // unique-constraint violation into the domain error the routes map to a 409.
+// A column the caller left out keeps the value it has.
 async function runSiteUpdate(
-  sql: string,
-  values: unknown[],
+  siteId: string,
+  values: Partial<Omit<SiteRow, 'id'>>,
   pantheonSiteIdValue: string | null,
-): Promise<{ rows: SiteRow[] }> {
+): Promise<SiteRow[]> {
   try {
-    return await query<SiteRow>(sql, values);
+    return await db()
+      .update(sites)
+      .set({ ...values, updatedAt: sql`NOW()` })
+      .where(eq(sites.id, siteId))
+      .returning();
   } catch (error) {
     if (isUniqueConstraintViolation(error) && pantheonSiteIdValue !== null) {
       throw new DuplicatePantheonSiteIdError(pantheonSiteIdValue);
@@ -531,99 +506,100 @@ export async function deleteSite(siteId: string): Promise<boolean> {
   }
 
   // Get all branch IDs for this site
-  const branchResult = await query<{ id: string }>(
-    'SELECT id FROM app.branches WHERE site_id = $1',
-    [siteId],
-  );
-  const branchIds = branchResult.rows.map((r) => r.id);
+  const branchRows = await db()
+    .select({ id: branches.id })
+    .from(branches)
+    .where(eq(branches.siteId, siteId));
+  const branchIds = branchRows.map((r) => r.id);
 
   if (branchIds.length > 0) {
-    // Delete merge requests referencing any of these branches
-    await query(
-      `DELETE FROM app.merge_requests
-       WHERE source_branch_id = ANY($1::uuid[]) OR target_branch_id = ANY($1::uuid[])`,
-      [branchIds],
-    );
+    const checkpointsOnBranches = db()
+      .select({ id: checkpoints.id })
+      .from(checkpoints)
+      .where(inArray(checkpoints.branchId, branchIds));
 
-    await query(
-      'DELETE FROM app.branch_document_paths WHERE branch_id = ANY($1::uuid[])',
-      [branchIds],
-    );
+    // Delete merge requests referencing any of these branches
+    await db()
+      .delete(mergeRequests)
+      .where(
+        or(
+          inArray(mergeRequests.sourceBranchId, branchIds),
+          inArray(mergeRequests.targetBranchId, branchIds),
+        ),
+      );
+
+    await db().delete(branchDocumentPaths).where(inArray(branchDocumentPaths.branchId, branchIds));
 
     // Delete branch document metadata
-    await query('DELETE FROM app.branch_document_metadata WHERE branch_id = ANY($1::uuid[])', [
-      branchIds,
-    ]);
+    await db()
+      .delete(branchDocumentMetadata)
+      .where(inArray(branchDocumentMetadata.branchId, branchIds));
 
     // Delete branch structure state
-    await query('DELETE FROM app.branch_structure_state WHERE branch_id = ANY($1::uuid[])', [
-      branchIds,
-    ]);
+    await db()
+      .delete(branchStructureState)
+      .where(inArray(branchStructureState.branchId, branchIds));
 
     // Clear source_checkpoint_id on branches before deleting checkpoints
     // (branches.source_checkpoint_id references checkpoints)
-    await query('UPDATE app.branches SET source_checkpoint_id = NULL WHERE site_id = $1', [siteId]);
+    await db()
+      .update(branches)
+      .set({ sourceCheckpointId: null })
+      .where(eq(branches.siteId, siteId));
 
     // Clear base_checkpoint_id on merge_requests before deleting checkpoints
     // (merge_requests.base_checkpoint_id references checkpoints)
-    await query('UPDATE app.merge_requests SET base_checkpoint_id = NULL WHERE site_id = $1', [
-      siteId,
-    ]);
+    await db()
+      .update(mergeRequests)
+      .set({ baseCheckpointId: null })
+      .where(eq(mergeRequests.siteId, siteId));
 
     // Delete checkpoint related data for checkpoints on these branches
-    await query(
-      `DELETE FROM app.checkpoint_documents
-       WHERE checkpoint_id IN (SELECT id FROM app.checkpoints WHERE branch_id = ANY($1::uuid[]))`,
-      [branchIds],
-    );
+    await db()
+      .delete(checkpointDocuments)
+      .where(inArray(checkpointDocuments.checkpointId, checkpointsOnBranches));
 
-    await query(
-      `DELETE FROM app.checkpoint_structures
-       WHERE checkpoint_id IN (SELECT id FROM app.checkpoints WHERE branch_id = ANY($1::uuid[]))`,
-      [branchIds],
-    );
+    await db()
+      .delete(checkpointStructures)
+      .where(inArray(checkpointStructures.checkpointId, checkpointsOnBranches));
 
-    await query(
-      `DELETE FROM app.checkpoint_document_metadata
-       WHERE checkpoint_id IN (SELECT id FROM app.checkpoints WHERE branch_id = ANY($1::uuid[]))`,
-      [branchIds],
-    );
+    await db()
+      .delete(checkpointDocumentMetadata)
+      .where(inArray(checkpointDocumentMetadata.checkpointId, checkpointsOnBranches));
 
     // Delete checkpoints
-    await query('DELETE FROM app.checkpoints WHERE branch_id = ANY($1::uuid[])', [branchIds]);
+    await db().delete(checkpoints).where(inArray(checkpoints.branchId, branchIds));
 
     // Delete document versions
-    await query('DELETE FROM app.document_versions WHERE branch_id = ANY($1::uuid[])', [branchIds]);
+    await db().delete(documentVersions).where(inArray(documentVersions.branchId, branchIds));
 
     // Delete branches (branch_grants and guest_links have ON DELETE CASCADE)
-    await query('DELETE FROM app.branches WHERE site_id = $1', [siteId]);
+    await db().delete(branches).where(eq(branches.siteId, siteId));
     clearBranchCache();
   }
 
   // Get all structure IDs for this site
-  const structureResult = await query<{ id: string }>(
-    'SELECT id FROM app.site_structures WHERE site_id = $1',
-    [siteId],
-  );
-  const structureIds = structureResult.rows.map((r) => r.id);
+  const structureRows = await db()
+    .select({ id: siteStructures.id })
+    .from(siteStructures)
+    .where(eq(siteStructures.siteId, siteId));
+  const structureIds = structureRows.map((r) => r.id);
 
   if (structureIds.length > 0) {
     // Delete structure nodes (they reference both site_structures and documents)
-    await query('DELETE FROM app.structure_nodes WHERE structure_id = ANY($1::uuid[])', [
-      structureIds,
-    ]);
+    await db().delete(structureNodes).where(inArray(structureNodes.structureId, structureIds));
   }
 
   // Delete site structures
-  await query('DELETE FROM app.site_structures WHERE site_id = $1', [siteId]);
+  await db().delete(siteStructures).where(eq(siteStructures.siteId, siteId));
 
   // Delete documents
-  await query('DELETE FROM app.documents WHERE site_id = $1', [siteId]);
+  await db().delete(documents).where(eq(documents.siteId, siteId));
 
   // Finally delete the site
-  const result = await query('DELETE FROM app.sites WHERE id = $1', [siteId]);
+  const deleted = await db().delete(sites).where(eq(sites.id, siteId)).returning({ id: sites.id });
 
-  return (result.rowCount ?? 0) > 0;
+  return deleted.length > 0;
 }
 
 /**
@@ -633,43 +609,35 @@ export async function deleteSite(siteId: string): Promise<boolean> {
  * Returns false if the site does not exist, 'already_archived' if already soft-deleted.
  */
 export async function archiveSite(siteId: string): Promise<boolean | 'already_archived'> {
-  await query('BEGIN');
-  try {
-    const result = await query<{ archived_at: string }>(
-      `UPDATE app.sites SET archived_at = NOW()
-       WHERE id = $1 AND archived_at IS NULL
-       RETURNING archived_at`,
-      [siteId],
-    );
-    if ((result.rowCount ?? 0) === 0) {
+  const outcome = await transaction(async () => {
+    const [archiveRow] = await db()
+      .update(sites)
+      .set({ archivedAt: sql`NOW()` })
+      .where(and(eq(sites.id, siteId), isNull(sites.archivedAt)))
+      .returning({ archivedAt: sites.archivedAt });
+
+    if (archiveRow?.archivedAt == null) {
       // Distinguish not-found vs already-archived
-      const exists = await query<{ id: string }>('SELECT id FROM app.sites WHERE id = $1', [
-        siteId,
-      ]);
-      await query('COMMIT');
-      return exists.rows.length > 0 ? 'already_archived' : false;
+      const exists = await db().select({ id: sites.id }).from(sites).where(eq(sites.id, siteId));
+      return exists.length > 0 ? 'already_archived' : false;
     }
-    const archiveRow = result.rows[0];
-    if (!archiveRow) {
-      await query('COMMIT');
-      return false;
-    }
-    const archiveTs = archiveRow.archived_at;
-    await query(
-      'UPDATE app.branches SET archived_at = $1 WHERE site_id = $2 AND archived_at IS NULL',
-      [archiveTs, siteId],
-    );
-    await query(
-      'UPDATE app.documents SET archived_at = $1 WHERE site_id = $2 AND archived_at IS NULL',
-      [archiveTs, siteId],
-    );
-    await query('COMMIT');
-    clearBranchCache();
+
+    const archiveTs = archiveRow.archivedAt;
+    await db()
+      .update(branches)
+      .set({ archivedAt: archiveTs })
+      .where(and(eq(branches.siteId, siteId), isNull(branches.archivedAt)));
+    await db()
+      .update(documents)
+      .set({ archivedAt: archiveTs })
+      .where(and(eq(documents.siteId, siteId), isNull(documents.archivedAt)));
     return true;
-  } catch (error) {
-    await query('ROLLBACK');
-    throw error;
+  });
+
+  if (outcome === true) {
+    clearBranchCache();
   }
+  return outcome;
 }
 
 /**
@@ -679,41 +647,37 @@ export async function archiveSite(siteId: string): Promise<boolean | 'already_ar
  * Returns the restored Site, or null if not found or not archived.
  */
 export async function restoreSite(siteId: string): Promise<Site | null> {
-  const selectResult = await query<SiteRow>('SELECT * FROM app.sites WHERE id = $1', [siteId]);
-  const row = selectResult.rows[0];
-  if (row?.archived_at == null) {
+  const [row] = await db().select().from(sites).where(eq(sites.id, siteId));
+  if (row?.archivedAt == null) {
     return null;
   }
-  const archiveTs = row.archived_at;
-  await query('BEGIN');
-  try {
-    const updateResult = await query<SiteRow>(
-      'UPDATE app.sites SET archived_at = NULL WHERE id = $1 RETURNING *',
-      [siteId],
-    );
-    if (updateResult.rows.length === 0) {
-      await query('COMMIT');
-      return null;
+  const archiveTs = row.archivedAt;
+
+  const restoredRow = await transaction(async () => {
+    const [restored] = await db()
+      .update(sites)
+      .set({ archivedAt: null })
+      .where(eq(sites.id, siteId))
+      .returning();
+    if (restored === undefined) {
+      return undefined;
     }
-    await query(
-      'UPDATE app.branches SET archived_at = NULL WHERE site_id = $1 AND archived_at = $2',
-      [siteId, archiveTs],
-    );
-    await query(
-      'UPDATE app.documents SET archived_at = NULL WHERE site_id = $1 AND archived_at = $2',
-      [siteId, archiveTs],
-    );
-    await query('COMMIT');
-    clearBranchCache();
-    const restoredRow = updateResult.rows[0];
-    if (!restoredRow) {
-      return null;
-    }
-    return mapRowToSite(restoredRow);
-  } catch (error) {
-    await query('ROLLBACK');
-    throw error;
+    await db()
+      .update(branches)
+      .set({ archivedAt: null })
+      .where(and(eq(branches.siteId, siteId), eq(branches.archivedAt, archiveTs)));
+    await db()
+      .update(documents)
+      .set({ archivedAt: null })
+      .where(and(eq(documents.siteId, siteId), eq(documents.archivedAt, archiveTs)));
+    return restored;
+  });
+
+  if (restoredRow === undefined) {
+    return null;
   }
+  clearBranchCache();
+  return mapRowToSite(restoredRow);
 }
 
 /**
@@ -730,114 +694,103 @@ export async function listSites(options: ListSitesOptions): Promise<Site[]> {
     organizationId,
     includeAllOrgSites,
   } = options;
-  const params: unknown[] = [];
+  const archivedFilter = archived === true ? isNotNull(sites.archivedAt) : isNull(sites.archivedAt);
+  const orgFilter = organizationId === undefined ? undefined : eq(sites.organizationId, organizationId);
 
-  const archivedFilter =
-    archived === true ? ' AND s.archived_at IS NOT NULL' : ' AND s.archived_at IS NULL';
+  /**
+   * Applies the paging every listing shares. Each of them projects the sites
+   * table, which is what $dynamic() erases from the type.
+   */
+  const paged = async (listing: PgSelect): Promise<Site[]> => {
+    let page = listing.orderBy(desc(sites.createdAt));
+    if (limit !== undefined) {
+      page = page.limit(limit);
+    }
+    if (offset !== undefined) {
+      page = page.offset(offset);
+    }
+    const rows = (await page) as SiteRow[];
+    return rows.map(mapRowToSite);
+  };
 
   // A caller already authorized for the whole organization sees all of its
   // sites. Narrowing by their own site roles would hand a superadmin an empty
   // list for an account they can administer but were never granted a site in.
   if (organizationId !== undefined && includeAllOrgSites === true) {
-    params.push(organizationId);
-    let allSitesSql =
-      'SELECT s.* FROM app.sites s WHERE s.organization_id = $1' +
-      archivedFilter +
-      ' ORDER BY s.created_at DESC';
-
-    if (limit !== undefined) {
-      params.push(limit);
-      allSitesSql += ' LIMIT $' + String(params.length);
-    }
-    if (offset !== undefined) {
-      params.push(offset);
-      allSitesSql += ' OFFSET $' + String(params.length);
-    }
-
-    const allSitesResult = await query<SiteRow>(allSitesSql, params);
-    return allSitesResult.rows.map(mapRowToSite);
+    return paged(
+      db()
+        .select()
+        .from(sites)
+        .where(and(eq(sites.organizationId, organizationId), archivedFilter))
+        .$dynamic(),
+    );
   }
 
   // A global agent reaches every site, so its own grants do not narrow the
   // listing. The acting user's access does, and is required: without it one key
   // would enumerate every site on the platform.
-  const agentIsGlobal =
+  const delegatedUserId =
     principalType === 'agent'
     && actingUserId !== undefined
-    && (await isGlobalAgentId(principalId));
+    && (await isGlobalAgentId(principalId))
+      ? actingUserId
+      : undefined;
 
-  if (!agentIsGlobal) {
-    params.push(principalId);
-  }
+  const siteColumns = getTableColumns(sites);
 
-  let orgFilter = '';
-  if (organizationId !== undefined) {
-    params.push(organizationId);
-    orgFilter = ' AND s.organization_id = $' + String(params.length);
-  }
-
-  let sql: string;
-  if (agentIsGlobal) {
+  if (delegatedUserId !== undefined) {
     // Delegated authority: the result is the acting user's own sites, so it can
     // never exceed what that user could see directly.
-    params.push(actingUserId);
-    sql =
-      'SELECT DISTINCT s.* FROM app.sites s' +
-      ' INNER JOIN app.user_site_roles usr ON usr.site_id = s.id' +
-      ' WHERE usr.user_id = $' +
-      String(params.length) +
-      archivedFilter +
-      orgFilter +
-      ' ORDER BY s.created_at DESC';
-  } else if (principalType === 'agent') {
+    return paged(
+      db()
+        .selectDistinct(siteColumns)
+        .from(sites)
+        .innerJoin(userSiteRoles, eq(userSiteRoles.siteId, sites.id))
+        .where(and(eq(userSiteRoles.userId, delegatedUserId), archivedFilter, orgFilter))
+        .$dynamic(),
+    );
+  }
+
+  if (principalType === 'agent') {
     // PCC-3190: when an agent acts on behalf of a user, intersect with
     // the user's site roles so the result never leaks beyond what the
     // acting user could see directly. The revoked_at filter on the agent
     // grant must remain in either branch.
+    const grantedToAgent = and(
+      eq(agentSiteRoles.agentId, principalId),
+      isNull(agentSiteRoles.revokedAt),
+    );
+
     if (actingUserId !== undefined) {
-      params.push(actingUserId);
-      sql =
-        'SELECT DISTINCT s.* FROM app.sites s' +
-        ' INNER JOIN app.agent_site_roles asr ON asr.site_id = s.id' +
-        ' INNER JOIN app.user_site_roles usr ON usr.site_id = s.id' +
-        ' WHERE asr.agent_id = $1 AND asr.revoked_at IS NULL' +
-        ' AND usr.user_id = $' +
-        String(params.length) +
-        archivedFilter +
-        orgFilter +
-        ' ORDER BY s.created_at DESC';
-    } else {
-      sql =
-        'SELECT DISTINCT s.* FROM app.sites s' +
-        ' INNER JOIN app.agent_site_roles asr ON asr.site_id = s.id' +
-        ' WHERE asr.agent_id = $1 AND asr.revoked_at IS NULL' +
-        archivedFilter +
-        orgFilter +
-        ' ORDER BY s.created_at DESC';
+      return paged(
+        db()
+          .selectDistinct(siteColumns)
+          .from(sites)
+          .innerJoin(agentSiteRoles, eq(agentSiteRoles.siteId, sites.id))
+          .innerJoin(userSiteRoles, eq(userSiteRoles.siteId, sites.id))
+          .where(and(grantedToAgent, eq(userSiteRoles.userId, actingUserId), archivedFilter, orgFilter))
+          .$dynamic(),
+      );
     }
-  } else {
-    sql =
-      'SELECT DISTINCT s.* FROM app.sites s' +
-      ' INNER JOIN app.user_site_roles usr ON usr.site_id = s.id' +
-      ' WHERE usr.user_id = $1' +
-      archivedFilter +
-      orgFilter +
-      ' ORDER BY s.created_at DESC';
+
+    return paged(
+      db()
+        .selectDistinct(siteColumns)
+        .from(sites)
+        .innerJoin(agentSiteRoles, eq(agentSiteRoles.siteId, sites.id))
+        .where(and(grantedToAgent, archivedFilter, orgFilter))
+        .$dynamic(),
+    );
   }
 
-  if (limit !== undefined) {
-    params.push(limit);
-    sql += ' LIMIT $' + String(params.length);
-  }
-
-  if (offset !== undefined) {
-    params.push(offset);
-    sql += ' OFFSET $' + String(params.length);
-  }
-
-  const result = await query<SiteRow>(sql, params);
-
-  return result.rows.map(mapRowToSite);
+  return paged(
+    db()
+      .selectDistinct(siteColumns)
+      .from(sites)
+      .innerJoin(userSiteRoles, eq(userSiteRoles.siteId, sites.id))
+      .where(and(eq(userSiteRoles.userId, principalId), archivedFilter, orgFilter))
+      .$dynamic(),
+  );
 }
 
 /**
@@ -845,15 +798,14 @@ export async function listSites(options: ListSitesOptions): Promise<Site[]> {
  * Returns null when the site does not exist, empty array when origins not configured.
  */
 export async function getSiteAllowedOrigins(siteId: string): Promise<string[] | null> {
-  const result = await query<{ allowed_origins: string[] | null }>(
-    'SELECT allowed_origins FROM app.sites WHERE id = $1',
-    [siteId],
-  );
-  const originsRow = result.rows[0];
-  if (!originsRow) {
-    return null;
-  }
-  return originsRow.allowed_origins ?? [];
+  const [originsRow] = await db()
+    .select({ allowedOrigins: sites.allowedOrigins })
+    .from(sites)
+    .where(eq(sites.id, siteId));
+
+  // Null means no such site. app.sites.allowed_origins is NOT NULL DEFAULT
+  // '{}', so a site that configured none reads as an empty array.
+  return originsRow?.allowedOrigins ?? null;
 }
 
 // Module-scope cache: Worker isolates are reused across requests so this
@@ -888,18 +840,20 @@ export async function getCachedSiteAllowedOrigins(siteId: string): Promise<strin
 export async function getSiteOwner(
   siteId: string,
 ): Promise<{ name: string; avatarUrl: string | null } | null> {
-  const result = await query<{ owner_name: string | null; avatar_url: string | null }>(
-    `SELECT COALESCE(u.name, u.email) AS owner_name, u.avatar_url
-     FROM app.user_site_roles usr
-     LEFT JOIN app.users u ON u.id::text = usr.user_id
-     WHERE usr.site_id = $1 AND usr.role = 'owner'
-     ORDER BY usr.updated_at DESC
-     LIMIT 1`,
-    [siteId],
-  );
+  // app.users.id is uuid and user_site_roles.user_id is text, so the join casts
+  // rather than comparing across types.
+  const [row] = await db()
+    .select({
+      ownerName: sql<string | null>`COALESCE(${users.name}, ${users.email})`,
+      avatarUrl: users.avatarUrl,
+    })
+    .from(userSiteRoles)
+    .leftJoin(users, eq(sql`${users.id}::text`, userSiteRoles.userId))
+    .where(and(eq(userSiteRoles.siteId, siteId), eq(userSiteRoles.role, 'owner')))
+    .orderBy(desc(userSiteRoles.updatedAt))
+    .limit(1);
 
-  const row = result.rows[0];
   // The join is LEFT, so a grant naming a user with no row yields a null name.
-  if (row?.owner_name === undefined || row.owner_name === null) return null;
-  return { name: row.owner_name, avatarUrl: row.avatar_url };
+  if (row?.ownerName == null) return null;
+  return { name: row.ownerName, avatarUrl: row.avatarUrl };
 }

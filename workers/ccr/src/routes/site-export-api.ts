@@ -27,7 +27,9 @@ import { getSite } from '../services/site-service';
 import { listBranches, getMainBranch } from '../services/branch-service';
 import { listDocuments } from '../services/document-service';
 import { listRolesBySite as listAgentRolesBySite } from '../services/agent-site-role-service';
-import { query } from '../db';
+import { asc, eq, sql } from 'drizzle-orm';
+import { db } from '../db/scope';
+import { users, userSiteRoles } from '../db/schema';
 import {
   selectVersionsForDocument,
   resolveCreatedByRefsBatch,
@@ -203,18 +205,18 @@ export async function handleSiteExportRoute(
     // Included so the operator knows who needs to be added to the target site after import.
     // The import handler does NOT create these automatically; it surfaces them in the response.
     const [userRoleRows, agentRoles] = await Promise.all([
-      query<{ email: string; name: string; role: string }>(
-        `SELECT u.email, u.name, usr.role
-         FROM app.user_site_roles usr
-         JOIN app.users u ON u.id::text = usr.user_id
-         WHERE usr.site_id = $1
-         ORDER BY u.email`,
-        [siteId],
-      ),
+      // app.users.id is uuid and user_site_roles.user_id is text, so the join
+      // casts rather than comparing across types.
+      db()
+        .select({ email: users.email, name: users.name, role: userSiteRoles.role })
+        .from(userSiteRoles)
+        .innerJoin(users, eq(sql`${users.id}::text`, userSiteRoles.userId))
+        .where(eq(userSiteRoles.siteId, siteId))
+        .orderBy(asc(users.email)),
       listAgentRolesBySite(siteId),
     ]);
     files['collaborators.json'] = strToU8(JSON.stringify({
-      users: userRoleRows.rows.map((r) => ({ email: r.email, name: r.name, role: r.role })),
+      users: userRoleRows.map((r) => ({ email: r.email, name: r.name, role: r.role })),
       agents: agentRoles.map((r) => ({ name: r.agentName, role: r.role })),
     }, null, 2));
 

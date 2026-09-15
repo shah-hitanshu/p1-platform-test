@@ -7,8 +7,12 @@
  * @see collaborative-state-system-architecture-v2.3.md Section "Agent Politeness System"
  */
 
+import { and, asc, count, desc, eq, inArray, isNotNull, isNull, like, notExists, or, sql, type SQL } from 'drizzle-orm';
 import type { Organization, OrganizationSettings, Site, WorkflowSettings } from '../types';
-import { query } from '../db';
+import { driverErrorCode } from '../db/driver-error';
+import { toIsoTimestamp } from '../db/helpers';
+import { db, transaction } from '../db/scope';
+import { organizationMembers, organizations, sites } from '../db/schema';
 import { escapeLikePattern } from './document-types';
 import { PUBLIC_EMAIL_DOMAINS } from '../constants/email-domains';
 import {
@@ -82,36 +86,53 @@ export interface ListOrganizationsOptions {
 }
 
 /**
- * Database row format for organizations.
+ * A row of organization columns.
+ *
+ * The timestamps are typed for both readers: the query builder hands back a
+ * Date, a raw statement Postgres' own text form. Both go through
+ * toIsoTimestamp. A type alias rather than an interface: db().execute<T>()
+ * constrains T to Record<string, unknown>, which an interface cannot satisfy
+ * because it carries no implicit index signature.
  */
-interface OrganizationRow {
+type OrganizationRow = {
   id: string;
   name: string;
-  settings: OrganizationSettings | string;
-  created_at: string;
-  updated_at: string;
-  archived_at: string | null;
-  external_space_id?: string | null;
-  owner_email?: string | null;
+  settings: unknown;
+  createdAt: Date | string;
+  updatedAt: Date | string;
+  archivedAt: Date | string | null;
+  externalSpaceId?: string | null;
+  ownerEmail?: string | null;
   /** Only selected by the "organizations I belong to" queries. */
-  member_role?: string | null;
-}
+  memberRole?: string | null;
+};
 
 /**
- * Database row format for sites with organization.
+ * A row of site columns. url, allowed_origins and archived_at are not selected
+ * by every read; absent, they map to the same values as a NULL column.
  */
 interface SiteRow {
   id: string;
-  pantheon_site_id: string | null;
-  organization_id: string | null;
+  pantheonSiteId: string | null;
+  organizationId: string | null;
   name: string;
-  url: string | null;
-  workflow_settings: WorkflowSettings | string;
-  allowed_origins: string[] | null;
-  created_at: string;
-  updated_at: string;
-  archived_at: string | null;
+  workflowSettings: unknown;
+  createdAt: Date | string | null;
+  updatedAt: Date | string | null;
+  url?: string | null;
+  allowedOrigins?: string[] | null;
+  archivedAt?: Date | string | null;
 }
+
+/** Columns every organization read selects, in the schema's property names. */
+const organizationColumns = {
+  id: organizations.id,
+  name: organizations.name,
+  settings: organizations.settings,
+  createdAt: organizations.createdAt,
+  updatedAt: organizations.updatedAt,
+  archivedAt: organizations.archivedAt,
+};
 
 // =============================================================================
 // Default Values
@@ -132,21 +153,21 @@ const DEFAULT_ORGANIZATION_SETTINGS: OrganizationSettings = {
  * Parses organization settings from database.
  * Handles both string and object formats for JSONB columns.
  */
-function parseSettings(value: OrganizationSettings | string): OrganizationSettings {
+function parseSettings(value: unknown): OrganizationSettings {
   if (typeof value === 'string') {
     return JSON.parse(value) as OrganizationSettings;
   }
-  return value;
+  return value as OrganizationSettings;
 }
 
 /**
  * Parses workflow settings from database.
  */
-function parseWorkflowSettings(value: WorkflowSettings | string): WorkflowSettings {
+function parseWorkflowSettings(value: unknown): WorkflowSettings {
   if (typeof value === 'string') {
     return JSON.parse(value) as WorkflowSettings;
   }
-  return value;
+  return value as WorkflowSettings;
 }
 
 /**
@@ -157,11 +178,11 @@ function mapRowToOrganization(row: OrganizationRow): Organization {
     id: row.id,
     name: row.name,
     settings: parseSettings(row.settings),
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-    archivedAt: row.archived_at ?? null,
-    externalSpaceId: row.external_space_id ?? null,
-    ownerEmail: row.owner_email ?? undefined,
+    createdAt: toIsoTimestamp(row.createdAt),
+    updatedAt: toIsoTimestamp(row.updatedAt),
+    archivedAt: row.archivedAt == null ? null : toIsoTimestamp(row.archivedAt),
+    externalSpaceId: row.externalSpaceId ?? null,
+    ownerEmail: row.ownerEmail ?? undefined,
   };
 }
 
@@ -173,7 +194,7 @@ function mapRowToOrganization(row: OrganizationRow): Organization {
 function mapRowToOrganizationWithRole(row: OrganizationRow): OrganizationWithRole {
   return {
     ...mapRowToOrganization(row),
-    role: normalizeOrgRole(row.member_role),
+    role: normalizeOrgRole(row.memberRole),
   };
 }
 
@@ -183,15 +204,15 @@ function mapRowToOrganizationWithRole(row: OrganizationRow): OrganizationWithRol
 function mapRowToSite(row: SiteRow): Site {
   return {
     id: row.id,
-    pantheonSiteId: row.pantheon_site_id ?? undefined,
-    organizationId: row.organization_id ?? undefined,
+    pantheonSiteId: row.pantheonSiteId ?? undefined,
+    organizationId: row.organizationId ?? undefined,
     name: row.name,
     url: row.url ?? undefined,
-    workflowSettings: parseWorkflowSettings(row.workflow_settings),
-    allowedOrigins: row.allowed_origins ?? [],
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-    archivedAt: row.archived_at ?? null,
+    workflowSettings: parseWorkflowSettings(row.workflowSettings),
+    allowedOrigins: row.allowedOrigins ?? [],
+    createdAt: toIsoTimestamp(row.createdAt),
+    updatedAt: toIsoTimestamp(row.updatedAt),
+    archivedAt: row.archivedAt == null ? null : toIsoTimestamp(row.archivedAt),
   };
 }
 
@@ -199,11 +220,7 @@ function mapRowToSite(row: SiteRow): Site {
  * Checks if an error is a PostgreSQL foreign key constraint violation.
  */
 function isForeignKeyViolation(error: unknown): boolean {
-  return (
-    error instanceof Error &&
-    'code' in error &&
-    (error as NodeJS.ErrnoException).code === '23503'
-  );
+  return driverErrorCode(error) === '23503';
 }
 
 const MAX_ORG_NAME_LENGTH = 255;
@@ -239,6 +256,35 @@ function validateName(name: string | undefined): void {
   }
 }
 
+/**
+ * The account owner's email. An account may have several, so this is the
+ * earliest of them; ordering rather than a WHERE so one whose owner rows were
+ * deleted out of band still reports an email — its earliest member, which is
+ * who 068's backfill would name — instead of going null.
+ *
+ * `orgId` is how the enclosing statement refers to the organization it is
+ * reading, which differs between a builder query and a raw one. It has to be
+ * qualified: the subquery's own tables carry an `id` too.
+ */
+function earliestOwnerEmail(orgId: SQL): SQL<string | null> {
+  return sql<string | null>`(
+    SELECT owner_u.email FROM app.organization_members owner_om
+    JOIN app.users owner_u ON owner_u.id = owner_om.user_id
+    WHERE owner_om.organization_id = ${orgId}
+    ORDER BY (owner_om.role = 'owner') DESC, owner_om.created_at, owner_om.id
+    LIMIT 1)`;
+}
+
+/** Non-archived sites an organization still owns. */
+async function countActiveSites(organizationId: string): Promise<number> {
+  const [row] = await db()
+    .select({ value: count() })
+    .from(sites)
+    .where(and(eq(sites.organizationId, organizationId), isNull(sites.archivedAt)));
+
+  return row?.value ?? 0;
+}
+
 // =============================================================================
 // Service Functions
 // =============================================================================
@@ -258,13 +304,11 @@ export async function createOrganization(params: CreateOrganizationParams): Prom
     ...params.settings,
   };
 
-  const result = await query<OrganizationRow>(`
-    INSERT INTO app.organizations (name, settings)
-    VALUES ($1, $2)
-    RETURNING id, name, settings, created_at, updated_at, archived_at
-  `, [params.name, JSON.stringify(settings)]);
+  const [createdRow] = await db()
+    .insert(organizations)
+    .values({ name: params.name, settings })
+    .returning(organizationColumns);
 
-  const createdRow = result.rows[0];
   if (!createdRow) {
     throw new Error('Failed to create organization');
   }
@@ -278,17 +322,11 @@ export async function createOrganization(params: CreateOrganizationParams): Prom
  * @returns The organization or null if not found
  */
 export async function getOrganizationById(id: string): Promise<Organization | null> {
-  const result = await query<OrganizationRow>(`
-    SELECT id, name, settings, created_at, updated_at, archived_at
-    FROM app.organizations
-    WHERE id = $1
-  `, [id]);
+  const [orgRow] = await db()
+    .select(organizationColumns)
+    .from(organizations)
+    .where(eq(organizations.id, id));
 
-  if (result.rows.length === 0) {
-    return null;
-  }
-
-  const orgRow = result.rows[0];
   if (!orgRow) {
     return null;
   }
@@ -309,43 +347,27 @@ export async function updateOrganization(
 ): Promise<Organization | null> {
   validateName(params.name);
 
-  const updates: string[] = [];
-  const values: unknown[] = [];
-  let paramIndex = 1;
-
-  if (params.name !== undefined) {
-    updates.push(`name = $${String(paramIndex)}`);
-    values.push(params.name);
-    paramIndex++;
-  }
-
-  if (params.settings !== undefined) {
-    // Merge with existing settings
-    updates.push(`settings = settings || $${String(paramIndex)}::jsonb`);
-    values.push(JSON.stringify(params.settings));
-    paramIndex++;
-  }
-
-  if (updates.length === 0) {
+  if (params.name === undefined && params.settings === undefined) {
     // No updates to apply, just return current state
     return getOrganizationById(id);
   }
 
-  updates.push('updated_at = NOW()');
-  values.push(id);
+  const [updatedRow] = await db()
+    .update(organizations)
+    .set({
+      ...(params.name !== undefined ? { name: params.name } : {}),
+      // Settings merge rather than replace. The new values are stringified
+      // because they are bound into a jsonb operator: the Drizzle client
+      // serializes json as identity, so an object would reach Postgres as
+      // [object Object].
+      ...(params.settings !== undefined
+        ? { settings: sql`${organizations.settings} || ${JSON.stringify(params.settings)}::jsonb` }
+        : {}),
+      updatedAt: sql`NOW()`,
+    })
+    .where(eq(organizations.id, id))
+    .returning(organizationColumns);
 
-  const result = await query<OrganizationRow>(`
-    UPDATE app.organizations
-    SET ${updates.join(', ')}
-    WHERE id = $${String(paramIndex)}
-    RETURNING id, name, settings, created_at, updated_at, archived_at
-  `, values);
-
-  if (result.rows.length === 0) {
-    return null;
-  }
-
-  const updatedRow = result.rows[0];
   if (!updatedRow) {
     return null;
   }
@@ -361,13 +383,12 @@ export async function updateOrganization(
  */
 export async function deleteOrganization(id: string): Promise<boolean> {
   try {
-    const result = await query<{ id: string }>(`
-      DELETE FROM app.organizations
-      WHERE id = $1
-      RETURNING id
-    `, [id]);
+    const deleted = await db()
+      .delete(organizations)
+      .where(eq(organizations.id, id))
+      .returning({ id: organizations.id });
 
-    return result.rows.length > 0;
+    return deleted.length > 0;
   } catch (error) {
     if (isForeignKeyViolation(error)) {
       throw new OrganizationHasSitesError(id);
@@ -384,52 +405,45 @@ export async function deleteOrganization(id: string): Promise<boolean> {
 export async function archiveOrganization(id: string): Promise<boolean | 'already_archived'> {
   // Pre-check active sites outside the transaction to surface a clean error early.
   // The UPDATE itself also guards via a NOT EXISTS subquery to prevent TOCTOU.
-  const siteCheck = await query<{ count: string }>(
-    'SELECT COUNT(*) AS count FROM app.sites WHERE organization_id = $1 AND archived_at IS NULL',
-    [id],
-  );
-  if (parseInt(siteCheck.rows[0]?.count ?? '0', 10) > 0) {
+  if (await countActiveSites(id) > 0) {
     throw new OrganizationHasActiveSitesError(id);
   }
 
-  await query('BEGIN');
-  let rowCount: number;
-  try {
-    const result = await query<{ id: string }>(
-      `UPDATE app.organizations SET archived_at = NOW()
-       WHERE id = $1 AND archived_at IS NULL
-         AND NOT EXISTS (
-           SELECT 1 FROM app.sites WHERE organization_id = $1 AND archived_at IS NULL
-         )
-       RETURNING id`,
-      [id],
-    );
-    rowCount = result.rowCount ?? 0;
-    await query('COMMIT');
-  } catch (error) {
-    await query('ROLLBACK');
-    throw error;
-  }
+  const archived = await transaction(() =>
+    db()
+      .update(organizations)
+      .set({ archivedAt: sql`NOW()` })
+      .where(
+        and(
+          eq(organizations.id, id),
+          isNull(organizations.archivedAt),
+          notExists(
+            db()
+              .select({ id: sites.id })
+              .from(sites)
+              .where(and(eq(sites.organizationId, id), isNull(sites.archivedAt))),
+          ),
+        ),
+      )
+      .returning({ id: organizations.id }),
+  );
 
   // Post-commit: UPDATE matched — done.
-  if (rowCount > 0) {
+  if (archived.length > 0) {
     return true;
   }
 
   // UPDATE matched 0 rows. Re-check outside the transaction to avoid ROLLBACK
   // on an already-committed transaction (PostgreSQL emits a WARNING for that).
-  const recheck = await query<{ count: string }>(
-    'SELECT COUNT(*) AS count FROM app.sites WHERE organization_id = $1 AND archived_at IS NULL',
-    [id],
-  );
-  if (parseInt(recheck.rows[0]?.count ?? '0', 10) > 0) {
+  if (await countActiveSites(id) > 0) {
     throw new OrganizationHasActiveSitesError(id);
   }
-  const exists = await query<{ id: string }>(
-    'SELECT id FROM app.organizations WHERE id = $1',
-    [id],
-  );
-  return exists.rows.length > 0 ? 'already_archived' : false;
+  const exists = await db()
+    .select({ id: organizations.id })
+    .from(organizations)
+    .where(eq(organizations.id, id));
+
+  return exists.length > 0 ? 'already_archived' : false;
 }
 
 /**
@@ -437,20 +451,15 @@ export async function archiveOrganization(id: string): Promise<boolean | 'alread
  * Returns true on success, false if not found or not archived.
  */
 export async function restoreOrganization(id: string): Promise<boolean> {
-  await query('BEGIN');
-  try {
-    const result = await query<{ id: string }>(
-      `UPDATE app.organizations SET archived_at = NULL
-       WHERE id = $1 AND archived_at IS NOT NULL
-       RETURNING id`,
-      [id],
-    );
-    await query('COMMIT');
-    return (result.rowCount ?? 0) > 0;
-  } catch (error) {
-    await query('ROLLBACK');
-    throw error;
-  }
+  const restored = await transaction(() =>
+    db()
+      .update(organizations)
+      .set({ archivedAt: null })
+      .where(and(eq(organizations.id, id), isNotNull(organizations.archivedAt)))
+      .returning({ id: organizations.id }),
+  );
+
+  return restored.length > 0;
 }
 
 /**
@@ -463,17 +472,16 @@ export async function listOrganizations(
   options: ListOrganizationsOptions = {},
 ): Promise<Organization[]> {
   const { limit = 100, offset = 0, archived } = options;
-  const archivedFilter = archived === true ? 'AND archived_at IS NOT NULL' : 'AND archived_at IS NULL';
 
-  const result = await query<OrganizationRow>(`
-    SELECT id, name, settings, created_at, updated_at, archived_at
-    FROM app.organizations
-    WHERE TRUE ${archivedFilter}
-    ORDER BY created_at DESC
-    LIMIT $1 OFFSET $2
-  `, [limit, offset]);
+  const rows = await db()
+    .select(organizationColumns)
+    .from(organizations)
+    .where(archived === true ? isNotNull(organizations.archivedAt) : isNull(organizations.archivedAt))
+    .orderBy(desc(organizations.createdAt))
+    .limit(limit)
+    .offset(offset);
 
-  return result.rows.map(mapRowToOrganization);
+  return rows.map(mapRowToOrganization);
 }
 
 /**
@@ -489,14 +497,13 @@ export async function linkSiteToOrganization(
   organizationId: string,
 ): Promise<boolean> {
   try {
-    const result = await query<{ id: string }>(`
-      UPDATE app.sites
-      SET organization_id = $1, updated_at = NOW()
-      WHERE id = $2
-      RETURNING id
-    `, [organizationId, siteId]);
+    const linked = await db()
+      .update(sites)
+      .set({ organizationId, updatedAt: sql`NOW()` })
+      .where(eq(sites.id, siteId))
+      .returning({ id: sites.id });
 
-    return result.rows.length > 0;
+    return linked.length > 0;
   } catch (error) {
     if (isForeignKeyViolation(error)) {
       throw new OrganizationNotFoundError(organizationId);
@@ -512,14 +519,13 @@ export async function linkSiteToOrganization(
  * @returns true if unlinked, false if site not found
  */
 export async function unlinkSiteFromOrganization(siteId: string): Promise<boolean> {
-  const result = await query<{ id: string }>(`
-    UPDATE app.sites
-    SET organization_id = NULL, updated_at = NOW()
-    WHERE id = $1
-    RETURNING id
-  `, [siteId]);
+  const unlinked = await db()
+    .update(sites)
+    .set({ organizationId: null, updatedAt: sql`NOW()` })
+    .where(eq(sites.id, siteId))
+    .returning({ id: sites.id });
 
-  return result.rows.length > 0;
+  return unlinked.length > 0;
 }
 
 /**
@@ -529,14 +535,21 @@ export async function unlinkSiteFromOrganization(siteId: string): Promise<boolea
  * @returns Array of sites
  */
 export async function getSitesByOrganization(organizationId: string): Promise<Site[]> {
-  const result = await query<SiteRow>(`
-    SELECT id, pantheon_site_id, organization_id, name, workflow_settings, created_at, updated_at
-    FROM app.sites
-    WHERE organization_id = $1
-    ORDER BY name ASC
-  `, [organizationId]);
+  const rows = await db()
+    .select({
+      id: sites.id,
+      pantheonSiteId: sites.pantheonSiteId,
+      organizationId: sites.organizationId,
+      name: sites.name,
+      workflowSettings: sites.workflowSettings,
+      createdAt: sites.createdAt,
+      updatedAt: sites.updatedAt,
+    })
+    .from(sites)
+    .where(eq(sites.organizationId, organizationId))
+    .orderBy(asc(sites.name));
 
-  return result.rows.map(mapRowToSite);
+  return rows.map(mapRowToSite);
 }
 
 /**
@@ -546,18 +559,12 @@ export async function getSitesByOrganization(organizationId: string): Promise<Si
  * @returns The organization or null if site has no organization
  */
 export async function getOrganizationForSite(siteId: string): Promise<Organization | null> {
-  const result = await query<OrganizationRow>(`
-    SELECT o.id, o.name, o.settings, o.created_at, o.updated_at, o.archived_at
-    FROM app.organizations o
-    INNER JOIN app.sites s ON s.organization_id = o.id
-    WHERE s.id = $1
-  `, [siteId]);
+  const [siteOrgRow] = await db()
+    .select(organizationColumns)
+    .from(organizations)
+    .innerJoin(sites, eq(sites.organizationId, organizations.id))
+    .where(eq(sites.id, siteId));
 
-  if (result.rows.length === 0) {
-    return null;
-  }
-
-  const siteOrgRow = result.rows[0];
   if (!siteOrgRow) {
     return null;
   }
@@ -602,30 +609,26 @@ function deriveOrgNameFromEmail(email: string): string {
  *
  * Membership must match canAccessOrganization, is_active included, or the
  * switcher offers an account whose every scoped request comes back 403.
+ *
+ * DISTINCT over two correlated EXISTS clauses has no builder form, so the
+ * statement is raw; it names its columns as the schema does so the same mapper
+ * reads it.
  */
 export async function getOrganizationsForUser(userId: string): Promise<OrganizationWithRole[]> {
-  const result = await query<OrganizationRow>(`
-    SELECT DISTINCT o.id, o.name, o.settings, o.created_at, o.updated_at, o.archived_at,
-           o.external_space_id,
+  const rows = await db().execute<OrganizationRow>(sql`
+    SELECT DISTINCT o.id, o.name, o.settings,
+           o.created_at AS "createdAt", o.updated_at AS "updatedAt",
+           o.archived_at AS "archivedAt", o.external_space_id AS "externalSpaceId",
            (SELECT mine.role FROM app.organization_members mine
-            WHERE mine.organization_id = o.id AND mine.user_id = $1::uuid
-              AND mine.is_active = true) AS member_role,
-           -- The account owner. An account may have several, so this is the
-           -- earliest of them; ordering rather than a WHERE so one whose owner
-           -- rows were deleted out of band still reports an email — its
-           -- earliest member, which is who 068's backfill would name — instead
-           -- of going null.
-           (SELECT owner_u.email FROM app.organization_members owner_om
-            JOIN app.users owner_u ON owner_u.id = owner_om.user_id
-            WHERE owner_om.organization_id = o.id
-            ORDER BY (owner_om.role = 'owner') DESC, owner_om.created_at, owner_om.id
-            LIMIT 1) AS owner_email
+            WHERE mine.organization_id = o.id AND mine.user_id = ${userId}::uuid
+              AND mine.is_active = true) AS "memberRole",
+           ${earliestOwnerEmail(sql`o.id`)} AS "ownerEmail"
     FROM app.organizations o
     WHERE o.archived_at IS NULL
       AND (
         EXISTS (
           SELECT 1 FROM app.organization_members om
-          WHERE om.organization_id = o.id AND om.user_id = $1::uuid
+          WHERE om.organization_id = o.id AND om.user_id = ${userId}::uuid
             AND om.is_active = true
         )
         OR
@@ -633,12 +636,12 @@ export async function getOrganizationsForUser(userId: string): Promise<Organizat
           SELECT 1 FROM app.user_site_roles usr
           INNER JOIN app.users u ON u.id::text = usr.user_id
           INNER JOIN app.sites s ON s.id = usr.site_id
-          WHERE u.id = $1::uuid AND s.organization_id = o.id AND s.archived_at IS NULL
+          WHERE u.id = ${userId}::uuid AND s.organization_id = o.id AND s.archived_at IS NULL
         )
       )
-  `, [userId]);
+  `);
 
-  return result.rows.map(mapRowToOrganizationWithRole);
+  return rows.map(mapRowToOrganizationWithRole);
 }
 
 /**
@@ -655,26 +658,19 @@ export const SWITCHER_ORG_LIMIT = 500;
 export async function listAllOrganizationsForSwitcher(
   limit = SWITCHER_ORG_LIMIT,
 ): Promise<OrganizationWithRole[]> {
-  const result = await query<OrganizationRow>(`
-    SELECT o.id, o.name, o.settings, o.created_at, o.updated_at, o.archived_at,
-           o.external_space_id, 'admin' AS member_role,
-           -- The account owner. An account may have several, so this is the
-           -- earliest of them; ordering rather than a WHERE so one whose owner
-           -- rows were deleted out of band still reports an email — its
-           -- earliest member, which is who 068's backfill would name — instead
-           -- of going null.
-           (SELECT owner_u.email FROM app.organization_members owner_om
-            JOIN app.users owner_u ON owner_u.id = owner_om.user_id
-            WHERE owner_om.organization_id = o.id
-            ORDER BY (owner_om.role = 'owner') DESC, owner_om.created_at, owner_om.id
-            LIMIT 1) AS owner_email
-    FROM app.organizations o
-    WHERE o.archived_at IS NULL
-    ORDER BY o.name ASC
-    LIMIT $1
-  `, [limit]);
+  const rows = await db()
+    .select({
+      ...organizationColumns,
+      externalSpaceId: organizations.externalSpaceId,
+      memberRole: sql<string>`'admin'`,
+      ownerEmail: earliestOwnerEmail(sql`app.organizations.id`),
+    })
+    .from(organizations)
+    .where(isNull(organizations.archivedAt))
+    .orderBy(asc(organizations.name))
+    .limit(limit);
 
-  return result.rows.map(mapRowToOrganizationWithRole);
+  return rows.map(mapRowToOrganizationWithRole);
 }
 
 /**
@@ -708,67 +704,71 @@ export interface OrganizationUser {
   updatedAt: string;
 }
 
+type OrganizationUserRow = {
+  id: string;
+  email: string;
+  name: string | null;
+  principalId: string | null;
+  authProvider: string | null;
+  systemRole: string;
+  memberRole: string | null;
+  memberIsActive: boolean | null;
+  isDirectMember: boolean;
+  createdAt: Date | string;
+  updatedAt: Date | string;
+};
+
 /**
  * Returns every user who belongs to an organization, using the same membership
  * definition as getOrganizationsForUser (direct membership OR a site role on
  * one of the org's sites).
  */
 export async function getUsersForOrganization(organizationId: string): Promise<OrganizationUser[]> {
-  const result = await query<{
-    id: string;
-    email: string;
-    name: string | null;
-    principal_id: string | null;
-    auth_provider: string | null;
-    system_role: string;
-    member_role: string | null;
-    member_is_active: boolean | null;
-    is_direct_member: boolean;
-    created_at: string;
-    updated_at: string;
-  }>(`
+  const rows = await db().execute<OrganizationUserRow>(sql`
     SELECT DISTINCT
-      u.id, u.email, u.name, u.principal_id, u.auth_provider,
-      u.system_role, u.created_at, u.updated_at,
+      u.id, u.email, u.name,
+      u.principal_id AS "principalId", u.auth_provider AS "authProvider",
+      u.system_role AS "systemRole",
+      u.created_at AS "createdAt", u.updated_at AS "updatedAt",
       (
         SELECT direct.role FROM app.organization_members direct
-        WHERE direct.organization_id = $1::uuid AND direct.user_id = u.id
-      ) AS member_role,
+        WHERE direct.organization_id = ${organizationId}::uuid AND direct.user_id = u.id
+      ) AS "memberRole",
       (
         SELECT direct.is_active FROM app.organization_members direct
-        WHERE direct.organization_id = $1::uuid AND direct.user_id = u.id
-      ) AS member_is_active,
+        WHERE direct.organization_id = ${organizationId}::uuid AND direct.user_id = u.id
+      ) AS "memberIsActive",
       EXISTS (
         SELECT 1 FROM app.organization_members direct
-        WHERE direct.organization_id = $1::uuid AND direct.user_id = u.id
-      ) AS is_direct_member
+        WHERE direct.organization_id = ${organizationId}::uuid AND direct.user_id = u.id
+      ) AS "isDirectMember"
     FROM app.users u
     WHERE EXISTS (
         SELECT 1 FROM app.organization_members om
-        WHERE om.organization_id = $1::uuid AND om.user_id = u.id
+        WHERE om.organization_id = ${organizationId}::uuid AND om.user_id = u.id
       )
       OR EXISTS (
         SELECT 1 FROM app.user_site_roles usr
         INNER JOIN app.sites s ON s.id = usr.site_id
         WHERE usr.user_id = u.id::text
-          AND s.organization_id = $1::uuid
+          AND s.organization_id = ${organizationId}::uuid
           AND s.archived_at IS NULL
       )
-    ORDER BY u.created_at ASC
-  `, [organizationId]);
+    ORDER BY "createdAt" ASC
+  `);
 
-  return result.rows.map((row) => ({
+  return rows.map((row) => ({
     id: row.id,
     email: row.email,
     name: row.name,
-    principalId: row.principal_id,
-    authProvider: row.auth_provider,
-    systemRole: row.system_role,
-    role: normalizeOrgRole(row.member_role),
-    isActive: row.member_is_active ?? true,
-    isDirectMember: row.is_direct_member,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
+    principalId: row.principalId,
+    authProvider: row.authProvider,
+    systemRole: row.systemRole,
+    role: normalizeOrgRole(row.memberRole),
+    isActive: row.memberIsActive ?? true,
+    isDirectMember: row.isDirectMember,
+    createdAt: toIsoTimestamp(row.createdAt),
+    updatedAt: toIsoTimestamp(row.updatedAt),
   }));
 }
 
@@ -784,14 +784,15 @@ export async function addUserToOrganization(
   role: OrganizationRole = 'member',
 ): Promise<boolean> {
   try {
-    const result = await query<{ id: string }>(`
-      INSERT INTO app.organization_members (organization_id, user_id, role)
-      VALUES ($1::uuid, $2::uuid, $3)
-      ON CONFLICT (organization_id, user_id) DO NOTHING
-      RETURNING id
-    `, [organizationId, userId, role]);
+    const inserted = await db()
+      .insert(organizationMembers)
+      .values({ organizationId, userId, role })
+      .onConflictDoNothing({
+        target: [organizationMembers.organizationId, organizationMembers.userId],
+      })
+      .returning({ id: organizationMembers.id });
 
-    return result.rows.length > 0;
+    return inserted.length > 0;
   } catch (error) {
     if (isForeignKeyViolation(error)) {
       throw new OrganizationNotFoundError(organizationId);
@@ -808,16 +809,20 @@ export async function getOrganizationRole(
   organizationId: string,
   userId: string,
 ): Promise<OrganizationRole | null> {
-  const result = await query<{ role: string }>(
-    'SELECT role FROM app.organization_members WHERE organization_id = $1::uuid AND user_id = $2::uuid',
-    [organizationId, userId],
-  );
+  const [row] = await db()
+    .select({ role: organizationMembers.role })
+    .from(organizationMembers)
+    .where(
+      and(
+        eq(organizationMembers.organizationId, organizationId),
+        eq(organizationMembers.userId, userId),
+      ),
+    );
 
-  const role = result.rows[0]?.role;
-  if (role === undefined) {
+  if (row === undefined) {
     return null;
   }
-  return normalizeOrgRole(role);
+  return normalizeOrgRole(row.role);
 }
 
 /**
@@ -833,22 +838,22 @@ export async function updateOrganizationMember(
   userId: string,
   fields: { role?: OrganizationRole; isActive?: boolean },
 ): Promise<{ role: OrganizationRole; isActive: boolean } | null> {
-  const result = await query<{ role: string; is_active: boolean }>(`
-    UPDATE app.organization_members
-    SET role      = COALESCE($3::text, role),
-        is_active = COALESCE($4, is_active)
-    WHERE organization_id = $1::uuid AND user_id = $2::uuid
-    RETURNING role, is_active
-  `, [
-    organizationId,
-    userId,
-    fields.role ?? null,
-    fields.isActive ?? null,
-  ]);
+  const [row] = await db()
+    .update(organizationMembers)
+    .set({
+      role: sql`COALESCE(${fields.role ?? null}::text, ${organizationMembers.role})`,
+      isActive: sql`COALESCE(${fields.isActive ?? null}, ${organizationMembers.isActive})`,
+    })
+    .where(
+      and(
+        eq(organizationMembers.organizationId, organizationId),
+        eq(organizationMembers.userId, userId),
+      ),
+    )
+    .returning({ role: organizationMembers.role, isActive: organizationMembers.isActive });
 
-  const row = result.rows[0];
   if (row === undefined) return null;
-  return { role: normalizeOrgRole(row.role), isActive: row.is_active };
+  return { role: normalizeOrgRole(row.role), isActive: row.isActive };
 }
 
 /**
@@ -861,12 +866,17 @@ export async function isOrganizationMemberActive(
   organizationId: string,
   userId: string,
 ): Promise<boolean> {
-  const result = await query<{ is_active: boolean }>(
-    'SELECT is_active FROM app.organization_members WHERE organization_id = $1::uuid AND user_id = $2::uuid',
-    [organizationId, userId],
-  );
+  const [row] = await db()
+    .select({ isActive: organizationMembers.isActive })
+    .from(organizationMembers)
+    .where(
+      and(
+        eq(organizationMembers.organizationId, organizationId),
+        eq(organizationMembers.userId, userId),
+      ),
+    );
 
-  return result.rows[0]?.is_active ?? true;
+  return row?.isActive ?? true;
 }
 
 /**
@@ -883,14 +893,18 @@ export async function isOrganizationMemberActive(
  * demoted on the strength of one who cannot.
  */
 export async function countOrganizationAdmins(organizationId: string): Promise<number> {
-  const result = await query<{ count: string }>(
-    `SELECT COUNT(*) AS count FROM app.organization_members
-      WHERE organization_id = $1::uuid AND role IN ('admin', 'owner')
-        AND is_active = true`,
-    [organizationId],
-  );
+  const [row] = await db()
+    .select({ value: count() })
+    .from(organizationMembers)
+    .where(
+      and(
+        eq(organizationMembers.organizationId, organizationId),
+        inArray(organizationMembers.role, ['admin', 'owner']),
+        eq(organizationMembers.isActive, true),
+      ),
+    );
 
-  return parseInt(result.rows[0]?.count ?? '0', 10);
+  return row?.value ?? 0;
 }
 
 /**
@@ -903,13 +917,17 @@ export async function removeUserFromOrganization(
   organizationId: string,
   userId: string,
 ): Promise<boolean> {
-  const result = await query<{ id: string }>(`
-    DELETE FROM app.organization_members
-    WHERE organization_id = $1::uuid AND user_id = $2::uuid
-    RETURNING id
-  `, [organizationId, userId]);
+  const removed = await db()
+    .delete(organizationMembers)
+    .where(
+      and(
+        eq(organizationMembers.organizationId, organizationId),
+        eq(organizationMembers.userId, userId),
+      ),
+    )
+    .returning({ id: organizationMembers.id });
 
-  return result.rows.length > 0;
+  return removed.length > 0;
 }
 
 /**
@@ -918,13 +936,17 @@ export async function removeUserFromOrganization(
  * countOrganizationAdmins: they cannot reach the account through membership.
  */
 export async function countOrganizationMembers(organizationId: string): Promise<number> {
-  const result = await query<{ count: string }>(
-    `SELECT COUNT(*) AS count FROM app.organization_members
-      WHERE organization_id = $1::uuid AND is_active = true`,
-    [organizationId],
-  );
+  const [row] = await db()
+    .select({ value: count() })
+    .from(organizationMembers)
+    .where(
+      and(
+        eq(organizationMembers.organizationId, organizationId),
+        eq(organizationMembers.isActive, true),
+      ),
+    );
 
-  return parseInt(result.rows[0]?.count ?? '0', 10);
+  return row?.value ?? 0;
 }
 
 /**
@@ -940,26 +962,25 @@ export async function countOrganizationMembers(organizationId: string): Promise<
  * membership or an archived site is not a home the user can actually reach.
  */
 export async function isEmailInAnyOrganization(email: string): Promise<boolean> {
-  const result = await query<{ found: boolean }>(`
-    SELECT EXISTS (
-      SELECT 1 FROM app.users u
-      WHERE u.email = $1
-        AND u.is_active = true
-        AND (
-          EXISTS (
-            SELECT 1 FROM app.organization_members om
-            WHERE om.user_id = u.id AND om.is_active = true
-          )
-          OR EXISTS (
-            SELECT 1 FROM app.user_site_roles usr
-            INNER JOIN app.sites s ON s.id = usr.site_id
-            WHERE usr.user_id = u.id::text AND s.archived_at IS NULL
-          )
+  const rows = await db().execute(sql`
+    SELECT 1 FROM app.users u
+    WHERE u.email = ${email.toLowerCase()}
+      AND u.is_active = true
+      AND (
+        EXISTS (
+          SELECT 1 FROM app.organization_members om
+          WHERE om.user_id = u.id AND om.is_active = true
         )
-    ) AS found
-  `, [email.toLowerCase()]);
+        OR EXISTS (
+          SELECT 1 FROM app.user_site_roles usr
+          INNER JOIN app.sites s ON s.id = usr.site_id
+          WHERE usr.user_id = u.id::text AND s.archived_at IS NULL
+        )
+      )
+    LIMIT 1
+  `);
 
-  return result.rows[0]?.found ?? false;
+  return rows.length > 0;
 }
 
 /**
@@ -974,19 +995,22 @@ export async function isEmailInAnyOrganization(email: string): Promise<boolean> 
  * created_at, so ties on created_at alone were arbitrary.
  */
 export async function getUserOwnedOrg(userId: string): Promise<string | null> {
-  const result = await query<{ organization_id: string }>(`
-    SELECT om.organization_id
-    FROM app.organization_members om
-    JOIN app.organizations o ON o.id = om.organization_id
-    WHERE om.user_id = $1::uuid
-      AND om.is_active = true
-      AND om.role = 'owner'
-      AND o.archived_at IS NULL
-    ORDER BY om.created_at ASC, om.id ASC
-    LIMIT 1
-  `, [userId]);
+  const [row] = await db()
+    .select({ organizationId: organizationMembers.organizationId })
+    .from(organizationMembers)
+    .innerJoin(organizations, eq(organizations.id, organizationMembers.organizationId))
+    .where(
+      and(
+        eq(organizationMembers.userId, userId),
+        eq(organizationMembers.isActive, true),
+        eq(organizationMembers.role, 'owner'),
+        isNull(organizations.archivedAt),
+      ),
+    )
+    .orderBy(asc(organizationMembers.createdAt), asc(organizationMembers.id))
+    .limit(1);
 
-  return result.rows[0]?.organization_id ?? null;
+  return row?.organizationId ?? null;
 }
 
 /**
@@ -995,34 +1019,48 @@ export async function getUserOwnedOrg(userId: string): Promise<string | null> {
  * must not fall through to creating them a new one.
  */
 export async function hasActiveOrgMembership(userId: string): Promise<boolean> {
-  const result = await query<{ found: boolean }>(`
-    SELECT EXISTS (
-      SELECT 1 FROM app.organization_members
-      WHERE user_id = $1::uuid AND is_active = true
-    ) AS found
-  `, [userId]);
+  const rows = await db()
+    .select({ id: organizationMembers.id })
+    .from(organizationMembers)
+    .where(
+      and(
+        eq(organizationMembers.userId, userId),
+        eq(organizationMembers.isActive, true),
+      ),
+    )
+    .limit(1);
 
-  return result.rows[0]?.found ?? false;
+  return rows.length > 0;
 }
 
 /**
  * Checks whether a user belongs to an organization — via direct membership
  * or via site roles on non-archived sites in that org.
+ *
+ * Both paths run through app.users: organization_members.user_id is a foreign
+ * key to it, so a membership row cannot exist without the user row the
+ * statement reads from.
  */
 export async function isUserInOrganization(userId: string, organizationId: string): Promise<boolean> {
-  const result = await query<{ found: boolean }>(`
-    SELECT EXISTS (
-      SELECT 1 FROM app.organization_members om
-      WHERE om.user_id = $1::uuid AND om.organization_id = $2::uuid
-    ) OR EXISTS (
-      SELECT 1 FROM app.user_site_roles usr
-      INNER JOIN app.users u ON u.id::text = usr.user_id
-      INNER JOIN app.sites s ON s.id = usr.site_id
-      WHERE u.id = $1::uuid AND s.organization_id = $2::uuid AND s.archived_at IS NULL
-    ) AS found
-  `, [userId, organizationId]);
+  const rows = await db().execute(sql`
+    SELECT 1 FROM app.users u
+    WHERE u.id = ${userId}::uuid
+      AND (
+        EXISTS (
+          SELECT 1 FROM app.organization_members om
+          WHERE om.user_id = u.id AND om.organization_id = ${organizationId}::uuid
+        )
+        OR EXISTS (
+          SELECT 1 FROM app.user_site_roles usr
+          INNER JOIN app.sites s ON s.id = usr.site_id
+          WHERE usr.user_id = u.id::text AND s.organization_id = ${organizationId}::uuid
+            AND s.archived_at IS NULL
+        )
+      )
+    LIMIT 1
+  `);
 
-  return result.rows[0]?.found ?? false;
+  return rows.length > 0;
 }
 
 /**
@@ -1039,22 +1077,17 @@ export async function linkOrgToSpace(orgId: string, externalSpaceId: string, spa
   // all instead of one that's merely unrenamed.
   const hasValidName = spaceName !== undefined && spaceName.trim() !== '' && isValidOrgName(spaceName);
 
-  const setClause = hasValidName
-    ? 'external_space_id = $2, name = $3, updated_at = NOW()'
-    : 'external_space_id = $2, updated_at = NOW()';
+  const linked = await db()
+    .update(organizations)
+    .set({
+      externalSpaceId,
+      ...(hasValidName ? { name: spaceName } : {}),
+      updatedAt: sql`NOW()`,
+    })
+    .where(and(eq(organizations.id, orgId), isNull(organizations.externalSpaceId)))
+    .returning({ id: organizations.id });
 
-  const params = hasValidName
-    ? [orgId, externalSpaceId, spaceName]
-    : [orgId, externalSpaceId];
-
-  const result = await query<{ id: string }>(`
-    UPDATE app.organizations
-    SET ${setClause}
-    WHERE id = $1 AND external_space_id IS NULL
-    RETURNING id
-  `, params);
-
-  return (result.rowCount ?? 0) > 0;
+  return linked.length > 0;
 }
 
 /**
@@ -1068,9 +1101,7 @@ export async function createOrgForUser(
   spaceName?: string,
   externalSpaceId?: string,
 ): Promise<Organization> {
-  await query('BEGIN');
-
-  try {
+  return transaction(async () => {
     let orgName: string;
 
     // An invalid spaceName (too long, control characters) falls back to the
@@ -1081,16 +1112,20 @@ export async function createOrgForUser(
       orgName = spaceName;
     } else {
       const baseName = deriveOrgNameFromEmail(email);
+      // escapeLikePattern escapes with a backslash, which is LIKE's default
+      // escape character.
       const escapedBase = escapeLikePattern(baseName);
-      const existing = await query<{ name: string }>(
-        "SELECT name FROM app.organizations WHERE name = $1 OR name LIKE $2 ESCAPE '\\'",
-        [baseName, escapedBase + ' %'],
-      );
+      const existing = await db()
+        .select({ name: organizations.name })
+        .from(organizations)
+        .where(
+          or(eq(organizations.name, baseName), like(organizations.name, `${escapedBase} %`)),
+        );
 
-      if (existing.rows.length === 0) {
+      if (existing.length === 0) {
         orgName = baseName;
       } else {
-        const existingNames = new Set(existing.rows.map((r) => r.name));
+        const existingNames = new Set(existing.map((r) => r.name));
         if (!existingNames.has(baseName)) {
           orgName = baseName;
         } else {
@@ -1105,13 +1140,11 @@ export async function createOrgForUser(
 
     const settings: OrganizationSettings = { ...DEFAULT_ORGANIZATION_SETTINGS };
 
-    const orgResult = await query<OrganizationRow>(`
-      INSERT INTO app.organizations (name, settings, external_space_id)
-      VALUES ($1, $2, $3)
-      RETURNING id, name, settings, created_at, updated_at, archived_at, external_space_id
-    `, [orgName, JSON.stringify(settings), externalSpaceId ?? null]);
+    const [orgRow] = await db()
+      .insert(organizations)
+      .values({ name: orgName, settings, externalSpaceId: externalSpaceId ?? null })
+      .returning({ ...organizationColumns, externalSpaceId: organizations.externalSpaceId });
 
-    const orgRow = orgResult.rows[0];
     if (orgRow === undefined) {
       throw new Error('Failed to create organization: insert returned no row');
     }
@@ -1121,16 +1154,10 @@ export async function createOrgForUser(
     // this a self-service signup would own a business account they cannot add
     // anyone to. `owner` rather than `admin`: this is the row 068's backfill
     // would pick, and owner_email reads it directly.
-    await query(`
-      INSERT INTO app.organization_members (organization_id, user_id, role)
-      VALUES ($1, $2::uuid, 'owner')
-    `, [org.id, userId]);
-
-    await query('COMMIT');
+    await db()
+      .insert(organizationMembers)
+      .values({ organizationId: org.id, userId, role: 'owner' });
 
     return org;
-  } catch (error) {
-    await query('ROLLBACK');
-    throw error;
-  }
+  });
 }

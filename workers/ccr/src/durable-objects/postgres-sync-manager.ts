@@ -8,7 +8,10 @@
 
 import * as Y from 'yjs';
 import { getLogger } from '@pantheon-systems/p1-telemetry';
-import { runWithConnection, query as dbQuery } from '../db';
+import { and, desc, eq, isNotNull, sql } from 'drizzle-orm';
+import { runWithConnection } from '../db';
+import { db } from '../db/scope';
+import { branches, checkpointDocuments, checkpoints, documentVersions } from '../db/schema';
 import type { DocumentSessionEnv, SessionInfo } from './document-session-types';
 import {
   YDOC_STORAGE_KEY,
@@ -152,31 +155,27 @@ export class PostgresSyncManager {
 
     const { documentId, branchId } = this.sessionInfo;
 
-    interface VersionRow {
-      snapshot: Record<string, unknown> | null;
-      version_number: number;
-    }
-
-    interface BranchSourceRow {
-      source_branch_id: string;
-    }
-
     return runWithConnection(
       this.env.HYPERDRIVE.connectionString,
       { isHyperdrive: true },
       async () => {
-        const result = await dbQuery<VersionRow>(
-          `SELECT dv.snapshot, dv.version_number
-           FROM app.document_versions dv
-           WHERE dv.document_id = $1 AND dv.branch_id = $2
-           ORDER BY dv.version_number DESC LIMIT 1`,
-          [documentId, branchId],
-        );
+        const rows = await db()
+          .select({
+            snapshot: sql<Record<string, unknown> | null>`${documentVersions.snapshot}`,
+            versionNumber: documentVersions.versionNumber,
+          })
+          .from(documentVersions)
+          .where(and(
+            eq(documentVersions.documentId, documentId),
+            eq(documentVersions.branchId, branchId),
+          ))
+          .orderBy(desc(documentVersions.versionNumber))
+          .limit(1);
 
-        if (result.rows.length > 0) {
-          const row = result.rows[0];
+        if (rows.length > 0) {
+          const row = rows[0];
           if (!row) { this.baselineSource = 'none'; return false; }
-          const snapshot = row.snapshot ?? await reconstructVersionSnapshot(documentId, branchId, row.version_number);
+          const snapshot = row.snapshot ?? await reconstructVersionSnapshot(documentId, branchId, row.versionNumber);
           if (snapshot === null) { this.baselineSource = 'none'; return false; }
           const root = this.getYdoc().getMap('root');
           applySnapshotToYMap(root, snapshot);
@@ -189,42 +188,45 @@ export class PostgresSyncManager {
           return true;
         }
 
-        const branchResult = await dbQuery<BranchSourceRow>(
-          `SELECT source_branch_id
-           FROM app.branches
-           WHERE id = $1
-             AND is_main = false
-             AND source_branch_id IS NOT NULL`,
-          [branchId],
-        );
+        const branchRows = await db()
+          .select({ sourceBranchId: branches.sourceBranchId })
+          .from(branches)
+          .where(and(
+            eq(branches.id, branchId),
+            eq(branches.isMain, false),
+            isNotNull(branches.sourceBranchId),
+          ));
 
-        if (branchResult.rows.length === 0) { this.baselineSource = 'none'; return false; }
+        if (branchRows.length === 0) { this.baselineSource = 'none'; return false; }
 
-        const sourceRow = branchResult.rows[0];
+        const sourceRow = branchRows[0];
         if (!sourceRow) { this.baselineSource = 'none'; return false; }
-        const sourceBranchId = sourceRow.source_branch_id;
-        if (!sourceBranchId) { this.baselineSource = 'none'; return false; }
+        const sourceBranchId = sourceRow.sourceBranchId;
+        if (sourceBranchId === null) { this.baselineSource = 'none'; return false; }
 
-        const cowResult = await dbQuery<VersionRow>(
-          `SELECT dv.snapshot, dv.version_number
-           FROM app.document_versions dv
-           INNER JOIN app.checkpoint_documents cd ON cd.document_version_id = dv.id
-           INNER JOIN app.checkpoints cp ON cp.id = cd.checkpoint_id
-           WHERE dv.document_id = $1
-             AND dv.branch_id = $2
-             AND cp.branch_id = $2
-             AND cp.checkpoint_type = 'publish'
-           ORDER BY dv.version_number DESC
-           LIMIT 1`,
-          [documentId, sourceBranchId],
-        );
+        const cowRows = await db()
+          .select({
+            snapshot: sql<Record<string, unknown> | null>`${documentVersions.snapshot}`,
+            versionNumber: documentVersions.versionNumber,
+          })
+          .from(documentVersions)
+          .innerJoin(checkpointDocuments, eq(checkpointDocuments.documentVersionId, documentVersions.id))
+          .innerJoin(checkpoints, eq(checkpoints.id, checkpointDocuments.checkpointId))
+          .where(and(
+            eq(documentVersions.documentId, documentId),
+            eq(documentVersions.branchId, sourceBranchId),
+            eq(checkpoints.branchId, sourceBranchId),
+            eq(checkpoints.checkpointType, 'publish'),
+          ))
+          .orderBy(desc(documentVersions.versionNumber))
+          .limit(1);
 
-        if (cowResult.rows.length === 0) { this.baselineSource = 'none'; return false; }
+        if (cowRows.length === 0) { this.baselineSource = 'none'; return false; }
 
-        const cowRow = cowResult.rows[0];
+        const cowRow = cowRows[0];
         if (!cowRow) { this.baselineSource = 'none'; return false; }
         const cowSnapshot = cowRow.snapshot
-          ?? await reconstructVersionSnapshot(documentId, sourceBranchId, cowRow.version_number);
+          ?? await reconstructVersionSnapshot(documentId, sourceBranchId, cowRow.versionNumber);
         if (cowSnapshot === null) { this.baselineSource = 'none'; return false; }
         const root = this.getYdoc().getMap('root');
         applySnapshotToYMap(root, cowSnapshot);
@@ -611,47 +613,68 @@ export class PostgresSyncManager {
           async () => {
             const { documentId, branchId } = this.sessionInfo;
             const { actionType, actionMetadata } = classifyChange(undefined, puckActions);
-            const inserted = await dbQuery<{ id: string }>(
-              `INSERT INTO app.document_versions (
+            // The version number, the no-op check and the insert are one
+            // statement so a concurrent write cannot land between them; there
+            // is no builder form, so it stays raw (D6). Every value the row
+            // takes is bound once in `incoming` and referenced by name, so the
+            // snapshot crosses the wire once however often the statement reads
+            // it. Both jsonb parameters are stringified here: the Drizzle
+            // client serializes json as identity, so an object would reach
+            // Postgres as [object Object].
+            const snapshotJson = JSON.stringify(snapshot);
+            const inserted = await db().execute<{ id: string }>(sql`
+              WITH incoming AS (
+                SELECT ${documentId}::uuid AS document_id,
+                       ${branchId}::uuid AS branch_id,
+                       ${snapshotJson}::jsonb AS snapshot,
+                       ${actorId}::uuid AS created_by_id,
+                       ${actorType}::text AS created_by_type,
+                       ${actionType}::text AS action_type,
+                       ${actionMetadata === null ? null : JSON.stringify(actionMetadata)}::jsonb AS action_metadata
+              )
+              INSERT INTO app.document_versions (
                 document_id, branch_id, version_number, snapshot,
                 source, created_by_id, created_by_type,
                 action_type, action_metadata
               )
-              SELECT $1, $2,
+              SELECT incoming.document_id, incoming.branch_id,
                 COALESCE(
                   (SELECT MAX(version_number) FROM app.document_versions
-                   WHERE document_id = $1 AND branch_id = $2),
+                   WHERE document_id = incoming.document_id
+                     AND branch_id = incoming.branch_id),
                   0
                 ) + 1,
-                $3, 'realtime', $4, $5, $6, $7::jsonb
+                incoming.snapshot, 'realtime', incoming.created_by_id,
+                incoming.created_by_type, incoming.action_type,
+                incoming.action_metadata
+              FROM incoming
               WHERE NOT EXISTS (
-                SELECT 1 FROM (
+                SELECT 1 FROM LATERAL (
                   SELECT snapshot FROM app.document_versions
-                  WHERE document_id = $1 AND branch_id = $2
+                  WHERE document_id = incoming.document_id
+                    AND branch_id = incoming.branch_id
                   ORDER BY version_number DESC LIMIT 1
                 ) latest
-                WHERE latest.snapshot IS NOT DISTINCT FROM $3::jsonb
+                WHERE latest.snapshot IS NOT DISTINCT FROM incoming.snapshot
               )
-              RETURNING id`,
-              [
-                documentId, branchId, snapshot, actorId, actorType,
-                actionType,
-                actionMetadata === null ? null : JSON.stringify(actionMetadata),
-              ],
-            );
+              RETURNING id
+            `);
 
             // A snapshot matching the latest version mints no row, and the
             // document still reads from that version.
-            if (inserted.rows[0] !== undefined) {
-              return inserted.rows[0].id;
+            if (inserted[0] !== undefined) {
+              return inserted[0].id;
             }
-            const latest = await dbQuery<{ id: string }>(
-              `SELECT id FROM app.document_versions
-               WHERE document_id = $1 AND branch_id = $2
-               ORDER BY version_number DESC LIMIT 1`,
-              [documentId, branchId],
-            );
-            return latest.rows[0]?.id;
+            const latest = await db()
+              .select({ id: documentVersions.id })
+              .from(documentVersions)
+              .where(and(
+                eq(documentVersions.documentId, documentId),
+                eq(documentVersions.branchId, branchId),
+              ))
+              .orderBy(desc(documentVersions.versionNumber))
+              .limit(1);
+            return latest[0]?.id;
           },
         );
         await this.recordSyncSuccess(write);

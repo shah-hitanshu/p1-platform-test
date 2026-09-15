@@ -7,108 +7,103 @@
  * These tests are written BEFORE implementation following TDD methodology.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { BranchStatus } from '../../src/types';
+import { describe, it, expect, beforeEach } from 'vitest';
+import { branches, checkpoints, sites } from '../../src/db/schema';
+import { stubDatabase, type DatabaseStub } from '../__stubs__/database';
+import {
+  archiveBranch,
+  clearBranchCache,
+  createBranch,
+  createMainBranch,
+  deleteBranch,
+  getBranch,
+  getBranchByName,
+  getMainBranch,
+  isValidStatusTransition,
+  listBranches,
+  restoreBranch,
+  updateBranch,
+  updateBranchStatus,
+} from '../../src/services/branch-service';
+import {
+  BranchNotFoundError,
+  DuplicateBranchNameError,
+  InvalidBranchParamsError,
+  InvalidBranchStatusTransitionError,
+  MainBranchOnlyError,
+  MainBranchProtectionError,
+  SiteNotFoundError,
+} from '../../src/services/errors';
 
-// Mock database module
-vi.mock('../../src/db', () => ({
-  query: vi.fn(),
-}));
+/**
+ * The structure copy is an INSERT ... SELECT, so it is keyed by the table it
+ * writes; the relation it reads is what tells its two sources apart.
+ */
+const STRUCTURE_STATE = 'branch_structure_state';
 
 describe('Phase 3.2: Branch Service', () => {
-  beforeEach(async () => {
-    vi.resetAllMocks();
+  let database: DatabaseStub;
+
+  beforeEach(() => {
+    database = stubDatabase();
     // Branch resolution is memoized per isolate (PCC-3712); the module-scope
     // cache must be emptied so tests don't serve each other's rows.
-    const { clearBranchCache } = await import('../../src/services/branch-service');
     clearBranchCache();
   });
 
-  // Mock branch row type (database format)
-  interface MockBranchRow {
-    id: string;
-    site_id: string;
-    name: string;
-    description: string | null;
-    status: BranchStatus;
-    is_main: boolean;
-    source_branch_id: string | null;
-    source_checkpoint_id: string | null;
-    created_by_id: string;
-    created_by_type: 'user' | 'agent';
-    created_at: string;
-    updated_at: string;
-    archived_at: string | null;
-  }
-
-  // Helper to create a mock branch row (database format)
-  function createMockBranchRow(overrides: Partial<MockBranchRow> = {}): MockBranchRow {
+  /** A branch row in the schema's property names. */
+  function branchRow(overrides: Record<string, unknown> = {}): Record<string, unknown> {
     return {
       id: 'branch-uuid-123',
-      site_id: 'site-uuid-456',
+      siteId: 'site-uuid-456',
       name: 'feature-branch',
       description: 'A test feature branch',
       status: 'active',
-      is_main: false,
-      source_branch_id: 'main-branch-uuid',
-      source_checkpoint_id: null,
-      created_by_id: 'user-uuid-789',
-      created_by_type: 'user',
-      created_at: '2026-01-23T10:00:00.000Z',
-      updated_at: '2026-01-23T10:00:00.000Z',
-      archived_at: null,
+      isMain: false,
+      sourceBranchId: 'main-branch-uuid',
+      sourceCheckpointId: null,
+      createdById: 'user-uuid-789',
+      createdByType: 'user',
+      createdAt: '2026-01-23T10:00:00.000Z',
+      updatedAt: '2026-01-23T10:00:00.000Z',
+      archivedAt: null,
       ...overrides,
     };
   }
 
-  // Helper to create a main branch row
-  function createMainBranchRow(siteId = 'site-uuid-456'): MockBranchRow {
-    return createMockBranchRow({
+  function mainBranchRow(siteId = 'site-uuid-456'): Record<string, unknown> {
+    return branchRow({
       id: 'main-branch-uuid',
-      site_id: siteId,
+      siteId,
       name: 'main',
       description: 'Main branch',
-      is_main: true,
-      source_branch_id: null,
-      source_checkpoint_id: null,
+      isMain: true,
+      sourceBranchId: null,
+      sourceCheckpointId: null,
     });
   }
 
+  /** A driver error carrying a SQLSTATE, as the stub will wrap it. */
+  function driverError(code: string): Error {
+    const error = new Error('constraint violation') as NodeJS.ErrnoException;
+    error.code = code;
+    return error;
+  }
+
+  /**
+   * The reads and writes every branch creation makes: the source-branch check,
+   * the insert, the checkpoint lookup and the checkpoint write-back.
+   */
+  function stubBranchCreation(row: Record<string, unknown>): void {
+    database.on(branches).select.returns([{ id: row.sourceBranchId, isMain: true }]);
+    database.on(branches).insert.returns([row]);
+    database.on(branches).update.returns([row]);
+    database.on(checkpoints).select.returns([{ id: 'latest-checkpoint' }]);
+  }
+
   describe('createBranch', () => {
-    /**
-     * Helper to set up mocks for createBranch with transaction.
-     * Copy-on-write: only copies structure state, no document versions or metadata.
-     */
-    function setupCreateBranchMocks(
-      db: { query: ReturnType<typeof vi.fn> },
-      branchRow: MockBranchRow,
-      fromCheckpoint = false,
-    ): void {
-      if (fromCheckpoint) {
-        vi.mocked(db.query)
-          .mockResolvedValueOnce({ rows: [] }) // BEGIN
-          .mockResolvedValueOnce({ rows: [{ id: 'main-branch-uuid', is_main: true }] }) // source branch validation
-          .mockResolvedValueOnce({ rows: [branchRow] }) // INSERT branch
-          .mockResolvedValueOnce({ rows: [] }) // structure copy from checkpoint
-          .mockResolvedValueOnce({ rows: [] }); // COMMIT
-      } else {
-        vi.mocked(db.query)
-          .mockResolvedValueOnce({ rows: [] }) // BEGIN
-          .mockResolvedValueOnce({ rows: [{ id: 'main-branch-uuid', is_main: true }] }) // source branch validation
-          .mockResolvedValueOnce({ rows: [branchRow] }) // INSERT branch
-          .mockResolvedValueOnce({ rows: [] }) // structure copy from branch
-          .mockResolvedValueOnce({ rows: [{ id: 'latest-checkpoint' }] }) // find latest checkpoint
-          .mockResolvedValueOnce({ rows: [branchRow] }) // UPDATE branch with checkpoint
-          .mockResolvedValueOnce({ rows: [] }); // COMMIT
-      }
-    }
-
     it('should create a branch from a source branch', async () => {
-      const { createBranch } = await import('../../src/services/branch-service');
-      const db = await import('../../src/db');
-
-      const mockRow = createMockBranchRow();
-      setupCreateBranchMocks(db, mockRow);
+      stubBranchCreation(branchRow());
 
       const result = await createBranch({
         siteId: 'site-uuid-456',
@@ -132,13 +127,7 @@ describe('Phase 3.2: Branch Service', () => {
     });
 
     it('should create a branch with optional source checkpoint', async () => {
-      const { createBranch } = await import('../../src/services/branch-service');
-      const db = await import('../../src/db');
-
-      const mockRow = createMockBranchRow({
-        source_checkpoint_id: 'checkpoint-uuid-123',
-      });
-      setupCreateBranchMocks(db, mockRow, true);
+      stubBranchCreation(branchRow({ sourceCheckpointId: 'checkpoint-uuid-123' }));
 
       const result = await createBranch({
         siteId: 'site-uuid-456',
@@ -153,17 +142,8 @@ describe('Phase 3.2: Branch Service', () => {
     });
 
     it('should throw DuplicateBranchNameError for duplicate branch name in same site', async () => {
-      const { createBranch } = await import('../../src/services/branch-service');
-      const { DuplicateBranchNameError } = await import('../../src/services/errors');
-      const db = await import('../../src/db');
-
-      // Simulate unique constraint violation during INSERT
-      const error = new Error('duplicate key value violates unique constraint');
-      (error as NodeJS.ErrnoException).code = '23505';
-      vi.mocked(db.query)
-        .mockResolvedValueOnce({ rows: [] }) // BEGIN
-        .mockResolvedValueOnce({ rows: [{ id: 'main-branch-uuid', is_main: true }] }) // source branch validation
-        .mockRejectedValueOnce(error); // INSERT fails
+      database.on(branches).select.returns([{ id: 'main-branch-uuid', isMain: true }]);
+      database.on(branches).insert.rejects(driverError('23505'));
 
       await expect(
         createBranch({
@@ -177,17 +157,8 @@ describe('Phase 3.2: Branch Service', () => {
     });
 
     it('should throw SiteNotFoundError when site does not exist', async () => {
-      const { createBranch } = await import('../../src/services/branch-service');
-      const { SiteNotFoundError } = await import('../../src/services/errors');
-      const db = await import('../../src/db');
-
-      // Simulate foreign key constraint violation during INSERT
-      const error = new Error('insert or update on table "branches" violates foreign key constraint');
-      (error as NodeJS.ErrnoException).code = '23503';
-      vi.mocked(db.query)
-        .mockResolvedValueOnce({ rows: [] }) // BEGIN
-        .mockResolvedValueOnce({ rows: [{ id: 'main-branch-uuid', is_main: true }] }) // source branch validation
-        .mockRejectedValueOnce(error); // INSERT fails
+      database.on(branches).select.returns([{ id: 'main-branch-uuid', isMain: true }]);
+      database.on(branches).insert.rejects(driverError('23503'));
 
       await expect(
         createBranch({
@@ -201,9 +172,6 @@ describe('Phase 3.2: Branch Service', () => {
     });
 
     it('should throw InvalidBranchParamsError for empty branch name', async () => {
-      const { createBranch } = await import('../../src/services/branch-service');
-      const { InvalidBranchParamsError } = await import('../../src/services/errors');
-
       await expect(
         createBranch({
           siteId: 'site-uuid-456',
@@ -216,9 +184,6 @@ describe('Phase 3.2: Branch Service', () => {
     });
 
     it('should throw InvalidBranchParamsError for whitespace-only branch name', async () => {
-      const { createBranch } = await import('../../src/services/branch-service');
-      const { InvalidBranchParamsError } = await import('../../src/services/errors');
-
       await expect(
         createBranch({
           siteId: 'site-uuid-456',
@@ -231,9 +196,6 @@ describe('Phase 3.2: Branch Service', () => {
     });
 
     it('should throw InvalidBranchParamsError for missing sourceBranchId', async () => {
-      const { createBranch } = await import('../../src/services/branch-service');
-      const { InvalidBranchParamsError } = await import('../../src/services/errors');
-
       await expect(
         createBranch({
           siteId: 'site-uuid-456',
@@ -246,11 +208,7 @@ describe('Phase 3.2: Branch Service', () => {
     });
 
     it('should create a branch with status active by default', async () => {
-      const { createBranch } = await import('../../src/services/branch-service');
-      const db = await import('../../src/db');
-
-      const mockRow = createMockBranchRow({ status: 'active' });
-      setupCreateBranchMocks(db, mockRow);
+      stubBranchCreation(branchRow({ status: 'active' }));
 
       const result = await createBranch({
         siteId: 'site-uuid-456',
@@ -264,11 +222,7 @@ describe('Phase 3.2: Branch Service', () => {
     });
 
     it('should include INSERT query with correct columns', async () => {
-      const { createBranch } = await import('../../src/services/branch-service');
-      const db = await import('../../src/db');
-
-      const mockRow = createMockBranchRow();
-      setupCreateBranchMocks(db, mockRow);
+      stubBranchCreation(branchRow());
 
       await createBranch({
         siteId: 'site-uuid-456',
@@ -278,21 +232,14 @@ describe('Phase 3.2: Branch Service', () => {
         createdByType: 'user',
       });
 
-      expect(db.query).toHaveBeenCalledWith(
-        expect.stringContaining('INSERT INTO'),
+      const [insert] = database.calls(branches).insert;
+      expect(insert?.params).toEqual(
         expect.arrayContaining(['site-uuid-456', 'feature-branch']),
       );
     });
 
     it('should create agent-created branches', async () => {
-      const { createBranch } = await import('../../src/services/branch-service');
-      const db = await import('../../src/db');
-
-      const mockRow = createMockBranchRow({
-        created_by_id: 'agent-uuid-123',
-        created_by_type: 'agent',
-      });
-      setupCreateBranchMocks(db, mockRow);
+      stubBranchCreation(branchRow({ createdById: 'agent-uuid-123', createdByType: 'agent' }));
 
       const result = await createBranch({
         siteId: 'site-uuid-456',
@@ -309,11 +256,7 @@ describe('Phase 3.2: Branch Service', () => {
 
   describe('createMainBranch', () => {
     it('should create the main branch for a site', async () => {
-      const { createMainBranch } = await import('../../src/services/branch-service');
-      const db = await import('../../src/db');
-
-      const mockRow = createMainBranchRow('site-uuid-456');
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+      database.on(branches).insert.returns([mainBranchRow('site-uuid-456')]);
 
       const result = await createMainBranch({
         siteId: 'site-uuid-456',
@@ -328,14 +271,7 @@ describe('Phase 3.2: Branch Service', () => {
     });
 
     it('should throw DuplicateBranchNameError if main already exists', async () => {
-      const { createMainBranch } = await import('../../src/services/branch-service');
-      const { DuplicateBranchNameError } = await import('../../src/services/errors');
-      const db = await import('../../src/db');
-
-      // Simulate unique constraint violation on is_main partial index
-      const error = new Error('duplicate key value violates unique constraint "idx_branches_main"');
-      (error as NodeJS.ErrnoException).code = '23505';
-      vi.mocked(db.query).mockRejectedValue(error);
+      database.on(branches).insert.rejects(driverError('23505'));
 
       await expect(
         createMainBranch({
@@ -347,14 +283,7 @@ describe('Phase 3.2: Branch Service', () => {
     });
 
     it('should throw SiteNotFoundError when site does not exist', async () => {
-      const { createMainBranch } = await import('../../src/services/branch-service');
-      const { SiteNotFoundError } = await import('../../src/services/errors');
-      const db = await import('../../src/db');
-
-      // Simulate foreign key constraint violation
-      const error = new Error('insert or update on table "branches" violates foreign key constraint');
-      (error as NodeJS.ErrnoException).code = '23503';
-      vi.mocked(db.query).mockRejectedValue(error);
+      database.on(branches).insert.rejects(driverError('23503'));
 
       await expect(
         createMainBranch({
@@ -368,11 +297,7 @@ describe('Phase 3.2: Branch Service', () => {
 
   describe('getBranch', () => {
     it('should return branch when found', async () => {
-      const { getBranch } = await import('../../src/services/branch-service');
-      const db = await import('../../src/db');
-
-      const mockRow = createMockBranchRow({ id: 'branch-123' });
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+      database.on(branches).select.returns([branchRow({ id: 'branch-123' })]);
 
       const result = await getBranch('branch-123');
 
@@ -383,35 +308,28 @@ describe('Phase 3.2: Branch Service', () => {
     });
 
     it('should return null when branch not found', async () => {
-      const { getBranch } = await import('../../src/services/branch-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
-
       const result = await getBranch('non-existent-id');
 
       expect(result).toBeNull();
     });
 
     it('should map all branch fields correctly', async () => {
-      const { getBranch } = await import('../../src/services/branch-service');
-      const db = await import('../../src/db');
-
-      const mockRow = createMockBranchRow({
-        id: 'branch-123',
-        site_id: 'site-456',
-        name: 'test-branch',
-        description: 'Test description',
-        status: 'review',
-        is_main: false,
-        source_branch_id: 'main-uuid',
-        source_checkpoint_id: 'checkpoint-uuid',
-        created_by_id: 'user-123',
-        created_by_type: 'user',
-        created_at: '2026-01-23T12:00:00.000Z',
-        updated_at: '2026-01-23T14:00:00.000Z',
-      });
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+      database.on(branches).select.returns([
+        branchRow({
+          id: 'branch-123',
+          siteId: 'site-456',
+          name: 'test-branch',
+          description: 'Test description',
+          status: 'review',
+          isMain: false,
+          sourceBranchId: 'main-uuid',
+          sourceCheckpointId: 'checkpoint-uuid',
+          createdById: 'user-123',
+          createdByType: 'user',
+          createdAt: '2026-01-23T12:00:00.000Z',
+          updatedAt: '2026-01-23T14:00:00.000Z',
+        }),
+      ]);
 
       const result = await getBranch('branch-123');
 
@@ -432,27 +350,17 @@ describe('Phase 3.2: Branch Service', () => {
     });
 
     it('should query by branch ID', async () => {
-      const { getBranch } = await import('../../src/services/branch-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
-
       await getBranch('branch-uuid-456');
 
-      expect(db.query).toHaveBeenCalledWith(
-        expect.stringContaining('id'),
-        expect.arrayContaining(['branch-uuid-456']),
-      );
+      const [call] = database.calls(branches).select;
+      expect(call?.sql).toContain('"id"');
+      expect(call?.params).toEqual(expect.arrayContaining(['branch-uuid-456']));
     });
   });
 
   describe('getBranchByName', () => {
     it('should return branch when found by name in site', async () => {
-      const { getBranchByName } = await import('../../src/services/branch-service');
-      const db = await import('../../src/db');
-
-      const mockRow = createMockBranchRow({ name: 'my-feature' });
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+      database.on(branches).select.returns([branchRow({ name: 'my-feature' })]);
 
       const result = await getBranchByName('site-uuid-456', 'my-feature');
 
@@ -461,38 +369,23 @@ describe('Phase 3.2: Branch Service', () => {
     });
 
     it('should return null when branch name not found in site', async () => {
-      const { getBranchByName } = await import('../../src/services/branch-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
-
       const result = await getBranchByName('site-uuid-456', 'non-existent');
 
       expect(result).toBeNull();
     });
 
     it('should query by site_id and name', async () => {
-      const { getBranchByName } = await import('../../src/services/branch-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
-
       await getBranchByName('site-456', 'feature-x');
 
-      expect(db.query).toHaveBeenCalledWith(
-        expect.stringMatching(/site_id.*name|name.*site_id/),
-        expect.arrayContaining(['site-456', 'feature-x']),
-      );
+      const [call] = database.calls(branches).select;
+      expect(call?.sql).toMatch(/site_id.*name|name.*site_id/);
+      expect(call?.params).toEqual(expect.arrayContaining(['site-456', 'feature-x']));
     });
   });
 
   describe('getMainBranch', () => {
     it('should return main branch for site', async () => {
-      const { getMainBranch } = await import('../../src/services/branch-service');
-      const db = await import('../../src/db');
-
-      const mockRow = createMainBranchRow('site-uuid-456');
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+      database.on(branches).select.returns([mainBranchRow('site-uuid-456')]);
 
       const result = await getMainBranch('site-uuid-456');
 
@@ -502,42 +395,27 @@ describe('Phase 3.2: Branch Service', () => {
     });
 
     it('should return null when site has no main branch', async () => {
-      const { getMainBranch } = await import('../../src/services/branch-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
-
       const result = await getMainBranch('site-without-main');
 
       expect(result).toBeNull();
     });
 
     it('should query by site_id and is_main', async () => {
-      const { getMainBranch } = await import('../../src/services/branch-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
-
       await getMainBranch('site-456');
 
-      expect(db.query).toHaveBeenCalledWith(
-        expect.stringMatching(/is_main.*=.*TRUE|is_main.*=.*true/i),
-        expect.arrayContaining(['site-456']),
-      );
+      const [call] = database.calls(branches).select;
+      expect(call?.sql).toContain('"is_main"');
+      expect(call?.params).toEqual(expect.arrayContaining(['site-456', true]));
     });
   });
 
   describe('listBranches', () => {
     it('should return all branches for a site', async () => {
-      const { listBranches } = await import('../../src/services/branch-service');
-      const db = await import('../../src/db');
-
-      const mockRows = [
-        createMainBranchRow('site-uuid-456'),
-        createMockBranchRow({ id: 'branch-1', name: 'feature-1' }),
-        createMockBranchRow({ id: 'branch-2', name: 'feature-2' }),
-      ];
-      vi.mocked(db.query).mockResolvedValue({ rows: mockRows });
+      database.on(branches).select.returns([
+        mainBranchRow('site-uuid-456'),
+        branchRow({ id: 'branch-1', name: 'feature-1' }),
+        branchRow({ id: 'branch-2', name: 'feature-2' }),
+      ]);
 
       const result = await listBranches('site-uuid-456');
 
@@ -545,88 +423,48 @@ describe('Phase 3.2: Branch Service', () => {
     });
 
     it('should filter branches by status', async () => {
-      const { listBranches } = await import('../../src/services/branch-service');
-      const db = await import('../../src/db');
-
-      const mockRows = [
-        createMockBranchRow({ id: 'branch-1', status: 'active' }),
-        createMockBranchRow({ id: 'branch-2', status: 'active' }),
-      ];
-      vi.mocked(db.query).mockResolvedValue({ rows: mockRows });
-
       await listBranches('site-uuid-456', { status: 'active' });
 
-      expect(db.query).toHaveBeenCalledWith(
-        expect.stringContaining('status'),
-        expect.arrayContaining(['site-uuid-456', 'active']),
-      );
+      const [call] = database.calls(branches).select;
+      expect(call?.sql).toContain('"status"');
+      expect(call?.params).toEqual(expect.arrayContaining(['site-uuid-456', 'active']));
     });
 
     it('should support limit option', async () => {
-      const { listBranches } = await import('../../src/services/branch-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
-
       await listBranches('site-uuid-456', { limit: 5 });
 
-      expect(db.query).toHaveBeenCalledWith(
-        expect.stringContaining('LIMIT'),
-        expect.arrayContaining([5]),
-      );
+      const [call] = database.calls(branches).select;
+      expect(call?.sql).toMatch(/limit/i);
+      expect(call?.params).toEqual(expect.arrayContaining([5]));
     });
 
     it('should support offset option', async () => {
-      const { listBranches } = await import('../../src/services/branch-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
-
       await listBranches('site-uuid-456', { offset: 10 });
 
-      expect(db.query).toHaveBeenCalledWith(
-        expect.stringContaining('OFFSET'),
-        expect.arrayContaining([10]),
-      );
+      const [call] = database.calls(branches).select;
+      expect(call?.sql).toMatch(/offset/i);
+      expect(call?.params).toEqual(expect.arrayContaining([10]));
     });
 
     it('should return empty array when no branches exist', async () => {
-      const { listBranches } = await import('../../src/services/branch-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
-
       const result = await listBranches('site-uuid-456');
 
       expect(result).toEqual([]);
     });
 
     it('should order branches by created_at descending', async () => {
-      const { listBranches } = await import('../../src/services/branch-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
-
       await listBranches('site-uuid-456');
 
-      expect(db.query).toHaveBeenCalledWith(
-        expect.stringMatching(/ORDER BY.*created_at.*DESC/i),
-        expect.any(Array),
-      );
+      const [call] = database.calls(branches).select;
+      expect(call?.sql).toMatch(/order by.*created_at.*desc/i);
     });
   });
 
   describe('updateBranch', () => {
     it('should update branch name', async () => {
-      const { updateBranch } = await import('../../src/services/branch-service');
-      const db = await import('../../src/db');
-
-      const updatedRow = createMockBranchRow({
-        id: 'branch-123',
-        name: 'renamed-branch',
-        updated_at: '2026-01-23T14:00:00.000Z',
-      });
-      vi.mocked(db.query).mockResolvedValue({ rows: [updatedRow] });
+      database.on(branches).update.returns([
+        branchRow({ id: 'branch-123', name: 'renamed-branch', updatedAt: '2026-01-23T14:00:00.000Z' }),
+      ]);
 
       const result = await updateBranch('branch-123', { name: 'renamed-branch' });
 
@@ -635,14 +473,9 @@ describe('Phase 3.2: Branch Service', () => {
     });
 
     it('should update branch description', async () => {
-      const { updateBranch } = await import('../../src/services/branch-service');
-      const db = await import('../../src/db');
-
-      const updatedRow = createMockBranchRow({
-        id: 'branch-123',
-        description: 'Updated description',
-      });
-      vi.mocked(db.query).mockResolvedValue({ rows: [updatedRow] });
+      database.on(branches).update.returns([
+        branchRow({ id: 'branch-123', description: 'Updated description' }),
+      ]);
 
       const result = await updateBranch('branch-123', { description: 'Updated description' });
 
@@ -650,15 +483,9 @@ describe('Phase 3.2: Branch Service', () => {
     });
 
     it('should update both name and description in single call', async () => {
-      const { updateBranch } = await import('../../src/services/branch-service');
-      const db = await import('../../src/db');
-
-      const updatedRow = createMockBranchRow({
-        id: 'branch-123',
-        name: 'new-name',
-        description: 'New description',
-      });
-      vi.mocked(db.query).mockResolvedValue({ rows: [updatedRow] });
+      database.on(branches).update.returns([
+        branchRow({ id: 'branch-123', name: 'new-name', description: 'New description' }),
+      ]);
 
       const result = await updateBranch('branch-123', {
         name: 'new-name',
@@ -670,18 +497,11 @@ describe('Phase 3.2: Branch Service', () => {
     });
 
     it('should update updatedAt timestamp', async () => {
-      const { updateBranch } = await import('../../src/services/branch-service');
-      const db = await import('../../src/db');
-
       const originalTime = '2026-01-23T10:00:00.000Z';
       const updatedTime = '2026-01-23T14:00:00.000Z';
-
-      const updatedRow = createMockBranchRow({
-        id: 'branch-123',
-        created_at: originalTime,
-        updated_at: updatedTime,
-      });
-      vi.mocked(db.query).mockResolvedValue({ rows: [updatedRow] });
+      database.on(branches).update.returns([
+        branchRow({ id: 'branch-123', createdAt: originalTime, updatedAt: updatedTime }),
+      ]);
 
       const result = await updateBranch('branch-123', { name: 'new-name' });
 
@@ -690,25 +510,13 @@ describe('Phase 3.2: Branch Service', () => {
     });
 
     it('should return null when branch not found', async () => {
-      const { updateBranch } = await import('../../src/services/branch-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
-
       const result = await updateBranch('non-existent', { name: 'new-name' });
 
       expect(result).toBeNull();
     });
 
     it('should throw DuplicateBranchNameError for duplicate name in same site', async () => {
-      const { updateBranch } = await import('../../src/services/branch-service');
-      const { DuplicateBranchNameError } = await import('../../src/services/errors');
-      const db = await import('../../src/db');
-
-      // Simulate unique constraint violation
-      const error = new Error('duplicate key value violates unique constraint');
-      (error as NodeJS.ErrnoException).code = '23505';
-      vi.mocked(db.query).mockRejectedValue(error);
+      database.on(branches).update.rejects(driverError('23505'));
 
       await expect(
         updateBranch('branch-123', { name: 'existing-name' }),
@@ -716,23 +524,13 @@ describe('Phase 3.2: Branch Service', () => {
     });
 
     it('should throw InvalidBranchParamsError for empty name', async () => {
-      const { updateBranch } = await import('../../src/services/branch-service');
-      const { InvalidBranchParamsError } = await import('../../src/services/errors');
-
       await expect(
         updateBranch('branch-123', { name: '' }),
       ).rejects.toThrow(InvalidBranchParamsError);
     });
 
     it('should not throw for empty description (clearing description)', async () => {
-      const { updateBranch } = await import('../../src/services/branch-service');
-      const db = await import('../../src/db');
-
-      const updatedRow = createMockBranchRow({
-        id: 'branch-123',
-        description: null,
-      });
-      vi.mocked(db.query).mockResolvedValue({ rows: [updatedRow] });
+      database.on(branches).update.returns([branchRow({ id: 'branch-123', description: null })]);
 
       const result = await updateBranch('branch-123', { description: '' });
 
@@ -742,17 +540,8 @@ describe('Phase 3.2: Branch Service', () => {
 
   describe('updateBranchStatus', () => {
     it('should update status from active to review', async () => {
-      const { updateBranchStatus } = await import('../../src/services/branch-service');
-      const db = await import('../../src/db');
-
-      // First call returns current branch state
-      const currentRow = createMockBranchRow({ id: 'branch-123', status: 'active' });
-      // Second call returns updated branch
-      const updatedRow = createMockBranchRow({ id: 'branch-123', status: 'review' });
-
-      vi.mocked(db.query)
-        .mockResolvedValueOnce({ rows: [currentRow] })
-        .mockResolvedValueOnce({ rows: [updatedRow] });
+      database.on(branches).select.returns([branchRow({ id: 'branch-123', status: 'active' })]);
+      database.on(branches).update.returns([branchRow({ id: 'branch-123', status: 'review' })]);
 
       const result = await updateBranchStatus('branch-123', 'review');
 
@@ -760,15 +549,8 @@ describe('Phase 3.2: Branch Service', () => {
     });
 
     it('should update status from review to merged', async () => {
-      const { updateBranchStatus } = await import('../../src/services/branch-service');
-      const db = await import('../../src/db');
-
-      const currentRow = createMockBranchRow({ id: 'branch-123', status: 'review' });
-      const updatedRow = createMockBranchRow({ id: 'branch-123', status: 'merged' });
-
-      vi.mocked(db.query)
-        .mockResolvedValueOnce({ rows: [currentRow] })
-        .mockResolvedValueOnce({ rows: [updatedRow] });
+      database.on(branches).select.returns([branchRow({ id: 'branch-123', status: 'review' })]);
+      database.on(branches).update.returns([branchRow({ id: 'branch-123', status: 'merged' })]);
 
       const result = await updateBranchStatus('branch-123', 'merged');
 
@@ -776,15 +558,8 @@ describe('Phase 3.2: Branch Service', () => {
     });
 
     it('should update status from active to archived', async () => {
-      const { updateBranchStatus } = await import('../../src/services/branch-service');
-      const db = await import('../../src/db');
-
-      const currentRow = createMockBranchRow({ id: 'branch-123', status: 'active' });
-      const updatedRow = createMockBranchRow({ id: 'branch-123', status: 'archived' });
-
-      vi.mocked(db.query)
-        .mockResolvedValueOnce({ rows: [currentRow] })
-        .mockResolvedValueOnce({ rows: [updatedRow] });
+      database.on(branches).select.returns([branchRow({ id: 'branch-123', status: 'active' })]);
+      database.on(branches).update.returns([branchRow({ id: 'branch-123', status: 'archived' })]);
 
       const result = await updateBranchStatus('branch-123', 'archived');
 
@@ -792,13 +567,8 @@ describe('Phase 3.2: Branch Service', () => {
     });
 
     it('should throw InvalidBranchStatusTransitionError for invalid transition', async () => {
-      const { updateBranchStatus } = await import('../../src/services/branch-service');
-      const { InvalidBranchStatusTransitionError } = await import('../../src/services/errors');
-      const db = await import('../../src/db');
-
       // Branch is already merged, cannot go back to active
-      const currentRow = createMockBranchRow({ id: 'branch-123', status: 'merged' });
-      vi.mocked(db.query).mockResolvedValue({ rows: [currentRow] });
+      database.on(branches).select.returns([branchRow({ id: 'branch-123', status: 'merged' })]);
 
       await expect(
         updateBranchStatus('branch-123', 'active'),
@@ -806,12 +576,7 @@ describe('Phase 3.2: Branch Service', () => {
     });
 
     it('should throw InvalidBranchStatusTransitionError when transitioning archived to active', async () => {
-      const { updateBranchStatus } = await import('../../src/services/branch-service');
-      const { InvalidBranchStatusTransitionError } = await import('../../src/services/errors');
-      const db = await import('../../src/db');
-
-      const currentRow = createMockBranchRow({ id: 'branch-123', status: 'archived' });
-      vi.mocked(db.query).mockResolvedValue({ rows: [currentRow] });
+      database.on(branches).select.returns([branchRow({ id: 'branch-123', status: 'archived' })]);
 
       await expect(
         updateBranchStatus('branch-123', 'active'),
@@ -819,12 +584,7 @@ describe('Phase 3.2: Branch Service', () => {
     });
 
     it('should throw MainBranchProtectionError when archiving main branch', async () => {
-      const { updateBranchStatus } = await import('../../src/services/branch-service');
-      const { MainBranchProtectionError } = await import('../../src/services/errors');
-      const db = await import('../../src/db');
-
-      const mainRow = createMainBranchRow('site-uuid-456');
-      vi.mocked(db.query).mockResolvedValue({ rows: [mainRow] });
+      database.on(branches).select.returns([mainBranchRow('site-uuid-456')]);
 
       await expect(
         updateBranchStatus('main-branch-uuid', 'archived'),
@@ -832,11 +592,6 @@ describe('Phase 3.2: Branch Service', () => {
     });
 
     it('should return null when branch not found', async () => {
-      const { updateBranchStatus } = await import('../../src/services/branch-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
-
       const result = await updateBranchStatus('non-existent', 'review');
 
       expect(result).toBeNull();
@@ -845,14 +600,8 @@ describe('Phase 3.2: Branch Service', () => {
 
   describe('deleteBranch', () => {
     it('should delete branch and related data when found', async () => {
-      const { deleteBranch } = await import('../../src/services/branch-service');
-      const db = await import('../../src/db');
-
-      // First call to check if it's the main branch, then cascade delete queries
-      const branchRow = createMockBranchRow({ id: 'branch-123', is_main: false });
-      vi.mocked(db.query)
-        .mockResolvedValueOnce({ rows: [branchRow] }) // getBranch check
-        .mockResolvedValue({ rows: [], rowCount: 1 }); // all delete queries
+      database.on(branches).select.returns([branchRow({ id: 'branch-123', isMain: false })]);
+      database.on(branches).delete.returns([{ id: 'branch-123' }]);
 
       const result = await deleteBranch('branch-123');
 
@@ -860,48 +609,39 @@ describe('Phase 3.2: Branch Service', () => {
     });
 
     it('should return false when branch not found', async () => {
-      const { deleteBranch } = await import('../../src/services/branch-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
-
       const result = await deleteBranch('non-existent');
 
       expect(result).toBe(false);
     });
 
     it('should throw MainBranchProtectionError when deleting main branch', async () => {
-      const { deleteBranch } = await import('../../src/services/branch-service');
-      const { MainBranchProtectionError } = await import('../../src/services/errors');
-      const db = await import('../../src/db');
-
-      const mainRow = createMainBranchRow('site-uuid-456');
-      vi.mocked(db.query).mockResolvedValue({ rows: [mainRow] });
+      database.on(branches).select.returns([mainBranchRow('site-uuid-456')]);
 
       await expect(deleteBranch('main-branch-uuid')).rejects.toThrow(MainBranchProtectionError);
     });
 
     it('should cascade delete related data before deleting branch', async () => {
-      const { deleteBranch } = await import('../../src/services/branch-service');
-      const db = await import('../../src/db');
-
-      const branchRow = createMockBranchRow({ id: 'branch-to-delete', is_main: false });
-      vi.mocked(db.query)
-        .mockResolvedValueOnce({ rows: [branchRow] }) // getBranch
-        .mockResolvedValue({ rows: [], rowCount: 1 }); // all delete queries
+      database.on(branches).select.returns([branchRow({ id: 'branch-to-delete', isMain: false })]);
+      database.on(branches).delete.returns([{ id: 'branch-to-delete' }]);
 
       await deleteBranch('branch-to-delete');
 
-      // Verify the final DELETE on branches table was called
-      const calls = vi.mocked(db.query).mock.calls;
-      const deleteCall = calls.find(
-        (call) =>
-          typeof call[0] === 'string' &&
-          call[0].includes('DELETE') &&
-          call[0].includes('app.branches'),
+      // Everything that references the branch goes first, the branch itself last.
+      const deleted = database.statements
+        .filter((statement) => statement.sql.startsWith('delete from'))
+        .map((statement) => statement.sql);
+      expect(deleted[deleted.length - 1]).toContain('"app"."branches"');
+      expect(deleted).toEqual(
+        expect.arrayContaining([
+          expect.stringContaining('"app"."merge_requests"'),
+          expect.stringContaining('"app"."branch_document_metadata"'),
+          expect.stringContaining('"app"."branch_structure_state"'),
+          expect.stringContaining('"app"."checkpoints"'),
+          expect.stringContaining('"app"."document_versions"'),
+        ]),
       );
-      expect(deleteCall).toBeDefined();
-      expect(deleteCall?.[1]).toContain('branch-to-delete');
+      const [branchDelete] = database.calls(branches).delete;
+      expect(branchDelete?.params).toContain('branch-to-delete');
     });
   });
 
@@ -910,18 +650,9 @@ describe('Phase 3.2: Branch Service', () => {
   // ===========================================================================
 
   describe('archiveBranch', () => {
-    const txOk = { rows: [], rowCount: 0 };
-
     it('should set archived_at on a non-main branch', async () => {
-      const { archiveBranch } = await import('../../src/services/branch-service');
-      const db = await import('../../src/db');
-
-      const branchRow = { ...createMockBranchRow({ id: 'branch-123', is_main: false }), archived_at: null };
-      vi.mocked(db.query)
-        .mockResolvedValueOnce({ rows: [branchRow] }) // getBranch check
-        .mockResolvedValueOnce(txOk) // BEGIN
-        .mockResolvedValueOnce({ rows: [], rowCount: 1 }) // UPDATE branches SET archived_at
-        .mockResolvedValueOnce(txOk); // COMMIT
+      database.on(branches).select.returns([branchRow({ id: 'branch-123', isMain: false })]);
+      database.on(branches).update.returns([{ id: 'branch-123' }]);
 
       const result = await archiveBranch('branch-123');
 
@@ -929,37 +660,21 @@ describe('Phase 3.2: Branch Service', () => {
     });
 
     it('should return false when branch not found', async () => {
-      const { archiveBranch } = await import('../../src/services/branch-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] }); // getBranch → not found
-
       const result = await archiveBranch('non-existent');
 
       expect(result).toBe(false);
     });
 
     it('should throw MainBranchProtectionError for main branch', async () => {
-      const { archiveBranch } = await import('../../src/services/branch-service');
-      const { MainBranchProtectionError } = await import('../../src/services/errors');
-      const db = await import('../../src/db');
-
-      const mainRow = createMainBranchRow('site-uuid-456');
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [mainRow] }); // getBranch → main
+      database.on(branches).select.returns([mainBranchRow('site-uuid-456')]);
 
       await expect(archiveBranch('main-branch-uuid')).rejects.toThrow(MainBranchProtectionError);
     });
 
     it('should return already_archived when branch exists but is already archived', async () => {
-      const { archiveBranch } = await import('../../src/services/branch-service');
-      const db = await import('../../src/db');
-
-      const branchRow = { ...createMockBranchRow({ id: 'branch-123', is_main: false }), archived_at: '2026-05-01T00:00:00.000Z' };
-      vi.mocked(db.query)
-        .mockResolvedValueOnce({ rows: [branchRow] }) // getBranch
-        .mockResolvedValueOnce(txOk) // BEGIN
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // UPDATE → no match (already archived)
-        .mockResolvedValueOnce(txOk); // COMMIT
+      database.on(branches).select.returns([
+        branchRow({ id: 'branch-123', isMain: false, archivedAt: '2026-05-01T00:00:00.000Z' }),
+      ]);
 
       const result = await archiveBranch('branch-123');
 
@@ -968,21 +683,14 @@ describe('Phase 3.2: Branch Service', () => {
   });
 
   describe('restoreBranch', () => {
-    const txOk = { rows: [], rowCount: 0 };
+    const archiveTs = '2026-05-17T10:00:00.000Z';
 
     it('should clear archived_at and return the restored branch', async () => {
-      const { restoreBranch } = await import('../../src/services/branch-service');
-      const db = await import('../../src/db');
-
-      const archiveTs = '2026-05-17T10:00:00.000Z';
-      const archivedRow = { ...createMockBranchRow({ id: 'branch-123', is_main: false }), archived_at: archiveTs };
-      const activeRow = { ...archivedRow, archived_at: null };
-      vi.mocked(db.query)
-        .mockResolvedValueOnce({ rows: [archivedRow] }) // SELECT branch
-        .mockResolvedValueOnce({ rows: [{ archived_at: null }] }) // SELECT site (not archived)
-        .mockResolvedValueOnce(txOk) // BEGIN
-        .mockResolvedValueOnce({ rows: [activeRow], rowCount: 1 }) // UPDATE SET archived_at = NULL
-        .mockResolvedValueOnce(txOk); // COMMIT
+      database.on(branches).select.returns([
+        branchRow({ id: 'branch-123', isMain: false, archivedAt: archiveTs }),
+      ]);
+      database.on(sites).select.returns([{ archivedAt: null }]);
+      database.on(branches).update.returns([branchRow({ id: 'branch-123', isMain: false })]);
 
       const result = await restoreBranch('branch-123');
 
@@ -991,22 +699,13 @@ describe('Phase 3.2: Branch Service', () => {
     });
 
     it('should return null when branch not found', async () => {
-      const { restoreBranch } = await import('../../src/services/branch-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] }); // SELECT → not found
-
       const result = await restoreBranch('non-existent');
 
       expect(result).toBeNull();
     });
 
     it('should return null when branch is not archived', async () => {
-      const { restoreBranch } = await import('../../src/services/branch-service');
-      const db = await import('../../src/db');
-
-      const activeRow = createMockBranchRow({ id: 'branch-123', is_main: false });
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [activeRow] }); // SELECT → active
+      database.on(branches).select.returns([branchRow({ id: 'branch-123', isMain: false })]);
 
       const result = await restoreBranch('branch-123');
 
@@ -1014,14 +713,10 @@ describe('Phase 3.2: Branch Service', () => {
     });
 
     it('should return null when parent site is archived', async () => {
-      const { restoreBranch } = await import('../../src/services/branch-service');
-      const db = await import('../../src/db');
-
-      const archiveTs = '2026-05-17T10:00:00.000Z';
-      const archivedRow = { ...createMockBranchRow({ id: 'branch-123', is_main: false }), archived_at: archiveTs };
-      vi.mocked(db.query)
-        .mockResolvedValueOnce({ rows: [archivedRow] }) // SELECT branch
-        .mockResolvedValueOnce({ rows: [{ archived_at: archiveTs }] }); // SELECT site → also archived
+      database.on(branches).select.returns([
+        branchRow({ id: 'branch-123', isMain: false, archivedAt: archiveTs }),
+      ]);
+      database.on(sites).select.returns([{ archivedAt: archiveTs }]);
 
       const result = await restoreBranch('branch-123');
 
@@ -1031,34 +726,22 @@ describe('Phase 3.2: Branch Service', () => {
 
   describe('listBranches — archived filter (PCC-3211)', () => {
     it('should exclude archived branches by default', async () => {
-      const { listBranches } = await import('../../src/services/branch-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
-
       await listBranches('site-123');
 
-      const sql = vi.mocked(db.query).mock.calls[0][0];
-      expect(sql).toContain('archived_at IS NULL');
+      const [call] = database.calls(branches).select;
+      expect(call?.sql).toContain('"archived_at" is null');
     });
 
     it('should return only archived branches when archived=true', async () => {
-      const { listBranches } = await import('../../src/services/branch-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
-
       await listBranches('site-123', { archived: true });
 
-      const sql = vi.mocked(db.query).mock.calls[0][0];
-      expect(sql).toContain('archived_at IS NOT NULL');
+      const [call] = database.calls(branches).select;
+      expect(call?.sql).toContain('"archived_at" is not null');
     });
   });
 
   describe('Error Classes', () => {
-    it('DuplicateBranchNameError should be an instance of Error', async () => {
-      const { DuplicateBranchNameError } = await import('../../src/services/errors');
-
+    it('DuplicateBranchNameError should be an instance of Error', () => {
       const error = new DuplicateBranchNameError('site-123', 'feature-x');
 
       expect(error).toBeInstanceOf(Error);
@@ -1067,9 +750,7 @@ describe('Phase 3.2: Branch Service', () => {
       expect(error.branchName).toBe('feature-x');
     });
 
-    it('InvalidBranchParamsError should be an instance of Error', async () => {
-      const { InvalidBranchParamsError } = await import('../../src/services/errors');
-
+    it('InvalidBranchParamsError should be an instance of Error', () => {
       const error = new InvalidBranchParamsError('name is required');
 
       expect(error).toBeInstanceOf(Error);
@@ -1077,9 +758,7 @@ describe('Phase 3.2: Branch Service', () => {
       expect(error.message).toContain('name is required');
     });
 
-    it('SiteNotFoundError should be an instance of Error', async () => {
-      const { SiteNotFoundError } = await import('../../src/services/errors');
-
+    it('SiteNotFoundError should be an instance of Error', () => {
       const error = new SiteNotFoundError('site-123');
 
       expect(error).toBeInstanceOf(Error);
@@ -1087,9 +766,7 @@ describe('Phase 3.2: Branch Service', () => {
       expect(error.siteId).toBe('site-123');
     });
 
-    it('MainBranchProtectionError should be an instance of Error', async () => {
-      const { MainBranchProtectionError } = await import('../../src/services/errors');
-
+    it('MainBranchProtectionError should be an instance of Error', () => {
       const error = new MainBranchProtectionError('delete');
 
       expect(error).toBeInstanceOf(Error);
@@ -1098,9 +775,7 @@ describe('Phase 3.2: Branch Service', () => {
       expect(error.message).toContain('main branch');
     });
 
-    it('InvalidBranchStatusTransitionError should be an instance of Error', async () => {
-      const { InvalidBranchStatusTransitionError } = await import('../../src/services/errors');
-
+    it('InvalidBranchStatusTransitionError should be an instance of Error', () => {
       const error = new InvalidBranchStatusTransitionError('merged', 'active');
 
       expect(error).toBeInstanceOf(Error);
@@ -1111,9 +786,7 @@ describe('Phase 3.2: Branch Service', () => {
       expect(error.message).toContain('active');
     });
 
-    it('BranchNotFoundError should be an instance of Error', async () => {
-      const { BranchNotFoundError } = await import('../../src/services/errors');
-
+    it('BranchNotFoundError should be an instance of Error', () => {
       const error = new BranchNotFoundError('branch-123');
 
       expect(error).toBeInstanceOf(Error);
@@ -1123,48 +796,39 @@ describe('Phase 3.2: Branch Service', () => {
   });
 
   describe('Status Transition Rules', () => {
-    it('should allow active → review', async () => {
-      const { isValidStatusTransition } = await import('../../src/services/branch-service');
+    it('should allow active → review', () => {
       expect(isValidStatusTransition('active', 'review')).toBe(true);
     });
 
-    it('should allow active → archived', async () => {
-      const { isValidStatusTransition } = await import('../../src/services/branch-service');
+    it('should allow active → archived', () => {
       expect(isValidStatusTransition('active', 'archived')).toBe(true);
     });
 
-    it('should allow review → merged', async () => {
-      const { isValidStatusTransition } = await import('../../src/services/branch-service');
+    it('should allow review → merged', () => {
       expect(isValidStatusTransition('review', 'merged')).toBe(true);
     });
 
-    it('should allow review → active (back to development)', async () => {
-      const { isValidStatusTransition } = await import('../../src/services/branch-service');
+    it('should allow review → active (back to development)', () => {
       expect(isValidStatusTransition('review', 'active')).toBe(true);
     });
 
-    it('should disallow merged → active', async () => {
-      const { isValidStatusTransition } = await import('../../src/services/branch-service');
+    it('should disallow merged → active', () => {
       expect(isValidStatusTransition('merged', 'active')).toBe(false);
     });
 
-    it('should disallow merged → review', async () => {
-      const { isValidStatusTransition } = await import('../../src/services/branch-service');
+    it('should disallow merged → review', () => {
       expect(isValidStatusTransition('merged', 'review')).toBe(false);
     });
 
-    it('should disallow archived → active', async () => {
-      const { isValidStatusTransition } = await import('../../src/services/branch-service');
+    it('should disallow archived → active', () => {
       expect(isValidStatusTransition('archived', 'active')).toBe(false);
     });
 
-    it('should disallow archived → merged', async () => {
-      const { isValidStatusTransition } = await import('../../src/services/branch-service');
+    it('should disallow archived → merged', () => {
       expect(isValidStatusTransition('archived', 'merged')).toBe(false);
     });
 
-    it('should allow same status (no-op)', async () => {
-      const { isValidStatusTransition } = await import('../../src/services/branch-service');
+    it('should allow same status (no-op)', () => {
       expect(isValidStatusTransition('active', 'active')).toBe(true);
       expect(isValidStatusTransition('review', 'review')).toBe(true);
       expect(isValidStatusTransition('merged', 'merged')).toBe(true);
@@ -1174,15 +838,7 @@ describe('Phase 3.2: Branch Service', () => {
 
   describe('Main-Only Branch Creation Validation', () => {
     it('should throw MainBranchOnlyError when source branch is not main', async () => {
-      const { createBranch } = await import('../../src/services/branch-service');
-      const { MainBranchOnlyError } = await import('../../src/services/errors');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query)
-        .mockResolvedValueOnce({ rows: [] }) // BEGIN
-        .mockResolvedValueOnce({
-          rows: [{ id: 'feature-branch-uuid', is_main: false }],
-        }); // source branch check - not main
+      database.on(branches).select.returns([{ id: 'feature-branch-uuid', isMain: false }]);
 
       await expect(
         createBranch({
@@ -1196,24 +852,7 @@ describe('Phase 3.2: Branch Service', () => {
     });
 
     it('should allow creating branch when source is main', async () => {
-      const { createBranch } = await import('../../src/services/branch-service');
-      const db = await import('../../src/db');
-
-      const mockRow = createMockBranchRow({
-        id: 'new-branch-uuid',
-        source_branch_id: 'main-branch-uuid',
-      });
-
-      vi.mocked(db.query)
-        .mockResolvedValueOnce({ rows: [] }) // BEGIN
-        .mockResolvedValueOnce({
-          rows: [{ id: 'main-branch-uuid', is_main: true }],
-        }) // source branch check - is main
-        .mockResolvedValueOnce({ rows: [mockRow] }) // INSERT branch
-        .mockResolvedValueOnce({ rows: [] }) // structure copy
-        .mockResolvedValueOnce({ rows: [{ id: 'latest-cp' }] }) // find latest checkpoint
-        .mockResolvedValueOnce({ rows: [mockRow] }) // UPDATE branch
-        .mockResolvedValueOnce({ rows: [] }); // COMMIT
+      stubBranchCreation(branchRow({ id: 'new-branch-uuid' }));
 
       const result = await createBranch({
         siteId: 'site-uuid-456',
@@ -1227,9 +866,7 @@ describe('Phase 3.2: Branch Service', () => {
       expect(result.id).toBe('new-branch-uuid');
     });
 
-    it('should throw MainBranchOnlyError with correct properties', async () => {
-      const { MainBranchOnlyError } = await import('../../src/services/errors');
-
+    it('should throw MainBranchOnlyError with correct properties', () => {
       const error = new MainBranchOnlyError('some-branch-id');
 
       expect(error.name).toBe('MainBranchOnlyError');
@@ -1239,14 +876,6 @@ describe('Phase 3.2: Branch Service', () => {
     });
 
     it('should throw MainBranchOnlyError when source branch does not exist', async () => {
-      const { createBranch } = await import('../../src/services/branch-service');
-      const { MainBranchOnlyError } = await import('../../src/services/errors');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query)
-        .mockResolvedValueOnce({ rows: [] }) // BEGIN
-        .mockResolvedValueOnce({ rows: [] }); // source branch not found
-
       await expect(
         createBranch({
           siteId: 'site-uuid-456',
@@ -1261,24 +890,7 @@ describe('Phase 3.2: Branch Service', () => {
 
   describe('Copy-on-Write Branch Creation', () => {
     it('should NOT copy document versions when creating a branch', async () => {
-      const { createBranch } = await import('../../src/services/branch-service');
-      const db = await import('../../src/db');
-
-      const mockRow = createMockBranchRow({
-        id: 'new-branch-uuid',
-        source_branch_id: 'main-branch-uuid',
-      });
-
-      vi.mocked(db.query)
-        .mockResolvedValueOnce({ rows: [] }) // BEGIN
-        .mockResolvedValueOnce({
-          rows: [{ id: 'main-branch-uuid', is_main: true }],
-        }) // source branch check
-        .mockResolvedValueOnce({ rows: [mockRow] }) // INSERT branch
-        .mockResolvedValueOnce({ rows: [] }) // structure copy
-        .mockResolvedValueOnce({ rows: [{ id: 'latest-checkpoint' }] }) // find latest checkpoint
-        .mockResolvedValueOnce({ rows: [mockRow] }) // UPDATE branch with checkpoint
-        .mockResolvedValueOnce({ rows: [] }); // COMMIT
+      stubBranchCreation(branchRow({ id: 'new-branch-uuid' }));
 
       await createBranch({
         siteId: 'site-uuid-456',
@@ -1288,34 +900,11 @@ describe('Phase 3.2: Branch Service', () => {
         createdByType: 'user',
       });
 
-      const calls = vi.mocked(db.query).mock.calls;
-      const versionCopyCall = calls.find(
-        (call) =>
-          typeof call[0] === 'string' &&
-          call[0].includes('INSERT INTO app.document_versions'),
-      );
-      expect(versionCopyCall).toBeUndefined();
+      expect(database.calls('document_versions').insert).toHaveLength(0);
     });
 
     it('should NOT copy branch document metadata when creating a branch', async () => {
-      const { createBranch } = await import('../../src/services/branch-service');
-      const db = await import('../../src/db');
-
-      const mockRow = createMockBranchRow({
-        id: 'new-branch-uuid',
-        source_branch_id: 'main-branch-uuid',
-      });
-
-      vi.mocked(db.query)
-        .mockResolvedValueOnce({ rows: [] }) // BEGIN
-        .mockResolvedValueOnce({
-          rows: [{ id: 'main-branch-uuid', is_main: true }],
-        }) // source branch check
-        .mockResolvedValueOnce({ rows: [mockRow] }) // INSERT branch
-        .mockResolvedValueOnce({ rows: [] }) // structure copy
-        .mockResolvedValueOnce({ rows: [{ id: 'latest-checkpoint' }] }) // find latest checkpoint
-        .mockResolvedValueOnce({ rows: [mockRow] }) // UPDATE branch with checkpoint
-        .mockResolvedValueOnce({ rows: [] }); // COMMIT
+      stubBranchCreation(branchRow({ id: 'new-branch-uuid' }));
 
       await createBranch({
         siteId: 'site-uuid-456',
@@ -1325,34 +914,11 @@ describe('Phase 3.2: Branch Service', () => {
         createdByType: 'user',
       });
 
-      const calls = vi.mocked(db.query).mock.calls;
-      const metadataCopyCall = calls.find(
-        (call) =>
-          typeof call[0] === 'string' &&
-          call[0].includes('INSERT INTO app.branch_document_metadata'),
-      );
-      expect(metadataCopyCall).toBeUndefined();
+      expect(database.calls('branch_document_metadata').insert).toHaveLength(0);
     });
 
     it('should still copy branch structure state when creating a branch', async () => {
-      const { createBranch } = await import('../../src/services/branch-service');
-      const db = await import('../../src/db');
-
-      const mockRow = createMockBranchRow({
-        id: 'new-branch-uuid',
-        source_branch_id: 'main-branch-uuid',
-      });
-
-      vi.mocked(db.query)
-        .mockResolvedValueOnce({ rows: [] }) // BEGIN
-        .mockResolvedValueOnce({
-          rows: [{ id: 'main-branch-uuid', is_main: true }],
-        }) // source branch check
-        .mockResolvedValueOnce({ rows: [mockRow] }) // INSERT branch
-        .mockResolvedValueOnce({ rows: [] }) // structure copy
-        .mockResolvedValueOnce({ rows: [{ id: 'latest-checkpoint' }] }) // find latest checkpoint
-        .mockResolvedValueOnce({ rows: [mockRow] }) // UPDATE branch with checkpoint
-        .mockResolvedValueOnce({ rows: [] }); // COMMIT
+      stubBranchCreation(branchRow({ id: 'new-branch-uuid' }));
 
       await createBranch({
         siteId: 'site-uuid-456',
@@ -1362,33 +928,13 @@ describe('Phase 3.2: Branch Service', () => {
         createdByType: 'user',
       });
 
-      const calls = vi.mocked(db.query).mock.calls;
-      const structureCopyCall = calls.find(
-        (call) =>
-          typeof call[0] === 'string' &&
-          call[0].includes('INSERT INTO app.branch_structure_state'),
-      );
-      expect(structureCopyCall).toBeDefined();
+      expect(database.calls(STRUCTURE_STATE).insert).toHaveLength(1);
     });
 
     it('should use provided sourceCheckpointId without querying for latest', async () => {
-      const { createBranch } = await import('../../src/services/branch-service');
-      const db = await import('../../src/db');
-
-      const mockRow = createMockBranchRow({
-        id: 'new-branch-uuid',
-        source_branch_id: 'main-branch-uuid',
-        source_checkpoint_id: 'explicit-checkpoint-id',
-      });
-
-      vi.mocked(db.query)
-        .mockResolvedValueOnce({ rows: [] }) // BEGIN
-        .mockResolvedValueOnce({
-          rows: [{ id: 'main-branch-uuid', is_main: true }],
-        }) // source branch check
-        .mockResolvedValueOnce({ rows: [mockRow] }) // INSERT branch
-        .mockResolvedValueOnce({ rows: [] }) // structure copy from checkpoint
-        .mockResolvedValueOnce({ rows: [] }); // COMMIT
+      stubBranchCreation(
+        branchRow({ id: 'new-branch-uuid', sourceCheckpointId: 'explicit-checkpoint-id' }),
+      );
 
       const result = await createBranch({
         siteId: 'site-uuid-456',
@@ -1400,39 +946,19 @@ describe('Phase 3.2: Branch Service', () => {
       });
 
       expect(result.sourceCheckpointId).toBe('explicit-checkpoint-id');
-
-      const calls = vi.mocked(db.query).mock.calls;
-      const checkpointLookup = calls.find(
-        (call) =>
-          typeof call[0] === 'string' &&
-          call[0].includes('SELECT') &&
-          call[0].includes('app.checkpoints') &&
-          call[0].includes('ORDER BY'),
-      );
-      expect(checkpointLookup).toBeUndefined();
+      expect(database.calls(checkpoints).select).toHaveLength(0);
     });
 
     it('should auto-resolve source_checkpoint_id from latest checkpoint when not provided', async () => {
-      const { createBranch } = await import('../../src/services/branch-service');
-      const db = await import('../../src/db');
+      const created = branchRow({ id: 'new-branch-uuid' });
+      database.on(branches).select.returns([{ id: 'main-branch-uuid', isMain: true }]);
+      database.on(branches).insert.returns([created]);
+      database.on(checkpoints).select.returns([{ id: 'auto-resolved-checkpoint' }]);
+      database.on(branches).update.returns([
+        { ...created, sourceCheckpointId: 'auto-resolved-checkpoint' },
+      ]);
 
-      const mockRow = createMockBranchRow({
-        id: 'new-branch-uuid',
-        source_branch_id: 'main-branch-uuid',
-      });
-
-      vi.mocked(db.query)
-        .mockResolvedValueOnce({ rows: [] }) // BEGIN
-        .mockResolvedValueOnce({
-          rows: [{ id: 'main-branch-uuid', is_main: true }],
-        }) // source branch check
-        .mockResolvedValueOnce({ rows: [mockRow] }) // INSERT branch
-        .mockResolvedValueOnce({ rows: [] }) // structure copy
-        .mockResolvedValueOnce({ rows: [{ id: 'auto-resolved-checkpoint' }] }) // find latest checkpoint
-        .mockResolvedValueOnce({ rows: [{ ...mockRow, source_checkpoint_id: 'auto-resolved-checkpoint' }] }) // UPDATE branch
-        .mockResolvedValueOnce({ rows: [] }); // COMMIT
-
-      await createBranch({
+      const result = await createBranch({
         siteId: 'site-uuid-456',
         name: 'feature-branch',
         sourceBranchId: 'main-branch-uuid',
@@ -1440,45 +966,14 @@ describe('Phase 3.2: Branch Service', () => {
         createdByType: 'user',
       });
 
-      const calls = vi.mocked(db.query).mock.calls;
-      const checkpointLookup = calls.find(
-        (call) =>
-          typeof call[0] === 'string' &&
-          call[0].includes('app.checkpoints') &&
-          call[0].includes('ORDER BY'),
-      );
-      expect(checkpointLookup).toBeDefined();
-
-      const updateCall = calls.find(
-        (call) =>
-          typeof call[0] === 'string' &&
-          call[0].includes('UPDATE') &&
-          call[0].includes('app.branches') &&
-          call[0].includes('source_checkpoint_id'),
-      );
-      expect(updateCall).toBeDefined();
+      expect(result.sourceCheckpointId).toBe('auto-resolved-checkpoint');
+      const [update] = database.calls(branches).update;
+      expect(update?.sql).toContain('"source_checkpoint_id"');
+      expect(update?.params).toContain('auto-resolved-checkpoint');
     });
 
     it('should return valid branch object with copy-on-write creation', async () => {
-      const { createBranch } = await import('../../src/services/branch-service');
-      const db = await import('../../src/db');
-
-      const mockRow = createMockBranchRow({
-        id: 'cow-branch-uuid',
-        name: 'cow-feature',
-        source_branch_id: 'main-branch-uuid',
-      });
-
-      vi.mocked(db.query)
-        .mockResolvedValueOnce({ rows: [] }) // BEGIN
-        .mockResolvedValueOnce({
-          rows: [{ id: 'main-branch-uuid', is_main: true }],
-        }) // source branch check
-        .mockResolvedValueOnce({ rows: [mockRow] }) // INSERT branch
-        .mockResolvedValueOnce({ rows: [] }) // structure copy
-        .mockResolvedValueOnce({ rows: [{ id: 'latest-cp' }] }) // find latest checkpoint
-        .mockResolvedValueOnce({ rows: [mockRow] }) // UPDATE branch
-        .mockResolvedValueOnce({ rows: [] }); // COMMIT
+      stubBranchCreation(branchRow({ id: 'cow-branch-uuid', name: 'cow-feature' }));
 
       const result = await createBranch({
         siteId: 'site-uuid-456',
@@ -1498,22 +993,7 @@ describe('Phase 3.2: Branch Service', () => {
 
   describe('Document Version Inheritance on Branch Creation (Copy-on-Write)', () => {
     it('should NOT copy document versions from source branch (copy-on-write)', async () => {
-      const { createBranch } = await import('../../src/services/branch-service');
-      const db = await import('../../src/db');
-
-      const mockRow = createMockBranchRow({
-        id: 'new-branch-uuid',
-        source_branch_id: 'main-branch-uuid',
-      });
-
-      vi.mocked(db.query)
-        .mockResolvedValueOnce({ rows: [] }) // BEGIN
-        .mockResolvedValueOnce({ rows: [{ id: 'main-branch-uuid', is_main: true }] }) // source branch validation
-        .mockResolvedValueOnce({ rows: [mockRow] }) // INSERT branch
-        .mockResolvedValueOnce({ rows: [] }) // structure copy
-        .mockResolvedValueOnce({ rows: [{ id: 'latest-checkpoint' }] }) // find latest checkpoint
-        .mockResolvedValueOnce({ rows: [mockRow] }) // UPDATE branch
-        .mockResolvedValueOnce({ rows: [] }); // COMMIT
+      stubBranchCreation(branchRow({ id: 'new-branch-uuid' }));
 
       await createBranch({
         siteId: 'site-uuid-456',
@@ -1523,32 +1003,13 @@ describe('Phase 3.2: Branch Service', () => {
         createdByType: 'user',
       });
 
-      // Verify NO document_versions INSERT was called
-      const calls = vi.mocked(db.query).mock.calls;
-      const versionCopyCall = calls.find(
-        (call) =>
-          typeof call[0] === 'string' &&
-          call[0].includes('INSERT INTO app.document_versions'),
-      );
-      expect(versionCopyCall).toBeUndefined();
+      expect(database.calls('document_versions').insert).toHaveLength(0);
     });
 
     it('should NOT copy document versions from checkpoint (copy-on-write)', async () => {
-      const { createBranch } = await import('../../src/services/branch-service');
-      const db = await import('../../src/db');
-
-      const mockRow = createMockBranchRow({
-        id: 'new-branch-uuid',
-        source_branch_id: 'main-branch-uuid',
-        source_checkpoint_id: 'checkpoint-uuid-123',
-      });
-
-      vi.mocked(db.query)
-        .mockResolvedValueOnce({ rows: [] }) // BEGIN
-        .mockResolvedValueOnce({ rows: [{ id: 'main-branch-uuid', is_main: true }] }) // source branch validation
-        .mockResolvedValueOnce({ rows: [mockRow] }) // INSERT branch
-        .mockResolvedValueOnce({ rows: [] }) // structure copy from checkpoint
-        .mockResolvedValueOnce({ rows: [] }); // COMMIT
+      stubBranchCreation(
+        branchRow({ id: 'new-branch-uuid', sourceCheckpointId: 'checkpoint-uuid-123' }),
+      );
 
       await createBranch({
         siteId: 'site-uuid-456',
@@ -1559,14 +1020,7 @@ describe('Phase 3.2: Branch Service', () => {
         createdByType: 'user',
       });
 
-      // Verify NO document_versions INSERT was called
-      const calls = vi.mocked(db.query).mock.calls;
-      const versionCopyCall = calls.find(
-        (call) =>
-          typeof call[0] === 'string' &&
-          call[0].includes('INSERT INTO app.document_versions'),
-      );
-      expect(versionCopyCall).toBeUndefined();
+      expect(database.calls('document_versions').insert).toHaveLength(0);
     });
   });
 });

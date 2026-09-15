@@ -10,9 +10,10 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import postgres from 'postgres';
+import type postgres from 'postgres';
 import { setDatabaseInstance, getDatabaseInstance } from '../../src/db';
 import type { DatabaseConnection, QueryResult } from '../../src/db';
+import { createRealDatabaseConnection } from '../helpers/database';
 
 import { createSite } from '../../src/services/site-service';
 import { createDocumentOnBranch } from '../../src/services/branch-document-service';
@@ -30,19 +31,15 @@ import {
 } from '../../src/services/migration-service';
 import { ConflictAlreadyResolvedError } from '../../src/services/errors';
 
-const CONNECTION_STRING = 'postgresql://cssuser:csspass@localhost:5432/cssdb';
 const TEST_USER_ID = '99999999-9999-9999-9999-999999999999';
 const SITE_PREFIX = 'migration-test';
 
-function createRealDatabaseConnection(connectionString: string): {
-  connection: DatabaseConnection;
-  sql: postgres.Sql;
-} {
-  const sql = postgres(connectionString, {
-    transform: { undefined: null },
-    max: 1,
-  });
-
+/**
+ * The legacy `query` interface over an existing client, with the transaction
+ * support migration-service still needs; the ported services reach the Drizzle
+ * handle the shared helper installs.
+ */
+function transactionalConnection(sql: postgres.Sql): DatabaseConnection {
   async function runOn<T>(
     handle: postgres.Sql,
     sqlQuery: string,
@@ -80,7 +77,7 @@ function createRealDatabaseConnection(connectionString: string): {
     },
   };
 
-  return { connection, sql };
+  return connection;
 }
 
 // =============================================================================
@@ -106,13 +103,15 @@ function firstHeadingProps(snapshot: Record<string, unknown> | null | undefined)
 
 describe('Template Migration CUJ — Integration Tests', () => {
   let sql: postgres.Sql;
+  let connection: DatabaseConnection;
   let siteId: string;
   let branchId: string;
 
   beforeAll(async () => {
-    const { connection, sql: pgSql } = createRealDatabaseConnection(CONNECTION_STRING);
-    sql = pgSql;
-    setDatabaseInstance(connection);
+    const real = createRealDatabaseConnection();
+    sql = real.sql;
+    connection = real.connection;
+    setDatabaseInstance(transactionalConnection(sql));
 
     const result = await sql`SELECT 1 as connected`;
     expect(result[0]?.connected).toBe(1);
@@ -161,7 +160,7 @@ describe('Template Migration CUJ — Integration Tests', () => {
     } catch {
       // Ignore cleanup errors
     }
-    await sql.end();
+    await connection.close();
     setDatabaseInstance(null);
   });
 
