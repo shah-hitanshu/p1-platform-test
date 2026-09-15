@@ -50,7 +50,7 @@ reason per skip.
 **2. The runner, in `src/db/<name>.ts`.** Parses `--execute` and `--site=`, calls
 the service through `runWithConnection`, and prints a summary.
 
-**3. The script pair, in `workers/package.json`:**
+**3. The script pair, in `workers/ccr/package.json`:**
 
 ```json
 "db:my-backfill": "tsx src/db/my-backfill.ts",
@@ -94,7 +94,7 @@ builds the target from the dropdown value, so the names must match exactly.
 ### Gotcha: the `createRequire` workaround
 
 `fast-json-patch` exposes its CJS entry via `Object.assign(exports, ...)`, which
-Node's ESM loader cannot bind by name. Because `workers/package.json` sets
+Node's ESM loader cannot bind by name. Because `workers/ccr/package.json` sets
 `"type": "module"`, any script importing the version service **dies at module
 load** under `tsx`:
 

@@ -39,7 +39,7 @@ Steps 7 and 8 are gates, not formalities: the implementation is not committed un
 | Unit | One module's behaviour, in its own process | The module and anything pure it calls | Every collaborator you do not own | `.test.*` |
 | Integration | Two or more parts meeting, or anything needing Postgres, a browser, or a server | Every part either side of the seam | Only what sits outside the seam | `.test.*` or `.spec.*` |
 
-`.spec.*` always means integration. `.test.*` does not always mean unit: an integration test whose database is mocked runs in its own process and is named `.test.*`. A route handler driven through six modules with `vi.mock('../../src/db')` is one of those.
+`.spec.*` always means integration. `.test.*` does not always mean unit: an integration test whose database is stubbed runs in its own process and is named `.test.*`. A route handler driven through six modules over `stubDatabase()` is one of those.
 
 ## Choosing one
 
@@ -80,6 +80,7 @@ Postgres runs in a container, reached through the `Makefile`. Run `make` with no
 
 - **Name one behaviour** in the `it(...)` string, in terms a reader who has not seen the implementation would recognise. Describe the invariant, not the bug or ticket that prompted it.
 - **Mock or stub only at a boundary you do not own**: database, network, clock, filesystem, another service. Mocking a module you wrote and are testing through leaves you asserting on your own stub.
+- **In `workers/ccr`, the database boundary already has a stub.** `stubDatabase()` from `tests/__stubs__/database.ts` installs a Drizzle handle as the scope fallback, so the code under test reaches it through `db()` with nothing mocked; stubs are keyed by table and operation, and the stub records the `{ sql, params }` of each statement. Reach past it to `tests/db/**` and a real Postgres only when the assertion is about Postgres's own behaviour — a constraint firing, a cascade deleting, the schema matching. `vi.mock('../../src/db')` does not stub queries: `db()` comes from `src/db/scope`, which that mock does not touch. See the `database` skill.
 - **Assert observable behaviour through the public interface.** A test whose only assertion is `expect(mock).toHaveBeenCalledWith(...)` fails on any refactor that preserves behaviour.
 - **One reason to fail.** If an unrelated module can redden it, the scope was drawn too wide and the failure will not say where to look.
 - **Deterministic and order-independent.** No shared mutable state, no wall-clock dependence, no reliance on an earlier test having run.

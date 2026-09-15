@@ -15,6 +15,7 @@ A collaborative JSON state versioning system with git-like branching, real-time 
   - [Running Locally](#running-locally)
   - [Testing](#testing)
   - [Database Migrations](#database-migrations)
+  - [Working with the Database](./DATABASE.md)
   - [Linting and Type Checking](#linting-and-type-checking)
 - [Agent Registration and MCP Server](#agent-registration-and-mcp-server)
 - [API Reference](#api-reference)
@@ -273,7 +274,7 @@ make worker-dev     # Start Miniflare (in another terminal)
 ### 4. Build the Database
 
 ```bash
-cd workers
+cd workers/ccr
 pnpm db:setup   # migrate, then load the dev/CI seed data
 ```
 
@@ -344,7 +345,7 @@ The project uses Vitest for testing with two configurations:
 
 #### Unit Tests
 ```bash
-cd workers
+cd workers/ccr
 pnpm test              # Run once
 pnpm test:watch        # Watch mode
 pnpm test:coverage     # With coverage report
@@ -354,19 +355,19 @@ pnpm test:coverage     # With coverage report
 Integration tests require running Docker services:
 ```bash
 make docker-up
-cd workers
+cd workers/ccr
 pnpm test:integration
 ```
 
 #### All Tests
 ```bash
-cd workers
+cd workers/ccr
 pnpm test:all
 ```
 
 #### Type Checking Tests
 ```bash
-cd workers
+cd workers/ccr
 pnpm test:typecheck
 ```
 
@@ -378,7 +379,7 @@ table, named after it (`document-versions.schema.ts`), re-exported from
 has been applied in `drizzle.__drizzle_migrations`.
 
 ```bash
-cd workers
+cd workers/ccr
 
 # Apply pending migrations
 pnpm db:migrate
@@ -420,10 +421,14 @@ and anything else that cannot run in a transaction block has to be applied by
 hand, and a heavy index build holds its lock for the whole run rather than just
 its own file.
 
+Querying that schema is a separate contract: [DATABASE.md](./DATABASE.md) covers
+the scoped `db()` handle, transactions, when a raw `sql` statement is the right
+answer, and what a test uses instead of a database.
+
 ### Linting and Type Checking
 
 ```bash
-cd workers
+cd workers/ccr
 
 # Run linting
 pnpm lint
@@ -821,7 +826,7 @@ When testing with a new site, you must add the site's UUID to the `siteRoles` fo
 
 1. Get your site ID from the database or API
 2. Edit `workers/src/index.ts` and add the site ID to `siteRoles` for relevant users/agents
-3. Restart the backend: `cd workers && pnpm dev`
+3. Restart the backend: `cd workers/ccr && pnpm dev`
 4. **Important**: Log out and log back in to get a new JWT token with updated site roles
 
 Without the site ID in `siteRoles`, presence and other authorization-protected endpoints will return 403 Forbidden.
@@ -850,7 +855,7 @@ The system deploys three Cloudflare Workers. OAuth and broker authentication are
 ### Standard deploy (existing environments)
 
 ```bash
-cd workers && pnpm deploy:production            # API worker (--env production)
+cd workers/ccr && pnpm deploy:production            # API worker (--env production)
 cd workers/mcp-server && pnpm wrangler deploy --env production
 ```
 
@@ -961,7 +966,7 @@ make dev-status
 ./scripts/wait-for-services.sh
 
 # Check migrations
-cd workers && pnpm db:migrate
+cd workers/ccr && pnpm db:migrate
 ```
 
 ### Terraform initialization fails
@@ -982,7 +987,7 @@ make tf-init ENV=local
 make docker-up
 
 # Run migrations
-cd workers && pnpm db:migrate
+cd workers/ccr && pnpm db:migrate
 
 # Run tests
 pnpm test:all
@@ -992,6 +997,7 @@ pnpm test:all
 
 ## Related Documentation
 
+- [Working with the Database](./DATABASE.md) - Query scope, transactions, raw SQL, and test doubles
 - [Architecture Specification](./ccr-architecture-v2.4.md) - Full system design
 - [Implementation Progress](./PROGRESS.md) - Development status and decisions
 - [Cloudflare Workers](https://developers.cloudflare.com/workers/)

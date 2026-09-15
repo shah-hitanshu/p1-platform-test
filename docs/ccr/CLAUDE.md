@@ -42,7 +42,13 @@ Use the Pantheon Design System UI Writing skill to review major pieces of work p
 # Data backfills
 One-off data conversions are scripts, not migrations, and run from the **Run Backfill**
 GitHub Action — dry run first, `execute` second. Before writing or running one, read
-`docs/BACKFILLS.md`: it covers the two-file shape, the `db:<name>`/`db:<name>:execute`
+`docs/ccr/BACKFILLS.md`: it covers the two-file shape, the `db:<name>`/`db:<name>:execute`
 pair the workflow depends on, how to register a new one, and the non-negotiables
 (dry-run default, idempotent, append new versions rather than rewriting rows, latest
 version only, report skip reasons).
+
+# Database access
+Queries go through the scoped `db()` handle from `src/db/scope`, never a connection passed
+as an argument, and `transaction()` holds the transaction in that scope. `docs/ccr/DATABASE.md`
+is the contract: the builder against `src/db/schema/`, when a raw `sql` statement is the right
+answer and what it owes, and the stub the tests use instead of a database.
