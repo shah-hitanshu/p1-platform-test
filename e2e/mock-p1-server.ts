@@ -158,6 +158,20 @@ function handleRequest(req: IncomingMessage, res: ServerResponse): void {
     });
   }
 
+  // GET /api/sites/:siteId/branches/:branchId/auth/role — the editor resolves
+  // its permissions from this before rendering; mirror the backend's EDITOR set.
+  const viewerRole = routeMatch("/api/sites/:siteId/branches/:branchId/auth/role", pathname);
+  if (viewerRole && method === "GET") {
+    return json(res, 200, {
+      roleName: "EDITOR",
+      permissions: {
+        canView: true, canEdit: true, canCreateBranch: true, canEditDocuments: true,
+        canCreateCheckpoint: true, canProposeMerge: true, canMerge: true,
+        canMergeToMain: false, canManageGrants: false, canManageTemplates: false,
+      },
+    });
+  }
+
   // GET /api/sites/:siteId/branches/:branchId/templates — content-type templates
   const templateList = routeMatch("/api/sites/:siteId/branches/:branchId/templates", pathname);
   if (templateList && method === "GET") {

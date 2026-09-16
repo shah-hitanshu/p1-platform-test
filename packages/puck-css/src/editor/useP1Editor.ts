@@ -868,19 +868,37 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
   // Retained content
   // =========================================================================
 
+  // =========================================================================
+  // Permissions boot gate
+  // =========================================================================
+
+  const resolvedOutcome = ccr.permissionsOutcome ?? 'granted';
+  const permissionsPending = resolvedOutcome === 'pending';
+  const permissionBootError: Error | null =
+    resolvedOutcome === 'refused'
+      ? new Error('Permission refused: you do not have access to edit this branch.')
+      : resolvedOutcome === 'unavailable'
+        ? new Error('Permission check unavailable: access could not be confirmed.')
+        : null;
+
   // A reload empties ccr.safeData before the new document arrives, so handing
   // the live props straight to Puck blanks the canvas mid-switch. Keeping the
   // last props that rendered lets the caller show the outgoing page under a
   // waiting indicator instead — and spares every caller from re-implementing
   // the same ref.
-  const inFlight = branchBootError === null && loading;
+  const inFlight = branchBootError === null && permissionBootError === null && (loading || permissionsPending);
   const lastGoodRef = useRef<{ puckKey: string; puckProps: PuckProps } | null>(null);
+  // Clear retained content when permission is refused so the editor does not
+  // keep showing stale content from before the check completed.
+  if (permissionBootError !== null) {
+    lastGoodRef.current = null;
+  }
   // `loading` only turns on once the load effect fires, a render after the path
   // or branch already changed. Keying off the path the effect actually finished
   // is what stops that in-between render from banking an emptied document.
   const settled =
     loadedPathRef.current === documentPath && loadedBranchRef.current === ccr.branchId;
-  if (settled && !inFlight && !error && !branchBootError) {
+  if (settled && !inFlight && !error && !branchBootError && !permissionBootError) {
     lastGoodRef.current = { puckKey, puckProps };
   }
   const retained = lastGoodRef.current;
@@ -894,7 +912,7 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
     loading: inFlight && !hasContent,
     reloading: inFlight && hasContent ? reloadKind : null,
     hasContent,
-    error: error ?? branchBootError,
+    error: error ?? branchBootError ?? permissionBootError,
     notFound,
     retry,
     puckKey: retained?.puckKey ?? puckKey,

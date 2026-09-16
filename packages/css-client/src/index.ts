@@ -129,14 +129,14 @@ export type {
   UpstreamResolutionTarget,
 } from './types.js';
 
-// Auth utilities
+// Auth utilities and role types
 export {
   createApiKeyAuth,
   createTokenAuth,
   InMemoryTokenStorage,
   LocalStorageTokenStorage,
 } from './auth.js';
-export type { AuthProvider, TokenStorage } from './auth.js';
+export type { AuthProvider, TokenStorage, RoleName, RolePermissions, ViewerRole } from './auth.js';
 
 // OAuth utilities
 export {

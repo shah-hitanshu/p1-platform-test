@@ -2,7 +2,7 @@
  * P1PuckProvider Template Integration Tests
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import React from 'react';
 import type { Item as PuckItem, Data as PuckData } from '@puckeditor/core';
@@ -10,6 +10,13 @@ import type { P1Client, Document } from '@pantheon-systems/css-client';
 import { P1PuckProvider } from '../../../editor/P1PuckProvider.js';
 import { useP1Puck } from '../../../core/P1PuckContext.js';
 import type { Template } from '../../../features/content-type-templates/types.js';
+
+const EDITOR_PERMS = {
+  canView: true, canEdit: true, canCreateBranch: true, canEditDocuments: true,
+  canCreateCheckpoint: true, canProposeMerge: true, canMerge: true,
+  canMergeToMain: false, canManageGrants: false, canManageTemplates: false,
+};
+const ADMIN_PERMS = { ...EDITOR_PERMS, canMergeToMain: true, canManageGrants: true, canManageTemplates: true };
 
 describe('P1PuckProvider - Template Integration', () => {
   const mockTemplate: Template = {
@@ -71,6 +78,9 @@ describe('P1PuckProvider - Template Integration', () => {
       presence: {
         getBranchPresence: vi.fn().mockResolvedValue({ actors: [], documents: [] }),
       },
+      auth: {
+        getRole: vi.fn().mockResolvedValue({ roleName: 'EDITOR', permissions: EDITOR_PERMS }),
+      },
       withPrincipal: vi.fn(),
     };
 
@@ -78,6 +88,10 @@ describe('P1PuckProvider - Template Integration', () => {
     baseMockClient.withPrincipal.mockReturnValue(baseMockClient);
 
     mockClient = baseMockClient as unknown as P1Client;
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
   });
 
   it('should fetch template when document has template_id', async () => {
@@ -234,6 +248,7 @@ describe('P1PuckProvider - Template Integration', () => {
     await waitFor(() => {
       expect(result.current.resolvePermissions).toBeDefined();
       expect(result.current.currentTemplate).toEqual(mockTemplate);
+      expect(result.current.permissionsOutcome).toBe('granted');
     });
 
     // Test that resolvePermissions locks pinned slot instances
@@ -255,7 +270,8 @@ describe('P1PuckProvider - Template Integration', () => {
     expect(nonPinnedPerms.delete).toBe(true);
   });
 
-  it('should expose userRole in context', () => {
+  it('should expose userRole in context', async () => {
+    (mockClient as any).auth.getRole.mockResolvedValue({ roleName: 'ADMIN', permissions: ADMIN_PERMS });
     const { result } = renderHook(() => useP1Puck(), {
       wrapper: ({ children }) => (
         <P1PuckProvider
@@ -263,17 +279,16 @@ describe('P1PuckProvider - Template Integration', () => {
           siteId="site-1"
           branchId="branch-1"
           userId="user-1"
-          userRole="admin"
         >
           {children}
         </P1PuckProvider>
       ),
     });
 
-    expect(result.current.userRole).toBe('admin');
+    await waitFor(() => expect(result.current.userRole).toBe('admin'));
   });
 
-  it('should default userRole to "editor" when not provided', () => {
+  it('should default userRole to "editor" when not provided', async () => {
     const { result } = renderHook(() => useP1Puck(), {
       wrapper: ({ children }) => (
         <P1PuckProvider
@@ -287,6 +302,6 @@ describe('P1PuckProvider - Template Integration', () => {
       ),
     });
 
-    expect(result.current.userRole).toBe('editor');
+    await waitFor(() => expect(result.current.userRole).toBe('editor'));
   });
 });

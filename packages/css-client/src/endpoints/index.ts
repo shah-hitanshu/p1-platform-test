@@ -3,6 +3,7 @@
  */
 
 export { BaseEndpoint } from './base.js';
+export { AuthEndpoint } from './auth.js';
 export type { BaseEndpointConfig, RequestOptions } from './base.js';
 export { SitesEndpoint } from './sites.js';
 export { BranchesEndpoint } from './branches.js';

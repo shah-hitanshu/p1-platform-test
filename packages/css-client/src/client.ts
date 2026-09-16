@@ -9,6 +9,7 @@ import type { Principal } from './types.js';
 import type { SdkIdentity } from './telemetry-headers.js';
 import {
   BaseEndpoint,
+  AuthEndpoint,
   SitesEndpoint,
   BranchesEndpoint,
   DocumentsEndpoint,
@@ -192,6 +193,9 @@ export class P1Client {
    */
   public readonly relations: RelationsEndpoint;
 
+  /** Advisory endpoint: resolves the calling user's role on a branch. */
+  public readonly auth: AuthEndpoint;
+
   constructor(config: P1ClientConfig | InternalConfig) {
     // Check if this is an internal config (has baseEndpoint)
     if ('baseEndpoint' in config) {
@@ -240,6 +244,9 @@ export class P1Client {
 
     // Relation edges
     this.relations = new RelationsEndpoint(this.baseEndpoint);
+
+    // Auth / role advisory
+    this.auth = new AuthEndpoint(this.baseEndpoint);
   }
 
   /**

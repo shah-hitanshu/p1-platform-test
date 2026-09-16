@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { renderHook, act } from '@testing-library/react';
+import { renderHook, act, waitFor } from '@testing-library/react';
 import React from 'react';
 import type { P1Client, Branch, Document } from '@pantheon-systems/css-client';
 
@@ -59,6 +59,13 @@ const mockDocument: Document = {
   templateId: 'template-1',
   templateVersion: 1,
 };
+
+const EDITOR_PERMS = {
+  canView: true, canEdit: true, canCreateBranch: true, canEditDocuments: true,
+  canCreateCheckpoint: true, canProposeMerge: true, canMerge: true,
+  canMergeToMain: false, canManageGrants: false, canManageTemplates: false,
+};
+const ADMIN_PERMS = { ...EDITOR_PERMS, canMergeToMain: true, canManageGrants: true, canManageTemplates: true };
 
 function createMockClient(): P1Client {
   return {
@@ -211,7 +218,9 @@ describe('resolvePermissions exposed on context', () => {
     expect(typeof result.current.resolvePermissions).toBe('function');
   });
 
-  it('context exposes userRole with default value', () => {
+  it('context exposes userRole with default value', async () => {
+    vi.useRealTimers();
+    (client as any).auth = { getRole: vi.fn().mockResolvedValue({ roleName: 'EDITOR', permissions: EDITOR_PERMS }) };
     const wrapper = ({ children }: { children: React.ReactNode }) =>
       React.createElement(P1PuckProvider, {
         client,
@@ -221,22 +230,21 @@ describe('resolvePermissions exposed on context', () => {
       }, children);
 
     const { result } = renderHook(() => useP1Puck(), { wrapper });
-
-    expect(result.current.userRole).toBe('editor');
+    await waitFor(() => expect(result.current.userRole).toBe('editor'));
   });
 
-  it('context exposes custom userRole when provided', () => {
+  it('context exposes custom userRole when provided', async () => {
+    vi.useRealTimers();
+    (client as any).auth = { getRole: vi.fn().mockResolvedValue({ roleName: 'ADMIN', permissions: ADMIN_PERMS }) };
     const wrapper = ({ children }: { children: React.ReactNode }) =>
       React.createElement(P1PuckProvider, {
         client,
         siteId: 'site-1',
         branchId: 'branch-1',
         userId: 'user-789',
-        userRole: 'admin',
       }, children);
 
     const { result } = renderHook(() => useP1Puck(), { wrapper });
-
-    expect(result.current.userRole).toBe('admin');
+    await waitFor(() => expect(result.current.userRole).toBe('admin'));
   });
 });

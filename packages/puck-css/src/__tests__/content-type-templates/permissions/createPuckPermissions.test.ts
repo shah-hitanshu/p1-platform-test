@@ -253,6 +253,18 @@ describe('createPuckPermissions', () => {
     });
   });
 
+  describe('read-only mode', () => {
+    it('disables all permissions including edit when isReadOnly is true', () => {
+      const resolver = createPuckPermissions(mockTemplate, 'editor', false, true);
+      const perms = resolver(item('ImageBlock', 'ImageBlock-e5f6'), {} as PuckData);
+      expect(perms.edit).toBe(false);
+      expect(perms.drag).toBe(false);
+      expect(perms.delete).toBe(false);
+      expect(perms.insert).toBe(false);
+      expect(perms.duplicate).toBe(false);
+    });
+  });
+
   describe('component not in template', () => {
     it('should allow full permissions for admin/editor on unknown components', () => {
       const resolver = createPuckPermissions(mockTemplate, 'editor', false);

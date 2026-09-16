@@ -28,7 +28,7 @@ export type EditorRuntime = {
   overrideOptions: UseP1OverridesOptions;
   useExtensions: (ctx: P1EditorContext) => P1EditorExtensions;
   wrapEditor?: (children: React.ReactNode) => React.ReactNode;
-  initialUserRole: ContentRole;
+  initialUserRole: ContentRole | undefined;
   roleSwitcher: boolean;
   /** Null when the environment does not describe a P1 site; `configError` says why. */
   config: P1Config | null;
@@ -59,7 +59,7 @@ export function createEditorRuntime(options: CreateP1EditorClientOptions): Edito
     overrideOptions: options.overrideOptions ?? {},
     useExtensions: options.useExtensions ?? useNoExtensions,
     wrapEditor: options.wrapEditor,
-    initialUserRole: options.userRole ?? "editor",
+    initialUserRole: options.userRole,
     roleSwitcher: options.roleSwitcher ?? false,
     config,
     configError,

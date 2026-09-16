@@ -15,6 +15,7 @@ import type {
   TranslationMode,
 } from '@pantheon-systems/css-client';
 import isEqual from 'lodash.isequal';
+import type { ContentRole } from '../features/content-type-templates/types.js';
 import type { P1PuckConfig, P1PuckContextValue, PuckDataOrigin, SaveStatus, PresenceState } from '../core/types.js';
 import { P1PuckContext } from '../core/P1PuckContext.js';
 import { NotificationProvider, useNotifications } from '../core/NotificationContext.js';
@@ -32,6 +33,7 @@ import type { P1FeatureConfig } from '../core/featureConfig.js';
 import { resolveFeatureConfig } from '../core/featureConfig.js';
 import type { Template, TemplateSummary } from '../features/content-type-templates/types.js';
 import { createPuckPermissions } from '../features/content-type-templates/permissions/createPuckPermissions.js';
+import { useResolveContentRole } from '../features/content-type-templates/permissions/useResolveContentRole.js';
 import { useTemplateList } from '../features/content-type-templates/hooks/useTemplateList.js';
 import { presenceIdentityKey } from '../collaboration/utils/presenceIdentity.js';
 import { DocumentPathNotFoundError, isNotFoundStatus } from '../data/utils.js';
@@ -214,8 +216,7 @@ function P1PuckProviderInner({
   featurePlugins,
   featureConfig,
   // Content Type Templates (PROPOSAL-010)
-  // Consumers should resolve the role via useResolveContentRole and pass it here.
-  userRole = 'editor',
+  userRole: _userRole = 'editor',
   children,
 }: P1PuckProviderProps): React.ReactElement {
   // Access notification context
@@ -650,6 +651,22 @@ function P1PuckProviderInner({
     () => client.withPrincipal({ id: userId, type: 'user' }),
     [client, userId]
   );
+
+  // Resolve the calling user's permissions from the backend advisory endpoint
+  const { permissions: backendPermissions, outcome: permissionsOutcome } = useResolveContentRole({
+    client: userClient,
+    siteId,
+    branchId,
+  });
+
+  // Derive effective role from backend permissions; fall back to most-restrictive until resolved
+  const effectiveRole: ContentRole = backendPermissions
+    ? backendPermissions.canManageTemplates
+      ? 'admin'
+      : backendPermissions.canEditDocuments
+        ? 'editor'
+        : 'junior-editor'
+    : 'junior-editor';
 
   // Document list for current branch
   const {
@@ -1531,10 +1548,15 @@ function P1PuckProviderInner({
     return branchTemplates.find((t) => t.name === match[1]) ?? null;
   }, [currentTemplate, currentDocument?.path, branchTemplates]);
 
-  // Create Puck permissions resolver based on current template and user role
+  // Create Puck permissions resolver based on current template and effective role
   const resolvePermissions = useMemo(
-    () => createPuckPermissions(resolvedTemplate, userRole, isViewingHistoricalVersion),
-    [resolvedTemplate, userRole, isViewingHistoricalVersion]
+    () => createPuckPermissions(
+      resolvedTemplate,
+      effectiveRole,
+      isViewingHistoricalVersion,
+      backendPermissions !== null && !backendPermissions.canEditDocuments,
+    ),
+    [resolvedTemplate, effectiveRole, isViewingHistoricalVersion, backendPermissions]
   );
 
   // Show notification when template list fails to load
@@ -2425,7 +2447,9 @@ function P1PuckProviderInner({
       _realtimeDataCaptureRef: enableRealtime ? realtimeDataCaptureRef : null,
       _onRealtimeDataCapture: enableRealtime ? handleRealtimeDataCapture : null,
       // Content Type Templates (PROPOSAL-010)
-      userRole,
+      userRole: effectiveRole,
+      permissions: backendPermissions,
+      permissionsOutcome,
       templates: branchTemplates,
       templatesLoading,
       templatesError,
@@ -2510,7 +2534,9 @@ function P1PuckProviderInner({
       documentOpener,
       createPageOpener,
       // Content Type Templates
-      userRole,
+      effectiveRole,
+      backendPermissions,
+      permissionsOutcome,
       branchTemplates,
       templatesLoading,
       templatesError,

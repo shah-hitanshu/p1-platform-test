@@ -9,9 +9,16 @@
  */
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { renderHook } from '@testing-library/react';
+import { renderHook, waitFor } from '@testing-library/react';
 import React from 'react';
 import type { P1Client, Branch } from '@pantheon-systems/css-client';
+
+const EDITOR_PERMS = {
+  canView: true, canEdit: true, canCreateBranch: true, canEditDocuments: true,
+  canCreateCheckpoint: true, canProposeMerge: true, canMerge: true,
+  canMergeToMain: false, canManageGrants: false, canManageTemplates: false,
+};
+const ADMIN_PERMS = { ...EDITOR_PERMS, canMergeToMain: true, canManageGrants: true, canManageTemplates: true };
 
 // =============================================================================
 // Mock useRealtime hook
@@ -142,8 +149,9 @@ describe('User role wiring', () => {
     expect(config.userRole).toBeUndefined();
   });
 
-  it('P1PuckProvider defaults userRole to editor', () => {
+  it('P1PuckProvider defaults userRole to editor', async () => {
     const client = createMockClient();
+    (client as any).auth = { getRole: vi.fn().mockResolvedValue({ roleName: 'EDITOR', permissions: EDITOR_PERMS }) };
     const wrapper = ({ children }: { children: React.ReactNode }) =>
       React.createElement(P1PuckProvider, {
         client,
@@ -153,22 +161,22 @@ describe('User role wiring', () => {
       }, children);
 
     const { result } = renderHook(() => useP1Puck(), { wrapper });
-    expect(result.current.userRole).toBe('editor');
+    await waitFor(() => expect(result.current.userRole).toBe('editor'));
   });
 
-  it('P1PuckProvider accepts and exposes admin role', () => {
+  it('P1PuckProvider accepts and exposes admin role', async () => {
     const client = createMockClient();
+    (client as any).auth = { getRole: vi.fn().mockResolvedValue({ roleName: 'ADMIN', permissions: ADMIN_PERMS }) };
     const wrapper = ({ children }: { children: React.ReactNode }) =>
       React.createElement(P1PuckProvider, {
         client,
         siteId: 'site-1',
         branchId: 'branch-1',
         userId: 'user-789',
-        userRole: 'admin',
       }, children);
 
     const { result } = renderHook(() => useP1Puck(), { wrapper });
-    expect(result.current.userRole).toBe('admin');
+    await waitFor(() => expect(result.current.userRole).toBe('admin'));
   });
 
   it('P1PuckProvider accepts and exposes junior-editor role', () => {

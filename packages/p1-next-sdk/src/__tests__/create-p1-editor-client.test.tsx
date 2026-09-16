@@ -324,7 +324,7 @@ describe("customization slots", () => {
   });
 
   it("offers every content role the editor understands", () => {
-    const Client = createP1EditorClient({ puckConfig, roleSwitcher: true });
+    const Client = createP1EditorClient({ puckConfig, roleSwitcher: true, userRole: 'editor' });
     render(<Client />);
 
     const options = Array.from(
@@ -334,7 +334,7 @@ describe("customization slots", () => {
   });
 
   it("re-renders the editor as the role the picker selects", () => {
-    const Client = createP1EditorClient({ puckConfig, roleSwitcher: true });
+    const Client = createP1EditorClient({ puckConfig, roleSwitcher: true, userRole: 'editor' });
     render(<Client />);
 
     const select = screen.getByTestId("p1-role-switcher").querySelector("select")!;

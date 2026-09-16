@@ -89,6 +89,12 @@ const mockPuckConfig = {
 // Mock Client Factory
 // =============================================================================
 
+const EDITOR_PERMS = {
+  canView: true, canEdit: true, canCreateBranch: true, canEditDocuments: true,
+  canCreateCheckpoint: true, canProposeMerge: true, canMerge: true,
+  canMergeToMain: false, canManageGrants: false, canManageTemplates: false,
+};
+
 function createMockClient(): P1Client {
   return {
     branches: {
@@ -142,6 +148,9 @@ function createMockClient(): P1Client {
       abortEdit: vi.fn(),
     },
     withPrincipal: vi.fn().mockReturnThis(),
+    auth: {
+      getRole: vi.fn().mockResolvedValue({ roleName: 'EDITOR', permissions: EDITOR_PERMS }),
+    },
   } as unknown as P1Client;
 }
 

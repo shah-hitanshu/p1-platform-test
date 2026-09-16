@@ -81,7 +81,8 @@ export type PuckPermissionResolver = (
 export function createPuckPermissions(
   template: Template | TemplateSummary | null,
   role: ContentRole,
-  isHistoricalVersion: boolean
+  isHistoricalVersion: boolean,
+  isReadOnly = false,
 ): PuckPermissionResolver {
   const pinnedSlotIds = new Set<string>();
   if (template && 'content' in template) {
@@ -111,6 +112,10 @@ export function createPuckPermissions(
   }
 
   return (item: PuckItem): PuckPermissions => {
+    if (isReadOnly) {
+      return { edit: false, drag: false, delete: false, insert: false, duplicate: false };
+    }
+
     // Historical versions: all structural permissions false
     if (isHistoricalVersion) {
       return {

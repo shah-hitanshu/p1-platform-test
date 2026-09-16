@@ -1,19 +1,19 @@
-/**
- * useResolveContentRole Hook
- *
- * Auto-detects the user's ContentRole by querying the backend's
- * auth/me endpoint with site context. Falls back to the provided
- * default role if the backend doesn't return role info.
- *
- * Backend role mapping:
- * - ADMIN → 'admin'
- * - EDITOR → 'editor'
- * - VIEWER → 'junior-editor' (read-only structural access)
- * - NO_ACCESS → 'junior-editor' (most restrictive)
- */
-
 import { useState, useEffect } from 'react';
+import type { P1Client, RolePermissions } from '@pantheon-systems/css-client';
 import type { ContentRole } from '../types.js';
+
+export type PermissionsOutcome = 'pending' | 'granted' | 'refused' | 'unavailable';
+
+export interface UseResolveContentRoleOptions {
+  client: P1Client | null;
+  siteId: string;
+  branchId: string;
+}
+
+export interface UseResolveContentRoleReturn {
+  permissions: RolePermissions | null;
+  outcome: PermissionsOutcome;
+}
 
 type CcrRoleName = 'ADMIN' | 'EDITOR' | 'VIEWER' | 'NO_ACCESS';
 
@@ -30,83 +30,65 @@ function mapCssRoleToContentRole(ccrRole: CcrRoleName): ContentRole {
   }
 }
 
-export interface UseResolveContentRoleOptions {
-  baseUrl: string;
-  siteId: string;
-  branchId: string;
-  token: string | null;
-  fallbackRole?: ContentRole;
-}
-
-export interface UseResolveContentRoleReturn {
-  role: ContentRole;
-  loading: boolean;
-  resolved: boolean;
-}
-
-/**
- * Hook to auto-resolve the user's ContentRole from the backend.
- *
- * Calls GET /api/sites/{siteId}/auth/role (when available) to determine
- * the user's effective role. Falls back to the provided fallbackRole
- * if the endpoint is unavailable or returns an error.
- */
 export function useResolveContentRole({
-  baseUrl,
+  client,
   siteId,
   branchId,
-  token,
-  fallbackRole = 'junior-editor',
 }: UseResolveContentRoleOptions): UseResolveContentRoleReturn {
-  const [role, setRole] = useState<ContentRole>(fallbackRole);
-  const [loading, setLoading] = useState(true);
-  const [resolved, setResolved] = useState(false);
+  const [permissions, setPermissions] = useState<RolePermissions | null>(null);
+  const [outcome, setOutcome] = useState<PermissionsOutcome>('pending');
+  const [retryCount, setRetryCount] = useState(0);
+
+  // Auto-retry transient failures up to 3 times; a genuinely unreachable backend
+  // eventually surfaces the error rather than looping.
+  useEffect(() => {
+    if (outcome !== 'unavailable' || retryCount >= 3) return;
+    const id = setTimeout(() => setRetryCount(n => n + 1), 3000);
+    return () => clearTimeout(id);
+  }, [outcome, retryCount]);
+
+  // Reset retry budget when identity changes, not on every fetch trigger.
+  useEffect(() => {
+    setRetryCount(0);
+  }, [client, siteId, branchId]);
 
   useEffect(() => {
-    if (!baseUrl || !siteId || !token) {
-      setRole(fallbackRole);
-      setLoading(false);
-      return;
-    }
+    setPermissions(null);
+    setOutcome('pending');
+
+    if (!client || !siteId || !branchId) return;
 
     let cancelled = false;
 
     (async () => {
       try {
-        const headers: Record<string, string> = {
-          Authorization: `Bearer ${token}`,
-        };
-        const res = await fetch(
-          `${baseUrl}/api/sites/${encodeURIComponent(siteId)}/branches/${encodeURIComponent(branchId)}/auth/role`,
-          { method: 'GET', headers },
-        );
-
+        const role = await client.auth.getRole(siteId, branchId);
         if (cancelled) return;
 
-        if (res.ok) {
-          const data = (await res.json()) as { roleName?: CcrRoleName };
-          if (data.roleName) {
-            setRole(mapCssRoleToContentRole(data.roleName));
-            setResolved(true);
-          } else {
-            setRole(fallbackRole);
-          }
-        } else {
-          setRole(fallbackRole);
+        if (role.roleName === 'NO_ACCESS') {
+          setOutcome('refused');
+          return;
         }
-      } catch {
-        if (!cancelled) setRole(fallbackRole);
-      } finally {
-        if (!cancelled) setLoading(false);
+
+        const p = role.permissions;
+        if (!p.canView && !p.canEdit && !p.canEditDocuments) {
+          setOutcome('refused');
+          return;
+        }
+
+        setPermissions(p);
+        setOutcome('granted');
+      } catch (err: unknown) {
+        if (cancelled) return;
+        const status = (err as { status?: number }).status;
+        setOutcome(status === 403 ? 'refused' : 'unavailable');
       }
     })();
 
-    return () => {
-      cancelled = true;
-    };
-  }, [baseUrl, siteId, branchId, token, fallbackRole]);
+    return () => { cancelled = true; };
+  }, [client, siteId, branchId, retryCount]);
 
-  return { role, loading, resolved };
+  return { permissions, outcome };
 }
 
 export { mapCssRoleToContentRole };

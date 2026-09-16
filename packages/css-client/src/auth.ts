@@ -1,8 +1,28 @@
 /**
  * P1 Client Authentication Utilities
  *
- * Functions for creating authentication providers.
+ * Functions for creating authentication providers, and role/permission types.
  */
+
+export type RoleName = 'ADMIN' | 'EDITOR' | 'VIEWER' | 'NO_ACCESS';
+
+export interface RolePermissions {
+  canView: boolean;
+  canEdit: boolean;
+  canCreateBranch: boolean;
+  canEditDocuments: boolean;
+  canCreateCheckpoint: boolean;
+  canProposeMerge: boolean;
+  canMerge: boolean;
+  canMergeToMain: boolean;
+  canManageGrants: boolean;
+  canManageTemplates: boolean;
+}
+
+export interface ViewerRole {
+  roleName: RoleName;
+  permissions: RolePermissions;
+}
 
 /**
  * Authentication provider function type.

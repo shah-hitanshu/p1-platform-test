@@ -12,11 +12,13 @@ import type {
   ActorPresence,
   AgentTrigger,
   TranslationMode,
+  RolePermissions,
 } from '@pantheon-systems/css-client';
 import type { ConflictNotification } from '../merge/components/conflict-notifications/index.js';
 import type { UseAgentEditReturn } from '../agent/useAgentEdit.js';
 import type { UseAgentTriggerReturn } from '../agent/useAgentTrigger.js';
 import type { ContentRole, Template, TemplateSummary } from '../features/content-type-templates/types.js';
+import type { PermissionsOutcome } from '../features/content-type-templates/permissions/useResolveContentRole.js';
 import type { P1FeatureConfig } from './featureConfig.js';
 import type { PuckContribution } from './plugin-types.js';
 
@@ -698,10 +700,16 @@ export interface P1PuckContextValue {
   // =========================================================================
 
   /**
-   * Current user's content role for permission enforcement.
-   * Defaults to 'editor' if not specified.
+   * Current user's content role, derived from backend permissions.
+   * Defaults to 'junior-editor' until permissions resolve.
    */
   userRole: ContentRole;
+
+  /** Backend-resolved permissions for the current user on this branch. */
+  permissions?: RolePermissions | null;
+
+  /** Whether the backend permission check has resolved and what the result was. */
+  permissionsOutcome?: PermissionsOutcome;
 
   /**
    * Available templates on the current branch (metadata summaries).

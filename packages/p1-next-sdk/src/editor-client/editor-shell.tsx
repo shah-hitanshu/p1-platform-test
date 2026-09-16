@@ -21,7 +21,9 @@ export function EditorShell({ runtime }: { runtime: EditorRuntime }) {
   // switches; the edited page is derived from the URL instead of route params.
   const pathname = usePathname();
   const path = editorPagePathFromUrlPath(pathname);
-  const [userRole, setUserRole] = useState<ContentRole>(runtime.initialUserRole);
+  const [userRole, setUserRole] = useState<ContentRole | undefined>(
+    runtime.roleSwitcher ? (runtime.initialUserRole ?? 'editor') : runtime.initialUserRole
+  );
 
   if (!runtime.config) {
     return (
@@ -45,7 +47,7 @@ export function EditorShell({ runtime }: { runtime: EditorRuntime }) {
         >
           {runtime.wrapEditor ? runtime.wrapEditor(editor) : editor}
         </P1App>
-        {runtime.roleSwitcher && (
+        {runtime.roleSwitcher && userRole !== undefined && (
           <RoleSwitcher currentRole={userRole} onRoleChange={setUserRole} />
         )}
       </P1NextRouterProvider>
