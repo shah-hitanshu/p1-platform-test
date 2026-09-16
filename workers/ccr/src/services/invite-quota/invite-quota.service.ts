@@ -1,5 +1,7 @@
 import { getLogger } from '@pantheon-systems/p1-telemetry';
-import { query } from '../../db';
+import { and, count, eq, gt, sql } from 'drizzle-orm';
+import { auditLog } from '../../db/schema';
+import { db } from '../../db/scope';
 
 const ORG_LIMIT_PER_HOUR = 50;
 const RECIPIENT_LIMIT_PER_DAY = 5;
@@ -20,23 +22,27 @@ export async function checkInviteQuota(
   recipientEmail: string,
 ): Promise<QuotaVerdict> {
   try {
-    const [byOrg, byRecipient] = await Promise.all([
-      query<{ count: string }>(
-        `SELECT count(*) FROM app.audit_log
-          WHERE action = 'org_user.add' AND organization_id = $1
-            AND created_at > NOW() - INTERVAL '1 hour'`,
-        [organizationId],
-      ),
-      query<{ count: string }>(
-        `SELECT count(*) FROM app.audit_log
-          WHERE action = 'org_user.add' AND organization_id = $1 AND lower(target_label) = $2
-            AND created_at > NOW() - INTERVAL '1 day'`,
-        [organizationId, recipientEmail.toLowerCase()],
-      ),
+    const recentInvites = and(
+      eq(auditLog.action, 'org_user.add'),
+      eq(auditLog.organizationId, organizationId),
+    );
+    const [[byOrg], [byRecipient]] = await Promise.all([
+      db()
+        .select({ count: count() })
+        .from(auditLog)
+        .where(and(recentInvites, gt(auditLog.createdAt, sql`NOW() - INTERVAL '1 hour'`))),
+      db()
+        .select({ count: count() })
+        .from(auditLog)
+        .where(and(
+          recentInvites,
+          eq(sql`lower(${auditLog.targetLabel})`, recipientEmail.toLowerCase()),
+          gt(auditLog.createdAt, sql`NOW() - INTERVAL '1 day'`),
+        )),
     ]);
 
-    const orgCount = Number(byOrg.rows[0]?.count ?? 0);
-    const recipientCount = Number(byRecipient.rows[0]?.count ?? 0);
+    const orgCount = byOrg?.count ?? 0;
+    const recipientCount = byRecipient?.count ?? 0;
 
     return orgCount >= ORG_LIMIT_PER_HOUR || recipientCount >= RECIPIENT_LIMIT_PER_DAY
       ? 'exceeded'

@@ -34,7 +34,6 @@ import { eq, sql } from 'drizzle-orm';
 import { users } from '../db/schema';
 import { db } from '../db/scope';
 import type { Env } from '../env';
-import { query } from '../db';
 import {
   getUsersForOrganization,
   addUserToOrganization,
@@ -203,11 +202,11 @@ async function resolveInviter(
     const userId = await resolveUserId(principal);
     if (userId === undefined) return undefined;
 
-    const result = await query<{ email: string; name: string | null }>(
-      'SELECT email, name FROM app.users WHERE id = $1',
-      [userId],
-    );
-    const row = result.rows[0];
+    const [row] = await db()
+      .select({ email: users.email, name: users.name })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
     return row === undefined ? undefined : { email: row.email, name: row.name ?? undefined };
   } catch (error) {
     // Never throw: this runs after the membership is committed, so a failure

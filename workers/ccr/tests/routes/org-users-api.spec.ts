@@ -20,10 +20,6 @@ vi.mock('../../src/utils/org-access', () => ({
   resolveUserId: vi.fn(async (principal: { dbUserId?: string }) => principal.dbUserId),
 }));
 
-vi.mock('../../src/db', () => ({
-  query: vi.fn(),
-}));
-
 vi.mock('../../src/services/invite-quota/invite-quota.service', () => ({ checkInviteQuota: vi.fn() }));
 vi.mock('../../src/services/invite-email/invite-email.service', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/services/invite-email/invite-email.service')>()),
@@ -597,13 +593,12 @@ describe('Organization users API', () => {
     it('resolves the inviter email from the database when the principal has none', async () => {
       const services = await import('../../src/services');
       const { resolveUserId } = await import('../../src/utils/org-access');
-      const { query } = await import('../../src/db');
       const { sendInviteEmail } = await import('../../src/services/invite-email/invite-email.service');
       const { handleOrgUsersRoutes } = await import('../../src/routes/org-users-api');
 
       vi.mocked(services.getOrganizationById).mockResolvedValueOnce({ id: ORG_ID, name: 'Acme' } as never);
       database.on(users).insert.returns([userRow({ email: 'new@x.com' })]);
-      vi.mocked(query).mockResolvedValueOnce({ rows: [{ email: 'resolved@x.com', name: 'Resolved Name' }] });
+      database.on(users).select.whenBound(['resolved-user-id']).returns([userRow({ id: 'resolved-user-id', email: 'resolved@x.com', name: 'Resolved Name' })]);
       vi.mocked(services.addUserToOrganization).mockResolvedValueOnce(true);
       vi.mocked(resolveUserId).mockResolvedValueOnce('resolved-user-id');
 
