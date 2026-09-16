@@ -10,6 +10,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { readJson } from '../helpers/http';
 import { users } from '../../src/db/schema';
 import { stubDatabase, type DatabaseStub } from '../__stubs__/database';
+import type { Env } from '../../src/env';
 
 // Every route here needs the admin role *in this organization*, so the default
 // caller is one. The permission block opts out explicitly.
@@ -18,6 +19,17 @@ vi.mock('../../src/utils/org-access', () => ({
   // Mirrors the real one: prefer what the gate attached, look it up otherwise.
   resolveUserId: vi.fn(async (principal: { dbUserId?: string }) => principal.dbUserId),
 }));
+
+vi.mock('../../src/db', () => ({
+  query: vi.fn(),
+}));
+
+vi.mock('../../src/services/invite-quota/invite-quota.service', () => ({ checkInviteQuota: vi.fn() }));
+vi.mock('../../src/services/invite-email/invite-email.service', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/services/invite-email/invite-email.service')>()),
+  sendInviteEmail: vi.fn(),
+}));
+
 
 vi.mock('../../src/services', () => ({
   getUsersForOrganization: vi.fn(),
@@ -398,6 +410,238 @@ describe('Organization users API', () => {
 
       expect(response.status).toBe(400);
       expect(services.getOrganizationById).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('POST — invite email', () => {
+    const ENV = {
+      ENVIRONMENT: 'staging',
+      SENDGRID_API_KEY: 'k',
+      DASHBOARD_URL: 'https://d.test',
+    } as unknown as Env;
+
+    async function post(body: unknown, env: Env | undefined) {
+      const services = await import('../../src/services');
+      const { handleOrgUsersRoutes } = await import('../../src/routes/org-users-api');
+
+      vi.mocked(services.getOrganizationById).mockResolvedValueOnce({
+        id: ORG_ID,
+        name: 'Acme',
+      } as never);
+      database.on(users).insert.returns([userRow({ email: (body as { email: string }).email })]);
+      vi.mocked(services.addUserToOrganization).mockResolvedValueOnce(true);
+
+      return handleOrgUsersRoutes(makeRequest('POST', body), { organizationId: ORG_ID, principal }, env);
+    }
+
+    async function postAs(principalOverrides: Record<string, unknown>, body: unknown) {
+      const services = await import('../../src/services');
+      const { handleOrgUsersRoutes } = await import('../../src/routes/org-users-api');
+
+      vi.mocked(services.getOrganizationById).mockResolvedValueOnce({
+        id: ORG_ID,
+        name: 'Acme',
+      } as never);
+      database.on(users).insert.returns([userRow({ email: (body as { email: string }).email })]);
+      vi.mocked(services.addUserToOrganization).mockResolvedValueOnce(true);
+
+      return handleOrgUsersRoutes(
+        makeRequest('POST', body),
+        { organizationId: ORG_ID, principal: { ...principal, ...principalOverrides } },
+        ENV,
+      );
+    }
+
+    beforeEach(async () => {
+      const { checkInviteQuota } = await import('../../src/services/invite-quota/invite-quota.service');
+      const { sendInviteEmail } = await import('../../src/services/invite-email/invite-email.service');
+      vi.mocked(checkInviteQuota).mockResolvedValue('ok');
+      vi.mocked(sendInviteEmail).mockResolvedValue(true);
+    });
+
+    it('sends an invite email and reports emailSent true', async () => {
+      const { sendInviteEmail } = await import('../../src/services/invite-email/invite-email.service');
+      vi.mocked(sendInviteEmail).mockResolvedValueOnce(true);
+
+      const res = await post({ email: 'new@x.com', role: 'member' }, ENV);
+      expect(res.status).toBe(201);
+      expect(await readJson(res)).toMatchObject({ email: 'new@x.com', emailSent: true });
+      expect(sendInviteEmail).toHaveBeenCalledWith(
+        ENV,
+        expect.objectContaining({ email: 'new@x.com', role: 'member', inviterEmail: 'caller@example.com' }),
+      );
+    });
+
+    it('omits emailSent entirely when the send is not applicable', async () => {
+      const { sendInviteEmail } = await import('../../src/services/invite-email/invite-email.service');
+      vi.mocked(sendInviteEmail).mockResolvedValueOnce(undefined);
+
+      const body = await readJson(await post({ email: 'new@x.com', role: 'member' }, ENV));
+      expect('emailSent' in body).toBe(false);
+    });
+
+    it('does not attempt a send when no env is passed', async () => {
+      const { sendInviteEmail } = await import('../../src/services/invite-email/invite-email.service');
+
+      const body = await readJson(
+        await post({ email: 'new@x.com', role: 'member' }, undefined),
+      );
+      expect('emailSent' in body).toBe(false);
+      expect(sendInviteEmail).not.toHaveBeenCalled();
+    });
+
+    it('counts the quota before writing the audit entry', async () => {
+      const services = await import('../../src/services');
+      const { checkInviteQuota } = await import('../../src/services/invite-quota/invite-quota.service');
+
+      await post({ email: 'new@x.com', role: 'member' }, ENV);
+
+      expect(vi.mocked(checkInviteQuota).mock.invocationCallOrder[0])
+        .toBeLessThan(vi.mocked(services.recordAuditEntry).mock.invocationCallOrder[0]);
+    });
+
+    it('skips the send and reports false when the quota is exceeded', async () => {
+      const { checkInviteQuota } = await import('../../src/services/invite-quota/invite-quota.service');
+      const { sendInviteEmail } = await import('../../src/services/invite-email/invite-email.service');
+      vi.mocked(checkInviteQuota).mockResolvedValueOnce('exceeded');
+
+      const body = await readJson<{ emailSent: boolean }>(await post({ email: 'new@x.com', role: 'member' }, ENV));
+      expect(body.emailSent).toBe(false);
+      expect(sendInviteEmail).not.toHaveBeenCalled();
+    });
+
+    it('audits the attempt, with its own action, when the quota is exceeded', async () => {
+      const services = await import('../../src/services');
+      const { checkInviteQuota } = await import('../../src/services/invite-quota/invite-quota.service');
+      vi.mocked(checkInviteQuota).mockResolvedValueOnce('exceeded');
+
+      await post({ email: 'new@x.com', role: 'member' }, ENV);
+
+      expect(services.recordAuditEntry).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'org_user.invite_quota_exceeded',
+          organizationId: ORG_ID,
+          targetType: 'user',
+          targetLabel: 'new@x.com',
+          details: { role: 'member' },
+        }),
+      );
+      // The membership itself is still recorded as usual.
+      expect(services.recordAuditEntry).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'org_user.add', targetLabel: 'new@x.com' }),
+      );
+    });
+
+    it('writes no quota audit row when the quota permits the send', async () => {
+      const services = await import('../../src/services');
+
+      await post({ email: 'new@x.com', role: 'member' }, ENV);
+
+      const actions = vi.mocked(services.recordAuditEntry).mock.calls.map(([e]) => e.action);
+      expect(actions).toEqual(['org_user.add']);
+    });
+
+    it('writes no quota audit row when the quota check fails', async () => {
+      const services = await import('../../src/services');
+      const { checkInviteQuota } = await import('../../src/services/invite-quota/invite-quota.service');
+      vi.mocked(checkInviteQuota).mockResolvedValueOnce('unknown');
+
+      await post({ email: 'new@x.com', role: 'member' }, ENV);
+
+      const actions = vi.mocked(services.recordAuditEntry).mock.calls.map(([e]) => e.action);
+      expect(actions).toEqual(['org_user.add']);
+    });
+
+    // No SENDGRID_API_KEY means no send was ever possible, so a quota hit must
+    // not be reported as an attempted-but-unconfirmed send.
+    it('omits emailSent when the quota is exceeded but email is not configured', async () => {
+      const { checkInviteQuota } = await import('../../src/services/invite-quota/invite-quota.service');
+      vi.mocked(checkInviteQuota).mockResolvedValueOnce('exceeded');
+
+      const res = await post({ email: 'new@x.com', role: 'member' }, { ENVIRONMENT: 'staging' } as unknown as Env);
+      expect(res.status).toBe(201);
+      expect('emailSent' in await readJson(res)).toBe(false);
+    });
+
+    it('omits emailSent when the inviter is unresolvable and email is not configured', async () => {
+      const { resolveUserId } = await import('../../src/utils/org-access');
+      const { handleOrgUsersRoutes } = await import('../../src/routes/org-users-api');
+      const services = await import('../../src/services');
+      vi.mocked(resolveUserId).mockResolvedValueOnce(undefined);
+      vi.mocked(services.getOrganizationById).mockResolvedValueOnce({ id: ORG_ID, name: 'Acme' } as never);
+      database.on(users).insert.returns([userRow({ email: 'new@x.com' })]);
+      vi.mocked(services.addUserToOrganization).mockResolvedValueOnce(true);
+
+      const res = await handleOrgUsersRoutes(
+        makeRequest('POST', { email: 'new@x.com', role: 'member' }),
+        { organizationId: ORG_ID, principal: { ...principal, email: undefined, dbUserId: undefined } },
+        { ENVIRONMENT: 'staging' } as unknown as Env,
+      );
+      expect(res.status).toBe(201);
+      expect('emailSent' in await readJson(res)).toBe(false);
+    });
+
+    it('still returns 201 with the membership intact when the quota check fails', async () => {
+      const { checkInviteQuota } = await import('../../src/services/invite-quota/invite-quota.service');
+      const { sendInviteEmail } = await import('../../src/services/invite-email/invite-email.service');
+      vi.mocked(checkInviteQuota).mockResolvedValueOnce('unknown');
+
+      const res = await post({ email: 'new@x.com', role: 'member' }, ENV);
+      expect(res.status).toBe(201);
+      expect('emailSent' in await readJson(res)).toBe(false);
+      expect(sendInviteEmail).not.toHaveBeenCalled();
+    });
+
+    // principal.email and principal.dbUserId both undefined: the mock-auth and
+    // broker-auth shape documented in utils/org-access.ts.
+    it('resolves the inviter email from the database when the principal has none', async () => {
+      const services = await import('../../src/services');
+      const { resolveUserId } = await import('../../src/utils/org-access');
+      const { query } = await import('../../src/db');
+      const { sendInviteEmail } = await import('../../src/services/invite-email/invite-email.service');
+      const { handleOrgUsersRoutes } = await import('../../src/routes/org-users-api');
+
+      vi.mocked(services.getOrganizationById).mockResolvedValueOnce({ id: ORG_ID, name: 'Acme' } as never);
+      database.on(users).insert.returns([userRow({ email: 'new@x.com' })]);
+      vi.mocked(query).mockResolvedValueOnce({ rows: [{ email: 'resolved@x.com', name: 'Resolved Name' }] });
+      vi.mocked(services.addUserToOrganization).mockResolvedValueOnce(true);
+      vi.mocked(resolveUserId).mockResolvedValueOnce('resolved-user-id');
+
+      await handleOrgUsersRoutes(
+        makeRequest('POST', { email: 'new@x.com', role: 'member' }),
+        { organizationId: ORG_ID, principal: { ...principal, email: undefined, dbUserId: undefined } },
+        ENV,
+      );
+
+      expect(sendInviteEmail).toHaveBeenCalledWith(
+        ENV,
+        expect.objectContaining({ inviterEmail: 'resolved@x.com', inviterName: 'Resolved Name' }),
+      );
+    });
+
+    it('passes the principal display name as the inviter name', async () => {
+      const { sendInviteEmail } = await import('../../src/services/invite-email/invite-email.service');
+
+      await postAs({ name: 'Ada Lovelace' }, { email: 'new@x.com', role: 'member' });
+
+      expect(sendInviteEmail).toHaveBeenCalledWith(
+        ENV,
+        expect.objectContaining({ inviterEmail: 'caller@example.com', inviterName: 'Ada Lovelace' }),
+      );
+    });
+
+    it('returns emailSent:false when the inviter email cannot be resolved', async () => {
+      const { resolveUserId } = await import('../../src/utils/org-access');
+      const { sendInviteEmail } = await import('../../src/services/invite-email/invite-email.service');
+      vi.mocked(resolveUserId).mockResolvedValueOnce(undefined);
+
+      const body = await readJson(
+        await postAs({ email: undefined, dbUserId: undefined }, { email: 'new@x.com', role: 'member' }),
+      );
+      // Quota permitted a send but inviter address couldn't be resolved — false,
+      // not undefined (which means the feature is unconfigured).
+      expect(body.emailSent).toBe(false);
+      expect(sendInviteEmail).not.toHaveBeenCalled();
     });
   });
 

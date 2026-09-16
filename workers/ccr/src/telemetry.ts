@@ -48,7 +48,7 @@ function toLevel(value: string | undefined): Level | undefined {
  * The backend this worker talks to, for `data_class`.
  *
  * Read from the bindings rather than from the connection string a given request selected:
- * admin routes use `HYPERDRIVE_NOCACHE` and everything else uses `HYPERDRIVE`, so deriving
+ * routes that must read their own writes use `HYPERDRIVE_NOCACHE` and everything else uses `HYPERDRIVE`, so deriving
  * this per request would make an isolate-lifetime config value depend on which route
  * happened to arrive first.
  *

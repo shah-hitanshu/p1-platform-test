@@ -1,7 +1,8 @@
 /**
- * Picks the Postgres connection for a request. Admin routes use the no-cache
- * Hyperdrive config so they read their own writes; everything else uses the
- * cached pool. Falls back to a direct connection string for local dev.
+ * Picks the Postgres connection for a request. A caller that must read its own
+ * writes asks for a fresh read and gets the no-cache Hyperdrive config;
+ * everything else uses the cached pool. Falls back to a direct connection
+ * string for local dev.
  */
 
 /**
@@ -27,9 +28,8 @@ export class NoDatabaseConfiguredError extends Error {
   }
 }
 
-export function resolveConnection(env: ConnectionEnv, path: string): ResolvedConnection {
-  const isAdminRoute = path.startsWith('/api/admin/');
-  const hyperdrive = isAdminRoute && env.HYPERDRIVE_NOCACHE
+export function resolveConnection(env: ConnectionEnv, requireFresh = false): ResolvedConnection {
+  const hyperdrive = requireFresh && env.HYPERDRIVE_NOCACHE
     ? env.HYPERDRIVE_NOCACHE
     : env.HYPERDRIVE;
 

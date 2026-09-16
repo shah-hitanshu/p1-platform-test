@@ -908,6 +908,7 @@ Genuine secrets — set each with `wrangler secret put <NAME> --env production`,
 - `MAS_GCP_SERVICE_ACCOUNT_KEY` — JSON key for the `p1-backend` signer SA (see below)
 - `CF_BROWSER_API_TOKEN` — screenshot rendering
 - `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` — screenshot presigning
+- `SENDGRID_API_KEY` — business-account invite email; use a SendGrid key restricted to Mail Send
 
 The backend and MCP Auth0 client secrets are Secret Manager containers created by the bootstrap Terraform (`CCR_BACKEND_AUTH0_CLIENT_SECRET`, `CCR_MCP_AUTH0_CLIENT_SECRET`). Add each value once with `gcloud secrets versions add <ID> --data-file=-`; the deploy workflow reads them and sets each worker's `AUTH0_CLIENT_SECRET`.
 

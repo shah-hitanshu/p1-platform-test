@@ -132,10 +132,17 @@ export default {
       version: env.APP_VERSION ?? 'dev',
     });
 
+    // The router's own classification, so this never drifts from what it matches.
+    const route = parseRoute(path);
+
     let connectionString: string;
     let isHyperdrive: boolean;
     try {
-      ({ connectionString, isHyperdrive } = resolveConnection(env, path));
+      // Admin routes and adding an org user read their own writes (the invite
+      // quota counts audit rows); everything else takes the cached pool.
+      const requireFresh = path.startsWith('/api/admin/')
+        || (req.method === 'POST' && route?.handler === 'org-users' && route.params.userId === undefined);
+      ({ connectionString, isHyperdrive } = resolveConnection(env, requireFresh));
     } catch {
       return new Response(
         JSON.stringify({ error: 'No database connection configured' }),
@@ -147,14 +154,11 @@ export default {
     // Passing ctx keeps initialization off the critical path: without it the first merge in a
     // cold isolate pays the LaunchDarkly initialization wait.
     P1FeatureFlagService.init(env, ctx);
-    // Parsed rather than pulled off the path with a regex of its own: the router already
-    // knows which routes carry a site and where, and `pathPattern` has had the id
-    // normalized out of it by the time it exists. handleRequest parses again — the
-    // function is a pure regex chain, and threading the result through the /internal and
-    // /broker branches that run before it buys nothing.
+    // handleRequest parses again — the function is a pure regex chain, and threading
+    // the result through the /internal and /broker branches that run before it buys nothing.
     const telemetry = contextFromRequest(req, {
       route: pathPattern,
-      siteId: parseRoute(path)?.params.siteId,
+      siteId: route?.params.siteId,
     });
 
     // Run request with isolated database connection using AsyncLocalStorage

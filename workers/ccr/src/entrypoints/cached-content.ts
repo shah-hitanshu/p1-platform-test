@@ -71,7 +71,7 @@ export class CachedContent extends WorkerEntrypoint<Env> {
     }
 
     const siteId = route.params.siteId ?? '';
-    const { connectionString, isHyperdrive } = resolveConnection(this.env, url.pathname);
+    const { connectionString, isHyperdrive } = resolveConnection(this.env);
     const logger = ensureLogger(this.env);
     const startedAt = Date.now();
 

@@ -123,6 +123,8 @@
     // Internal API for DO-to-PostgreSQL sync (Phase 1.3)
     // INTERNAL_SECRET is set in .dev.vars (local) or secrets (production)
     "INTERNAL_API_URL": "http://localhost:8787",
+    // Where the invite email sends people. SENDGRID_API_KEY (in .dev.vars) turns sending on.
+    "DASHBOARD_URL": "http://localhost:3000",
     // Content Publisher's LaunchDarkly proxy, used for the P1V0 self-service
     // onboarding gate (PCC-3479). Point at a staging/local proxy in .dev.vars;
     // unset means self-service onboarding is off and app.users stays the gate.
@@ -201,6 +203,7 @@
         "CORS_ORIGINS": "*",
         "METRICS_ENABLED": "true",
         "PUBLIC_ORIGIN": "https://staging.ccr.p1.pantheon.io",
+        "DASHBOARD_URL": "https://staging.content.pantheon.io",
         "INTERNAL_API_URL": "https://collaborative-state-worker-staging.pantheon-content-publisher.workers.dev",
         "WEBSOCKET_HEARTBEAT_INTERVAL": "30000",
         "DOCUMENT_SYNC_BATCH_SIZE": "50",
@@ -299,6 +302,7 @@
         "CORS_ORIGINS": "https://content.pantheon.io",
         "METRICS_ENABLED": "true",
         "PUBLIC_ORIGIN": "https://ccr.p1.pantheon.io",
+        "DASHBOARD_URL": "https://content.pantheon.io",
         "INTERNAL_API_URL": "https://collaborative-state-worker-production.pantheon-p1-production.workers.dev",
         "WEBSOCKET_HEARTBEAT_INTERVAL": "30000",
         "DOCUMENT_SYNC_BATCH_SIZE": "50",
@@ -324,7 +328,8 @@
         "FLAG_OVERRIDES": "{}"
         // Genuine secrets (set out-of-band via `wrangler secret put --env production`,
         // see README runbook): INTERNAL_SECRET, AUTH0_CLIENT_SECRET,
-        // MAS_GCP_SERVICE_ACCOUNT_KEY, CF_BROWSER_API_TOKEN, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY.
+        // MAS_GCP_SERVICE_ACCOUNT_KEY, CF_BROWSER_API_TOKEN, R2_ACCESS_KEY_ID,
+        // R2_SECRET_ACCESS_KEY, SENDGRID_API_KEY.
       },
       "workflows": [
         { "binding": "MERGE_WORKFLOW", "name": "css-merge-workflow-production", "class_name": "MergeWorkflow" }

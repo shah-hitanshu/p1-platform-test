@@ -33,6 +33,8 @@ import type { OrganizationRole } from '../services';
 import { eq, sql } from 'drizzle-orm';
 import { users } from '../db/schema';
 import { db } from '../db/scope';
+import type { Env } from '../env';
+import { query } from '../db';
 import {
   getUsersForOrganization,
   addUserToOrganization,
@@ -48,6 +50,8 @@ import {
   OrganizationNotFoundError,
 } from '../services';
 import { isOrgAdmin, resolveUserId } from '../utils/org-access';
+import { checkInviteQuota } from '../services/invite-quota/invite-quota.service';
+import { isInviteEmailConfigured, sendInviteEmail } from '../services/invite-email/invite-email.service';
 
 /**
  * Request context for organization user routes
@@ -69,7 +73,7 @@ export interface OrgUsersRouteContext {
  */
 const ASSIGNABLE_ORG_ROLES: OrganizationRole[] = ['member', 'admin'];
 
-function isAssignableOrgRole(role: string): role is OrganizationRole {
+function isAssignableOrgRole(role: string): role is 'admin' | 'member' {
   return (ASSIGNABLE_ORG_ROLES as string[]).includes(role);
 }
 
@@ -184,6 +188,36 @@ function serializeUser(
 }
 
 /**
+ * The principal may carry no email: mock-auth and broker-auth deployments
+ * leave both email and dbUserId unset. resolveUserId returns an id, so the
+ * address and display name need one more read.
+ */
+async function resolveInviter(
+  principal: AuthenticatedPrincipal,
+): Promise<{ email: string; name?: string } | undefined> {
+  if (principal.email !== undefined && principal.email !== '') {
+    return { email: principal.email, name: principal.name };
+  }
+
+  try {
+    const userId = await resolveUserId(principal);
+    if (userId === undefined) return undefined;
+
+    const result = await query<{ email: string; name: string | null }>(
+      'SELECT email, name FROM app.users WHERE id = $1',
+      [userId],
+    );
+    const row = result.rows[0];
+    return row === undefined ? undefined : { email: row.email, name: row.name ?? undefined };
+  } catch (error) {
+    // Never throw: this runs after the membership is committed, so a failure
+    // here must cost the email, not the invite.
+    getLogger().error('Inviter lookup failed', error instanceof Error ? error : new Error(String(error)), {});
+    return undefined;
+  }
+}
+
+/**
  * Handle GET /api/organizations/{orgId}/users
  */
 async function handleListOrgUsers(context: OrgUsersRouteContext): Promise<Response> {
@@ -202,6 +236,7 @@ async function handleListOrgUsers(context: OrgUsersRouteContext): Promise<Respon
 async function handleAddOrgUser(
   request: Request,
   context: OrgUsersRouteContext,
+  env: Env | undefined,
 ): Promise<Response> {
   const body = await parseJsonBody<AddOrgUserBody>(request);
   if (body === undefined) {
@@ -282,6 +317,9 @@ async function handleAddOrgUser(
     return errorResponse('Failed to add user', 500);
   }
 
+  // Before the audit write, so this invite is not counted against itself.
+  const quota = await checkInviteQuota(context.organizationId, userRow.email);
+
   await recordAuditEntry({
     action: 'org_user.add',
     actor: context.principal,
@@ -292,9 +330,50 @@ async function handleAddOrgUser(
     details: { role },
   });
 
+  // A throttled invite is worth its own audit row: an org that keeps bumping
+  // the cap looks identical to a busy one in the org_user.add rows alone.
+  if (quota === 'exceeded') {
+    await recordAuditEntry({
+      action: 'org_user.invite_quota_exceeded',
+      actor: context.principal,
+      organizationId: context.organizationId,
+      targetType: 'user',
+      targetId: userRow.id,
+      targetLabel: userRow.email,
+      details: { role },
+    });
+  }
+
+  // After the audit write; membership is already committed.
+  let emailSent: boolean | undefined;
+  if (env !== undefined && quota !== 'unknown') {
+    if (quota === 'exceeded') {
+      // Only a send that could have happened counts as unconfirmed.
+      emailSent = isInviteEmailConfigured(env) ? false : undefined;
+    } else {
+      const inviter = await resolveInviter(context.principal);
+      if (inviter !== undefined) {
+        emailSent = await sendInviteEmail(env, {
+          email: userRow.email,
+          organizationId: context.organizationId,
+          organizationName: organization.name,
+          role,
+          inviterEmail: inviter.email,
+          inviterName: inviter.name,
+        });
+      } else {
+        // Quota permitted a send but the inviter address couldn't be resolved.
+        emailSent = isInviteEmailConfigured(env) ? false : undefined;
+      }
+    }
+  }
+
   // organization_members.is_active defaults true (migration 070), same as the
   // membership row addUserToOrganization just created.
-  return jsonResponse(serializeUser(userRow, role, true, true), 201);
+  //
+  // undefined = not applicable (env not wired up, or quota check failed).
+  // false = send attempted but not completed (quota exceeded, or inviter unresolvable).
+  return jsonResponse({ ...serializeUser(userRow, role, true, true), emailSent }, 201);
 }
 
 /**
@@ -526,6 +605,7 @@ async function handleRemoveOrgUser(context: OrgUsersRouteContext): Promise<Respo
 export async function handleOrgUsersRoutes(
   request: Request,
   context: OrgUsersRouteContext,
+  env?: Env,
 ): Promise<Response> {
   const method = request.method;
 
@@ -561,7 +641,7 @@ export async function handleOrgUsersRoutes(
       case 'GET':
         return await handleListOrgUsers(context);
       case 'POST':
-        return await handleAddOrgUser(request, context);
+        return await handleAddOrgUser(request, context, env);
       default:
         return errorResponse('Method not allowed', 405);
     }

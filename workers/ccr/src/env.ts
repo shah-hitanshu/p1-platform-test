@@ -63,6 +63,13 @@ export interface Env {
   // Internal API secret for Durable Object to PostgreSQL sync
   INTERNAL_SECRET?: string;
 
+  /** SendGrid API key for invite email. Unset means this deployment does not send it. */
+  SENDGRID_API_KEY?: string;
+  /** Content Publisher dashboard origin the invite email links to. */
+  DASHBOARD_URL?: string;
+  /** Local-only: a fake SendGrid to send to. Ignored unless ENVIRONMENT is 'local'. */
+  SENDGRID_API_URL?: string;
+
   // KV namespace for broker login transactions
   BROKER_KV?: KVNamespace;
 

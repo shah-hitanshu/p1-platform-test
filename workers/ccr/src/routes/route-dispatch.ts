@@ -396,7 +396,7 @@ export async function dispatchRoute(
         organizationId: route.params.organizationId ?? '',
         userId: route.params.userId,
         principal,
-      });
+      }, env);
 
     case 'agents':
       return await handleAgentRoutes(request, {

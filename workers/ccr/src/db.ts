@@ -151,9 +151,8 @@ export function runWithEnvConnection<T>(
   env: { HYPERDRIVE?: Hyperdrive; HYPERDRIVE_NOCACHE?: Hyperdrive; POSTGRES_CONNECTION_STRING?: string },
   fn: () => Promise<T>,
 ): Promise<T> {
-  // Delegates the binding choice to the same resolver requests use ('' path:
-  // never the admin no-cache config).
-  const { connectionString, isHyperdrive } = resolveConnection(env, '');
+  // Same resolver requests use; never the no-cache config.
+  const { connectionString, isHyperdrive } = resolveConnection(env);
   return runWithConnection(connectionString, { isHyperdrive }, fn);
 }
 
