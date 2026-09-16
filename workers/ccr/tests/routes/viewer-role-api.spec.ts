@@ -82,7 +82,7 @@ describe('Viewer Role Routes', () => {
 
     const body = await readJson<{ permissions: RolePermissions }>(response);
     expect(body.permissions.canEditDocuments).toBe(true);
-    expect(body.permissions.canMergeToMain).toBe(false);
+    expect(body.permissions.canCreateBranch).toBe(false);
     expect(body.permissions.canManageGrants).toBe(false);
   });
 

@@ -4,16 +4,6 @@
  * TypeScript types and interfaces for the content type templates feature.
  */
 
-/**
- * User role for content editing.
- *
- * - admin: Full access - can create/edit templates, full structural control
- * - editor: Pinned components locked (cannot move/delete), can add/remove non-pinned
- * - author: Same component permissions as editor
- * - junior-editor: View/edit props only, no structural changes
- */
-export type ContentRole = 'admin' | 'editor' | 'author' | 'junior-editor';
-
 export type {
   Template,
   TemplateSummary,

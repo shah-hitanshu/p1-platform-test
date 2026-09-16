@@ -40,15 +40,17 @@ export const ROLES: Record<RoleName, RolePermissions> = {
     canManageTemplates: false,
   },
 
+  // The everyday content role: edits, publishes and merges to live. Workstreams,
+  // grants and templates are site administration and stay with ADMIN.
   EDITOR: {
     canView: true,
     canEdit: true,
-    canCreateBranch: true,
+    canCreateBranch: false,
     canEditDocuments: true,
     canCreateCheckpoint: true,
     canProposeMerge: true,
     canMerge: true,
-    canMergeToMain: false,
+    canMergeToMain: true,
     canManageGrants: false,
     canManageTemplates: false,
   },

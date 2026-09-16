@@ -1,20 +1,20 @@
 /**
- * useP1Editor canRevert role-based access control.
+ * useP1Editor canRevert permission gate.
  *
- * canRevert must be true for 'admin' and 'editor', and false for
- * 'junior-editor'. The value is forwarded to useP1Plugin which wires
+ * canRevert must follow the backend canEditDocuments flag: true when the
+ * user can edit documents, false when they cannot or while unresolved. The value is forwarded to useP1Plugin which wires
  * it to HistoricalVersionBanner — the sole revert entry-point after
  * the inline sidebar button was removed.
  *
  * Pattern: mock useP1Plugin to capture the canRevert option, vary
- * userRole on the CCR context, and assert per role.
+ * permissions on the CCR context, and assert per flag.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 
 // ---------------------------------------------------------------------------
-// CCR context mock — tests vary userRole
+// CCR context mock — tests vary permissions
 // ---------------------------------------------------------------------------
 
 const mockCcrContext = {
@@ -43,7 +43,8 @@ const mockCcrContext = {
   loadVersion: vi.fn(),
   viewingVersion: null,
   userId: 'user-1',
-  userRole: 'admin' as 'admin' | 'editor' | 'junior-editor',
+  roleName: 'ADMIN' as 'ADMIN' | 'EDITOR' | 'VIEWER',
+  permissions: { canEditDocuments: true } as { canEditDocuments: boolean } | null,
   saveStatus: 'idle' as const,
   lastSaved: null,
   saveError: null,
@@ -143,8 +144,8 @@ import { useP1Editor } from '../../editor/useP1Editor.js';
 // Helpers
 // ---------------------------------------------------------------------------
 
-async function renderEditorWithRole(role: 'admin' | 'editor' | 'junior-editor') {
-  mockCcrContext.userRole = role;
+async function renderEditorWithPermissions(permissions: { canEditDocuments: boolean } | null) {
+  mockCcrContext.permissions = permissions;
   capturedCanRevert = undefined;
 
   const { result } = renderHook(() =>
@@ -161,25 +162,25 @@ async function renderEditorWithRole(role: 'admin' | 'editor' | 'junior-editor') 
 // Tests
 // ---------------------------------------------------------------------------
 
-describe('useP1Editor — canRevert role-based access control', () => {
+describe('useP1Editor — canRevert permission gate', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     capturedCanRevert = undefined;
     mockCcrContext.currentDocument = { id: 'doc-1', path: '/pages/home', siteId: 'site-test' };
   });
 
-  it('sets canRevert=true for admin role', async () => {
-    const canRevert = await renderEditorWithRole('admin');
+  it('sets canRevert=true when canEditDocuments is true', async () => {
+    const canRevert = await renderEditorWithPermissions({ canEditDocuments: true });
     expect(canRevert).toBe(true);
   });
 
-  it('sets canRevert=true for editor role', async () => {
-    const canRevert = await renderEditorWithRole('editor');
-    expect(canRevert).toBe(true);
+  it('sets canRevert=false when canEditDocuments is false', async () => {
+    const canRevert = await renderEditorWithPermissions({ canEditDocuments: false });
+    expect(canRevert).toBe(false);
   });
 
-  it('sets canRevert=false for junior-editor role', async () => {
-    const canRevert = await renderEditorWithRole('junior-editor');
+  it('sets canRevert=false while permissions are unresolved', async () => {
+    const canRevert = await renderEditorWithPermissions(null);
     expect(canRevert).toBe(false);
   });
 });

@@ -40,6 +40,7 @@ const EDITOR_PERMS = {
   canCreateCheckpoint: true, canProposeMerge: true, canMerge: true,
   canMergeToMain: false, canManageGrants: false, canManageTemplates: false,
 };
+const NO_ACCESS_PERMS = Object.fromEntries(Object.keys(EDITOR_PERMS).map((k) => [k, false])) as typeof EDITOR_PERMS;
 
 const mockBranch: Branch = {
   id: 'branch-1', siteId: 'site-1', name: 'main', isMain: true,
@@ -116,7 +117,7 @@ describe('useP1Editor permission boot gate', () => {
   });
 
   it('returns error when permission is refused', async () => {
-    const client = makeClient(async () => ({ roleName: 'NO_ACCESS', permissions: EDITOR_PERMS }));
+    const client = makeClient(async () => ({ roleName: 'NO_ACCESS', permissions: NO_ACCESS_PERMS }));
     const { result } = renderHook(
       () => useP1Editor({ documentPath: '/home', puckConfig: mockConfig }),
       { wrapper: wrapper(client) },

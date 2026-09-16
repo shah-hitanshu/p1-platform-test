@@ -7,30 +7,12 @@
 
 import { describe, it, expect } from 'vitest';
 import type {
-  ContentRole,
   TemplateMetadata,
   TemplateContentItem,
   Template,
   TemplateSummary,
   TemplateBinding,
 } from '../../features/content-type-templates/types.js';
-
-describe('ContentRole', () => {
-  it('supports admin role', () => {
-    const role: ContentRole = 'admin';
-    expect(role).toBe('admin');
-  });
-
-  it('supports editor role', () => {
-    const role: ContentRole = 'editor';
-    expect(role).toBe('editor');
-  });
-
-  it('supports junior-editor role', () => {
-    const role: ContentRole = 'junior-editor';
-    expect(role).toBe('junior-editor');
-  });
-});
 
 describe('TemplateMetadata', () => {
   it('validates minimal template metadata', () => {

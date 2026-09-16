@@ -58,7 +58,8 @@ const data = {
 const INHERITED = {
   inheritedOgTitle: 'Site default title',
   inheritedOgImage: 'https://cdn.example/site-default.jpg',
-  userRole: 'editor',
+  roleName: 'EDITOR',
+  permissions: { canView: true, canEdit: true, canCreateBranch: true, canEditDocuments: true, canCreateCheckpoint: true, canProposeMerge: true, canMerge: true, canMergeToMain: false, canManageGrants: false, canManageTemplates: false },
 };
 
 function requireInput(container: HTMLElement, name: string): HTMLInputElement {

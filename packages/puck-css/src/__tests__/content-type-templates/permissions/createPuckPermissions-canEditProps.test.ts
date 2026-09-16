@@ -17,28 +17,28 @@ const looseItem = { type: 'Hero', props: { id: 'slot-loose' } };
 
 describe('createPuckPermissions canEditProps override', () => {
   it('keeps edit true on every path when the override is omitted', () => {
-    const resolve = createPuckPermissions(templateWithPin, 'junior-editor', false);
+    const resolve = createPuckPermissions(templateWithPin, false, false);
     expect(resolve(pinnedItem, null).edit).toBe(true);
     expect(resolve(looseItem, null).edit).toBe(true);
-    expect(createPuckPermissions(templateWithPin, 'junior-editor', true)(looseItem, null).edit).toBe(true);
+    expect(createPuckPermissions(templateWithPin, false, true)(looseItem, null).edit).toBe(true);
   });
 
   it('denies edit on the default path when the override is false', () => {
-    expect(createPuckPermissions(templateWithPin, 'junior-editor', false, false, false)(looseItem, null).edit).toBe(false);
+    expect(createPuckPermissions(templateWithPin, false, false, false)(looseItem, null).edit).toBe(false);
   });
 
   it('denies edit on the pinned-slot path when the override is false', () => {
-    expect(createPuckPermissions(templateWithPin, 'junior-editor', false, false, false)(pinnedItem, null).edit).toBe(false);
+    expect(createPuckPermissions(templateWithPin, false, false, false)(pinnedItem, null).edit).toBe(false);
   });
 
   it('denies edit on the historical-version path when the override is false', () => {
-    const resolve = createPuckPermissions(templateWithPin, 'junior-editor', true, false, false);
+    const resolve = createPuckPermissions(templateWithPin, false, true, false);
     expect(resolve(looseItem, null).edit).toBe(false);
     expect(resolve(pinnedItem, null).edit).toBe(false);
   });
 
   it('leaves the structural flags untouched by the override', () => {
-    const perms = createPuckPermissions(null, 'editor', false, false, false)(looseItem, null);
+    const perms = createPuckPermissions(null, true, false, false)(looseItem, null);
     expect(perms.edit).toBe(false);
     expect(perms.drag).toBe(true);
     expect(perms.delete).toBe(true);

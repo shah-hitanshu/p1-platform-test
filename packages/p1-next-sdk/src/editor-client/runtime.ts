@@ -2,7 +2,7 @@
 
 import { createNextConfig, wrapConfigForEditorPreview } from "@pantheon-systems/puck-css";
 import type { Config, Plugin } from "@puckeditor/core";
-import type { ContentRole, P1Config, UseP1OverridesOptions } from "@pantheon-systems/puck-css";
+import type { P1Config, UseP1OverridesOptions } from "@pantheon-systems/puck-css";
 import type React from "react";
 
 import type {
@@ -28,8 +28,6 @@ export type EditorRuntime = {
   overrideOptions: UseP1OverridesOptions;
   useExtensions: (ctx: P1EditorContext) => P1EditorExtensions;
   wrapEditor?: (children: React.ReactNode) => React.ReactNode;
-  initialUserRole: ContentRole | undefined;
-  roleSwitcher: boolean;
   /** Null when the environment does not describe a P1 site; `configError` says why. */
   config: P1Config | null;
   configError: string | null;
@@ -59,8 +57,6 @@ export function createEditorRuntime(options: CreateP1EditorClientOptions): Edito
     overrideOptions: options.overrideOptions ?? {},
     useExtensions: options.useExtensions ?? useNoExtensions,
     wrapEditor: options.wrapEditor,
-    initialUserRole: options.userRole,
-    roleSwitcher: options.roleSwitcher ?? false,
     config,
     configError,
   };

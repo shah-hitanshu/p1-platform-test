@@ -12,13 +12,13 @@ import type {
   ActorPresence,
   AgentTrigger,
   TranslationMode,
-  RolePermissions,
+  RoleName, RolePermissions,
 } from '@pantheon-systems/css-client';
 import type { ConflictNotification } from '../merge/components/conflict-notifications/index.js';
 import type { UseAgentEditReturn } from '../agent/useAgentEdit.js';
 import type { UseAgentTriggerReturn } from '../agent/useAgentTrigger.js';
-import type { ContentRole, Template, TemplateSummary } from '../features/content-type-templates/types.js';
-import type { PermissionsOutcome } from '../features/content-type-templates/permissions/useResolveContentRole.js';
+import type { Template, TemplateSummary } from '../features/content-type-templates/types.js';
+import type { PermissionsOutcome } from '../features/content-type-templates/permissions/useResolvePermissions.js';
 import type { P1FeatureConfig } from './featureConfig.js';
 import type { PuckContribution } from './plugin-types.js';
 
@@ -175,15 +175,6 @@ export interface P1PuckConfig {
   // Content Type Templates (PROPOSAL-010)
   // =========================================================================
 
-  /**
-   * User's content role for template permission enforcement.
-   * Consumers should resolve this via `useResolveContentRole` or their own auth layer.
-   * - admin: Full access, can create/edit templates
-   * - editor, author: Pinned components locked, can add/remove non-pinned
-   * - junior-editor: Props only, no structural changes
-   * @default 'editor'
-   */
-  userRole?: ContentRole;
 }
 
 /**
@@ -700,10 +691,10 @@ export interface P1PuckContextValue {
   // =========================================================================
 
   /**
-   * Current user's content role, derived from backend permissions.
-   * Defaults to 'junior-editor' until permissions resolve.
+   * The backend role name, for display, logging and the remount key only.
+   * Gate behaviour on `permissions`, never on this value.
    */
-  userRole: ContentRole;
+  roleName: RoleName | null;
 
   /** Backend-resolved permissions for the current user on this branch. */
   permissions?: RolePermissions | null;

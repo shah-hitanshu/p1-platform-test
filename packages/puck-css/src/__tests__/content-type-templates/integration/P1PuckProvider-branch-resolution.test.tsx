@@ -47,7 +47,6 @@ describe('P1PuckProvider - branch resolution on the templates path', () => {
           siteId="site-1"
           branchId={branchId}
           userId="user-1"
-          userRole="editor"
           enableRealtime={false}
           presenceEnabled={false}
         >

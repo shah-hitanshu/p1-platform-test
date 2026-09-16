@@ -8,7 +8,7 @@ Structural templates that content editors create new documents from, with role-b
 - `_registry/templates/{name}` documents hold a template's layout; editing one in the canvas is how a template's content is authored.
 - Creating a document from a template binds the page to the template; the backend builds the initial version from the template snapshot, preserving each component's durable slot id (`props.id`).
 - Pinning a component in a template (`root.props._pinMap`) marks its slot structurally required; a page can't have the pinned slot instance moved or removed, regardless of editor role. A same-typed component with a different id is never locked.
-- `ContentRole` (`admin` / `editor` / `junior-editor`) gates coarser editing capabilities such as adding components or overriding a page's URL pattern.
+- The backend `RolePermissions` flags gate coarser editing capabilities: `canEditDocuments` for structural edits, `canManageTemplates` for template management. There is no frontend role table.
 
 ## Template shape
 
@@ -101,9 +101,9 @@ A document conforms when every pinned slot id from the template is present among
 
 ## Permissions
 
-`getPermissionsForRole` / `useContentRole` compute coarse, role-only capabilities (`canAddComponents`, `canRemoveComponents`, `canMoveComponents`, `canEditProps`, `canOverrideUrl`). `junior-editor` is restricted to prop edits; `admin` and `editor` otherwise get the same capabilities. `useResolveContentRole` resolves a user's `ContentRole` from the CCR backend's role for a site/branch.
+`useResolvePermissions` fetches the user's `RolePermissions` and role name from the CCR backend for a site/branch. Structural editing (add / remove / move) follows `canEditDocuments`; template management follows `canManageTemplates`. The backend's role definitions are the only source of what a role can do.
 
-Pin locking is enforced per component, independent of role: the editor resolves Puck's `resolvePermissions` so that pinned components can never be dragged or deleted, and (for `junior-editor`) non-pinned components and blank pages get no structural permissions either. Viewing a historical version disables all structural permissions for every role.
+Pin locking is enforced per component, independent of role: the editor resolves Puck's `resolvePermissions` so that pinned components can never be dragged or deleted, and a user without `canEditDocuments` gets no structural permissions on non-pinned components or blank pages either. Viewing a historical version disables all structural permissions for everyone.
 
 ## API endpoints
 
@@ -121,10 +121,9 @@ The backend serves a top-level `label` and a `components` array (with `pinned` a
 
 ## Files
 
-- `types.ts` - `ContentRole`, `TemplateBinding`, and re-exports of the `@pantheon-systems/css-client` template types
+- `types.ts` - `TemplateBinding` and re-exports of the `@pantheon-systems/css-client` template types
 - `stores/` - `TemplateStore` interface, in-memory and API-backed implementations
-- `permissions/` - role-based `ComponentPermissions`, the `useContentRole` / `useResolveContentRole` hooks, and the Puck `resolvePermissions` resolver
-- `editor/` - role/history permission merging (`useTemplatePermissions`)
+- `permissions/` - the `useResolvePermissions` hook and the Puck `resolvePermissions` resolver
 - `validation/` - `validateStructure` and its error codes
 - `ui/` - template picker, the template metadata panel, and the pin-toggle action bar button used by the editor
 - `hooks/useTemplateList.ts` - fetches and refreshes a branch's `TemplateSummary[]`

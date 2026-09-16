@@ -1,6 +1,5 @@
 import { P1ContentClient, PRODUCTION_BASE_URL } from '@pantheon-systems/css-client';
 import type { AuthMode } from '../auth/P1AuthProvider.js';
-import type { ContentRole } from '../features/content-type-templates/types.js';
 
 export interface P1Config {
   baseUrl: string;
@@ -13,7 +12,6 @@ export interface P1Config {
   enablePresence?: boolean;
   autoSaveDelay?: number;
   maxRetries?: number;
-  userRole?: ContentRole;
 }
 
 // Re-exported for existing consumers (createNextConfig below, dal/init.ts,
@@ -94,7 +92,6 @@ export function createP1Config(
     enablePresence: overrides.enablePresence ?? envBool('CSS_ENABLE_PRESENCE') ?? true,
     autoSaveDelay: overrides.autoSaveDelay ?? envNum('CSS_AUTO_SAVE_DELAY'),
     maxRetries: overrides.maxRetries ?? envNum('CSS_MAX_RETRIES'),
-    userRole: overrides.userRole,
   };
 }
 

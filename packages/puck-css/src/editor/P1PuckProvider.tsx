@@ -15,7 +15,6 @@ import type {
   TranslationMode,
 } from '@pantheon-systems/css-client';
 import isEqual from 'lodash.isequal';
-import type { ContentRole } from '../features/content-type-templates/types.js';
 import type { P1PuckConfig, P1PuckContextValue, PuckDataOrigin, SaveStatus, PresenceState } from '../core/types.js';
 import { P1PuckContext } from '../core/P1PuckContext.js';
 import { NotificationProvider, useNotifications } from '../core/NotificationContext.js';
@@ -33,7 +32,7 @@ import type { P1FeatureConfig } from '../core/featureConfig.js';
 import { resolveFeatureConfig } from '../core/featureConfig.js';
 import type { Template, TemplateSummary } from '../features/content-type-templates/types.js';
 import { createPuckPermissions } from '../features/content-type-templates/permissions/createPuckPermissions.js';
-import { useResolveContentRole } from '../features/content-type-templates/permissions/useResolveContentRole.js';
+import { useResolvePermissions } from '../features/content-type-templates/permissions/useResolvePermissions.js';
 import { useTemplateList } from '../features/content-type-templates/hooks/useTemplateList.js';
 import { presenceIdentityKey } from '../collaboration/utils/presenceIdentity.js';
 import { DocumentPathNotFoundError, isNotFoundStatus } from '../data/utils.js';
@@ -215,8 +214,6 @@ function P1PuckProviderInner({
   // Plugin system props (B.4)
   featurePlugins,
   featureConfig,
-  // Content Type Templates (PROPOSAL-010)
-  userRole: _userRole = 'editor',
   children,
 }: P1PuckProviderProps): React.ReactElement {
   // Access notification context
@@ -653,20 +650,12 @@ function P1PuckProviderInner({
   );
 
   // Resolve the calling user's permissions from the backend advisory endpoint
-  const { permissions: backendPermissions, outcome: permissionsOutcome } = useResolveContentRole({
+  const { permissions: backendPermissions, roleName, outcome: permissionsOutcome } = useResolvePermissions({
     client: userClient,
     siteId,
     branchId,
   });
 
-  // Derive effective role from backend permissions; fall back to most-restrictive until resolved
-  const effectiveRole: ContentRole = backendPermissions
-    ? backendPermissions.canManageTemplates
-      ? 'admin'
-      : backendPermissions.canEditDocuments
-        ? 'editor'
-        : 'junior-editor'
-    : 'junior-editor';
 
   // Document list for current branch
   const {
@@ -1548,18 +1537,14 @@ function P1PuckProviderInner({
     return branchTemplates.find((t) => t.name === match[1]) ?? null;
   }, [currentTemplate, currentDocument?.path, branchTemplates]);
 
-  const readOnly = backendPermissions ? !backendPermissions.canEditDocuments : false;
+  const readOnly =
+    permissionsOutcome === 'pending' ||
+    (backendPermissions ? !backendPermissions.canEditDocuments : false);
 
-  // Create Puck permissions resolver based on current template and effective role
+  // Puck permissions resolver from the template and the backend flags
   const resolvePermissions = useMemo(
-    () => createPuckPermissions(
-      resolvedTemplate,
-      effectiveRole,
-      isViewingHistoricalVersion,
-      readOnly,
-      !readOnly,
-    ),
-    [resolvedTemplate, effectiveRole, isViewingHistoricalVersion, readOnly]
+    () => createPuckPermissions(resolvedTemplate, backendPermissions?.canEditDocuments ?? false, isViewingHistoricalVersion, !readOnly),
+    [resolvedTemplate, backendPermissions, isViewingHistoricalVersion, readOnly]
   );
 
   // Show notification when template list fails to load
@@ -2450,7 +2435,7 @@ function P1PuckProviderInner({
       _realtimeDataCaptureRef: enableRealtime ? realtimeDataCaptureRef : null,
       _onRealtimeDataCapture: enableRealtime ? handleRealtimeDataCapture : null,
       // Content Type Templates (PROPOSAL-010)
-      userRole: effectiveRole,
+      roleName,
       permissions: backendPermissions,
       permissionsOutcome,
       templates: branchTemplates,
@@ -2537,8 +2522,8 @@ function P1PuckProviderInner({
       documentOpener,
       createPageOpener,
       // Content Type Templates
-      effectiveRole,
       backendPermissions,
+      roleName,
       permissionsOutcome,
       branchTemplates,
       templatesLoading,

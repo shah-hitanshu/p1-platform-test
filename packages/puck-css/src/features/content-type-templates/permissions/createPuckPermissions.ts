@@ -4,7 +4,7 @@
  * Creates a resolvePermissions function for Puck that enforces template constraints.
  */
 
-import type { Template, TemplateSummary, ContentRole } from '../types.js';
+import type { Template, TemplateSummary } from '../types.js';
 
 /**
  * Puck permission flags for a component.
@@ -44,7 +44,8 @@ export type PuckPermissionResolver = (
 ) => PuckPermissions;
 
 /**
- * Create a Puck permissions resolver based on template and user role.
+ * Create a Puck permissions resolver from the template and the user's backend
+ * permissions.
  *
  * A canvas component is pinned when its own `props.id` is a slot id that maps
  * to `true` in `root.props._pinMap` and has a matching component instance in
@@ -54,16 +55,16 @@ export type PuckPermissionResolver = (
  * Permission logic:
  * - **Pinned components**: drag=false, delete=false for all roles
  * - **Non-pinned components**:
- *   - Admin/Editor: full permissions
- *   - Junior Editor: no structural permissions (drag/delete/insert/duplicate)
+ *   - canEditDocuments: full permissions
+ *   - otherwise: no structural permissions (drag/delete/insert/duplicate)
  * - **Blank pages (no template)**:
- *   - Admin/Editor: full permissions
- *   - Junior Editor: no structural permissions
+ *   - canEditDocuments: full permissions
+ *   - otherwise: no structural permissions
  * - **Historical versions**: all structural permissions false for all roles
  *
  * @param template - Template this document is bound to (null for blank pages;
  *   a metadata-only summary carries no pins)
- * @param role - User's content role
+ * @param canEditDocuments - The backend flag; false locks all structural edits
  * @param isHistoricalVersion - Whether viewing a historical version (read-only)
  * @param canEditProps - Overrides prop-editing access when given. Omitted keeps
  *   the previous behavior, for callers on the three-argument signature.
@@ -71,7 +72,7 @@ export type PuckPermissionResolver = (
  *
  * @example
  * ```tsx
- * const resolvePermissions = createPuckPermissions(template, 'editor', false);
+ * const resolvePermissions = createPuckPermissions(template, true, false);
  *
  * <Puck
  *   config={puckConfig}
@@ -82,9 +83,8 @@ export type PuckPermissionResolver = (
  */
 export function createPuckPermissions(
   template: Template | TemplateSummary | null,
-  role: ContentRole,
+  canEditDocuments: boolean,
   isHistoricalVersion: boolean,
-  isReadOnly = false,
   canEditProps?: boolean
 ): PuckPermissionResolver {
   const pinnedSlotIds = new Set<string>();
@@ -117,10 +117,6 @@ export function createPuckPermissions(
   const editAllowed = canEditProps ?? true;
 
   return (item: PuckItem): PuckPermissions => {
-    if (isReadOnly) {
-      return { edit: false, drag: false, delete: false, insert: false, duplicate: false };
-    }
-
     // Historical versions: all structural permissions false
     if (isHistoricalVersion) {
       return {
@@ -133,7 +129,7 @@ export function createPuckPermissions(
       };
     }
 
-    const juniorEditorRestricted = role === 'junior-editor';
+    const structureLocked = !canEditDocuments;
 
     // Pinned slot: locked for all roles when the item carries a pinned slot id
     const itemId = item.props?.id;
@@ -142,17 +138,17 @@ export function createPuckPermissions(
         edit: editAllowed,
         drag: false,
         delete: false,
-        insert: !juniorEditorRestricted,
-        duplicate: !juniorEditorRestricted,
+        insert: !structureLocked,
+        duplicate: !structureLocked,
       };
     }
 
     return {
       edit: editAllowed,
-      drag: !juniorEditorRestricted,
-      delete: !juniorEditorRestricted,
-      insert: !juniorEditorRestricted,
-      duplicate: !juniorEditorRestricted,
+      drag: !structureLocked,
+      delete: !structureLocked,
+      insert: !structureLocked,
+      duplicate: !structureLocked,
     };
   };
 }

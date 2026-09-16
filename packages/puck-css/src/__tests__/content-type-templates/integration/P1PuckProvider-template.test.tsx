@@ -102,7 +102,6 @@ describe('P1PuckProvider - Template Integration', () => {
           siteId="site-1"
           branchId="branch-1"
           userId="user-1"
-          userRole="editor"
         >
           {children}
         </P1PuckProvider>
@@ -137,7 +136,6 @@ describe('P1PuckProvider - Template Integration', () => {
           siteId="site-1"
           branchId="branch-1"
           userId="user-1"
-          userRole="admin"
         >
           {children}
         </P1PuckProvider>
@@ -176,7 +174,6 @@ describe('P1PuckProvider - Template Integration', () => {
           siteId="site-1"
           branchId="branch-1"
           userId="user-1"
-          userRole="admin"
         >
           {children}
         </P1PuckProvider>
@@ -209,7 +206,6 @@ describe('P1PuckProvider - Template Integration', () => {
           siteId="site-1"
           branchId="branch-1"
           userId="user-1"
-          userRole="editor"
         >
           {children}
         </P1PuckProvider>
@@ -235,7 +231,6 @@ describe('P1PuckProvider - Template Integration', () => {
           siteId="site-1"
           branchId="branch-1"
           userId="user-1"
-          userRole="editor"
         >
           {children}
         </P1PuckProvider>
@@ -270,7 +265,7 @@ describe('P1PuckProvider - Template Integration', () => {
     expect(nonPinnedPerms.delete).toBe(true);
   });
 
-  it('should expose userRole in context', async () => {
+  it('should expose the backend roleName and permissions in context', async () => {
     (mockClient as any).auth.getRole.mockResolvedValue({ roleName: 'ADMIN', permissions: ADMIN_PERMS });
     const { result } = renderHook(() => useP1Puck(), {
       wrapper: ({ children }) => (
@@ -285,10 +280,11 @@ describe('P1PuckProvider - Template Integration', () => {
       ),
     });
 
-    await waitFor(() => expect(result.current.userRole).toBe('admin'));
+    await waitFor(() => expect(result.current.roleName).toBe('ADMIN'));
+    expect(result.current.permissions).toEqual(ADMIN_PERMS);
   });
 
-  it('should default userRole to "editor" when not provided', async () => {
+  it('should resolve the EDITOR role from the backend', async () => {
     const { result } = renderHook(() => useP1Puck(), {
       wrapper: ({ children }) => (
         <P1PuckProvider
@@ -302,6 +298,8 @@ describe('P1PuckProvider - Template Integration', () => {
       ),
     });
 
-    await waitFor(() => expect(result.current.userRole).toBe('editor'));
+    await waitFor(() => expect(result.current.roleName).toBe('EDITOR'));
+    expect(result.current.permissions?.canEditDocuments).toBe(true);
+    expect(result.current.permissions?.canManageTemplates).toBe(false);
   });
 });

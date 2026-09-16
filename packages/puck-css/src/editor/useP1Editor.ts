@@ -18,7 +18,6 @@ import { useVersions } from '../versioning/useVersions.js';
 import { useP1Auth } from '../auth/index.js';
 import type { P1PuckContextValue } from '../core/types.js';
 import { isDocumentGoneError, isDocumentNotFoundError } from '../data/utils.js';
-import { canCreatePages } from '../features/content-type-templates/permissions/role-permissions.js';
 import { useP1Plugin } from './useP1Plugin.js';
 import { useP1Overrides } from './useP1Overrides.js';
 import { withFreshFieldTypes } from './freshFieldTypes.js';
@@ -516,8 +515,7 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
     [ccr, refreshVersions, documentPath, getToken],
   );
 
-  const canRevert =
-    ccr.userRole === 'admin' || ccr.userRole === 'editor' || ccr.userRole === 'author';
+  const canRevert = ccr.permissions?.canEditDocuments ?? false;
 
   // Pushes freshly loaded documents into the live Puck instance, replacing
   // the remount-on-document-switch behavior the old document-scoped puckKey
@@ -557,14 +555,14 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
     () =>
       notFound
         ? {
-            canCreate: canCreatePages(ccr.userRole),
+            canCreate: ccr.permissions?.canEditDocuments ?? false,
             onCreate: async () => {
               await ccr.createDocument(documentPath, null, titleFromPath(documentPath));
               retry();
             },
           }
         : null,
-    [notFound, documentPath, ccr.userRole, ccr.createDocument, retry],
+    [notFound, documentPath, ccr.permissions, ccr.createDocument, retry],
   );
 
   const p1Plugin = useP1Plugin({
@@ -687,6 +685,7 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
 
   const readOnly =
     ccr.isViewingHistoricalVersion ||
+    ccr.permissionsOutcome === 'pending' ||
     (ccr.permissions ? !ccr.permissions.canEditDocuments : false);
 
   // =========================================================================
@@ -811,13 +810,11 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
   // Assemble puckProps
   // =========================================================================
 
-  // Key that forces Puck to remount on role change (let puck internally manage the change on document change),
-  // ensuring clean undo history, sidebar state, and fresh permission cache.
-  // Puck caches resolvePermissions results per component instance — the
-  // cache is only invalidated when component data changes, not when the
-  // resolver function changes. Including userRole in the key forces a
-  // clean remount with an empty cache when roles switch.
-  const puckKey = `p1-${ccr.userRole}`;
+  // Key that forces a clean-slate Puck remount on genuine role change.
+  // PermissionRefresher (P1Plugin.tsx) is the normal permission cache invalidator;
+  // this key is the fallback for a full remount when the role itself changes,
+  // giving clean undo history and sidebar state.
+  const puckKey = `p1-${ccr.roleName ?? 'pending'}`;
 
   // Sidebar visibility for the initial mount. puckKey is the dependency on
   // purpose even though it is not read here: a new key remounts Puck, which

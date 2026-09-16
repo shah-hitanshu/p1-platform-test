@@ -1,11 +1,9 @@
 /**
- * Component 3 Tests: User Role Wiring
+ * Component 3 Tests: Role Wiring
  *
  * Tests that:
- * 1. P1Config accepts userRole
- * 2. P1App passes userRole through to P1PuckProvider
- * 3. Default userRole is 'editor'
- * 4. Custom userRole is respected in context
+ * 1. P1Config carries no role — the backend decides
+ * 2. P1PuckProvider exposes the backend roleName and permissions in context
  */
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
@@ -129,27 +127,16 @@ describe('User role wiring', () => {
     vi.clearAllMocks();
   });
 
-  it('P1Config accepts userRole field', async () => {
-    const { createP1Config } = await import('../../src/core/config.js');
-    const config = createP1Config({
-      CSS_BASE_URL: 'https://css.example.com',
-      CSS_SITE_ID: 'site-1',
-    }, {
-      overrides: { userRole: 'admin' },
-    });
-    expect(config.userRole).toBe('admin');
-  });
-
-  it('P1Config defaults userRole to undefined when not set', async () => {
+  it('P1Config carries no role field', async () => {
     const { createP1Config } = await import('../../src/core/config.js');
     const config = createP1Config({
       CSS_BASE_URL: 'https://css.example.com',
       CSS_SITE_ID: 'site-1',
     });
-    expect(config.userRole).toBeUndefined();
+    expect(config).not.toHaveProperty('userRole');
   });
 
-  it('P1PuckProvider defaults userRole to editor', async () => {
+  it('P1PuckProvider exposes the EDITOR role from the backend', async () => {
     const client = createMockClient();
     (client as any).auth = { getRole: vi.fn().mockResolvedValue({ roleName: 'EDITOR', permissions: EDITOR_PERMS }) };
     const wrapper = ({ children }: { children: React.ReactNode }) =>
@@ -161,10 +148,11 @@ describe('User role wiring', () => {
       }, children);
 
     const { result } = renderHook(() => useP1Puck(), { wrapper });
-    await waitFor(() => expect(result.current.userRole).toBe('editor'));
+    await waitFor(() => expect(result.current.roleName).toBe('EDITOR'));
+    expect(result.current.permissions).toEqual(EDITOR_PERMS);
   });
 
-  it('P1PuckProvider accepts and exposes admin role', async () => {
+  it('P1PuckProvider exposes the ADMIN role from the backend', async () => {
     const client = createMockClient();
     (client as any).auth = { getRole: vi.fn().mockResolvedValue({ roleName: 'ADMIN', permissions: ADMIN_PERMS }) };
     const wrapper = ({ children }: { children: React.ReactNode }) =>
@@ -176,21 +164,24 @@ describe('User role wiring', () => {
       }, children);
 
     const { result } = renderHook(() => useP1Puck(), { wrapper });
-    await waitFor(() => expect(result.current.userRole).toBe('admin'));
+    await waitFor(() => expect(result.current.roleName).toBe('ADMIN'));
+    expect(result.current.permissions).toEqual(ADMIN_PERMS);
   });
 
-  it('P1PuckProvider accepts and exposes junior-editor role', () => {
+  it('P1PuckProvider exposes the VIEWER role with canEditDocuments=false', async () => {
     const client = createMockClient();
+    const viewerPerms = { ...EDITOR_PERMS, canEdit: false, canCreateBranch: false, canEditDocuments: false, canCreateCheckpoint: false, canProposeMerge: false, canMerge: false };
+    (client as any).auth = { getRole: vi.fn().mockResolvedValue({ roleName: 'VIEWER', permissions: viewerPerms }) };
     const wrapper = ({ children }: { children: React.ReactNode }) =>
       React.createElement(P1PuckProvider, {
         client,
         siteId: 'site-1',
         branchId: 'branch-1',
         userId: 'user-789',
-        userRole: 'junior-editor',
       }, children);
 
     const { result } = renderHook(() => useP1Puck(), { wrapper });
-    expect(result.current.userRole).toBe('junior-editor');
+    await waitFor(() => expect(result.current.roleName).toBe('VIEWER'));
+    expect(result.current.permissions?.canEditDocuments).toBe(false);
   });
 });

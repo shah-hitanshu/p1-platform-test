@@ -72,7 +72,7 @@ export function ActionBarPinButton(): React.ReactElement | null {
     return null;
   }
 
-  const isAdmin = ccr.userRole === 'admin';
+  const canManageTemplates = ccr.permissions?.canManageTemplates ?? false;
   const isPinned = pinMap[selectedItem.props.id] ?? false;
 
   return (
@@ -81,7 +81,7 @@ export function ActionBarPinButton(): React.ReactElement | null {
       onClick={handleTogglePin}
       active={isPinned}
       // Historical versions are read-only; a toggle there would never persist.
-      disabled={!isAdmin || ccr.isViewingHistoricalVersion}
+      disabled={!canManageTemplates || ccr.isViewingHistoricalVersion}
     >
       <Icon
         iconName={isPinned ? 'lock' : 'lockOpen'}

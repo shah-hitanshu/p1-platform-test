@@ -9,7 +9,6 @@
 import type React from "react";
 import type { Config, Plugin } from "@puckeditor/core";
 import type {
-  ContentRole,
   UseP1EditorOptions,
   UseP1OverridesOptions,
 } from "@pantheon-systems/puck-css";
@@ -86,12 +85,4 @@ export type CreateP1EditorClientOptions = {
    * gate, so it only mounts for a signed-in user.
    */
   wrapEditor?: (children: React.ReactNode) => React.ReactNode;
-  /** The content role the editor starts in. Defaults to `editor`. */
-  userRole?: ContentRole;
-  /**
-   * Shows the role picker, which re-renders the editor as another content role.
-   * A development affordance — gate it on an env var rather than shipping it to
-   * production readers.
-   */
-  roleSwitcher?: boolean;
 };

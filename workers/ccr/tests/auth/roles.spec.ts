@@ -85,18 +85,18 @@ describe('Phase 2.2: Role Definitions', () => {
   });
 
   describe('EDITOR role', () => {
-    it('should allow editing but not merging to main or managing grants', async () => {
+    it('should allow editing, publishing and merging to main but not workstreams, grants or templates', async () => {
       const { ROLES } = await import('../../src/auth/roles');
       const editor = ROLES.EDITOR;
 
       expect(editor.canView).toBe(true);
       expect(editor.canEdit).toBe(true);
-      expect(editor.canCreateBranch).toBe(true);
+      expect(editor.canCreateBranch).toBe(false);
       expect(editor.canEditDocuments).toBe(true);
       expect(editor.canCreateCheckpoint).toBe(true);
       expect(editor.canProposeMerge).toBe(true);
       expect(editor.canMerge).toBe(true);
-      expect(editor.canMergeToMain).toBe(false);
+      expect(editor.canMergeToMain).toBe(true);
       expect(editor.canManageGrants).toBe(false);
       expect(editor.canManageTemplates).toBe(false);
     });

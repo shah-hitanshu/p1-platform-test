@@ -165,9 +165,9 @@ function handleRequest(req: IncomingMessage, res: ServerResponse): void {
     return json(res, 200, {
       roleName: "EDITOR",
       permissions: {
-        canView: true, canEdit: true, canCreateBranch: true, canEditDocuments: true,
+        canView: true, canEdit: true, canCreateBranch: false, canEditDocuments: true,
         canCreateCheckpoint: true, canProposeMerge: true, canMerge: true,
-        canMergeToMain: false, canManageGrants: false, canManageTemplates: false,
+        canMergeToMain: true, canManageGrants: false, canManageTemplates: false,
       },
     });
   }

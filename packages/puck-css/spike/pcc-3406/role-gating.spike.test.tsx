@@ -306,7 +306,7 @@ describe('spike item 3 · the persisted autosave payload stays clean', () => {
     const onChange = vi.fn();
     const { container } = renderPuck('editor', {
       onChange,
-      metadata: { inheritedOgTitle: 'Site default title', userRole: 'editor' },
+      metadata: { inheritedOgTitle: 'Site default title', viewerHint: 'editor' },
     });
     await waitForRootFields(container);
 
@@ -327,7 +327,7 @@ describe('spike item 3 · the persisted autosave payload stays clean', () => {
 
     expect(root).not.toHaveProperty('readOnly');
     expect(Object.keys(root.props)).not.toContain('_seo');
-    expect(Object.keys(root.props)).not.toContain('userRole');
+    expect(Object.keys(root.props)).not.toContain('viewerHint');
     expect(root.props._meta).not.toHaveProperty('inheritedOgTitle');
     expect(Object.keys(root.props).sort()).toEqual(['_meta', 'title']);
   });

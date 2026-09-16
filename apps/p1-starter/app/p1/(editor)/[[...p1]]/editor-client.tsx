@@ -36,7 +36,6 @@ export const EditorClientWrapper = createP1EditorClient({
   puckConfig: config,
   signInPage: <P1SignInPage />,
   wrapEditor: (editor) => <P1ChatbotProvider>{editor}</P1ChatbotProvider>,
-  roleSwitcher: process.env.NEXT_PUBLIC_ENABLE_ROLE_SWITCHER === "true",
   useExtensions: useEditorExtensions,
   pluginOptions: {
     logoUrl: P1_ASSETS.LOGO_URL,

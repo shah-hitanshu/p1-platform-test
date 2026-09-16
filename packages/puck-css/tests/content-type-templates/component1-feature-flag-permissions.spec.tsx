@@ -209,7 +209,6 @@ describe('resolvePermissions exposed on context', () => {
         siteId: 'site-1',
         branchId: 'branch-1',
         userId: 'user-789',
-        userRole: 'editor',
       }, children);
 
     const { result } = renderHook(() => useP1Puck(), { wrapper });
@@ -218,7 +217,7 @@ describe('resolvePermissions exposed on context', () => {
     expect(typeof result.current.resolvePermissions).toBe('function');
   });
 
-  it('context exposes userRole with default value', async () => {
+  it('context exposes the backend-resolved EDITOR role', async () => {
     vi.useRealTimers();
     (client as any).auth = { getRole: vi.fn().mockResolvedValue({ roleName: 'EDITOR', permissions: EDITOR_PERMS }) };
     const wrapper = ({ children }: { children: React.ReactNode }) =>
@@ -230,10 +229,11 @@ describe('resolvePermissions exposed on context', () => {
       }, children);
 
     const { result } = renderHook(() => useP1Puck(), { wrapper });
-    await waitFor(() => expect(result.current.userRole).toBe('editor'));
+    await waitFor(() => expect(result.current.roleName).toBe('EDITOR'));
+    expect(result.current.permissions).toEqual(EDITOR_PERMS);
   });
 
-  it('context exposes custom userRole when provided', async () => {
+  it('context exposes the backend-resolved ADMIN role', async () => {
     vi.useRealTimers();
     (client as any).auth = { getRole: vi.fn().mockResolvedValue({ roleName: 'ADMIN', permissions: ADMIN_PERMS }) };
     const wrapper = ({ children }: { children: React.ReactNode }) =>
@@ -245,6 +245,7 @@ describe('resolvePermissions exposed on context', () => {
       }, children);
 
     const { result } = renderHook(() => useP1Puck(), { wrapper });
-    await waitFor(() => expect(result.current.userRole).toBe('admin'));
+    await waitFor(() => expect(result.current.roleName).toBe('ADMIN'));
+    expect(result.current.permissions).toEqual(ADMIN_PERMS);
   });
 });

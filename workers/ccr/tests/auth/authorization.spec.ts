@@ -70,7 +70,7 @@ describe('Phase 2.2: Branch-Level Authorization', () => {
 
         expect(result.roleName).toBe('EDITOR');
         expect(result.role.canMerge).toBe(true);
-        expect(result.role.canMergeToMain).toBe(false);
+        expect(result.role.canCreateBranch).toBe(false);
       });
 
       it('should return EDITOR for team_member', async () => {
@@ -329,10 +329,10 @@ describe('Phase 2.2: Branch-Level Authorization', () => {
         pantheonSiteRoles: { 'site-1': 'developer' }, // EDITOR
       });
 
-      const canMergeToMain = await hasPermission(
-        principal, 'site-1', 'branch-1', 'canMergeToMain',
+      const canCreateBranch = await hasPermission(
+        principal, 'site-1', 'branch-1', 'canCreateBranch',
       );
-      expect(canMergeToMain).toBe(false);
+      expect(canCreateBranch).toBe(false);
 
       const canManageGrants = await hasPermission(
         principal, 'site-1', 'branch-1', 'canManageGrants',
@@ -367,7 +367,7 @@ describe('Phase 2.2: Branch-Level Authorization', () => {
       });
 
       await expect(
-        assertPermission(principal, 'site-1', 'branch-1', 'canMergeToMain'),
+        assertPermission(principal, 'site-1', 'branch-1', 'canCreateBranch'),
       ).rejects.toThrow(AuthorizationError);
     });
 

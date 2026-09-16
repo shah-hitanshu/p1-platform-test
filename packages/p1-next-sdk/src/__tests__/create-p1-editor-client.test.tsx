@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import React from "react";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const h = vi.hoisted(() => {
@@ -39,9 +39,9 @@ vi.mock("@puckeditor/core", () => ({
 }));
 
 vi.mock("@pantheon-systems/puck-css", () => ({
-  P1App: ({ config, children, loginFallback }: any) =>
+  P1App: ({ children, loginFallback }: any) =>
     h.state.authenticated ? (
-      <div data-testid="p1-app" data-user-role={config.userRole}>
+      <div data-testid="p1-app">
         {children}
       </div>
     ) : (
@@ -310,38 +310,12 @@ describe("customization slots", () => {
     expect(opts.overrideOptions.onPublishSuccess).toBe(onPublishSuccess);
   });
 
-  it("starts in the requested content role", () => {
-    const Client = createP1EditorClient({ puckConfig, userRole: "admin" });
-    render(<Client />);
-
-    expect(screen.getByTestId("p1-app").getAttribute("data-user-role")).toBe("admin");
-  });
-
-  it("keeps the role picker out of the page unless asked for", () => {
+  it("renders no role picker; permissions come from the backend", () => {
     const Client = createP1EditorClient({ puckConfig });
     render(<Client />);
     expect(screen.queryByTestId("p1-role-switcher")).toBeNull();
   });
 
-  it("offers every content role the editor understands", () => {
-    const Client = createP1EditorClient({ puckConfig, roleSwitcher: true, userRole: 'editor' });
-    render(<Client />);
-
-    const options = Array.from(
-      screen.getByTestId("p1-role-switcher").querySelectorAll("option"),
-    ).map((o) => o.value);
-    expect(options).toEqual(["admin", "editor", "author", "junior-editor"]);
-  });
-
-  it("re-renders the editor as the role the picker selects", () => {
-    const Client = createP1EditorClient({ puckConfig, roleSwitcher: true, userRole: 'editor' });
-    render(<Client />);
-
-    const select = screen.getByTestId("p1-role-switcher").querySelector("select")!;
-    fireEvent.change(select, { target: { value: "junior-editor" } });
-
-    expect(screen.getByTestId("p1-app").getAttribute("data-user-role")).toBe("junior-editor");
-  });
 });
 
 describe("render-time extensions", () => {

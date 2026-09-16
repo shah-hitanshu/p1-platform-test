@@ -1,8 +1,8 @@
 /**
  * P1PuckProvider — backend role resolution integration tests.
  *
- * Verifies that the provider resolves userRole from the advisory auth endpoint
- * rather than from the userRole prop.
+ * Verifies that the provider exposes the advisory auth endpoint's roleName and
+ * permissions, and nothing else decides them.
  */
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
@@ -31,6 +31,7 @@ const EDITOR_PERMS = {
   canCreateCheckpoint: true, canProposeMerge: true, canMerge: true,
   canMergeToMain: false, canManageGrants: false, canManageTemplates: false,
 };
+const NO_ACCESS_PERMS = Object.fromEntries(Object.keys(EDITOR_PERMS).map((k) => [k, false])) as typeof EDITOR_PERMS;
 const ADMIN_PERMS = { ...EDITOR_PERMS, canMergeToMain: true, canManageGrants: true, canManageTemplates: true };
 const VIEWER = { ...EDITOR_PERMS, canEditDocuments: false, canManageTemplates: false };
 const ADMIN = ADMIN_PERMS;
@@ -63,43 +64,48 @@ function wrapper(client: P1Client) {
 describe('P1PuckProvider — role resolution', () => {
   afterEach(() => vi.clearAllMocks());
 
-  it('grants admin role from ADMIN backend response', async () => {
+  it('exposes ADMIN roleName and permissions from the backend response', async () => {
     const client = createMockClient(async () => ({ roleName: 'ADMIN', permissions: ADMIN_PERMS }));
     const { result } = renderHook(() => useP1Puck(), { wrapper: wrapper(client) });
-    await waitFor(() => expect(result.current.userRole).toBe('admin'));
+    await waitFor(() => expect(result.current.roleName).toBe('ADMIN'));
+    expect(result.current.permissions).toEqual(ADMIN_PERMS);
     expect(result.current.permissionsOutcome).toBe('granted');
   });
 
-  it('grants junior-editor role from VIEWER backend response', async () => {
+  it('exposes VIEWER roleName with canEditDocuments=false', async () => {
     const viewerPerms = { ...EDITOR_PERMS, canEditDocuments: false, canManageTemplates: false };
     const client = createMockClient(async () => ({ roleName: 'VIEWER', permissions: viewerPerms }));
     const { result } = renderHook(() => useP1Puck(), { wrapper: wrapper(client) });
     await waitFor(() => expect(result.current.permissionsOutcome).toBe('granted'));
-    expect(result.current.userRole).toBe('junior-editor');
+    expect(result.current.roleName).toBe('VIEWER');
+    expect(result.current.permissions?.canEditDocuments).toBe(false);
   });
 
-  it('starts as junior-editor while pending', () => {
+  it('has no roleName or permissions while pending', () => {
     let resolve: (v: unknown) => void;
     const client = createMockClient(() => new Promise((r) => { resolve = r; }) as Promise<{ roleName: string; permissions: typeof EDITOR_PERMS }>);
     const { result } = renderHook(() => useP1Puck(), { wrapper: wrapper(client) });
-    // Before resolution, outcome is pending and role is most-restrictive
+    // Before resolution nothing is known, so nothing is granted
     expect(result.current.permissionsOutcome).toBe('pending');
-    expect(result.current.userRole).toBe('junior-editor');
+    expect(result.current.roleName).toBeNull();
+    expect(result.current.permissions).toBeNull();
     resolve!({ roleName: 'EDITOR', permissions: EDITOR_PERMS });
   });
 
   it('refuses on NO_ACCESS', async () => {
-    const client = createMockClient(async () => ({ roleName: 'NO_ACCESS', permissions: EDITOR_PERMS }));
+    const client = createMockClient(async () => ({ roleName: 'NO_ACCESS', permissions: NO_ACCESS_PERMS }));
     const { result } = renderHook(() => useP1Puck(), { wrapper: wrapper(client) });
     await waitFor(() => expect(result.current.permissionsOutcome).toBe('refused'));
-    expect(result.current.userRole).toBe('junior-editor');
+    expect(result.current.roleName).toBe('NO_ACCESS');
+    expect(result.current.permissions).toBeNull();
   });
 
   it('goes unavailable on network error', async () => {
     const client = createMockClient(async () => { throw new Error('Network failure'); });
     const { result } = renderHook(() => useP1Puck(), { wrapper: wrapper(client) });
     await waitFor(() => expect(result.current.permissionsOutcome).toBe('unavailable'));
-    expect(result.current.userRole).toBe('junior-editor');
+    expect(result.current.roleName).toBeNull();
+    expect(result.current.permissions).toBeNull();
   });
 });
 

@@ -11,6 +11,7 @@ import { makePrincipal } from '../helpers/principal';
 import { makeBranch } from '../helpers/branch';
 import { users } from '../../src/db/schema';
 import { stubDatabase, type DatabaseStub } from '../__stubs__/database';
+import { ROLES } from '../../src/auth/roles';
 
 // Mock the services
 vi.mock('../../src/services', async () => {
@@ -28,6 +29,9 @@ vi.mock('../../src/services', async () => {
     listSites: vi.fn(),
     listBranches: vi.fn(),
     getMainBranch: vi.fn(),
+    // Site creation is an org-admin act; default every caller to an owner so
+    // the existing create tests keep exercising the happy path.
+    getOrganizationsForUser: vi.fn().mockResolvedValue([{ id: 'org-1', role: 'owner' }]),
     getUserOwnedOrg: vi.fn(),
     linkSiteToOrganization: vi.fn(),
     isUserInOrganization: vi.fn(),
@@ -92,6 +96,7 @@ describe('Phase 7.1.1b: Site API Routes', () => {
       expect(response.status).toBe(200);
       const body = await readJson(response);
       expect(body.role).toBe('ADMIN');
+      expect(body.permissions).toEqual(ROLES.ADMIN);
       expect(getEffectiveRole).toHaveBeenCalledWith(principal, 'site-1', 'main-1', masClient);
       expect(getSiteRole).not.toHaveBeenCalled();
     });
@@ -134,6 +139,7 @@ describe('Phase 7.1.1b: Site API Routes', () => {
       expect(response.status).toBe(200);
       const body = await readJson(response);
       expect(body.role).toBe('NO_ACCESS');
+      expect(body.permissions).toEqual(ROLES.NO_ACCESS);
       expect(getEffectiveRole).not.toHaveBeenCalled();
     });
   });
@@ -200,6 +206,44 @@ describe('Phase 7.1.1b: Site API Routes', () => {
       expect(body.pantheonSiteId).toBe('site-abc-123');
       expect(body.name).toBe('Marketing Website');
       expect(body.workflowSettings.mergeApprovalMode).toBe('required');
+    });
+
+    it('refuses a plain organization member', async () => {
+      const { handleSiteRoutes } = await import('../../src/routes/site-api');
+      const services = await import('../../src/services');
+      vi.mocked(services.getOrganizationsForUser).mockResolvedValueOnce([{ id: 'org-1', role: 'member' }] as never);
+
+      const request = new Request('https://api.example.com/api/sites', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Marketing Website' }),
+      });
+      const response = await handleSiteRoutes(request, {
+        principal: makePrincipal({ id: 'user-1', type: 'user', dbUserId: 'db-user-1' }),
+      });
+
+      expect(response.status).toBe(403);
+      expect(services.createSite).not.toHaveBeenCalled();
+    });
+
+    it('lets a superadmin create a site without an organization role', async () => {
+      const { handleSiteRoutes } = await import('../../src/routes/site-api');
+      const services = await import('../../src/services');
+      const { isSuperAdmin } = await import('../../src/utils/admin-check');
+      vi.mocked(isSuperAdmin).mockResolvedValueOnce(true);
+      vi.mocked(services.createSite).mockResolvedValueOnce({ id: 'site-uuid', name: 'Marketing Website' } as never);
+
+      const request = new Request('https://api.example.com/api/sites', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Marketing Website' }),
+      });
+      const response = await handleSiteRoutes(request, {
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
+      });
+
+      expect(response.status).toBe(201);
+      expect(services.getOrganizationsForUser).not.toHaveBeenCalled();
     });
 
     it('should create a site without a pantheonSiteId', async () => {
@@ -1004,6 +1048,7 @@ describe('Phase 7.1.1b: Site API Routes', () => {
       expect(response.status).toBe(200);
       const body = await readJson(response);
       expect(body.role).toBe('EDITOR');
+      expect(body.permissions).toEqual(ROLES.EDITOR);
     });
 
     it('surfaces the owner name and picture', async () => {

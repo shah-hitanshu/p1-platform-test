@@ -143,13 +143,13 @@ describe('Phase 2.2: Permission Middleware', () => {
       const res = createMockResponse();
       const next = vi.fn();
 
-      const middleware = requirePermission('canMergeToMain');
+      const middleware = requirePermission('canCreateBranch');
       await middleware(req, res, next);
 
       expect(res.status).toHaveBeenCalledWith(403);
       expect(res.json).toHaveBeenCalledWith(
         expect.objectContaining({
-          error: expect.stringContaining('canMergeToMain'),
+          error: expect.stringContaining('canCreateBranch'),
         }),
       );
       expect(next).not.toHaveBeenCalled();

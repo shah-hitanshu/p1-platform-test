@@ -27,7 +27,7 @@ const mockCcrContext = {
   loadVersion: vi.fn(),
   viewingVersion: null,
   userId: 'user-1',
-  userRole: 'editor' as const,
+  roleName: 'EDITOR' as const,
   saveStatus: 'idle' as const,
   lastSaved: null,
   saveError: null,

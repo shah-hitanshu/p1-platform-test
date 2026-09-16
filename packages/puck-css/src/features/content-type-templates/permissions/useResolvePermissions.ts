@@ -1,41 +1,27 @@
 import { useState, useEffect } from 'react';
-import type { P1Client, RolePermissions } from '@pantheon-systems/css-client';
-import type { ContentRole } from '../types.js';
+import type { P1Client, RoleName, RolePermissions } from '@pantheon-systems/css-client';
 
 export type PermissionsOutcome = 'pending' | 'granted' | 'refused' | 'unavailable';
 
-export interface UseResolveContentRoleOptions {
+export interface UseResolvePermissionsOptions {
   client: P1Client | null;
   siteId: string;
   branchId: string;
 }
 
-export interface UseResolveContentRoleReturn {
+export interface UseResolvePermissionsReturn {
   permissions: RolePermissions | null;
+  roleName: RoleName | null;
   outcome: PermissionsOutcome;
 }
 
-type CcrRoleName = 'ADMIN' | 'EDITOR' | 'VIEWER' | 'NO_ACCESS';
-
-function mapCssRoleToContentRole(ccrRole: CcrRoleName): ContentRole {
-  switch (ccrRole) {
-    case 'ADMIN':
-      return 'admin';
-    case 'EDITOR':
-      return 'editor';
-    case 'VIEWER':
-    case 'NO_ACCESS':
-    default:
-      return 'junior-editor';
-  }
-}
-
-export function useResolveContentRole({
+export function useResolvePermissions({
   client,
   siteId,
   branchId,
-}: UseResolveContentRoleOptions): UseResolveContentRoleReturn {
+}: UseResolvePermissionsOptions): UseResolvePermissionsReturn {
   const [permissions, setPermissions] = useState<RolePermissions | null>(null);
+  const [roleName, setRoleName] = useState<RoleName | null>(null);
   const [outcome, setOutcome] = useState<PermissionsOutcome>('pending');
   const [retryCount, setRetryCount] = useState(0);
 
@@ -47,13 +33,9 @@ export function useResolveContentRole({
     return () => clearTimeout(id);
   }, [outcome, retryCount]);
 
-  // Reset retry budget when identity changes, not on every fetch trigger.
-  useEffect(() => {
-    setRetryCount(0);
-  }, [client, siteId, branchId]);
-
   useEffect(() => {
     setPermissions(null);
+    setRoleName(null);
     setOutcome('pending');
 
     if (!client || !siteId || !branchId) return;
@@ -65,13 +47,14 @@ export function useResolveContentRole({
         const role = await client.auth.getRole(siteId, branchId);
         if (cancelled) return;
 
-        if (role.roleName === 'NO_ACCESS') {
-          setOutcome('refused');
-          return;
-        }
+        setRoleName(role.roleName);
 
         const p = role.permissions;
-        if (!p.canView && !p.canEdit && !p.canEditDocuments) {
+        if (!p) {
+          setOutcome('unavailable');
+          return;
+        }
+        if (!p.canView) {
           setOutcome('refused');
           return;
         }
@@ -88,7 +71,5 @@ export function useResolveContentRole({
     return () => { cancelled = true; };
   }, [client, siteId, branchId, retryCount]);
 
-  return { permissions, outcome };
+  return { permissions, roleName, outcome };
 }
-
-export { mapCssRoleToContentRole };

@@ -16,6 +16,7 @@ import {
   listSites,
   listBranches,
   getMainBranch,
+  getOrganizationsForUser,
   getUserOwnedOrg,
   linkSiteToOrganization,
   DuplicatePantheonSiteIdError,
@@ -123,6 +124,20 @@ async function handleCreateSite(
       'Site creation requires an authenticated user session. An agent API key cannot create sites; connect as a user and retry.',
       403,
     );
+  }
+
+  // Creating a site is organization administration: an owner or admin of an
+  // active organization may do it, a plain member may not.
+  if (!(await isSuperAdmin(context.principal))) {
+    const memberships = await getOrganizationsForUser(
+      context.principal.dbUserId ?? context.principal.id,
+    );
+    if (!memberships.some((m) => m.role === 'owner' || m.role === 'admin')) {
+      return errorResponse(
+        'Creating a site requires an admin or owner role in your organization.',
+        403,
+      );
+    }
   }
 
   const body = await parseJsonBody<CreateSiteBody>(request);
@@ -263,9 +278,10 @@ async function handleGetSite(context: SiteRouteContext, mainBranch: Branch): Pro
     return errorResponse('Site not found', 404);
   }
 
-  // The dashboard gates its controls on this value, so it has to be the role
-  // the write routes enforce with, not the baseline grant alone. Service
-  // principals sit outside the role system and keep the baseline lookup.
+  // The dashboard gates its controls on the permissions returned here, so the
+  // role has to be the one the write routes enforce with, not the baseline
+  // grant alone. Service principals sit outside the role system and keep the
+  // baseline lookup.
   const [role, owner] = await Promise.all([
     context.principal.type === 'service'
       ? getSiteRole(context.principal, context.siteId, context.masClient)

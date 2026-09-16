@@ -6,7 +6,7 @@ const { puckSelectorMock, mockDispatch, mockCcrContext } = vi.hoisted(() => ({
   puckSelectorMock: vi.fn(),
   mockDispatch: vi.fn(),
   mockCcrContext: {
-    userRole: 'admin' as string,
+    permissions: { canManageTemplates: true } as { canManageTemplates: boolean } | null,
     currentDocument: null as { path: string } | null,
     templates: [] as TemplateSummary[],
     isViewingHistoricalVersion: false,
@@ -79,7 +79,7 @@ function setPuckState(selectedItem: any, pinMap: Record<string, boolean> = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mockCcrContext.userRole = 'admin';
+  mockCcrContext.permissions = { canManageTemplates: true };
   mockCcrContext.currentDocument = null;
   mockCcrContext.templates = [];
   mockCcrContext.isViewingHistoricalVersion = false;
@@ -122,8 +122,8 @@ describe('ActionBarPinButton', () => {
     expect(container.innerHTML).toBe('');
   });
 
-  it('should show disabled pin for non-admin users', () => {
-    mockCcrContext.userRole = 'editor';
+  it('should show disabled pin without canManageTemplates', () => {
+    mockCcrContext.permissions = { canManageTemplates: false };
     setTemplateMode();
     setPuckState(mockContent[0]);
 
@@ -131,8 +131,8 @@ describe('ActionBarPinButton', () => {
     expect(screen.getByTestId('pin-action')).toBeDisabled();
   });
 
-  it('should show disabled pin for junior-editor role', () => {
-    mockCcrContext.userRole = 'junior-editor';
+  it('should show disabled pin while permissions are unresolved', () => {
+    mockCcrContext.permissions = null;
     setTemplateMode();
     setPuckState(mockContent[0]);
 
