@@ -34,6 +34,7 @@ import { ActiveMergeJobExistsError } from '../services/errors';
 import { reloadDocumentSessions } from '../services/document-session-reload';
 import { getLogger } from '@pantheon-systems/p1-telemetry';
 import {
+  assertMergeTarget,
   handleExecuteMergeRequestViaRunner,
   handleExecuteMergeViaRunner,
   handleGetMergeJob,
@@ -227,6 +228,7 @@ async function handleExecuteMerge(
   }
 
   await assertPermission(context.principal, context.siteId, body.sourceBranchId, 'canMerge');
+  await assertMergeTarget(context.principal, context.siteId, body.targetBranchId);
 
   let result;
 

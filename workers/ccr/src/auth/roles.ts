@@ -11,7 +11,7 @@ import type { RoleName, RolePermissions, PantheonRole, AgentSiteRole } from '../
 
 /**
  * Role definitions with their associated permissions.
- * Each role has 9 permission flags that control access to various operations.
+ * Each role has various permission flags that control access to various operations.
  */
 export const ROLES: Record<RoleName, RolePermissions> = {
   NO_ACCESS: {
@@ -79,9 +79,10 @@ const ROLE_ORDER: RoleName[] = ['NO_ACCESS', 'VIEWER', 'EDITOR', 'ADMIN'];
  * Pantheon roles map as follows:
  * - owner, admin -> ADMIN
  * - developer, team_member, author, editor -> EDITOR
+ * - viewer -> VIEWER
  * - undefined/unknown -> NO_ACCESS
  *
- * @param pantheonRole - The Pantheon site role (owner, admin, developer, team_member, author, editor)
+ * @param pantheonRole - The Pantheon site role (owner, admin, developer, team_member, author, editor, viewer)
  * @returns The corresponding system role name
  */
 export function mapPantheonRole(pantheonRole: PantheonRole | undefined): RoleName {
@@ -94,6 +95,8 @@ export function mapPantheonRole(pantheonRole: PantheonRole | undefined): RoleNam
     case 'author':
     case 'editor':
       return 'EDITOR';
+    case 'viewer':
+      return 'VIEWER';
     default:
       return 'NO_ACCESS';
   }

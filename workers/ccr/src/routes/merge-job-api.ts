@@ -10,7 +10,7 @@
  */
 
 import { getLogger } from '@pantheon-systems/p1-telemetry';
-import { getMergeRequest } from '../services';
+import { getBranch, getMergeRequest, TargetBranchNotFoundError } from '../services';
 import { assertPermission } from '../auth/authorization';
 import {
   createMergeJob,
@@ -453,6 +453,24 @@ export async function handleExecuteMergeRequestViaRunner(
   });
 }
 
+/**
+ * Merging into main is its own permission. Only the direct merge route lets the
+ * caller pick the target, so only its two handlers call this.
+ */
+export async function assertMergeTarget(
+  principal: MergeRouteContext['principal'],
+  siteId: string,
+  targetBranchId: string,
+): Promise<void> {
+  const target = await getBranch(targetBranchId);
+  if (target?.siteId !== siteId) {
+    throw new TargetBranchNotFoundError(targetBranchId);
+  }
+  if (target.isMain) {
+    await assertPermission(principal, siteId, targetBranchId, 'canMergeToMain');
+  }
+}
+
 /** Runner path for POST /merge/execute (direct branch merge, MR-less job). */
 export async function handleExecuteMergeViaRunner(
   request: Request,
@@ -465,6 +483,7 @@ export async function handleExecuteMergeViaRunner(
   }
 
   await assertPermission(context.principal, context.siteId, body.sourceBranchId, 'canMerge');
+  await assertMergeTarget(context.principal, context.siteId, body.targetBranchId);
 
   return await executeViaRunner(context, {
     sourceBranchId: body.sourceBranchId,

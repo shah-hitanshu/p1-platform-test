@@ -111,6 +111,7 @@ export async function dispatchRoute(
         siteId: route.params.siteId,
         action: route.params.action,
         principal,
+        masClient,
       }, env);
 
     case 'site-export':

@@ -24,6 +24,7 @@ const USER_ROLE_LABELS = {
   team_member: 'Team Member',
   author: 'Author',
   editor: 'Editor',
+  viewer: 'Viewer',
 } satisfies Record<PantheonRole, string>;
 
 const AGENT_ROLE_LABELS = {

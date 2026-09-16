@@ -17,6 +17,8 @@ vi.mock('../../src/services', () => ({
   executeMergeWithResolution: vi.fn(),
   handleMergeRoutes: vi.fn(),
   getMainBranch: vi.fn(),
+  // The direct merge route reads the target to decide whether it is main.
+  getBranch: vi.fn().mockResolvedValue({ id: 'branch-target', siteId: 'site-1', isMain: false }),
   checkMergeability: vi.fn(),
   previewMerge: vi.fn(),
   createMergeRequest: vi.fn(),

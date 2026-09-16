@@ -54,6 +54,7 @@ vi.mock('../../src/services', () => ({
 vi.mock('../../src/auth/authorization', () => ({
   assertPermission: vi.fn(),
   getSiteRole: vi.fn().mockResolvedValue('ADMIN'),
+  getEffectiveRole: vi.fn().mockResolvedValue({ roleName: 'ADMIN', role: {} }),
   AuthorizationError: class AuthorizationError extends Error {
     override name = 'AuthorizationError';
     constructor(

@@ -1,5 +1,5 @@
 {
-  "maxErrors": 787,
+  "maxErrors": 786,
   "packages": [
     "workers/ccr",
     "workers/ccr-mcp-server",

@@ -40,6 +40,7 @@ describe('Custom Role Management API', () => {
         'team_member',
         'author',
         'editor',
+        'viewer',
       ]);
       expect(agentRoles.map((r) => r.value)).toEqual(['viewer', 'editor', 'admin']);
     });

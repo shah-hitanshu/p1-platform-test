@@ -16,9 +16,17 @@ export type ActorType = 'user' | 'agent' | 'guest' | 'service' | 'system';
 /**
  * Pantheon platform roles for site access.
  * 'author' and 'editor' are grantable via the collaborators API and are
- * permission-identical to the EDITOR tier.
+ * permission-identical to the EDITOR tier. 'viewer' is the read-only tier —
+ * it can open a site but change nothing.
  */
-export type PantheonRole = 'owner' | 'admin' | 'developer' | 'team_member' | 'author' | 'editor';
+export type PantheonRole =
+  | 'owner'
+  | 'admin'
+  | 'developer'
+  | 'team_member'
+  | 'author'
+  | 'editor'
+  | 'viewer';
 
 /**
  * Agent-specific site roles (mapped from Pantheon roles).

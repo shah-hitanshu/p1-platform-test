@@ -41,6 +41,7 @@ vi.mock('../../src/auth/authorization', async () => {
     ...actual,
     assertPermission: vi.fn(),
     getSiteRole: vi.fn().mockResolvedValue('ADMIN'),
+    getEffectiveRole: vi.fn().mockResolvedValue({ roleName: 'ADMIN', role: {} }),
   };
 });
 
@@ -63,6 +64,78 @@ describe('Phase 7.1.1b: Site API Routes', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     database = stubDatabase();
+  });
+
+
+  // ===========================================================================
+  // GET /api/sites/{siteId} - the role the dashboard gates on
+  // ===========================================================================
+
+  describe('GET /api/sites/{siteId}', () => {
+    const site = { id: 'site-1', name: 'Site One', organizationId: 'org-1' };
+
+    it('returns the role the write routes enforce with, resolved on the main branch', async () => {
+      const { handleSiteRoutes } = await import('../../src/routes/site-api');
+      const services = await import('../../src/services');
+      const { getEffectiveRole, getSiteRole } = await import('../../src/auth/authorization');
+
+      vi.mocked(services.getSite).mockResolvedValueOnce(site as never);
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce(makeBranch({ id: 'main-1', siteId: 'site-1' }));
+      vi.mocked(getEffectiveRole).mockResolvedValueOnce({ roleName: 'ADMIN', role: {} as never });
+
+      const principal = makePrincipal({ id: 'user-1', type: 'user', systemRole: 'superadmin' });
+      const masClient = { tag: 'mas' } as never;
+      const request = new Request('https://api.example.com/api/sites/site-1', { method: 'GET' });
+
+      const response = await handleSiteRoutes(request, { siteId: 'site-1', principal, masClient });
+
+      expect(response.status).toBe(200);
+      const body = await readJson(response);
+      expect(body.role).toBe('ADMIN');
+      expect(getEffectiveRole).toHaveBeenCalledWith(principal, 'site-1', 'main-1', masClient);
+      expect(getSiteRole).not.toHaveBeenCalled();
+    });
+
+    it('includes the permissions object for the resolved role', async () => {
+      const { handleSiteRoutes } = await import('../../src/routes/site-api');
+      const { ROLES } = await import('../../src/auth/roles');
+      const services = await import('../../src/services');
+      const { getEffectiveRole } = await import('../../src/auth/authorization');
+
+      vi.mocked(services.getSite).mockResolvedValueOnce(site as never);
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce(makeBranch({ id: 'main-1', siteId: 'site-1' }));
+      vi.mocked(getEffectiveRole).mockResolvedValueOnce({ roleName: 'VIEWER', role: ROLES.VIEWER });
+
+      const principal = makePrincipal({ id: 'user-2', type: 'user' });
+      const request = new Request('https://api.example.com/api/sites/site-1', { method: 'GET' });
+
+      const response = await handleSiteRoutes(request, { siteId: 'site-1', principal });
+
+      expect(response.status).toBe(200);
+      const body = await readJson(response);
+      expect(body.role).toBe('VIEWER');
+      expect(body.permissions).toEqual(ROLES.VIEWER);
+    });
+
+    it('keeps the baseline lookup for a service principal, which the effective-role resolver refuses', async () => {
+      const { handleSiteRoutes } = await import('../../src/routes/site-api');
+      const services = await import('../../src/services');
+      const { getEffectiveRole, getSiteRole } = await import('../../src/auth/authorization');
+
+      vi.mocked(services.getSite).mockResolvedValueOnce(site as never);
+      vi.mocked(services.getMainBranch).mockResolvedValueOnce(makeBranch({ id: 'main-1', siteId: 'site-1' }));
+      vi.mocked(getSiteRole).mockResolvedValueOnce('NO_ACCESS');
+
+      const principal = makePrincipal({ id: 'svc-1', type: 'service' });
+      const request = new Request('https://api.example.com/api/sites/site-1', { method: 'GET' });
+
+      const response = await handleSiteRoutes(request, { siteId: 'site-1', principal });
+
+      expect(response.status).toBe(200);
+      const body = await readJson(response);
+      expect(body.role).toBe('NO_ACCESS');
+      expect(getEffectiveRole).not.toHaveBeenCalled();
+    });
   });
 
   // ===========================================================================
@@ -886,7 +959,7 @@ describe('Phase 7.1.1b: Site API Routes', () => {
       expect(body.name).toBe('Marketing Website');
     });
 
-    it('includes the caller site-level role', async () => {
+    it("includes the caller's effective role", async () => {
       const { handleSiteRoutes } = await import('../../src/routes/site-api');
       const services = await import('../../src/services');
       const authorization = await import('../../src/auth/authorization');
@@ -901,7 +974,7 @@ describe('Phase 7.1.1b: Site API Routes', () => {
         createdById: 'user-1',
         createdByType: 'user',
       }));
-      vi.mocked(authorization.getSiteRole).mockResolvedValueOnce('EDITOR');
+      vi.mocked(authorization.getEffectiveRole).mockResolvedValueOnce({ roleName: 'EDITOR', role: {} as never });
       vi.mocked(services.getSite).mockResolvedValueOnce({
         id: 'site-1',
         pantheonSiteId: 'pantheon-1',

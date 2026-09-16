@@ -169,6 +169,78 @@ describe('Phase 7.1c: Merge API Routes', () => {
   // ===========================================================================
 
   describe('POST /api/sites/{siteId}/merge/execute', () => {
+    beforeEach(async () => {
+      // The direct route now reads the target branch to decide whether the merge
+      // is into main. Default to a non-main target so the existing cases only
+      // exercise what they always did.
+      const services = await import('../../src/services');
+      vi.mocked(services.getBranch).mockResolvedValue(
+        makeBranch({ id: 'main-branch', siteId: 'site-1', isMain: false, name: 'other' }),
+      );
+    });
+
+    const executeRequest = () =>
+      new Request('https://api.example.com/api/sites/site-1/merge/execute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sourceBranchId: 'feature-branch', targetBranchId: 'main-branch' }),
+      });
+
+    it('refuses a merge into main from a role without canMergeToMain', async () => {
+      const { handleMergeRoutes } = await import('../../src/routes/merge-api');
+      const services = await import('../../src/services');
+      const { assertPermission, AuthorizationError } = await import('../../src/auth/authorization');
+
+      vi.mocked(services.getBranch).mockResolvedValue(makeBranch({ id: 'main-branch', siteId: 'site-1', isMain: true }));
+      vi.mocked(assertPermission).mockImplementation(async (_p, _s, _b, permission) => {
+        if (permission === 'canMergeToMain') throw new AuthorizationError('Missing permission: canMergeToMain', 'canMergeToMain', 'EDITOR');
+      });
+
+      const response = await handleMergeRoutes(executeRequest(), {
+        siteId: 'site-1',
+        operation: 'execute',
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
+      });
+
+      expect(response.status).toBe(403);
+      expect(services.executeMerge).not.toHaveBeenCalled();
+      expect(assertPermission).toHaveBeenCalledWith(expect.anything(), 'site-1', 'main-branch', 'canMergeToMain');
+    });
+
+    it('does not ask for canMergeToMain when the target is not main', async () => {
+      const { handleMergeRoutes } = await import('../../src/routes/merge-api');
+      const services = await import('../../src/services');
+      const { assertPermission } = await import('../../src/auth/authorization');
+
+      vi.mocked(services.executeMerge).mockResolvedValueOnce({} as never);
+
+      await handleMergeRoutes(executeRequest(), {
+        siteId: 'site-1',
+        operation: 'execute',
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
+      });
+
+      const permissions = vi.mocked(assertPermission).mock.calls.map((c) => c[3]);
+      expect(permissions).toContain('canMerge');
+      expect(permissions).not.toContain('canMergeToMain');
+    });
+
+    it('returns 404 when the target branch belongs to another site', async () => {
+      const { handleMergeRoutes } = await import('../../src/routes/merge-api');
+      const services = await import('../../src/services');
+
+      vi.mocked(services.getBranch).mockResolvedValue(makeBranch({ id: 'main-branch', siteId: 'site-2', isMain: true }));
+
+      const response = await handleMergeRoutes(executeRequest(), {
+        siteId: 'site-1',
+        operation: 'execute',
+        principal: makePrincipal({ id: 'user-1', type: 'user' }),
+      });
+
+      expect(response.status).toBe(404);
+      expect(services.executeMerge).not.toHaveBeenCalled();
+    });
+
     it('should execute merge without conflicts', async () => {
       const { handleMergeRoutes } = await import('../../src/routes/merge-api');
       const services = await import('../../src/services');

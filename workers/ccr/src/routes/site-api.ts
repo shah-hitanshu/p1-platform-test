@@ -6,7 +6,7 @@
  */
 
 import { getLogger } from '@pantheon-systems/p1-telemetry';
-import type { WorkflowSettings, AuthenticatedPrincipal } from '../types';
+import type { WorkflowSettings, AuthenticatedPrincipal, Branch } from '../types';
 import {
   createSite,
   getSite,
@@ -22,7 +22,9 @@ import {
   HttpError,
   getSiteOwner,
 } from '../services';
-import { assertPermission, getSiteRole } from '../auth/authorization';
+import { assertPermission, getEffectiveRole, getSiteRole } from '../auth/authorization';
+import { ROLES } from '../auth/roles';
+import type { MASClient } from '../services/mas-client';
 import { canAccessOrganization } from '../utils/org-access';
 import { isSuperAdmin } from '../utils/admin-check';
 import type { ScreenshotProducerEnv } from '../queues/screenshot-producer';
@@ -38,6 +40,7 @@ export interface SiteRouteContext {
   siteId?: string;
   action?: string;
   principal: AuthenticatedPrincipal;
+  masClient?: MASClient;
 }
 
 /**
@@ -249,7 +252,7 @@ async function handleListSites(
 /**
  * Handle GET /api/sites/{siteId} - Get Site
  */
-async function handleGetSite(context: SiteRouteContext): Promise<Response> {
+async function handleGetSite(context: SiteRouteContext, mainBranch: Branch): Promise<Response> {
   if (context.siteId === undefined) {
     return errorResponse('Site ID is required', 400);
   }
@@ -260,14 +263,21 @@ async function handleGetSite(context: SiteRouteContext): Promise<Response> {
     return errorResponse('Site not found', 404);
   }
 
+  // The dashboard gates its controls on this value, so it has to be the role
+  // the write routes enforce with, not the baseline grant alone. Service
+  // principals sit outside the role system and keep the baseline lookup.
   const [role, owner] = await Promise.all([
-    getSiteRole(context.principal, context.siteId),
+    context.principal.type === 'service'
+      ? getSiteRole(context.principal, context.siteId, context.masClient)
+      : getEffectiveRole(context.principal, context.siteId, mainBranch.id, context.masClient)
+        .then((r) => r.roleName),
     getSiteOwner(context.siteId),
   ]);
 
   return jsonResponse({
     ...site,
     role,
+    permissions: ROLES[role],
     ownerName: owner?.name ?? null,
     ownerAvatarUrl: owner?.avatarUrl ?? null,
   });
@@ -426,7 +436,7 @@ export async function handleSiteRoutes(
       switch (method) {
         case 'GET':
           await assertPermission(context.principal, context.siteId, mainBranch.id, 'canView');
-          return await handleGetSite(context);
+          return await handleGetSite(context, mainBranch);
         case 'PATCH':
           await assertPermission(context.principal, context.siteId, mainBranch.id, 'canManageGrants');
           return await handleUpdateSite(request, context, env);
