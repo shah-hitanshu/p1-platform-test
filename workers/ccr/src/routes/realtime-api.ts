@@ -530,7 +530,7 @@ export async function handleRealtimeRoutes(
     for (const p of [
       '_sessionId', '_verifiedActorId', '_verifiedActorType',
       '_verifiedAuthProvider', '_verifiedEmail', '_verifiedName',
-      '_verifiedAvatarUrl', '_verifiedDbUserId',
+      '_verifiedAvatarUrl', '_verifiedDbUserId', '_verifiedCanEdit',
     ]) {
       urlWithVerified.searchParams.delete(p);
     }
@@ -554,6 +554,18 @@ export async function handleRealtimeRoutes(
     if (context.principal.avatarUrl !== undefined) {
       urlWithVerified.searchParams.set('_verifiedAvatarUrl', context.principal.avatarUrl);
     }
+    // The socket carries writes as well as reads, and only this upgrade request
+    // is authorised. Decide the write side here and let the DO enforce it.
+    // A resolution failure defaults to no-write: safe beats open.
+    let canEdit = false;
+    try {
+      canEdit = await hasPermission(
+        context.principal, params.siteId, branch.id, 'canEditDocuments',
+      );
+    } catch {
+      // canEdit stays false — deny writes if the check cannot be resolved.
+    }
+    urlWithVerified.searchParams.set('_verifiedCanEdit', canEdit ? '1' : '0');
     // Auth Phase 4: Strip apiKey from query params (don't leak tokens to DO)
     urlWithVerified.searchParams.delete('apiKey');
     requestWithSessionId = new Request(urlWithVerified.toString(), forwardedRequest);

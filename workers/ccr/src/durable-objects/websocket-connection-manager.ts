@@ -10,6 +10,7 @@
 import * as Y from 'yjs';
 import { getLogger } from '@pantheon-systems/p1-telemetry';
 import type { ConnectionMeta, ActorPresence } from '../types';
+
 import type {
   WsPresenceErrorMessage,
   WsSyncBaselineMessage,
@@ -109,6 +110,35 @@ export interface WebSocketConnectionDeps {
 // =============================================================================
 // Rate limiting
 // =============================================================================
+
+/** False only when the connect-time permission check said the principal cannot edit. */
+function canWrite(meta: Pick<ConnectionMeta, 'canEdit'>): boolean {
+  return meta.canEdit !== false;
+}
+
+/** Log a write refusal once per socket, then mark it so subsequent frames are silently dropped. */
+function logWriteRefusal(
+  ws: WebSocket,
+  meta: ConnectionMeta,
+  sessionInfo: { siteId: string; branchId: string; documentId: string },
+  frameType: string,
+  sizeBytes?: number,
+): void {
+  if (meta.writeRefusalLogged === true) return;
+  const { siteId, branchId, documentId } = sessionInfo;
+  getLogger().warn('dropped write from read-only principal', {
+    site_id: siteId,
+    branch_id: branchId,
+    document_id: documentId,
+    principal_id: meta.actorId,
+    principal_type: meta.actorType,
+    outcome: 'rejected',
+    reason: 'write_permission_denied',
+    frame_type: frameType,
+    ...(sizeBytes !== undefined ? { size_bytes: sizeBytes } : {}),
+  });
+  ws.serializeAttachment({ ...meta, writeRefusalLogged: true });
+}
 
 /**
  * Check rate limit for an actor's WebSocket messages.
@@ -242,6 +272,7 @@ export function handleWebSocket(
   const verifiedName = url.searchParams.get('_verifiedName');
   const verifiedAvatarUrl = url.searchParams.get('_verifiedAvatarUrl');
   const verifiedDbUserId = url.searchParams.get('_verifiedDbUserId');
+  const verifiedCanEdit = url.searchParams.get('_verifiedCanEdit');
 
   let actorId: string | null;
   let actorType: string | null;
@@ -251,6 +282,7 @@ export function handleWebSocket(
   let actorName: string | undefined;
   let actorAvatar: string | undefined;
   let dbUserId: string | undefined;
+  let canEdit: boolean;
 
   if (verifiedActorId !== null && verifiedActorId !== '') {
     // Use verified identity from worker
@@ -262,11 +294,15 @@ export function handleWebSocket(
     actorName = verifiedName ?? undefined;
     actorAvatar = verifiedAvatarUrl ?? undefined;
     dbUserId = verifiedDbUserId ?? undefined;
+    canEdit = verifiedCanEdit === '1';
   } else {
-    // Legacy/test path: use client-supplied headers
+    // Legacy/test path: use client-supplied headers. The worker always injects
+    // the verified params, so this branch is unreachable in production and
+    // keeps its permissive behaviour.
     actorId = request.headers.get('X-Actor-Id') ?? url.searchParams.get('actorId');
     actorType = request.headers.get('X-Actor-Type') ?? url.searchParams.get('actorType');
     isVerified = false;
+    canEdit = true;
   }
 
   if (actorId === null || actorId === '') {
@@ -314,6 +350,7 @@ export function handleWebSocket(
     actorType,
     dbUserId,
     verified: isVerified,
+    canEdit,
     authProvider: authProvider as ConnectionMeta['authProvider'],
     email,
     name: actorName,
@@ -452,6 +489,10 @@ export async function handleWebSocketMessage(
       // presence heartbeats still route so the DO tracks presence correctly.
       if (parsed !== null && isWsPublishRequest(parsed)) {
         if (meta.baselineGate === 'closed') return;
+        if (!canWrite(meta)) {
+          logWriteRefusal(ws, meta, deps.sessionInfo, 'publish_request');
+          return;
+        }
         await deps.handleWsPublishRequest(ws, meta, parsed);
         return;
       }
@@ -459,6 +500,10 @@ export async function handleWebSocketMessage(
       // so the next scheduleSync includes it in the sync payload
       if (parsed !== null && isWsActionMetadata(parsed)) {
         if (meta.baselineGate === 'closed') return;
+        if (!canWrite(meta)) {
+          logWriteRefusal(ws, meta, deps.sessionInfo, 'action_metadata');
+          return;
+        }
         // eslint-disable-next-line @typescript-eslint/no-deprecated -- legacy actionType/actionMetadata fallback
         const legacyType = parsed.actionType;
         // eslint-disable-next-line @typescript-eslint/no-deprecated
@@ -519,6 +564,14 @@ export async function handleWebSocketMessage(
         });
         ws.serializeAttachment({ ...meta, baselineDropLogged: true });
       }
+      return;
+    }
+
+    // The connect-time permission check said this principal cannot edit. The
+    // client sends nothing for such a user, so a frame here is a bug or a
+    // hostile client; drop it and keep serving reads rather than closing.
+    if (!canWrite(meta)) {
+      logWriteRefusal(ws, meta, deps.sessionInfo, 'yjs_update', update.byteLength);
       return;
     }
 

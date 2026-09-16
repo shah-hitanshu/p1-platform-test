@@ -141,6 +141,17 @@ export interface ConnectionMeta {
   baselineGate?: 'open' | 'closed';
   /** Set once the first dropped frame has been logged, to bound the log volume. */
   baselineDropLogged?: boolean;
+  /**
+   * Whether this principal may write to the document. Resolved once at connect,
+   * the way every HTTP route resolves per request. Absent on sockets that
+   * hibernated before this shipped; absent is treated as permitted.
+   * ponytail: per-connection grant. A socket held open after a revocation keeps
+   * writing until it reconnects; closing it needs a grant-change signal the DO
+   * does not have yet.
+   */
+  canEdit?: boolean;
+  /** Set once the first refused write has been logged, to bound the log volume. */
+  writeRefusalLogged?: boolean;
 }
 
 /**

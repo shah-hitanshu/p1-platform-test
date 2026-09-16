@@ -589,6 +589,67 @@ describe('Auth Phase 4: WebSocket Authentication & Authorization', () => {
       expect(forwardedUrl.searchParams.get('_verifiedActorType')).toBe('user');
     });
 
+    it('should set _verifiedCanEdit=1 when principal canEditDocuments', async () => {
+      const { handleRealtimeRoutes } = await import('../../src/routes/realtime-api');
+      // canView (first check) and canEditDocuments (second check) both true
+      vi.mocked(authorization.hasPermission).mockResolvedValue(true);
+      const request = new Request(
+        'https://example.com/api/sites/site-123/branches/branch-1/documents/test-doc/connect?actorId=user-123&actorType=user',
+        { method: 'GET', headers: { 'Upgrade': 'websocket', 'Connection': 'Upgrade' } },
+      );
+      await handleRealtimeRoutes(request, mockEnv, { principal: createTestPrincipal() });
+      const url = new URL(assertNotNull(lastForwardedRequest).url);
+      expect(url.searchParams.get('_verifiedCanEdit')).toBe('1');
+    });
+
+    it('should set _verifiedCanEdit=0 when principal cannot edit', async () => {
+      const { handleRealtimeRoutes } = await import('../../src/routes/realtime-api');
+      // canView passes (first call), canEditDocuments denied (second call)
+      vi.mocked(authorization.hasPermission).mockImplementation(
+        (_p, _s, _b, perm) => Promise.resolve(perm !== 'canEditDocuments'),
+      );
+      const request = new Request(
+        'https://example.com/api/sites/site-123/branches/branch-1/documents/test-doc/connect?actorId=user-123&actorType=user',
+        { method: 'GET', headers: { 'Upgrade': 'websocket', 'Connection': 'Upgrade' } },
+      );
+      await handleRealtimeRoutes(request, mockEnv, { principal: createTestPrincipal() });
+      const url = new URL(assertNotNull(lastForwardedRequest).url);
+      expect(url.searchParams.get('_verifiedCanEdit')).toBe('0');
+    });
+
+    it('should overwrite a client-supplied _verifiedCanEdit with the authoritative result', async () => {
+      const { handleRealtimeRoutes } = await import('../../src/routes/realtime-api');
+      // canView passes, canEditDocuments denied — client tried to forge _verifiedCanEdit=1
+      vi.mocked(authorization.hasPermission).mockImplementation(
+        (_p, _s, _b, perm) => Promise.resolve(perm !== 'canEditDocuments'),
+      );
+      const request = new Request(
+        'https://example.com/api/sites/site-123/branches/branch-1/documents/test-doc/connect?actorId=user-123&actorType=user&_verifiedCanEdit=1',
+        { method: 'GET', headers: { 'Upgrade': 'websocket', 'Connection': 'Upgrade' } },
+      );
+      await handleRealtimeRoutes(request, mockEnv, { principal: createTestPrincipal() });
+      const url = new URL(assertNotNull(lastForwardedRequest).url);
+      expect(url.searchParams.get('_verifiedCanEdit')).toBe('0');
+    });
+
+    it('should set _verifiedCanEdit=0 when the canEditDocuments check throws', async () => {
+      const { handleRealtimeRoutes } = await import('../../src/routes/realtime-api');
+      // canView passes (first call), canEditDocuments throws (second call)
+      vi.mocked(authorization.hasPermission).mockImplementation(
+        (_p, _s, _b, perm) => {
+          if (perm === 'canEditDocuments') throw new Error('service error');
+          return Promise.resolve(true);
+        },
+      );
+      const request = new Request(
+        'https://example.com/api/sites/site-123/branches/branch-1/documents/test-doc/connect?actorId=user-123&actorType=user',
+        { method: 'GET', headers: { 'Upgrade': 'websocket', 'Connection': 'Upgrade' } },
+      );
+      await handleRealtimeRoutes(request, mockEnv, { principal: createTestPrincipal() });
+      const url = new URL(assertNotNull(lastForwardedRequest).url);
+      expect(url.searchParams.get('_verifiedCanEdit')).toBe('0');
+    });
+
     it('should not set X-Verified-Auth-Provider when not present on principal', async () => {
       const { handleRealtimeRoutes } = await import('../../src/routes/realtime-api');
       const principal = createTestPrincipal({ authProvider: undefined });
