@@ -170,7 +170,7 @@ describe('Site Screenshot Service', () => {
     it('passes staleAfterDays and limit as parameters', async () => {
       await listSitesNeedingScreenshotRefresh({ staleAfterDays: 14, limit: 100 });
 
-      expect(database.calls(sites).select[0]?.params).toEqual([14, 100]);
+      expect(database.calls(sites).select[0]?.params).toEqual([14, 'ok', 100]);
     });
 
     it('returns the site id and URL of every stale site', async () => {
@@ -190,6 +190,16 @@ describe('Site Screenshot Service', () => {
     it('returns an empty list when nothing is stale', async () => {
       const result = await listSitesNeedingScreenshotRefresh({ staleAfterDays: 7, limit: 500 });
       expect(result).toEqual([]);
+    });
+
+    it('picks up a failed capture for retry regardless of capturedAt age', async () => {
+      await listSitesNeedingScreenshotRefresh({ staleAfterDays: 7, limit: 500 });
+
+      const statement = database.calls(sites).select[0]?.sql ?? '';
+      // A freshly-failed row (capturedAt just now) must still be selected,
+      // so the query has to check status independently of the age check.
+      expect(statement).toMatch(/"status"\s*<>\s*\$\d+/i);
+      expect(database.calls(sites).select[0]?.params).toContain('ok');
     });
   });
 });

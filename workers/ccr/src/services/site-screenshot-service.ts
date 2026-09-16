@@ -10,7 +10,7 @@
  * is missing or older than the configured staleness window.
  */
 
-import { and, eq, isNotNull, isNull, lt, or, sql, type InferSelectModel } from 'drizzle-orm';
+import { and, eq, isNotNull, isNull, lt, ne, or, sql, type InferSelectModel } from 'drizzle-orm';
 import type { SiteScreenshot, SiteScreenshotStatus } from '../types';
 import { siteScreenshots, sites } from '../db/schema';
 import { db } from '../db/scope';
@@ -103,7 +103,11 @@ export async function getSiteScreenshot(
 }
 
 /**
- * Sites with a URL whose screenshot is missing or older than staleAfterDays.
+ * Sites with a URL whose screenshot is missing, older than staleAfterDays,
+ * or recorded as a non-'ok' (e.g. failed) capture. A failed capture is
+ * picked up for retry on the next run regardless of how recent the failed
+ * attempt was — capturedAt alone can't distinguish "just captured fine"
+ * from "just failed", so status has to be checked too.
  * Used by the weekly cron handler to enqueue refreshes.
  */
 export async function listSitesNeedingScreenshotRefresh(
@@ -123,6 +127,9 @@ export async function listSitesNeedingScreenshotRefresh(
             siteScreenshots.capturedAt,
             sql`NOW() - (${options.staleAfterDays}::int * interval '1 day')`,
           ),
+          // A non-'ok' row (e.g. 'failed') is retried regardless of age; a
+          // NULL status (no screenshot row yet) is already covered above.
+          ne(siteScreenshots.status, 'ok'),
         ),
       ),
     )
