@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type postgres from 'postgres';
-import { setDatabaseInstance } from '../../src/db';
 import { createRealDatabaseConnection } from '../helpers/database';
 import { moveDocumentOnBranch, getDocumentByPath } from '../../src/services';
 
@@ -37,8 +36,7 @@ async function seedDoc(path: string): Promise<string> {
 beforeAll(async () => {
   const real = createRealDatabaseConnection();
   sql = real.sql;
-  closeConnection = real.connection.close.bind(real.connection);
-  setDatabaseInstance(real.connection);
+  closeConnection = real.close;
 
   await purgeSite();
 
@@ -66,7 +64,6 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await purgeSite();
-  setDatabaseInstance(null);
   await closeConnection();
 });
 

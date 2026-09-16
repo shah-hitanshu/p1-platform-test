@@ -20,7 +20,6 @@ vi.mock('../../src/utils/branch-ref', () => ({
 
 // Mock the database
 vi.mock('../../src/db', () => ({
-  initializeDatabaseFromConnectionString: vi.fn(),
   runWithConnection: vi.fn().mockImplementation(
     async (_connStr: string, _opts: unknown, fn: () => Promise<unknown>) => {
       // Imported dynamically: src/index runs against whichever module graph

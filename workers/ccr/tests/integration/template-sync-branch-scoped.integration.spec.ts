@@ -9,8 +9,6 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type postgres from 'postgres';
-import { setDatabaseInstance } from '../../src/db';
-import type { DatabaseConnection } from '../../src/db';
 import { createRealDatabaseConnection } from '../helpers/database';
 import { createSite } from '../../src/services/site-service';
 import { createDocumentOnBranch } from '../../src/services/branch-document-service';
@@ -38,16 +36,15 @@ function makeSnapshot(components: unknown[]): Record<string, unknown> {
 
 describe('Template sync — branch-scoped synced_version', () => {
   let sql: postgres.Sql;
-  let connection: DatabaseConnection;
+  let close: () => Promise<void>;
   let siteId: string;
   let mainBranchId: string;
   let featureBranchId: string;
 
   beforeAll(async () => {
     const real = createRealDatabaseConnection();
-    connection = real.connection;
+    close = real.close;
     sql = real.sql;
-    setDatabaseInstance(connection);
 
     await sql`
       INSERT INTO app.users (id, email, name)
@@ -104,8 +101,7 @@ describe('Template sync — branch-scoped synced_version', () => {
     } catch {
       // Ignore cleanup errors
     }
-    setDatabaseInstance(null);
-    await connection.close();
+    await close();
   });
 
   /**

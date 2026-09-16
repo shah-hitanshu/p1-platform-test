@@ -7,7 +7,6 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type postgres from 'postgres';
-import { setDatabaseInstance } from '../../src/db';
 import { createRealDatabaseConnection } from '../helpers/database';
 import { readJson } from '../helpers/http';
 
@@ -19,9 +18,8 @@ let editorUserId: string;
 let viewerUserId: string;
 
 beforeAll(async () => {
-  const { connection, sql: pgSql } = createRealDatabaseConnection();
+  const { sql: pgSql } = createRealDatabaseConnection();
   sql = pgSql;
-  setDatabaseInstance(connection);
 
   // Clean up stale data from previous failed runs
   const staleData = await sql<{ id: string }[]>`SELECT id FROM app.sites WHERE pantheon_site_id = 'test-doc-template-guard-site'`;
@@ -105,7 +103,6 @@ afterAll(async () => {
     // Ignore cleanup errors
   }
 
-  setDatabaseInstance(null);
   await sql.end();
 });
 

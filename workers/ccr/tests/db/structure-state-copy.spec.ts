@@ -35,11 +35,11 @@ const source = {
 };
 
 let db: ReturnType<typeof createRealDatabaseConnection>['db'];
-let connection: ReturnType<typeof createRealDatabaseConnection>['connection'];
+let close: ReturnType<typeof createRealDatabaseConnection>['close'];
 let sql: postgres.Sql;
 
 beforeAll(async () => {
-  ({ db, connection, sql } = createRealDatabaseConnection());
+  ({ db, close, sql } = createRealDatabaseConnection());
 
   await db.insert(sites).values({ id: siteId, name: 'Structure copy' });
   await db.insert(branches).values([
@@ -52,7 +52,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await deleteSiteCascade(sql, siteId);
-  await connection.close();
+  await close();
 });
 
 describe('copyStructureStateForBranch', () => {

@@ -15,7 +15,6 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type postgres from 'postgres';
-import { setDatabaseInstance } from '../../src/db';
 import { createRealDatabaseConnection } from '../helpers/database';
 
 import { createSite } from '../../src/services/site-service';
@@ -54,9 +53,8 @@ describe('Branch drift listing - Integration Tests', () => {
   let plainDocId: string;
 
   beforeAll(async () => {
-    const { connection, sql: pgSql } = createRealDatabaseConnection();
+    const { sql: pgSql } = createRealDatabaseConnection();
     sql = pgSql;
-    setDatabaseInstance(connection);
 
     await sql`SELECT 1`;
 
@@ -186,7 +184,6 @@ describe('Branch drift listing - Integration Tests', () => {
       // Ignore cleanup errors
     }
     await sql.end();
-    setDatabaseInstance(null);
   });
 
   it('lists only the translations that have drifted from their canonical', async () => {

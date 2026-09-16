@@ -16,7 +16,6 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type postgres from 'postgres';
-import { setDatabaseInstance } from '../../src/db';
 import { createRealDatabaseConnection } from '../helpers/database';
 import { createDocumentOnBranch, DuplicateDocumentPathError } from '../../src/services';
 
@@ -30,8 +29,7 @@ const SYSTEM_ACTOR = '00000000-0000-0000-0000-000000000000';
 beforeAll(async () => {
   const real = createRealDatabaseConnection();
   sql = real.sql;
-  closeConnection = real.connection.close.bind(real.connection);
-  setDatabaseInstance(real.connection);
+  closeConnection = real.close;
 
   // Clean up stale data from previous failed runs
   const staleData = await sql<{ id: string }[]>`
@@ -98,7 +96,6 @@ afterAll(async () => {
     // Ignore cleanup errors
   }
 
-  setDatabaseInstance(null);
   await closeConnection();
 });
 

@@ -17,14 +17,6 @@ import {
 } from '../../src/auth/authorization';
 import { agents, userSiteRoles } from '../../src/db/schema';
 import { stubDatabase, type DatabaseStub } from '../__stubs__/database';
-import { query } from '../../src/db';
-
-// The legacy user_site_roles fallback path still reads through query().
-vi.mock('../../src/db', async (importOriginal) => ({
-  ...await importOriginal<typeof import('../../src/db')>(),
-  query: vi.fn(),
-}));
-
 
 describe('Dual-Source Authorization (MAS Integration)', () => {
   let database: DatabaseStub;
@@ -52,7 +44,6 @@ describe('Dual-Source Authorization (MAS Integration)', () => {
 
   beforeEach(() => {
     database = stubDatabase();
-    vi.mocked(query).mockResolvedValue({ rows: [] });
   });
 
   describe('isPantheonUser', () => {

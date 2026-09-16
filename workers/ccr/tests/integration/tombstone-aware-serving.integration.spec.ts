@@ -13,7 +13,6 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type postgres from 'postgres';
-import { setDatabaseInstance, type DatabaseConnection } from '../../src/db';
 import { createRealDatabaseConnection } from '../helpers/database';
 import {
   createDocumentOnBranch,
@@ -29,7 +28,7 @@ const PANTHEON_SITE_ID = 'test-tombstone-aware-serving-site';
 const SYSTEM_ACTOR = '00000000-0000-0000-0000-000000000000';
 
 let sql: ReturnType<typeof postgres>;
-let connection: DatabaseConnection;
+let close: () => Promise<void>;
 let testSiteId: string;
 let mainBranchId: string;
 
@@ -50,9 +49,8 @@ async function purgeSite(siteId: string): Promise<void> {
 
 beforeAll(async () => {
   const real = createRealDatabaseConnection();
-  connection = real.connection;
+  close = real.close;
   sql = real.sql;
-  setDatabaseInstance(connection);
 
   const stale = await sql<{ id: string }[]>`
     SELECT id FROM app.sites WHERE pantheon_site_id = ${PANTHEON_SITE_ID}
@@ -82,8 +80,7 @@ afterAll(async () => {
   } catch {
     // Ignore cleanup errors
   }
-  setDatabaseInstance(null);
-  await connection.close();
+  await close();
 });
 
 describe('Tombstone-aware serving [PCC-3669]', () => {

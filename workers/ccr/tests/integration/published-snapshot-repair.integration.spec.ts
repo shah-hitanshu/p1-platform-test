@@ -10,7 +10,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
-import { setDatabaseInstance, type DatabaseConnection } from '../../src/db';
 import type { Database } from '../../src/db/executor';
 import { installDatabase } from '../../src/db/scope';
 import * as schema from '../../src/db/schema';
@@ -102,19 +101,6 @@ beforeAll(async () => {
   db = drizzle(drizzleClient, { schema });
   installDatabase(db);
 
-  const connection: DatabaseConnection = {
-    async query(sqlQuery, params) {
-      const result = await sql.unsafe(sqlQuery, params as postgres.ParameterOrJSON<never>[]);
-      const rows = [...result] as never[];
-      const resultWithCount = result as unknown as { count?: number };
-      return { rows, rowCount: resultWithCount.count ?? rows.length };
-    },
-    async close() {
-      // The suite owns the client's lifecycle; afterAll ends it.
-    },
-  };
-  setDatabaseInstance(connection);
-
   const stale = await sql<{ id: string }[]>`
     SELECT id FROM app.sites WHERE pantheon_site_id = ${PANTHEON_SITE_ID}
   `;
@@ -144,7 +130,6 @@ afterAll(async () => {
     // Ignore cleanup errors
   }
   installDatabase(null);
-  setDatabaseInstance(null);
   await Promise.allSettled([sql.end(), drizzleClient.end()]);
 });
 

@@ -15,8 +15,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
-import { setDatabaseInstance } from '../../src/db';
-import type { DatabaseConnection, QueryResult } from '../../src/db';
 import type { Database } from '../../src/db/executor';
 import { installDatabase } from '../../src/db/scope';
 import * as schema from '../../src/db/schema';
@@ -32,7 +30,6 @@ const SITE_PREFIX = 'slot-adoption-test';
 
 function createRealDatabaseConnection(connectionString: string): {
   db: Database;
-  connection: DatabaseConnection;
   sql: postgres.Sql;
 } {
   const clientOptions = { transform: { undefined: null }, max: 1 };
@@ -41,23 +38,7 @@ function createRealDatabaseConnection(connectionString: string): {
   // identity functions, so it gets a client of its own.
   const drizzleClient = postgres(connectionString, clientOptions);
 
-  const connection: DatabaseConnection = {
-    async query<T = Record<string, unknown>>(
-      sqlQuery: string,
-      params?: unknown[],
-    ): Promise<QueryResult<T>> {
-      const result = await sql.unsafe<T[]>(
-        sqlQuery,
-        params as unknown as postgres.ParameterOrJSON<never>[],
-      );
-      const rows = [...result] as T[];
-      const resultWithCount = result as unknown as { count?: number };
-      const rowCount = resultWithCount.count ?? rows.length;
-      return { rows, rowCount };
-    },
-  };
-
-  return { db: drizzle(drizzleClient, { schema }), connection, sql };
+  return { db: drizzle(drizzleClient, { schema }), sql };
 }
 
 interface Comp {
@@ -91,10 +72,9 @@ describe('Slot-id adoption runner — Integration Tests', () => {
   let unboundDocId: string;
 
   beforeAll(async () => {
-    const { db: drizzleDb, connection, sql: pgSql } = createRealDatabaseConnection(CONNECTION_STRING);
+    const { db: drizzleDb, sql: pgSql } = createRealDatabaseConnection(CONNECTION_STRING);
     db = drizzleDb;
     sql = pgSql;
-    setDatabaseInstance(connection);
     installDatabase(db);
 
     await sql`
@@ -194,7 +174,6 @@ describe('Slot-id adoption runner — Integration Tests', () => {
       // Ignore cleanup errors
     }
     await sql.end();
-    setDatabaseInstance(null);
     installDatabase(null);
   });
 

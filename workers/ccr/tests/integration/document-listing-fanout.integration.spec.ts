@@ -14,7 +14,6 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type postgres from 'postgres';
-import { setDatabaseInstance } from '../../src/db';
 import { createRealDatabaseConnection, deleteSiteCascade } from '../helpers/database';
 
 import { createSite } from '../../src/services/site-service';
@@ -41,9 +40,8 @@ describe('Document listing row multiplicity - Integration Tests', () => {
   let featureBranchId: string;
 
   beforeAll(async () => {
-    const { connection, sql: pgSql } = createRealDatabaseConnection();
+    const { sql: pgSql } = createRealDatabaseConnection();
     sql = pgSql;
-    setDatabaseInstance(connection);
 
     await sql`SELECT 1`;
 
@@ -84,7 +82,6 @@ describe('Document listing row multiplicity - Integration Tests', () => {
       await sql`DELETE FROM app.users WHERE id = ${TEST_USER_ID}`;
     } finally {
       await sql.end();
-      setDatabaseInstance(null);
     }
   });
 

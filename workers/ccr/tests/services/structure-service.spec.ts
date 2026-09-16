@@ -25,7 +25,6 @@ import {
 // The node tests below reach node-service through structure-service's re-exports,
 // and take their rows from this mock.
 vi.mock('../../src/db', () => ({
-  query: vi.fn(),
 }));
 
 /** A Postgres rejection as the driver raises it, carrying only its SQLSTATE. */

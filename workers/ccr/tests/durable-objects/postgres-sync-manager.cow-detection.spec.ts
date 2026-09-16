@@ -47,13 +47,6 @@ vi.mock('cloudflare:workers', () => ({
 // ---------------------------------------------------------------------------
 vi.mock('../../src/db', () => ({
   runWithConnection: vi.fn(),
-  query: vi.fn(),
-  setDatabaseInstance: vi.fn(),
-  getDatabaseInstance: vi.fn(),
-  initializeDatabaseFromConnectionString: vi.fn(),
-  initializeDatabaseFromHyperdrive: vi.fn(),
-  initializeDatabase: vi.fn(),
-  closeDatabaseConnection: vi.fn(),
 }));
 
 // ---------------------------------------------------------------------------
@@ -311,9 +304,6 @@ describe('PostgresSyncManager: CoW baseline mismatch detection', () => {
         fn: () => Promise<unknown>,
       ) => fn(),
     );
-    // query returns no rows so the INSERT path completes without error
-    (db.query as Mock).mockResolvedValue({ rows: [], rowCount: 0 });
-
     const storageData = new Map<string, unknown>([
       [COW_BASELINE_IDS_KEY, ['id-A', 'id-B', 'id-C']],
     ]);

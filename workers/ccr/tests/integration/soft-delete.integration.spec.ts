@@ -13,8 +13,6 @@
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import type postgres from 'postgres';
-import { setDatabaseInstance } from '../../src/db';
-import type { DatabaseConnection } from '../../src/db';
 import { createRealDatabaseConnection } from '../helpers/database';
 
 import {
@@ -57,13 +55,12 @@ async function createFeatureBranch(siteId: string, name: string): Promise<Branch
 
 describe('PCC-3211: Soft Delete Integration Tests', () => {
   let sql: postgres.Sql;
-  let connection: DatabaseConnection;
+  let close: () => Promise<void>;
 
   beforeAll(() => {
     const handles = createRealDatabaseConnection();
     sql = handles.sql;
-    connection = handles.connection;
-    setDatabaseInstance(connection);
+    close = handles.close;
   });
 
   afterAll(async () => {
@@ -74,8 +71,7 @@ describe('PCC-3211: Soft Delete Integration Tests', () => {
         try { await sql`DELETE FROM app.sites WHERE id = ${id}`; } catch { /* ignore */ }
       }
     }
-    setDatabaseInstance(null);
-    await connection.close();
+    await close();
   });
 
   beforeEach(() => {

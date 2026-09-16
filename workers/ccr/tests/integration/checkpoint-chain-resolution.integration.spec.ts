@@ -1,7 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import type postgres from 'postgres';
-import { setDatabaseInstance } from '../../src/db';
-import type { DatabaseConnection } from '../../src/db';
 import { createRealDatabaseConnection } from '../helpers/database';
 import {
   createCheckpoint,
@@ -10,7 +8,7 @@ import {
   revertToCheckpoint,
 } from '../../src/services';
 
-let connection: DatabaseConnection;
+let close: () => Promise<void>;
 let sql: postgres.Sql;
 let siteId: string;
 let branchId: string;
@@ -66,14 +64,13 @@ async function titlesAtCheckpoint(checkpointId: string): Promise<Record<string, 
 
 beforeAll(() => {
   const real = createRealDatabaseConnection();
-  connection = real.connection;
+  close = real.close;
   sql = real.sql;
-  setDatabaseInstance(connection);
 });
 
 afterAll(async () => {
   await purgeSite();
-  await connection.close();
+  await close();
 });
 
 beforeEach(async () => {

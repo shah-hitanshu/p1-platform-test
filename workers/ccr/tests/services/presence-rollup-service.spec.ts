@@ -15,7 +15,6 @@ import { makeBranch } from '../helpers/branch';
 
 // Mock database module
 vi.mock('../../src/db', () => ({
-  query: vi.fn(),
 }));
 
 // Mock the services that the presence-rollup-service will depend on

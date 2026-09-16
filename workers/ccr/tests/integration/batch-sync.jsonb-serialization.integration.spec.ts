@@ -5,10 +5,8 @@
  * every consumer that reads the snapshot as an object (editor, diffing,
  * publish) gets a raw string instead.
  *
- * Which encoding is right depends on the connection: the Drizzle client parses
- * and serializes json as identity, so each element is bound pre-stringified,
- * while the legacy query() connection keeps postgres.js's own json serializer,
- * where pre-stringifying double-encodes [PCC-3468].
+ * The Drizzle client parses and serializes json as identity, so each element
+ * has to reach the driver already stringified [PCC-3468].
  *
  * A mocked-query unit test sees only the value passed to the driver, never
  * what Postgres stores. Asserting on jsonb_typeof against a real connection
@@ -21,8 +19,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
-import { setDatabaseInstance } from '../../src/db';
-import type { DatabaseConnection, QueryResult } from '../../src/db';
 import { installDatabase } from '../../src/db/scope';
 import * as schema from '../../src/db/schema';
 
@@ -39,28 +35,6 @@ let sql: postgres.Sql;
 let siteId: string;
 let branchId: string;
 let docCounter = 0;
-
-function realConnection(connectionString: string): {
-  connection: DatabaseConnection;
-  sql: postgres.Sql;
-} {
-  const client = postgres(connectionString, { transform: { undefined: null }, max: 1 });
-  const connection: DatabaseConnection = {
-    async query<T = Record<string, unknown>>(
-      sqlQuery: string,
-      params?: unknown[],
-    ): Promise<QueryResult<T>> {
-      const result = await client.unsafe<T[]>(
-        sqlQuery,
-        params as unknown as postgres.ParameterOrJSON<never>[],
-      );
-      const rows = [...result] as T[];
-      const withCount = result as unknown as { count?: number };
-      return { rows, rowCount: withCount.count ?? rows.length };
-    },
-  };
-  return { connection, sql: client };
-}
 
 async function freshDoc(): Promise<string> {
   docCounter += 1;
@@ -92,9 +66,7 @@ async function storedVersion(documentId: string): Promise<{
 let drizzleClient: postgres.Sql;
 
 beforeAll(async () => {
-  const { connection, sql: client } = realConnection(CONNECTION_STRING);
-  sql = client;
-  setDatabaseInstance(connection);
+  sql = postgres(CONNECTION_STRING, { transform: { undefined: null }, max: 1 });
 
   // batchSyncToPostgres reads through db() (Drizzle) now, which needs its own
   // client — drizzle() replaces a client's timestamp parsers and json

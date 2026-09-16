@@ -15,7 +15,7 @@
 import { randomUUID } from 'node:crypto';
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
 import type postgres from 'postgres';
-import type { Database, DatabaseConnection } from '../../src/db';
+import type { Database } from '../../src/db';
 import {
   branches,
   checkpointDocuments,
@@ -41,7 +41,7 @@ const AUTHOR = { createdById: randomUUID(), createdByType: 'user' };
 
 let db: Database;
 let sql: postgres.Sql;
-let connection: DatabaseConnection;
+let close: () => Promise<void>;
 let siteIds: string[] = [];
 let siteId: string;
 let mainBranchId: string;
@@ -125,12 +125,12 @@ beforeAll(async () => {
   const handles = createRealDatabaseConnection();
   db = handles.db;
   sql = handles.sql;
-  connection = handles.connection;
+  close = handles.close;
   await sql`SELECT 1`;
 });
 
 afterAll(async () => {
-  await connection.close();
+  await close();
 });
 
 beforeEach(async () => {

@@ -44,7 +44,6 @@ vi.mock('cloudflare:workers', () => ({
 }));
 
 vi.mock('../../src/db', () => ({
-  initializeDatabaseFromConnectionString: vi.fn(),
   runWithConnection: vi.fn().mockImplementation(
     (_connStr: string, _opts: unknown, fn: () => unknown) => fn(),
   ),

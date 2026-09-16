@@ -7,7 +7,6 @@
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import type postgres from 'postgres';
-import { setDatabaseInstance } from '../../src/db';
 import {
   createBranch,
   createCheckpoint,
@@ -75,18 +74,17 @@ function sessionCheckpoint(branchId: string) {
   };
 }
 
-let connection: ReturnType<typeof createRealDatabaseConnection>['connection'];
+let close: ReturnType<typeof createRealDatabaseConnection>['close'];
 
 beforeAll(async () => {
   const real = createRealDatabaseConnection(TEST_DATABASE_URL);
   sql = real.sql;
-  connection = real.connection;
-  setDatabaseInstance(connection);
+  close = real.close;
 });
 
 afterAll(async () => {
   await purgeSite();
-  await connection.close();
+  await close();
 });
 
 beforeEach(async () => {

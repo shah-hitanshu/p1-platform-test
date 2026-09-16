@@ -8,8 +8,6 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type postgres from 'postgres';
-import { setDatabaseInstance } from '../../src/db';
-import type { DatabaseConnection } from '../../src/db';
 import { createRealDatabaseConnection } from '../helpers/database';
 import { createSite } from '../../src/services/site-service';
 import { createDocumentOnBranch } from '../../src/services/branch-document-service';
@@ -44,13 +42,12 @@ describe('Template Migration — Copy-on-Write on a non-main branch', () => {
   let templateId: string;
   let pageId: string;
 
-  let connection: DatabaseConnection;
+  let close: () => Promise<void>;
 
   beforeAll(async () => {
     const real = createRealDatabaseConnection();
-    connection = real.connection;
+    close = real.close;
     sql = real.sql;
-    setDatabaseInstance(connection);
 
     await sql`
       INSERT INTO app.users (id, email, name)
@@ -149,8 +146,7 @@ describe('Template Migration — Copy-on-Write on a non-main branch', () => {
     } catch {
       // Ignore cleanup errors
     }
-    setDatabaseInstance(null);
-    await connection.close();
+    await close();
   });
 
   it('reports the inherited template current version in migration status', async () => {

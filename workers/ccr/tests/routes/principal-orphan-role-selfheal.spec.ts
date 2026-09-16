@@ -20,7 +20,6 @@ let mockUserRow: Record<string, unknown> = {};
 let database: DatabaseStub;
 
 vi.mock('../../src/db', () => ({
-  initializeDatabaseFromConnectionString: vi.fn(),
   runWithConnection: vi.fn().mockImplementation(
     (_connStr: string, _opts: unknown, fn: () => unknown) => fn(),
   ),

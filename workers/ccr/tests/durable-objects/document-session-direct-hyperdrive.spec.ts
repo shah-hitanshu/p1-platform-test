@@ -30,12 +30,6 @@ vi.mock('cloudflare:workers', () => ({
 // Mock the db module for direct Hyperdrive access
 vi.mock('../../src/db', () => ({
   runWithConnection: vi.fn(),
-  setDatabaseInstance: vi.fn(),
-  getDatabaseInstance: vi.fn(),
-  initializeDatabaseFromConnectionString: vi.fn(),
-  initializeDatabaseFromHyperdrive: vi.fn(),
-  initializeDatabase: vi.fn(),
-  closeDatabaseConnection: vi.fn(),
 }));
 
 // =============================================================================

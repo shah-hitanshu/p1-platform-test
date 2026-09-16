@@ -10,7 +10,9 @@
 
 import '../src/db/node-esm-compat';
 
-const { runWithConnection, query } = await import('../src/db');
+const { runWithConnection } = await import('../src/db');
+const { db } = await import('../src/db/scope');
+const { sql } = await import('drizzle-orm');
 const {
   createMergeJob, claimMergeRequestForExecution, planMergeJob, applyMergeChunk,
   finalizeMergeCheckpoint, finalizeMergeStatus, finalizeMergeJobRecord,
@@ -45,14 +47,13 @@ await runWithConnection(DATABASE_URL, { isHyperdrive: false }, async () => {
   console.log('plan:', JSON.stringify(plan));
 
   // Poison: delete ONE frozen source version between plan and apply.
-  const victim = await query<{ document_path: string; source_version_id: string }>(
-    `SELECT document_path, source_version_id FROM app.merge_job_documents
-     WHERE job_id = $1 ORDER BY document_path LIMIT 1`,
-    [jobId],
+  const victim = await db().execute<{ document_path: string; source_version_id: string }>(
+    sql`SELECT document_path, source_version_id FROM app.merge_job_documents
+     WHERE job_id = ${jobId} ORDER BY document_path LIMIT 1`,
   );
-  const row = victim.rows[0];
+  const row = victim.at(0);
   if (row === undefined) throw new Error('no ledger rows');
-  await query('DELETE FROM app.document_versions WHERE id = $1', [row.source_version_id]);
+  await db().execute(sql`DELETE FROM app.document_versions WHERE id = ${row.source_version_id}`);
   console.log('poisoned:', row.document_path, '(deleted its frozen source version)');
 
   let chunk;

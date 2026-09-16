@@ -15,7 +15,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('../../src/db', () => ({
-  initializeDatabaseFromConnectionString: vi.fn(),
   runWithConnection: vi.fn().mockImplementation((_connStr: string, _opts: unknown, fn: () => unknown) => fn()),
   query: vi.fn().mockResolvedValue({ rows: [] }),
 }));

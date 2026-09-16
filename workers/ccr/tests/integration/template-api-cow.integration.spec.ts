@@ -8,7 +8,6 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type postgres from 'postgres';
-import { setDatabaseInstance } from '../../src/db';
 import { createRealDatabaseConnection } from '../helpers/database';
 import { createSite } from '../../src/services/site-service';
 import {
@@ -54,9 +53,8 @@ describe('Template API — Copy-on-Write inheritance', () => {
   let featureBranchId: string;
 
   beforeAll(async () => {
-    const { connection, sql: pgSql } = createRealDatabaseConnection();
+    const { sql: pgSql } = createRealDatabaseConnection();
     sql = pgSql;
-    setDatabaseInstance(connection);
 
     await sql`
       INSERT INTO app.users (id, email, name)
@@ -102,7 +100,6 @@ describe('Template API — Copy-on-Write inheritance', () => {
       // Ignore cleanup errors
     }
     await sql.end();
-    setDatabaseInstance(null);
   });
 
   /** Author a template on main only (no version on the feature branch). */

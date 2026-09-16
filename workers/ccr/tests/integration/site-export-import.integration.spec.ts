@@ -7,7 +7,6 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import type postgres from 'postgres';
 import { zipSync, strToU8 } from 'fflate';
-import { setDatabaseInstance } from '../../src/db';
 import { createRealDatabaseConnection } from '../helpers/database';
 import { createSite } from '../../src/services/site-service';
 import { getMainBranch, listBranches } from '../../src/services/branch-service';
@@ -43,9 +42,8 @@ const createdSiteIds: string[] = [];
 let sql: postgres.Sql;
 
 beforeAll(() => {
-  const { connection, sql: pgSql } = createRealDatabaseConnection();
+  const { sql: pgSql } = createRealDatabaseConnection();
   sql = pgSql;
-  setDatabaseInstance(connection);
 });
 
 afterAll(async () => {
@@ -89,7 +87,6 @@ afterAll(async () => {
     await sql.unsafe('DELETE FROM app.branches WHERE site_id = $1', [siteId as never]);
     await sql.unsafe('DELETE FROM app.sites WHERE id = $1', [siteId as never]);
   }
-  setDatabaseInstance(null);
   await sql.end();
 });
 

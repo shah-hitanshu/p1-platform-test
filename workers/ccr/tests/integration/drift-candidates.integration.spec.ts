@@ -14,7 +14,6 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type postgres from 'postgres';
-import { setDatabaseInstance } from '../../src/db';
 import { createRealDatabaseConnection, deleteSiteCascade } from '../helpers/database';
 
 import { createSite } from '../../src/services/site-service';
@@ -93,9 +92,8 @@ describe('Drift candidate selection - Integration Tests', () => {
   let unpublishedPageId: string;
 
   beforeAll(async () => {
-    const { connection, sql: pgSql } = createRealDatabaseConnection();
+    const { sql: pgSql } = createRealDatabaseConnection();
     sql = pgSql;
-    setDatabaseInstance(connection);
 
     await sql`SELECT 1`;
 
@@ -200,7 +198,6 @@ describe('Drift candidate selection - Integration Tests', () => {
     await deleteSiteCascade(sql, siteId);
     await sql`DELETE FROM app.users WHERE id = ${TEST_USER_ID}`;
     await sql.end();
-    setDatabaseInstance(null);
   });
 
   async function candidateIds(branchId: string, mainId: string | undefined): Promise<string[]> {

@@ -31,13 +31,6 @@ vi.mock('cloudflare:workers', () => ({
 // Mock the db module
 vi.mock('../../src/db', () => ({
   runWithConnection: vi.fn(),
-  query: vi.fn(),
-  setDatabaseInstance: vi.fn(),
-  getDatabaseInstance: vi.fn(),
-  initializeDatabaseFromConnectionString: vi.fn(),
-  initializeDatabaseFromHyperdrive: vi.fn(),
-  initializeDatabase: vi.fn(),
-  closeDatabaseConnection: vi.fn(),
 }));
 
 // Mock the checkpoint service
@@ -173,11 +166,6 @@ describe('Phase 6.3: Checkpoint Bypass for Queue', () => {
         fn: () => Promise<unknown>,
       ) => fn(),
     );
-    (db.query as ReturnType<typeof vi.fn>).mockResolvedValue({
-      rows: [],
-      rowCount: 0,
-    });
-
     // Default: checkpoint service mocks
     const checkpointService = await import(
       '../../src/services/checkpoint-service'

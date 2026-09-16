@@ -14,7 +14,6 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type postgres from 'postgres';
-import { setDatabaseInstance } from '../../src/db';
 import { createRealDatabaseConnection } from '../helpers/database';
 import { readJson } from '../helpers/http';
 import { makePrincipal } from '../helpers/principal';
@@ -56,9 +55,8 @@ function templateLayout(
 }
 
 beforeAll(async () => {
-  const { connection, sql: pgSql } = createRealDatabaseConnection(TEST_DATABASE_URL);
+  const { sql: pgSql } = createRealDatabaseConnection(TEST_DATABASE_URL);
   sql = pgSql;
-  setDatabaseInstance(connection);
 
   // Clean up any stale data from prior runs
   const existing = await sql<{ id: string }[]>`
@@ -142,7 +140,6 @@ afterAll(async () => {
     await sql`DELETE FROM app.users WHERE id = ${adminUserId}`;
     await sql`DELETE FROM app.sites WHERE id = ${testSiteId}`;
   } finally {
-    setDatabaseInstance(null);
     await sql.end();
   }
 });

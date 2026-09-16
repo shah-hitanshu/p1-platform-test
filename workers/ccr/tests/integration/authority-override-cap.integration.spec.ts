@@ -12,7 +12,6 @@
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import type postgres from 'postgres';
-import { setDatabaseInstance } from '../../src/db';
 import { createRealDatabaseConnection } from '../helpers/database';
 
 import { createSite } from '../../src/services/site-service';
@@ -45,9 +44,8 @@ describe('Authority-override ceiling - Integration Tests', () => {
   let translationId: string;
 
   beforeAll(async () => {
-    const { connection, sql: pgSql } = createRealDatabaseConnection();
+    const { sql: pgSql } = createRealDatabaseConnection();
     sql = pgSql;
-    setDatabaseInstance(connection);
 
     await sql`SELECT 1`;
 
@@ -101,7 +99,6 @@ describe('Authority-override ceiling - Integration Tests', () => {
       // Ignore cleanup errors
     }
     await sql.end();
-    setDatabaseInstance(null);
   });
 
   /** Fills the map to exactly the ceiling, one prop per slot. */

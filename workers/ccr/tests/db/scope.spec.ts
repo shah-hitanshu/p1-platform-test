@@ -11,7 +11,7 @@ import { eq } from 'drizzle-orm';
 import * as schema from '../../src/db/schema';
 import { organizations } from '../../src/db/schema';
 import { db, withDatabase, inTransaction, transaction } from '../../src/db/scope';
-import { runWithConnection, query } from '../../src/db';
+import { runWithConnection } from '../../src/db';
 import { TEST_CONNECTION_STRING } from '../helpers/database';
 
 const clients: postgres.Sql[] = [];
@@ -109,12 +109,6 @@ describe('runWithConnection', () => {
     await runWithConnection(TEST_CONNECTION_STRING, { isHyperdrive: false }, async () => {
       const [row] = await db().select({ one: organizations.id }).from(organizations).limit(1);
       expect(row === undefined || typeof row.one === 'string').toBe(true);
-    });
-  });
-
-  it('refuses a legacy query() inside a Drizzle transaction', async () => {
-    await runWithConnection(TEST_CONNECTION_STRING, { isHyperdrive: false }, async () => {
-      await expect(transaction(() => query('SELECT 1'))).rejects.toThrow(/inside a Drizzle transaction/);
     });
   });
 });

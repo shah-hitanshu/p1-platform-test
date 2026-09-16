@@ -13,7 +13,6 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type postgres from 'postgres';
-import { setDatabaseInstance } from '../../src/db';
 import { createRealDatabaseConnection } from '../helpers/database';
 
 import { createSite } from '../../src/services/site-service';
@@ -51,9 +50,8 @@ describe('Slot authority defaults - Integration Tests', () => {
   let untemplatedCanonicalId: string;
 
   beforeAll(async () => {
-    const { connection, sql: pgSql } = createRealDatabaseConnection();
+    const { sql: pgSql } = createRealDatabaseConnection();
     sql = pgSql;
-    setDatabaseInstance(connection);
 
     await sql`SELECT 1`;
 
@@ -135,7 +133,6 @@ describe('Slot authority defaults - Integration Tests', () => {
       // Ignore cleanup errors
     }
     await sql.end();
-    setDatabaseInstance(null);
   });
 
   it("serves the per-slot authority the canonical's template declares", async () => {

@@ -12,7 +12,6 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type postgres from 'postgres';
-import { setDatabaseInstance } from '../../src/db';
 import { createRealDatabaseConnection } from '../helpers/database';
 import { readJson } from '../helpers/http';
 import type { AuthenticatedPrincipal } from '../../src/types';
@@ -46,9 +45,8 @@ describe('Authority-override routes - Integration Tests', () => {
   let editor: AuthenticatedPrincipal;
 
   beforeAll(async () => {
-    const { connection, sql: pgSql } = createRealDatabaseConnection();
+    const { sql: pgSql } = createRealDatabaseConnection();
     sql = pgSql;
-    setDatabaseInstance(connection);
 
     await sql`SELECT 1`;
 
@@ -122,7 +120,6 @@ describe('Authority-override routes - Integration Tests', () => {
       // Ignore cleanup errors
     }
     await sql.end();
-    setDatabaseInstance(null);
   });
 
   function routeContext(documentId: string): DocumentRouteContext {

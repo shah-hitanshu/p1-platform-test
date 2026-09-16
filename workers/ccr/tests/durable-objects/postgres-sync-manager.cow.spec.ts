@@ -38,12 +38,6 @@ vi.mock('cloudflare:workers', () => ({
 // ---------------------------------------------------------------------------
 vi.mock('../../src/db', () => ({
   runWithConnection: vi.fn(),
-  setDatabaseInstance: vi.fn(),
-  getDatabaseInstance: vi.fn(),
-  initializeDatabaseFromConnectionString: vi.fn(),
-  initializeDatabaseFromHyperdrive: vi.fn(),
-  initializeDatabase: vi.fn(),
-  closeDatabaseConnection: vi.fn(),
 }));
 
 // ---------------------------------------------------------------------------

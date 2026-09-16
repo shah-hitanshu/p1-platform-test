@@ -16,7 +16,6 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type postgres from 'postgres';
-import { setDatabaseInstance } from '../../src/db';
 import { createRealDatabaseConnection } from '../helpers/database';
 
 import { createSite } from '../../src/services/site-service';
@@ -44,9 +43,8 @@ async function storedSettings(siteId: string): Promise<{ type: string; value: un
 }
 
 beforeAll(() => {
-  const { connection, sql: client } = createRealDatabaseConnection();
+  const { sql: client } = createRealDatabaseConnection();
   sql = client;
-  setDatabaseInstance(connection);
 });
 
 afterAll(async () => {

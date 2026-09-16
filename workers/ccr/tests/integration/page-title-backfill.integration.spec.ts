@@ -11,7 +11,6 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type postgres from 'postgres';
-import { setDatabaseInstance } from '../../src/db';
 
 import { createSite } from '../../src/services/site-service';
 import { createDocumentOnBranch } from '../../src/services/branch-document-service';
@@ -31,9 +30,8 @@ describe('Page title backfill - Integration Tests', () => {
   let branchId: string;
 
   beforeAll(async () => {
-    const { connection, sql: pgSql } = createRealDatabaseConnection();
+    const { sql: pgSql } = createRealDatabaseConnection();
     sql = pgSql;
-    setDatabaseInstance(connection);
 
     await sql`SELECT 1`;
     await sql`
@@ -73,7 +71,6 @@ describe('Page title backfill - Integration Tests', () => {
       await sql`DELETE FROM app.users WHERE id = ${TEST_USER_ID}`;
     } finally {
       await sql.end();
-      setDatabaseInstance(null);
     }
   });
 

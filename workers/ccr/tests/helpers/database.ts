@@ -1,12 +1,12 @@
 /**
  * Shared Postgres wiring for integration tests.
  *
- * Every integration spec needs the same `DatabaseConnection` adapter over the
- * `postgres` driver, so it lives here rather than being copied per file.
+ * Every integration spec needs the same pair of clients over the `postgres`
+ * driver, so they are built here rather than per file.
  *
- * TODO: 13 integration specs under tests/integration still declare their own
- * copy of createRealDatabaseConnection with an inline connection string. Point
- * them here and delete the copies.
+ * TODO: slot-id-adoption.integration.spec.ts still declares its own copy of
+ * createRealDatabaseConnection with an inline connection string. Point it here
+ * and delete the copy.
  *
  * Prerequisites:
  * - PostgreSQL running (podman on this machine): podman start css-postgres
@@ -16,8 +16,8 @@
 import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import type { SQL } from 'drizzle-orm';
-import { getDatabaseInstance, setDatabaseInstance, runWithConnection } from '../../src/db';
-import type { Database, DatabaseConnection, QueryResult } from '../../src/db';
+import { runWithConnection } from '../../src/db';
+import type { Database } from '../../src/db';
 import type { Transaction } from '../../src/db/executor';
 import * as schema from '../../src/db/schema';
 import { installDatabase } from '../../src/db/scope';
@@ -47,50 +47,39 @@ export const TEST_CONNECTION_STRING =
 
 /**
  * Build the handles a test needs against a real Postgres: the Drizzle `db` the
- * code under test reaches through `db()`, the `DatabaseConnection` the raw
- * `query` interface resolves to, and `sql` itself for setup and assertions.
+ * code under test reaches through `db()`, `sql` itself for setup and
+ * assertions, and the `close` that ends them.
  *
- * `db` is installed as the scope fallback until the connection is closed, so a
- * spec calls the code under test directly. A request opened with
- * `runWithConnection` still takes precedence inside its own scope.
+ * `db` is installed as the scope fallback until `close` runs, so a spec calls
+ * the code under test directly. A request opened with `runWithConnection` still
+ * takes precedence inside its own scope.
  *
  * `db` gets its own client. `drizzle()` replaces its client's timestamp parsers
  * and json serializers with identity functions, so sharing one would leave `sql`
  * reading timestamps as strings and throwing on an object parameter.
  *
- * Closing the connection ends both clients.
- *
  * @param connectionString - Defaults to the local test database.
  */
 export function createRealDatabaseConnection(connectionString: string = TEST_CONNECTION_STRING): {
   db: Database;
-  connection: DatabaseConnection;
   sql: postgres.Sql;
+  close: () => Promise<void>;
 } {
   const clientOptions = { transform: { undefined: null }, max: 1 };
   const sql = postgres(connectionString, clientOptions);
   const drizzleClient = postgres(connectionString, clientOptions);
 
-  const connection: DatabaseConnection = {
-    async query<T>(text: string, params: unknown[] = []): Promise<QueryResult<T>> {
-      const result = await sql.unsafe(
-        text,
-        params as unknown as postgres.ParameterOrJSON<never>[],
-      );
-      const rows = [...result] as T[];
-      const resultWithCount = result as unknown as { count?: number };
-      const rowCount = resultWithCount.count ?? rows.length;
-      return { rows, rowCount };
-    },
-    async close(): Promise<void> {
+  const db = drizzle(drizzleClient, { schema });
+  installDatabase(db);
+
+  return {
+    db,
+    sql,
+    close: async (): Promise<void> => {
       installDatabase(null);
       await Promise.allSettled([sql.end(), drizzleClient.end()]);
     },
   };
-
-  const db = drizzle(drizzleClient, { schema });
-  installDatabase(db);
-  return { db, connection, sql };
 }
 
 /**
@@ -151,24 +140,18 @@ export function recordStatements(handle: Database): StatementRecorder {
 /**
  * Runs each operation on its own request-scoped connection.
  *
- * `query` prefers a connection installed with `setDatabaseInstance` over the
- * request-scoped store, and that connection holds a single slot, so callers
- * sharing it serialize.
+ * The handle a spec installs holds a single slot, so operations sharing it
+ * serialize. A request scope takes precedence over it for the duration of the
+ * operation.
  */
 export async function asConcurrentRequests(
   ...operations: (() => Promise<unknown>)[]
 ): Promise<void> {
-  const installed = getDatabaseInstance();
-  setDatabaseInstance(null);
-  try {
-    await Promise.all(
-      operations.map((operation) =>
-        runWithConnection(TEST_CONNECTION_STRING, { isHyperdrive: false }, operation),
-      ),
-    );
-  } finally {
-    setDatabaseInstance(installed);
-  }
+  await Promise.all(
+    operations.map((operation) =>
+      runWithConnection(TEST_CONNECTION_STRING, { isHyperdrive: false }, operation),
+    ),
+  );
 }
 
 /**

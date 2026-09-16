@@ -11,8 +11,7 @@
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import type postgres from 'postgres';
-import { setDatabaseInstance, getDatabaseInstance } from '../../src/db';
-import type { DatabaseConnection } from '../../src/db';
+import { db } from '../../src/db/scope';
 import { createRealDatabaseConnection } from '../helpers/database';
 
 // Import site service for setting up test sites
@@ -76,15 +75,14 @@ function assertDefined<T>(value: T | null | undefined, message = 'Expected value
  */
 describe('Phase 3.2: Integration Tests - Branch Service', () => {
   let sql: postgres.Sql;
-  let connection: DatabaseConnection;
+  let close: () => Promise<void>;
   let testSiteId: string;
 
   beforeAll(async () => {
     // Create real database connection
     const handles = createRealDatabaseConnection();
     sql = handles.sql;
-    connection = handles.connection;
-    setDatabaseInstance(connection);
+    close = handles.close;
 
     // Verify connection
     const result = await sql`SELECT 1 as connected`;
@@ -145,13 +143,12 @@ describe('Phase 3.2: Integration Tests - Branch Service', () => {
     }
 
     // Close database connection
-    setDatabaseInstance(null);
-    await connection.close();
+    await close();
   });
 
   beforeEach(() => {
     // Verify database instance is set
-    expect(getDatabaseInstance()).not.toBeNull();
+    expect(() => db()).not.toThrow();
   });
 
   describe('Main Branch Operations', () => {

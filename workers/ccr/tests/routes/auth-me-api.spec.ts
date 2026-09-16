@@ -12,7 +12,6 @@ import { readJson } from '../helpers/http';
 // Mock the database. This suite runs with no Auth0/broker env vars, so
 // hasRealAuthProviders() is false and the allowlist gate (db()) never runs.
 vi.mock('../../src/db', () => ({
-  initializeDatabaseFromConnectionString: vi.fn(),
   runWithConnection: vi.fn().mockImplementation((_connStr: string, _opts: unknown, fn: () => unknown) => fn()),
 }));
 

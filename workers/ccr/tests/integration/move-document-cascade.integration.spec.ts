@@ -1,7 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import type postgres from 'postgres';
-import { setDatabaseInstance } from '../../src/db';
-import type { DatabaseConnection } from '../../src/db';
 import { createRealDatabaseConnection, recordStatements } from '../helpers/database';
 import type { StatementRecorder } from '../helpers/database';
 import { installDatabase } from '../../src/db/scope';
@@ -14,7 +12,7 @@ import {
 } from '../../src/services';
 
 let sql: postgres.Sql;
-let connection: DatabaseConnection;
+let close: () => Promise<void>;
 let siteId: string;
 let mainBranchId: string;
 let workstreamId: string;
@@ -61,8 +59,7 @@ async function seedDoc(path: string): Promise<string> {
 beforeAll(async () => {
   const handles = createRealDatabaseConnection();
   sql = handles.sql;
-  connection = handles.connection;
-  setDatabaseInstance(connection);
+  close = handles.close;
   recorder = recordStatements(handles.db);
   installDatabase(recorder.db);
 
@@ -99,8 +96,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await purgeSite();
-  setDatabaseInstance(null);
-  await connection.close();
+  await close();
 });
 
 beforeEach(async () => {
@@ -111,7 +107,6 @@ beforeEach(async () => {
   }
   recorder.clear();
 });
-
 
 async function seedLocaleVariant(): Promise<string> {
   const variantId = await seedDoc('blog/post.fr');

@@ -13,9 +13,7 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type postgres from 'postgres';
-import { setDatabaseInstance } from '../../src/db';
 import { createRealDatabaseConnection } from '../helpers/database';
-import type { DatabaseConnection } from '../../src/db';
 
 import { createSite } from '../../src/services/site-service';
 import {
@@ -53,15 +51,14 @@ interface RelationRow {
 
 describe('Document Relations edge model - Integration Tests', () => {
   let sql: postgres.Sql;
-  let connection: DatabaseConnection;
+  let close: () => Promise<void>;
   let siteId: string;
   let branchId: string;
 
   beforeAll(async () => {
     const real = createRealDatabaseConnection();
     sql = real.sql;
-    connection = real.connection;
-    setDatabaseInstance(connection);
+    close = real.close;
 
     await sql`SELECT 1`;
 
@@ -105,8 +102,7 @@ describe('Document Relations edge model - Integration Tests', () => {
     } catch {
       // Ignore cleanup errors
     }
-    await connection.close();
-    setDatabaseInstance(null);
+    await close();
   });
 
   describe('Creating a document from a template records an edge', () => {

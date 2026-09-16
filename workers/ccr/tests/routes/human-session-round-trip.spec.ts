@@ -53,12 +53,6 @@ vi.mock('../../src/services/agent-service', () => ({
 
 vi.mock('../../src/db', () => ({
   runWithConnection: vi.fn(),
-  setDatabaseInstance: vi.fn(),
-  getDatabaseInstance: vi.fn(),
-  initializeDatabaseFromConnectionString: vi.fn(),
-  initializeDatabaseFromHyperdrive: vi.fn(),
-  initializeDatabase: vi.fn(),
-  closeDatabaseConnection: vi.fn(),
 }));
 
 import * as documentService from '../../src/services/document-service';

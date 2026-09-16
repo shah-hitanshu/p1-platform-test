@@ -5,7 +5,7 @@
  * Based on collaborative-state-system-architecture-v2.2.md Section "Branch-Level Authorization"
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import type { AuthenticatedPrincipal } from '../../src/types';
 import {
   getEffectiveRole,
@@ -17,15 +17,6 @@ import {
 } from '../../src/auth/authorization';
 import { agents, branches } from '../../src/db/schema';
 import { stubDatabase, type DatabaseStub } from '../__stubs__/database';
-import { query } from '../../src/db';
-
-// user_site_roles and agent_site_roles reads go through the Drizzle stub;
-// the legacy user_site_roles fallback path below still reads through query().
-vi.mock('../../src/db', async (importOriginal) => ({
-  ...await importOriginal<typeof import('../../src/db')>(),
-  query: vi.fn(),
-}));
-
 
 describe('Phase 2.2: Branch-Level Authorization', () => {
   let database: DatabaseStub;
@@ -44,7 +35,6 @@ describe('Phase 2.2: Branch-Level Authorization', () => {
 
   beforeEach(() => {
     database = stubDatabase();
-    vi.mocked(query).mockResolvedValue({ rows: [] });
   });
 
   describe('getEffectiveRole', () => {

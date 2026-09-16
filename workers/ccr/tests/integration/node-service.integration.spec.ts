@@ -25,7 +25,7 @@ describe('Node reparenting', () => {
   beforeAll(async () => {
     const handles = createRealDatabaseConnection();
     db = handles.db;
-    close = () => handles.connection.close();
+    close = handles.close;
 
     const [site] = await db
       .insert(sites)

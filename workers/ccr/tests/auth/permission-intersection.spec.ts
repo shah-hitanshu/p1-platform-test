@@ -5,19 +5,11 @@
  * with acting-user permission intersection.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { getEffectiveRole } from '../../src/auth/authorization';
 import { minRole } from '../../src/auth/roles';
 import { agents, userSiteRoles } from '../../src/db/schema';
 import { stubDatabase, type DatabaseStub } from '../__stubs__/database';
-import { query } from '../../src/db';
-
-// The legacy user_site_roles fallback path still reads through query().
-vi.mock('../../src/db', async (importOriginal) => ({
-  ...await importOriginal<typeof import('../../src/db')>(),
-  query: vi.fn(),
-}));
-
 
 describe('Permission Intersection', () => {
   describe('minRole', () => {
@@ -61,7 +53,6 @@ describe('Permission Intersection', () => {
 
     beforeEach(() => {
       database = stubDatabase();
-      vi.mocked(query).mockResolvedValue({ rows: [] });
     });
 
     // Test 59: Agent with actingUserEmail gets min(agentRole, actingUserSiteRole)

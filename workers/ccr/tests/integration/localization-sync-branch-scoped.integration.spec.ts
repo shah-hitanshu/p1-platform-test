@@ -18,7 +18,6 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type postgres from 'postgres';
-import { setDatabaseInstance } from '../../src/db';
 import { createRealDatabaseConnection, deleteSiteCascade } from '../helpers/database';
 
 import { createSite } from '../../src/services/site-service';
@@ -63,9 +62,8 @@ describe('Branch-scoped translation sync - Integration Tests', () => {
   let mainId: string;
 
   beforeAll(async () => {
-    const { connection, sql: pgSql } = createRealDatabaseConnection();
+    const { sql: pgSql } = createRealDatabaseConnection();
     sql = pgSql;
-    setDatabaseInstance(connection);
 
     await sql`SELECT 1`;
     await sql`

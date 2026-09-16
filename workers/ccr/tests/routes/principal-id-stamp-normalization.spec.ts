@@ -41,7 +41,6 @@ const mockPrincipal: AuthenticatedPrincipal = {
 let database: DatabaseStub;
 
 vi.mock('../../src/db', () => ({
-  initializeDatabaseFromConnectionString: vi.fn(),
   runWithConnection: vi.fn().mockImplementation((_connStr: string, _opts: unknown, fn: () => unknown) => fn()),
   // organization-service.ts (out of this port's scope) still calls the
   // legacy query() when handleAddUser auto-creates an org for a new user.

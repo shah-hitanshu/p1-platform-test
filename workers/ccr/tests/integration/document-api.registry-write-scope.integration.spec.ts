@@ -11,7 +11,6 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type postgres from 'postgres';
-import { setDatabaseInstance } from '../../src/db';
 import type { AuthenticatedPrincipal } from '../../src/types';
 import { createRealDatabaseConnection } from '../helpers/database';
 import { readJson } from '../helpers/http';
@@ -33,9 +32,8 @@ function registryServicePrincipal(scopes: string[] = ['write:registry']): Authen
 }
 
 beforeAll(async () => {
-  const { connection, sql: pgSql } = createRealDatabaseConnection();
+  const { sql: pgSql } = createRealDatabaseConnection();
   sql = pgSql;
-  setDatabaseInstance(connection);
 
   // Clean up stale data from previous failed runs
   const staleData = await sql<{ id: string }[]>`
@@ -102,7 +100,6 @@ afterAll(async () => {
     // Ignore cleanup errors
   }
 
-  setDatabaseInstance(null);
   await sql.end();
 });
 

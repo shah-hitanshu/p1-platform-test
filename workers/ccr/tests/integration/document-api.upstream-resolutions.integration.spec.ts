@@ -13,7 +13,6 @@
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import type postgres from 'postgres';
-import { setDatabaseInstance } from '../../src/db';
 import { createRealDatabaseConnection, deleteSiteCascade } from '../helpers/database';
 import { readJson } from '../helpers/http';
 import type { AuthenticatedPrincipal } from '../../src/types';
@@ -84,9 +83,8 @@ describe('Upstream-resolution routes - Integration Tests', () => {
     );
 
   beforeAll(async () => {
-    const { connection, sql: pgSql } = createRealDatabaseConnection();
+    const { sql: pgSql } = createRealDatabaseConnection();
     sql = pgSql;
-    setDatabaseInstance(connection);
 
     await sql`SELECT 1`;
 
@@ -156,7 +154,6 @@ describe('Upstream-resolution routes - Integration Tests', () => {
     await deleteSiteCascade(sql, siteId);
     await sql`DELETE FROM app.users WHERE id = ${EDITOR_USER_ID}`;
     await sql.end();
-    setDatabaseInstance(null);
   });
 
   /** The id of the canonical's current version on this branch. */

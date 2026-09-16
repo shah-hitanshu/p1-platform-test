@@ -18,7 +18,6 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type postgres from 'postgres';
-import { setDatabaseInstance } from '../../src/db';
 import { createRealDatabaseConnection } from '../helpers/database';
 
 // Services under test
@@ -43,9 +42,8 @@ describe('B8: Agent Auth Flow - End-to-End Integration', () => {
   let roleId: string;
 
   beforeAll(async () => {
-    const { connection, sql: pgSql } = createRealDatabaseConnection();
+    const { sql: pgSql } = createRealDatabaseConnection();
     sql = pgSql;
-    setDatabaseInstance(connection);
 
     // Verify connection
     const result = await sql`SELECT 1 as connected`;

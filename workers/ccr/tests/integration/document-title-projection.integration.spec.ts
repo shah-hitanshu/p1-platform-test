@@ -17,8 +17,6 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type postgres from 'postgres';
-import { setDatabaseInstance } from '../../src/db';
-import type { DatabaseConnection } from '../../src/db';
 import { createRealDatabaseConnection } from '../helpers/database';
 
 import { createSite } from '../../src/services/site-service';
@@ -32,15 +30,12 @@ const SITE_PREFIX = 'title-projection-test';
 
 describe('Page title listing projection - Integration Tests', () => {
   let sql: postgres.Sql;
-  let connection: DatabaseConnection;
   let siteId: string;
   let branchId: string;
 
   beforeAll(async () => {
     const handles = createRealDatabaseConnection();
     sql = handles.sql;
-    connection = handles.connection;
-    setDatabaseInstance(connection);
 
     await sql`SELECT 1`;
 
@@ -81,7 +76,6 @@ describe('Page title listing projection - Integration Tests', () => {
       await sql`DELETE FROM app.users WHERE id = ${TEST_USER_ID}`;
     } finally {
       await sql.end();
-      setDatabaseInstance(null);
     }
   });
 

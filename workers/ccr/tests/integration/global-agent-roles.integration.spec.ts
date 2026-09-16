@@ -13,8 +13,6 @@
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import type postgres from 'postgres';
-import { setDatabaseInstance } from '../../src/db';
-import type { DatabaseConnection } from '../../src/db';
 import { createRealDatabaseConnection } from '../helpers/database';
 import {
   grantRole,
@@ -36,7 +34,7 @@ const STRANGER_EMAIL = 'global-agent-test-stranger@example.com';
 
 describe('global agents in the site agent-access list', () => {
   let sql: postgres.Sql;
-  let connection: DatabaseConnection;
+  let close: () => Promise<void>;
   let testOrgId: string;
   let otherOrgId: string;
   let testSiteId: string;
@@ -46,8 +44,7 @@ describe('global agents in the site agent-access list', () => {
   beforeAll(async () => {
     const handles = createRealDatabaseConnection();
     sql = handles.sql;
-    connection = handles.connection;
-    setDatabaseInstance(connection);
+    close = handles.close;
 
     const orgResult = await sql`
       INSERT INTO app.organizations (name) VALUES ('global-agent-test-org') RETURNING id
@@ -118,7 +115,7 @@ describe('global agents in the site agent-access list', () => {
        WHERE email IN (${ACTING_USER_EMAIL}, ${STRANGER_EMAIL})`;
     await sql`DELETE FROM app.sites WHERE pantheon_site_id LIKE 'global-agent-test%'`;
     await sql`DELETE FROM app.organizations WHERE id IN (${testOrgId}, ${otherOrgId})`;
-    await connection.close();
+    await close();
   });
 
   it('includes a global agent from another org with no explicit grant', async () => {

@@ -20,7 +20,8 @@ const { createSite } = await import('../src/services/site-service');
 const { createBranch } = await import('../src/services/branch-service');
 const { createDocumentOnBranch } = await import('../src/services/branch-document-service');
 const { createMergeRequest, updateMergeRequestStatus } = await import('../src/services/merge-request-service');
-const { query } = await import('../src/db');
+const { db } = await import('../src/db/scope');
+const { sql } = await import('drizzle-orm');
 
 // Mock-identity Alice (DEFAULT_MOCK_CONFIG) — principal.id falls back to
 // dbUserId, so seeding a users row with her exact id lines auth up.
@@ -34,11 +35,10 @@ const docCount = Number.parseInt(process.argv[2] ?? '3', 10);
 
 async function main(): Promise<void> {
   await runWithConnection(DATABASE_URL, { isHyperdrive: false }, async () => {
-    await query(
-      `INSERT INTO app.users (id, email, name)
-       VALUES ($1, 'alice@example.com', 'Alice Developer')
+    await db().execute(
+      sql`INSERT INTO app.users (id, email, name)
+       VALUES (${ALICE_ID}, 'alice@example.com', 'Alice Developer')
        ON CONFLICT (id) DO NOTHING`,
-      [ALICE_ID],
     );
 
     const site = await createSite({
@@ -47,11 +47,10 @@ async function main(): Promise<void> {
       creatorId: ALICE_ID,
     });
 
-    const mainRows = await query<{ id: string }>(
-      'SELECT id FROM app.branches WHERE site_id = $1 AND is_main = true',
-      [site.id],
+    const mainRows = await db().execute<{ id: string }>(
+      sql`SELECT id FROM app.branches WHERE site_id = ${site.id} AND is_main = true`,
     );
-    const mainBranchId = mainRows.rows[0]?.id;
+    const mainBranchId = mainRows.at(0)?.id;
     if (mainBranchId === undefined) throw new Error('no main branch');
 
     const feature = await createBranch({

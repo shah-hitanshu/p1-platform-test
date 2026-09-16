@@ -11,8 +11,7 @@
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import type postgres from 'postgres';
-import { setDatabaseInstance, getDatabaseInstance } from '../../src/db';
-import type { DatabaseConnection } from '../../src/db';
+import { db } from '../../src/db/scope';
 import { createRealDatabaseConnection } from '../helpers/database';
 
 // Import services
@@ -60,14 +59,13 @@ function getFirst<T>(arr: T[]): T {
  */
 describe('Phase 3.1: Integration Tests - Site and Document CRUD', () => {
   let sql: postgres.Sql;
-  let connection: DatabaseConnection;
+  let close: () => Promise<void>;
 
   beforeAll(async () => {
     // Create real database connection
     const handles = createRealDatabaseConnection();
     sql = handles.sql;
-    connection = handles.connection;
-    setDatabaseInstance(connection);
+    close = handles.close;
 
     // Verify connection
     const result = await sql`SELECT 1 as connected`;
@@ -123,13 +121,12 @@ describe('Phase 3.1: Integration Tests - Site and Document CRUD', () => {
     }
 
     // Close database connection
-    setDatabaseInstance(null);
-    await connection.close();
+    await close();
   });
 
   beforeEach(() => {
     // Verify database instance is set
-    expect(getDatabaseInstance()).not.toBeNull();
+    expect(() => db()).not.toThrow();
   });
 
   describe('Site Service - Real Database Operations', () => {

@@ -34,7 +34,6 @@ vi.mock('cloudflare:workers', () => ({
 
 // Mock the database module
 vi.mock('../../src/db', () => ({
-  query: vi.fn(),
   runWithEnvConnection: (_env: unknown, fn: () => Promise<unknown>) => fn(),
 }));
 

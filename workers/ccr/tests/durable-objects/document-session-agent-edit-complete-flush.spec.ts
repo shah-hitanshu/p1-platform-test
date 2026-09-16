@@ -22,13 +22,6 @@ vi.mock('cloudflare:workers', () => ({
 
 vi.mock('../../src/db', () => ({
   runWithConnection: vi.fn(),
-  query: vi.fn(),
-  setDatabaseInstance: vi.fn(),
-  getDatabaseInstance: vi.fn(),
-  initializeDatabaseFromConnectionString: vi.fn(),
-  initializeDatabaseFromHyperdrive: vi.fn(),
-  initializeDatabase: vi.fn(),
-  closeDatabaseConnection: vi.fn(),
 }));
 
 vi.mock('../../src/services/checkpoint-service', () => ({
@@ -140,7 +133,6 @@ describe('Agent edit completion', () => {
     (db.runWithConnection as Mock).mockImplementation(
       async (_conn: string, _opts: unknown, fn: () => Promise<unknown>) => fn(),
     );
-    (db.query as Mock).mockResolvedValue({ rows: [], rowCount: 0 });
 
     const checkpointService = await import('../../src/services/checkpoint-service');
     (checkpointService.createCheckpoint as Mock).mockImplementation(() => {

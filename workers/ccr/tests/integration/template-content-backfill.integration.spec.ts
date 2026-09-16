@@ -5,7 +5,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
-import { setDatabaseInstance } from '../../src/db';
 import type { Database } from '../../src/db/executor';
 import { installDatabase } from '../../src/db/scope';
 import * as schema from '../../src/db/schema';
@@ -71,17 +70,6 @@ beforeAll(async () => {
   db = drizzle(drizzleClient, { schema });
   installDatabase(db);
 
-  const connection = {
-    async query(sqlQuery: string, params?: unknown[]): Promise<{ rows: unknown[]; rowCount: number }> {
-      const result = await sql.unsafe(sqlQuery, params as unknown as postgres.ParameterOrJSON<never>[]);
-      const rows = [...result];
-      const resultWithCount = result as unknown as { count?: number };
-      const rowCount = resultWithCount.count ?? rows.length;
-      return { rows, rowCount };
-    },
-  };
-  setDatabaseInstance(connection);
-
   const staleData = await sql<{ id: string }[]>`
     SELECT id FROM app.sites WHERE pantheon_site_id = 'test-template-backfill-site'
   `;
@@ -125,7 +113,6 @@ afterAll(async () => {
     // Ignore cleanup errors
   }
 
-  setDatabaseInstance(null);
   installDatabase(null);
   await Promise.allSettled([sql.end(), drizzleClient.end()]);
 });

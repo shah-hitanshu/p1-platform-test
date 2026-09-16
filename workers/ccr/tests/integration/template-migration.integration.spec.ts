@@ -11,8 +11,6 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type postgres from 'postgres';
-import { setDatabaseInstance, getDatabaseInstance } from '../../src/db';
-import type { DatabaseConnection, QueryResult } from '../../src/db';
 import { createRealDatabaseConnection } from '../helpers/database';
 
 import { createSite } from '../../src/services/site-service';
@@ -33,52 +31,6 @@ import { ConflictAlreadyResolvedError } from '../../src/services/errors';
 
 const TEST_USER_ID = '99999999-9999-9999-9999-999999999999';
 const SITE_PREFIX = 'migration-test';
-
-/**
- * The legacy `query` interface over an existing client, with the transaction
- * support migration-service still needs; the ported services reach the Drizzle
- * handle the shared helper installs.
- */
-function transactionalConnection(sql: postgres.Sql): DatabaseConnection {
-  async function runOn<T>(
-    handle: postgres.Sql,
-    sqlQuery: string,
-    params?: unknown[],
-  ): Promise<QueryResult<T>> {
-    const result = await handle.unsafe<T[]>(
-      sqlQuery,
-      params as unknown as postgres.ParameterOrJSON<never>[],
-    );
-    const rows = [...result] as T[];
-    const resultWithCount = result as unknown as { count?: number };
-    const rowCount = resultWithCount.count ?? rows.length;
-    return { rows, rowCount };
-  }
-
-  const connection: DatabaseConnection = {
-    query: (sqlQuery, params) => runOn(sql, sqlQuery, params),
-    close: async () => { await sql.end({ timeout: 5 }); },
-    // `query` resolves against the current test instance, so a transaction
-    // swaps that instance to one bound to the BEGIN connection for the duration.
-    async transaction<T>(fn: () => Promise<T>): Promise<T> {
-      const outer = getDatabaseInstance();
-      return sql.begin(async (txSql) => {
-        setDatabaseInstance({
-          query: (q, p) => runOn(txSql as unknown as postgres.Sql, q, p),
-          close: async () => { /* the surrounding begin() owns this connection */ },
-          transaction: (nested) => nested(),
-        });
-        try {
-          return await fn();
-        } finally {
-          setDatabaseInstance(outer);
-        }
-      }) as Promise<T>;
-    },
-  };
-
-  return connection;
-}
 
 // =============================================================================
 // Template and document snapshot helpers
@@ -103,15 +55,14 @@ function firstHeadingProps(snapshot: Record<string, unknown> | null | undefined)
 
 describe('Template Migration CUJ — Integration Tests', () => {
   let sql: postgres.Sql;
-  let connection: DatabaseConnection;
+  let close: () => Promise<void>;
   let siteId: string;
   let branchId: string;
 
   beforeAll(async () => {
     const real = createRealDatabaseConnection();
     sql = real.sql;
-    connection = real.connection;
-    setDatabaseInstance(transactionalConnection(sql));
+    close = real.close;
 
     const result = await sql`SELECT 1 as connected`;
     expect(result[0]?.connected).toBe(1);
@@ -160,8 +111,7 @@ describe('Template Migration CUJ — Integration Tests', () => {
     } catch {
       // Ignore cleanup errors
     }
-    await connection.close();
-    setDatabaseInstance(null);
+    await close();
   });
 
   // ===========================================================================

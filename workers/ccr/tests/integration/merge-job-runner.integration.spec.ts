@@ -20,7 +20,6 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type postgres from 'postgres';
-import { setDatabaseInstance } from '../../src/db';
 import { createRealDatabaseConnection, deleteSiteCascade } from '../helpers/database';
 
 import { createSite } from '../../src/services/site-service';
@@ -62,9 +61,8 @@ describe('Merge Job Runner - Integration Tests [PCC-3737]', () => {
   let mainBranchId: string;
 
   beforeAll(async () => {
-    const { connection, sql: pgSql } = createRealDatabaseConnection();
+    const { sql: pgSql } = createRealDatabaseConnection();
     sql = pgSql;
-    setDatabaseInstance(connection);
 
     await sql`SELECT 1`;
 
@@ -96,7 +94,6 @@ describe('Merge Job Runner - Integration Tests [PCC-3737]', () => {
       await sql`DELETE FROM app.users WHERE id = ${TEST_USER_ID}`;
     } finally {
       await sql.end();
-      setDatabaseInstance(null);
     }
   });
 

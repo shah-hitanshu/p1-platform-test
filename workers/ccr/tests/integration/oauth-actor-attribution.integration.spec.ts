@@ -40,8 +40,6 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type postgres from 'postgres';
-import { setDatabaseInstance } from '../../src/db';
-import type { DatabaseConnection } from '../../src/db';
 import { createRealDatabaseConnection, asConcurrentRequests } from '../helpers/database';
 
 import { createSite } from '../../src/services/site-service';
@@ -66,7 +64,7 @@ const GOOGLE_SUBJECT = `google-oauth2|${RUN}1014943591`;
 const AGENT_NON_UUID = `agent|${RUN}-not-a-uuid`;
 
 let sql: postgres.Sql;
-let connection: DatabaseConnection;
+let close: () => Promise<void>;
 let siteId: string;
 let branchId: string;
 const docIds: string[] = [];
@@ -116,9 +114,8 @@ async function versionCreator(documentId: string): Promise<string | undefined> {
 
 beforeAll(async () => {
   const real = createRealDatabaseConnection();
-  connection = real.connection;
+  close = real.close;
   sql = real.sql;
-  setDatabaseInstance(connection);
 
   const site = await createSite({
     pantheonSiteId: `${RUN}-site`,
@@ -143,8 +140,7 @@ afterAll(async () => {
   await sql`DELETE FROM app.branches WHERE site_id = ${siteId}`;
   await sql`DELETE FROM app.sites WHERE id = ${siteId}`;
   await sql`DELETE FROM app.users WHERE principal_id LIKE ${'%' + RUN + '%'} OR email LIKE ${'%' + RUN + '%'}`;
-  setDatabaseInstance(null);
-  await connection.close();
+  await close();
 });
 
 describe('PCC-3457: batchSyncToPostgres actor resolution (queue path)', () => {

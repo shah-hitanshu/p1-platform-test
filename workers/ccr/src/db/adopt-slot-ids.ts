@@ -16,15 +16,17 @@
  */
 
 import { createRequire } from 'node:module';
+import { sql } from 'drizzle-orm';
 import type { SlotAdoptionRunSummary } from '../services/slot-id-adoption';
 
 // fast-json-patch, reached transitively through the runner, exposes its CJS
 // entry via Object.assign(exports, ...), which Node's ESM loader cannot bind by
 // name. Loading the runner through require() routes it via tsx's CJS interop so
-// the named import resolves. Both bindings come from one require so they share a
-// single db module instance, keeping the connection scope consistent.
+// the named import resolves. Every binding comes from the same require, so the
+// scope runWithConnection installs into is the one db() reads.
 const cjsRequire = createRequire(import.meta.url);
-const { runWithConnection, query } = cjsRequire('../db') as typeof import('../db');
+const { runWithConnection } = cjsRequire('../db') as typeof import('../db');
+const { db } = cjsRequire('./scope') as typeof import('./scope');
 const { runSlotIdAdoption } = cjsRequire(
   '../services/slot-id-adoption',
 ) as typeof import('../services/slot-id-adoption');
@@ -92,11 +94,10 @@ async function main(): Promise<void> {
 
   const summary = await runWithConnection(DATABASE_URL, { isHyperdrive: false }, async () => {
     if (!dryRun) {
-      const lock = await query<{ locked: boolean }>(
-        'SELECT pg_try_advisory_lock(hashtext($1)) AS locked',
-        [ADOPTION_LOCK_NAME],
+      const lock = await db().execute<{ locked: boolean }>(
+        sql`SELECT pg_try_advisory_lock(hashtext(${ADOPTION_LOCK_NAME})) AS locked`,
       );
-      if (lock.rows[0]?.locked !== true) {
+      if (lock.at(0)?.locked !== true) {
         throw new Error(
           'Another slot-id adoption pass holds the advisory lock; aborting to avoid concurrent writes.',
         );
@@ -106,7 +107,7 @@ async function main(): Promise<void> {
       return await runSlotIdAdoption({ dryRun, siteId });
     } finally {
       if (!dryRun) {
-        await query('SELECT pg_advisory_unlock(hashtext($1))', [ADOPTION_LOCK_NAME]);
+        await db().execute(sql`SELECT pg_advisory_unlock(hashtext(${ADOPTION_LOCK_NAME}))`);
       }
     }
   });

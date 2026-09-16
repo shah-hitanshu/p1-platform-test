@@ -14,7 +14,6 @@
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import type postgres from 'postgres';
-import { setDatabaseInstance } from '../../src/db';
 import {
   createRealDatabaseConnection,
   asConcurrentRequests,
@@ -130,9 +129,8 @@ describe('Upstream-resolution writes - Integration Tests', () => {
   const one = (slotId: string, propPath: string, hash = HASH_A) => [{ slotId, propPath, hash }];
 
   beforeAll(async () => {
-    const { connection, sql: pgSql } = createRealDatabaseConnection();
+    const { sql: pgSql } = createRealDatabaseConnection();
     sql = pgSql;
-    setDatabaseInstance(connection);
 
     await sql`SELECT 1`;
 
@@ -186,7 +184,6 @@ describe('Upstream-resolution writes - Integration Tests', () => {
     await deleteSiteCascade(sql, siteId);
     await sql`DELETE FROM app.users WHERE id = ${TEST_USER_ID}`;
     await sql.end();
-    setDatabaseInstance(null);
   });
 
   beforeEach(async () => {

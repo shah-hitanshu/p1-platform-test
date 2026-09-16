@@ -8,7 +8,6 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type postgres from 'postgres';
-import { setDatabaseInstance } from '../../src/db';
 import { createRealDatabaseConnection } from '../helpers/database';
 import {
   createDocumentOnBranch,
@@ -42,8 +41,7 @@ async function purgeSite(siteId: string): Promise<void> {
 beforeAll(async () => {
   const real = createRealDatabaseConnection();
   sql = real.sql;
-  closeConnection = real.connection.close.bind(real.connection);
-  setDatabaseInstance(real.connection);
+  closeConnection = real.close;
 
   const stale = await sql<{ id: string }[]>`
     SELECT id FROM app.sites WHERE pantheon_site_id = ${PANTHEON_SITE_ID}
@@ -73,7 +71,6 @@ afterAll(async () => {
   } catch {
     // Ignore cleanup errors
   }
-  setDatabaseInstance(null);
   await closeConnection();
 });
 

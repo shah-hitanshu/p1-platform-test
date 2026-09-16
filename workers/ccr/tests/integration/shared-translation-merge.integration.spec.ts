@@ -14,7 +14,6 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type postgres from 'postgres';
-import { setDatabaseInstance } from '../../src/db';
 import { createRealDatabaseConnection, deleteSiteCascade } from '../helpers/database';
 
 import { createSite } from '../../src/services/site-service';
@@ -84,9 +83,8 @@ describe('Merging a translation two workstreams hold - Integration Tests', () =>
   }
 
   beforeAll(async () => {
-    const { connection, sql: pgSql } = createRealDatabaseConnection();
+    const { sql: pgSql } = createRealDatabaseConnection();
     sql = pgSql;
-    setDatabaseInstance(connection);
 
     await sql`SELECT 1`;
 
@@ -164,7 +162,6 @@ describe('Merging a translation two workstreams hold - Integration Tests', () =>
     await deleteSiteCascade(sql, siteId);
     await sql`DELETE FROM app.users WHERE id = ${TEST_USER_ID}`;
     await sql.end();
-    setDatabaseInstance(null);
   });
 
   it('merges the first branch cleanly, main holding no version of the translation', async () => {

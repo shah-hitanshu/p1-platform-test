@@ -13,7 +13,6 @@ import { makeBranch } from '../helpers/branch';
 
 // Mock database module
 vi.mock('../../src/db', () => ({
-  query: vi.fn(),
 }));
 
 // Mock document service
