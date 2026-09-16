@@ -65,7 +65,12 @@ export function P1InspectorFields({
     ? ((config.components as Record<string, { label?: string }>)[selectedBlockType]?.label ?? selectedBlockType)
     : null;
 
-  const isReadOnly = ccr?.isViewingHistoricalVersion ?? false;
+  // Two ways to be read-only: previewing an old version, or holding a role that
+  // cannot edit documents. Covers the Page tab, which the per-component
+  // resolver never sees.
+  const isReadOnly =
+    (ccr?.isViewingHistoricalVersion ?? false) ||
+    (ccr?.permissions ? !ccr.permissions.canEditDocuments : false);
   const versionNumber = ccr?.viewingVersion?.versionNumber ?? null;
   const activeTab: 'page' | 'block' = itemSelector ? 'block' : 'page';
 

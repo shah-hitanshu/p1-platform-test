@@ -207,6 +207,32 @@ function titleFromPath(path: string): string {
  * }
  * ```
  */
+
+function lockField(field: Record<string, unknown>): Record<string, unknown> {
+  let f: Record<string, unknown> = field.contentEditable ? { ...field, contentEditable: false } : field;
+  if (f.objectFields) {
+    const nested = f.objectFields as Record<string, Record<string, unknown>>;
+    f = { ...f, objectFields: Object.fromEntries(Object.entries(nested).map(([k, v]) => [k, lockField(v)])) };
+  }
+  if (f.arrayFields) {
+    const nested = f.arrayFields as Record<string, Record<string, unknown>>;
+    f = { ...f, arrayFields: Object.fromEntries(Object.entries(nested).map(([k, v]) => [k, lockField(v)])) };
+  }
+  return f;
+}
+
+function lockComponentFields(components: Record<string, unknown>): Record<string, unknown> {
+  const locked: Record<string, unknown> = {};
+  for (const [name, comp] of Object.entries(components)) {
+    const c = comp as Record<string, unknown>;
+    const fields = (c.fields ?? {}) as Record<string, Record<string, unknown>>;
+    const lockedFields: Record<string, unknown> = {};
+    for (const [k, f] of Object.entries(fields)) lockedFields[k] = lockField(f);
+    locked[name] = { ...c, fields: lockedFields };
+  }
+  return locked;
+}
+
 export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
   const {
     documentPath,
@@ -656,12 +682,23 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
   }, [p1Plugin, documentSyncPlugin, featurePuckPlugins, pluginCount]);
 
   // =========================================================================
+  // Permissions (read-only for historical versions or restricted roles)
+  // =========================================================================
+
+  const readOnly =
+    ccr.isViewingHistoricalVersion ||
+    (ccr.permissions ? !ccr.permissions.canEditDocuments : false);
+
+  // =========================================================================
   // Stable onChange (disabled for historical versions, guarded across
   // document switches)
   // =========================================================================
 
   const isViewingHistoricalRef = useRef(ccr.isViewingHistoricalVersion);
   isViewingHistoricalRef.current = ccr.isViewingHistoricalVersion;
+
+  const isReadOnlyRef = useRef(readOnly);
+  isReadOnlyRef.current = readOnly;
 
   // With Puck surviving document switches, onChange can fire while the canvas
   // still shows the previous document but ccr already targets the new one
@@ -688,6 +725,9 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
   const onChange = useCallback(
     (data: unknown) => {
       if (isViewingHistoricalRef.current) return;
+      // Backstop for every UI gate above: if a read-only user's change reaches
+      // here at all, something upstream is wrong and it must not be persisted.
+      if (isReadOnlyRef.current) return;
       // The blank sentinel stays permissive so a consumer running without the
       // document-sync plugin is not frozen read-only.
       const appliedKey = documentSyncStore.getAppliedKey();
@@ -704,20 +744,16 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
     [saveData, documentSyncStore, eagerVersionHandler]
   );
 
-  // =========================================================================
-  // Permissions (read-only for historical versions)
-  // =========================================================================
-
   const permissions = useMemo((): Record<string, boolean> => {
-    if (ccr.isViewingHistoricalVersion) {
-      // Omit edit:false so page/root fields are never locked by Puck's own
-      // readonly rendering. Interaction is blocked by ReadOnlyFieldsGuard
-      // (inert attribute) instead, which also covers root fields without
-      // requiring resolvePermissions on config.root.
+    // A role that cannot edit documents is as locked as a historical version.
+    // `edit` is omitted rather than false because Puck merges this into
+    // all-true defaults: component fields are already locked by the per-item
+    // resolver, and root fields by ReadOnlyFieldsGuard's inert attribute.
+    if (readOnly) {
       return { delete: false, drag: false, duplicate: false, insert: false };
     }
     return { delete: true, drag: true, duplicate: true, edit: true, insert: true };
-  }, [ccr.isViewingHistoricalVersion]);
+  }, [readOnly]);
 
   // =========================================================================
   // Stable merged overrides
@@ -801,10 +837,12 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
   // Template mode: editing a template document (path `_registry/templates/<name>`).
   const isTemplateMode = /^_registry\/templates\//.test(ccr.currentDocument?.path ?? '');
 
+  const hasResolvePermissions = !!ccr.resolvePermissions;
+
   const configWithPermissions = useMemo(() => {
     let cfg = puckConfig as Record<string, unknown>;
 
-    if (ccr.resolvePermissions) {
+    if (hasResolvePermissions) {
       const components = (cfg.components ?? {}) as Record<string, Record<string, unknown>>;
       const wrapped: Record<string, unknown> = {};
       for (const [name, comp] of Object.entries(components)) {
@@ -816,6 +854,9 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
           ) => {
             const resolver = resolvePermsRef.current;
             if (!resolver) return params.permissions;
+            // Read-only role: field editing must be off regardless of what
+            // the resolver returns for this component.
+            if (isReadOnlyRef.current) return { ...params.permissions, edit: false };
             const basePerms = resolver({ type: name, props: data?.props }, {});
 
             // Template-authoring mode: the context resolver only sees a
@@ -829,15 +870,25 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
               const compId = data?.props?.id;
 
               if (compId && pinMap[compId]) {
-                return { ...basePerms, drag: false, delete: false };
+                return { ...params.permissions, ...basePerms, drag: false, delete: false };
               }
             }
 
-            return basePerms;
+            // Intersect: resolver tightens permissions, never loosens them.
+            // params.permissions carries any flags already restricted globally.
+            return { ...params.permissions, ...basePerms };
           },
         };
       }
       cfg = { ...cfg, components: wrapped };
+    }
+
+    // Puck decides inline canvas editing from the field's own contentEditable,
+    // not from permissions, so a read-only role has to have it removed here.
+    // Applied to every component's fields, consumer-supplied ones included,
+    // including richtext nested inside object/array sub-schemas.
+    if (readOnly) {
+      cfg = { ...cfg, components: lockComponentFields((cfg.components ?? {}) as Record<string, unknown>) };
     }
 
     // In template mode, relabel the right-sidebar root header "Page" -> "Template".
@@ -848,7 +899,7 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
     }
 
     return cfg;
-  }, [puckConfig, !!ccr.resolvePermissions, isTemplateMode]);
+  }, [puckConfig, hasResolvePermissions, isTemplateMode, readOnly]);
 
   const puckProps: PuckProps = useMemo(
     () => ({

@@ -9,6 +9,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import React from 'react';
 import type { P1Client, Branch } from '@pantheon-systems/css-client';
+import { richtextField } from '../data/fields.js';
 
 vi.mock('./useRealtime.js', () => ({
   useRealtime: () => ({
@@ -66,6 +67,32 @@ function makeClient(authImpl: () => Promise<{ roleName: string; permissions: typ
 
 const mockConfig = { components: {} };
 
+const VIEWER_PERMS = { ...EDITOR_PERMS, canEditDocuments: false };
+
+const mockConfigWithRichtext = {
+  components: {
+    Para: {
+      fields: { body: richtextField },
+      render: () => null,
+    },
+  },
+};
+
+const mockConfigWithNestedRichtext = {
+  components: {
+    Card: {
+      fields: {
+        meta: {
+          type: 'object' as const,
+          label: 'Meta',
+          objectFields: { body: richtextField },
+        },
+      },
+      render: () => null,
+    },
+  },
+};
+
 function wrapper(client: P1Client) {
   return ({ children }: { children: React.ReactNode }) =>
     React.createElement(P1PuckProvider, { client, siteId: 'site-1', branchId: 'branch-1', userId: 'u-1' }, children);
@@ -119,5 +146,60 @@ describe('useP1Editor permission boot gate', () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(100); });
     expect(result.current.error).toBeNull();
     expect(result.current.loading).toBe(false);
+  });
+
+  it('strips contentEditable from fields when role resolves to viewer', async () => {
+    const client = makeClient(async () => ({ roleName: 'VIEWER', permissions: VIEWER_PERMS }));
+    const { result } = renderHook(
+      () => useP1Editor({ documentPath: '/home', puckConfig: mockConfigWithRichtext }),
+      { wrapper: wrapper(client) },
+    );
+    await act(async () => { await vi.advanceTimersByTimeAsync(100); });
+
+    const body = (result.current.puckProps.config as any).components?.Para?.fields?.body;
+    expect(body?.contentEditable).toBe(false);
+  });
+
+  it('preserves contentEditable when role resolves to editor', async () => {
+    const client = makeClient(async () => ({ roleName: 'EDITOR', permissions: EDITOR_PERMS }));
+    const { result } = renderHook(
+      () => useP1Editor({ documentPath: '/home', puckConfig: mockConfigWithRichtext }),
+      { wrapper: wrapper(client) },
+    );
+    await act(async () => { await vi.advanceTimersByTimeAsync(100); });
+
+    const body = (result.current.puckProps.config as any).components?.Para?.fields?.body;
+    expect(body?.contentEditable).not.toBe(false);
+  });
+
+  it('strips contentEditable from nested objectFields for a viewer', async () => {
+    const client = makeClient(async () => ({ roleName: 'VIEWER', permissions: VIEWER_PERMS }));
+    const { result } = renderHook(
+      () => useP1Editor({ documentPath: '/home', puckConfig: mockConfigWithNestedRichtext }),
+      { wrapper: wrapper(client) },
+    );
+    await act(async () => { await vi.advanceTimersByTimeAsync(100); });
+
+    const body = (result.current.puckProps.config as any).components?.Card?.fields?.meta?.objectFields?.body;
+    expect(body?.contentEditable).toBe(false);
+  });
+
+  it('per-component resolvePermissions enforces edit:false for a viewer regardless of params', async () => {
+    const client = makeClient(async () => ({ roleName: 'VIEWER', permissions: VIEWER_PERMS }));
+    const { result } = renderHook(
+      () => useP1Editor({ documentPath: '/home', puckConfig: mockConfigWithRichtext }),
+      { wrapper: wrapper(client) },
+    );
+    await act(async () => { await vi.advanceTimersByTimeAsync(100); });
+
+    const resolvePerms = (result.current.puckProps.config as any).components?.Para?.resolvePermissions;
+    expect(resolvePerms).toBeDefined();
+
+    // Simulate Puck passing all-true defaults — the wrapper must override edit to false.
+    const perms = resolvePerms(
+      { props: { id: 'c1' } },
+      { permissions: { edit: true, drag: true, delete: true, duplicate: true }, appState: { data: { root: { props: {} } } } },
+    );
+    expect(perms.edit).toBe(false);
   });
 });

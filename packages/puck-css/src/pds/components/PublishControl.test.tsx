@@ -15,6 +15,7 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
 import React from 'react';
+import type { RolePermissions } from '@pantheon-systems/css-client';
 import { __toastCalls } from '@pantheon-systems/pds-toolkit-react';
 import { PublishControl } from './PublishControl.js';
 
@@ -412,6 +413,111 @@ describe('PublishControl — branch context behavior', () => {
     await waitFor(() => {
       const publishItem = screen.getByText('Publish this page to Live');
       expect(publishItem.textContent).not.toContain('⚠️');
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Permissions filtering
+// ---------------------------------------------------------------------------
+
+const EDITOR_PERMS: RolePermissions = {
+  canView: true,
+  canEdit: true,
+  canCreateBranch: true,
+  canEditDocuments: true,
+  canCreateCheckpoint: true,
+  canProposeMerge: true,
+  canMerge: true,
+};
+
+describe('PublishControl — permissions filtering', () => {
+  it('hides Review for a role that cannot propose merge (branch context)', async () => {
+    // Allow publishing so the dropdown is still present with other items
+    const noReviewPerms: RolePermissions = { ...EDITOR_PERMS, canProposeMerge: false };
+    render(
+      <PublishControl
+        docState="modified"
+        context="branch"
+        permissions={noReviewPerms}
+        onReviewWorkstream={vi.fn()}
+        onPublish={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'More actions' }));
+    await waitFor(() => {
+      expect(screen.queryByText('Review')).toBeNull();
+    });
+  });
+
+  it('hides Publish items for a role that cannot create checkpoints (main context)', async () => {
+    // Allow delete so the dropdown is still present with another item
+    const noPublishPerms: RolePermissions = { ...EDITOR_PERMS, canCreateCheckpoint: false };
+    render(
+      <PublishControl
+        docState="modified"
+        context="main"
+        permissions={noPublishPerms}
+        onPublish={vi.fn()}
+        onDeleteDocument={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'More actions' }));
+    await waitFor(() => {
+      expect(screen.queryByText('Publish to live')).toBeNull();
+    });
+  });
+
+  it('hides Create workstream for a role that cannot create branches', async () => {
+    // Allow publishing so the dropdown is still present with other items
+    const noBranchPerms: RolePermissions = { ...EDITOR_PERMS, canCreateBranch: false };
+    render(
+      <PublishControl
+        docState="unpublished"
+        context="main"
+        permissions={noBranchPerms}
+        onPublish={vi.fn()}
+        onCreateWorkstream={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'More actions' }));
+    await waitFor(() => {
+      expect(screen.queryByText('Create a new workstream')).toBeNull();
+    });
+  });
+
+  it('hides Delete page for a role that cannot edit documents', async () => {
+    // Use permissions that allow publishing so the dropdown is still present
+    const noDeletePerms: RolePermissions = { ...EDITOR_PERMS, canEditDocuments: false };
+    render(
+      <PublishControl
+        docState="modified"
+        context="main"
+        permissions={noDeletePerms}
+        onPublish={vi.fn()}
+        onDeleteDocument={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'More actions' }));
+    await waitFor(() => {
+      expect(screen.queryByText('Delete page')).toBeNull();
+    });
+  });
+
+  it('shows all items for a role with full permissions (branch context)', async () => {
+    render(
+      <PublishControl
+        docState="modified"
+        context="branch"
+        permissions={EDITOR_PERMS}
+        onReviewWorkstream={vi.fn()}
+        onPublish={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'More actions' }));
+    await waitFor(() => {
+      expect(screen.getByText('Review')).toBeTruthy();
+      expect(screen.getByText('Publish this page to Live')).toBeTruthy();
     });
   });
 });

@@ -11,7 +11,7 @@
 
 import React from 'react';
 import { IconButton } from '@pantheon-systems/pds-toolkit-react';
-import type { Branch } from '@pantheon-systems/css-client';
+import type { Branch, RolePermissions } from '@pantheon-systems/css-client';
 import type { DocState } from '../types.js';
 import { AgentChip } from './AgentChip.js';
 import { PublishControl } from './PublishControl.js';
@@ -66,6 +66,8 @@ export interface P1EditorSubheaderProps {
   onSwitchBranch: (id: string) => void;
   onCompareWithLive: () => void;
   onCreateBranch?: (name: string) => Promise<void>;
+  /** Backend-resolved permissions; absent means no restrictions (backward compat). */
+  permissions?: RolePermissions | null;
 }
 
 export function P1EditorSubheader({
@@ -95,6 +97,7 @@ export function P1EditorSubheader({
   onSwitchBranch,
   onCompareWithLive,
   onCreateBranch,
+  permissions,
 }: P1EditorSubheaderProps): React.ReactElement {
   return (
     <div data-testid="p1-editor-subheader" className={styles.subheader}>
@@ -194,6 +197,7 @@ export function P1EditorSubheader({
           onReviewWorkstream={onReviewWorkstream}
           onCreateWorkstream={onCreateWorkstream}
           onDeleteDocument={onDeleteDocument}
+          permissions={permissions}
           renderBadgeOnly
         />
       )}
@@ -219,6 +223,7 @@ export function P1EditorSubheader({
           onReviewWorkstream={onReviewWorkstream}
           onCreateWorkstream={onCreateWorkstream}
           onDeleteDocument={onDeleteDocument}
+          permissions={permissions}
           renderButtonOnly
         />
       </div>

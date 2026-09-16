@@ -47,7 +47,7 @@ export function useComponentRegistry(
   options: UseComponentRegistryOptions,
 ): UseComponentRegistryReturn {
   const { puckConfig, upstreamPuckConfig, onRegistered, onError } = options;
-  const { client, siteId, branchId } = useP1Puck();
+  const { client, siteId, branchId, permissions } = useP1Puck();
 
   const [status, setStatus] = useState<UseComponentRegistryReturn['status']>('idle');
   const [result, setResult] = useState<RegistrationResult | null>(null);
@@ -57,6 +57,9 @@ export function useComponentRegistry(
     // branchId starts as null and resolves asynchronously. Skip registration
     // until it is available to avoid a guaranteed 404 on every page load.
     if (!branchId) return;
+    // A read-only role has no reason to write the component registry; skipping
+    // also avoids the 403 that would otherwise surface as a console warning.
+    if (permissions ? !permissions.canEditDocuments : false) return;
 
     let cancelled = false;
 
@@ -97,7 +100,7 @@ export function useComponentRegistry(
   //     removed because consumers that inline config objects would be broken by design; the hook
   //     documents the stable-reference expectation instead.
   // eslint-disable-next-line -- intentional omissions documented above
-  }, [puckConfig, upstreamPuckConfig, siteId, branchId]);
+  }, [puckConfig, upstreamPuckConfig, siteId, branchId, permissions]);
 
   return { status, result, error };
 }

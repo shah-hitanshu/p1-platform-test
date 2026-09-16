@@ -831,6 +831,21 @@ describe('useComponentRegistry', () => {
     expect(hashes.HeroBlock).toBe(currentHash);
   });
 
+  it('skips registration for a read-only role (canEditDocuments: false)', async () => {
+    const ctx = makeMockContext({ permissions: { canEditDocuments: false } } as never);
+    const mockClient = ctx.client as unknown as Record<string, Record<string, ReturnType<typeof vi.fn>>>;
+
+    const { result } = renderHook(
+      () => useComponentRegistry({ puckConfig: simplePuckConfig }),
+      { wrapper: wrapper(ctx) },
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(result.current.status).toBe('idle');
+    expect(mockClient.documents.list).not.toHaveBeenCalled();
+  });
+
   // branchId guard: skip registration when branchId is not yet resolved
   it('does not call any API when branchId is null (production initial state)', async () => {
     const ctx = makeMockContext({ branchId: null as unknown as string });

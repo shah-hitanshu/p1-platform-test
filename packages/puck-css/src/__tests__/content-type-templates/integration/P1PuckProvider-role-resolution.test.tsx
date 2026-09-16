@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { renderHook, waitFor } from '@testing-library/react';
+import { render, renderHook, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 import type { P1Client, Branch } from '@pantheon-systems/css-client';
 
@@ -32,6 +32,9 @@ const EDITOR_PERMS = {
   canMergeToMain: false, canManageGrants: false, canManageTemplates: false,
 };
 const ADMIN_PERMS = { ...EDITOR_PERMS, canMergeToMain: true, canManageGrants: true, canManageTemplates: true };
+const VIEWER = { ...EDITOR_PERMS, canEditDocuments: false, canManageTemplates: false };
+const ADMIN = ADMIN_PERMS;
+const TEST_SITE_ID = 'site-1';
 
 const mockBranch: Branch = {
   id: 'branch-1', siteId: 'site-1', name: 'main', isMain: true,
@@ -97,5 +100,40 @@ describe('P1PuckProvider — role resolution', () => {
     const { result } = renderHook(() => useP1Puck(), { wrapper: wrapper(client) });
     await waitFor(() => expect(result.current.permissionsOutcome).toBe('unavailable'));
     expect(result.current.userRole).toBe('junior-editor');
+  });
+});
+
+function PermissionConsumer() {
+  const { resolvePermissions } = useP1Puck();
+  const perms = resolvePermissions?.({ type: 'Hero', props: { id: 'x' } }, null);
+  return (
+    <div>
+      <span data-testid="puck-edit">{String(perms?.edit)}</span>
+      <span data-testid="puck-drag">{String(perms?.drag)}</span>
+    </div>
+  );
+}
+
+function renderPermissions(client: ReturnType<typeof createMockClient>) {
+  return render(
+    <P1PuckProvider client={client as never} siteId={TEST_SITE_ID} userId="user-1">
+      <PermissionConsumer />
+    </P1PuckProvider>,
+  );
+}
+
+describe('P1PuckProvider — resolvePermissions wiring', () => {
+  afterEach(() => vi.clearAllMocks());
+
+  it('denies prop editing to a granted VIEWER', async () => {
+    renderPermissions(createMockClient(async () => ({ roleName: 'VIEWER', permissions: VIEWER })));
+    await waitFor(() => expect(screen.getByTestId('puck-edit').textContent).toBe('false'));
+    expect(screen.getByTestId('puck-drag').textContent).toBe('false');
+  });
+
+  it('leaves an ADMIN able to edit props', async () => {
+    renderPermissions(createMockClient(async () => ({ roleName: 'ADMIN', permissions: ADMIN })));
+    await waitFor(() => expect(screen.getByTestId('puck-edit').textContent).toBe('true'));
+    expect(screen.getByTestId('puck-drag').textContent).toBe('true');
   });
 });

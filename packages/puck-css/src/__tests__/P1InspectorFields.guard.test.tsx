@@ -17,6 +17,7 @@ const dispatch = vi.fn();
 let itemSelector: unknown = null;
 let isViewingHistoricalVersion = false;
 let documentPath = '_registry/templates/marketing';
+let mockPermissions: { canEditDocuments: boolean } | undefined = undefined;
 
 vi.mock('@puckeditor/core', () => ({
   createUsePuck: () => (selector: (s: unknown) => unknown) =>
@@ -38,6 +39,7 @@ vi.mock('../core/P1PuckContext', () => ({
     updateTemplate: vi.fn(),
     isViewingHistoricalVersion,
     viewingVersion: isViewingHistoricalVersion ? { versionNumber: 3 } : null,
+    permissions: mockPermissions,
   }),
 }));
 
@@ -57,6 +59,7 @@ beforeEach(() => {
   itemSelector = null;
   isViewingHistoricalVersion = false;
   documentPath = '_registry/templates/marketing';
+  mockPermissions = undefined;
 });
 
 describe('P1InspectorFields — template fields honour the read-only guard', () => {
@@ -81,6 +84,17 @@ describe('P1InspectorFields — template fields honour the read-only guard', () 
 
     expect(screen.getByLabelText('Template label')).toBeInTheDocument();
     expect(container.querySelector('[inert]')).toBeNull();
+  });
+
+  it('makes template fields inert when the role cannot edit documents', () => {
+    mockPermissions = { canEditDocuments: false };
+    const { container } = render(
+      <P1InspectorFields>
+        <input aria-label="Page title" />
+      </P1InspectorFields>,
+    );
+
+    expect(container.querySelector('[inert]')).not.toBeNull();
   });
 });
 

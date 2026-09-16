@@ -1548,15 +1548,18 @@ function P1PuckProviderInner({
     return branchTemplates.find((t) => t.name === match[1]) ?? null;
   }, [currentTemplate, currentDocument?.path, branchTemplates]);
 
+  const readOnly = backendPermissions ? !backendPermissions.canEditDocuments : false;
+
   // Create Puck permissions resolver based on current template and effective role
   const resolvePermissions = useMemo(
     () => createPuckPermissions(
       resolvedTemplate,
       effectiveRole,
       isViewingHistoricalVersion,
-      backendPermissions !== null && !backendPermissions.canEditDocuments,
+      readOnly,
+      !readOnly,
     ),
-    [resolvedTemplate, effectiveRole, isViewingHistoricalVersion, backendPermissions]
+    [resolvedTemplate, effectiveRole, isViewingHistoricalVersion, readOnly]
   );
 
   // Show notification when template list fails to load

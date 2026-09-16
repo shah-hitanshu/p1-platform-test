@@ -74,6 +74,7 @@ const mockCcrContext = {
     notifications: [],
     dismissNotification: vi.fn(),
   },
+  permissions: null as { canEditDocuments: boolean } | null,
   resolvePermissions: undefined as
     | undefined
     | ((item: { type: string }, appState: unknown) => Record<string, boolean>),
@@ -157,6 +158,10 @@ describe('useP1Editor historical-version permissions', () => {
     });
   });
 
+  beforeEach(() => {
+    mockCcrContext.permissions = null;
+  });
+
   it('explicitly re-enables permissions (not undefined) when not viewing a historical version', async () => {
     mockCcrContext.isViewingHistoricalVersion = false;
     const { result } = renderHook(() =>
@@ -179,5 +184,31 @@ describe('useP1Editor historical-version permissions', () => {
       edit: true,
       insert: true,
     });
+  });
+});
+
+describe('global permissions for a read-only role', () => {
+  beforeEach(() => {
+    mockCcrContext.permissions = null;
+    mockCcrContext.isViewingHistoricalVersion = false;
+  });
+
+  it('allows insertion for a role that can edit documents', () => {
+    mockCcrContext.permissions = { canEditDocuments: true };
+    const { result } = renderHook(() => useP1Editor({ documentPath: '/home', puckConfig: {} }));
+    expect(result.current.puckProps.permissions.insert).toBe(true);
+  });
+
+  it('denies structural actions for a role that cannot edit documents', () => {
+    mockCcrContext.permissions = { canEditDocuments: false };
+    const { result } = renderHook(() => useP1Editor({ documentPath: '/home', puckConfig: {} }));
+    expect(result.current.puckProps.permissions).toEqual({
+      delete: false, drag: false, duplicate: false, insert: false,
+    });
+  });
+
+  it('leaves a context without permissions on the legacy behavior', () => {
+    const { result } = renderHook(() => useP1Editor({ documentPath: '/home', puckConfig: {} }));
+    expect(result.current.puckProps.permissions.insert).toBe(true);
   });
 });

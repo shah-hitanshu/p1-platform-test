@@ -6,6 +6,7 @@ import { useP1Puck } from '../../core/P1PuckContext.js';
 import { HistoricalVersionBanner } from '../../versioning/components/HistoricalVersionBanner.js';
 import { PageNotFound, type PageNotFoundProps } from '../../pds/components/PageNotFound.js';
 import bannerStyles from '../../versioning/components/HistoricalVersionBanner.module.css';
+import { ReadOnlyRoleBanner } from './ReadOnlyRoleBanner.js';
 
 /**
  * The slot is a sibling of the frame inside the canvas grid area, which is
@@ -15,6 +16,7 @@ import bannerStyles from '../../versioning/components/HistoricalVersionBanner.mo
  */
 function useCanvasChromeSlot(active: boolean, anchor: React.RefObject<HTMLElement | null>): HTMLElement | null {
   const [slot, setSlot] = useState<HTMLElement | null>(null);
+  const [retryTick, setRetryTick] = useState(0);
 
   useLayoutEffect(() => {
     if (!active) {
@@ -24,7 +26,17 @@ function useCanvasChromeSlot(active: boolean, anchor: React.RefObject<HTMLElemen
     const root = anchor.current?.closest('#puck-canvas-root');
     const frame = root?.parentElement; // PuckCanvas-inner
     const canvas = frame?.parentElement; // PuckCanvas — the `editor` grid area
-    if (!frame || !canvas) return;
+    if (!frame || !canvas) {
+      // Canvas not yet in the DOM; watch for it and retry once it appears.
+      const observer = new MutationObserver(() => {
+        if (document.getElementById('puck-canvas-root')) {
+          observer.disconnect();
+          setRetryTick(t => t + 1);
+        }
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+      return () => observer.disconnect();
+    }
 
     const el = document.createElement('div');
     el.className = bannerStyles.slot ?? '';
@@ -35,7 +47,7 @@ function useCanvasChromeSlot(active: boolean, anchor: React.RefObject<HTMLElemen
       el.remove();
       setSlot(null);
     };
-  }, [active, anchor]);
+  }, [active, anchor, retryTick]);
 
   return slot;
 }
@@ -91,9 +103,12 @@ export function VersionBannerOverride({
     [stepList, currentIdx, hasNext, onVersionSelect],
   );
 
-  const anchorRef = useRef<HTMLDivElement>(null);
-  const slot = useCanvasChromeSlot(isViewingOld, anchorRef);
+  const isReadOnlyRole = !!p1Context.permissions && !p1Context.permissions.canEditDocuments;
 
+  const anchorRef = useRef<HTMLDivElement>(null);
+  const slot = useCanvasChromeSlot(isViewingOld || isReadOnlyRole, anchorRef);
+
+  // The historical banner wins when both conditions are true (viewer previewing an old version).
   const banner = isViewingOld ? (
     <HistoricalVersionBanner
       version={viewingVersion}
@@ -106,6 +121,8 @@ export function VersionBannerOverride({
       hasPrevious={hasPrevious}
       hasNext={hasNext}
     />
+  ) : isReadOnlyRole ? (
+    <ReadOnlyRoleBanner />
   ) : null;
 
   return (

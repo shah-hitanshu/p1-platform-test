@@ -54,6 +54,8 @@ export function getPermissionsForRole(role: ContentRole): ComponentPermissions {
         canAddComponents: false,
         canRemoveComponents: false,
         canMoveComponents: false,
+        // The provider overrides this to false for roles that cannot edit
+        // documents. This value is the role-only answer.
         canEditProps: true,
         canOverrideUrl: false,
       };

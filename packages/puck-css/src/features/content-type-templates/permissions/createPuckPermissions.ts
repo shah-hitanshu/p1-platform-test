@@ -65,6 +65,8 @@ export type PuckPermissionResolver = (
  *   a metadata-only summary carries no pins)
  * @param role - User's content role
  * @param isHistoricalVersion - Whether viewing a historical version (read-only)
+ * @param canEditProps - Overrides prop-editing access when given. Omitted keeps
+ *   the previous behavior, for callers on the three-argument signature.
  * @returns Permission resolver function for Puck
  *
  * @example
@@ -83,6 +85,7 @@ export function createPuckPermissions(
   role: ContentRole,
   isHistoricalVersion: boolean,
   isReadOnly = false,
+  canEditProps?: boolean
 ): PuckPermissionResolver {
   const pinnedSlotIds = new Set<string>();
   if (template && 'content' in template) {
@@ -111,6 +114,8 @@ export function createPuckPermissions(
     }
   }
 
+  const editAllowed = canEditProps ?? true;
+
   return (item: PuckItem): PuckPermissions => {
     if (isReadOnly) {
       return { edit: false, drag: false, delete: false, insert: false, duplicate: false };
@@ -119,7 +124,8 @@ export function createPuckPermissions(
     // Historical versions: all structural permissions false
     if (isHistoricalVersion) {
       return {
-        edit: true, // Can still view props in read-only mode
+        // Props stay visible unless the role has no prop access at all.
+        edit: editAllowed,
         drag: false,
         delete: false,
         insert: false,
@@ -133,7 +139,7 @@ export function createPuckPermissions(
     const itemId = item.props?.id;
     if (typeof itemId === 'string' && pinnedSlotIds.has(itemId)) {
       return {
-        edit: true,
+        edit: editAllowed,
         drag: false,
         delete: false,
         insert: !juniorEditorRestricted,
@@ -142,7 +148,7 @@ export function createPuckPermissions(
     }
 
     return {
-      edit: true,
+      edit: editAllowed,
       drag: !juniorEditorRestricted,
       delete: !juniorEditorRestricted,
       insert: !juniorEditorRestricted,

@@ -1,0 +1,8 @@
+/* Sits in the canvas chrome slot, above the frame, at the canvas's own width. */
+.banner {
+  padding: var(--pds-spacing-xs) var(--pds-spacing-m);
+  background: var(--pds-color-surface-default-secondary, #f9fafb);
+  border-bottom: var(--pds-border-width-default, 1px) solid var(--pds-color-border-secondary, #ececf0);
+  color: var(--pds-color-foreground-default-secondary, #4b5563);
+  font-family: var(--pds-typography-ff-default, 'Inter', system-ui, sans-serif);
+}

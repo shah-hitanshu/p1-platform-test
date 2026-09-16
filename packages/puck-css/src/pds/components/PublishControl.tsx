@@ -1,5 +1,6 @@
 import React, { useCallback } from 'react';
 import { SplitButton, Button, useToast, ToastType } from '@pantheon-systems/pds-toolkit-react';
+import type { RolePermissions } from '@pantheon-systems/css-client';
 import type { DocState } from '../types.js';
 import { DocStateBadge } from './DocStateBadge.js';
 import styles from './PublishControl.module.css';
@@ -19,6 +20,8 @@ interface PublishControlProps {
   onDeleteDocument?: () => Promise<void> | void;
   renderBadgeOnly?: boolean;
   renderButtonOnly?: boolean;
+  /** Backend-resolved permissions; absent means no restrictions (backward compat). */
+  permissions?: RolePermissions | null;
 }
 
 function buildActionItems(
@@ -28,32 +31,49 @@ function buildActionItems(
   onRequestPublish?: () => void,
   onReviewWorkstream?: () => void,
   onCreateWorkstream?: () => void,
-  onRequestDelete?: () => void
+  onRequestDelete?: () => void,
+  permissions?: RolePermissions | null,
 ) {
   const items: { label: string; callback: () => void; disabled?: boolean }[] = [];
+
+  // Absent permissions = no restrictions (backward compat).
+  const canPublish = permissions ? permissions.canCreateCheckpoint : true;
+  const canReview = permissions ? permissions.canProposeMerge : true;
+  const canCreateBranch = permissions ? permissions.canCreateBranch : true;
+  const canDelete = permissions ? permissions.canEditDocuments : true;
 
   if (docState === 'modified') {
     // When on a branch, always show "Review" regardless of drift
     if (context === 'branch') {
-      items.push({ label: 'Review', callback: () => onReviewWorkstream?.() });
+      if (canReview) {
+        items.push({ label: 'Review', callback: () => onReviewWorkstream?.() });
+      }
 
       // Add "Publish this page to Live" with drift warning if needed
-      const publishLabel = hasDrift
-        ? 'Publish this page to Live\n⚠️ Page changed since you edited'
-        : 'Publish this page to Live';
-      items.push({ label: publishLabel, callback: () => onRequestPublish?.() });
+      if (canPublish) {
+        const publishLabel = hasDrift
+          ? 'Publish this page to Live\n⚠️ Page changed since you edited'
+          : 'Publish this page to Live';
+        items.push({ label: publishLabel, callback: () => onRequestPublish?.() });
+      }
     } else {
       // On main, keep existing behavior
-      items.push({ label: 'Publish to live', callback: () => onRequestPublish?.() });
+      if (canPublish) {
+        items.push({ label: 'Publish to live', callback: () => onRequestPublish?.() });
+      }
     }
     items.push({ label: 'Schedule publish', callback: () => {}, disabled: true });
   } else if (docState === 'unpublished' && context === 'main') {
-    items.push({ label: 'Publish', callback: () => onRequestPublish?.() });
-    items.push({ label: 'Create a new workstream', callback: () => onCreateWorkstream?.() });
+    if (canPublish) {
+      items.push({ label: 'Publish', callback: () => onRequestPublish?.() });
+    }
+    if (canCreateBranch) {
+      items.push({ label: 'Create a new workstream', callback: () => onCreateWorkstream?.() });
+    }
     items.push({ label: 'Schedule publish', callback: () => {}, disabled: true });
   }
 
-  if (onRequestDelete) {
+  if (onRequestDelete && canDelete) {
     items.push({ label: 'Delete page', callback: () => onRequestDelete() });
   }
 
@@ -71,6 +91,7 @@ export function PublishControl({
   onDeleteDocument,
   renderBadgeOnly = false,
   renderButtonOnly = false,
+  permissions,
 }: PublishControlProps): React.ReactElement {
   const [addToast, toastApi] = useToast();
 
@@ -135,7 +156,8 @@ export function PublishControl({
     handlePublishRequest,
     onReviewWorkstream,
     onCreateWorkstream,
-    onDeleteDocument ? handleDeleteRequest : undefined
+    onDeleteDocument ? handleDeleteRequest : undefined,
+    permissions,
   );
 
   const hasActions = actionItems.length > 0;

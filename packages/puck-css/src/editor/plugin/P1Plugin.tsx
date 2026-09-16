@@ -666,7 +666,7 @@ function P1SubheaderBridgeInner({
   p1Context: ReturnType<typeof useP1Puck>;
   showMergeReviewRef: { current: () => void };
 }): React.ReactElement | null {
-  const { currentDocument, currentBranch, presence, publishDocument } = p1Context;
+  const { currentDocument, currentBranch, presence, publishDocument, permissions } = p1Context;
 
   // Read Puck history state — must be called unconditionally (Rules of Hooks)
   const history = usePluginPuckHistory((s) => (s as unknown as PuckStateWithHistory).history);
@@ -793,6 +793,7 @@ function P1SubheaderBridgeInner({
           onSwitchBranch={options.onBranchSwitch ?? (() => {})}
           onCompareWithLive={handleCompareWithLive ?? (() => {})}
           onCreateBranch={options.onCreateBranch}
+          permissions={permissions}
         />,
         slotEl,
       )}

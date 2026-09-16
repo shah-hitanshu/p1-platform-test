@@ -1,15 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import React from 'react';
 import type { DocumentVersion } from '@pantheon-systems/css-client';
 
 let mockCurrentDocument: unknown = null;
 let mockIsReturningToLatest = false;
+let mockPermissions: { canEditDocuments: boolean } | undefined = undefined;
 
 vi.mock('../../core/P1PuckContext', () => ({
   useP1Puck: () => ({
     currentDocument: mockCurrentDocument,
     isReturningToLatest: mockIsReturningToLatest,
+    permissions: mockPermissions,
   }),
 }));
 
@@ -37,6 +39,7 @@ describe('VersionBannerOverride', () => {
   beforeEach(() => {
     mockCurrentDocument = { id: 'd1', path: '/home' };
     mockIsReturningToLatest = false;
+    mockPermissions = undefined;
   });
 
   it('renders children', () => {
@@ -223,6 +226,67 @@ describe('VersionBannerOverride — stepper wiring', () => {
     );
     expect(screen.queryByRole('button', { name: /next version/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /previous version/i })).not.toBeInTheDocument();
+  });
+});
+
+describe('VersionBannerOverride — MutationObserver canvas retry', () => {
+  beforeEach(() => {
+    mockCurrentDocument = { id: 'd1', path: '/home' };
+    mockIsReturningToLatest = false;
+    mockPermissions = { canEditDocuments: false };
+  });
+
+  it('creates a MutationObserver when the canvas is not yet in the DOM', () => {
+    const disconnectFn = vi.fn();
+    const observeFn = vi.fn();
+    class MockObserver {
+      constructor(_cb: MutationCallback) {}
+      observe = observeFn;
+      disconnect = disconnectFn;
+    }
+    vi.stubGlobal('MutationObserver', MockObserver);
+
+    const { unmount } = render(
+      <VersionBannerOverride versions={[]}>
+        <div>child</div>
+      </VersionBannerOverride>,
+    );
+
+    expect(observeFn).toHaveBeenCalledWith(document.body, { childList: true, subtree: true });
+
+    unmount();
+    expect(disconnectFn).toHaveBeenCalled();
+
+    vi.unstubAllGlobals();
+  });
+
+  it('disconnects the observer once puck-canvas-root appears in the DOM', async () => {
+    const disconnectFn = vi.fn();
+    let observerCallback: MutationCallback | null = null;
+    class MockObserver {
+      constructor(cb: MutationCallback) { observerCallback = cb; }
+      observe = vi.fn();
+      disconnect = disconnectFn;
+    }
+    vi.stubGlobal('MutationObserver', MockObserver);
+
+    const { unmount } = render(
+      <VersionBannerOverride versions={[]}>
+        <div>child</div>
+      </VersionBannerOverride>,
+    );
+
+    const root = document.createElement('div');
+    root.id = 'puck-canvas-root';
+    document.body.appendChild(root);
+
+    await act(async () => { observerCallback?.([], {} as MutationObserver); });
+
+    expect(disconnectFn).toHaveBeenCalled();
+
+    root.remove();
+    unmount();
+    vi.unstubAllGlobals();
   });
 });
 
