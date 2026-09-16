@@ -9,7 +9,10 @@
 
 import { getLogger } from '@pantheon-systems/p1-telemetry';
 import type { Document } from '../types';
-import { query, withTransaction } from '../db';
+import { and, eq, sql, type SQL } from 'drizzle-orm';
+import { db, transaction } from '../db/scope';
+import { toIsoTimestamp } from '../db/helpers';
+import { documentVersions } from '../db/schema';
 import type { RedirectSnapshot } from '../types/redirects';
 import { REDIRECTS_PATH_PREFIX } from '../types/redirects';
 import type {
@@ -30,6 +33,7 @@ import {
   mapRowToDocument,
   mapRowToDocumentVersion,
   normalizePath,
+  pathPrefixPattern,
   validatePath,
   isUniqueConstraintViolation,
   isForeignKeyViolation,
@@ -62,20 +66,10 @@ import { enforceUniqueSlotIds } from './slot-id-backstop';
 import { validateLocale } from './locale';
 import type { CreateDocumentVersionParams } from './document-version-service';
 
-function appendPaginationClauses(
-  sql: string,
-  params: unknown[],
-  options: { limit?: number; offset?: number },
-): string {
-  if (options.limit !== undefined) {
-    params.push(options.limit);
-    sql += ` LIMIT $${String(params.length)}`;
-  }
-  if (options.offset !== undefined) {
-    params.push(options.offset);
-    sql += ` OFFSET $${String(params.length)}`;
-  }
-  return sql;
+function paginationClauses(options: { limit?: number; offset?: number }): SQL {
+  const limit = options.limit === undefined ? sql`` : sql` LIMIT ${options.limit}`;
+  const offset = options.offset === undefined ? sql`` : sql` OFFSET ${options.offset}`;
+  return sql`${limit}${offset}`;
 }
 
 /**
@@ -83,8 +77,8 @@ function appendPaginationClauses(
  * and picture. Only users have a picture — app.agents has no avatar column.
  * Aliased au/ag because the wrapper already owns `u` and orders on it.
  */
-function withAuthorName(innerSql: string, orderBy: string): string {
-  return `SELECT u.*,
+function withAuthorName(inner: SQL, orderBy: SQL): SQL {
+  return sql`SELECT u.*,
       COALESCE(
         CASE u.last_modified_by_type
           WHEN 'user'  THEN COALESCE(au.name, au.email)
@@ -95,10 +89,29 @@ function withAuthorName(innerSql: string, orderBy: string): string {
         WHEN 'user' THEN au.avatar_url
         ELSE NULL
       END AS last_modified_by_avatar_url
-    FROM (${innerSql}) u
+    FROM (${inner}) u
     LEFT JOIN app.users  au ON au.id = u.last_modified_by_id
     LEFT JOIN app.agents ag ON ag.id = u.last_modified_by_id::text
     ORDER BY ${orderBy}`;
+}
+
+/**
+ * The filters both listings share: a LIKE pattern on the branch's effective
+ * path, and the template a document derives from. Each carries its own value,
+ * so the two arms of an inheriting listing can repeat the same filter.
+ */
+function listingFilters(
+  pathPrefix: string | undefined,
+  templateId: string | undefined,
+): SQL {
+  const pattern = pathPrefixPattern(pathPrefix);
+  const prefix = pattern === undefined
+    ? sql``
+    : sql` AND ${effectivePathPrefixPredicate(pattern)}`;
+  const template = templateId === undefined
+    ? sql``
+    : sql` AND dr.target_document_id = ${templateId}`;
+  return sql`${prefix}${template}`;
 }
 
 /**
@@ -113,18 +126,24 @@ export async function listDocumentsOnBranch(
   branchId: string,
   options: ListDocumentsOnBranchOptions = {},
 ): Promise<DocumentOnBranch[]> {
-  const { pathPrefix, mainBranchId, templateId, limit, offset, orderBy, includeTombstoned = false } = options;
-  const tombstoneFilter = includeTombstoned ? '' : ' AND top.is_tombstone = false';
-  const orderDir = orderBy?.direction === 'desc' ? 'DESC' : 'ASC';
+  const {
+    pathPrefix, mainBranchId, templateId, limit, offset, orderBy, includeTombstoned = false,
+  } = options;
+  const tombstoneFilter = includeTombstoned ? sql`` : sql` AND top.is_tombstone = false`;
+  const orderDir = orderBy?.direction === 'desc' ? sql`DESC` : sql`ASC`;
   const outerOrder =
     orderBy?.field === 'createdAt'
-      ? `u.created_at ${orderDir}`
-      : `COALESCE(u.branch_path, u.path) ${orderDir}`;
+      ? sql`u.created_at ${orderDir}`
+      : sql`COALESCE(u.branch_path, u.path) ${orderDir}`;
+  const inherits = branchInheritsFromMain(branchId, mainBranchId);
+  const filters = listingFilters(pathPrefix, templateId);
 
-  if (branchInheritsFromMain(branchId, mainBranchId)) {
+  if (inherits) {
     // Copy-on-write query: include documents from branch + inherited from main
-    // Includes publish state via a batch LEFT JOIN on checkpoint_documents
-    let sql = `
+    // Includes publish state via a batch LEFT JOIN on checkpoint_documents.
+    // The arms are disjoint — the second takes only documents with no version on
+    // the branch — and each emits one row per document, so UNION ALL suffices.
+    const inner = sql`
       SELECT ${DOCUMENT_READ_COLUMNS},
         bdp.path AS branch_path,
         false AS inherited,
@@ -138,33 +157,11 @@ export async function listDocumentsOnBranch(
       FROM app.documents d
       ${DOCUMENT_READ_JOINS}
       LEFT JOIN app.branch_document_paths bdp
-        ON bdp.branch_id = $1 AND bdp.document_id = d.id
-      ${latestVersionOnBranchJoin('$1', LATEST_VERSION_LISTING_COLUMNS)}
-      ${latestPublishOnBranchJoin('$2')}
+        ON bdp.branch_id = ${branchId} AND bdp.document_id = d.id
+      ${latestVersionOnBranchJoin(branchId, LATEST_VERSION_LISTING_COLUMNS)}
+      ${latestPublishOnBranchJoin(mainBranchId)}
       WHERE d.archived_at IS NULL
-        AND ${documentInBranchSitePredicate('$1')}${tombstoneFilter}`;
-
-    const params: unknown[] = [branchId, mainBranchId];
-
-    let pathParamIdx: number | undefined;
-    if (pathPrefix !== undefined && pathPrefix !== '') {
-      const normalizedPrefix = normalizePath(pathPrefix);
-      const escapedPrefix = escapeLikePattern(normalizedPrefix) + '%';
-      params.push(escapedPrefix);
-      pathParamIdx = params.length;
-      sql += ` AND ${effectivePathPrefixPredicate(`$${String(pathParamIdx)}`)}`;
-    }
-
-    let templateParamIdx: number | undefined;
-    if (templateId !== undefined) {
-      params.push(templateId);
-      templateParamIdx = params.length;
-      sql += ` AND dr.target_document_id = $${String(templateParamIdx)}`;
-    }
-
-    // The arms are disjoint — the second takes only documents with no version on
-    // the branch — and each emits one row per document, so UNION ALL suffices.
-    sql += `
+        AND ${documentInBranchSitePredicate(branchId)}${tombstoneFilter}${filters}
 
       UNION ALL
 
@@ -181,37 +178,28 @@ export async function listDocumentsOnBranch(
       FROM app.documents d
       ${DOCUMENT_READ_JOINS}
       LEFT JOIN app.branch_document_paths bdp
-        ON bdp.branch_id = $1 AND bdp.document_id = d.id
-      ${latestVersionOnBranchJoin('$2', LATEST_VERSION_LISTING_COLUMNS)}
-      ${latestPublishOnBranchJoin('$2')}
+        ON bdp.branch_id = ${branchId} AND bdp.document_id = d.id
+      ${latestVersionOnBranchJoin(mainBranchId, LATEST_VERSION_LISTING_COLUMNS)}
+      ${latestPublishOnBranchJoin(mainBranchId)}
       WHERE d.archived_at IS NULL
-        AND ${documentInBranchSitePredicate('$1')}${tombstoneFilter}
-        AND ${publishedOnBranchPredicate('$2')}
+        AND ${documentInBranchSitePredicate(branchId)}${tombstoneFilter}
+        AND ${publishedOnBranchPredicate(mainBranchId)}
         AND NOT EXISTS (
           SELECT 1 FROM app.document_versions dv_branch
           WHERE dv_branch.document_id = d.id
-            AND dv_branch.branch_id = $1
-        )`;
+            AND dv_branch.branch_id = ${branchId}
+        )${filters}`;
 
-    if (pathParamIdx !== undefined) {
-      sql += ` AND ${effectivePathPrefixPredicate(`$${String(pathParamIdx)}`)}`;
-    }
+    const result = await db().execute<DocumentOnBranchRow>(
+      sql`${withAuthorName(inner, outerOrder)}${paginationClauses({ limit, offset })}`,
+    );
 
-    if (templateParamIdx !== undefined) {
-      sql += ` AND dr.target_document_id = $${String(templateParamIdx)}`;
-    }
-
-    sql = withAuthorName(sql, outerOrder);
-    sql = appendPaginationClauses(sql, params, { limit, offset });
-
-    const result = await query<DocumentOnBranchRow>(sql, params);
-
-    return result.rows.map(mapRowToDocumentOnBranch);
+    return result.map(mapRowToDocumentOnBranch);
   }
 
   // Original query: only documents with versions on the branch
   // When called without mainBranchId, the branchId itself is treated as main
-  let sql = `
+  const inner = sql`
     SELECT ${DOCUMENT_READ_COLUMNS},
       bdp.path AS branch_path,
       false AS inherited,
@@ -225,30 +213,17 @@ export async function listDocumentsOnBranch(
     FROM app.documents d
     ${DOCUMENT_READ_JOINS}
     LEFT JOIN app.branch_document_paths bdp
-      ON bdp.branch_id = $1 AND bdp.document_id = d.id
-    ${latestVersionOnBranchJoin('$1', LATEST_VERSION_LISTING_COLUMNS)}
-    ${latestPublishOnBranchJoin('$1')}
+      ON bdp.branch_id = ${branchId} AND bdp.document_id = d.id
+    ${latestVersionOnBranchJoin(branchId, LATEST_VERSION_LISTING_COLUMNS)}
+    ${latestPublishOnBranchJoin(branchId)}
     WHERE d.archived_at IS NULL
-      AND ${documentInBranchSitePredicate('$1')}${tombstoneFilter}`;
+      AND ${documentInBranchSitePredicate(branchId)}${tombstoneFilter}${filters}`;
 
-  const params: unknown[] = [branchId];
+  const result = await db().execute<DocumentOnBranchRow>(
+    sql`${withAuthorName(inner, outerOrder)}${paginationClauses({ limit, offset })}`,
+  );
 
-  if (pathPrefix !== undefined && pathPrefix !== '') {
-    params.push(escapeLikePattern(pathPrefix) + '%');
-    sql += ` AND ${effectivePathPrefixPredicate(`$${String(params.length)}`)}`;
-  }
-
-  if (templateId !== undefined) {
-    params.push(templateId);
-    sql += ` AND dr.target_document_id = $${String(params.length)}`;
-  }
-
-  sql = withAuthorName(sql, outerOrder);
-  sql = appendPaginationClauses(sql, params, { limit, offset });
-
-  const result = await query<DocumentOnBranchRow>(sql, params);
-
-  return result.rows.map(mapRowToDocumentOnBranch);
+  return result.map(mapRowToDocumentOnBranch);
 }
 
 /**
@@ -260,49 +235,37 @@ export async function countDocumentsOnBranch(
   options: Pick<ListDocumentsOnBranchOptions, 'pathPrefix' | 'mainBranchId' | 'templateId' | 'includeTombstoned'> = {},
 ): Promise<number> {
   const { pathPrefix, mainBranchId, templateId, includeTombstoned = false } = options;
+  const inherits = branchInheritsFromMain(branchId, mainBranchId);
+  const filters = listingFilters(pathPrefix, templateId);
 
-  if (branchInheritsFromMain(branchId, mainBranchId)) {
-    let sql = `
+  /** The branch's own tombstone exclusion, against the aliases its arm uses. */
+  const notTombstonedOn = (branch: string, tomb: SQL, latest: SQL): SQL =>
+    includeTombstoned
+      ? sql``
+      : sql`
+          AND NOT EXISTS (
+            SELECT 1 FROM app.document_versions ${tomb}
+            WHERE ${tomb}.document_id = d.id AND ${tomb}.branch_id = ${branch}
+              AND ${tomb}.is_tombstone = true
+              AND ${tomb}.version_number = (
+                SELECT MAX(${latest}.version_number)
+                FROM app.document_versions ${latest}
+                WHERE ${latest}.document_id = d.id AND ${latest}.branch_id = ${branch}
+              )
+          )`;
+
+  if (inherits) {
+    const statement = sql`
       SELECT COUNT(*) AS count FROM (
         SELECT d.id
         FROM app.documents d
         ${TEMPLATE_RELATION_JOIN}
         INNER JOIN app.document_versions dv ON dv.document_id = d.id
         LEFT JOIN app.branch_document_paths bdp
-          ON bdp.branch_id = $1 AND bdp.document_id = d.id
-        WHERE dv.branch_id = $1
+          ON bdp.branch_id = ${branchId} AND bdp.document_id = d.id
+        WHERE dv.branch_id = ${branchId}
           AND dv.superseded_at IS NULL
-          AND d.archived_at IS NULL${includeTombstoned ? '' : `
-          AND NOT EXISTS (
-            SELECT 1 FROM app.document_versions dv2
-            WHERE dv2.document_id = d.id AND dv2.branch_id = $1
-              AND dv2.is_tombstone = true
-              AND dv2.version_number = (
-                SELECT MAX(dv3.version_number)
-                FROM app.document_versions dv3
-                WHERE dv3.document_id = d.id AND dv3.branch_id = $1
-              )
-          )`}`;
-
-    const params: unknown[] = [branchId, mainBranchId];
-
-    let pathParamIdx: number | undefined;
-    if (pathPrefix !== undefined && pathPrefix !== '') {
-      const normalizedPrefix = normalizePath(pathPrefix);
-      const escapedPrefix = escapeLikePattern(normalizedPrefix) + '%';
-      params.push(escapedPrefix);
-      pathParamIdx = params.length;
-      sql += ` AND ${effectivePathPrefixPredicate(`$${String(pathParamIdx)}`)}`;
-    }
-
-    let templateParamIdx: number | undefined;
-    if (templateId !== undefined) {
-      params.push(templateId);
-      templateParamIdx = params.length;
-      sql += ` AND dr.target_document_id = $${String(templateParamIdx)}`;
-    }
-
-    sql += `
+          AND d.archived_at IS NULL${notTombstonedOn(branchId, sql`dv2`, sql`dv3`)}${filters}
 
         UNION
 
@@ -317,79 +280,37 @@ export async function countDocumentsOnBranch(
         INNER JOIN app.checkpoint_documents cd ON cd.document_version_id = dv.id
         INNER JOIN app.checkpoints cp ON cp.id = cd.checkpoint_id
         LEFT JOIN app.branch_document_paths bdp
-          ON bdp.branch_id = $1 AND bdp.document_id = d.id
-        WHERE dv.branch_id = $2
-          AND cp.branch_id = $2
+          ON bdp.branch_id = ${branchId} AND bdp.document_id = d.id
+        WHERE dv.branch_id = ${mainBranchId}
+          AND cp.branch_id = ${mainBranchId}
           AND cp.checkpoint_type = 'publish'
           AND d.archived_at IS NULL
           AND NOT EXISTS (
             SELECT 1 FROM app.document_versions dv_branch
-            WHERE dv_branch.document_id = d.id AND dv_branch.branch_id = $1
-          )${includeTombstoned ? '' : `
-          AND NOT EXISTS (
-            SELECT 1 FROM app.document_versions dv_tomb
-            WHERE dv_tomb.document_id = d.id AND dv_tomb.branch_id = $2
-              AND dv_tomb.is_tombstone = true
-              AND dv_tomb.version_number = (
-                SELECT MAX(dv_latest.version_number)
-                FROM app.document_versions dv_latest
-                WHERE dv_latest.document_id = d.id AND dv_latest.branch_id = $2
-              )
-          )`}`;
+            WHERE dv_branch.document_id = d.id AND dv_branch.branch_id = ${branchId}
+          )${notTombstonedOn(mainBranchId, sql`dv_tomb`, sql`dv_latest`)}${filters}
+      ) counted`;
 
-    if (pathParamIdx !== undefined) {
-      sql += ` AND ${effectivePathPrefixPredicate(`$${String(pathParamIdx)}`)}`;
-    }
-
-    if (templateId !== undefined && templateParamIdx !== undefined) {
-      sql += ` AND dr.target_document_id = $${String(templateParamIdx)}`;
-    }
-
-    sql += ') counted';
-
-    const result = await query<{ count: string }>(sql, params);
-    const countRow = result.rows[0];
+    const result = await db().execute<ListingCountRow>(statement);
+    const countRow = result.at(0);
     return countRow ? parseInt(countRow.count, 10) : 0;
   }
 
-  let sql = `
+  const statement = sql`
     SELECT COUNT(*) AS count FROM (
       SELECT DISTINCT d.id
       FROM app.documents d
       ${TEMPLATE_RELATION_JOIN}
       INNER JOIN app.document_versions dv ON dv.document_id = d.id
       LEFT JOIN app.branch_document_paths bdp
-        ON bdp.branch_id = $1 AND bdp.document_id = d.id
-      WHERE dv.branch_id = $1
+        ON bdp.branch_id = ${branchId} AND bdp.document_id = d.id
+      WHERE dv.branch_id = ${branchId}
         AND dv.superseded_at IS NULL
-        AND d.archived_at IS NULL${includeTombstoned ? '' : `
-        AND NOT EXISTS (
-          SELECT 1 FROM app.document_versions dv2
-          WHERE dv2.document_id = d.id AND dv2.branch_id = $1
-            AND dv2.is_tombstone = true
-            AND dv2.version_number = (
-              SELECT MAX(dv3.version_number)
-              FROM app.document_versions dv3
-              WHERE dv3.document_id = d.id AND dv3.branch_id = $1
-            )
-        )`}`;
+        AND d.archived_at IS NULL${notTombstonedOn(branchId, sql`dv2`, sql`dv3`)}${filters}
+    ) counted`;
 
-  const params: unknown[] = [branchId];
-
-  if (pathPrefix !== undefined && pathPrefix !== '') {
-    params.push(escapeLikePattern(pathPrefix) + '%');
-    sql += ` AND ${effectivePathPrefixPredicate(`$${String(params.length)}`)}`;
-  }
-
-  if (templateId !== undefined) {
-    params.push(templateId);
-    sql += ` AND dr.target_document_id = $${String(params.length)}`;
-  }
-
-  sql += ') counted';
-
-  const result = await query<{ count: string }>(sql, params);
-  const countRow = result.rows[0];
+  const result = await db().execute<ListingCountRow>(statement);
+  const countRow = result.at(0);
   return countRow ? parseInt(countRow.count, 10) : 0;
 }
 
@@ -405,19 +326,19 @@ export async function assertPathFreeOnBranch(
   movingDocumentIds: string[],
   paths: string[],
 ): Promise<void> {
-  const result = await query<{ path: string }>(
-    `SELECT COALESCE(bdp.path, d.path) AS path
+  // sql.param keeps each list one array parameter rather than a row
+  // constructor, which ANY cannot read.
+  const result = await db().execute<TakenPathRow>(sql`
+    SELECT COALESCE(bdp.path, d.path) AS path
      FROM app.documents d
      LEFT JOIN app.branch_document_paths bdp
-       ON bdp.branch_id = $1 AND bdp.document_id = d.id
-     WHERE d.site_id = $2
+       ON bdp.branch_id = ${branchId} AND bdp.document_id = d.id
+     WHERE d.site_id = ${siteId}
        AND d.archived_at IS NULL
-       AND NOT (d.id = ANY($3::uuid[]))
-       AND COALESCE(bdp.path, d.path) = ANY($4::text[])
-     LIMIT 1`,
-    [branchId, siteId, movingDocumentIds, paths],
-  );
-  const taken = result.rows[0];
+       AND NOT (d.id = ANY(${sql.param(movingDocumentIds)}::uuid[]))
+       AND COALESCE(bdp.path, d.path) = ANY(${sql.param(paths)}::text[])
+     LIMIT 1`);
+  const taken = result.at(0);
   if (taken) {
     getLogger().info('move blocked by occupied path', {
       site_id: siteId,
@@ -450,35 +371,37 @@ export async function upsertBranchDocumentPaths(
     paths.push(normalized);
   }
 
-  await query(
-    `INSERT INTO app.branch_document_paths (branch_id, document_id, path)
-     SELECT $1, m.document_id, m.path
-     FROM unnest($2::uuid[], $3::text[]) AS m(document_id, path)
-     ON CONFLICT (branch_id, document_id) DO UPDATE SET path = EXCLUDED.path`,
-    [branchId, documentIds, paths],
-  );
+  await db().execute(sql`
+    INSERT INTO app.branch_document_paths (branch_id, document_id, path)
+     SELECT ${branchId}, m.document_id, m.path
+     FROM unnest(${sql.param(documentIds)}::uuid[], ${sql.param(paths)}::text[])
+          AS m(document_id, path)
+     ON CONFLICT (branch_id, document_id) DO UPDATE SET path = EXCLUDED.path`);
 }
 
-// $4 raw for substring arithmetic, $5 LIKE-escaped for prefix matching.
-// Never share one parameter for both uses: escaping changes string length,
-// which shifts the substring offset and corrupts descendant paths.
+// The old path is bound twice: raw for the substring arithmetic, LIKE-escaped
+// for the prefix match. Never share one value for both uses: escaping changes
+// the string's length, which shifts the substring offset and corrupts
+// descendant paths.
 async function planDescendants(
   branchId: string,
   siteId: string,
   oldPath: string,
   newPath: string,
 ): Promise<PlannedMove[]> {
-  const result = await query<{ id: string; new_path: string }>(
-    `SELECT d.id, $3 || substring(COALESCE(bdp.path, d.path) from length($4) + 1) AS new_path
+  // escapeLikePattern escapes with a backslash, which is LIKE's default escape
+  // character.
+  const result = await db().execute<PlannedDescendantRow>(sql`
+    SELECT d.id,
+           ${newPath} || substring(COALESCE(bdp.path, d.path) from length(${oldPath}) + 1)
+             AS new_path
      FROM app.documents d
      LEFT JOIN app.branch_document_paths bdp
-       ON bdp.branch_id = $1 AND bdp.document_id = d.id
-     WHERE d.site_id = $2
+       ON bdp.branch_id = ${branchId} AND bdp.document_id = d.id
+     WHERE d.site_id = ${siteId}
        AND d.archived_at IS NULL
-       AND COALESCE(bdp.path, d.path) LIKE $5 || '/%' ESCAPE '\\'`,
-    [branchId, siteId, newPath, oldPath, escapeLikePattern(oldPath)],
-  );
-  return result.rows.map((r) => ({ documentId: r.id, newPath: r.new_path }));
+       AND COALESCE(bdp.path, d.path) LIKE ${escapeLikePattern(oldPath)} || '/%'`);
+  return result.map((r) => ({ documentId: r.id, newPath: r.new_path }));
 }
 
 async function planLocaleVariants(
@@ -489,13 +412,8 @@ async function planLocaleVariants(
   if (canonicalMoves.length === 0) return [];
 
   const newPathByCanonical = new Map(canonicalMoves.map((m) => [m.documentId, m.newPath]));
-  const result = await query<{
-    variant_id: string;
-    canonical_id: string;
-    variant_path: string;
-    canonical_old_path: string;
-  }>(
-    `SELECT dr.source_document_id AS variant_id,
+  const result = await db().execute<LocaleVariantMoveRow>(sql`
+    SELECT dr.source_document_id AS variant_id,
             dr.target_document_id AS canonical_id,
             COALESCE(vbdp.path, v.path) AS variant_path,
             COALESCE(cbdp.path, c.path) AS canonical_old_path
@@ -503,18 +421,16 @@ async function planLocaleVariants(
      JOIN app.documents v ON v.id = dr.source_document_id
      JOIN app.documents c ON c.id = dr.target_document_id
      LEFT JOIN app.branch_document_paths vbdp
-       ON vbdp.branch_id = $1 AND vbdp.document_id = v.id
+       ON vbdp.branch_id = ${branchId} AND vbdp.document_id = v.id
      LEFT JOIN app.branch_document_paths cbdp
-       ON cbdp.branch_id = $1 AND cbdp.document_id = c.id
+       ON cbdp.branch_id = ${branchId} AND cbdp.document_id = c.id
      WHERE dr.relation_type = 'localization'
-       AND dr.target_document_id = ANY($3::uuid[])
-       AND v.site_id = $2
-       AND v.archived_at IS NULL`,
-    [branchId, siteId, [...newPathByCanonical.keys()]],
-  );
+       AND dr.target_document_id = ANY(${sql.param([...newPathByCanonical.keys()])}::uuid[])
+       AND v.site_id = ${siteId}
+       AND v.archived_at IS NULL`);
 
   const planned: PlannedMove[] = [];
-  for (const row of result.rows) {
+  for (const row of result) {
     const canonicalNewPath = newPathByCanonical.get(row.canonical_id);
     if (canonicalNewPath === undefined) continue;
     // A customised variant path is a deliberate choice — leave it alone.
@@ -545,15 +461,13 @@ export async function planMove(
   if (oldPath.startsWith(SECTIONS_PATH_PREFIX)) {
     const oldContent = oldPath.slice(SECTIONS_PATH_PREFIX.length);
     const newContent = newPath.slice(SECTIONS_PATH_PREFIX.length);
-    const contentRoot = await query<{ id: string }>(
-      `SELECT d.id FROM app.documents d
+    const contentRoot = await db().execute<DocumentIdRow>(sql`
+      SELECT d.id FROM app.documents d
        LEFT JOIN app.branch_document_paths bdp
-         ON bdp.branch_id = $1 AND bdp.document_id = d.id
-       WHERE d.site_id = $2 AND d.archived_at IS NULL
-         AND COALESCE(bdp.path, d.path) = $3`,
-      [branchId, siteId, oldContent],
-    );
-    for (const row of contentRoot.rows) {
+         ON bdp.branch_id = ${branchId} AND bdp.document_id = d.id
+       WHERE d.site_id = ${siteId} AND d.archived_at IS NULL
+         AND COALESCE(bdp.path, d.path) = ${oldContent}`);
+    for (const row of contentRoot) {
       planned.push({ documentId: row.id, newPath: newContent });
     }
     planned.push(...(await planDescendants(branchId, siteId, oldContent, newContent)));
@@ -583,37 +497,34 @@ export async function moveDocumentOnBranch(
   const normalized = normalizePath(newPath);
   validatePath(normalized);
 
-  await query('BEGIN');
   try {
-    await query('SELECT pg_advisory_xact_lock(hashtext($1))', [branchId]);
+    return await transaction(async () => {
+      await db().execute(sql`SELECT pg_advisory_xact_lock(hashtext(${branchId}))`);
 
-    const current = await query<{ site_id: string; path: string }>(
-      `SELECT d.site_id, COALESCE(bdp.path, d.path) AS path
-       FROM app.documents d
-       LEFT JOIN app.branch_document_paths bdp
-         ON bdp.branch_id = $1 AND bdp.document_id = d.id
-       WHERE d.id = $2 AND d.archived_at IS NULL`,
-      [branchId, documentId],
-    );
-    const doc = current.rows[0];
-    if (!doc) {
-      throw new DocumentNotFoundError(documentId);
-    }
+      const current = await db().execute<DocumentSitePathRow>(sql`
+        SELECT d.site_id, COALESCE(bdp.path, d.path) AS path
+         FROM app.documents d
+         LEFT JOIN app.branch_document_paths bdp
+           ON bdp.branch_id = ${branchId} AND bdp.document_id = d.id
+         WHERE d.id = ${documentId} AND d.archived_at IS NULL`);
+      const doc = current.at(0);
+      if (!doc) {
+        throw new DocumentNotFoundError(documentId);
+      }
 
-    const planned = await planMove(branchId, doc.site_id, documentId, doc.path, normalized);
-    await assertPathFreeOnBranch(
-      branchId,
-      doc.site_id,
-      planned.map((p) => p.documentId),
-      planned.map((p) => p.newPath),
-    );
+      const planned = await planMove(branchId, doc.site_id, documentId, doc.path, normalized);
+      await assertPathFreeOnBranch(
+        branchId,
+        doc.site_id,
+        planned.map((p) => p.documentId),
+        planned.map((p) => p.newPath),
+      );
 
-    await upsertBranchDocumentPaths(branchId, planned);
+      await upsertBranchDocumentPaths(branchId, planned);
 
-    await query('COMMIT');
-    return { movedCount: planned.length };
+      return { movedCount: planned.length };
+    });
   } catch (error) {
-    await query('ROLLBACK');
     if (isUniqueConstraintViolation(error)) {
       throw new DuplicateDocumentPathError(normalized);
     }
@@ -631,14 +542,43 @@ export interface TemplateOnBranch {
   createdAt: string;
 }
 
-interface TemplateOnBranchRow {
+/**
+ * Type aliases rather than interfaces throughout this group: db().execute<T>()
+ * constrains T to Record<string, unknown>, which an interface cannot satisfy
+ * because it carries no implicit index signature. A timestamp is the text form a
+ * raw statement returns, which toIsoTimestamp normalises.
+ */
+type ListingCountRow = { count: string };
+
+/** On the same terms as {@link ListingCountRow}. */
+type TakenPathRow = { path: string };
+
+/** On the same terms as {@link ListingCountRow}. */
+type DocumentIdRow = { id: string };
+
+/** On the same terms as {@link ListingCountRow}. */
+type DocumentSitePathRow = { site_id: string; path: string };
+
+/** On the same terms as {@link ListingCountRow}. */
+type PlannedDescendantRow = { id: string; new_path: string };
+
+/** On the same terms as {@link ListingCountRow}. */
+type LocaleVariantMoveRow = {
+  variant_id: string;
+  canonical_id: string;
+  variant_path: string;
+  canonical_old_path: string;
+};
+
+/** On the same terms as {@link ListingCountRow}. */
+type TemplateOnBranchRow = {
   id: string;
   path: string;
   inherited: boolean;
   snapshot: Record<string, unknown> | null;
   version_number: number;
   created_at: string;
-}
+};
 
 /**
  * Lists templates visible on a branch, each carrying the version served there:
@@ -660,7 +600,9 @@ export async function listTemplatesOnBranch(
   const likePrefix = escapeLikePattern(TEMPLATES_PATH_PREFIX) + '%';
   const inheritFrom = branchInheritsFromMain(branchId, mainBranchId) ? mainBranchId : branchId;
 
-  const sql = `
+  // escapeLikePattern escapes with a backslash, which is LIKE's default escape
+  // character.
+  const rows = await db().execute<TemplateOnBranchRow>(sql`
     SELECT id, path, inherited, snapshot, version_number, created_at FROM (
       SELECT d.id, d.path, false AS inherited,
         v.snapshot, v.version_number, v.created_at
@@ -668,10 +610,10 @@ export async function listTemplatesOnBranch(
       JOIN LATERAL (
         SELECT dv.snapshot, dv.version_number, dv.created_at, dv.is_tombstone
         FROM app.document_versions dv
-        WHERE dv.document_id = d.id AND dv.branch_id = $1
+        WHERE dv.document_id = d.id AND dv.branch_id = ${branchId}
         ORDER BY dv.version_number DESC LIMIT 1
       ) v ON true
-      WHERE d.path LIKE $3 ESCAPE '\\'
+      WHERE d.path LIKE ${likePrefix}
         AND d.archived_at IS NULL
         AND v.is_tombstone = false
 
@@ -683,28 +625,26 @@ export async function listTemplatesOnBranch(
       JOIN LATERAL (
         SELECT dv.snapshot, dv.version_number, dv.created_at, dv.is_tombstone
         FROM app.document_versions dv
-        WHERE dv.document_id = d.id AND dv.branch_id = $2
+        WHERE dv.document_id = d.id AND dv.branch_id = ${inheritFrom}
         ORDER BY dv.version_number DESC LIMIT 1
       ) v ON true
-      WHERE $1 <> $2
-        AND d.path LIKE $3 ESCAPE '\\'
+      WHERE ${branchId}::uuid <> ${inheritFrom}::uuid
+        AND d.path LIKE ${likePrefix}
         AND d.archived_at IS NULL
         AND v.is_tombstone = false
         AND NOT EXISTS (
           SELECT 1 FROM app.document_versions dv_branch
-          WHERE dv_branch.document_id = d.id AND dv_branch.branch_id = $1
+          WHERE dv_branch.document_id = d.id AND dv_branch.branch_id = ${branchId}
         )
     ) combined
-    ORDER BY path ASC`;
-
-  const result = await query<TemplateOnBranchRow>(sql, [branchId, inheritFrom, likePrefix]);
-  return result.rows.map((row) => ({
+    ORDER BY path ASC`);
+  return rows.map((row) => ({
     id: row.id,
     path: row.path,
     inherited: row.inherited,
     snapshot: row.snapshot,
     versionNumber: row.version_number,
-    createdAt: row.created_at,
+    createdAt: toIsoTimestamp(row.created_at),
   }));
 }
 
@@ -741,35 +681,28 @@ type InsertDocumentVersionParams = Pick<
 
 async function insertNextDocumentVersion(
   params: InsertDocumentVersionParams,
-): Promise<{ rows: DocumentVersionRow[] }> {
+): Promise<DocumentVersionRow[]> {
   let lastError: unknown;
   for (let attempt = 0; attempt < VERSION_INSERT_ATTEMPTS; attempt++) {
-    await query('SAVEPOINT insert_version');
     try {
-      const result = await query<DocumentVersionRow>(
-        `INSERT INTO app.document_versions (
-          document_id, branch_id, version_number, snapshot,
-          source, created_by_id, created_by_type
-        )
-        SELECT $1, $2,
-          COALESCE(MAX(version_number), 0) + 1,
-          $3, $4, $5, $6
-        FROM app.document_versions
-        WHERE document_id = $1 AND branch_id = $2
-        RETURNING *`,
-        [
-          params.documentId,
-          params.branchId,
-          params.snapshot,
-          params.source,
-          params.createdById,
-          params.createdByType,
-        ],
-      );
-      await query('RELEASE SAVEPOINT insert_version');
-      return result;
+      // A nested transaction is a savepoint, so a losing insert rolls back to
+      // here and leaves the enclosing transaction usable for the next attempt.
+      return await transaction(async () => {
+        const result = await db().execute<DocumentVersionRow>(sql`
+          INSERT INTO app.document_versions (
+            document_id, branch_id, version_number, snapshot,
+            source, created_by_id, created_by_type
+          )
+          SELECT ${params.documentId}, ${params.branchId},
+            COALESCE(MAX(version_number), 0) + 1,
+            ${JSON.stringify(params.snapshot)}, ${params.source},
+            ${params.createdById}, ${params.createdByType}
+          FROM app.document_versions
+          WHERE document_id = ${params.documentId} AND branch_id = ${params.branchId}
+          RETURNING *`);
+        return [...result];
+      });
     } catch (error) {
-      await query('ROLLBACK TO SAVEPOINT insert_version');
       if (!isUniqueConstraintViolation(error)) {
         throw error;
       }
@@ -797,14 +730,12 @@ async function settleRedundantRegistryWrite(
     return latestVersion;
   }
   const refreshed = registryIndexStampRefresh(incoming, latestVersion.snapshot);
-  const updated = await query<DocumentVersionRow>(
-    `UPDATE app.document_versions
-     SET snapshot = $2
-     WHERE id = $1
-     RETURNING *`,
-    [latestVersion.id, refreshed],
-  );
-  return updated.rows[0] ?? latestVersion;
+  const updated = await db().execute<DocumentVersionRow>(sql`
+    UPDATE app.document_versions
+     SET snapshot = ${JSON.stringify(refreshed)}
+     WHERE id = ${latestVersion.id}
+     RETURNING *`);
+  return updated.at(0) ?? latestVersion;
 }
 
 export async function createDocumentOnBranch(
@@ -814,9 +745,7 @@ export async function createDocumentOnBranch(
   validatePath(normalizedPath);
   const locale = params.locale === undefined ? null : validateLocale(params.locale);
 
-  try {
-    await query('BEGIN');
-
+  return transaction(async () => {
     let document: Document;
     let isRecreation = false;
     let documentCreated = false;
@@ -833,14 +762,12 @@ export async function createDocumentOnBranch(
     // that already exists.
     let insertedRow: DocumentRow | undefined;
     try {
-      const docResult = await query<DocumentRow>(
-        `INSERT INTO app.documents (site_id, path, locale)
-         VALUES ($1, $2, $3)
+      const docResult = await db().execute<DocumentRow>(sql`
+        INSERT INTO app.documents (site_id, path, locale)
+         VALUES (${params.siteId}, ${normalizedPath}, ${locale})
          ON CONFLICT (site_id, path) WHERE archived_at IS NULL DO NOTHING
-         RETURNING *`,
-        [params.siteId, normalizedPath, locale],
-      );
-      insertedRow = docResult.rows[0];
+         RETURNING *`);
+      insertedRow = docResult.at(0);
     } catch (docError) {
       if (isForeignKeyViolation(docError)) {
         throw new SiteNotFoundError(params.siteId);
@@ -860,13 +787,12 @@ export async function createDocumentOnBranch(
         outcome: 'created',
       }));
     } else {
-      const existingResult = await query<DocumentRow>(
-        `SELECT ${DOCUMENT_READ_COLUMNS} FROM app.documents d
+      const existingResult = await db().execute<DocumentRow>(sql`
+        SELECT ${DOCUMENT_READ_COLUMNS} FROM app.documents d
          ${DOCUMENT_READ_JOINS}
-         WHERE d.site_id = $1 AND d.path = $2 AND d.archived_at IS NULL`,
-        [params.siteId, normalizedPath],
-      );
-      const existingRow = existingResult.rows[0];
+         WHERE d.site_id = ${params.siteId} AND d.path = ${normalizedPath}
+           AND d.archived_at IS NULL`);
+      const existingRow = existingResult.at(0);
       if (!existingRow) {
         throw new DuplicateDocumentPathError(normalizedPath, params.siteId);
       }
@@ -886,24 +812,20 @@ export async function createDocumentOnBranch(
 
       // Check if the latest version on this branch is a tombstone
       // If so, this is a recreation - we should start fresh
-      const latestVersionResult = await query<DocumentVersionRow>(
-        `SELECT * FROM app.document_versions
-         WHERE document_id = $1 AND branch_id = $2
+      const latestVersionResult = await db().execute<DocumentVersionRow>(sql`
+        SELECT * FROM app.document_versions
+         WHERE document_id = ${document.id} AND branch_id = ${params.branchId}
          ORDER BY version_number DESC
-         LIMIT 1`,
-        [document.id, params.branchId],
-      );
+         LIMIT 1`);
 
-      const latestVersion = latestVersionResult.rows[0];
+      const latestVersion = latestVersionResult.at(0);
       if (latestVersion !== undefined) {
         if (isTombstoneRow(latestVersion)) {
           // This is a recreation after tombstone - delete all versions on this branch
           // to start fresh with version 1
-          await query(
-            `DELETE FROM app.document_versions
-             WHERE document_id = $1 AND branch_id = $2`,
-            [document.id, params.branchId],
-          );
+          await db().execute(sql`
+            DELETE FROM app.document_versions
+             WHERE document_id = ${document.id} AND branch_id = ${params.branchId}`);
           isRecreation = true;
           // Info rather than debug: this is the one branch here that discards
           // state — every version on the branch goes, and numbering restarts.
@@ -944,7 +866,6 @@ export async function createDocumentOnBranch(
               version_id: settled.id,
               outcome: 'skipped_unchanged',
             }));
-            await query('COMMIT');
             return { document, version: mapRowToDocumentVersion(settled) };
           }
           getLogger().info('registry content changed, writing a new version', {
@@ -971,15 +892,14 @@ export async function createDocumentOnBranch(
     if (documentCreated || isRecreation) {
       if (templateId !== null) {
         try {
-          await query(
-            `INSERT INTO app.document_relations
+          await db().execute(sql`
+            INSERT INTO app.document_relations
                (source_document_id, target_document_id, relation_type, synced_version)
-             VALUES ($1, $2, 'template', $3)
+             VALUES (${document.id}, ${templateId}, 'template',
+                     ${params.templateVersion ?? null})
              ON CONFLICT (source_document_id, relation_type)
              DO UPDATE SET target_document_id = EXCLUDED.target_document_id,
-                           synced_version = EXCLUDED.synced_version`,
-            [document.id, templateId, params.templateVersion ?? null],
-          );
+                           synced_version = EXCLUDED.synced_version`);
         } catch (relError) {
           if (isForeignKeyViolation(relError)) {
             throw new DocumentNotFoundError(templateId);
@@ -991,11 +911,9 @@ export async function createDocumentOnBranch(
           document.templateVersion = params.templateVersion;
         }
       } else if (isRecreation) {
-        await query(
-          `DELETE FROM app.document_relations
-           WHERE source_document_id = $1 AND relation_type = 'template'`,
-          [document.id],
-        );
+        await db().execute(sql`
+          DELETE FROM app.document_relations
+           WHERE source_document_id = ${document.id} AND relation_type = 'template'`);
         document.templateId = undefined;
         document.templateVersion = undefined;
       }
@@ -1013,9 +931,7 @@ export async function createDocumentOnBranch(
       createdByType: params.createdByType,
     });
 
-    await query('COMMIT');
-
-    const versionRow = versionResult.rows[0];
+    const versionRow = versionResult.at(0);
     if (!versionRow) {
       throw new Error('Failed to insert document version');
     }
@@ -1024,10 +940,34 @@ export async function createDocumentOnBranch(
       document,
       version: mapRowToDocumentVersion(versionRow),
     };
-  } catch (error) {
-    await query('ROLLBACK');
-    throw error;
-  }
+  });
+}
+
+/**
+ * Whether the document's highest-numbered version on the branch is a tombstone or
+ * is not. A document with no version on the branch answers false either way: the
+ * MAX is null, so no row matches.
+ */
+async function latestVersionOnBranchIsTombstone(
+  documentId: string,
+  branchId: string,
+  tombstone: boolean,
+): Promise<boolean> {
+  const rows = await db()
+    .select({ one: sql`1` })
+    .from(documentVersions)
+    .where(and(
+      eq(documentVersions.documentId, documentId),
+      eq(documentVersions.branchId, branchId),
+      eq(documentVersions.versionNumber, sql`(
+        SELECT MAX(dv2.version_number) FROM app.document_versions dv2
+         WHERE dv2.document_id = ${documentId} AND dv2.branch_id = ${branchId}
+      )`),
+      eq(documentVersions.isTombstone, tombstone),
+    ))
+    .limit(1);
+
+  return rows.length > 0;
 }
 
 /**
@@ -1041,24 +981,7 @@ export async function documentExistsOnBranch(
   documentId: string,
   branchId: string,
 ): Promise<boolean> {
-  // Check if document has any version on this branch where:
-  // 1. The latest version is NOT a tombstone
-  const result = await query<{ exists: boolean }>(
-    `SELECT EXISTS(
-       SELECT 1 FROM app.document_versions dv
-       WHERE dv.document_id = $1
-         AND dv.branch_id = $2
-         AND dv.version_number = (
-           SELECT MAX(dv2.version_number)
-           FROM app.document_versions dv2
-           WHERE dv2.document_id = $1 AND dv2.branch_id = $2
-         )
-         AND dv.is_tombstone = false
-     ) as exists`,
-    [documentId, branchId],
-  );
-
-  return result.rows[0]?.exists ?? false;
+  return latestVersionOnBranchIsTombstone(documentId, branchId, false);
 }
 
 /**
@@ -1080,22 +1003,7 @@ export async function isTombstonedOnBranch(
   documentId: string,
   branchId: string,
 ): Promise<boolean> {
-  const result = await query<{ tombstoned: boolean }>(
-    `SELECT EXISTS(
-       SELECT 1 FROM app.document_versions dv
-       WHERE dv.document_id = $1
-         AND dv.branch_id = $2
-         AND dv.version_number = (
-           SELECT MAX(dv2.version_number)
-           FROM app.document_versions dv2
-           WHERE dv2.document_id = $1 AND dv2.branch_id = $2
-         )
-         AND dv.is_tombstone = true
-     ) AS tombstoned`,
-    [documentId, branchId],
-  );
-
-  return result.rows[0]?.tombstoned ?? false;
+  return latestVersionOnBranchIsTombstone(documentId, branchId, true);
 }
 
 /**
@@ -1110,26 +1018,18 @@ export async function deleteDocumentOnBranch(
   params: DeleteDocumentOnBranchParams,
 ): Promise<boolean> {
   try {
-    await query<DocumentVersionRow>(
-      `INSERT INTO app.document_versions (
+    await db().execute<DocumentVersionRow>(sql`
+      INSERT INTO app.document_versions (
         document_id, branch_id, version_number, snapshot,
         source, created_by_id, created_by_type, is_tombstone
       )
-      SELECT $1, $2,
+      SELECT ${params.documentId}, ${params.branchId},
         COALESCE(MAX(version_number), 0) + 1,
-        $3, $4, $5, $6, true
+        ${JSON.stringify({ _deleted: true })}, 'edit',
+        ${params.deletedById}, ${params.deletedByType}, true
       FROM app.document_versions
-      WHERE document_id = $1 AND branch_id = $2
-      RETURNING *`,
-      [
-        params.documentId,
-        params.branchId,
-        { _deleted: true },
-        'edit',
-        params.deletedById,
-        params.deletedByType,
-      ],
-    );
+      WHERE document_id = ${params.documentId} AND branch_id = ${params.branchId}
+      RETURNING *`);
 
     return true;
   } catch (error) {
@@ -1148,7 +1048,7 @@ export async function deleteDocumentOnBranch(
 export async function deleteDocumentWithRedirect(
   params: DeleteDocumentWithRedirectParams,
 ): Promise<DeleteDocumentWithRedirectResult> {
-  return withTransaction(async () => {
+  return transaction(async () => {
     await deleteDocumentOnBranch({
       documentId: params.documentId,
       branchId: params.branchId,
@@ -1165,14 +1065,12 @@ export async function deleteDocumentWithRedirect(
     // gets moved more than once), so conflict is the expected case, not an error.
     let insertedRedirectRow: DocumentRow | undefined;
     try {
-      const docResult = await query<DocumentRow>(
-        `INSERT INTO app.documents (site_id, path)
-         VALUES ($1, $2)
+      const docResult = await db().execute<DocumentRow>(sql`
+        INSERT INTO app.documents (site_id, path)
+         VALUES (${params.siteId}, ${redirectPath})
          ON CONFLICT (site_id, path) WHERE archived_at IS NULL DO NOTHING
-         RETURNING *`,
-        [params.siteId, redirectPath],
-      );
-      insertedRedirectRow = docResult.rows[0];
+         RETURNING *`);
+      insertedRedirectRow = docResult.at(0);
     } catch (docError) {
       if (isForeignKeyViolation(docError)) {
         throw new SiteNotFoundError(params.siteId);
@@ -1183,12 +1081,11 @@ export async function deleteDocumentWithRedirect(
     if (insertedRedirectRow !== undefined) {
       redirectDocId = insertedRedirectRow.id;
     } else {
-      const existingResult = await query<DocumentRow>(
-        `SELECT * FROM app.documents
-         WHERE site_id = $1 AND path = $2 AND archived_at IS NULL`,
-        [params.siteId, redirectPath],
-      );
-      const existingRow = existingResult.rows[0];
+      const existingResult = await db().execute<DocumentRow>(sql`
+        SELECT * FROM app.documents
+         WHERE site_id = ${params.siteId} AND path = ${redirectPath}
+           AND archived_at IS NULL`);
+      const existingRow = existingResult.at(0);
       if (existingRow === undefined) {
         throw new DuplicateDocumentPathError(redirectPath, params.siteId);
       }
@@ -1211,28 +1108,20 @@ export async function deleteDocumentWithRedirect(
       parenting: params.redirect.parenting,
     };
 
-    const versionResult = await query<DocumentVersionRow>(
-      `INSERT INTO app.document_versions (
+    const versionResult = await db().execute<DocumentVersionRow>(sql`
+      INSERT INTO app.document_versions (
         document_id, branch_id, version_number, snapshot,
         source, created_by_id, created_by_type
       )
-      SELECT $1, $2,
+      SELECT ${redirectDocId}, ${params.branchId},
         COALESCE(MAX(version_number), 0) + 1,
-        $3, $4, $5, $6
+        ${JSON.stringify(snapshot)}, 'edit',
+        ${params.deletedById}, ${params.deletedByType}
       FROM app.document_versions
-      WHERE document_id = $1 AND branch_id = $2
-      RETURNING *`,
-      [
-        redirectDocId,
-        params.branchId,
-        snapshot,
-        'edit',
-        params.deletedById,
-        params.deletedByType,
-      ],
-    );
+      WHERE document_id = ${redirectDocId} AND branch_id = ${params.branchId}
+      RETURNING *`);
 
-    const version = versionResult.rows[0];
+    const version = versionResult.at(0);
     if (version === undefined) {
       throw new Error('Failed to insert redirect version');
     }

@@ -8,13 +8,15 @@
  * @see collaborative-state-system-architecture-v2.2.md Section "Documents"
  */
 
-import { query } from '../db';
+import { and, count, eq, isNotNull, isNull, ne, sql, type SQL } from 'drizzle-orm';
+import { db, transaction } from '../db/scope';
+import { documents } from '../db/schema';
 import type { DocumentRow, ListDocumentsOptions } from './document-types';
 import {
   mapRowToDocument,
   normalizePath,
+  pathPrefixPattern,
   validatePath,
-  escapeLikePattern,
   isUniqueConstraintViolation,
   isForeignKeyViolation,
 } from './document-types';
@@ -108,14 +110,12 @@ export async function createDocument(
   validatePath(normalizedPath);
 
   try {
-    const result = await query<DocumentRow>(
-      `INSERT INTO app.documents (site_id, path)
-       VALUES ($1, $2)
-       RETURNING *`,
-      [params.siteId, normalizedPath],
-    );
+    const result = await db().execute<DocumentRow>(sql`
+      INSERT INTO app.documents (site_id, path)
+       VALUES (${params.siteId}, ${normalizedPath})
+       RETURNING *`);
 
-    const row = result.rows[0];
+    const row = result.at(0);
     if (!row) {
       throw new Error('Failed to insert document');
     }
@@ -139,15 +139,13 @@ export async function createDocument(
  * @returns The document or null if not found
  */
 export async function getDocument(documentId: string): Promise<DocumentWithArchive | null> {
-  const result = await query<DocumentRow>(
-    `SELECT ${DOCUMENT_READ_COLUMNS}
+  const result = await db().execute<DocumentRow>(sql`
+    SELECT ${DOCUMENT_READ_COLUMNS}
      FROM app.documents d
      ${DOCUMENT_READ_JOINS}
-     WHERE d.id = $1`,
-    [documentId],
-  );
+     WHERE d.id = ${documentId}`);
 
-  const row = result.rows[0];
+  const row = result.at(0);
   if (!row) {
     return null;
   }
@@ -175,16 +173,15 @@ export async function getDocumentByPath(
   // Only return non-archived documents
   // Archived documents with the same path are considered deleted and should not be returned
   if (branchId === undefined) {
-    const result = await query<DocumentRow>(
-      `SELECT ${DOCUMENT_READ_COLUMNS}
+    const result = await db().execute<DocumentRow>(sql`
+      SELECT ${DOCUMENT_READ_COLUMNS}
        FROM app.documents d
        ${DOCUMENT_READ_JOINS}
-       WHERE d.site_id = $1 AND d.path = $2 AND d.archived_at IS NULL
-       LIMIT 1`,
-      [siteId, normalizedPath],
-    );
+       WHERE d.site_id = ${siteId} AND d.path = ${normalizedPath}
+         AND d.archived_at IS NULL
+       LIMIT 1`);
 
-    const row = result.rows[0];
+    const row = result.at(0);
     if (!row) {
       return null;
     }
@@ -195,42 +192,38 @@ export async function getDocumentByPath(
   // Two index probes rather than one COALESCE(bdp.path, d.path) = $2 predicate:
   // that form is unindexable, so it scans the whole site on every lookup and on
   // every 404. This is the hottest query in the system — keep both paths O(1).
-  const override = await query<DocumentRow>(
-    `SELECT ${DOCUMENT_READ_COLUMNS}
+  const override = await db().execute<DocumentRow>(sql`
+    SELECT ${DOCUMENT_READ_COLUMNS}
      FROM app.branch_document_paths bdp
      JOIN app.documents d ON d.id = bdp.document_id
      ${DOCUMENT_READ_JOINS}
-     WHERE bdp.branch_id = $3
-       AND bdp.path = $2
-       AND d.site_id = $1
+     WHERE bdp.branch_id = ${branchId}
+       AND bdp.path = ${normalizedPath}
+       AND d.site_id = ${siteId}
        AND d.archived_at IS NULL
-     LIMIT 1`,
-    [siteId, normalizedPath, branchId],
-  );
+     LIMIT 1`);
 
-  const overrideRow = override.rows[0];
+  const overrideRow = override.at(0);
   if (overrideRow) {
     return { ...mapRowToDocument(overrideRow), path: normalizedPath };
   }
 
   // No override claims this path, so the global path answers — unless the
   // document moved away from it on this branch, which the NOT EXISTS excludes.
-  const result = await query<DocumentRow>(
-    `SELECT ${DOCUMENT_READ_COLUMNS}
+  const result = await db().execute<DocumentRow>(sql`
+    SELECT ${DOCUMENT_READ_COLUMNS}
      FROM app.documents d
      ${DOCUMENT_READ_JOINS}
-     WHERE d.site_id = $1
-       AND d.path = $2
+     WHERE d.site_id = ${siteId}
+       AND d.path = ${normalizedPath}
        AND d.archived_at IS NULL
        AND NOT EXISTS (
          SELECT 1 FROM app.branch_document_paths bdp
-         WHERE bdp.branch_id = $3 AND bdp.document_id = d.id
+         WHERE bdp.branch_id = ${branchId} AND bdp.document_id = d.id
        )
-     LIMIT 1`,
-    [siteId, normalizedPath, branchId],
-  );
+     LIMIT 1`);
 
-  const row = result.rows[0];
+  const row = result.at(0);
   if (!row) {
     return null;
   }
@@ -306,43 +299,37 @@ export async function updateDocumentFields(
   documentId: string,
   fields: { path?: string; locale?: string | null },
 ): Promise<DocumentWithArchive | null> {
-  const assignments: string[] = [];
-  const values: unknown[] = [];
+  const assignments: SQL[] = [];
   let normalizedPath: string | undefined;
 
   if (fields.path !== undefined) {
     normalizedPath = normalizePath(fields.path);
     validatePath(normalizedPath);
-    values.push(normalizedPath);
-    assignments.push(`path = $${String(values.length)}`);
+    assignments.push(sql`path = ${normalizedPath}`);
   }
 
   if (fields.locale !== undefined) {
-    values.push(fields.locale === null ? null : validateLocale(fields.locale));
-    assignments.push(`locale = $${String(values.length)}`);
+    const locale = fields.locale === null ? null : validateLocale(fields.locale);
+    assignments.push(sql`locale = ${locale}`);
   }
 
   if (assignments.length === 0) {
     return await getDocument(documentId);
   }
 
-  values.push(documentId);
-
   try {
-    const result = await query<DocumentRow>(
-      `WITH upd AS (
+    const result = await db().execute<DocumentRow>(sql`
+      WITH upd AS (
          UPDATE app.documents
-         SET ${assignments.join(', ')}
-         WHERE id = $${String(values.length)}
+         SET ${sql.join(assignments, sql`, `)}
+         WHERE id = ${documentId}
          RETURNING *
        )
        SELECT ${DOCUMENT_READ_COLUMNS}
        FROM upd d
-       ${DOCUMENT_READ_JOINS}`,
-      values,
-    );
+       ${DOCUMENT_READ_JOINS}`);
 
-    const row = result.rows[0];
+    const row = result.at(0);
     if (!row) {
       return null;
     }
@@ -363,12 +350,12 @@ export async function updateDocumentFields(
  * @returns True if deleted, false if not found
  */
 export async function deleteDocument(documentId: string): Promise<boolean> {
-  const result = await query(
-    'DELETE FROM app.documents WHERE id = $1',
-    [documentId],
-  );
+  const deleted = await db()
+    .delete(documents)
+    .where(eq(documents.id, documentId))
+    .returning({ id: documents.id });
 
-  return (result.rowCount ?? 0) > 0;
+  return deleted.length > 0;
 }
 
 /**
@@ -384,42 +371,27 @@ export async function listDocuments(
 ): Promise<DocumentWithArchive[]> {
   const { limit, offset, pathPrefix, archived } = options;
 
-  let sql = `SELECT ${DOCUMENT_READ_COLUMNS}
+  // Default: only non-archived documents (archived is false or undefined)
+  const archivedPredicate = archived === true
+    ? sql`d.archived_at IS NOT NULL`
+    : sql`d.archived_at IS NULL`;
+
+  const prefixPattern = pathPrefixPattern(pathPrefix);
+  const prefixPredicate = prefixPattern === undefined
+    ? sql``
+    : sql` AND d.path LIKE ${prefixPattern}`;
+  const limitClause = limit === undefined ? sql`` : sql` LIMIT ${limit}`;
+  const offsetClause = offset === undefined ? sql`` : sql` OFFSET ${offset}`;
+
+  const result = await db().execute<DocumentRow>(sql`
+    SELECT ${DOCUMENT_READ_COLUMNS}
      FROM app.documents d
      ${DOCUMENT_READ_JOINS}
-     WHERE d.site_id = $1`;
-  const params: unknown[] = [siteId];
+     WHERE d.site_id = ${siteId}
+       AND ${archivedPredicate}${prefixPredicate}
+     ORDER BY d.path ASC${limitClause}${offsetClause}`);
 
-  // Filter by archived status
-  if (archived === true) {
-    sql += ' AND d.archived_at IS NOT NULL';
-  } else {
-    // Default: only non-archived documents (archived is false or undefined)
-    sql += ' AND d.archived_at IS NULL';
-  }
-
-  if (pathPrefix !== undefined && pathPrefix !== '') {
-    // Normalize prefix to match stored paths, then escape LIKE wildcards
-    const normalizedPrefix = normalizePath(pathPrefix);
-    params.push(escapeLikePattern(normalizedPrefix) + '%');
-    sql += ' AND d.path LIKE $' + String(params.length) + " ESCAPE '\\'";
-  }
-
-  sql += ' ORDER BY d.path ASC';
-
-  if (limit !== undefined) {
-    params.push(limit);
-    sql += ' LIMIT $' + String(params.length);
-  }
-
-  if (offset !== undefined) {
-    params.push(offset);
-    sql += ' OFFSET $' + String(params.length);
-  }
-
-  const result = await query<DocumentRow>(sql, params);
-
-  return result.rows.map(mapRowToDocument);
+  return result.map(mapRowToDocument);
 }
 
 /**
@@ -434,14 +406,17 @@ export async function documentExists(
   path: string,
 ): Promise<boolean> {
   const normalizedPath = normalizePath(path);
-  const result = await query<{ exists: boolean }>(
-    `SELECT EXISTS(
-       SELECT 1 FROM app.documents WHERE site_id = $1 AND path = $2 AND archived_at IS NULL
-     ) as exists`,
-    [siteId, normalizedPath],
-  );
+  const rows = await db()
+    .select({ one: sql`1` })
+    .from(documents)
+    .where(and(
+      eq(documents.siteId, siteId),
+      eq(documents.path, normalizedPath),
+      isNull(documents.archivedAt),
+    ))
+    .limit(1);
 
-  return result.rows[0]?.exists ?? false;
+  return rows.length > 0;
 }
 
 /**
@@ -461,17 +436,25 @@ export async function documentExists(
 export async function countDocumentsByLocale(
   siteId: string,
 ): Promise<Record<string, number>> {
-  const result = await query<{ locale: string; count: string }>(
-    `SELECT locale, COUNT(*) as count
-     FROM app.documents
-     WHERE site_id = $1 AND archived_at IS NULL AND locale IS NOT NULL
-     GROUP BY locale`,
-    [siteId],
-  );
+  const rows = await db()
+    .select({ locale: documents.locale, count: count() })
+    .from(documents)
+    .where(and(
+      eq(documents.siteId, siteId),
+      isNull(documents.archivedAt),
+      isNotNull(documents.locale),
+    ))
+    .groupBy(documents.locale);
 
-  return Object.fromEntries(
-    result.rows.map((row) => [row.locale, parseInt(row.count, 10)]),
-  );
+  // Built by hand rather than through Object.fromEntries, which widens to any.
+  // The null locale the column allows is filtered out above.
+  const counts: Record<string, number> = {};
+  for (const row of rows) {
+    if (row.locale !== null) {
+      counts[row.locale] = row.count;
+    }
+  }
+  return counts;
 }
 
 /**
@@ -484,14 +467,13 @@ export async function countDocumentsByLocale(
  * @returns True if archived, false if not found
  */
 export async function archiveDocument(documentId: string): Promise<boolean> {
-  const result = await query(
-    `UPDATE app.documents
-     SET archived_at = NOW()
-     WHERE id = $1 AND archived_at IS NULL`,
-    [documentId],
-  );
+  const archived = await db()
+    .update(documents)
+    .set({ archivedAt: sql`NOW()` })
+    .where(and(eq(documents.id, documentId), isNull(documents.archivedAt)))
+    .returning({ id: documents.id });
 
-  return (result.rowCount ?? 0) > 0;
+  return archived.length > 0;
 }
 
 /**
@@ -506,12 +488,10 @@ export async function archiveDocument(documentId: string): Promise<boolean> {
  */
 export async function restoreDocument(documentId: string): Promise<DocumentWithArchive> {
   // First, get the document to check if it exists and is archived
-  const docResult = await query<DocumentRow>(
-    'SELECT * FROM app.documents WHERE id = $1',
-    [documentId],
-  );
+  const docResult = await db().execute<DocumentRow>(sql`
+    SELECT * FROM app.documents WHERE id = ${documentId}`);
 
-  const doc = docResult.rows[0];
+  const doc = docResult.at(0);
   if (!doc) {
     throw new DocumentNotFoundError(documentId);
   }
@@ -521,33 +501,34 @@ export async function restoreDocument(documentId: string): Promise<DocumentWithA
   }
 
   // Check if the path is now occupied by another non-archived document
-  const pathConflict = await query<{ exists: boolean }>(
-    `SELECT EXISTS(
-       SELECT 1 FROM app.documents
-       WHERE site_id = $1 AND path = $2 AND id != $3 AND archived_at IS NULL
-     ) as exists`,
-    [doc.site_id, doc.path, documentId],
-  );
+  const pathConflict = await db()
+    .select({ one: sql`1` })
+    .from(documents)
+    .where(and(
+      eq(documents.siteId, doc.site_id),
+      eq(documents.path, doc.path),
+      ne(documents.id, documentId),
+      isNull(documents.archivedAt),
+    ))
+    .limit(1);
 
-  if (pathConflict.rows[0]?.exists === true) {
+  if (pathConflict.length > 0) {
     throw new DocumentPathConflictError(doc.path);
   }
 
   // Restore the document
-  const result = await query<DocumentRow>(
-    `WITH upd AS (
+  const result = await db().execute<DocumentRow>(sql`
+    WITH upd AS (
        UPDATE app.documents
        SET archived_at = NULL
-       WHERE id = $1
+       WHERE id = ${documentId}
        RETURNING *
      )
      SELECT ${DOCUMENT_READ_COLUMNS}
      FROM upd d
-     ${DOCUMENT_READ_JOINS}`,
-    [documentId],
-  );
+     ${DOCUMENT_READ_JOINS}`);
 
-  const restoredRow = result.rows[0];
+  const restoredRow = result.at(0);
   if (!restoredRow) {
     throw new DocumentNotFoundError(documentId);
   }
@@ -576,11 +557,11 @@ export async function moveDocumentGlobally(
   const normalized = normalizePath(newPath);
   validatePath(normalized);
 
-  const docRow = await query<{ site_id: string; path: string }>(
-    'SELECT site_id, path FROM app.documents WHERE id = $1 AND archived_at IS NULL',
-    [documentId],
-  );
-  const doc = docRow.rows[0];
+  const docRow = await db()
+    .select({ site_id: documents.siteId, path: documents.path })
+    .from(documents)
+    .where(and(eq(documents.id, documentId), isNull(documents.archivedAt)));
+  const doc = docRow.at(0);
   if (!doc) {
     throw new DocumentNotFoundError(documentId);
   }
@@ -590,33 +571,31 @@ export async function moveDocumentGlobally(
     throw new DocumentNotFoundError(documentId);
   }
 
-  await query('BEGIN');
   try {
-    await query('SELECT pg_advisory_xact_lock(hashtext($1))', [mainBranch.id]);
+    return await transaction(async () => {
+      await db().execute(sql`SELECT pg_advisory_xact_lock(hashtext(${mainBranch.id}))`);
 
-    const planned = await planMove(mainBranch.id, doc.site_id, documentId, doc.path, normalized);
-    await assertPathFreeOnBranch(
-      mainBranch.id,
-      doc.site_id,
-      planned.map((p) => p.documentId),
-      planned.map((p) => p.newPath),
-    );
+      const planned = await planMove(mainBranch.id, doc.site_id, documentId, doc.path, normalized);
+      await assertPathFreeOnBranch(
+        mainBranch.id,
+        doc.site_id,
+        planned.map((p) => p.documentId),
+        planned.map((p) => p.newPath),
+      );
 
-    await query(
-      `UPDATE app.documents d
-       SET path = m.path
-       FROM unnest($1::uuid[], $2::text[]) AS m(document_id, path)
-       WHERE d.id = m.document_id`,
-      [
-        planned.map((move) => move.documentId),
-        planned.map((move) => normalizePath(move.newPath)),
-      ],
-    );
+      // sql.param keeps each list one array parameter rather than a row
+      // constructor, which unnest cannot read.
+      await db().execute(sql`
+        UPDATE app.documents d
+         SET path = m.path
+         FROM unnest(${sql.param(planned.map((move) => move.documentId))}::uuid[],
+                     ${sql.param(planned.map((move) => normalizePath(move.newPath)))}::text[])
+              AS m(document_id, path)
+         WHERE d.id = m.document_id`);
 
-    await query('COMMIT');
-    return { movedCount: planned.length };
+      return { movedCount: planned.length };
+    });
   } catch (error) {
-    await query('ROLLBACK');
     if (isUniqueConstraintViolation(error)) {
       throw new DuplicateDocumentPathError(normalized);
     }

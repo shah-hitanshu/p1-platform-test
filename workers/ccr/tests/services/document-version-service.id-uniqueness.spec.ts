@@ -14,9 +14,10 @@ import type { DocumentVersionSource } from '../../src/types';
 import { stubDatabase, type DatabaseStub } from '../__stubs__/database';
 import { documentVersions } from '../../src/db/schema';
 
-vi.mock('../../src/db', () => ({
-  query: vi.fn(),
-}));
+import {
+  batchSyncToPostgres,
+  createDocumentVersion,
+} from '../../src/services/document-version-service';
 
 const MINTED_ID = /-[0-9a-f]{8}-/;
 
@@ -59,15 +60,31 @@ function versionRow(overrides: Partial<MockVersionRow> = {}): MockVersionRow {
   };
 }
 
-/** Params array of the query call that inserts into document_versions. */
-function insertCallParams(queryMock: Mock): unknown[] {
-  const call = queryMock.mock.calls.find(
-    (c) => typeof c[0] === 'string' && (c[0]).includes('INSERT INTO app.document_versions'),
-  );
-  if (call === undefined) {
-    throw new Error('No INSERT INTO app.document_versions call was captured');
+/**
+ * The values the version insert binds, in the order its SELECT list names them:
+ * document, branch, snapshot, patch, and so on. The version number is computed
+ * in the statement rather than bound, so it holds no place in this list.
+ */
+function insertedValues(database: DatabaseStub): unknown[] {
+  const [insert] = database.calls(documentVersions).insert;
+  if (insert === undefined) {
+    throw new Error('No insert into app.document_versions was captured');
   }
-  return call[1] as unknown[];
+  const selectAt = insert.sql.indexOf('SELECT', insert.sql.indexOf('INSERT INTO'));
+  return [...insert.sql.slice(selectAt).matchAll(/\$(\d+)/g)].map(
+    (placeholder) => insert.params[Number(placeholder[1]) - 1],
+  );
+}
+
+/** The snapshot the version insert wrote, which reaches it as JSON text. */
+function persistedSnapshot(database: DatabaseStub): {
+  content: Comp[];
+  zones: Record<string, Comp[]>;
+} {
+  return JSON.parse(insertedValues(database)[2] as string) as {
+    content: Comp[];
+    zones: Record<string, Comp[]>;
+  };
 }
 
 function warnOutput(warnSpy: Mock): string {
@@ -75,23 +92,18 @@ function warnOutput(warnSpy: Mock): string {
 }
 
 describe('createDocumentVersion within-document id uniqueness', () => {
+  let database: DatabaseStub;
   let warnSpy: Mock;
 
   beforeEach(() => {
-    vi.resetAllMocks();
+    vi.restoreAllMocks();
+    database = stubDatabase();
     warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     vi.spyOn(console, 'log').mockImplementation(() => undefined);
   });
 
   it('re-mints later duplicates in content while the first occurrence keeps its id', async () => {
-    const { createDocumentVersion } = await import('../../src/services/document-version-service');
-    const db = await import('../../src/db');
-    const queryMock = vi.mocked(db.query);
-
-    queryMock
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [versionRow({ version_number: 1 })] });
+    database.on(documentVersions).insert.returnsRaw([versionRow({ version_number: 1 })]);
 
     await createDocumentVersion({
       documentId: 'doc-uuid-456',
@@ -107,7 +119,7 @@ describe('createDocumentVersion within-document id uniqueness', () => {
       createdByType: 'user',
     });
 
-    const persisted = insertCallParams(queryMock)[2] as { content: Comp[] };
+    const persisted = persistedSnapshot(database);
     expect(persisted.content).toHaveLength(2);
     expect(persisted.content[0].props.id).toBe('HeroBlock-dup');
     expect(persisted.content[1].props.id).not.toBe('HeroBlock-dup');
@@ -116,14 +128,7 @@ describe('createDocumentVersion within-document id uniqueness', () => {
   });
 
   it('preserves component order, types, and non-id props when re-minting a duplicate', async () => {
-    const { createDocumentVersion } = await import('../../src/services/document-version-service');
-    const db = await import('../../src/db');
-    const queryMock = vi.mocked(db.query);
-
-    queryMock
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [versionRow()] });
+    database.on(documentVersions).insert.returnsRaw([versionRow()]);
 
     await createDocumentVersion({
       documentId: 'doc-uuid-456',
@@ -140,7 +145,7 @@ describe('createDocumentVersion within-document id uniqueness', () => {
       createdByType: 'user',
     });
 
-    const persisted = insertCallParams(queryMock)[2] as { content: Comp[] };
+    const persisted = persistedSnapshot(database);
     expect(persisted.content.map((c) => c.type)).toEqual(['HeroBlock', 'BodyBlock', 'HeroBlock']);
     expect(persisted.content[1].props.id).toBe('BodyBlock-keep');
     expect(persisted.content[2].props.title).toBe('Second');
@@ -149,14 +154,7 @@ describe('createDocumentVersion within-document id uniqueness', () => {
   });
 
   it('walks content before zones so a content occurrence keeps the id over a zones duplicate', async () => {
-    const { createDocumentVersion } = await import('../../src/services/document-version-service');
-    const db = await import('../../src/db');
-    const queryMock = vi.mocked(db.query);
-
-    queryMock
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [versionRow()] });
+    database.on(documentVersions).insert.returnsRaw([versionRow()]);
 
     await createDocumentVersion({
       documentId: 'doc-uuid-456',
@@ -172,10 +170,7 @@ describe('createDocumentVersion within-document id uniqueness', () => {
       createdByType: 'user',
     });
 
-    const persisted = insertCallParams(queryMock)[2] as {
-      content: Comp[];
-      zones: Record<string, Comp[]>;
-    };
+    const persisted = persistedSnapshot(database);
     expect(persisted.content[0].props.id).toBe('shared-slot');
     expect(persisted.zones['root:main'][0].props.id).not.toBe('shared-slot');
     expect(persisted.zones['root:main'][0].props.id).toMatch(MINTED_ID);
@@ -183,14 +178,7 @@ describe('createDocumentVersion within-document id uniqueness', () => {
   });
 
   it('re-mints later duplicates within a single zone array', async () => {
-    const { createDocumentVersion } = await import('../../src/services/document-version-service');
-    const db = await import('../../src/db');
-    const queryMock = vi.mocked(db.query);
-
-    queryMock
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [versionRow()] });
+    database.on(documentVersions).insert.returnsRaw([versionRow()]);
 
     await createDocumentVersion({
       documentId: 'doc-uuid-456',
@@ -209,7 +197,7 @@ describe('createDocumentVersion within-document id uniqueness', () => {
       createdByType: 'user',
     });
 
-    const persisted = insertCallParams(queryMock)[2] as { zones: Record<string, Comp[]> };
+    const persisted = persistedSnapshot(database);
     const zone = persisted.zones['root:main'];
     expect(zone[0].props.id).toBe('CardBlock-dup');
     expect(zone[1].props.id).not.toBe('CardBlock-dup');
@@ -218,14 +206,7 @@ describe('createDocumentVersion within-document id uniqueness', () => {
   });
 
   it('logs a structured warning naming the document and the previous and new ids', async () => {
-    const { createDocumentVersion } = await import('../../src/services/document-version-service');
-    const db = await import('../../src/db');
-    const queryMock = vi.mocked(db.query);
-
-    queryMock
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [versionRow()] });
+    database.on(documentVersions).insert.returnsRaw([versionRow()]);
 
     await createDocumentVersion({
       documentId: 'doc-warned-999',
@@ -241,7 +222,7 @@ describe('createDocumentVersion within-document id uniqueness', () => {
       createdByType: 'user',
     });
 
-    const newId = (insertCallParams(queryMock)[2] as { content: Comp[] }).content[1].props.id;
+    const newId = persistedSnapshot(database).content[1].props.id;
     expect(warnSpy).toHaveBeenCalled();
     const output = warnOutput(warnSpy);
     expect(output).toContain('doc-warned-999');
@@ -250,10 +231,6 @@ describe('createDocumentVersion within-document id uniqueness', () => {
   });
 
   it('applies the backstop regardless of the write source', async () => {
-    const { createDocumentVersion } = await import('../../src/services/document-version-service');
-    const db = await import('../../src/db');
-    const queryMock = vi.mocked(db.query);
-
     const sources: { source: DocumentVersionSource; createdByType: 'user' | 'agent' | 'system' }[] = [
       { source: 'edit', createdByType: 'user' },
       { source: 'merge', createdByType: 'user' },
@@ -262,11 +239,8 @@ describe('createDocumentVersion within-document id uniqueness', () => {
     ];
 
     for (const { source, createdByType } of sources) {
-      queryMock.mockReset();
-      queryMock
-        .mockResolvedValueOnce({ rows: [] })
-        .mockResolvedValueOnce({ rows: [] })
-        .mockResolvedValueOnce({ rows: [versionRow({ source })] });
+      database = stubDatabase();
+      database.on(documentVersions).insert.returnsRaw([versionRow({ source })]);
 
       await createDocumentVersion({
         documentId: 'doc-uuid-456',
@@ -282,25 +256,20 @@ describe('createDocumentVersion within-document id uniqueness', () => {
         createdByType,
       });
 
-      const persisted = insertCallParams(queryMock)[2] as { content: Comp[] };
+      const persisted = persistedSnapshot(database);
       expect(persisted.content[1].props.id).not.toBe('HeroBlock-dup');
       expect(persisted.content[1].props.id).toMatch(MINTED_ID);
     }
   });
 
   it('computes the forward patch from the deduped snapshot', async () => {
-    const { createDocumentVersion } = await import('../../src/services/document-version-service');
-    const db = await import('../../src/db');
-    const queryMock = vi.mocked(db.query);
-
     const previous = versionRow({
       version_number: 4,
       snapshot: { content: [comp('HeroBlock', 'HeroBlock-keep', { title: 'First' })] },
     });
 
-    queryMock
-      .mockResolvedValueOnce({ rows: [previous] })
-      .mockResolvedValueOnce({ rows: [versionRow({ version_number: 5 })] });
+    database.on(documentVersions).select.returnsRaw([previous]);
+    database.on(documentVersions).insert.returnsRaw([versionRow({ version_number: 5 })]);
 
     await createDocumentVersion({
       documentId: 'doc-uuid-456',
@@ -316,10 +285,8 @@ describe('createDocumentVersion within-document id uniqueness', () => {
       createdByType: 'user',
     });
 
-    const params = insertCallParams(queryMock);
-    const patchParam = params[3] as string;
-    expect(patchParam).not.toBeNull();
-    const patchText = typeof patchParam === 'string' ? patchParam : JSON.stringify(patchParam);
+    const patchText = insertedValues(database)[3] as string;
+    expect(patchText).not.toBeNull();
     expect(patchText).not.toContain('HeroBlock-keep-second');
     // The added element must carry the re-minted id, never a second HeroBlock-keep.
     const addedIdMatches = patchText.match(/HeroBlock-keep/g) ?? [];
@@ -328,14 +295,7 @@ describe('createDocumentVersion within-document id uniqueness', () => {
   });
 
   it('persists a snapshot with unique ids unchanged and does not warn', async () => {
-    const { createDocumentVersion } = await import('../../src/services/document-version-service');
-    const db = await import('../../src/db');
-    const queryMock = vi.mocked(db.query);
-
-    queryMock
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [versionRow()] });
+    database.on(documentVersions).insert.returnsRaw([versionRow()]);
 
     const snapshot = {
       content: [
@@ -356,7 +316,7 @@ describe('createDocumentVersion within-document id uniqueness', () => {
       createdByType: 'user',
     });
 
-    const persisted = insertCallParams(queryMock)[2];
+    const persisted = persistedSnapshot(database);
     expect(persisted).toEqual(snapshot);
     expect(warnSpy).not.toHaveBeenCalled();
   });
@@ -387,7 +347,6 @@ describe('batchSyncToPostgres within-document id uniqueness', () => {
   }
 
   it('re-mints later duplicates independently for each batched item', async () => {
-    const { batchSyncToPostgres } = await import('../../src/services/document-version-service');
 
     database.on(documentVersions).insert.returnsRaw([
       versionRow({ id: 'v1', document_id: 'doc-001', source: 'realtime', version_number: 1 }),
@@ -436,7 +395,6 @@ describe('batchSyncToPostgres within-document id uniqueness', () => {
   });
 
   it('logs a structured warning naming each affected document and its id pairs', async () => {
-    const { batchSyncToPostgres } = await import('../../src/services/document-version-service');
 
     database.on(documentVersions).insert.returnsRaw([
       versionRow({ id: 'v1', document_id: 'doc-batch-777', source: 'realtime', version_number: 1 }),
@@ -466,7 +424,6 @@ describe('batchSyncToPostgres within-document id uniqueness', () => {
   });
 
   it('persists batched snapshots with unique ids unchanged and does not warn', async () => {
-    const { batchSyncToPostgres } = await import('../../src/services/document-version-service');
 
     database.on(documentVersions).insert.returnsRaw([
       versionRow({ id: 'v1', document_id: 'doc-001', source: 'realtime', version_number: 1 }),

@@ -5,68 +5,49 @@
  * exclusion.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
+import { stubDatabase, type DatabaseStub } from '../__stubs__/database';
+import {
+  countDocumentsOnBranch,
+  listDocumentsOnBranch,
+} from '../../src/services/branch-document-service';
 
-vi.mock('../../src/db', () => ({
-  query: vi.fn(),
-}));
+let stub: DatabaseStub;
+
+beforeEach(() => {
+  stub = stubDatabase();
+});
 
 describe('listDocumentsOnBranch includeTombstoned', () => {
-  beforeEach(() => {
-    vi.resetAllMocks();
-  });
 
   it('excludes tombstoned documents by default', async () => {
-    const { listDocumentsOnBranch } = await import('../../src/services/branch-document-service');
-    const db = await import('../../src/db');
-
-    vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
-
     await listDocumentsOnBranch('branch-1', {});
 
-    const [sql] = vi.mocked(db.query).mock.calls[0];
+    const { sql } = stub.statements[0];
     expect(sql).toContain('top.is_tombstone = false');
   });
 
   it('omits the tombstone exclusion when includeTombstoned is true', async () => {
-    const { listDocumentsOnBranch } = await import('../../src/services/branch-document-service');
-    const db = await import('../../src/db');
-
-    vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
-
     await listDocumentsOnBranch('branch-1', { includeTombstoned: true });
 
-    const [sql] = vi.mocked(db.query).mock.calls[0];
+    const { sql } = stub.statements[0];
     expect(sql).not.toContain('top.is_tombstone = false');
   });
 });
 
 describe('countDocumentsOnBranch includeTombstoned', () => {
-  beforeEach(() => {
-    vi.resetAllMocks();
-  });
 
   it('excludes tombstoned documents by default', async () => {
-    const { countDocumentsOnBranch } = await import('../../src/services/branch-document-service');
-    const db = await import('../../src/db');
-
-    vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ count: '0' }] });
-
     await countDocumentsOnBranch('branch-1', {});
 
-    const [sql] = vi.mocked(db.query).mock.calls[0];
+    const { sql } = stub.statements[0];
     expect(sql).toContain('is_tombstone = true');
   });
 
   it('omits the tombstone exclusion when includeTombstoned is true', async () => {
-    const { countDocumentsOnBranch } = await import('../../src/services/branch-document-service');
-    const db = await import('../../src/db');
-
-    vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ count: '0' }] });
-
     await countDocumentsOnBranch('branch-1', { includeTombstoned: true });
 
-    const [sql] = vi.mocked(db.query).mock.calls[0];
+    const { sql } = stub.statements[0];
     expect(sql).not.toContain('is_tombstone = true');
   });
 });

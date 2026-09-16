@@ -13,7 +13,8 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { stubDatabase, type DatabaseStub } from '../__stubs__/database';
-import { documentVersions } from '../../src/db/schema';
+import { checkpoints, documentVersions } from '../../src/db/schema';
+import { publishDocument } from '../../src/services/checkpoint-publish';
 import { publishMergedVersions } from '../../src/services/merge-publish';
 
 const SITE_ID = 'site-123';
@@ -22,19 +23,11 @@ const SOURCE_BRANCH_ID = 'branch-feature';
 const DOCUMENT_ID = 'doc-456';
 
 const mocks = vi.hoisted(() => ({
-  query: vi.fn(),
   getMainBranch: vi.fn(),
   getBranch: vi.fn(),
   createCheckpoint: vi.fn(),
   purgeContentCache: vi.fn(),
   events: [] as string[],
-}));
-
-vi.mock('../../src/db', () => ({
-  query: mocks.query,
-  runWithConnection: vi.fn().mockImplementation(
-    (_conn: string, _opts: unknown, fn: () => unknown) => fn(),
-  ),
 }));
 
 vi.mock('../../src/services/branch-service', async (importOriginal) => {
@@ -62,32 +55,22 @@ const checkpointRow = {
   created_at: '2026-08-14T00:00:00.000Z',
 };
 
-function stubQuery(sql: string) {
-  if (sql.includes('COMMIT')) {
-    mocks.events.push('commit');
-    return { rows: [] };
-  }
-  if (sql.includes('BEGIN') || sql.includes('ROLLBACK')) return { rows: [] };
-  if (sql.includes('FROM app.document_versions') && sql.includes('is_tombstone')) {
-    return {
-      rows: [{
-        id: 'ver-source-1',
-        document_id: DOCUMENT_ID,
-        branch_id: SOURCE_BRANCH_ID,
-        version_number: 1,
-        snapshot: {},
-        is_tombstone: false,
-      }],
-    };
-  }
-  if (sql.includes('INSERT INTO app.document_versions')) {
-    return { rows: [{ id: 'ver-main-1', version_number: 2 }] };
-  }
-  if (sql.includes('INSERT INTO app.checkpoints')) {
-    return { rows: [checkpointRow] };
-  }
-  return { rows: [] };
+const sourceVersionRow = {
+  id: 'ver-source-1',
+  document_id: DOCUMENT_ID,
+  branch_id: SOURCE_BRANCH_ID,
+  version_number: 1,
+  snapshot: {},
+  is_tombstone: false,
+};
+
+/** Answers every read the publish makes, so only its writes are under test. */
+function stubPublishReads(database: DatabaseStub): void {
+  database.on(documentVersions).select.returnsRaw([sourceVersionRow]);
+  database.on(documentVersions).insert.returnsRaw([{ id: 'ver-main-1', version_number: 2 }]);
+  database.on(checkpoints).insert.returnsRaw([checkpointRow]);
 }
+
 
 function publishParams(branchId: string) {
   return {
@@ -100,10 +83,13 @@ function publishParams(branchId: string) {
 }
 
 describe('publish invalidates the edge cache', () => {
+  let database: DatabaseStub;
+
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.events.length = 0;
-    mocks.query.mockImplementation((sql: string) => Promise.resolve(stubQuery(sql)));
+    database = stubDatabase();
+    stubPublishReads(database);
     mocks.getMainBranch.mockResolvedValue({ id: MAIN_BRANCH_ID, name: 'main', isMain: true });
     mocks.getBranch.mockResolvedValue({ id: SOURCE_BRANCH_ID, name: 'feature', isMain: false });
     mocks.purgeContentCache.mockImplementation(() => {
@@ -114,8 +100,6 @@ describe('publish invalidates the edge cache', () => {
 
   describe('publishDocument', () => {
     it('purges the published document on the main branch', async () => {
-      const { publishDocument } = await import('../../src/services/checkpoint-publish');
-
       await publishDocument(publishParams(MAIN_BRANCH_ID));
 
       expect(mocks.purgeContentCache).toHaveBeenCalledTimes(1);
@@ -126,8 +110,6 @@ describe('publish invalidates the edge cache', () => {
     // Publishing from a feature branch makes content live on main. Purging the
     // source branch's tag would leave the published page stale.
     it('purges the main branch tag, not the source branch it published from', async () => {
-      const { publishDocument } = await import('../../src/services/checkpoint-publish');
-
       await publishDocument(publishParams(SOURCE_BRANCH_ID));
 
       const params = mocks.purgeContentCache.mock.calls[0]?.[0] as { branchId?: string };
@@ -138,7 +120,7 @@ describe('publish invalidates the edge cache', () => {
     // Purging before COMMIT lets a concurrent read re-cache the pre-publish
     // version, which then survives for a full TTL.
     it('purges after the transaction commits', async () => {
-      const { publishDocument } = await import('../../src/services/checkpoint-publish');
+      database.transaction.onCommit(() => mocks.events.push('commit'));
 
       await publishDocument(publishParams(MAIN_BRANCH_ID));
 
@@ -146,14 +128,7 @@ describe('publish invalidates the edge cache', () => {
     });
 
     it('does not purge when the publish fails', async () => {
-      mocks.query.mockImplementation((sql: string) => {
-        if (sql.includes('FROM app.document_versions') && sql.includes('is_tombstone')) {
-          return Promise.resolve({ rows: [] });
-        }
-        return Promise.resolve(stubQuery(sql));
-      });
-      const { publishDocument } = await import('../../src/services/checkpoint-publish');
-
+      database.on(documentVersions).select.returnsRaw([]);
       await publishDocument(publishParams(MAIN_BRANCH_ID)).catch(() => undefined);
 
       expect(mocks.purgeContentCache).not.toHaveBeenCalled();
@@ -177,10 +152,7 @@ describe('publish invalidates the edge cache', () => {
       };
     }
 
-    let database: DatabaseStub;
-
     beforeEach(() => {
-      database = stubDatabase();
       mocks.createCheckpoint.mockResolvedValue({
         checkpoint: { id: 'cp-2', branchId: MAIN_BRANCH_ID },
       });

@@ -12,11 +12,18 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import type { SQL } from 'drizzle-orm';
+import { PgDialect } from 'drizzle-orm/pg-core';
 import { mapRowToDocument } from '../../src/services/document-types';
 import {
   DOCUMENT_READ_COLUMNS,
   DOCUMENT_READ_JOINS,
 } from '../../src/services/document-queries';
+
+/** The statement text a fragment contributes, with its literals still inline. */
+function render(fragment: SQL): string {
+  return new PgDialect().sqlToQuery(fragment).sql;
+}
 
 function row(overrides: Record<string, unknown> = {}): never {
   return {
@@ -60,13 +67,13 @@ describe('the document a document was localized from', () => {
 
 describe('the document read', () => {
   it('selects the localization upstream alongside the template relation', () => {
-    expect(DOCUMENT_READ_COLUMNS).toContain('localized_from_id');
-    expect(DOCUMENT_READ_COLUMNS).toContain('template_id');
+    expect(render(DOCUMENT_READ_COLUMNS)).toContain('localized_from_id');
+    expect(render(DOCUMENT_READ_COLUMNS)).toContain('template_id');
   });
 
   it('joins each relation on the derived side under its own alias', () => {
-    expect(DOCUMENT_READ_JOINS).toContain("relation_type = 'localization'");
-    expect(DOCUMENT_READ_JOINS).toContain("relation_type = 'template'");
-    expect(DOCUMENT_READ_JOINS).toContain('lr.source_document_id = d.id');
+    expect(render(DOCUMENT_READ_JOINS)).toContain("relation_type = 'localization'");
+    expect(render(DOCUMENT_READ_JOINS)).toContain("relation_type = 'template'");
+    expect(render(DOCUMENT_READ_JOINS)).toContain('lr.source_document_id = d.id');
   });
 });

@@ -9,11 +9,8 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { buildSlotDelta } from '../../src/services/slot-delta';
-
-vi.mock('../../src/db', () => ({
-  query: vi.fn(),
-  withTransaction: vi.fn(async (fn: () => Promise<unknown>) => fn()),
-}));
+import { stubDatabase, type DatabaseStub } from '../__stubs__/database';
+import { documentVersions, migrationConflicts } from '../../src/db/schema';
 
 vi.mock('../../src/services/checkpoint-service', () => ({
   createCheckpoint: vi.fn(),
@@ -222,7 +219,6 @@ describe('root prop patches: divergence reporting', () => {
 
   it('reports a diverged root prop as a conflict instead of skipping it', async () => {
     const { detectDocumentConflicts } = await import('../../src/services/migration-service');
-    const db = await import('../../src/db');
     const { reconstructVersionSnapshot } = await import('../../src/services/document-version-service');
 
     const documentSnapshot = {
@@ -231,7 +227,7 @@ describe('root prop patches: divergence reporting', () => {
     };
 
     // Baseline equals the document, so there is no structural change to report.
-    vi.mocked(db.query).mockResolvedValue({ rows: [{ version_number: 3 }], rowCount: 1 });
+    stubDatabase().on(documentVersions).select.returnsRaw([{ versionNumber: 3 }]);
     vi.mocked(reconstructVersionSnapshot).mockResolvedValue(documentSnapshot);
 
     const result = await detectDocumentConflicts(
@@ -265,7 +261,6 @@ describe('root prop patches: divergence reporting', () => {
 
   it('reports no conflict when the root prop still matches the template', async () => {
     const { detectDocumentConflicts } = await import('../../src/services/migration-service');
-    const db = await import('../../src/db');
     const { reconstructVersionSnapshot } = await import('../../src/services/document-version-service');
 
     const documentSnapshot = {
@@ -273,7 +268,7 @@ describe('root prop patches: divergence reporting', () => {
       root: { props: { _meta: { ogTitle: 'Old template default' } } },
     };
 
-    vi.mocked(db.query).mockResolvedValue({ rows: [{ version_number: 3 }], rowCount: 1 });
+    stubDatabase().on(documentVersions).select.returnsRaw([{ versionNumber: 3 }]);
     vi.mocked(reconstructVersionSnapshot).mockResolvedValue(documentSnapshot);
 
     const result = await detectDocumentConflicts(
@@ -300,7 +295,6 @@ describe('root prop patches: divergence reporting', () => {
 
   it('reports a first-time _meta gain as one whole-object conflict', async () => {
     const { detectDocumentConflicts } = await import('../../src/services/migration-service');
-    const db = await import('../../src/db');
     const { reconstructVersionSnapshot } = await import('../../src/services/document-version-service');
 
     // `jsonPatchCompare` only descends into keys present on both sides, so the
@@ -313,7 +307,7 @@ describe('root prop patches: divergence reporting', () => {
       root: { props: { _meta: { ogTitle: 'Editor wrote this' } } },
     };
 
-    vi.mocked(db.query).mockResolvedValue({ rows: [{ version_number: 3 }], rowCount: 1 });
+    stubDatabase().on(documentVersions).select.returnsRaw([{ versionNumber: 3 }]);
     vi.mocked(reconstructVersionSnapshot).mockResolvedValue(documentSnapshot);
 
     const result = await detectDocumentConflicts(
@@ -383,10 +377,8 @@ describe('root prop patches: extraction', () => {
 
   it('emits an add when the baseline template version had no root props', async () => {
     const { extractTemplateDelta } = await import('../../src/services/migration-service');
-    const db = await import('../../src/db');
     const { reconstructVersionSnapshot } = await import('../../src/services/document-version-service');
 
-    vi.mocked(db.query).mockResolvedValue({ rows: [], rowCount: 0 });
     vi.mocked(reconstructVersionSnapshot)
       .mockResolvedValueOnce({ content: [] })
       .mockResolvedValueOnce({ content: [], root: { props: { _meta: { ogType: 'article' } } } });
@@ -403,10 +395,8 @@ describe('root prop patches: extraction', () => {
 
   it('does not strip page root props when the new version has no root at all', async () => {
     const { extractTemplateDelta } = await import('../../src/services/migration-service');
-    const db = await import('../../src/db');
     const { reconstructVersionSnapshot } = await import('../../src/services/document-version-service');
 
-    vi.mocked(db.query).mockResolvedValue({ rows: [], rowCount: 0 });
     vi.mocked(reconstructVersionSnapshot)
       .mockResolvedValueOnce({ content: [], root: { props: { title: 'Launch' } } })
       .mockResolvedValueOnce({ content: [] });
@@ -418,8 +408,11 @@ describe('root prop patches: extraction', () => {
 });
 
 describe('root prop patches: conflict resolution', () => {
+  let stub: DatabaseStub;
+
   beforeEach(() => {
     vi.resetAllMocks();
+    stub = stubDatabase();
   });
 
   const conflictRow = (propConflicts: unknown[]): Record<string, unknown> => ({
@@ -441,7 +434,6 @@ describe('root prop patches: conflict resolution', () => {
 
   it('applies the template value to a root prop conflict', async () => {
     const { resolveMigrationConflict } = await import('../../src/services/migration-service');
-    const db = await import('../../src/db');
     const { getLatestDocumentVersion, createDocumentVersion } =
       await import('../../src/services/document-version-service');
 
@@ -458,15 +450,10 @@ describe('root prop patches: conflict resolution', () => {
       },
     ]);
 
-    vi.mocked(db.query).mockImplementation((sql: string) => {
-      if (typeof sql === 'string' && sql.startsWith('SELECT')) {
-        return Promise.resolve({ rows: [row], rowCount: 1 });
-      }
-      return Promise.resolve({
-        rows: [{ ...row, resolution: 'apply', resolved_at: '2026-07-01T01:00:00.000Z' }],
-        rowCount: 1,
-      });
-    });
+    stub.on(migrationConflicts).select.returnsRaw([row]);
+    stub.on(migrationConflicts).update.returnsRaw([
+      { ...row, resolution: 'apply', resolved_at: '2026-07-01T01:00:00.000Z' },
+    ]);
 
     vi.mocked(getLatestDocumentVersion).mockResolvedValue({
       id: 'v-1',

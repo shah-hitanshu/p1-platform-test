@@ -11,11 +11,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { makeBranch } from '../helpers/branch';
 import type { Branch } from '../../src/types';
-
-// Mock database module
-vi.mock('../../src/db', () => ({
-  query: vi.fn(),
-}));
+import { stubDatabase, type DatabaseStub } from '../__stubs__/database';
+import { checkpoints, documentVersions } from '../../src/db/schema';
+import { publishDocument } from '../../src/services/checkpoint-service';
+import { getBranch, getMainBranch } from '../../src/services/branch-service';
 
 // Mock branch-service for getMainBranch and getBranch
 vi.mock('../../src/services/branch-service', () => ({
@@ -24,13 +23,18 @@ vi.mock('../../src/services/branch-service', () => ({
 }));
 
 describe('publishDocument provenance tracking', () => {
+  let stub: DatabaseStub;
+
   beforeEach(() => {
     vi.resetAllMocks();
-    vi.resetModules();
+    stub = stubDatabase();
   });
 
   // Mock row types matching database format
-  interface MockCheckpointRow {
+  // Type aliases rather than interfaces: the stub takes rows as
+  // Record<string, unknown>, which an interface cannot satisfy because it
+  // carries no implicit index signature.
+  type MockCheckpointRow = {
     id: string;
     branch_id: string;
     name: string | null;
@@ -39,16 +43,16 @@ describe('publishDocument provenance tracking', () => {
     created_by_id: string;
     created_by_type: 'user' | 'agent' | 'system';
     created_at: string;
-  }
+  };
 
-  interface MockDocumentVersionRow {
+  type MockDocumentVersionRow = {
     id: string;
     document_id: string;
     branch_id: string;
     version_number: number;
     snapshot: Record<string, unknown>;
     is_tombstone: boolean;
-  }
+  };
 
   function createMockCheckpointRow(
     overrides: Partial<MockCheckpointRow> = {},
@@ -92,35 +96,21 @@ describe('publishDocument provenance tracking', () => {
   }
 
   it('should set source_branch_id on the version copied to main', async () => {
-    const { publishDocument } = await import(
-      '../../src/services/checkpoint-service'
-    );
-    const db = await import('../../src/db');
-    const branchService = await import('../../src/services/branch-service');
-
     const mockCheckpointRow = createMockCheckpointRow();
     const mockVersionRow = createMockVersionRow();
 
-    vi.mocked(branchService.getMainBranch).mockResolvedValueOnce(
+    vi.mocked(getMainBranch).mockResolvedValueOnce(
       createMainBranch(),
     );
-    vi.mocked(branchService.getBranch).mockResolvedValueOnce(makeBranch({
+    vi.mocked(getBranch).mockResolvedValueOnce(makeBranch({
       id: 'source-branch-uuid', siteId: 'site-uuid', name: 'feature/test',
       status: 'active', isMain: false, createdById: 'user-1', createdByType: 'user',
       createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
     }));
 
-    vi.mocked(db.query)
-      .mockResolvedValueOnce({ rows: [] }) // BEGIN
-      .mockResolvedValueOnce({ rows: [mockVersionRow] }) // get latest version on source branch
-      .mockResolvedValueOnce({
-        rows: [{ id: 'new-version-on-main', version_number: 8 }],
-      }) // create version on main
-      .mockResolvedValueOnce({ rows: [] }) // UPDATE source version with published_to_version_id
-      .mockResolvedValueOnce({ rows: [] }) // pin published version (pinned_at)
-      .mockResolvedValueOnce({ rows: [mockCheckpointRow] }) // insert checkpoint on main
-      .mockResolvedValueOnce({ rows: [] }) // insert checkpoint_documents
-      .mockResolvedValueOnce({ rows: [] }); // COMMIT
+    stub.on(documentVersions).select.returnsRaw([mockVersionRow]);
+    stub.on(documentVersions).insert.returnsRaw([{ id: 'new-version-on-main', version_number: 8 }]);
+    stub.on(checkpoints).insert.returnsRaw([mockCheckpointRow]);
 
     await publishDocument({
       siteId: 'site-uuid',
@@ -130,56 +120,32 @@ describe('publishDocument provenance tracking', () => {
       createdByType: 'user',
     });
 
-    // Find the INSERT into document_versions call (creating version on main)
-    const allCalls = vi.mocked(db.query).mock.calls;
-    const versionInsert = allCalls.find(
-      (call) =>
-        typeof call[0] === 'string' &&
-        call[0].includes('document_versions') &&
-        call[0].includes('INSERT') &&
-        !call[0].includes('checkpoint_documents'),
-    );
+    const [versionInsert] = stub.calls(documentVersions).insert;
 
-    if (versionInsert === undefined) throw new Error('Expected version INSERT call');
     // The INSERT SQL should include source_branch_id column
-    const sql: unknown = versionInsert[0];
+    const { sql } = versionInsert;
     expect(sql).toContain('source_branch_id');
     // The parameters should include the source branch ID
-    if (versionInsert[1] === undefined) throw new Error('Expected params');
-    const params: unknown = versionInsert[1];
+    const { params } = versionInsert;
     expect(params).toContain('source-branch-uuid');
   });
 
   it('should set source_version_id on the version copied to main', async () => {
-    const { publishDocument } = await import(
-      '../../src/services/checkpoint-service'
-    );
-    const db = await import('../../src/db');
-    const branchService = await import('../../src/services/branch-service');
-
     const mockCheckpointRow = createMockCheckpointRow();
     const mockVersionRow = createMockVersionRow({ id: 'source-ver-id-999' });
 
-    vi.mocked(branchService.getMainBranch).mockResolvedValueOnce(
+    vi.mocked(getMainBranch).mockResolvedValueOnce(
       createMainBranch(),
     );
-    vi.mocked(branchService.getBranch).mockResolvedValueOnce(makeBranch({
+    vi.mocked(getBranch).mockResolvedValueOnce(makeBranch({
       id: 'source-branch-uuid', siteId: 'site-uuid', name: 'feature/test',
       status: 'active', isMain: false, createdById: 'user-1', createdByType: 'user',
       createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
     }));
 
-    vi.mocked(db.query)
-      .mockResolvedValueOnce({ rows: [] }) // BEGIN
-      .mockResolvedValueOnce({ rows: [mockVersionRow] }) // get latest version on source branch
-      .mockResolvedValueOnce({
-        rows: [{ id: 'new-version-on-main', version_number: 5 }],
-      }) // create version on main
-      .mockResolvedValueOnce({ rows: [] }) // UPDATE source version with published_to_version_id
-      .mockResolvedValueOnce({ rows: [] }) // pin published version (pinned_at)
-      .mockResolvedValueOnce({ rows: [mockCheckpointRow] }) // insert checkpoint on main
-      .mockResolvedValueOnce({ rows: [] }) // insert checkpoint_documents
-      .mockResolvedValueOnce({ rows: [] }); // COMMIT
+    stub.on(documentVersions).select.returnsRaw([mockVersionRow]);
+    stub.on(documentVersions).insert.returnsRaw([{ id: 'new-version-on-main', version_number: 5 }]);
+    stub.on(checkpoints).insert.returnsRaw([mockCheckpointRow]);
 
     await publishDocument({
       siteId: 'site-uuid',
@@ -189,56 +155,32 @@ describe('publishDocument provenance tracking', () => {
       createdByType: 'user',
     });
 
-    // Find the INSERT into document_versions call (creating version on main)
-    const allCalls = vi.mocked(db.query).mock.calls;
-    const versionInsert = allCalls.find(
-      (call) =>
-        typeof call[0] === 'string' &&
-        call[0].includes('document_versions') &&
-        call[0].includes('INSERT') &&
-        !call[0].includes('checkpoint_documents'),
-    );
+    const [versionInsert] = stub.calls(documentVersions).insert;
 
-    if (versionInsert === undefined) throw new Error('Expected version INSERT call');
     // The INSERT SQL should include source_version_id column
-    const sql: unknown = versionInsert[0];
+    const { sql } = versionInsert;
     expect(sql).toContain('source_version_id');
     // The parameters should include the source version ID
-    if (versionInsert[1] === undefined) throw new Error('Expected params');
-    const params: unknown = versionInsert[1];
+    const { params } = versionInsert;
     expect(params).toContain('source-ver-id-999');
   });
 
   it('should update the source version with published_to_version_id', async () => {
-    const { publishDocument } = await import(
-      '../../src/services/checkpoint-service'
-    );
-    const db = await import('../../src/db');
-    const branchService = await import('../../src/services/branch-service');
-
     const mockCheckpointRow = createMockCheckpointRow();
     const mockVersionRow = createMockVersionRow({ id: 'source-ver-original' });
 
-    vi.mocked(branchService.getMainBranch).mockResolvedValueOnce(
+    vi.mocked(getMainBranch).mockResolvedValueOnce(
       createMainBranch(),
     );
-    vi.mocked(branchService.getBranch).mockResolvedValueOnce(makeBranch({
+    vi.mocked(getBranch).mockResolvedValueOnce(makeBranch({
       id: 'source-branch-uuid', siteId: 'site-uuid', name: 'feature/test',
       status: 'active', isMain: false, createdById: 'user-1', createdByType: 'user',
       createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
     }));
 
-    vi.mocked(db.query)
-      .mockResolvedValueOnce({ rows: [] }) // BEGIN
-      .mockResolvedValueOnce({ rows: [mockVersionRow] }) // get latest version on source branch
-      .mockResolvedValueOnce({
-        rows: [{ id: 'main-ver-new-001', version_number: 6 }],
-      }) // create version on main
-      .mockResolvedValueOnce({ rows: [] }) // UPDATE source version with published_to_version_id
-      .mockResolvedValueOnce({ rows: [] }) // pin published version (pinned_at)
-      .mockResolvedValueOnce({ rows: [mockCheckpointRow] }) // insert checkpoint on main
-      .mockResolvedValueOnce({ rows: [] }) // insert checkpoint_documents
-      .mockResolvedValueOnce({ rows: [] }); // COMMIT
+    stub.on(documentVersions).select.returnsRaw([mockVersionRow]);
+    stub.on(documentVersions).insert.returnsRaw([{ id: 'main-ver-new-001', version_number: 6 }]);
+    stub.on(checkpoints).insert.returnsRaw([mockCheckpointRow]);
 
     await publishDocument({
       siteId: 'site-uuid',
@@ -249,49 +191,30 @@ describe('publishDocument provenance tracking', () => {
     });
 
     // Find the UPDATE query that sets published_to_version_id on the source version
-    const allCalls = vi.mocked(db.query).mock.calls;
-    const updateCall = allCalls.find(
-      (call) =>
-        typeof call[0] === 'string' &&
-        call[0].includes('UPDATE') &&
-        call[0].includes('published_to_version_id'),
+    const updateCall = stub.calls(documentVersions).update.find(
+      (call) => call.sql.includes('published_to_version_id'),
     );
 
     if (updateCall === undefined) throw new Error('Expected UPDATE call for published_to_version_id');
-    const sql: unknown = updateCall[0];
-    expect(sql).toContain('document_versions');
     // The UPDATE should set published_to_version_id to the new main version's ID
-    if (updateCall[1] === undefined) throw new Error('Expected params');
-    const params: unknown = updateCall[1];
+    const { params } = updateCall;
     expect(params).toContain('main-ver-new-001');
     // And target the source version
     expect(params).toContain('source-ver-original');
   });
 
   it('should NOT set source_branch_id when publishing on main', async () => {
-    const { publishDocument } = await import(
-      '../../src/services/checkpoint-service'
-    );
-    const db = await import('../../src/db');
-    const branchService = await import('../../src/services/branch-service');
-
     const mockCheckpointRow = createMockCheckpointRow();
     const mockVersionRow = createMockVersionRow({
       branch_id: 'main-branch-uuid',
     });
 
-    vi.mocked(branchService.getMainBranch).mockResolvedValueOnce(
+    vi.mocked(getMainBranch).mockResolvedValueOnce(
       createMainBranch(),
     );
 
-    // When publishing on main, no version copy needed — just checkpoint
-    vi.mocked(db.query)
-      .mockResolvedValueOnce({ rows: [] }) // BEGIN
-      .mockResolvedValueOnce({ rows: [mockVersionRow] }) // get latest version (already on main)
-      .mockResolvedValueOnce({ rows: [] }) // pin published version (pinned_at)
-      .mockResolvedValueOnce({ rows: [mockCheckpointRow] }) // insert checkpoint
-      .mockResolvedValueOnce({ rows: [] }) // insert checkpoint_documents
-      .mockResolvedValueOnce({ rows: [] }); // COMMIT
+    stub.on(documentVersions).select.returnsRaw([mockVersionRow]);
+    stub.on(checkpoints).insert.returnsRaw([mockCheckpointRow]);
 
     await publishDocument({
       siteId: 'site-uuid',
@@ -301,43 +224,24 @@ describe('publishDocument provenance tracking', () => {
       createdByType: 'user',
     });
 
-    // No INSERT into document_versions should include source_branch_id
-    const allCalls = vi.mocked(db.query).mock.calls;
-    const versionInsert = allCalls.find(
-      (call) =>
-        typeof call[0] === 'string' &&
-        call[0].includes('document_versions') &&
-        call[0].includes('INSERT'),
-    );
+    const [versionInsert] = stub.calls(documentVersions).insert;
 
     // When on main, there should be no version copy INSERT at all
     expect(versionInsert).toBeUndefined();
   });
 
   it('should NOT update published_to_version_id when publishing on main', async () => {
-    const { publishDocument } = await import(
-      '../../src/services/checkpoint-service'
-    );
-    const db = await import('../../src/db');
-    const branchService = await import('../../src/services/branch-service');
-
     const mockCheckpointRow = createMockCheckpointRow();
     const mockVersionRow = createMockVersionRow({
       branch_id: 'main-branch-uuid',
     });
 
-    vi.mocked(branchService.getMainBranch).mockResolvedValueOnce(
+    vi.mocked(getMainBranch).mockResolvedValueOnce(
       createMainBranch(),
     );
 
-    // When publishing on main, no version copy or back-link needed
-    vi.mocked(db.query)
-      .mockResolvedValueOnce({ rows: [] }) // BEGIN
-      .mockResolvedValueOnce({ rows: [mockVersionRow] }) // get latest version (already on main)
-      .mockResolvedValueOnce({ rows: [] }) // pin published version (pinned_at)
-      .mockResolvedValueOnce({ rows: [mockCheckpointRow] }) // insert checkpoint
-      .mockResolvedValueOnce({ rows: [] }) // insert checkpoint_documents
-      .mockResolvedValueOnce({ rows: [] }); // COMMIT
+    stub.on(documentVersions).select.returnsRaw([mockVersionRow]);
+    stub.on(checkpoints).insert.returnsRaw([mockCheckpointRow]);
 
     await publishDocument({
       siteId: 'site-uuid',
@@ -348,47 +252,29 @@ describe('publishDocument provenance tracking', () => {
     });
 
     // No UPDATE with published_to_version_id should have been called
-    const allCalls = vi.mocked(db.query).mock.calls;
-    const updateCall = allCalls.find(
-      (call) =>
-        typeof call[0] === 'string' &&
-        call[0].includes('UPDATE') &&
-        call[0].includes('published_to_version_id'),
+    const updateCall = stub.calls(documentVersions).update.find(
+      (call) => call.sql.includes('published_to_version_id'),
     );
 
     expect(updateCall).toBeUndefined();
   });
 
   it('should include sourceBranchName in the result', async () => {
-    const { publishDocument } = await import(
-      '../../src/services/checkpoint-service'
-    );
-    const db = await import('../../src/db');
-    const branchService = await import('../../src/services/branch-service');
-
     const mockCheckpointRow = createMockCheckpointRow();
     const mockVersionRow = createMockVersionRow();
 
-    vi.mocked(branchService.getMainBranch).mockResolvedValueOnce(
+    vi.mocked(getMainBranch).mockResolvedValueOnce(
       createMainBranch(),
     );
-    vi.mocked(branchService.getBranch).mockResolvedValueOnce(makeBranch({
+    vi.mocked(getBranch).mockResolvedValueOnce(makeBranch({
       id: 'source-branch-uuid', siteId: 'site-uuid', name: 'feature/my-branch',
       status: 'active', isMain: false, createdById: 'user-1', createdByType: 'user',
       createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
     }));
 
-    vi.mocked(db.query)
-      .mockResolvedValueOnce({ rows: [] }) // BEGIN
-      .mockResolvedValueOnce({ rows: [mockVersionRow] }) // get latest version on source branch
-      .mockResolvedValueOnce({
-        rows: [{ id: 'new-version-on-main', version_number: 8 }],
-      }) // create version on main
-      .mockResolvedValueOnce({ rows: [] }) // UPDATE source version with published_to_version_id
-      .mockResolvedValueOnce({ rows: [] }) // pin published version (pinned_at)
-      .mockResolvedValueOnce({ rows: [mockCheckpointRow] }) // insert checkpoint on main
-      .mockResolvedValueOnce({ rows: [] }) // insert checkpoint_documents
-      .mockResolvedValueOnce({ rows: [] }); // COMMIT
+    stub.on(documentVersions).select.returnsRaw([mockVersionRow]);
+    stub.on(documentVersions).insert.returnsRaw([{ id: 'new-version-on-main', version_number: 8 }]);
+    stub.on(checkpoints).insert.returnsRaw([mockCheckpointRow]);
 
     const result = await publishDocument({
       siteId: 'site-uuid',

@@ -15,7 +15,10 @@
  * @see src/db/schema/document-relations.schema.ts (documentRelations)
  */
 
-import { query } from '../db';
+import { and, asc, desc, eq, inArray, sql, type InferSelectModel, type SQL } from 'drizzle-orm';
+import { db } from '../db/scope';
+import { toIsoTimestamp } from '../db/helpers';
+import { documentRelationBranchResolutions, documentRelations } from '../db/schema';
 import { findMainBranchId } from './template-read';
 import {
   branchDocumentPathJoin,
@@ -23,7 +26,6 @@ import {
   documentInBranchSitePredicate,
   publishedOnBranchJoin,
 } from './document-queries';
-import { getFirstRow } from './checkpoint-mappers';
 import { isAuthority } from '@pantheon-systems/p1-content-validator';
 import type { Authority } from '@pantheon-systems/p1-content-validator';
 import { AuthorityOverrideLimitError, UpstreamResolutionLimitError } from './errors';
@@ -41,17 +43,6 @@ export interface DocumentRelation {
   syncedUpstreamVersionId: string | null;
   metadata: Record<string, unknown>;
   createdAt: string;
-}
-
-interface DocumentRelationRow {
-  id: string;
-  source_document_id: string;
-  target_document_id: string;
-  relation_type: 'template' | 'localization';
-  synced_version: number | null;
-  synced_version_id: string | null;
-  metadata: Record<string, unknown>;
-  created_at: string;
 }
 
 /**
@@ -116,16 +107,20 @@ export interface LocalizationEdgeMetadata {
   authorityOverrides?: AuthorityOverridesJson;
 }
 
-function mapRowToRelation(row: DocumentRelationRow): DocumentRelation {
+/**
+ * The edge as the builder returns it. `metadata` is typed `unknown` on the
+ * column because the jsonb tolerates keys this service does not write.
+ */
+function mapRelationRow(row: InferSelectModel<typeof documentRelations>): DocumentRelation {
   return {
     id: row.id,
-    derivedDocumentId: row.source_document_id,
-    upstreamDocumentId: row.target_document_id,
-    relationType: row.relation_type,
-    syncedUpstreamVersion: row.synced_version,
-    syncedUpstreamVersionId: row.synced_version_id,
-    metadata: row.metadata,
-    createdAt: row.created_at,
+    derivedDocumentId: row.sourceDocumentId,
+    upstreamDocumentId: row.targetDocumentId,
+    relationType: row.relationType as 'template' | 'localization',
+    syncedUpstreamVersion: row.syncedVersion,
+    syncedUpstreamVersionId: row.syncedVersionId,
+    metadata: row.metadata as DocumentRelation['metadata'],
+    createdAt: toIsoTimestamp(row.createdAt),
   };
 }
 
@@ -139,15 +134,15 @@ export async function getEdgeByDerivedDocument(
   derivedDocumentId: string,
   relationType: 'template' | 'localization',
 ): Promise<DocumentRelation | null> {
-  const result = await query<DocumentRelationRow>(
-    `SELECT * FROM app.document_relations
-     WHERE source_document_id = $1 AND relation_type = $2`,
-    [derivedDocumentId, relationType],
-  );
-  if (result.rows.length === 0) {
-    return null;
-  }
-  return mapRowToRelation(getFirstRow(result.rows));
+  const rows = await db()
+    .select()
+    .from(documentRelations)
+    .where(and(
+      eq(documentRelations.sourceDocumentId, derivedDocumentId),
+      eq(documentRelations.relationType, relationType),
+    ));
+  const row = rows.at(0);
+  return row === undefined ? null : mapRelationRow(row);
 }
 
 /**
@@ -168,13 +163,15 @@ export async function getLocalizationEdgeByDerivedDocument(
 export async function listLocalizationEdgesByUpstreamDocument(
   upstreamDocumentId: string,
 ): Promise<DocumentRelation[]> {
-  const result = await query<DocumentRelationRow>(
-    `SELECT * FROM app.document_relations
-     WHERE target_document_id = $1 AND relation_type = 'localization'
-     ORDER BY created_at ASC`,
-    [upstreamDocumentId],
-  );
-  return result.rows.map(mapRowToRelation);
+  const rows = await db()
+    .select()
+    .from(documentRelations)
+    .where(and(
+      eq(documentRelations.targetDocumentId, upstreamDocumentId),
+      eq(documentRelations.relationType, 'localization'),
+    ))
+    .orderBy(asc(documentRelations.createdAt));
+  return rows.map(mapRelationRow);
 }
 
 /**
@@ -201,55 +198,55 @@ export interface DriftCandidatePage {
  * document listing: either the branch holds versions of it and the newest is not a
  * tombstone, or the branch holds none and inherits a published, non-tombstoned copy
  * from main. `alias` is the documents alias the predicate constrains, so both ends
- * of an edge can be checked in one query, and `pubAlias` names that end's
- * {@link publishedOnBranchJoin}, which carries whether main published it.
+ * of an edge can be checked in one query.
  *
- * A null `pubAlias` returns the first arm alone, for a branch with no distinct main
- * to inherit from. `mainParam` goes unread then, and so may the join.
+ * A null `inherited` returns the first arm alone, for a branch with no distinct
+ * main to inherit from. Otherwise `pubAlias` names that end's
+ * {@link publishedOnBranchJoin}, which carries whether main published it.
  *
  * @see workers/src/services/branch-document-service.ts (listDocumentsOnBranch)
  */
 function visibleOnBranch(
-  alias: string,
-  pubAlias: string | null,
-  branchParam: string,
-  mainParam: string,
-): string {
-  const liveOnBranch = `(
+  alias: SQL,
+  branchId: string,
+  inherited: { pubAlias: SQL; mainBranchId: string } | null,
+): SQL {
+  const liveOnBranch = sql`(
       EXISTS (
         SELECT 1 FROM app.document_versions dv
-         WHERE dv.document_id = ${alias}.id AND dv.branch_id = ${branchParam}
+         WHERE dv.document_id = ${alias}.id AND dv.branch_id = ${branchId}
       )
       AND NOT EXISTS (
         SELECT 1 FROM app.document_versions dv_tomb
-         WHERE dv_tomb.document_id = ${alias}.id AND dv_tomb.branch_id = ${branchParam}
+         WHERE dv_tomb.document_id = ${alias}.id AND dv_tomb.branch_id = ${branchId}
            AND dv_tomb.is_tombstone = true
            AND dv_tomb.version_number = (
              SELECT MAX(dv_latest.version_number) FROM app.document_versions dv_latest
-              WHERE dv_latest.document_id = ${alias}.id AND dv_latest.branch_id = ${branchParam}
+              WHERE dv_latest.document_id = ${alias}.id AND dv_latest.branch_id = ${branchId}
            )
       )
     )`;
 
-  if (pubAlias === null) {
+  if (inherited === null) {
     return liveOnBranch;
   }
 
-  return `(
+  const { pubAlias, mainBranchId } = inherited;
+  return sql`(
     ${liveOnBranch}
     OR (
       NOT EXISTS (
         SELECT 1 FROM app.document_versions dv
-         WHERE dv.document_id = ${alias}.id AND dv.branch_id = ${branchParam}
+         WHERE dv.document_id = ${alias}.id AND dv.branch_id = ${branchId}
       )
       AND ${pubAlias}.document_id IS NOT NULL
       AND NOT EXISTS (
         SELECT 1 FROM app.document_versions dv_tomb
-         WHERE dv_tomb.document_id = ${alias}.id AND dv_tomb.branch_id = ${mainParam}
+         WHERE dv_tomb.document_id = ${alias}.id AND dv_tomb.branch_id = ${mainBranchId}
            AND dv_tomb.is_tombstone = true
            AND dv_tomb.version_number = (
              SELECT MAX(dv_latest.version_number) FROM app.document_versions dv_latest
-              WHERE dv_latest.document_id = ${alias}.id AND dv_latest.branch_id = ${mainParam}
+              WHERE dv_latest.document_id = ${alias}.id AND dv_latest.branch_id = ${mainBranchId}
            )
       )
     )
@@ -267,48 +264,45 @@ export async function listDriftCandidates(
   mainBranchId: string | undefined,
   page: { limit: number; offset: number },
 ): Promise<DriftCandidatePage> {
-  const inherits = branchInheritsFromMain(branchId, mainBranchId);
+  const inherited = branchInheritsFromMain(branchId, mainBranchId)
+    ? { pubAlias: sql`pub_d`, mainBranchId }
+    : null;
   // One row beyond the page answers whether another page remains.
-  const result = await query<{ id: string; path: string; locale: string | null }>(
-    `SELECT d.id, COALESCE(bdp.path, d.path) AS path, d.locale
+  const result = await db().execute<DriftCandidateRow>(sql`
+    SELECT d.id, COALESCE(bdp.path, d.path) AS path, d.locale
        FROM app.document_relations dr
        JOIN app.documents d ON d.id = dr.source_document_id
-       ${branchDocumentPathJoin('$2')}
+       ${branchDocumentPathJoin(branchId)}
        -- An archived upstream is nothing to reconcile against. An upstream deleted on
        -- the branch it is read from is dropped by the summary instead, since which
        -- branch that is gets resolved per document.
        JOIN app.documents upstream
          ON upstream.id = dr.target_document_id AND upstream.archived_at IS NULL
-       ${inherits ? publishedOnBranchJoin('pub_d', 'd', '$5') : ''}
-      WHERE dr.relation_type = $1
+       ${inherited === null
+    ? sql``
+    : publishedOnBranchJoin(inherited.pubAlias, sql`d`, inherited.mainBranchId)}
+      WHERE dr.relation_type = ${relationType}
         -- Pinned to nothing, so the diff would run the upstream against itself.
         -- A localization edge pins by version identity, a template edge by number.
         -- Whether a pinned document has actually drifted is settled by the
         -- comparison, which resolves either pin without consulting this branch.
-        AND CASE WHEN $1::text = 'localization'
+        AND CASE WHEN ${relationType}::text = 'localization'
                  THEN dr.synced_version_id IS NOT NULL
                  ELSE dr.synced_version IS NOT NULL
             END
         AND d.archived_at IS NULL
-        AND ${visibleOnBranch('d', inherits ? 'pub_d' : null, '$2', '$5')}
+        AND ${visibleOnBranch(sql`d`, branchId, inherited)}
       ORDER BY COALESCE(bdp.path, d.path) ASC
-      LIMIT $3 OFFSET $4`,
-    // The branch to inherit from binds last so that dropping it renumbers nothing.
-    // It has to be dropped rather than passed as null: Postgres cannot infer a type
-    // for a parameter the statement never mentions.
-    inherits
-      ? [relationType, branchId, page.limit + 1, page.offset, mainBranchId]
-      : [relationType, branchId, page.limit + 1, page.offset],
-  );
+      LIMIT ${page.limit + 1} OFFSET ${page.offset}`);
 
-  const rows = result.rows.slice(0, page.limit);
+  const rows = result.slice(0, page.limit);
   return {
     candidates: rows.map((row) => ({
       documentId: row.id,
       path: row.path,
       locale: row.locale,
     })),
-    hasMore: result.rows.length > page.limit,
+    hasMore: result.length > page.limit,
   };
 }
 
@@ -339,33 +333,32 @@ export async function listLocaleVariantsOnBranch(
   branchId: string,
   mainBranchId: string | undefined,
 ): Promise<LocaleVariantRow[]> {
-  const inherits = branchInheritsFromMain(branchId, mainBranchId);
-  const result = await query<{
-    canonical_document_id: string;
-    id: string;
-    path: string;
-    locale: string;
-  }>(
-    `SELECT dr.target_document_id AS canonical_document_id, d.id,
+  const inheritsMain = branchInheritsFromMain(branchId, mainBranchId);
+  const derived = inheritsMain ? { pubAlias: sql`pub_d`, mainBranchId } : null;
+  const upstream = inheritsMain ? { pubAlias: sql`pub_u`, mainBranchId } : null;
+  const result = await db().execute<LocaleVariantQueryRow>(sql`
+    SELECT dr.target_document_id AS canonical_document_id, d.id,
             COALESCE(bdp.path, d.path) AS path, d.locale
        FROM app.documents d
-       ${branchDocumentPathJoin('$1')}
+       ${branchDocumentPathJoin(branchId)}
        JOIN app.document_relations dr
          ON dr.source_document_id = d.id AND dr.relation_type = 'localization'
        JOIN app.documents upstream ON upstream.id = dr.target_document_id
-       ${inherits ? publishedOnBranchJoin('pub_d', 'd', '$2') : ''}
-       ${inherits ? publishedOnBranchJoin('pub_u', 'upstream', '$2') : ''}
-      WHERE ${documentInBranchSitePredicate('$1')}
+       ${derived === null
+    ? sql``
+    : publishedOnBranchJoin(derived.pubAlias, sql`d`, derived.mainBranchId)}
+       ${upstream === null
+    ? sql``
+    : publishedOnBranchJoin(upstream.pubAlias, sql`upstream`, upstream.mainBranchId)}
+      WHERE ${documentInBranchSitePredicate(branchId)}
         AND d.archived_at IS NULL
         AND d.locale IS NOT NULL
         AND upstream.archived_at IS NULL
-        AND ${visibleOnBranch('d', inherits ? 'pub_d' : null, '$1', '$2')}
-        AND ${visibleOnBranch('upstream', inherits ? 'pub_u' : null, '$1', '$2')}
-      ORDER BY dr.target_document_id ASC`,
-    inherits ? [branchId, mainBranchId] : [branchId],
-  );
+        AND ${visibleOnBranch(sql`d`, branchId, derived)}
+        AND ${visibleOnBranch(sql`upstream`, branchId, upstream)}
+      ORDER BY dr.target_document_id ASC`);
 
-  return result.rows.map((row) => ({
+  return result.map((row) => ({
     canonicalDocumentId: row.canonical_document_id,
     documentId: row.id,
     path: row.path,
@@ -399,35 +392,34 @@ export async function findTranslationInLocale(
   branchId: string,
   mainBranchId: string | undefined,
 ): Promise<TranslationInLocale | null> {
-  const inherits = branchInheritsFromMain(branchId, mainBranchId);
-  const result = await query<{
+  const inherited = branchInheritsFromMain(branchId, mainBranchId)
+    ? { pubAlias: sql`pub_d`, mainBranchId }
+    : null;
+  const result = await db().execute<{
     id: string;
     live_on_branch: boolean;
     synced_version: number | null;
     synced_version_id: string | null;
-  }>(
-    `SELECT d.id, dr.synced_version, dr.synced_version_id,
-            ${visibleOnBranch('d', inherits ? 'pub_d' : null, '$3', '$4')} AS live_on_branch
-       FROM app.documents d
-       JOIN app.document_relations dr
-         ON dr.source_document_id = d.id AND dr.relation_type = 'localization'
-       ${inherits ? publishedOnBranchJoin('pub_d', 'd', '$4') : ''}
-      WHERE dr.target_document_id = $1
-        AND d.locale = $2
-        AND d.archived_at IS NULL
-      -- Nothing constrains a canonical to one unarchived translation per locale, and
-      -- which row comes back decides both the answer and the document a take-over
-      -- versions. One the branch serves settles the locale as taken; an unordered
-      -- pick could answer from a second row and take over alongside it.
-      ORDER BY live_on_branch DESC
-      LIMIT 1`,
-    // The branch to inherit from binds last so that dropping it renumbers nothing.
-    inherits
-      ? [canonicalDocumentId, locale, branchId, mainBranchId]
-      : [canonicalDocumentId, locale, branchId],
-  );
+  }>(sql`
+    SELECT d.id, dr.synced_version, dr.synced_version_id,
+           ${visibleOnBranch(sql`d`, branchId, inherited)} AS live_on_branch
+      FROM app.documents d
+      JOIN app.document_relations dr
+        ON dr.source_document_id = d.id AND dr.relation_type = 'localization'
+      ${inherited === null
+    ? sql``
+    : publishedOnBranchJoin(inherited.pubAlias, sql`d`, inherited.mainBranchId)}
+     WHERE dr.target_document_id = ${canonicalDocumentId}
+       AND d.locale = ${locale}
+       AND d.archived_at IS NULL
+     -- Nothing constrains a canonical to one unarchived translation per locale, and
+     -- which row comes back decides both the answer and the document a take-over
+     -- versions. One the branch serves settles the locale as taken; an unordered
+     -- pick could answer from a second row and take over alongside it.
+     ORDER BY live_on_branch DESC
+     LIMIT 1`);
 
-  const row = result.rows[0];
+  const row = result[0];
   if (row === undefined) {
     return null;
   }
@@ -449,21 +441,22 @@ export async function listServedTranslationIds(
   branchId: string,
   mainBranchId: string | undefined,
 ): Promise<Set<string>> {
-  const inherits = branchInheritsFromMain(branchId, mainBranchId);
-  const result = await query<{ id: string }>(
-    `SELECT d.id
-       FROM app.documents d
-       JOIN app.document_relations dr
-         ON dr.source_document_id = d.id AND dr.relation_type = 'localization'
-       ${inherits ? publishedOnBranchJoin('pub_d', 'd', '$3') : ''}
-      WHERE dr.target_document_id = $1
-        AND d.archived_at IS NULL
-        AND ${visibleOnBranch('d', inherits ? 'pub_d' : null, '$2', '$3')}`,
-    // The branch to inherit from binds last so that dropping it renumbers nothing.
-    inherits ? [canonicalDocumentId, branchId, mainBranchId] : [canonicalDocumentId, branchId],
-  );
+  const inherited = branchInheritsFromMain(branchId, mainBranchId)
+    ? { pubAlias: sql`pub_d`, mainBranchId }
+    : null;
+  const result = await db().execute<{ id: string }>(sql`
+    SELECT d.id
+      FROM app.documents d
+      JOIN app.document_relations dr
+        ON dr.source_document_id = d.id AND dr.relation_type = 'localization'
+      ${inherited === null
+    ? sql``
+    : publishedOnBranchJoin(inherited.pubAlias, sql`d`, inherited.mainBranchId)}
+     WHERE dr.target_document_id = ${canonicalDocumentId}
+       AND d.archived_at IS NULL
+       AND ${visibleOnBranch(sql`d`, branchId, inherited)}`);
 
-  return new Set(result.rows.map((row) => row.id));
+  return new Set(result.map((row) => row.id));
 }
 
 /**
@@ -474,19 +467,20 @@ export async function listServedTranslationIds(
 export async function createLocalizationEdge(
   params: CreateLocalizationEdgeParams,
 ): Promise<DocumentRelation> {
-  const result = await query<DocumentRelationRow>(
-    `INSERT INTO app.document_relations
-       (source_document_id, target_document_id, relation_type, synced_version, synced_version_id)
-     VALUES ($1, $2, 'localization', $3, $4)
-     RETURNING *`,
-    [
-      params.derivedDocumentId,
-      params.upstreamDocumentId,
-      params.syncedUpstreamVersion,
-      params.syncedUpstreamVersionId,
-    ],
-  );
-  return mapRowToRelation(getFirstRow(result.rows));
+  const [row] = await db()
+    .insert(documentRelations)
+    .values({
+      sourceDocumentId: params.derivedDocumentId,
+      targetDocumentId: params.upstreamDocumentId,
+      relationType: 'localization',
+      syncedVersion: params.syncedUpstreamVersion,
+      syncedVersionId: params.syncedUpstreamVersionId,
+    })
+    .returning();
+  if (row === undefined) {
+    throw new Error('Failed to insert localization edge');
+  }
+  return mapRelationRow(row);
 }
 
 /** The key the authority map lives under; interpolated into the statements below. */
@@ -610,44 +604,66 @@ export async function getUpstreamResolutions(
   branchId: string,
   mainBranchId?: string,
 ): Promise<UpstreamResolutions> {
-  const inheritsFromMain = mainBranchId !== undefined && mainBranchId !== branchId;
-  const result = inheritsFromMain
-    ? await query<{ resolutions: UpstreamResolutionsJson }>(
-      `SELECT resolutions FROM app.document_relation_branch_resolutions
-        WHERE source_document_id = $1 AND relation_type = 'localization'
-          AND branch_id IN ($2, $3)
-        ORDER BY (branch_id = $2) DESC
-        LIMIT 1`,
-      [derivedDocumentId, branchId, mainBranchId],
-    )
-    : await query<{ resolutions: UpstreamResolutionsJson }>(
-      `SELECT resolutions FROM app.document_relation_branch_resolutions
-        WHERE source_document_id = $1 AND relation_type = 'localization' AND branch_id = $2`,
-      [derivedDocumentId, branchId],
-    );
-  const stored = result.rows[0]?.resolutions;
-  return stored === undefined ? new Map() : resolutionsFromJson(stored);
+  const branchIds = mainBranchId !== undefined && mainBranchId !== branchId
+    ? [branchId, mainBranchId]
+    : [branchId];
+  const rows = await db()
+    .select({ resolutions: documentRelationBranchResolutions.resolutions })
+    .from(documentRelationBranchResolutions)
+    .where(and(
+      eq(documentRelationBranchResolutions.sourceDocumentId, derivedDocumentId),
+      eq(documentRelationBranchResolutions.relationType, 'localization'),
+      inArray(documentRelationBranchResolutions.branchId, branchIds),
+    ))
+    // The branch's own row answers ahead of the one it inherits from main.
+    .orderBy(desc(sql`${documentRelationBranchResolutions.branchId} = ${branchId}`))
+    .limit(1);
+  const stored = rows.at(0)?.resolutions;
+  return stored === undefined
+    ? new Map()
+    : resolutionsFromJson(stored);
 }
 
 /**
  * The edge's `metadata`, one of its per-prop maps, and one slot within that map,
  * each read straight off the row being updated and each falling back to an empty
- * object when what is stored is not one. `$2` names the slot.
+ * object when what is stored is not one.
  *
  * These must stay direct references to `metadata`, not a CTE or sub-select. Under
  * READ COMMITTED a statement that waits on a concurrently updated row re-evaluates
  * expressions over the row it finally locks; a sub-select keeps the snapshot it
  * started with, and a map read through one loses the concurrent update.
  */
-const STORED_METADATA = `(CASE WHEN jsonb_typeof(metadata) = 'object'
+const AUTHORITY_KEY_SQL = sql`${AUTHORITY_KEY}::text`;
+
+const STORED_METADATA = sql`(CASE WHEN jsonb_typeof(metadata) = 'object'
        THEN metadata ELSE '{}'::jsonb END)`;
 
-const STORED_AUTHORITY = `(CASE WHEN jsonb_typeof(metadata -> '${AUTHORITY_KEY}') = 'object'
-       THEN metadata -> '${AUTHORITY_KEY}' ELSE '{}'::jsonb END)`;
+const STORED_AUTHORITY = sql`(CASE WHEN jsonb_typeof(metadata -> ${AUTHORITY_KEY_SQL}) = 'object'
+       THEN metadata -> ${AUTHORITY_KEY_SQL} ELSE '{}'::jsonb END)`;
 
-const STORED_AUTHORITY_SLOT =
-  `(CASE WHEN jsonb_typeof(metadata -> '${AUTHORITY_KEY}' -> $2::text) = 'object'
-       THEN metadata -> '${AUTHORITY_KEY}' -> $2::text ELSE '{}'::jsonb END)`;
+/** The slot `slotId` names within the stored authority map. */
+function storedAuthoritySlot(slotId: string): SQL {
+  return sql`(CASE WHEN jsonb_typeof(metadata -> ${AUTHORITY_KEY_SQL} -> ${slotId}::text) = 'object'
+       THEN metadata -> ${AUTHORITY_KEY_SQL} -> ${slotId}::text ELSE '{}'::jsonb END)`;
+}
+
+/** A type alias, not an interface: db().execute<T>() constrains T to Record<string, unknown>. */
+type AuthorityEntryRow = { stored: string | null };
+
+/** On the same terms as {@link AuthorityEntryRow}. */
+type StoredResolutionsRow = { stored: UpstreamResolutionsJson };
+
+/** On the same terms as {@link AuthorityEntryRow}. */
+type DriftCandidateRow = { id: string; path: string; locale: string | null };
+
+/** On the same terms as {@link AuthorityEntryRow}. */
+type LocaleVariantQueryRow = {
+  canonical_document_id: string;
+  id: string;
+  path: string;
+  locale: string;
+};
 
 /**
  * Ceiling on how many (slotId, propName) entries one of a translation's per-prop
@@ -676,33 +692,32 @@ async function setAuthorityEntry(
   value: string,
 ): Promise<{ hasEdge: boolean; stored: string | null }> {
   const map = STORED_AUTHORITY;
-  const slot = STORED_AUTHORITY_SLOT;
-  const result = await query<{ stored: string | null }>(
-    `UPDATE app.document_relations
+  const slot = storedAuthoritySlot(slotId);
+  const rows = await db().execute<AuthorityEntryRow>(sql`
+    UPDATE app.document_relations
         SET metadata = CASE
-              WHEN COALESCE(${slot} ? $3::text, false)
+              WHEN COALESCE(${slot} ? ${propName}::text, false)
                 OR (
                   SELECT COUNT(*)
                     FROM jsonb_each(${map}) slot,
                          jsonb_each(slot.value) prop
-                ) < $5
+                ) < ${MAX_OVERRIDE_ENTRIES}
               THEN ${STORED_METADATA} || jsonb_build_object(
-                     '${AUTHORITY_KEY}',
+                     ${AUTHORITY_KEY_SQL},
                      ${map} || jsonb_build_object(
-                       $2::text,
-                       ${slot} || jsonb_build_object($3::text, $4::text)
+                       ${slotId}::text,
+                       ${slot} || jsonb_build_object(${propName}::text, ${value}::text)
                      )
                    )
               ELSE metadata
             END
-      WHERE source_document_id = $1 AND relation_type = 'localization'
-      RETURNING metadata -> '${AUTHORITY_KEY}' -> $2::text ->> $3::text AS stored`,
-    [derivedDocumentId, slotId, propName, value, MAX_OVERRIDE_ENTRIES],
-  );
-  if (result.rows.length === 0) {
+      WHERE source_document_id = ${derivedDocumentId} AND relation_type = 'localization'
+      RETURNING metadata -> ${AUTHORITY_KEY_SQL} -> ${slotId}::text ->> ${propName}::text AS stored`);
+  const row = rows.at(0);
+  if (row === undefined) {
     return { hasEdge: false, stored: null };
   }
-  return { hasEdge: true, stored: getFirstRow(result.rows).stored };
+  return { hasEdge: true, stored: row.stored };
 }
 
 /**
@@ -718,22 +733,20 @@ async function clearAuthorityEntry(
   propName: string,
 ): Promise<void> {
   const map = STORED_AUTHORITY;
-  const slot = STORED_AUTHORITY_SLOT;
-  await query(
-    `UPDATE app.document_relations
+  const slot = storedAuthoritySlot(slotId);
+  await db().execute(sql`
+    UPDATE app.document_relations
         SET metadata = ${STORED_METADATA} || jsonb_build_object(
-              '${AUTHORITY_KEY}',
-              CASE WHEN (${slot} - $3::text) = '{}'::jsonb
-                   THEN ${map} - $2::text
+              ${AUTHORITY_KEY_SQL},
+              CASE WHEN (${slot} - ${propName}::text) = '{}'::jsonb
+                   THEN ${map} - ${slotId}::text
                    ELSE ${map} || jsonb_build_object(
-                          $2::text,
-                          ${slot} - $3::text
+                          ${slotId}::text,
+                          ${slot} - ${propName}::text
                         )
               END
             )
-      WHERE source_document_id = $1 AND relation_type = 'localization'`,
-    [derivedDocumentId, slotId, propName],
-  );
+      WHERE source_document_id = ${derivedDocumentId} AND relation_type = 'localization'`);
 }
 
 /**
@@ -799,22 +812,22 @@ export interface UpstreamResolutionEntry extends UpstreamResolutionTarget {
  * before it is walked: a slot holding a scalar would otherwise make the merge and
  * the prune both raise, leaving a row no request could repair.
  */
-function jsonObject(source: string): string {
-  return `(CASE WHEN jsonb_typeof(${source}) = 'object' THEN ${source} ELSE '{}'::jsonb END)`;
+function jsonObject(source: SQL): SQL {
+  return sql`(CASE WHEN jsonb_typeof(${source}) = 'object' THEN ${source} ELSE '{}'::jsonb END)`;
 }
 
 /**
  * The map at `source` merged with the batch bound to `batchParam`, slot by slot,
  * so props the batch does not name stay where they were.
  */
-function mergedWithBatch(source: string, batchParam = '$3'): string {
-  return `(
+function mergedWithBatch(source: SQL, batch: SQL): SQL {
+  return sql`(
   SELECT COALESCE(jsonb_object_agg(m.slot, m.props), '{}'::jsonb) FROM (
     SELECT COALESCE(stored.key, batch.key) AS slot,
-           COALESCE(${jsonObject('stored.value')}, '{}'::jsonb)
+           COALESCE(${jsonObject(sql`stored.value`)}, '{}'::jsonb)
              || COALESCE(batch.value, '{}'::jsonb) AS props
       FROM jsonb_each(${jsonObject(source)}) stored
-      FULL OUTER JOIN jsonb_each(${batchParam}::jsonb) batch ON batch.key = stored.key
+      FULL OUTER JOIN jsonb_each(${batch}) batch ON batch.key = stored.key
   ) m)`;
 }
 
@@ -822,14 +835,14 @@ function mergedWithBatch(source: string, batchParam = '$3'): string {
  * The map at `source` minus the props the batch bound to `batchParam` names,
  * dropping a slot left with none.
  */
-function prunedByBatch(source: string, batchParam = '$3'): string {
-  return `(
+function prunedByBatch(source: SQL, batch: SQL): SQL {
+  return sql`(
   SELECT COALESCE(jsonb_object_agg(m.slot, m.props), '{}'::jsonb) FROM (
     SELECT stored.key AS slot,
-           ${jsonObject('stored.value')} - (
+           ${jsonObject(sql`stored.value`)} - (
              SELECT COALESCE(array_agg(p.path), ARRAY[]::text[])
                FROM jsonb_array_elements_text(
-                      COALESCE(${batchParam}::jsonb -> stored.key, '[]'::jsonb)
+                      COALESCE(${batch} -> stored.key, '[]'::jsonb)
                     ) AS p(path)
            ) AS props
       FROM jsonb_each(${jsonObject(source)}) stored
@@ -837,29 +850,29 @@ function prunedByBatch(source: string, batchParam = '$3'): string {
 }
 
 /** How many entries the map at `source` holds, counted over every slot. */
-function entryCount(source: string): string {
-  return `(SELECT COUNT(*) FROM jsonb_each(${source}) slot, jsonb_each(slot.value) prop)`;
+function entryCount(source: SQL): SQL {
+  return sql`(SELECT COUNT(*) FROM jsonb_each(${source}) slot, jsonb_each(slot.value) prop)`;
 }
 
 /**
  * The map a branch inherits: main's, named by the branch parameter at
  * `branchParam`. Empty on main, and empty when main holds none.
  */
-function inheritedMap(branchParam: string): string {
-  return `COALESCE((
+function inheritedMap(derivedDocumentId: string, branchId: string): SQL {
+  return sql`COALESCE((
     SELECT i.resolutions FROM app.document_relation_branch_resolutions i
-     WHERE i.source_document_id = $1 AND i.relation_type = 'localization'
-       AND i.branch_id = ${branchParam}
+     WHERE i.source_document_id = ${derivedDocumentId} AND i.relation_type = 'localization'
+       AND i.branch_id = ${branchId}
   ), '{}'::jsonb)`;
 }
 
 /** The row being updated on a conflict; `r` is the conflict target. */
-const STORED_RESOLUTIONS = 'r.resolutions';
+const STORED_RESOLUTIONS = sql`r.resolutions`;
 
 /**
- * The batch as `{slotId: {propPath: {hash, at}}}`, passed as an object rather than
- * a JSON string: a string bound to a `jsonb` parameter arrives as a jsonb string
- * scalar, which `jsonb_each` cannot walk.
+ * The batch as `{slotId: {propPath: {hash, at}}}`. It reaches the statement
+ * stringified: the Drizzle client serializes json as identity, so an object bound
+ * to a `jsonb` parameter would arrive as `[object Object]`.
  *
  * Every entry in one batch shares `at`, so the changes settled together read as
  * one act of reconciling.
@@ -926,38 +939,32 @@ export async function setUpstreamResolutions(
   if (entries.length === 0) {
     return getUpstreamResolutions(derivedDocumentId, branchId, mainBranchId);
   }
-  const seeded = mergedWithBatch(inheritedMap('$5'));
-  const seededFits = `${entryCount(seeded)} <= $4`;
-  const merged = mergedWithBatch(STORED_RESOLUTIONS);
   const at = new Date().toISOString();
-  const result = await query<{ stored: UpstreamResolutionsJson }>(
-    `INSERT INTO app.document_relation_branch_resolutions AS r
+  const batch = sql`${JSON.stringify(resolutionBatch(entries, at))}::jsonb`;
+  const inherited = inheritedMap(derivedDocumentId, mainBranchId ?? branchId);
+  const seeded = mergedWithBatch(inherited, batch);
+  const seededFits = sql`${entryCount(seeded)} <= ${MAX_OVERRIDE_ENTRIES}`;
+  const merged = mergedWithBatch(STORED_RESOLUTIONS, batch);
+  const rows = await db().execute<StoredResolutionsRow>(sql`
+    INSERT INTO app.document_relation_branch_resolutions AS r
        (source_document_id, relation_type, branch_id, resolutions, inherited)
-     SELECT $1, 'localization', $2,
-            CASE WHEN ${seededFits} THEN ${seeded} ELSE $3::jsonb END,
-            CASE WHEN ${seededFits} THEN ${inheritedMap('$5')} ELSE '{}'::jsonb END
+     SELECT ${derivedDocumentId}, 'localization', ${branchId},
+            CASE WHEN ${seededFits} THEN ${seeded} ELSE ${batch} END,
+            CASE WHEN ${seededFits} THEN ${inherited} ELSE '{}'::jsonb END
       WHERE EXISTS (
         SELECT 1 FROM app.document_relations
-         WHERE source_document_id = $1 AND relation_type = 'localization'
+         WHERE source_document_id = ${derivedDocumentId} AND relation_type = 'localization'
       )
      ON CONFLICT (source_document_id, relation_type, branch_id)
      DO UPDATE SET
        resolutions = CASE
-         WHEN ${entryCount(merged)} <= $4
+         WHEN ${entryCount(merged)} <= ${MAX_OVERRIDE_ENTRIES}
          THEN ${merged}
          ELSE r.resolutions
        END,
        updated_at = NOW()
-     RETURNING resolutions AS stored`,
-    [
-      derivedDocumentId,
-      branchId,
-      resolutionBatch(entries, at),
-      MAX_OVERRIDE_ENTRIES,
-      mainBranchId ?? branchId,
-    ],
-  );
-  const stored = result.rows[0]?.stored;
+     RETURNING resolutions AS stored`);
+  const stored = rows.at(0)?.stored;
   if (stored === undefined) {
     return new Map();
   }
@@ -995,30 +1002,31 @@ export async function clearUpstreamResolutions(
   if (targets.length === 0) {
     return getUpstreamResolutions(derivedDocumentId, branchId, mainBranchId);
   }
-  const inherited = inheritedMap('$4');
-  const result = await query<{ stored: UpstreamResolutionsJson }>(
-    `INSERT INTO app.document_relation_branch_resolutions AS r
+  const batch = sql`${JSON.stringify(clearBatch(targets))}::jsonb`;
+  const inherited = inheritedMap(derivedDocumentId, mainBranchId ?? branchId);
+  const rows = await db().execute<StoredResolutionsRow>(sql`
+    INSERT INTO app.document_relation_branch_resolutions AS r
        (source_document_id, relation_type, branch_id, resolutions, inherited)
-     SELECT $1, 'localization', $2, ${prunedByBatch(inherited)}, ${inherited}
+     SELECT ${derivedDocumentId}, 'localization', ${branchId},
+            ${prunedByBatch(inherited, batch)}, ${inherited}
       WHERE EXISTS (
         SELECT 1 FROM app.document_relations
-         WHERE source_document_id = $1 AND relation_type = 'localization'
+         WHERE source_document_id = ${derivedDocumentId} AND relation_type = 'localization'
       )
         AND (
           EXISTS (
             SELECT 1 FROM app.document_relation_branch_resolutions own
-             WHERE own.source_document_id = $1 AND own.relation_type = 'localization'
-               AND own.branch_id = $2
+             WHERE own.source_document_id = ${derivedDocumentId}
+               AND own.relation_type = 'localization'
+               AND own.branch_id = ${branchId}
           )
-          OR ${prunedByBatch(inherited)} <> ${jsonObject(inherited)}
+          OR ${prunedByBatch(inherited, batch)} <> ${jsonObject(inherited)}
         )
      ON CONFLICT (source_document_id, relation_type, branch_id)
      DO UPDATE SET
-       resolutions = ${prunedByBatch(STORED_RESOLUTIONS)}, updated_at = NOW()
-     RETURNING resolutions AS stored`,
-    [derivedDocumentId, branchId, clearBatch(targets), mainBranchId ?? branchId],
-  );
-  const stored = result.rows[0]?.stored;
+       resolutions = ${prunedByBatch(STORED_RESOLUTIONS, batch)}, updated_at = NOW()
+     RETURNING resolutions AS stored`);
+  const stored = rows.at(0)?.stored;
   // Nothing was written when the clear names no resolution this branch holds, so
   // the resolutions in force are still whatever it reads.
   return stored === undefined
@@ -1107,41 +1115,34 @@ async function applyCarriedResolutions(
   mainBranchId: string,
   carried: CarriedResolutions,
 ): Promise<void> {
-  const inherited = inheritedMap('$5');
-  const seeded = mergedWithBatch(prunedByBatch(inherited, '$4'), '$3');
-  const merged = mergedWithBatch(prunedByBatch(STORED_RESOLUTIONS, '$4'), '$3');
-  await query(
-    `INSERT INTO app.document_relation_branch_resolutions AS r
+  const sets = sql`${JSON.stringify(carried.sets)}::jsonb`;
+  const clears = sql`${JSON.stringify(carried.clears)}::jsonb`;
+  const inherited = inheritedMap(derivedDocumentId, mainBranchId);
+  const seeded = mergedWithBatch(prunedByBatch(inherited, clears), sets);
+  const merged = mergedWithBatch(prunedByBatch(STORED_RESOLUTIONS, clears), sets);
+  await db().execute(sql`
+    INSERT INTO app.document_relation_branch_resolutions AS r
        (source_document_id, relation_type, branch_id, resolutions, inherited)
-     SELECT $1, 'localization', $2,
-            CASE WHEN seed.within_ceiling THEN seed.resolutions ELSE $3::jsonb END,
+     SELECT ${derivedDocumentId}, 'localization', ${targetBranchId},
+            CASE WHEN seed.within_ceiling THEN seed.resolutions ELSE ${sets} END,
             CASE WHEN seed.within_ceiling THEN seed.inherited ELSE '{}'::jsonb END
        FROM (
          SELECT ${seeded} AS resolutions,
                 ${inherited} AS inherited,
-                ${entryCount(seeded)} <= $6 AS within_ceiling
+                ${entryCount(seeded)} <= ${MAX_OVERRIDE_ENTRIES} AS within_ceiling
        ) seed
       WHERE EXISTS (
         SELECT 1 FROM app.document_relations
-         WHERE source_document_id = $1 AND relation_type = 'localization'
+         WHERE source_document_id = ${derivedDocumentId} AND relation_type = 'localization'
       )
      ON CONFLICT (source_document_id, relation_type, branch_id)
      DO UPDATE SET
        resolutions = CASE
-         WHEN ${entryCount(merged)} <= $6
+         WHEN ${entryCount(merged)} <= ${MAX_OVERRIDE_ENTRIES}
          THEN ${merged}
          ELSE r.resolutions
        END,
-       updated_at = NOW()`,
-    [
-      derivedDocumentId,
-      targetBranchId,
-      carried.sets,
-      carried.clears,
-      mainBranchId,
-      MAX_OVERRIDE_ENTRIES,
-    ],
-  );
+       updated_at = NOW()`);
 }
 
 /**
@@ -1179,23 +1180,28 @@ export async function carryUpstreamResolutions(
   if (sourceBranchId === targetBranchId) {
     return;
   }
-  const held = await query<{
-    source_document_id: string;
-    resolutions: UpstreamResolutionsJson;
-    inherited: UpstreamResolutionsJson;
-  }>(
-    `SELECT source_document_id, resolutions, inherited
-       FROM app.document_relation_branch_resolutions
-      WHERE branch_id = $1 AND relation_type = 'localization'
-        AND NOT (source_document_id = ANY($2::uuid[]))`,
-    [sourceBranchId, [...excludedDocumentIds]],
-  );
-  const carried = held.rows.flatMap((row) => {
+  const held = await db()
+    .select({
+      sourceDocumentId: documentRelationBranchResolutions.sourceDocumentId,
+      resolutions: documentRelationBranchResolutions.resolutions,
+      inherited: documentRelationBranchResolutions.inherited,
+    })
+    .from(documentRelationBranchResolutions)
+    .where(and(
+      eq(documentRelationBranchResolutions.branchId, sourceBranchId),
+      eq(documentRelationBranchResolutions.relationType, 'localization'),
+      // ANY over a bound array rather than notInArray: an empty exclusion list
+      // has to leave every row in, and sql.param keeps the array one parameter
+      // instead of a row constructor.
+      sql`NOT (${documentRelationBranchResolutions.sourceDocumentId}
+        = ANY(${sql.param([...excludedDocumentIds])}::uuid[]))`,
+    ));
+  const carried = held.flatMap((row) => {
     const batches = carriedResolutions(
       resolutionsFromJson(row.resolutions),
       resolutionsFromJson(row.inherited),
     );
-    return batches === null ? [] : [{ derivedDocumentId: row.source_document_id, batches }];
+    return batches === null ? [] : [{ derivedDocumentId: row.sourceDocumentId, batches }];
   });
   if (carried.length === 0) {
     return;

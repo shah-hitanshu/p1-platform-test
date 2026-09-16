@@ -9,10 +9,9 @@
  */
 
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
-
-vi.mock('../../src/db', () => ({
-  query: vi.fn(),
-}));
+import { stubDatabase, type DatabaseStub } from '../__stubs__/database';
+import { documents, documentVersions } from '../../src/db/schema';
+import { createDocumentOnBranch } from '../../src/services/branch-document-service';
 
 const MINTED_ID = /-[0-9a-f]{8}-/;
 
@@ -51,45 +50,36 @@ function versionRow(overrides: Record<string, unknown> = {}): Record<string, unk
 }
 
 /**
- * Mock the happy-path transaction: BEGIN, INSERT document, SAVEPOINT,
- * INSERT version, RELEASE SAVEPOINT, COMMIT.
+ * The snapshot the version insert wrote. It reaches the statement as JSON text,
+ * so the assertions parse it back: the Drizzle client serializes json as
+ * identity, and an object bound to a jsonb parameter would arrive as
+ * `[object Object]`.
  */
-function mockHappyPathTransaction(queryMock: Mock): void {
-  queryMock
-    .mockResolvedValueOnce({ rows: [] })
-    .mockResolvedValueOnce({ rows: [docRow()] })
-    .mockResolvedValueOnce({ rows: [] })
-    .mockResolvedValueOnce({ rows: [versionRow()] })
-    .mockResolvedValueOnce({ rows: [] })
-    .mockResolvedValueOnce({ rows: [] });
-}
-
-/** Params array of the query call that inserts into document_versions. */
-function insertVersionParams(queryMock: Mock): unknown[] {
-  const call = queryMock.mock.calls.find(
-    (c) => typeof c[0] === 'string' && (c[0]).includes('INSERT INTO app.document_versions'),
-  );
-  if (call === undefined) {
-    throw new Error('No INSERT INTO app.document_versions call was captured');
+function persistedSnapshot(stub: DatabaseStub): { content: Comp[]; zones: Record<string, Comp[]> } {
+  const [insert] = stub.calls(documentVersions).insert;
+  if (insert === undefined) {
+    throw new Error('No insert into app.document_versions was captured');
   }
-  return call[1] as unknown[];
+  return JSON.parse(insert.params[2] as string) as {
+    content: Comp[];
+    zones: Record<string, Comp[]>;
+  };
 }
 
 describe('createDocumentOnBranch within-document id uniqueness', () => {
+  let stub: DatabaseStub;
   let warnSpy: Mock;
 
   beforeEach(() => {
-    vi.resetAllMocks();
+    vi.restoreAllMocks();
+    stub = stubDatabase();
+    stub.on(documents).insert.returnsRaw([docRow()]);
+    stub.on(documentVersions).insert.returnsRaw([versionRow()]);
     warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     vi.spyOn(console, 'log').mockImplementation(() => undefined);
   });
 
   it('re-mints later duplicates in content while the first occurrence keeps its id', async () => {
-    const { createDocumentOnBranch } = await import('../../src/services/branch-document-service');
-    const db = await import('../../src/db');
-    const queryMock = vi.mocked(db.query);
-    mockHappyPathTransaction(queryMock);
-
     await createDocumentOnBranch({
       siteId: 'site-uuid-123',
       branchId: 'branch-uuid-789',
@@ -104,7 +94,7 @@ describe('createDocumentOnBranch within-document id uniqueness', () => {
       createdByType: 'user',
     });
 
-    const persisted = insertVersionParams(queryMock)[2] as { content: Comp[] };
+    const persisted = persistedSnapshot(stub);
     expect(persisted.content).toHaveLength(2);
     expect(persisted.content[0].props.id).toBe('HeroBlock-dup');
     expect(persisted.content[1].props.id).not.toBe('HeroBlock-dup');
@@ -114,11 +104,6 @@ describe('createDocumentOnBranch within-document id uniqueness', () => {
   });
 
   it('preserves component order and types when re-minting a duplicate', async () => {
-    const { createDocumentOnBranch } = await import('../../src/services/branch-document-service');
-    const db = await import('../../src/db');
-    const queryMock = vi.mocked(db.query);
-    mockHappyPathTransaction(queryMock);
-
     await createDocumentOnBranch({
       siteId: 'site-uuid-123',
       branchId: 'branch-uuid-789',
@@ -134,18 +119,13 @@ describe('createDocumentOnBranch within-document id uniqueness', () => {
       createdByType: 'user',
     });
 
-    const persisted = insertVersionParams(queryMock)[2] as { content: Comp[] };
+    const persisted = persistedSnapshot(stub);
     expect(persisted.content.map((c) => c.type)).toEqual(['HeroBlock', 'BodyBlock', 'HeroBlock']);
     expect(persisted.content[1].props.id).toBe('BodyBlock-keep');
     expect(persisted.content[2].props.id).toMatch(MINTED_ID);
   });
 
   it('walks content before zones so a content occurrence keeps the id over a zones duplicate', async () => {
-    const { createDocumentOnBranch } = await import('../../src/services/branch-document-service');
-    const db = await import('../../src/db');
-    const queryMock = vi.mocked(db.query);
-    mockHappyPathTransaction(queryMock);
-
     await createDocumentOnBranch({
       siteId: 'site-uuid-123',
       branchId: 'branch-uuid-789',
@@ -160,26 +140,15 @@ describe('createDocumentOnBranch within-document id uniqueness', () => {
       createdByType: 'user',
     });
 
-    const persisted = insertVersionParams(queryMock)[2] as {
-      content: Comp[];
-      zones: Record<string, Comp[]>;
-    };
+    const persisted = persistedSnapshot(stub);
     expect(persisted.content[0].props.id).toBe('shared-slot');
     expect(persisted.zones['root:main'][0].props.id).not.toBe('shared-slot');
     expect(persisted.zones['root:main'][0].props.id).toMatch(MINTED_ID);
   });
 
   it('logs a structured warning naming the document and the previous and new ids', async () => {
-    const { createDocumentOnBranch } = await import('../../src/services/branch-document-service');
-    const db = await import('../../src/db');
-    const queryMock = vi.mocked(db.query);
-    queryMock
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [docRow({ id: 'doc-warned-555' })] })
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [versionRow({ document_id: 'doc-warned-555' })] })
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [] });
+    stub.on(documents).insert.returnsRaw([docRow({ id: 'doc-warned-555' })]);
+    stub.on(documentVersions).insert.returnsRaw([versionRow({ document_id: 'doc-warned-555' })]);
 
     await createDocumentOnBranch({
       siteId: 'site-uuid-123',
@@ -195,7 +164,7 @@ describe('createDocumentOnBranch within-document id uniqueness', () => {
       createdByType: 'user',
     });
 
-    const newId = (insertVersionParams(queryMock)[2] as { content: Comp[] }).content[1].props.id;
+    const newId = persistedSnapshot(stub).content[1].props.id;
     expect(warnSpy).toHaveBeenCalled();
     const output = JSON.stringify(warnSpy.mock.calls);
     expect(output).toContain('doc-warned-555');
@@ -204,11 +173,6 @@ describe('createDocumentOnBranch within-document id uniqueness', () => {
   });
 
   it('persists a snapshot with unique ids unchanged and does not warn', async () => {
-    const { createDocumentOnBranch } = await import('../../src/services/branch-document-service');
-    const db = await import('../../src/db');
-    const queryMock = vi.mocked(db.query);
-    mockHappyPathTransaction(queryMock);
-
     const snapshot = {
       content: [
         comp('HeroBlock', 'HeroBlock-a', { title: 'A' }),
@@ -228,8 +192,7 @@ describe('createDocumentOnBranch within-document id uniqueness', () => {
       createdByType: 'user',
     });
 
-    const persisted = insertVersionParams(queryMock)[2];
-    expect(persisted).toEqual(snapshot);
+    expect(persistedSnapshot(stub)).toEqual(snapshot);
     expect(warnSpy).not.toHaveBeenCalled();
   });
 });

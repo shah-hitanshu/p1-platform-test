@@ -4,7 +4,8 @@
  * three steps, and drifted apart while each owned its own copy of them.
  */
 
-import { query } from '../db';
+import { sql } from 'drizzle-orm';
+import { db } from '../db/scope';
 import { driverErrorCode, violatedConstraint } from '../db/driver-error';
 import { getFirstRow } from './checkpoint-mappers';
 import { isUniqueConstraintViolation } from './document-types';
@@ -81,17 +82,16 @@ export async function cloneSnapshotAtVersion(
   versionId: string,
   branchIds: string[],
 ): Promise<ClonedSnapshot | null> {
-  const found = await query<{
+  const found = await db().execute<{
     branch_id: string;
     version_number: number;
     snapshot: Record<string, unknown> | null;
-  }>(
-    `SELECT branch_id, version_number, snapshot
-       FROM app.document_versions
-      WHERE id = $1 AND document_id = $2 AND branch_id = ANY($3)`,
-    [versionId, documentId, branchIds],
-  );
-  const row = found.rows[0];
+  }>(sql`
+    SELECT branch_id, version_number, snapshot
+      FROM app.document_versions
+     WHERE id = ${versionId} AND document_id = ${documentId}
+       AND branch_id = ANY(${sql.param(branchIds)}::uuid[])`);
+  const row = found[0];
   if (row === undefined) {
     return null;
   }
@@ -155,24 +155,18 @@ export interface InsertVersionOnBranchParams {
 export async function insertVersionOnBranch(
   params: InsertVersionOnBranchParams,
 ): Promise<DocumentVersionRow[]> {
-  const versions = await query<DocumentVersionRow>(
-    `INSERT INTO app.document_versions (
+  const versions = await db().execute<DocumentVersionRow>(sql`
+    INSERT INTO app.document_versions (
        document_id, branch_id, version_number, snapshot,
        source, created_by_id, created_by_type
      )
-     SELECT $1, $2, COALESCE(MAX(version_number), 0) + 1, $3, 'edit', $4, $5
+     SELECT ${params.documentId}, ${params.branchId},
+            COALESCE(MAX(version_number), 0) + 1, ${JSON.stringify(params.snapshot)},
+            'edit', ${params.createdById}, ${params.createdByType}
        FROM app.document_versions
-      WHERE document_id = $1 AND branch_id = $2
-     RETURNING *`,
-    [
-      params.documentId,
-      params.branchId,
-      params.snapshot,
-      params.createdById,
-      params.createdByType,
-    ],
-  );
-  return versions.rows;
+      WHERE document_id = ${params.documentId} AND branch_id = ${params.branchId}
+     RETURNING *`);
+  return [...versions];
 }
 
 /** The unique constraint that makes a version number unrepeatable per branch. */
@@ -212,14 +206,6 @@ export interface InsertDocumentWithVersionParams {
  * The version rows come back unwrapped: only a caller that needs the inserted
  * version has reason to insist one came back.
  *
- * Kept on the legacy query() connection deliberately: both callers wrap this in
- * withTransaction on that connection, and createTranslation additionally holds a
- * SELECT ... FOR UPDATE on the canonical row across it. On the Drizzle
- * connection these rows would land outside the transaction, so a later failure
- * would roll back the relation rows and leave the document and its version
- * behind. Convert this alongside create-translation-service.ts and
- * duplicate-document-service.ts.
- *
  * @throws DuplicateDocumentPathError if another document already holds the path
  */
 export async function insertDocumentWithVersion(
@@ -227,13 +213,11 @@ export async function insertDocumentWithVersion(
 ): Promise<{ row: DocumentRow; versionRows: DocumentVersionRow[] }> {
   let row: DocumentRow;
   try {
-    const inserted = await query<DocumentRow>(
-      `INSERT INTO app.documents (site_id, path, locale)
-       VALUES ($1, $2, $3)
-       RETURNING *`,
-      [params.siteId, params.path, params.locale ?? null],
-    );
-    row = getFirstRow(inserted.rows);
+    const inserted = await db().execute<DocumentRow>(sql`
+      INSERT INTO app.documents (site_id, path, locale)
+       VALUES (${params.siteId}, ${params.path}, ${params.locale ?? null})
+       RETURNING *`);
+    row = getFirstRow(inserted);
   } catch (error) {
     // A caller finding the path free and this insert are not one step, so
     // another document can claim it in between.
@@ -243,15 +227,14 @@ export async function insertDocumentWithVersion(
     throw error;
   }
 
-  const versions = await query<DocumentVersionRow>(
-    `INSERT INTO app.document_versions (
+  const versions = await db().execute<DocumentVersionRow>(sql`
+    INSERT INTO app.document_versions (
        document_id, branch_id, version_number, snapshot,
        source, created_by_id, created_by_type
      )
-     VALUES ($1, $2, 1, $3, 'edit', $4, $5)
-     RETURNING *`,
-    [row.id, params.branchId, params.snapshot, params.createdById, params.createdByType],
-  );
+     VALUES (${row.id}, ${params.branchId}, 1, ${JSON.stringify(params.snapshot)},
+             'edit', ${params.createdById}, ${params.createdByType})
+     RETURNING *`);
 
-  return { row, versionRows: versions.rows };
+  return { row, versionRows: [...versions] };
 }

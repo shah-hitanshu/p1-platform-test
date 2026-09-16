@@ -7,22 +7,20 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import postgres from 'postgres';
+import type postgres from 'postgres';
 import { setDatabaseInstance } from '../../src/db';
+import { createRealDatabaseConnection } from '../helpers/database';
 import {
   createDocumentOnBranch,
   createDocumentVersion,
   reconstructVersionSnapshot,
 } from '../../src/services';
 
-const TEST_DATABASE_URL =
-  process.env.POSTGRES_CONNECTION_STRING ??
-  'postgresql://cssuser:csspass@localhost:5432/cssdb';
-
 const PANTHEON_SITE_ID = 'test-version-compaction-site';
 const SYSTEM_ACTOR = '00000000-0000-0000-0000-000000000000';
 
-let sql: ReturnType<typeof postgres>;
+let sql: postgres.Sql;
+let closeConnection: () => Promise<void>;
 let testSiteId: string;
 let mainBranchId: string;
 
@@ -42,17 +40,10 @@ async function purgeSite(siteId: string): Promise<void> {
 }
 
 beforeAll(async () => {
-  sql = postgres(TEST_DATABASE_URL, { max: 1 });
-
-  const connection = {
-    async query(sqlQuery: string, params?: unknown[]): Promise<{ rows: unknown[]; rowCount: number }> {
-      const result = await sql.unsafe(sqlQuery, params as unknown as postgres.ParameterOrJSON<never>[]);
-      const rows = [...result];
-      const resultWithCount = result as unknown as { count?: number };
-      return { rows, rowCount: resultWithCount.count ?? rows.length };
-    },
-  };
-  setDatabaseInstance(connection);
+  const real = createRealDatabaseConnection();
+  sql = real.sql;
+  closeConnection = real.connection.close.bind(real.connection);
+  setDatabaseInstance(real.connection);
 
   const stale = await sql<{ id: string }[]>`
     SELECT id FROM app.sites WHERE pantheon_site_id = ${PANTHEON_SITE_ID}
@@ -83,7 +74,7 @@ afterAll(async () => {
     // Ignore cleanup errors
   }
   setDatabaseInstance(null);
-  await sql.end();
+  await closeConnection();
 });
 
 describe('Version compaction against a live schema', () => {

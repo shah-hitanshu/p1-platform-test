@@ -10,7 +10,8 @@
  */
 
 import type { Document } from '../types';
-import { query, withTransaction } from '../db';
+import { sql } from 'drizzle-orm';
+import { db, transaction } from '../db/scope';
 import { getFirstRow } from './checkpoint-mappers';
 import {
   mapRowToDocument,
@@ -145,7 +146,8 @@ async function takeOverTranslation(
 
   // Numbering a version from a read of the current maximum, which the lock serializes
   // against another take-over of the same translation.
-  await query('SELECT 1 FROM app.documents WHERE id = $1 FOR UPDATE', [existing.documentId]);
+  await db().execute(sql`
+    SELECT 1 FROM app.documents WHERE id = ${existing.documentId} FOR UPDATE`);
 
   const versionRows = await insertVersionOnBranch({
     documentId: existing.documentId,
@@ -224,13 +226,12 @@ export async function createTranslation(
   validatePath(path);
 
   const attempt = (): Promise<CreateTranslationResult> =>
-    withTransaction(async () => {
+    transaction(async () => {
       // A branch holds at most one translation per locale. No constraint spans the
       // edge and the locale column, so concurrent creates are serialized on the
       // canonical row and the check runs behind that lock.
-      await query('SELECT 1 FROM app.documents WHERE id = $1 FOR UPDATE', [
-        params.canonicalDocumentId,
-      ]);
+      await db().execute(sql`
+        SELECT 1 FROM app.documents WHERE id = ${params.canonicalDocumentId} FOR UPDATE`);
 
       const existing = await findTranslationInLocale(
         params.canonicalDocumentId,

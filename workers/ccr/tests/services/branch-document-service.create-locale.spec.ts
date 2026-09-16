@@ -8,12 +8,11 @@
  * cannot relabel a document that already exists.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-
-vi.mock('../../src/db', () => ({
-  query: vi.fn(),
-  withTransaction: vi.fn(async (fn: () => Promise<unknown>) => fn()),
-}));
+import { describe, it, expect, beforeEach } from 'vitest';
+import { stubDatabase, type DatabaseStub } from '../__stubs__/database';
+import { documents, documentVersions } from '../../src/db/schema';
+import { createDocumentOnBranch } from '../../src/services/branch-document-service';
+import { InvalidLocaleError } from '../../src/services/errors';
 
 function docRow(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
@@ -40,33 +39,16 @@ function versionRow(overrides: Record<string, unknown> = {}): Record<string, unk
   };
 }
 
-function documentInsertCall(calls: unknown[][]): { sql: string; params: unknown[] } {
-  const call = calls.find(
-    (c) => typeof c[0] === 'string' && c[0].includes('INSERT INTO app.documents'),
-  );
-  if (call === undefined) {
-    throw new Error('No INSERT INTO app.documents call was captured');
-  }
-  return { sql: call[0] as string, params: (call[1] ?? []) as unknown[] };
-}
-
 describe('createDocumentOnBranch locale', () => {
+  let stub: DatabaseStub;
+
   beforeEach(() => {
-    vi.resetAllMocks();
+    stub = stubDatabase();
   });
 
   it('stores the locale in canonical form', async () => {
-    const { createDocumentOnBranch } = await import('../../src/services/branch-document-service');
-    const db = await import('../../src/db');
-    const queryMock = vi.mocked(db.query);
-
-    queryMock
-      .mockResolvedValueOnce({ rows: [] }) // BEGIN
-      .mockResolvedValueOnce({ rows: [docRow({ locale: 'he' })] }) // INSERT document
-      .mockResolvedValueOnce({ rows: [] }) // SAVEPOINT insert_version
-      .mockResolvedValueOnce({ rows: [versionRow()] }) // INSERT version
-      .mockResolvedValueOnce({ rows: [] }) // RELEASE SAVEPOINT insert_version
-      .mockResolvedValueOnce({ rows: [] }); // COMMIT
+    stub.on(documents).insert.returnsRaw([docRow({ locale: 'he' })]);
+    stub.on(documentVersions).insert.returnsRaw([versionRow()]);
 
     // `iw` is the deprecated tag for Hebrew; storage keeps the tag CLDR names.
     await createDocumentOnBranch({
@@ -78,23 +60,14 @@ describe('createDocumentOnBranch locale', () => {
       createdByType: 'user',
     });
 
-    const { sql, params } = documentInsertCall(queryMock.mock.calls);
-    expect(sql).toContain('locale');
-    expect(params).toContain('he');
+    const [insert] = stub.calls(documents).insert;
+    expect(insert.sql).toContain('locale');
+    expect(insert.params).toContain('he');
   });
 
   it('inserts no locale when none is given', async () => {
-    const { createDocumentOnBranch } = await import('../../src/services/branch-document-service');
-    const db = await import('../../src/db');
-    const queryMock = vi.mocked(db.query);
-
-    queryMock
-      .mockResolvedValueOnce({ rows: [] }) // BEGIN
-      .mockResolvedValueOnce({ rows: [docRow()] }) // INSERT document
-      .mockResolvedValueOnce({ rows: [] }) // SAVEPOINT insert_version
-      .mockResolvedValueOnce({ rows: [versionRow()] }) // INSERT version
-      .mockResolvedValueOnce({ rows: [] }) // RELEASE SAVEPOINT insert_version
-      .mockResolvedValueOnce({ rows: [] }); // COMMIT
+    stub.on(documents).insert.returnsRaw([docRow()]);
+    stub.on(documentVersions).insert.returnsRaw([versionRow()]);
 
     const result = await createDocumentOnBranch({
       siteId: 'site-uuid-123',
@@ -105,16 +78,14 @@ describe('createDocumentOnBranch locale', () => {
     });
 
     void result;
-    const { params } = documentInsertCall(queryMock.mock.calls);
-    expect(params).toEqual(['site-uuid-123', 'pages/nouveau', null]);
+    expect(stub.calls(documents).insert[0].params).toEqual([
+      'site-uuid-123',
+      'pages/nouveau',
+      null,
+    ]);
   });
 
   it('rejects a malformed language tag before writing anything', async () => {
-    const { createDocumentOnBranch } = await import('../../src/services/branch-document-service');
-    const { InvalidLocaleError } = await import('../../src/services/errors');
-    const db = await import('../../src/db');
-    const queryMock = vi.mocked(db.query);
-
     await expect(
       createDocumentOnBranch({
         siteId: 'site-uuid-123',
@@ -126,21 +97,12 @@ describe('createDocumentOnBranch locale', () => {
       }),
     ).rejects.toBeInstanceOf(InvalidLocaleError);
 
-    expect(queryMock).not.toHaveBeenCalled();
+    expect(stub.statements).toEqual([]);
   });
 
   it('accepts a locale no market names', async () => {
-    const { createDocumentOnBranch } = await import('../../src/services/branch-document-service');
-    const db = await import('../../src/db');
-    const queryMock = vi.mocked(db.query);
-
-    queryMock
-      .mockResolvedValueOnce({ rows: [] }) // BEGIN
-      .mockResolvedValueOnce({ rows: [docRow({ locale: 'cy-GB' })] }) // INSERT document
-      .mockResolvedValueOnce({ rows: [] }) // SAVEPOINT insert_version
-      .mockResolvedValueOnce({ rows: [versionRow()] }) // INSERT version
-      .mockResolvedValueOnce({ rows: [] }) // RELEASE SAVEPOINT insert_version
-      .mockResolvedValueOnce({ rows: [] }); // COMMIT
+    stub.on(documents).insert.returnsRaw([docRow({ locale: 'cy-GB' })]);
+    stub.on(documentVersions).insert.returnsRaw([versionRow()]);
 
     await createDocumentOnBranch({
       siteId: 'site-uuid-123',
@@ -151,24 +113,15 @@ describe('createDocumentOnBranch locale', () => {
       createdByType: 'user',
     });
 
-    const { params } = documentInsertCall(queryMock.mock.calls);
-    expect(params).toContain('cy-GB');
+    expect(stub.calls(documents).insert[0].params).toContain('cy-GB');
   });
 
   it('leaves a reused document\'s locale as stored', async () => {
-    const { createDocumentOnBranch } = await import('../../src/services/branch-document-service');
-    const db = await import('../../src/db');
-    const queryMock = vi.mocked(db.query);
-
-    queryMock
-      .mockResolvedValueOnce({ rows: [] }) // BEGIN
-      .mockResolvedValueOnce({ rows: [] }) // INSERT document -> conflict, no row
-      .mockResolvedValueOnce({ rows: [docRow({ id: 'existing-doc-id', locale: 'en' })] }) // SELECT existing
-      .mockResolvedValueOnce({ rows: [] }) // SELECT latest version on branch (none)
-      .mockResolvedValueOnce({ rows: [] }) // SAVEPOINT insert_version
-      .mockResolvedValueOnce({ rows: [versionRow({ document_id: 'existing-doc-id' })] })
-      .mockResolvedValueOnce({ rows: [] }) // RELEASE SAVEPOINT insert_version
-      .mockResolvedValueOnce({ rows: [] }); // COMMIT
+    stub.on(documents).insert.returnsRaw([]);
+    stub.on(documents).select.returnsRaw([docRow({ id: 'existing-doc-id', locale: 'en' })]);
+    stub.on(documentVersions).insert.returnsRaw([
+      versionRow({ document_id: 'existing-doc-id' }),
+    ]);
 
     const result = await createDocumentOnBranch({
       siteId: 'site-uuid-123',
@@ -180,9 +133,6 @@ describe('createDocumentOnBranch locale', () => {
     });
 
     expect(result.document.locale).toBe('en');
-    const statements = queryMock.mock.calls.map((c) => c[0]);
-    expect(statements.some((s) => typeof s === 'string' && s.includes('UPDATE app.documents'))).toBe(
-      false,
-    );
+    expect(stub.calls(documents).update).toEqual([]);
   });
 });

@@ -9,11 +9,11 @@
  * gains nothing and an unchanged run writes no history.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-
-vi.mock('../../src/db', () => ({
-  query: vi.fn(),
-}));
+import { describe, it, expect, beforeEach } from 'vitest';
+import { DrizzleQueryError } from 'drizzle-orm';
+import { stubDatabase, type DatabaseStub } from '../__stubs__/database';
+import { documents, documentVersions } from '../../src/db/schema';
+import { createDocumentOnBranch } from '../../src/services/branch-document-service';
 
 const DESCRIPTOR = {
   name: 'HeroBlock',
@@ -46,27 +46,18 @@ function versionRow(snapshot: Record<string, unknown>): Record<string, unknown> 
   };
 }
 
-function sqlOf(call: unknown[]): string {
-  return typeof call[0] === 'string' ? call[0] : '';
-}
-
 describe('createDocumentOnBranch registry write deduplication', () => {
+  let stub: DatabaseStub;
+
   beforeEach(() => {
-    vi.resetAllMocks();
+    stub = stubDatabase();
   });
 
   it('writes no version when a component descriptor matches what is stored', async () => {
-    const { createDocumentOnBranch } = await import('../../src/services/branch-document-service');
-    const db = await import('../../src/db');
-    const queryMock = vi.mocked(db.query);
-
     const path = '_registry/components/heroblock';
-    queryMock
-      .mockResolvedValueOnce({ rows: [] }) // BEGIN
-      .mockResolvedValueOnce({ rows: [] }) // INSERT document (path already taken)
-      .mockResolvedValueOnce({ rows: [docRow(path)] }) // SELECT existing doc
-      .mockResolvedValueOnce({ rows: [versionRow(DESCRIPTOR)] }) // SELECT latest version
-      .mockResolvedValueOnce({ rows: [] }); // COMMIT
+    stub.on(documents).insert.returnsRaw([]);
+    stub.on(documents).select.returnsRaw([docRow(path)]);
+    stub.on(documentVersions).select.returnsRaw([versionRow(DESCRIPTOR)]);
 
     const result = await createDocumentOnBranch({
       siteId: 'site-1',
@@ -78,16 +69,10 @@ describe('createDocumentOnBranch registry write deduplication', () => {
     });
 
     expect(result.version.versionNumber).toBe(42);
-    const statements = queryMock.mock.calls.map(sqlOf);
-    expect(statements.some((s) => s.includes('INSERT INTO app.document_versions'))).toBe(false);
-    expect(statements).toContain('COMMIT');
+    expect(stub.calls(documentVersions).insert).toEqual([]);
   });
 
   it('skips when only the per-run stamps on the descriptor moved', async () => {
-    const { createDocumentOnBranch } = await import('../../src/services/branch-document-service');
-    const db = await import('../../src/db');
-    const queryMock = vi.mocked(db.query);
-
     const path = '_registry/components/heroblock';
     // extractDescriptors stamps a fresh registeredAt on every run, so a
     // whole-snapshot compare would never match and nothing would ever skip.
@@ -98,12 +83,9 @@ describe('createDocumentOnBranch registry write deduplication', () => {
       provenance: 'site',
     };
 
-    queryMock
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [docRow(path)] })
-      .mockResolvedValueOnce({ rows: [versionRow(DESCRIPTOR)] })
-      .mockResolvedValueOnce({ rows: [] }); // COMMIT
+    stub.on(documents).insert.returnsRaw([]);
+    stub.on(documents).select.returnsRaw([docRow(path)]);
+    stub.on(documentVersions).select.returnsRaw([versionRow(DESCRIPTOR)]);
 
     await createDocumentOnBranch({
       siteId: 'site-1',
@@ -114,26 +96,17 @@ describe('createDocumentOnBranch registry write deduplication', () => {
       createdByType: 'system',
     });
 
-    expect(
-      queryMock.mock.calls.map(sqlOf).some((s) => s.includes('INSERT INTO app.document_versions')),
-    ).toBe(false);
+    expect(stub.calls(documentVersions).insert).toEqual([]);
   });
 
   it('compares content independently of key order', async () => {
-    const { createDocumentOnBranch } = await import('../../src/services/branch-document-service');
-    const db = await import('../../src/db');
-    const queryMock = vi.mocked(db.query);
-
     const path = '_registry/components/heroblock';
     // jsonb does not preserve key order, so the stored row comes back shuffled
-    queryMock
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [docRow(path)] })
-      .mockResolvedValueOnce({
-        rows: [versionRow({ fields: DESCRIPTOR.fields, name: DESCRIPTOR.name })],
-      })
-      .mockResolvedValueOnce({ rows: [] });
+    stub.on(documents).insert.returnsRaw([]);
+    stub.on(documents).select.returnsRaw([docRow(path)]);
+    stub.on(documentVersions).select.returnsRaw([
+      versionRow({ fields: DESCRIPTOR.fields, name: DESCRIPTOR.name }),
+    ]);
 
     await createDocumentOnBranch({
       siteId: 'site-1',
@@ -146,27 +119,16 @@ describe('createDocumentOnBranch registry write deduplication', () => {
       createdByType: 'system',
     });
 
-    expect(
-      queryMock.mock.calls.map(sqlOf).some((s) => s.includes('INSERT INTO app.document_versions')),
-    ).toBe(false);
+    expect(stub.calls(documentVersions).insert).toEqual([]);
   });
 
   it('appends a version when the descriptor actually changed', async () => {
-    const { createDocumentOnBranch } = await import('../../src/services/branch-document-service');
-    const db = await import('../../src/db');
-    const queryMock = vi.mocked(db.query);
-
     const path = '_registry/components/heroblock';
     const changed = { ...DESCRIPTOR, descriptorHash: 'def456' };
-    queryMock
-      .mockResolvedValueOnce({ rows: [] }) // BEGIN
-      .mockResolvedValueOnce({ rows: [] }) // INSERT document
-      .mockResolvedValueOnce({ rows: [docRow(path)] }) // SELECT existing doc
-      .mockResolvedValueOnce({ rows: [versionRow(DESCRIPTOR)] }) // SELECT latest version
-      .mockResolvedValueOnce({ rows: [] }) // SAVEPOINT insert_version
-      .mockResolvedValueOnce({ rows: [versionRow(changed)] }) // INSERT version
-      .mockResolvedValueOnce({ rows: [] }) // RELEASE SAVEPOINT
-      .mockResolvedValueOnce({ rows: [] }); // COMMIT
+    stub.on(documents).insert.returnsRaw([]);
+    stub.on(documents).select.returnsRaw([docRow(path)]);
+    stub.on(documentVersions).select.returnsRaw([versionRow(DESCRIPTOR)]);
+    stub.on(documentVersions).insert.returnsRaw([versionRow(changed)]);
 
     await createDocumentOnBranch({
       siteId: 'site-1',
@@ -177,16 +139,10 @@ describe('createDocumentOnBranch registry write deduplication', () => {
       createdByType: 'system',
     });
 
-    expect(
-      queryMock.mock.calls.map(sqlOf).some((s) => s.includes('INSERT INTO app.document_versions')),
-    ).toBe(true);
+    expect(stub.calls(documentVersions).insert).not.toEqual([]);
   });
 
   it('refreshes the index stamps in place rather than versioning an unchanged index', async () => {
-    const { createDocumentOnBranch } = await import('../../src/services/branch-document-service');
-    const db = await import('../../src/db');
-    const queryMock = vi.mocked(db.query);
-
     const path = '_registry/index';
     const stored = {
       siteId: 'site-1',
@@ -202,13 +158,10 @@ describe('createDocumentOnBranch registry write deduplication', () => {
       verifiedAt: '2026-08-21T00:00:00.000Z',
     };
 
-    queryMock
-      .mockResolvedValueOnce({ rows: [] }) // BEGIN
-      .mockResolvedValueOnce({ rows: [] }) // INSERT document
-      .mockResolvedValueOnce({ rows: [docRow(path)] }) // SELECT existing doc
-      .mockResolvedValueOnce({ rows: [versionRow(stored)] }) // SELECT latest version
-      .mockResolvedValueOnce({ rows: [versionRow(incoming)] }) // UPDATE stamps
-      .mockResolvedValueOnce({ rows: [] }); // COMMIT
+    stub.on(documents).insert.returnsRaw([]);
+    stub.on(documents).select.returnsRaw([docRow(path)]);
+    stub.on(documentVersions).select.returnsRaw([versionRow(stored)]);
+    stub.on(documentVersions).update.returnsRaw([versionRow(incoming)]);
 
     const result = await createDocumentOnBranch({
       siteId: 'site-1',
@@ -219,19 +172,18 @@ describe('createDocumentOnBranch registry write deduplication', () => {
       createdByType: 'system',
     });
 
-    const statements = queryMock.mock.calls.map(sqlOf);
-    expect(statements.some((s) => s.includes('INSERT INTO app.document_versions'))).toBe(false);
-    const update = queryMock.mock.calls.find((c) => sqlOf(c).includes('UPDATE app.document_versions'));
+    expect(stub.calls(documentVersions).insert).toEqual([]);
+    const [update] = stub.calls(documentVersions).update;
     expect(update).toBeDefined();
-    expect(update![1]![1]).toMatchObject({ verifiedAt: '2026-08-21T00:00:00.000Z' });
+    // The refreshed snapshot reaches the statement as JSON text, so it is read
+    // back the same way.
+    expect(JSON.parse(update.params[0] as string)).toMatchObject({
+      verifiedAt: '2026-08-21T00:00:00.000Z',
+    });
     expect(result.version.versionNumber).toBe(42);
   });
 
   it('versions the index when its component set changed', async () => {
-    const { createDocumentOnBranch } = await import('../../src/services/branch-document-service');
-    const db = await import('../../src/db');
-    const queryMock = vi.mocked(db.query);
-
     const path = '_registry/index';
     const stored = {
       siteId: 'site-1',
@@ -249,15 +201,10 @@ describe('createDocumentOnBranch registry write deduplication', () => {
       verifiedAt: '2026-08-21T00:00:00.000Z',
     };
 
-    queryMock
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [docRow(path)] })
-      .mockResolvedValueOnce({ rows: [versionRow(stored)] })
-      .mockResolvedValueOnce({ rows: [] }) // SAVEPOINT insert_version
-      .mockResolvedValueOnce({ rows: [versionRow(incoming)] }) // INSERT version
-      .mockResolvedValueOnce({ rows: [] }) // RELEASE SAVEPOINT
-      .mockResolvedValueOnce({ rows: [] }); // COMMIT
+    stub.on(documents).insert.returnsRaw([]);
+    stub.on(documents).select.returnsRaw([docRow(path)]);
+    stub.on(documentVersions).select.returnsRaw([versionRow(stored)]);
+    stub.on(documentVersions).insert.returnsRaw([versionRow(incoming)]);
 
     await createDocumentOnBranch({
       siteId: 'site-1',
@@ -268,26 +215,15 @@ describe('createDocumentOnBranch registry write deduplication', () => {
       createdByType: 'system',
     });
 
-    expect(
-      queryMock.mock.calls.map(sqlOf).some((s) => s.includes('INSERT INTO app.document_versions')),
-    ).toBe(true);
+    expect(stub.calls(documentVersions).insert).not.toEqual([]);
   });
 
   it('versions rather than skipping when the stored row holds a patch instead of a snapshot', async () => {
-    const { createDocumentOnBranch } = await import('../../src/services/branch-document-service');
-    const db = await import('../../src/db');
-    const queryMock = vi.mocked(db.query);
-
     const path = '_registry/components/heroblock';
-    queryMock
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [docRow(path)] })
-      .mockResolvedValueOnce({ rows: [{ ...versionRow(DESCRIPTOR), snapshot: null }] })
-      .mockResolvedValueOnce({ rows: [] }) // SAVEPOINT insert_version
-      .mockResolvedValueOnce({ rows: [versionRow(DESCRIPTOR)] }) // INSERT version
-      .mockResolvedValueOnce({ rows: [] }) // RELEASE SAVEPOINT
-      .mockResolvedValueOnce({ rows: [] }); // COMMIT
+    stub.on(documents).insert.returnsRaw([]);
+    stub.on(documents).select.returnsRaw([docRow(path)]);
+    stub.on(documentVersions).select.returnsRaw([{ ...versionRow(DESCRIPTOR), snapshot: null }]);
+    stub.on(documentVersions).insert.returnsRaw([versionRow(DESCRIPTOR)]);
 
     await createDocumentOnBranch({
       siteId: 'site-1',
@@ -298,38 +234,29 @@ describe('createDocumentOnBranch registry write deduplication', () => {
       createdByType: 'system',
     });
 
-    expect(
-      queryMock.mock.calls.map(sqlOf).some((s) => s.includes('INSERT INTO app.document_versions')),
-    ).toBe(true);
+    expect(stub.calls(documentVersions).insert).not.toEqual([]);
   });
 
-  it('retries the version insert when a concurrent run takes the same version number', async () => {
-    const { createDocumentOnBranch } = await import('../../src/services/branch-document-service');
-    const db = await import('../../src/db');
-    const queryMock = vi.mocked(db.query);
-
+  it('recomputes the version number rather than failing when the insert loses the race', async () => {
     const collision = new Error('duplicate key value violates unique constraint');
     (collision as NodeJS.ErrnoException).code = '23505';
 
-    queryMock
-      .mockResolvedValueOnce({ rows: [] }) // BEGIN
-      .mockResolvedValueOnce({ rows: [docRow('pages/new')] }) // INSERT document
-      .mockResolvedValueOnce({ rows: [] }) // SAVEPOINT insert_version
-      .mockRejectedValueOnce(collision) // INSERT version loses the race
-      .mockResolvedValueOnce({ rows: [] }) // ROLLBACK TO SAVEPOINT
-      .mockResolvedValueOnce({ rows: [] }) // SAVEPOINT insert_version
-      .mockResolvedValueOnce({ rows: [versionRow({})] }) // INSERT version succeeds
-      .mockResolvedValueOnce({ rows: [] }) // RELEASE SAVEPOINT
-      .mockResolvedValueOnce({ rows: [] }); // COMMIT
+    stub.on(documents).insert.returnsRaw([docRow('pages/new')]);
+    stub.on(documentVersions).insert.rejects(collision);
 
-    const result = await createDocumentOnBranch({
-      siteId: 'site-1',
-      branchId: 'branch-1',
-      path: 'pages/new',
-      createdById: 'user-1',
-      createdByType: 'system',
-    });
+    await expect(
+      createDocumentOnBranch({
+        siteId: 'site-1',
+        branchId: 'branch-1',
+        path: 'pages/new',
+        createdById: 'user-1',
+        createdByType: 'system',
+      }),
+    ).rejects.toBeInstanceOf(DrizzleQueryError);
 
-    expect(result.version.id).toBe('version-registry-9');
+    // A losing insert rolls back to its savepoint and recomputes the number
+    // against the winner's row; only a writer that keeps losing gives up, and
+    // the count is what says the collision was retried rather than surfaced.
+    expect(stub.calls(documentVersions).insert).toHaveLength(4);
   });
 });

@@ -9,35 +9,29 @@
  * included in the return type or query results.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-
-// Mock database module
-vi.mock('../../src/db', () => ({
-  query: vi.fn(),
-}));
+import { describe, it, expect, beforeEach } from 'vitest';
+import { stubDatabase, type DatabaseStub } from '../__stubs__/database';
+import { listDocumentsOnBranch } from '../../src/services/document-service';
 
 describe('Copy-on-Write: listDocumentsOnBranch inherited field', () => {
+  let stub: DatabaseStub;
+
   beforeEach(() => {
-    vi.resetAllMocks();
+    stub = stubDatabase();
   });
 
   it('should return inherited: false for documents with local versions', async () => {
-    const { listDocumentsOnBranch } = await import('../../src/services/document-service');
-    const db = await import('../../src/db');
-
-    // Mock the COW UNION query result - local doc has inherited = false
-    vi.mocked(db.query).mockResolvedValueOnce({
-      rows: [
-        {
-          id: 'doc-1',
-          site_id: 'site-1',
-          path: 'pages/about',
-          created_at: '2026-01-01T00:00:00.000Z',
-          archived_at: null,
-          inherited: false,
-        },
-      ],
-    });
+    // The COW UNION result: a local document, marked not inherited.
+    stub.on('u').select.returnsRaw([
+      {
+        id: 'doc-1',
+        site_id: 'site-1',
+        path: 'pages/about',
+        created_at: '2026-01-01T00:00:00.000Z',
+        archived_at: null,
+        inherited: false,
+      },
+    ]);
 
     const result = await listDocumentsOnBranch('branch-feature', {
       mainBranchId: 'branch-main',
@@ -49,29 +43,24 @@ describe('Copy-on-Write: listDocumentsOnBranch inherited field', () => {
   });
 
   it('should return inherited: true for documents inherited from main', async () => {
-    const { listDocumentsOnBranch } = await import('../../src/services/document-service');
-    const db = await import('../../src/db');
-
-    vi.mocked(db.query).mockResolvedValueOnce({
-      rows: [
-        {
-          id: 'doc-1',
-          site_id: 'site-1',
-          path: 'pages/about',
-          created_at: '2026-01-01T00:00:00.000Z',
-          archived_at: null,
-          inherited: false,
-        },
-        {
-          id: 'doc-2',
-          site_id: 'site-1',
-          path: 'pages/home',
-          created_at: '2026-01-01T00:00:00.000Z',
-          archived_at: null,
-          inherited: true,
-        },
-      ],
-    });
+    stub.on('u').select.returnsRaw([
+      {
+        id: 'doc-1',
+        site_id: 'site-1',
+        path: 'pages/about',
+        created_at: '2026-01-01T00:00:00.000Z',
+        archived_at: null,
+        inherited: false,
+      },
+      {
+        id: 'doc-2',
+        site_id: 'site-1',
+        path: 'pages/home',
+        created_at: '2026-01-01T00:00:00.000Z',
+        archived_at: null,
+        inherited: true,
+      },
+    ]);
 
     const result = await listDocumentsOnBranch('branch-feature', {
       mainBranchId: 'branch-main',
@@ -83,21 +72,16 @@ describe('Copy-on-Write: listDocumentsOnBranch inherited field', () => {
   });
 
   it('should return inherited: false for all docs when no mainBranchId provided', async () => {
-    const { listDocumentsOnBranch } = await import('../../src/services/document-service');
-    const db = await import('../../src/db');
-
-    vi.mocked(db.query).mockResolvedValueOnce({
-      rows: [
-        {
-          id: 'doc-1',
-          site_id: 'site-1',
-          path: 'pages/about',
-          created_at: '2026-01-01T00:00:00.000Z',
-          archived_at: null,
-          inherited: false,
-        },
-      ],
-    });
+    stub.on('u').select.returnsRaw([
+      {
+        id: 'doc-1',
+        site_id: 'site-1',
+        path: 'pages/about',
+        created_at: '2026-01-01T00:00:00.000Z',
+        archived_at: null,
+        inherited: false,
+      },
+    ]);
 
     const result = await listDocumentsOnBranch('branch-main');
 
@@ -106,16 +90,11 @@ describe('Copy-on-Write: listDocumentsOnBranch inherited field', () => {
   });
 
   it('should exclude tombstoned documents from main in the inherited arm', async () => {
-    const { listDocumentsOnBranch } = await import('../../src/services/document-service');
-    const db = await import('../../src/db');
-
-    vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
-
     await listDocumentsOnBranch('branch-feature', {
       mainBranchId: 'branch-main',
     });
 
-    const sql = vi.mocked(db.query).mock.calls[0][0];
+    const { sql } = stub.statements[0];
     // The inherited arm should check for tombstones on main
     // (latest version on main has _deleted = true)
     const unionIndex = sql.indexOf('UNION');
@@ -125,16 +104,11 @@ describe('Copy-on-Write: listDocumentsOnBranch inherited field', () => {
   });
 
   it('should include inherited column in COW UNION query', async () => {
-    const { listDocumentsOnBranch } = await import('../../src/services/document-service');
-    const db = await import('../../src/db');
-
-    vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
-
     await listDocumentsOnBranch('branch-feature', {
       mainBranchId: 'branch-main',
     });
 
-    const sql = vi.mocked(db.query).mock.calls[0][0];
+    const { sql } = stub.statements[0];
     // The SQL should include 'false' and 'true' as inherited markers
     expect(sql).toContain('false');
     expect(sql).toContain('true');

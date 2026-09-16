@@ -5,7 +5,8 @@
  * and creating publish checkpoints with provenance tracking.
  */
 
-import { query } from '../db';
+import { sql } from 'drizzle-orm';
+import { db, transaction } from '../db/scope';
 import { getBranch, getMainBranch } from './branch-service';
 import type {
   CheckpointRow,
@@ -14,6 +15,23 @@ import type {
 } from './checkpoint-types';
 import { getFirstRow, mapRowToCheckpoint } from './checkpoint-mappers';
 import { purgeContentCache } from '../cache/purge';
+
+/**
+ * Type aliases rather than interfaces: db().execute<T>() constrains T to
+ * Record<string, unknown>, which an interface cannot satisfy because it carries
+ * no implicit index signature.
+ */
+type PublishVersionRow = {
+  id: string;
+  document_id: string;
+  branch_id: string;
+  version_number: number;
+  snapshot: Record<string, unknown> | null;
+  is_tombstone: boolean;
+};
+
+/** On the same terms as {@link PublishVersionRow}. */
+type PublishCopyRow = { id: string; version_number: number };
 import { reconstructVersionSnapshot } from './document-version-service';
 
 /**
@@ -36,11 +54,11 @@ export async function publishDocument(
   let checkpointRow: CheckpointRow;
   let publishVersionId: string;
 
-  // BEGIN lives inside the try so that every statement that can throw —
-  // including the FOR UPDATE below, which can block until the 20s query
-  // timeout — is answered by the ROLLBACK in the catch.
-  try {
-    await query('BEGIN');
+
+  // The whole read-and-write sequence is one transaction, so a statement that
+  // throws — including the FOR UPDATE below, which can block until the query
+  // timeout — rolls the rest of it back.
+  const published = await transaction(async () => {
 
     // Get the latest version of the document on the SOURCE branch.
     // FOR UPDATE holds the row against a concurrent edit's compaction nulling
@@ -54,24 +72,15 @@ export async function publishDocument(
     // (No gap lock: a concurrent INSERT of a higher version is not blocked,
     // so publish captures the tip as of this read — you publish what you
     // read, and the newer version is simply not yet published.)
-    const versionResult = await query<{
-      id: string;
-      document_id: string;
-      branch_id: string;
-      version_number: number;
-      snapshot: Record<string, unknown> | null;
-      is_tombstone: boolean;
-    }>(
-      `SELECT id, document_id, branch_id, version_number, snapshot, is_tombstone
+    const versionResult = await db().execute<PublishVersionRow>(sql`
+      SELECT id, document_id, branch_id, version_number, snapshot, is_tombstone
        FROM app.document_versions
-       WHERE document_id = $1 AND branch_id = $2
+       WHERE document_id = ${params.documentId} AND branch_id = ${params.branchId}
        ORDER BY version_number DESC
        LIMIT 1
-       FOR UPDATE`,
-      [params.documentId, params.branchId],
-    );
+       FOR UPDATE`);
 
-    const version = versionResult.rows[0];
+    const version = versionResult.at(0);
     if (!version) {
       throw new Error(`Document with ID "${params.documentId}" not found`);
     }
@@ -96,51 +105,37 @@ export async function publishDocument(
           `Cannot publish version ${String(version.version_number)}: content is not reconstructable`,
         );
       }
-      await query(
-        `UPDATE app.document_versions
-         SET snapshot = $1
-         WHERE id = $2 AND snapshot IS NULL`,
-        [snapshot, version.id],
-      );
+      await db().execute(sql`
+        UPDATE app.document_versions
+         SET snapshot = ${JSON.stringify(snapshot)}
+         WHERE id = ${version.id} AND snapshot IS NULL`);
     }
 
     publishVersionId = version.id;
 
     // If publishing from a non-main branch, copy the version to main first
     if (params.branchId !== mainBranch.id) {
-      const copyResult = await query<{ id: string; version_number: number }>(
-        `INSERT INTO app.document_versions (
+      const copyResult = await db().execute<PublishCopyRow>(sql`
+        INSERT INTO app.document_versions (
           document_id, branch_id, version_number, snapshot,
           source, created_by_id, created_by_type,
           source_branch_id, source_version_id
         )
-        SELECT $1, $2,
+        SELECT ${params.documentId}, ${mainBranch.id},
           COALESCE(MAX(version_number), 0) + 1,
-          $3, 'publish', $4, $5,
-          $6, $7
+          ${JSON.stringify(snapshot)}, 'publish', ${params.createdById}, ${params.createdByType},
+          ${params.branchId}, ${version.id}
         FROM app.document_versions
-        WHERE document_id = $1 AND branch_id = $2
-        RETURNING id, version_number`,
-        [
-          params.documentId,
-          mainBranch.id,
-          snapshot,
-          params.createdById,
-          params.createdByType,
-          params.branchId,
-          version.id,
-        ],
-      );
+        WHERE document_id = ${params.documentId} AND branch_id = ${mainBranch.id}
+        RETURNING id, version_number`);
 
-      publishVersionId = getFirstRow(copyResult.rows).id;
+      publishVersionId = getFirstRow(copyResult).id;
 
       // Back-link: mark the source version as published
-      await query(
-        `UPDATE app.document_versions
-         SET published_to_version_id = $1
-         WHERE id = $2`,
-        [publishVersionId, version.id],
-      );
+      await db().execute(sql`
+        UPDATE app.document_versions
+         SET published_to_version_id = ${publishVersionId}
+         WHERE id = ${version.id}`);
     }
 
     // Pin the published row. A real tuple update, so a compaction statement
@@ -148,43 +143,37 @@ export async function publishDocument(
     // stamped tuple (EvalPlanQual) and skips the row — the NOT EXISTS guard
     // alone is checked against a pre-publish snapshot and would miss the
     // checkpoint [PCC-3652].
-    await query(
-      `UPDATE app.document_versions
+    await db().execute(sql`
+      UPDATE app.document_versions
        SET pinned_at = NOW()
-       WHERE id = $1`,
-      [publishVersionId],
-    );
+       WHERE id = ${publishVersionId}`);
 
     // Create publish checkpoint on main
-    const checkpointResult = await query<CheckpointRow>(
-      `INSERT INTO app.checkpoints (
+    const checkpointResult = await db().execute<CheckpointRow>(sql`
+      INSERT INTO app.checkpoints (
         branch_id, name, checkpoint_type, created_by_id, created_by_type, status
       )
-      VALUES ($1, $2, 'publish', $3, $4, 'completed')
-      RETURNING *`,
-      [mainBranch.id, 'Publish: document', params.createdById, params.createdByType],
-    );
+      VALUES (${mainBranch.id}, 'Publish: document', 'publish', ${params.createdById},
+              ${params.createdByType}, 'completed')
+      RETURNING *`);
 
-    checkpointRow = getFirstRow(checkpointResult.rows);
+    checkpointRow = getFirstRow(checkpointResult);
 
     // Insert checkpoint_documents row referencing the version on main
-    await query(
-      `INSERT INTO app.checkpoint_documents (checkpoint_id, document_id, document_version_id)
-       VALUES ($1, $2, $3)`,
-      [checkpointRow.id, params.documentId, publishVersionId],
-    );
+    await db().execute(sql`
+      INSERT INTO app.checkpoint_documents (checkpoint_id, document_id, document_version_id)
+       VALUES (${checkpointRow.id}, ${params.documentId}, ${publishVersionId})`);
 
-    await query('COMMIT');
-  } catch (error) {
-    await query('ROLLBACK');
-    throw error;
-  }
+    return { checkpointRow, publishVersionId };
+  });
+  checkpointRow = published.checkpointRow;
+  publishVersionId = published.publishVersionId;
 
-  // Post-commit work stays outside the try: the publish has already
-  // succeeded, and a failure here must not issue a no-op ROLLBACK or report
-  // failure for a committed publish. Purging before COMMIT would let a
-  // concurrent read re-cache the pre-publish version and keep it for a full
-  // TTL; purgeContentCache reports failure in logs and never throws.
+  // Post-commit work stays outside the transaction: the publish has already
+  // succeeded, and a failure here must not report failure for a committed
+  // publish. Purging before the commit would let a concurrent read re-cache the
+  // pre-publish version and keep it for a full TTL; purgeContentCache reports
+  // failure in logs and never throws.
   await purgeContentCache({
     siteId: params.siteId,
     branchId: mainBranch.id,

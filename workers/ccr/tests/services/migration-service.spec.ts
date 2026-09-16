@@ -10,12 +10,41 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { DocumentVersionSource } from '../../src/types';
 import { buildSlotDelta } from '../../src/services/slot-delta';
-
-// Mock database module
-vi.mock('../../src/db', () => ({
-  query: vi.fn(),
-  withTransaction: vi.fn(async (fn: () => Promise<unknown>) => fn()),
-}));
+import { stubDatabase, type DatabaseStub } from '../__stubs__/database';
+import {
+  documentRelations,
+  documentVersions,
+  documents,
+  migrationConflicts,
+  migrationJobs,
+} from '../../src/db/schema';
+import {
+  applyDeltaToDocument,
+  applyDeltaToSnapshot,
+  detectDocumentConflicts,
+  extractTemplateDelta,
+  findAffectedDocuments,
+  getMigrationJob,
+  getMigrationStatus,
+  listMigrationConflicts,
+  previewMigration,
+  processMigration,
+  resolveMigrationConflict,
+  rollbackMigration,
+  triggerMigration,
+} from '../../src/services/migration-service';
+import {
+  InvalidVersionRangeError,
+  MigrationJobNotFoundError,
+  TemplateNotFoundError,
+} from '../../src/services/errors';
+import { createCheckpoint, revertToCheckpoint } from '../../src/services/checkpoint-service';
+import {
+  createDocumentVersion,
+  getLatestDocumentVersion,
+  reconstructVersionSnapshot,
+} from '../../src/services/document-version-service';
+import { validateDocumentStructure } from '@pantheon-systems/p1-content-validator';
 
 // Mock checkpoint service
 vi.mock('../../src/services/checkpoint-service', () => ({
@@ -36,12 +65,18 @@ vi.mock('@pantheon-systems/p1-content-validator', () => ({
 }));
 
 describe('Phase 5: Migration Service', () => {
+  let stub: DatabaseStub;
+
   beforeEach(() => {
     vi.resetAllMocks();
+    stub = stubDatabase();
   });
 
   // Mock types for database rows
-  interface MockMigrationJobRow {
+  // Type aliases rather than interfaces: the stub takes rows as
+  // Record<string, unknown>, which an interface cannot satisfy because it
+  // carries no implicit index signature.
+  type MockMigrationJobRow = {
     id: string;
     site_id: string;
     branch_id: string;
@@ -56,9 +91,9 @@ describe('Phase 5: Migration Service', () => {
     created_by_type: 'user' | 'agent' | 'system';
     created_at: string;
     completed_at: string | null;
-  }
+  };
 
-  interface MockMigrationConflictRow {
+  type MockMigrationConflictRow = {
     id: string;
     migration_job_id: string;
     document_id: string;
@@ -71,7 +106,7 @@ describe('Phase 5: Migration Service', () => {
     resolution: 'apply' | 'skip' | 'manual' | null;
     created_at: string;
     resolved_at: string | null;
-  }
+  };
 
   interface MockDocumentRow {
     id: string;
@@ -138,11 +173,6 @@ describe('Phase 5: Migration Service', () => {
   // =========================================================================
   describe('extractTemplateDelta: editor-private root props', () => {
     it('excludes editor-private root props (_template/_pinMap) from prop patches', async () => {
-      const { extractTemplateDelta } = await import('../../src/services/migration-service');
-      const db = await import('../../src/db');
-      const dvs = await import('../../src/services/document-version-service');
-
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
       const fromSnapshot = {
         content: [],
@@ -154,7 +184,7 @@ describe('Phase 5: Migration Service', () => {
         root: { props: { _template: { label: 'New', deprecated: true }, _pinMap: { 'hero-1': true } } },
         zones: {},
       };
-      vi.mocked(dvs.reconstructVersionSnapshot)
+      vi.mocked(reconstructVersionSnapshot)
         .mockResolvedValueOnce(fromSnapshot)
         .mockResolvedValueOnce(toSnapshot);
 
@@ -164,11 +194,6 @@ describe('Phase 5: Migration Service', () => {
     });
 
     it('propagates a non-underscore root prop change as a __root__ patch', async () => {
-      const { extractTemplateDelta } = await import('../../src/services/migration-service');
-      const db = await import('../../src/db');
-      const dvs = await import('../../src/services/document-version-service');
-
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
       const fromSnapshot = {
         content: [],
@@ -180,7 +205,7 @@ describe('Phase 5: Migration Service', () => {
         root: { props: { title: 'New Title', _template: { label: 'X', deprecated: false } } },
         zones: {},
       };
-      vi.mocked(dvs.reconstructVersionSnapshot)
+      vi.mocked(reconstructVersionSnapshot)
         .mockResolvedValueOnce(fromSnapshot)
         .mockResolvedValueOnce(toSnapshot);
 
@@ -194,11 +219,6 @@ describe('Phase 5: Migration Service', () => {
     });
 
     it('propagates only the non-underscore key when a root change mixes both', async () => {
-      const { extractTemplateDelta } = await import('../../src/services/migration-service');
-      const db = await import('../../src/db');
-      const dvs = await import('../../src/services/document-version-service');
-
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
       const fromSnapshot = {
         content: [],
@@ -210,7 +230,7 @@ describe('Phase 5: Migration Service', () => {
         root: { props: { title: 'New', _pinMap: { 'hero-1': true } } },
         zones: {},
       };
-      vi.mocked(dvs.reconstructVersionSnapshot)
+      vi.mocked(reconstructVersionSnapshot)
         .mockResolvedValueOnce(fromSnapshot)
         .mockResolvedValueOnce(toSnapshot);
 
@@ -228,15 +248,9 @@ describe('Phase 5: Migration Service', () => {
 
   describe('getMigrationJob', () => {
     it('should return a migration job by ID', async () => {
-      const { getMigrationJob } = await import('../../src/services/migration-service');
-      const db = await import('../../src/db');
 
-      const mockRow = createMockMigrationJob();
-
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [mockRow],
-        rowCount: 1,
-      });
+      stub.on(migrationJobs).select.returnsRaw([createMockMigrationJob()]);
+      stub.on(documentVersions).select.returnsRaw([{ versionNumber: 3 }]);
 
       const result = await getMigrationJob('job-uuid-123');
 
@@ -253,33 +267,20 @@ describe('Phase 5: Migration Service', () => {
     });
 
     it('should throw MigrationJobNotFoundError when job does not exist', async () => {
-      const { getMigrationJob } = await import('../../src/services/migration-service');
-      const { MigrationJobNotFoundError } = await import('../../src/services/errors');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [],
-        rowCount: 0,
-      });
 
       await expect(getMigrationJob('nonexistent-job')).rejects.toThrow(MigrationJobNotFoundError);
     });
 
     it('should query the migration_jobs table with the correct job ID', async () => {
-      const { getMigrationJob } = await import('../../src/services/migration-service');
-      const db = await import('../../src/db');
 
-      const mockRow = createMockMigrationJob();
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [mockRow],
-        rowCount: 1,
-      });
+      stub.on(migrationJobs).select.returnsRaw([createMockMigrationJob()]);
+      stub.on(documentVersions).select.returnsRaw([{ versionNumber: 3 }]);
 
       await getMigrationJob('job-uuid-123');
 
-      expect(db.query).toHaveBeenCalledOnce();
-      const callArgs = vi.mocked(db.query).mock.calls[0];
-      expect(callArgs[1]).toEqual(['job-uuid-123']);
+      const calls = stub.calls(migrationJobs).select;
+      expect(calls).toHaveLength(1);
+      expect(calls[0]?.params).toEqual(['job-uuid-123']);
     });
   });
 
@@ -289,18 +290,13 @@ describe('Phase 5: Migration Service', () => {
 
   describe('listMigrationConflicts', () => {
     it('should return all conflicts for a migration job', async () => {
-      const { listMigrationConflicts } = await import('../../src/services/migration-service');
-      const db = await import('../../src/db');
 
       const mockConflicts = [
         createMockConflictRow({ id: 'conflict-1', document_id: 'doc-1' }),
         createMockConflictRow({ id: 'conflict-2', document_id: 'doc-2' }),
       ];
 
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: mockConflicts,
-        rowCount: 2,
-      });
+      stub.on(migrationConflicts).select.returnsRaw(mockConflicts);
 
       const result = await listMigrationConflicts('job-uuid-123');
 
@@ -312,13 +308,6 @@ describe('Phase 5: Migration Service', () => {
     });
 
     it('should return empty array when no conflicts exist', async () => {
-      const { listMigrationConflicts } = await import('../../src/services/migration-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [],
-        rowCount: 0,
-      });
 
       const result = await listMigrationConflicts('job-uuid-123');
 
@@ -326,19 +315,12 @@ describe('Phase 5: Migration Service', () => {
     });
 
     it('should query migration_conflicts by migration_job_id', async () => {
-      const { listMigrationConflicts } = await import('../../src/services/migration-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [],
-        rowCount: 0,
-      });
 
       await listMigrationConflicts('job-uuid-123');
 
-      expect(db.query).toHaveBeenCalledOnce();
-      const callArgs = vi.mocked(db.query).mock.calls[0];
-      expect(callArgs[1]).toEqual(['job-uuid-123']);
+      const calls = stub.calls(migrationConflicts).select;
+      expect(calls).toHaveLength(1);
+      expect(calls[0]?.params).toEqual(['job-uuid-123']);
     });
   });
 
@@ -348,8 +330,6 @@ describe('Phase 5: Migration Service', () => {
 
   describe('findAffectedDocuments', () => {
     it('should return paginated documents with snapshots', async () => {
-      const { findAffectedDocuments } = await import('../../src/services/migration-service');
-      const db = await import('../../src/db');
 
       const mockDocRows = [
         {
@@ -362,10 +342,7 @@ describe('Phase 5: Migration Service', () => {
         },
       ];
 
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: mockDocRows,
-        rowCount: 2,
-      });
+      stub.on(documents).select.returnsRaw(mockDocRows);
 
       const result = await findAffectedDocuments(
         'site-uuid-456',
@@ -384,13 +361,6 @@ describe('Phase 5: Migration Service', () => {
     });
 
     it('should filter documents by template_id and version < toVersion', async () => {
-      const { findAffectedDocuments } = await import('../../src/services/migration-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [],
-        rowCount: 0,
-      });
 
       await findAffectedDocuments(
         'site-uuid-456',
@@ -401,26 +371,18 @@ describe('Phase 5: Migration Service', () => {
         0,
       );
 
-      expect(db.query).toHaveBeenCalledOnce();
-      const callArgs = vi.mocked(db.query).mock.calls[0];
-      const sql = callArgs[0];
+      expect(stub.statements).toHaveLength(1);
+      const [listing] = stub.calls(documents).select;
       // Should filter by template_id and template_version < toVersion
-      expect(sql).toContain('template_id');
-      expect(sql).toContain('template_version');
+      expect(listing.sql).toContain('template_id');
+      expect(listing.sql).toContain('template_version');
       // Parameters should include branchId, templateId, toVersion, limit, offset
-      expect(callArgs[1]).toEqual(
+      expect(listing.params).toEqual(
         expect.arrayContaining(['branch-uuid-789', 'template-uuid-001']),
       );
     });
 
     it('should apply LIMIT and OFFSET for pagination', async () => {
-      const { findAffectedDocuments } = await import('../../src/services/migration-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [],
-        rowCount: 0,
-      });
 
       await findAffectedDocuments(
         'site-uuid-456',
@@ -431,25 +393,16 @@ describe('Phase 5: Migration Service', () => {
         100,
       );
 
-      expect(db.query).toHaveBeenCalledOnce();
-      const callArgs = vi.mocked(db.query).mock.calls[0];
-      const sql = callArgs[0];
-      expect(sql.toUpperCase()).toContain('LIMIT');
-      expect(sql.toUpperCase()).toContain('OFFSET');
+      expect(stub.statements).toHaveLength(1);
+      const [listing] = stub.calls(documents).select;
+      expect(listing.sql.toUpperCase()).toContain('LIMIT');
+      expect(listing.sql.toUpperCase()).toContain('OFFSET');
       // limit and offset should be in the parameters
-      const params = callArgs[1]!;
-      expect(params).toContain(50);
-      expect(params).toContain(100);
+      expect(listing.params).toContain(50);
+      expect(listing.params).toContain(100);
     });
 
     it('should return empty array when no documents are affected', async () => {
-      const { findAffectedDocuments } = await import('../../src/services/migration-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [],
-        rowCount: 0,
-      });
 
       const result = await findAffectedDocuments(
         'site-uuid-456',
@@ -464,8 +417,6 @@ describe('Phase 5: Migration Service', () => {
     });
 
     it('should include latest document version snapshot via JOIN', async () => {
-      const { findAffectedDocuments } = await import('../../src/services/migration-service');
-      const db = await import('../../src/db');
 
       const mockDocRows = [
         {
@@ -474,10 +425,7 @@ describe('Phase 5: Migration Service', () => {
         },
       ];
 
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: mockDocRows,
-        rowCount: 1,
-      });
+      stub.on(documents).select.returnsRaw(mockDocRows);
 
       const result = await findAffectedDocuments(
         'site-uuid-456',
@@ -502,8 +450,6 @@ describe('Phase 5: Migration Service', () => {
 
   describe('triggerMigration', () => {
     it('should validate fromVersion < toVersion', async () => {
-      const { triggerMigration } = await import('../../src/services/migration-service');
-      const { InvalidVersionRangeError } = await import('../../src/services/errors');
 
       await expect(
         triggerMigration(
@@ -518,8 +464,6 @@ describe('Phase 5: Migration Service', () => {
     });
 
     it('should throw InvalidVersionRangeError when fromVersion equals toVersion', async () => {
-      const { triggerMigration } = await import('../../src/services/migration-service');
-      const { InvalidVersionRangeError } = await import('../../src/services/errors');
 
       await expect(
         triggerMigration(
@@ -534,16 +478,8 @@ describe('Phase 5: Migration Service', () => {
     });
 
     it('should verify template exists and throw TemplateNotFoundError if missing', async () => {
-      const { triggerMigration } = await import('../../src/services/migration-service');
-      const { TemplateNotFoundError } = await import('../../src/services/errors');
-      const db = await import('../../src/db');
 
       // Template lookup returns no rows
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [],
-        rowCount: 0,
-      });
-
       await expect(
         triggerMigration(
           'site-uuid-456',
@@ -557,21 +493,11 @@ describe('Phase 5: Migration Service', () => {
     });
 
     it('should create pre_migration checkpoint', async () => {
-      const { triggerMigration } = await import('../../src/services/migration-service');
-      const db = await import('../../src/db');
-      const { createCheckpoint } = await import('../../src/services/checkpoint-service');
 
-      // Template exists
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [{ id: 'template-uuid-001' }],
-        rowCount: 1,
-      });
-
-      // Count affected documents
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [{ count: '5' }],
-        rowCount: 1,
-      });
+      // Template exists, and five documents are bound to it. Both read the
+      // documents table; the count is told apart by what it asks for.
+      stub.on(documents).select.whenAsking(/COUNT/).returnsRaw([{ count: '5' }]);
+      stub.on(documents).select.returnsRaw([{ id: 'template-uuid-001' }]);
 
       // Checkpoint creation
       vi.mocked(createCheckpoint).mockResolvedValueOnce({
@@ -591,10 +517,7 @@ describe('Phase 5: Migration Service', () => {
         checkpoint_id: 'checkpoint-uuid-999',
         total_documents: 5,
       });
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [mockJobRow],
-        rowCount: 1,
-      });
+      stub.on(migrationJobs).insert.returnsRaw([mockJobRow]);
 
       await triggerMigration(
         'site-uuid-456',
@@ -614,21 +537,12 @@ describe('Phase 5: Migration Service', () => {
     });
 
     it('should create migration_job record with checkpoint reference', async () => {
-      const { triggerMigration } = await import('../../src/services/migration-service');
-      const db = await import('../../src/db');
-      const { createCheckpoint } = await import('../../src/services/checkpoint-service');
 
-      // Template exists
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [{ id: 'template-uuid-001' }],
-        rowCount: 1,
-      });
-
-      // Count affected documents
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [{ count: '10' }],
-        rowCount: 1,
-      });
+      // Template exists, and the count says how many documents are bound
+      // to it. Both read the documents table; the count is told apart by
+      // what it asks for.
+      stub.on(documents).select.whenAsking(/COUNT/).returnsRaw([{ count: '10' }]);
+      stub.on(documents).select.returnsRaw([{ id: 'template-uuid-001' }]);
 
       // Checkpoint
       vi.mocked(createCheckpoint).mockResolvedValueOnce({
@@ -648,10 +562,7 @@ describe('Phase 5: Migration Service', () => {
         checkpoint_id: 'checkpoint-uuid-999',
         total_documents: 10,
       });
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [mockJobRow],
-        rowCount: 1,
-      });
+      stub.on(migrationJobs).insert.returnsRaw([mockJobRow]);
 
       const result = await triggerMigration(
         'site-uuid-456',
@@ -667,21 +578,12 @@ describe('Phase 5: Migration Service', () => {
     });
 
     it('should count total affected documents', async () => {
-      const { triggerMigration } = await import('../../src/services/migration-service');
-      const db = await import('../../src/db');
-      const { createCheckpoint } = await import('../../src/services/checkpoint-service');
 
-      // Template exists
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [{ id: 'template-uuid-001' }],
-        rowCount: 1,
-      });
-
-      // Count affected documents returns 15
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [{ count: '15' }],
-        rowCount: 1,
-      });
+      // Template exists, and the count says how many documents are bound
+      // to it. Both read the documents table; the count is told apart by
+      // what it asks for.
+      stub.on(documents).select.whenAsking(/COUNT/).returnsRaw([{ count: '15' }]);
+      stub.on(documents).select.returnsRaw([{ id: 'template-uuid-001' }]);
 
       // Checkpoint
       vi.mocked(createCheckpoint).mockResolvedValueOnce({
@@ -698,10 +600,7 @@ describe('Phase 5: Migration Service', () => {
 
       // Insert migration job
       const mockJobRow = createMockMigrationJob({ total_documents: 15 });
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [mockJobRow],
-        rowCount: 1,
-      });
+      stub.on(migrationJobs).insert.returnsRaw([mockJobRow]);
 
       const result = await triggerMigration(
         'site-uuid-456',
@@ -716,21 +615,12 @@ describe('Phase 5: Migration Service', () => {
     });
 
     it('should return the created migration job', async () => {
-      const { triggerMigration } = await import('../../src/services/migration-service');
-      const db = await import('../../src/db');
-      const { createCheckpoint } = await import('../../src/services/checkpoint-service');
 
-      // Template exists
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [{ id: 'template-uuid-001' }],
-        rowCount: 1,
-      });
-
-      // Count affected documents
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [{ count: '3' }],
-        rowCount: 1,
-      });
+      // Template exists, and the count says how many documents are bound
+      // to it. Both read the documents table; the count is told apart by
+      // what it asks for.
+      stub.on(documents).select.whenAsking(/COUNT/).returnsRaw([{ count: '3' }]);
+      stub.on(documents).select.returnsRaw([{ id: 'template-uuid-001' }]);
 
       // Checkpoint
       vi.mocked(createCheckpoint).mockResolvedValueOnce({
@@ -751,10 +641,7 @@ describe('Phase 5: Migration Service', () => {
         from_version: 1,
         to_version: 2,
       });
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [mockJobRow],
-        rowCount: 1,
-      });
+      stub.on(migrationJobs).insert.returnsRaw([mockJobRow]);
 
       const result = await triggerMigration(
         'site-uuid-456',
@@ -782,35 +669,20 @@ describe('Phase 5: Migration Service', () => {
 
   describe('processMigration', () => {
     it('should process clean documents without conflicts', async () => {
-      const { processMigration } = await import('../../src/services/migration-service');
-      const db = await import('../../src/db');
-      const {
-        getLatestDocumentVersion,
-        createDocumentVersion,
-        reconstructVersionSnapshot,
-      } = await import('../../src/services/document-version-service');
 
       const mockJob = createMockMigrationJob({ total_documents: 1 });
       const docSnapshot = { content: [{ type: 'Hero', props: { id: 'Hero-a' } }], root: { props: {} }, zones: {} };
 
-      let docsServed = false;
-      vi.mocked(db.query).mockImplementation((sql: string) => {
-        if (sql.startsWith('SELECT') && sql.includes('app.migration_jobs')) {
-          return Promise.resolve({ rows: [mockJob], rowCount: 1 });
-        }
-        if (sql.includes('FROM app.documents')) {
-          if (docsServed) return Promise.resolve({ rows: [], rowCount: 0 });
-          docsServed = true;
-          return Promise.resolve({
-            rows: [{ ...createMockDocument({ id: 'doc-1', template_version: 1 }), snapshot: docSnapshot }],
-            rowCount: 1,
-          });
-        }
-        if (sql.includes("source = 'migration'")) {
-          return Promise.resolve({ rows: [{ version_number: 3 }], rowCount: 1 });
-        }
-        return Promise.resolve({ rows: [], rowCount: 1 });
-      });
+      stub.on(migrationJobs).select.returnsRaw([mockJob]);
+      stub.on(documentVersions).select.returnsRaw([{ versionNumber: 3 }]);
+      stub.on(migrationJobs).update.returnsRaw([{ id: 'job-uuid-123' }]);
+      stub.on(documents).select.returnsRaw([{ ...createMockDocument({ id: 'doc-1', template_version: 1 }), snapshot: docSnapshot }]);
+      // A migrated document stops matching the listing, which is what ends
+      // the paging loop; the notification is where that becomes true.
+      const migrated = (): Promise<void> => {
+        stub.on(documents).select.returnsRaw([]);
+        return Promise.resolve();
+      };
 
       // Template is unchanged across versions and the document is untouched since
       // its baseline, so the delta is empty and no slot conflicts.
@@ -831,16 +703,13 @@ describe('Phase 5: Migration Service', () => {
         createdAt: '2026-06-08T10:00:00.000Z',
       });
 
-      const result = await processMigration('job-uuid-123');
+      const result = await processMigration('job-uuid-123', migrated);
 
       expect(result.processedDocuments).toBeGreaterThanOrEqual(1);
       expect(result.conflictedDocuments).toBe(0);
     });
 
     it('routes a document to migration_conflicts when it and the template touched the same slot id', async () => {
-      const { processMigration } = await import('../../src/services/migration-service');
-      const db = await import('../../src/db');
-      const { reconstructVersionSnapshot } = await import('../../src/services/document-version-service');
 
       const mockJob = createMockMigrationJob({ total_documents: 1 });
       const templateFrom = { content: [{ type: 'Hero', props: { id: 'Hero-a' } }, { type: 'Body', props: { id: 'Body-b' } }], root: { props: {} }, zones: {} };
@@ -849,29 +718,12 @@ describe('Phase 5: Migration Service', () => {
       // Editor removed Hero-a, the same slot the template removed.
       const docCurrent = { content: [{ type: 'Body', props: { id: 'Body-b' } }], root: { props: {} }, zones: {} };
 
-      let docsServed = false;
-      let conflictInserted = false;
-      vi.mocked(db.query).mockImplementation((sql: string) => {
-        if (sql.startsWith('SELECT') && sql.includes('app.migration_jobs')) {
-          return Promise.resolve({ rows: [mockJob], rowCount: 1 });
-        }
-        if (sql.includes('FROM app.documents')) {
-          if (docsServed) return Promise.resolve({ rows: [], rowCount: 0 });
-          docsServed = true;
-          return Promise.resolve({
-            rows: [{ ...createMockDocument({ id: 'doc-conflicted', template_version: 1 }), snapshot: docCurrent }],
-            rowCount: 1,
-          });
-        }
-        if (sql.includes("source = 'migration'")) {
-          return Promise.resolve({ rows: [{ version_number: 3 }], rowCount: 1 });
-        }
-        if (sql.includes('INSERT INTO app.migration_conflicts')) {
-          conflictInserted = true;
-          return Promise.resolve({ rows: [], rowCount: 1 });
-        }
-        return Promise.resolve({ rows: [], rowCount: 1 });
-      });
+      stub.on(migrationJobs).select.returnsRaw([mockJob]);
+      stub.on(documentVersions).select.returnsRaw([{ versionNumber: 3 }]);
+      stub.on(migrationJobs).update.returnsRaw([{ id: 'job-uuid-123' }]);
+      // A conflicted document stays in the listing, so the run advances its
+      // offset past this page and the next read comes back empty.
+      stub.on(documents).select.whenBound([0]).returnsRaw([{ ...createMockDocument({ id: 'doc-conflicted', template_version: 1 }), snapshot: docCurrent }]);
 
       vi.mocked(reconstructVersionSnapshot).mockImplementation((id: string, _branch: string, version: number) => {
         if (id === 'template-uuid-001') return Promise.resolve(version === 1 ? templateFrom : templateTo);
@@ -881,39 +733,24 @@ describe('Phase 5: Migration Service', () => {
       const result = await processMigration('job-uuid-123');
 
       expect(result.conflictedDocuments).toBeGreaterThanOrEqual(1);
-      expect(conflictInserted).toBe(true);
+      expect(stub.calls(migrationConflicts).insert).not.toEqual([]);
     });
 
     it('should update processed_documents counter incrementally', async () => {
-      const { processMigration } = await import('../../src/services/migration-service');
-      const db = await import('../../src/db');
-      const {
-        getLatestDocumentVersion,
-        createDocumentVersion,
-        reconstructVersionSnapshot,
-      } = await import('../../src/services/document-version-service');
 
       const mockJob = createMockMigrationJob({ total_documents: 1 });
       const docSnapshot = { content: [], root: { props: {} }, zones: {} };
 
-      let docsServed = false;
-      vi.mocked(db.query).mockImplementation((sql: string) => {
-        if (sql.startsWith('SELECT') && sql.includes('app.migration_jobs')) {
-          return Promise.resolve({ rows: [mockJob], rowCount: 1 });
-        }
-        if (sql.includes('FROM app.documents')) {
-          if (docsServed) return Promise.resolve({ rows: [], rowCount: 0 });
-          docsServed = true;
-          return Promise.resolve({
-            rows: [{ ...createMockDocument({ id: 'doc-1', template_version: 1 }), snapshot: docSnapshot }],
-            rowCount: 1,
-          });
-        }
-        if (sql.includes("source = 'migration'")) {
-          return Promise.resolve({ rows: [{ version_number: 3 }], rowCount: 1 });
-        }
-        return Promise.resolve({ rows: [], rowCount: 1 });
-      });
+      stub.on(migrationJobs).select.returnsRaw([mockJob]);
+      stub.on(documentVersions).select.returnsRaw([{ versionNumber: 3 }]);
+      stub.on(migrationJobs).update.returnsRaw([{ id: 'job-uuid-123' }]);
+      stub.on(documents).select.returnsRaw([{ ...createMockDocument({ id: 'doc-1', template_version: 1 }), snapshot: docSnapshot }]);
+      // A migrated document stops matching the listing, which is what ends
+      // the paging loop; the notification is where that becomes true.
+      const migrated = (): Promise<void> => {
+        stub.on(documents).select.returnsRaw([]);
+        return Promise.resolve();
+      };
 
       vi.mocked(reconstructVersionSnapshot).mockResolvedValue(docSnapshot);
       vi.mocked(getLatestDocumentVersion).mockResolvedValueOnce({
@@ -927,148 +764,79 @@ describe('Phase 5: Migration Service', () => {
         createdAt: '2026-06-08T10:00:00.000Z',
       });
 
-      await processMigration('job-uuid-123');
+      await processMigration('job-uuid-123', migrated);
 
-      const allCalls = vi.mocked(db.query).mock.calls;
-      const progressUpdateCall = allCalls.find(
-        (call) => {
-          const sql = (call[0]).toUpperCase();
-          return sql.includes('PROCESSED_DOCUMENTS') && sql.includes('UPDATE');
-        },
+      const progressUpdate = stub.calls(migrationJobs).update.find(
+        (call) => call.sql.toLowerCase().includes('processed_documents'),
       );
-      expect(progressUpdateCall).toBeDefined();
+      expect(progressUpdate).toBeDefined();
     });
 
     it('should mark job completed when all documents processed', async () => {
-      const { processMigration } = await import('../../src/services/migration-service');
-      const db = await import('../../src/db');
 
       const mockJob = createMockMigrationJob({ total_documents: 0 });
 
-      // getMigrationJob
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [mockJob],
-        rowCount: 1,
-      });
-
-      // Update status to 'in_progress'
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [], rowCount: 1 });
-
-      // findAffectedDocuments: empty (no documents to process)
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [], rowCount: 0 });
-
-      // Mark completed
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [], rowCount: 1 });
+      stub.on(migrationJobs).select.returnsRaw([mockJob]);
+      stub.on(documentVersions).select.returnsRaw([{ versionNumber: 3 }]);
+      stub.on(migrationJobs).update.returnsRaw([{ id: 'job-uuid-123' }]);
 
       const result = await processMigration('job-uuid-123');
 
-      const allCalls = vi.mocked(db.query).mock.calls;
-      const completedCall = allCalls.find(
-        (call) => {
-          const sql = (call[0]).toLowerCase();
-          return sql.includes('completed') && sql.includes('update') && sql.includes('migration_jobs');
-        },
+      const completed = stub.calls(migrationJobs).update.find(
+        (call) => call.params.includes('completed'),
       );
-      expect(completedCall).toBeDefined();
+      expect(completed).toBeDefined();
       expect(result.processedDocuments).toBe(0);
       expect(result.conflictedDocuments).toBe(0);
     });
 
     it('should process in batches of 50 documents', async () => {
-      const { processMigration } = await import('../../src/services/migration-service');
-      const db = await import('../../src/db');
 
       const mockJob = createMockMigrationJob({ total_documents: 0 });
 
-      // getMigrationJob
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [mockJob],
-        rowCount: 1,
-      });
-
-      // Update status to 'in_progress'
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [], rowCount: 1 });
-
-      // findAffectedDocuments: empty batch
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [], rowCount: 0 });
-
-      // Mark completed
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [], rowCount: 1 });
+      stub.on(migrationJobs).select.returnsRaw([mockJob]);
+      stub.on(documentVersions).select.returnsRaw([{ versionNumber: 3 }]);
+      stub.on(migrationJobs).update.returnsRaw([{ id: 'job-uuid-123' }]);
 
       await processMigration('job-uuid-123');
 
-      const allCalls = vi.mocked(db.query).mock.calls;
-      const findDocsCall = allCalls.find(
-        (call) => {
-          const sql = (call[0]).toUpperCase();
-          return sql.includes('LIMIT') && sql.includes('TEMPLATE_ID');
-        },
+      const listing = stub.calls(documents).select.find(
+        (call) => call.sql.toUpperCase().includes('LIMIT'),
       );
-      if (findDocsCall) {
-        const params = findDocsCall[1]!;
-        expect(params).toContain(50);
-      }
+      expect(listing?.params).toContain(50);
     });
 
     it('should set job status to in_progress before processing', async () => {
-      const { processMigration } = await import('../../src/services/migration-service');
-      const db = await import('../../src/db');
 
       const mockJob = createMockMigrationJob({ total_documents: 0 });
 
-      // getMigrationJob
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [mockJob],
-        rowCount: 1,
-      });
-
-      // Update status to 'in_progress'
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [], rowCount: 1 });
-
-      // findAffectedDocuments: empty
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [], rowCount: 0 });
-
-      // Mark completed
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [], rowCount: 1 });
+      stub.on(migrationJobs).select.returnsRaw([mockJob]);
+      stub.on(documentVersions).select.returnsRaw([{ versionNumber: 3 }]);
+      stub.on(migrationJobs).update.returnsRaw([{ id: 'job-uuid-123' }]);
 
       await processMigration('job-uuid-123');
 
-      const secondCall = vi.mocked(db.query).mock.calls[1];
-      const sql = (secondCall[0]).toLowerCase();
-      expect(sql).toContain('update');
-      expect(sql).toContain('in_progress');
+      const claim = stub.calls(migrationJobs).update.find(
+        (call) => call.params.includes('in_progress'),
+      );
+      expect(claim).toBeDefined();
     });
 
     it('reconstructs the baseline snapshot when the latest document version stores no snapshot', async () => {
-      const { processMigration } = await import('../../src/services/migration-service');
-      const db = await import('../../src/db');
-      const {
-        getLatestDocumentVersion,
-        createDocumentVersion,
-        reconstructVersionSnapshot,
-      } = await import('../../src/services/document-version-service');
 
       const mockJob = createMockMigrationJob({ total_documents: 1 });
       const docSnapshot = { content: [{ type: 'Hero', props: { id: 'Hero-a' } }, { type: 'Body', props: { id: 'Body-b' } }], root: { props: {} }, zones: {} };
 
-      let docsServed = false;
-      vi.mocked(db.query).mockImplementation((sql: string) => {
-        if (sql.startsWith('SELECT') && sql.includes('app.migration_jobs')) {
-          return Promise.resolve({ rows: [mockJob], rowCount: 1 });
-        }
-        if (sql.includes('FROM app.documents')) {
-          if (docsServed) return Promise.resolve({ rows: [], rowCount: 0 });
-          docsServed = true;
-          return Promise.resolve({
-            rows: [{ ...createMockDocument({ id: 'doc-crdt', template_version: 1 }), snapshot: docSnapshot }],
-            rowCount: 1,
-          });
-        }
-        if (sql.includes("source = 'migration'")) {
-          return Promise.resolve({ rows: [{ version_number: 3 }], rowCount: 1 });
-        }
-        return Promise.resolve({ rows: [], rowCount: 1 });
-      });
+      stub.on(migrationJobs).select.returnsRaw([mockJob]);
+      stub.on(documentVersions).select.returnsRaw([{ versionNumber: 3 }]);
+      stub.on(migrationJobs).update.returnsRaw([{ id: 'job-uuid-123' }]);
+      stub.on(documents).select.returnsRaw([{ ...createMockDocument({ id: 'doc-crdt', template_version: 1 }), snapshot: docSnapshot }]);
+      // A migrated document stops matching the listing, which is what ends
+      // the paging loop; the notification is where that becomes true.
+      const migrated = (): Promise<void> => {
+        stub.on(documents).select.returnsRaw([]);
+        return Promise.resolve();
+      };
 
       vi.mocked(reconstructVersionSnapshot).mockImplementation((id: string) =>
         Promise.resolve(id === 'template-uuid-001'
@@ -1089,7 +857,7 @@ describe('Phase 5: Migration Service', () => {
         createdById: 'user-uuid-001', createdByType: 'user', createdAt: '2026-06-18T10:01:00.000Z',
       });
 
-      const result = await processMigration('job-uuid-123');
+      const result = await processMigration('job-uuid-123', migrated);
 
       expect(result.processedDocuments).toBe(1);
       expect(result.conflictedDocuments).toBe(0);
@@ -1100,38 +868,15 @@ describe('Phase 5: Migration Service', () => {
     });
 
     it('should record conflict when document snapshot cannot be reconstructed', async () => {
-      const { processMigration } = await import('../../src/services/migration-service');
-      const db = await import('../../src/db');
-      const {
-        getLatestDocumentVersion,
-        reconstructVersionSnapshot,
-      } = await import('../../src/services/document-version-service');
 
       const mockJob = createMockMigrationJob({ total_documents: 1 });
 
-      let docsServed = false;
-      let conflictInserted = false;
-      vi.mocked(db.query).mockImplementation((sql: string) => {
-        if (sql.startsWith('SELECT') && sql.includes('app.migration_jobs')) {
-          return Promise.resolve({ rows: [mockJob], rowCount: 1 });
-        }
-        if (sql.includes('FROM app.documents')) {
-          if (docsServed) return Promise.resolve({ rows: [], rowCount: 0 });
-          docsServed = true;
-          return Promise.resolve({
-            rows: [{ ...createMockDocument({ id: 'doc-broken', template_version: 1 }), snapshot: null }],
-            rowCount: 1,
-          });
-        }
-        if (sql.includes("source = 'migration'")) {
-          return Promise.resolve({ rows: [{ version_number: 3 }], rowCount: 1 });
-        }
-        if (sql.includes('INSERT INTO app.migration_conflicts')) {
-          conflictInserted = true;
-          return Promise.resolve({ rows: [], rowCount: 1 });
-        }
-        return Promise.resolve({ rows: [], rowCount: 1 });
-      });
+      stub.on(migrationJobs).select.returnsRaw([mockJob]);
+      stub.on(documentVersions).select.returnsRaw([{ versionNumber: 3 }]);
+      stub.on(migrationJobs).update.returnsRaw([{ id: 'job-uuid-123' }]);
+      // A conflicted document stays in the listing, so the run advances its
+      // offset past this page and the next read comes back empty.
+      stub.on(documents).select.whenBound([0]).returnsRaw([{ ...createMockDocument({ id: 'doc-broken', template_version: 1 }), snapshot: null }]);
 
       // Every reconstruction returns null: the baseline diff sees no document
       // change (clean) but applyDeltaToDocument then fails and the doc is recorded.
@@ -1147,7 +892,7 @@ describe('Phase 5: Migration Service', () => {
 
       expect(result.processedDocuments).toBe(1);
       expect(result.conflictedDocuments).toBe(1);
-      expect(conflictInserted).toBe(true);
+      expect(stub.calls(migrationConflicts).insert).not.toEqual([]);
     });
   });
 
@@ -1157,9 +902,6 @@ describe('Phase 5: Migration Service', () => {
 
   describe('rollbackMigration', () => {
     it('should revert using checkpoint when checkpoint_id exists', async () => {
-      const { rollbackMigration } = await import('../../src/services/migration-service');
-      const db = await import('../../src/db');
-      const { revertToCheckpoint } = await import('../../src/services/checkpoint-service');
 
       const mockJob = createMockMigrationJob({
         checkpoint_id: 'checkpoint-uuid-999',
@@ -1167,11 +909,8 @@ describe('Phase 5: Migration Service', () => {
         total_documents: 5,
       });
 
-      // getMigrationJob
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [mockJob],
-        rowCount: 1,
-      });
+      stub.on(migrationJobs).select.returnsRaw([mockJob]);
+      stub.on(documentVersions).select.returnsRaw([{ versionNumber: 3 }]);
 
       // revertToCheckpoint
       vi.mocked(revertToCheckpoint).mockResolvedValueOnce({
@@ -1187,11 +926,7 @@ describe('Phase 5: Migration Service', () => {
       });
 
       // Reset template_version on affected docs
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [], rowCount: 5 });
-
       // Mark job as 'failed'
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [], rowCount: 1 });
-
       const result = await rollbackMigration(
         'job-uuid-123',
         { id: 'user-uuid-001', type: 'user' },
@@ -1206,14 +941,6 @@ describe('Phase 5: Migration Service', () => {
     });
 
     it('should throw MigrationJobNotFoundError when job does not exist', async () => {
-      const { rollbackMigration } = await import('../../src/services/migration-service');
-      const { MigrationJobNotFoundError } = await import('../../src/services/errors');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [],
-        rowCount: 0,
-      });
 
       await expect(
         rollbackMigration(
@@ -1224,9 +951,6 @@ describe('Phase 5: Migration Service', () => {
     });
 
     it('should restore the synced template version on affected documents', async () => {
-      const { rollbackMigration } = await import('../../src/services/migration-service');
-      const db = await import('../../src/db');
-      const { revertToCheckpoint } = await import('../../src/services/checkpoint-service');
 
       const mockJob = createMockMigrationJob({
         checkpoint_id: 'checkpoint-uuid-999',
@@ -1234,11 +958,8 @@ describe('Phase 5: Migration Service', () => {
         to_version: 2,
       });
 
-      // getMigrationJob
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [mockJob],
-        rowCount: 1,
-      });
+      stub.on(migrationJobs).select.returnsRaw([mockJob]);
+      stub.on(documentVersions).select.returnsRaw([{ versionNumber: 3 }]);
 
       // revertToCheckpoint
       vi.mocked(revertToCheckpoint).mockResolvedValueOnce({
@@ -1253,42 +974,29 @@ describe('Phase 5: Migration Service', () => {
         documentsReverted: 3,
       });
 
-      // Reset template_version
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [], rowCount: 3 });
-
-      // Mark job as 'failed'
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [], rowCount: 1 });
-
       await rollbackMigration(
         'job-uuid-123',
         { id: 'user-uuid-001', type: 'user' },
       );
 
       // Verify synced_version was reset on the template edges
-      const allCalls = vi.mocked(db.query).mock.calls;
-      const resetCall = allCalls.find(
-        (call) => {
-          const sql = (call[0]).toLowerCase();
-          return sql.includes('synced_version') && sql.includes('update') && sql.includes('document_relations');
-        },
-      );
-      expect(resetCall).toBeDefined();
+      const resetStatement = stub.statements.find(({ sql }) => {
+        const text = sql.toLowerCase();
+        return text.includes('synced_version')
+          && text.includes('update')
+          && text.includes('document_relations');
+      });
+      expect(resetStatement).toBeDefined();
     });
 
     it('should mark job as failed', async () => {
-      const { rollbackMigration } = await import('../../src/services/migration-service');
-      const db = await import('../../src/db');
-      const { revertToCheckpoint } = await import('../../src/services/checkpoint-service');
 
       const mockJob = createMockMigrationJob({
         checkpoint_id: 'checkpoint-uuid-999',
       });
 
-      // getMigrationJob
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [mockJob],
-        rowCount: 1,
-      });
+      stub.on(migrationJobs).select.returnsRaw([mockJob]);
+      stub.on(documentVersions).select.returnsRaw([{ versionNumber: 3 }]);
 
       // revertToCheckpoint
       vi.mocked(revertToCheckpoint).mockResolvedValueOnce({
@@ -1303,32 +1011,17 @@ describe('Phase 5: Migration Service', () => {
         documentsReverted: 2,
       });
 
-      // Reset template_version
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [], rowCount: 2 });
-
-      // Mark job as 'failed'
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [], rowCount: 1 });
-
       await rollbackMigration(
         'job-uuid-123',
         { id: 'user-uuid-001', type: 'user' },
       );
 
       // Verify job was marked as 'failed'
-      const allCalls = vi.mocked(db.query).mock.calls;
-      const failedCall = allCalls.find(
-        (call) => {
-          const sql = (call[0]).toLowerCase();
-          return sql.includes('failed') && sql.includes('migration_jobs');
-        },
-      );
-      expect(failedCall).toBeDefined();
+      const [failedUpdate] = stub.calls(migrationJobs).update;
+      expect(failedUpdate?.params).toContain('failed');
     });
 
     it('should handle rollback when no checkpoint exists (legacy path)', async () => {
-      const { rollbackMigration } = await import('../../src/services/migration-service');
-      const db = await import('../../src/db');
-      const { revertToCheckpoint } = await import('../../src/services/checkpoint-service');
 
       const mockJob = createMockMigrationJob({
         checkpoint_id: null,
@@ -1336,21 +1029,12 @@ describe('Phase 5: Migration Service', () => {
         to_version: 2,
       });
 
-      // getMigrationJob
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [mockJob],
-        rowCount: 1,
-      });
+      stub.on(migrationJobs).select.returnsRaw([mockJob]);
+      stub.on(documentVersions).select.returnsRaw([{ versionNumber: 3 }]);
 
       // Delete migration versions (legacy path)
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [], rowCount: 3 });
-
       // Reset template_version on affected docs
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [], rowCount: 3 });
-
       // Mark job as 'failed'
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [], rowCount: 1 });
-
       await rollbackMigration(
         'job-uuid-123',
         { id: 'user-uuid-001', type: 'user' },
@@ -1367,16 +1051,11 @@ describe('Phase 5: Migration Service', () => {
 
   describe('resolveMigrationConflict', () => {
     it('should apply delta when resolution is "apply"', async () => {
-      const { resolveMigrationConflict } = await import('../../src/services/migration-service');
-      const db = await import('../../src/db');
-      const { getLatestDocumentVersion, createDocumentVersion } = await import('../../src/services/document-version-service');
-      const { validateDocumentStructure } = await import('@pantheon-systems/p1-content-validator');
 
       const conflictRow = createMockConflictRow();
 
       // Unlocked read to build the apply plan, then the locked re-read.
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [conflictRow], rowCount: 1 });
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [conflictRow], rowCount: 1 });
+      stub.on(migrationConflicts).select.returnsRaw([conflictRow]);
 
       // applyDeltaToDocument flow:
       vi.mocked(getLatestDocumentVersion).mockResolvedValueOnce({
@@ -1396,17 +1075,12 @@ describe('Phase 5: Migration Service', () => {
       });
 
       // Update documents.template_version
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [], rowCount: 1 });
-
       // Update conflict: set resolution='apply', resolved_at
       const resolvedConflict = createMockConflictRow({
         resolution: 'apply',
         resolved_at: '2026-06-08T12:00:00.000Z',
       });
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [resolvedConflict],
-        rowCount: 1,
-      });
+      stub.on(migrationConflicts).update.returnsRaw([resolvedConflict]);
 
       const result = await resolveMigrationConflict(
         'conflict-uuid-001',
@@ -1419,27 +1093,17 @@ describe('Phase 5: Migration Service', () => {
     });
 
     it('should record resolution only when strategy is "skip"', async () => {
-      const { resolveMigrationConflict } = await import('../../src/services/migration-service');
-      const db = await import('../../src/db');
-      const { createDocumentVersion } = await import('../../src/services/document-version-service');
 
       const conflictRow = createMockConflictRow();
 
-      // Load conflict by ID
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [conflictRow],
-        rowCount: 1,
-      });
+      stub.on(migrationConflicts).select.returnsRaw([conflictRow]);
 
       // Update conflict: set resolution='skip', resolved_at
       const resolvedConflict = createMockConflictRow({
         resolution: 'skip',
         resolved_at: '2026-06-08T12:00:00.000Z',
       });
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [resolvedConflict],
-        rowCount: 1,
-      });
+      stub.on(migrationConflicts).update.returnsRaw([resolvedConflict]);
 
       const result = await resolveMigrationConflict(
         'conflict-uuid-001',
@@ -1453,27 +1117,17 @@ describe('Phase 5: Migration Service', () => {
     });
 
     it('should record resolution only when strategy is "manual"', async () => {
-      const { resolveMigrationConflict } = await import('../../src/services/migration-service');
-      const db = await import('../../src/db');
-      const { createDocumentVersion } = await import('../../src/services/document-version-service');
 
       const conflictRow = createMockConflictRow();
 
-      // Load conflict by ID
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [conflictRow],
-        rowCount: 1,
-      });
+      stub.on(migrationConflicts).select.returnsRaw([conflictRow]);
 
       // Update conflict: set resolution='manual', resolved_at
       const resolvedConflict = createMockConflictRow({
         resolution: 'manual',
         resolved_at: '2026-06-08T12:00:00.000Z',
       });
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [resolvedConflict],
-        rowCount: 1,
-      });
+      stub.on(migrationConflicts).update.returnsRaw([resolvedConflict]);
 
       const result = await resolveMigrationConflict(
         'conflict-uuid-001',
@@ -1487,26 +1141,17 @@ describe('Phase 5: Migration Service', () => {
     });
 
     it('should update resolved_at timestamp on resolution', async () => {
-      const { resolveMigrationConflict } = await import('../../src/services/migration-service');
-      const db = await import('../../src/db');
 
       const conflictRow = createMockConflictRow();
 
-      // Load conflict
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [conflictRow],
-        rowCount: 1,
-      });
+      stub.on(migrationConflicts).select.returnsRaw([conflictRow]);
 
       // Update conflict with resolved_at
       const resolvedConflict = createMockConflictRow({
         resolution: 'skip',
         resolved_at: '2026-06-08T12:00:00.000Z',
       });
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [resolvedConflict],
-        rowCount: 1,
-      });
+      stub.on(migrationConflicts).update.returnsRaw([resolvedConflict]);
 
       const result = await resolveMigrationConflict(
         'conflict-uuid-001',
@@ -1517,21 +1162,13 @@ describe('Phase 5: Migration Service', () => {
       expect(result.resolvedAt).not.toBeNull();
 
       // Verify the update query sets resolved_at
-      const allCalls = vi.mocked(db.query).mock.calls;
-      const updateCall = allCalls.find(
-        (call) => {
-          const sql = (call[0]).toLowerCase();
-          return sql.includes('resolved_at') && sql.includes('update');
-        },
+      const updateCall = stub.calls(migrationConflicts).update.find(
+        (call) => call.sql.toLowerCase().includes('resolved_at'),
       );
       expect(updateCall).toBeDefined();
     });
 
     it('should update the synced template version on apply resolution', async () => {
-      const { resolveMigrationConflict } = await import('../../src/services/migration-service');
-      const db = await import('../../src/db');
-      const { getLatestDocumentVersion, createDocumentVersion } = await import('../../src/services/document-version-service');
-      const { validateDocumentStructure } = await import('@pantheon-systems/p1-content-validator');
 
       const conflictRow = createMockConflictRow({
         from_version: 1,
@@ -1539,8 +1176,7 @@ describe('Phase 5: Migration Service', () => {
       });
 
       // Unlocked read to build the apply plan, then the locked re-read.
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [conflictRow], rowCount: 1 });
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [conflictRow], rowCount: 1 });
+      stub.on(migrationConflicts).select.returnsRaw([conflictRow]);
 
       // applyDeltaToDocument flow
       vi.mocked(getLatestDocumentVersion).mockResolvedValueOnce({
@@ -1560,17 +1196,12 @@ describe('Phase 5: Migration Service', () => {
       });
 
       // Update the template edge's synced_version
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [], rowCount: 1 });
-
       // Update conflict record
       const resolvedConflict = createMockConflictRow({
         resolution: 'apply',
         resolved_at: '2026-06-08T12:00:00.000Z',
       });
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [resolvedConflict],
-        rowCount: 1,
-      });
+      stub.on(migrationConflicts).update.returnsRaw([resolvedConflict]);
 
       await resolveMigrationConflict(
         'conflict-uuid-001',
@@ -1579,12 +1210,8 @@ describe('Phase 5: Migration Service', () => {
       );
 
       // Verify the template edge's synced_version was updated
-      const allCalls = vi.mocked(db.query).mock.calls;
-      const templateVersionCall = allCalls.find(
-        (call) => {
-          const sql = (call[0]).toLowerCase();
-          return sql.includes('synced_version') && sql.includes('update') && sql.includes('document_relations');
-        },
+      const templateVersionCall = stub.calls(documentRelations).update.find(
+        (call) => call.sql.toLowerCase().includes('synced_version'),
       );
       expect(templateVersionCall).toBeDefined();
     });
@@ -1596,20 +1223,9 @@ describe('Phase 5: Migration Service', () => {
 
   describe('getMigrationStatus', () => {
     it('should return migration status with stale documents', async () => {
-      const { getMigrationStatus } = await import('../../src/services/migration-service');
-      const db = await import('../../src/db');
 
-      // Template version lookup returns version 5
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [{ version_number: 5 }],
-        rowCount: 1,
-      });
-
-      // Stale document count and oldest version
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [{ count: '12', oldest_version: 2 }],
-        rowCount: 1,
-      });
+      stub.on(documentVersions).select.returnsRaw([{ versionNumber: 5 }]);
+      stub.on(documents).select.returnsRaw([{ count: '12', oldest_version: 2 }]);
 
       const result = await getMigrationStatus('template-uuid-001', 'branch-uuid-789');
 
@@ -1621,20 +1237,9 @@ describe('Phase 5: Migration Service', () => {
     });
 
     it('should return migrationAvailable: false when no stale documents', async () => {
-      const { getMigrationStatus } = await import('../../src/services/migration-service');
-      const db = await import('../../src/db');
 
-      // Template version lookup returns version 3
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [{ version_number: 3 }],
-        rowCount: 1,
-      });
-
-      // No stale documents
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [{ count: '0', oldest_version: null }],
-        rowCount: 1,
-      });
+      stub.on(documentVersions).select.returnsRaw([{ versionNumber: 3 }]);
+      stub.on(documents).select.returnsRaw([{ count: '0', oldest_version: null }]);
 
       const result = await getMigrationStatus('template-uuid-001', 'branch-uuid-789');
 
@@ -1644,37 +1249,17 @@ describe('Phase 5: Migration Service', () => {
     });
 
     it('should throw TemplateNotFoundError when template does not exist', async () => {
-      const { getMigrationStatus } = await import('../../src/services/migration-service');
-      const { TemplateNotFoundError } = await import('../../src/services/errors');
-      const db = await import('../../src/db');
 
       // Template version lookup returns no rows
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [],
-        rowCount: 0,
-      });
-
       await expect(
         getMigrationStatus('nonexistent-template', 'branch-uuid-789'),
       ).rejects.toThrow(TemplateNotFoundError);
     });
 
     it('should handle documents with null template_version', async () => {
-      const { getMigrationStatus } = await import('../../src/services/migration-service');
-      const db = await import('../../src/db');
 
-      // Template version lookup returns version 1
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [{ version_number: 1 }],
-        rowCount: 1,
-      });
-
-      // Documents with null template_version are still counted as stale (null < 1)
-      // The SQL MIN(template_version) returns null when all values are null
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [{ count: '3', oldest_version: null }],
-        rowCount: 1,
-      });
+      stub.on(documentVersions).select.returnsRaw([{ versionNumber: 1 }]);
+      stub.on(documents).select.returnsRaw([{ count: '3', oldest_version: null }]);
 
       const result = await getMigrationStatus('template-uuid-001', 'branch-uuid-789');
 
@@ -1690,55 +1275,27 @@ describe('Phase 5: Migration Service', () => {
 
   describe('getMigrationStatus activeMigration', () => {
     it('should report activeMigration as null when there are no jobs', async () => {
-      const { getMigrationStatus } = await import('../../src/services/migration-service');
-      const db = await import('../../src/db');
 
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [{ version_number: 5 }],
-        rowCount: 1,
-      });
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [{ count: '2', oldest_version: 1 }],
-        rowCount: 1,
-      });
+      stub.on(documentVersions).select.returnsRaw([{ versionNumber: 5 }]);
+      stub.on(documents).select.returnsRaw([{ count: '2', oldest_version: 1 }]);
       // Latest job lookup: no jobs
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [],
-        rowCount: 0,
-      });
-
       const result = await getMigrationStatus('template-uuid-001', 'branch-uuid-789');
 
       expect(result.activeMigration).toBeNull();
     });
 
     it('should report progress when the latest job is running', async () => {
-      const { getMigrationStatus } = await import('../../src/services/migration-service');
-      const db = await import('../../src/db');
 
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [{ version_number: 5 }],
-        rowCount: 1,
-      });
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [{ count: '7', oldest_version: 2 }],
-        rowCount: 1,
-      });
+      stub.on(documentVersions).select.returnsRaw([{ versionNumber: 5 }]);
+      stub.on(documents).select.returnsRaw([{ count: '7', oldest_version: 2 }]);
       // Latest job lookup: in_progress
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [createMockMigrationJob({
-          id: 'job-uuid-running',
-          status: 'in_progress',
-          total_documents: 10,
-          processed_documents: 4,
-        })],
-        rowCount: 1,
-      });
-      // Unresolved conflict count
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [{ count: '0' }],
-        rowCount: 1,
-      });
+      stub.on(migrationJobs).select.returnsRaw([createMockMigrationJob({
+        id: 'job-uuid-running',
+        status: 'in_progress',
+        total_documents: 10,
+        processed_documents: 4,
+      })]);
+      stub.on(migrationConflicts).select.returnsRaw([{ value: 0 }]);
 
       const result = await getMigrationStatus('template-uuid-001', 'branch-uuid-789');
 
@@ -1752,30 +1309,16 @@ describe('Phase 5: Migration Service', () => {
     });
 
     it('should report progress when the latest job is pending', async () => {
-      const { getMigrationStatus } = await import('../../src/services/migration-service');
-      const db = await import('../../src/db');
 
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [{ version_number: 5 }],
-        rowCount: 1,
-      });
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [{ count: '7', oldest_version: 2 }],
-        rowCount: 1,
-      });
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [createMockMigrationJob({
-          id: 'job-uuid-pending',
-          status: 'pending',
-          total_documents: 10,
-          processed_documents: 0,
-        })],
-        rowCount: 1,
-      });
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [{ count: '0' }],
-        rowCount: 1,
-      });
+      stub.on(documentVersions).select.returnsRaw([{ versionNumber: 5 }]);
+      stub.on(documents).select.returnsRaw([{ count: '7', oldest_version: 2 }]);
+      stub.on(migrationJobs).select.returnsRaw([createMockMigrationJob({
+        id: 'job-uuid-pending',
+        status: 'pending',
+        total_documents: 10,
+        processed_documents: 0,
+      })]);
+      stub.on(migrationConflicts).select.returnsRaw([{ value: 0 }]);
 
       const result = await getMigrationStatus('template-uuid-001', 'branch-uuid-789');
 
@@ -1784,31 +1327,16 @@ describe('Phase 5: Migration Service', () => {
     });
 
     it('should surface a completed_with_conflicts job with unresolved conflicts', async () => {
-      const { getMigrationStatus } = await import('../../src/services/migration-service');
-      const db = await import('../../src/db');
 
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [{ version_number: 5 }],
-        rowCount: 1,
-      });
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [{ count: '3', oldest_version: 1 }],
-        rowCount: 1,
-      });
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [createMockMigrationJob({
-          id: 'job-uuid-conflicts',
-          status: 'completed_with_conflicts',
-          total_documents: 8,
-          processed_documents: 8,
-        })],
-        rowCount: 1,
-      });
-      // Two unresolved conflicts
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [{ count: '2' }],
-        rowCount: 1,
-      });
+      stub.on(documentVersions).select.returnsRaw([{ versionNumber: 5 }]);
+      stub.on(documents).select.returnsRaw([{ count: '3', oldest_version: 1 }]);
+      stub.on(migrationJobs).select.returnsRaw([createMockMigrationJob({
+        id: 'job-uuid-conflicts',
+        status: 'completed_with_conflicts',
+        total_documents: 8,
+        processed_documents: 8,
+      })]);
+      stub.on(migrationConflicts).select.returnsRaw([{ value: 2 }]);
 
       const result = await getMigrationStatus('template-uuid-001', 'branch-uuid-789');
 
@@ -1822,30 +1350,16 @@ describe('Phase 5: Migration Service', () => {
     });
 
     it('should report activeMigration as null when the latest job is cleanly completed', async () => {
-      const { getMigrationStatus } = await import('../../src/services/migration-service');
-      const db = await import('../../src/db');
 
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [{ version_number: 5 }],
-        rowCount: 1,
-      });
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [{ count: '0', oldest_version: null }],
-        rowCount: 1,
-      });
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [createMockMigrationJob({
-          id: 'job-uuid-done',
-          status: 'completed',
-          total_documents: 6,
-          processed_documents: 6,
-        })],
-        rowCount: 1,
-      });
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [{ count: '0' }],
-        rowCount: 1,
-      });
+      stub.on(documentVersions).select.returnsRaw([{ versionNumber: 5 }]);
+      stub.on(documents).select.returnsRaw([{ count: '0', oldest_version: null }]);
+      stub.on(migrationJobs).select.returnsRaw([createMockMigrationJob({
+        id: 'job-uuid-done',
+        status: 'completed',
+        total_documents: 6,
+        processed_documents: 6,
+      })]);
+      stub.on(migrationConflicts).select.returnsRaw([{ value: 0 }]);
 
       const result = await getMigrationStatus('template-uuid-001', 'branch-uuid-789');
 
@@ -1853,31 +1367,16 @@ describe('Phase 5: Migration Service', () => {
     });
 
     it('should report activeMigration as null when a completed_with_conflicts job has all conflicts resolved', async () => {
-      const { getMigrationStatus } = await import('../../src/services/migration-service');
-      const db = await import('../../src/db');
 
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [{ version_number: 5 }],
-        rowCount: 1,
-      });
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [{ count: '0', oldest_version: null }],
-        rowCount: 1,
-      });
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [createMockMigrationJob({
-          id: 'job-uuid-resolved',
-          status: 'completed_with_conflicts',
-          total_documents: 4,
-          processed_documents: 4,
-        })],
-        rowCount: 1,
-      });
-      // All conflicts resolved
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [{ count: '0' }],
-        rowCount: 1,
-      });
+      stub.on(documentVersions).select.returnsRaw([{ versionNumber: 5 }]);
+      stub.on(documents).select.returnsRaw([{ count: '0', oldest_version: null }]);
+      stub.on(migrationJobs).select.returnsRaw([createMockMigrationJob({
+        id: 'job-uuid-resolved',
+        status: 'completed_with_conflicts',
+        total_documents: 4,
+        processed_documents: 4,
+      })]);
+      stub.on(migrationConflicts).select.returnsRaw([{ value: 0 }]);
 
       const result = await getMigrationStatus('template-uuid-001', 'branch-uuid-789');
 
@@ -1891,9 +1390,8 @@ describe('Phase 5: Migration Service', () => {
 
   describe('previewMigration', () => {
     it('should return summary preview with affected docs and conflicts', async () => {
-      const { previewMigration } = await import('../../src/services/migration-service');
-      const db = await import('../../src/db');
-      const { reconstructVersionSnapshot } = await import('../../src/services/document-version-service');
+      // previewMigration checks the template exists through the Drizzle handle.
+      stub.on(documents).select.returnsRaw([{ id: 'template-uuid-001' }]);
 
       const templateFrom = { content: [{ type: 'Hero', props: { id: 'Hero-a' } }, { type: 'Body', props: { id: 'Body-b' } }], root: { props: {} }, zones: {} };
       const templateTo = { content: [{ type: 'Body', props: { id: 'Body-b' } }], root: { props: {} }, zones: {} };
@@ -1901,28 +1399,14 @@ describe('Phase 5: Migration Service', () => {
       const unchangedDoc = { content: [{ type: 'Hero', props: { id: 'Hero-a' } }, { type: 'Body', props: { id: 'Body-b' } }], root: { props: {} }, zones: {} };
       const divergedDoc = { content: [{ type: 'Body', props: { id: 'Body-b' } }], root: { props: {} }, zones: {} };
 
-      let docsServed = false;
-      vi.mocked(db.query).mockImplementation((sql: string) => {
-        if (sql.includes('FROM app.documents') && sql.includes('LIMIT')) {
-          if (docsServed) return Promise.resolve({ rows: [], rowCount: 0 });
-          docsServed = true;
-          return Promise.resolve({
-            rows: [
-              { ...createMockDocument({ id: 'doc-1', path: '/blog/post-1', template_version: 2 }), snapshot: unchangedDoc },
-              { ...createMockDocument({ id: 'doc-2', path: '/blog/post-2', template_version: 3 }), snapshot: divergedDoc },
-              { ...createMockDocument({ id: 'doc-3', path: '/blog/post-3', template_version: 2 }), snapshot: unchangedDoc },
-            ],
-            rowCount: 3,
-          });
-        }
-        if (sql.startsWith('SELECT') && sql.includes('app.documents')) {
-          return Promise.resolve({ rows: [{ id: 'template-uuid-001' }], rowCount: 1 });
-        }
-        if (sql.includes("source = 'migration'")) {
-          return Promise.resolve({ rows: [{ version_number: 3 }], rowCount: 1 });
-        }
-        return Promise.resolve({ rows: [], rowCount: 1 });
-      });
+      // The preview pages by a fixed step, so only the first page holds
+      // documents; every page after it comes back empty.
+      stub.on(documents).select.whenBound([0]).returnsRaw([
+        { ...createMockDocument({ id: 'doc-1', path: '/blog/post-1', template_version: 2 }), snapshot: unchangedDoc },
+        { ...createMockDocument({ id: 'doc-2', path: '/blog/post-2', template_version: 3 }), snapshot: divergedDoc },
+        { ...createMockDocument({ id: 'doc-3', path: '/blog/post-3', template_version: 2 }), snapshot: unchangedDoc },
+      ]);
+      stub.on(documents).select.whenAsking(/LIMIT \$/).returnsRaw([]);
 
       vi.mocked(reconstructVersionSnapshot).mockImplementation((id: string, _branch: string, version: number) => {
         if (id === 'template-uuid-001') return Promise.resolve(version === 2 ? templateFrom : templateTo);
@@ -1944,9 +1428,8 @@ describe('Phase 5: Migration Service', () => {
     });
 
     it('should return detailed preview with per-document info when detail=true', async () => {
-      const { previewMigration } = await import('../../src/services/migration-service');
-      const db = await import('../../src/db');
-      const { reconstructVersionSnapshot } = await import('../../src/services/document-version-service');
+      // previewMigration checks the template exists through the Drizzle handle.
+      stub.on(documents).select.returnsRaw([{ id: 'template-uuid-001' }]);
 
       const templateFrom = { content: [{ type: 'Hero', props: { id: 'Hero-a' } }, { type: 'Body', props: { id: 'Body-b' } }], root: { props: {} }, zones: {} };
       const templateTo = { content: [{ type: 'Body', props: { id: 'Body-b' } }], root: { props: {} }, zones: {} };
@@ -1954,27 +1437,13 @@ describe('Phase 5: Migration Service', () => {
       const cleanDoc = { content: [{ type: 'Hero', props: { id: 'Hero-a' } }, { type: 'Body', props: { id: 'Body-b' } }], root: { props: {} }, zones: {} };
       const conflictDoc = { content: [{ type: 'Body', props: { id: 'Body-b' } }], root: { props: {} }, zones: {} };
 
-      let docsServed = false;
-      vi.mocked(db.query).mockImplementation((sql: string) => {
-        if (sql.includes('FROM app.documents') && sql.includes('LIMIT')) {
-          if (docsServed) return Promise.resolve({ rows: [], rowCount: 0 });
-          docsServed = true;
-          return Promise.resolve({
-            rows: [
-              { ...createMockDocument({ id: 'doc-clean', path: '/blog/clean', template_version: 2 }), snapshot: cleanDoc },
-              { ...createMockDocument({ id: 'doc-conflict', path: '/blog/conflict', template_version: 3 }), snapshot: conflictDoc },
-            ],
-            rowCount: 2,
-          });
-        }
-        if (sql.startsWith('SELECT') && sql.includes('app.documents')) {
-          return Promise.resolve({ rows: [{ id: 'template-uuid-001' }], rowCount: 1 });
-        }
-        if (sql.includes("source = 'migration'")) {
-          return Promise.resolve({ rows: [{ version_number: 3 }], rowCount: 1 });
-        }
-        return Promise.resolve({ rows: [], rowCount: 1 });
-      });
+      // The preview pages by a fixed step, so only the first page holds
+      // documents; every page after it comes back empty.
+      stub.on(documents).select.whenBound([0]).returnsRaw([
+        { ...createMockDocument({ id: 'doc-clean', path: '/blog/clean', template_version: 2 }), snapshot: cleanDoc },
+        { ...createMockDocument({ id: 'doc-conflict', path: '/blog/conflict', template_version: 3 }), snapshot: conflictDoc },
+      ]);
+      stub.on(documents).select.whenAsking(/LIMIT \$/).returnsRaw([]);
 
       vi.mocked(reconstructVersionSnapshot).mockImplementation((id: string, _branch: string, version: number) => {
         if (id === 'template-uuid-001') return Promise.resolve(version === 2 ? templateFrom : templateTo);
@@ -2017,19 +1486,10 @@ describe('Phase 5: Migration Service', () => {
     });
 
     it('should return empty preview when no documents are affected', async () => {
-      const { previewMigration } = await import('../../src/services/migration-service');
-      const db = await import('../../src/db');
-      const { reconstructVersionSnapshot } = await import('../../src/services/document-version-service');
+      // previewMigration checks the template exists through the Drizzle handle.
+      stub.on(documents).select.returnsRaw([{ id: 'template-uuid-001' }]);
 
-      vi.mocked(db.query).mockImplementation((sql: string) => {
-        if (sql.includes('FROM app.documents') && sql.includes('LIMIT')) {
-          return Promise.resolve({ rows: [], rowCount: 0 });
-        }
-        if (sql.startsWith('SELECT') && sql.includes('app.documents')) {
-          return Promise.resolve({ rows: [{ id: 'template-uuid-001' }], rowCount: 1 });
-        }
-        return Promise.resolve({ rows: [], rowCount: 1 });
-      });
+      stub.on(documents).select.whenAsking(/LIMIT \$/).returnsRaw([]);
       vi.mocked(reconstructVersionSnapshot).mockResolvedValue({
         content: [{ type: 'Footer', props: { id: 'Footer-f' } }], root: { props: {} }, zones: {},
       });
@@ -2048,16 +1508,8 @@ describe('Phase 5: Migration Service', () => {
     });
 
     it('should throw TemplateNotFoundError when template not found', async () => {
-      const { previewMigration } = await import('../../src/services/migration-service');
-      const { TemplateNotFoundError } = await import('../../src/services/errors');
-      const db = await import('../../src/db');
 
       // Template does not exist
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [],
-        rowCount: 0,
-      });
-
       await expect(
         previewMigration(
           'site-uuid-456',
@@ -2071,8 +1523,6 @@ describe('Phase 5: Migration Service', () => {
     });
 
     it('should throw InvalidVersionRangeError for invalid version range', async () => {
-      const { previewMigration } = await import('../../src/services/migration-service');
-      const { InvalidVersionRangeError } = await import('../../src/services/errors');
 
       // fromVersion > toVersion
       await expect(
@@ -2106,16 +1556,8 @@ describe('Phase 5: Migration Service', () => {
 
   describe('Error Handling', () => {
     it('should throw TemplateNotFoundError when template does not exist in triggerMigration', async () => {
-      const { triggerMigration } = await import('../../src/services/migration-service');
-      const { TemplateNotFoundError } = await import('../../src/services/errors');
-      const db = await import('../../src/db');
 
       // Template lookup returns empty
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [],
-        rowCount: 0,
-      });
-
       await expect(
         triggerMigration(
           'site-uuid-456',
@@ -2129,10 +1571,6 @@ describe('Phase 5: Migration Service', () => {
 
       try {
         // Reset mocks for second call
-        vi.mocked(db.query).mockResolvedValueOnce({
-          rows: [],
-          rowCount: 0,
-        });
         await triggerMigration(
           'site-uuid-456', 'branch-uuid-789', 'nonexistent-template',
           1, 2, { id: 'user-uuid-001', type: 'user' },
@@ -2144,8 +1582,6 @@ describe('Phase 5: Migration Service', () => {
     });
 
     it('should throw InvalidVersionRangeError for invalid version range (from >= to)', async () => {
-      const { triggerMigration } = await import('../../src/services/migration-service');
-      const { InvalidVersionRangeError } = await import('../../src/services/errors');
 
       // from > to
       await expect(
@@ -2165,16 +1601,10 @@ describe('Phase 5: Migration Service', () => {
     });
 
     it('should throw MigrationJobNotFoundError in getMigrationJob when job missing', async () => {
-      const { getMigrationJob } = await import('../../src/services/migration-service');
-      const { MigrationJobNotFoundError } = await import('../../src/services/errors');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
       await expect(getMigrationJob('nonexistent')).rejects.toThrow(MigrationJobNotFoundError);
 
       try {
-        vi.mocked(db.query).mockResolvedValueOnce({ rows: [], rowCount: 0 });
         await getMigrationJob('bad-id');
       } catch (err) {
         expect(err).toBeInstanceOf(MigrationJobNotFoundError);
@@ -2190,20 +1620,9 @@ describe('Phase 5: Migration Service', () => {
 
   describe('getMigrationStatus', () => {
     it('should return status with stale documents', async () => {
-      const { getMigrationStatus } = await import('../../src/services/migration-service');
-      const db = await import('../../src/db');
 
-      // First query: get latest version number
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [{ version_number: 3 }],
-        rowCount: 1,
-      });
-
-      // Second query: count stale documents
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [{ count: '5', oldest_version: 1 }],
-        rowCount: 1,
-      });
+      stub.on(documentVersions).select.returnsRaw([{ versionNumber: 3 }]);
+      stub.on(documents).select.returnsRaw([{ count: '5', oldest_version: 1 }]);
 
       const result = await getMigrationStatus('template-uuid-001', 'branch-uuid-789');
 
@@ -2215,18 +1634,9 @@ describe('Phase 5: Migration Service', () => {
     });
 
     it('should return migrationAvailable false when no stale documents', async () => {
-      const { getMigrationStatus } = await import('../../src/services/migration-service');
-      const db = await import('../../src/db');
 
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [{ version_number: 2 }],
-        rowCount: 1,
-      });
-
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [{ count: '0', oldest_version: null }],
-        rowCount: 1,
-      });
+      stub.on(documentVersions).select.returnsRaw([{ versionNumber: 2 }]);
+      stub.on(documents).select.returnsRaw([{ count: '0', oldest_version: null }]);
 
       const result = await getMigrationStatus('template-uuid-001', 'branch-uuid-789');
 
@@ -2236,13 +1646,6 @@ describe('Phase 5: Migration Service', () => {
     });
 
     it('should throw TemplateNotFoundError when template has no versions', async () => {
-      const { getMigrationStatus } = await import('../../src/services/migration-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [],
-        rowCount: 0,
-      });
 
       await expect(
         getMigrationStatus('missing-template', 'branch-uuid-789'),
@@ -2250,18 +1653,9 @@ describe('Phase 5: Migration Service', () => {
     });
 
     it('should query with NULL-aware stale document detection', async () => {
-      const { getMigrationStatus } = await import('../../src/services/migration-service');
-      const db = await import('../../src/db');
 
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [{ version_number: 2 }],
-        rowCount: 1,
-      });
-
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [{ count: '3', oldest_version: 0 }],
-        rowCount: 1,
-      });
+      stub.on(documentVersions).select.returnsRaw([{ versionNumber: 2 }]);
+      stub.on(documents).select.returnsRaw([{ count: '3', oldest_version: 0 }]);
 
       const result = await getMigrationStatus('template-uuid-001', 'branch-uuid-789');
 
@@ -2269,8 +1663,8 @@ describe('Phase 5: Migration Service', () => {
       expect(result.oldestDocumentVersion).toBe(0);
 
       // Verify the stale query uses IS NULL check
-      const staleQuery = vi.mocked(db.query).mock.calls[1][0];
-      expect(staleQuery).toContain('IS NULL');
+      const staleQuery = stub.calls(documents).select[0];
+      expect(staleQuery.sql).toContain('IS NULL');
     });
   });
 
@@ -2280,33 +1674,18 @@ describe('Phase 5: Migration Service', () => {
 
   describe('previewMigration', () => {
     it('should return summary preview without detail', async () => {
-      const { previewMigration } = await import('../../src/services/migration-service');
-      const db = await import('../../src/db');
-      const { reconstructVersionSnapshot } = await import('../../src/services/document-version-service');
+      // previewMigration checks the template exists through the Drizzle handle.
+      stub.on(documents).select.returnsRaw([{ id: 'template-uuid-001' }]);
 
       const docSnapshot = { content: [{ type: 'Hero', props: { id: 'Hero-a' } }], root: { props: {} }, zones: {} };
 
-      let docsServed = false;
-      vi.mocked(db.query).mockImplementation((sql: string) => {
-        if (sql.includes('FROM app.documents') && sql.includes('LIMIT')) {
-          if (docsServed) return Promise.resolve({ rows: [], rowCount: 0 });
-          docsServed = true;
-          return Promise.resolve({
-            rows: [{
-              id: 'doc-uuid-001', site_id: 'site-uuid-456', path: 'pages/home',
-              template_id: 'template-uuid-001', template_version: 1, snapshot: docSnapshot,
-            }],
-            rowCount: 1,
-          });
-        }
-        if (sql.startsWith('SELECT') && sql.includes('app.documents')) {
-          return Promise.resolve({ rows: [{ id: 'template-uuid-001' }], rowCount: 1 });
-        }
-        if (sql.includes("source = 'migration'")) {
-          return Promise.resolve({ rows: [{ version_number: 3 }], rowCount: 1 });
-        }
-        return Promise.resolve({ rows: [], rowCount: 1 });
-      });
+      // The preview pages by a fixed step, so only the first page holds
+      // documents; every page after it comes back empty.
+      stub.on(documents).select.whenBound([0]).returnsRaw([{
+        id: 'doc-uuid-001', site_id: 'site-uuid-456', path: 'pages/home',
+        template_id: 'template-uuid-001', template_version: 1, snapshot: docSnapshot,
+      }]);
+      stub.on(documents).select.whenAsking(/LIMIT \$/).returnsRaw([]);
 
       // Template adds a CTA; the document is untouched since baseline, so it is clean.
       vi.mocked(reconstructVersionSnapshot).mockImplementation((id: string, _branch: string, version: number) => {
@@ -2332,33 +1711,18 @@ describe('Phase 5: Migration Service', () => {
     });
 
     it('should include per-document detail when detail is true', async () => {
-      const { previewMigration } = await import('../../src/services/migration-service');
-      const db = await import('../../src/db');
-      const { reconstructVersionSnapshot } = await import('../../src/services/document-version-service');
+      // previewMigration checks the template exists through the Drizzle handle.
+      stub.on(documents).select.returnsRaw([{ id: 'template-uuid-001' }]);
 
       const docSnapshot = { content: [{ type: 'Hero', props: { id: 'Hero-a' } }], root: { props: {} }, zones: {} };
 
-      let docsServed = false;
-      vi.mocked(db.query).mockImplementation((sql: string) => {
-        if (sql.includes('FROM app.documents') && sql.includes('LIMIT')) {
-          if (docsServed) return Promise.resolve({ rows: [], rowCount: 0 });
-          docsServed = true;
-          return Promise.resolve({
-            rows: [{
-              id: 'doc-uuid-001', site_id: 'site-uuid-456', path: 'pages/about',
-              template_id: 'template-uuid-001', template_version: 1, snapshot: docSnapshot,
-            }],
-            rowCount: 1,
-          });
-        }
-        if (sql.startsWith('SELECT') && sql.includes('app.documents')) {
-          return Promise.resolve({ rows: [{ id: 'template-uuid-001' }], rowCount: 1 });
-        }
-        if (sql.includes("source = 'migration'")) {
-          return Promise.resolve({ rows: [{ version_number: 3 }], rowCount: 1 });
-        }
-        return Promise.resolve({ rows: [], rowCount: 1 });
-      });
+      // The preview pages by a fixed step, so only the first page holds
+      // documents; every page after it comes back empty.
+      stub.on(documents).select.whenBound([0]).returnsRaw([{
+        id: 'doc-uuid-001', site_id: 'site-uuid-456', path: 'pages/about',
+        template_id: 'template-uuid-001', template_version: 1, snapshot: docSnapshot,
+      }]);
+      stub.on(documents).select.whenAsking(/LIMIT \$/).returnsRaw([]);
 
       vi.mocked(reconstructVersionSnapshot).mockImplementation((id: string, _branch: string, version: number) => {
         if (id === 'template-uuid-001') {
@@ -2386,7 +1750,6 @@ describe('Phase 5: Migration Service', () => {
     });
 
     it('should throw when fromVersion >= toVersion', async () => {
-      const { previewMigration } = await import('../../src/services/migration-service');
 
       await expect(
         previewMigration(
@@ -2396,13 +1759,6 @@ describe('Phase 5: Migration Service', () => {
     });
 
     it('should throw TemplateNotFoundError when template does not exist', async () => {
-      const { previewMigration } = await import('../../src/services/migration-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [],
-        rowCount: 0,
-      });
 
       await expect(
         previewMigration(
@@ -2412,19 +1768,10 @@ describe('Phase 5: Migration Service', () => {
     });
 
     it('should return zero affected when no stale documents exist', async () => {
-      const { previewMigration } = await import('../../src/services/migration-service');
-      const db = await import('../../src/db');
-      const { reconstructVersionSnapshot } = await import('../../src/services/document-version-service');
+      // previewMigration checks the template exists through the Drizzle handle.
+      stub.on(documents).select.returnsRaw([{ id: 'template-uuid-001' }]);
 
-      vi.mocked(db.query).mockImplementation((sql: string) => {
-        if (sql.includes('FROM app.documents') && sql.includes('LIMIT')) {
-          return Promise.resolve({ rows: [], rowCount: 0 });
-        }
-        if (sql.startsWith('SELECT') && sql.includes('app.documents')) {
-          return Promise.resolve({ rows: [{ id: 'template-uuid-001' }], rowCount: 1 });
-        }
-        return Promise.resolve({ rows: [], rowCount: 1 });
-      });
+      stub.on(documents).select.whenAsking(/LIMIT \$/).returnsRaw([]);
       vi.mocked(reconstructVersionSnapshot).mockResolvedValue({ content: [], root: { props: {} }, zones: {} });
 
       const result = await previewMigration(
@@ -2443,7 +1790,6 @@ describe('Phase 5: Migration Service', () => {
 
   describe('applyDeltaToSnapshot: nested prop operations', () => {
     it('removes a nested prop key when the template migration drops it', async () => {
-      const { applyDeltaToSnapshot } = await import('../../src/services/migration-service');
 
       const docSnapshot = {
         content: [
@@ -2477,7 +1823,6 @@ describe('Phase 5: Migration Service', () => {
 
   describe('null snapshot handling', () => {
     it('applyDeltaToSnapshot should return empty object for null snapshot', async () => {
-      const { applyDeltaToSnapshot } = await import('../../src/services/migration-service');
 
       const result = applyDeltaToSnapshot(
         null,
@@ -2488,7 +1833,6 @@ describe('Phase 5: Migration Service', () => {
     });
 
     it('applyDeltaToSnapshot should return empty object for undefined snapshot', async () => {
-      const { applyDeltaToSnapshot } = await import('../../src/services/migration-service');
 
       const result = applyDeltaToSnapshot(
         undefined,
@@ -2499,12 +1843,6 @@ describe('Phase 5: Migration Service', () => {
     });
 
     it('applyDeltaToDocument should fall back to reconstructVersionSnapshot when latest has null snapshot', async () => {
-      const { applyDeltaToDocument } = await import('../../src/services/migration-service');
-      const {
-        getLatestDocumentVersion,
-        createDocumentVersion,
-        reconstructVersionSnapshot,
-      } = await import('../../src/services/document-version-service');
 
       const reconstructedSnapshot = {
         content: [
@@ -2559,11 +1897,6 @@ describe('Phase 5: Migration Service', () => {
     });
 
     it('applyDeltaToDocument should throw when no snapshot can be reconstructed', async () => {
-      const { applyDeltaToDocument } = await import('../../src/services/migration-service');
-      const {
-        getLatestDocumentVersion,
-        reconstructVersionSnapshot,
-      } = await import('../../src/services/document-version-service');
 
       vi.mocked(getLatestDocumentVersion).mockResolvedValueOnce({
         id: 'version-uuid-300',
@@ -2596,11 +1929,9 @@ describe('Phase 5: Migration Service', () => {
 
   describe('extractTemplateDelta: prop patch extraction', () => {
     it('should return propPatches when template props change (no structural)', async () => {
-      const { extractTemplateDelta } = await import('../../src/services/migration-service');
-      const dvs = await import('../../src/services/document-version-service');
 
       // Reconstruct snapshots: prop values changed on existing component
-      vi.mocked(dvs.reconstructVersionSnapshot)
+      vi.mocked(reconstructVersionSnapshot)
         .mockResolvedValueOnce({
           content: [
             { type: 'Hero', props: { id: 'h1', title: 'Old Title', subtitle: 'Sub' } },
@@ -2631,11 +1962,9 @@ describe('Phase 5: Migration Service', () => {
     });
 
     it('should return both structural and prop changes together', async () => {
-      const { extractTemplateDelta } = await import('../../src/services/migration-service');
-      const dvs = await import('../../src/services/document-version-service');
 
       // Snapshots: Hero props changed AND Footer added
-      vi.mocked(dvs.reconstructVersionSnapshot)
+      vi.mocked(reconstructVersionSnapshot)
         .mockResolvedValueOnce({
           content: [
             { type: 'Hero', props: { id: 'h1', title: 'Old' } },
@@ -2661,10 +1990,8 @@ describe('Phase 5: Migration Service', () => {
     });
 
     it('should capture root prop changes', async () => {
-      const { extractTemplateDelta } = await import('../../src/services/migration-service');
-      const dvs = await import('../../src/services/document-version-service');
 
-      vi.mocked(dvs.reconstructVersionSnapshot)
+      vi.mocked(reconstructVersionSnapshot)
         .mockResolvedValueOnce({
           content: [],
           root: { props: { title: 'Old Site', description: 'Old desc' } },
@@ -2691,10 +2018,8 @@ describe('Phase 5: Migration Service', () => {
     });
 
     it('should capture zone component prop changes', async () => {
-      const { extractTemplateDelta } = await import('../../src/services/migration-service');
-      const dvs = await import('../../src/services/document-version-service');
 
-      vi.mocked(dvs.reconstructVersionSnapshot)
+      vi.mocked(reconstructVersionSnapshot)
         .mockResolvedValueOnce({
           content: [],
           root: { props: {} },
@@ -2724,7 +2049,6 @@ describe('Phase 5: Migration Service', () => {
 
   describe('applyDeltaToSnapshot: prop patches', () => {
     it('should apply prop patches when document matches template default', async () => {
-      const { applyDeltaToSnapshot } = await import('../../src/services/migration-service');
 
       const snapshot = {
         content: [
@@ -2749,7 +2073,6 @@ describe('Phase 5: Migration Service', () => {
     });
 
     it('should skip prop patches when document has customized value', async () => {
-      const { applyDeltaToSnapshot } = await import('../../src/services/migration-service');
 
       const snapshot = {
         content: [
@@ -2774,7 +2097,6 @@ describe('Phase 5: Migration Service', () => {
     });
 
     it('should handle mixed customized and default props on same component', async () => {
-      const { applyDeltaToSnapshot } = await import('../../src/services/migration-service');
 
       const snapshot = {
         content: [
@@ -2803,7 +2125,6 @@ describe('Phase 5: Migration Service', () => {
     });
 
     it('should skip prop patches when component was removed from document', async () => {
-      const { applyDeltaToSnapshot } = await import('../../src/services/migration-service');
 
       const snapshot = {
         content: [
@@ -2829,7 +2150,6 @@ describe('Phase 5: Migration Service', () => {
     });
 
     it('should apply nested prop changes (e.g., links array)', async () => {
-      const { applyDeltaToSnapshot } = await import('../../src/services/migration-service');
 
       const snapshot = {
         content: [
@@ -2856,7 +2176,6 @@ describe('Phase 5: Migration Service', () => {
     });
 
     it('should apply root prop patches', async () => {
-      const { applyDeltaToSnapshot } = await import('../../src/services/migration-service');
 
       const snapshot = {
         content: [],
@@ -2879,7 +2198,6 @@ describe('Phase 5: Migration Service', () => {
     });
 
     it('should apply zone component prop patches', async () => {
-      const { applyDeltaToSnapshot } = await import('../../src/services/migration-service');
 
       const snapshot = {
         content: [],
@@ -2908,9 +2226,6 @@ describe('Phase 5: Migration Service', () => {
 
   describe('detectDocumentConflicts: prop conflicts', () => {
     it('should flag prop conflicts when document has customized a prop the template also changed', async () => {
-      const { detectDocumentConflicts } = await import('../../src/services/migration-service');
-      const db = await import('../../src/db');
-      const { reconstructVersionSnapshot } = await import('../../src/services/document-version-service');
 
       const documentSnapshot = {
         content: [
@@ -2919,7 +2234,7 @@ describe('Phase 5: Migration Service', () => {
       };
 
       // Baseline equals the current document, so the document has no structural change.
-      vi.mocked(db.query).mockResolvedValue({ rows: [{ version_number: 3 }], rowCount: 1 });
+      stub.on(documentVersions).select.returnsRaw([{ versionNumber: 3 }]);
       vi.mocked(reconstructVersionSnapshot).mockResolvedValue(documentSnapshot);
 
       const result = await detectDocumentConflicts(
@@ -2947,9 +2262,6 @@ describe('Phase 5: Migration Service', () => {
     });
 
     it('should return no prop conflict when document uses template defaults', async () => {
-      const { detectDocumentConflicts } = await import('../../src/services/migration-service');
-      const db = await import('../../src/db');
-      const { reconstructVersionSnapshot } = await import('../../src/services/document-version-service');
 
       const documentSnapshot = {
         content: [
@@ -2957,7 +2269,7 @@ describe('Phase 5: Migration Service', () => {
         ],
       };
 
-      vi.mocked(db.query).mockResolvedValue({ rows: [{ version_number: 3 }], rowCount: 1 });
+      stub.on(documentVersions).select.returnsRaw([{ versionNumber: 3 }]);
       vi.mocked(reconstructVersionSnapshot).mockResolvedValue(documentSnapshot);
 
       const result = await detectDocumentConflicts(
@@ -2986,13 +2298,6 @@ describe('Phase 5: Migration Service', () => {
 
   describe('processMigration: prop conflict detection', () => {
     it('migrates the clean changes and records a conflict when a prop diverged', async () => {
-      const { processMigration } = await import('../../src/services/migration-service');
-      const db = await import('../../src/db');
-      const {
-        getLatestDocumentVersion,
-        createDocumentVersion,
-        reconstructVersionSnapshot,
-      } = await import('../../src/services/document-version-service');
 
       const mockJob = createMockMigrationJob({ total_documents: 1 });
       const docSnapshot = {
@@ -3001,24 +2306,16 @@ describe('Phase 5: Migration Service', () => {
         zones: {},
       };
 
-      let docsServed = false;
-      vi.mocked(db.query).mockImplementation((sql: string) => {
-        if (sql.startsWith('SELECT') && sql.includes('app.migration_jobs')) {
-          return Promise.resolve({ rows: [mockJob], rowCount: 1 });
-        }
-        if (sql.includes('FROM app.documents')) {
-          if (docsServed) return Promise.resolve({ rows: [], rowCount: 0 });
-          docsServed = true;
-          return Promise.resolve({
-            rows: [{ ...createMockDocument({ id: 'doc-custom', template_version: 1 }), snapshot: docSnapshot }],
-            rowCount: 1,
-          });
-        }
-        if (sql.includes("source = 'migration'")) {
-          return Promise.resolve({ rows: [{ version_number: 3 }], rowCount: 1 });
-        }
-        return Promise.resolve({ rows: [], rowCount: 1 });
-      });
+      stub.on(migrationJobs).select.returnsRaw([mockJob]);
+      stub.on(documentVersions).select.returnsRaw([{ versionNumber: 3 }]);
+      stub.on(migrationJobs).update.returnsRaw([{ id: 'job-uuid-123' }]);
+      stub.on(documents).select.returnsRaw([{ ...createMockDocument({ id: 'doc-custom', template_version: 1 }), snapshot: docSnapshot }]);
+      // A migrated document stops matching the listing, which is what ends
+      // the paging loop; the notification is where that becomes true.
+      const migrated = (): Promise<void> => {
+        stub.on(documents).select.returnsRaw([]);
+        return Promise.resolve();
+      };
 
       // Template changes only Hero's title; the document customized that title.
       vi.mocked(reconstructVersionSnapshot).mockImplementation((id: string, _branch: string, version: number) => {
@@ -3041,7 +2338,7 @@ describe('Phase 5: Migration Service', () => {
         createdById: 'user-uuid-001', createdByType: 'user', createdAt: '2026-06-18T10:01:00.000Z',
       });
 
-      const result = await processMigration('job-uuid-123');
+      const result = await processMigration('job-uuid-123', migrated);
 
       // A diverged prop is kept by the clean merge and recorded as a conflict:
       // the document is both migrated and flagged for a decision.
@@ -3051,21 +2348,12 @@ describe('Phase 5: Migration Service', () => {
       const content = (persisted.snapshot as { content: { props: { title: string } }[] }).content;
       expect(content[0].props.title).toBe('My Custom Title');
 
-      const insertCall = vi.mocked(db.query).mock.calls.find(
-        ([sql]) => typeof sql === 'string' && sql.includes('INSERT INTO app.migration_conflicts'),
-      );
+      const [insertCall] = stub.calls(migrationConflicts).insert;
       expect(insertCall).toBeDefined();
-      expect(insertCall?.[1]).toContain('prop');
+      expect(insertCall.sql).toContain("'prop'");
     });
 
     it('does not advance synced_version when recording the prop divergence fails', async () => {
-      const { processMigration } = await import('../../src/services/migration-service');
-      const db = await import('../../src/db');
-      const {
-        getLatestDocumentVersion,
-        createDocumentVersion,
-        reconstructVersionSnapshot,
-      } = await import('../../src/services/document-version-service');
 
       const mockJob = createMockMigrationJob({ total_documents: 1 });
       const docSnapshot = {
@@ -3074,28 +2362,17 @@ describe('Phase 5: Migration Service', () => {
         zones: {},
       };
 
-      let docsServed = false;
-      vi.mocked(db.query).mockImplementation((sql: string) => {
-        if (sql.startsWith('SELECT') && sql.includes('app.migration_jobs')) {
-          return Promise.resolve({ rows: [mockJob], rowCount: 1 });
-        }
-        if (sql.includes('FROM app.documents')) {
-          if (docsServed) return Promise.resolve({ rows: [], rowCount: 0 });
-          docsServed = true;
-          return Promise.resolve({
-            rows: [{ ...createMockDocument({ id: 'doc-custom', template_version: 1 }), snapshot: docSnapshot }],
-            rowCount: 1,
-          });
-        }
-        if (sql.includes("source = 'migration'")) {
-          return Promise.resolve({ rows: [{ version_number: 3 }], rowCount: 1 });
-        }
-        // The prop-divergence record fails to persist.
-        if (sql.includes('prop_conflicts')) {
-          return Promise.reject(new Error('insert failed'));
-        }
-        return Promise.resolve({ rows: [], rowCount: 1 });
-      });
+      stub.on(migrationJobs).select.returnsRaw([mockJob]);
+      stub.on(documentVersions).select.returnsRaw([{ versionNumber: 3 }]);
+      stub.on(migrationJobs).update.returnsRaw([{ id: 'job-uuid-123' }]);
+      // A conflicted document stays in the listing, so the run advances its
+      // offset past this page and the next read comes back empty.
+      stub.on(documents).select.whenBound([0]).returnsRaw([{ ...createMockDocument({ id: 'doc-custom', template_version: 1 }), snapshot: docSnapshot }]);
+      // The prop-divergence record is the insert that fails; the structural
+      // record the recovery path writes must still go through.
+      stub.on(migrationConflicts).insert
+        .whenAsking(/prop_conflicts/)
+        .rejects(new Error('insert failed'));
 
       vi.mocked(reconstructVersionSnapshot).mockImplementation((id: string, _branch: string, version: number) => {
         if (id === 'template-uuid-001') {
@@ -3121,10 +2398,8 @@ describe('Phase 5: Migration Service', () => {
 
       // The document is not counted clean, so its template edge keeps the old
       // synced_version and the document is re-picked on the next run.
-      const cleanUpdate = vi.mocked(db.query).mock.calls.find(
-        ([sql]) => typeof sql === 'string'
-          && sql.includes('UPDATE app.document_relations')
-          && sql.includes('SET synced_version'),
+      const cleanUpdate = stub.calls(documentRelations).update.find(
+        (call) => call.sql.includes('SET synced_version'),
       );
       expect(cleanUpdate).toBeUndefined();
     });

@@ -6,7 +6,9 @@
  */
 
 import type { AuthenticatedPrincipal, Document } from '../types';
+import { driverErrorCode } from '../db/driver-error';
 import { InvalidDocumentPathError } from './errors';
+import { toIsoTimestamp } from '../db/helpers';
 
 // =============================================================================
 // Types
@@ -33,8 +35,12 @@ export interface ListDocumentsOptions {
 
 /**
  * Database row format for documents.
+ *
+ * Type aliases rather than interfaces throughout this group: db().execute<T>()
+ * constrains T to Record<string, unknown>, which an interface cannot satisfy
+ * because it carries no implicit index signature.
  */
-export interface DocumentRow {
+export type DocumentRow = {
   id: string;
   site_id: string;
   path: string;
@@ -44,12 +50,12 @@ export interface DocumentRow {
   template_version?: number | null;
   locale?: string | null;
   localized_from_id?: string | null;
-}
+};
 
 /**
  * Database row format for documents with inherited flag and publish state.
  */
-export interface DocumentOnBranchRow extends DocumentRow {
+export type DocumentOnBranchRow = DocumentRow & {
   inherited: boolean;
   branch_path: string | null;
   published_version_id: string | null;
@@ -192,7 +198,7 @@ export interface DocumentVersion {
 /**
  * Database row format for document versions.
  */
-export interface DocumentVersionRow {
+export type DocumentVersionRow = {
   id: string;
   document_id: string;
   branch_id: string;
@@ -203,7 +209,7 @@ export interface DocumentVersionRow {
   created_by_type: 'user' | 'agent' | 'system' | 'service';
   created_at: string;
   is_tombstone?: boolean;
-}
+};
 
 // =============================================================================
 // Helper Functions
@@ -366,7 +372,7 @@ export function mapRowToDocumentOnBranch(row: DocumentOnBranchRow): DocumentOnBr
     doc.publishedVersionId = row.published_version_id;
   }
   if (row.published_at !== null) {
-    doc.publishedAt = row.published_at;
+    doc.publishedAt = toIsoTimestamp(row.published_at);
   }
   if (row.is_tombstone === true) {
     doc.isDeleted = true;
@@ -375,7 +381,7 @@ export function mapRowToDocumentOnBranch(row: DocumentOnBranchRow): DocumentOnBr
     doc.snapshotTitle = row.snapshot_title;
   }
   if (row.latest_version_at !== null) {
-    doc.updatedAt = row.latest_version_at;
+    doc.updatedAt = toIsoTimestamp(row.latest_version_at);
   }
   if (row.last_modified_by_id !== null) {
     doc.lastModifiedById = row.last_modified_by_id;
@@ -400,7 +406,7 @@ export function mapRowToDocument(row: DocumentRow): DocumentWithArchive {
     id: row.id,
     siteId: row.site_id,
     path: row.path,
-    createdAt: row.created_at,
+    createdAt: toIsoTimestamp(row.created_at),
   };
   if (row.template_id !== null && row.template_id !== undefined) {
     doc.templateId = row.template_id;
@@ -416,7 +422,7 @@ export function mapRowToDocument(row: DocumentRow): DocumentWithArchive {
   // from a response that never carried the field.
   doc.localizedFromId = row.localized_from_id ?? null;
   if (row.archived_at !== null) {
-    doc.archivedAt = row.archived_at;
+    doc.archivedAt = toIsoTimestamp(row.archived_at);
   }
   return doc;
 }
@@ -564,25 +570,45 @@ export function escapeLikePattern(input: string): string {
 }
 
 /**
+ * The LIKE pattern a path prefix filters on, or undefined when the prefix
+ * selects every path.
+ *
+ * Paths are stored normalized, so a prefix is normalized to match one. A
+ * trailing slash survives that: it is the caller asking for the paths inside a
+ * directory, and normalizing it away turns `pages/` into a pattern that also
+ * takes `pages-archive`.
+ */
+export function pathPrefixPattern(prefix: string | undefined): string | undefined {
+  if (prefix === undefined || prefix.trim() === '') {
+    return undefined;
+  }
+
+  const normalized = normalizePath(prefix);
+
+  // The root prefix bounds nothing.
+  if (normalized === '/') {
+    return undefined;
+  }
+
+  const directory = /[/\\]\s*$/.test(prefix) ? '/' : '';
+
+  // escapeLikePattern escapes with a backslash, which is LIKE's default escape
+  // character.
+  return escapeLikePattern(normalized + directory) + '%';
+}
+
+/**
  * Checks if an error is a PostgreSQL unique constraint violation.
  */
 export function isUniqueConstraintViolation(error: unknown): boolean {
-  return (
-    error instanceof Error &&
-    'code' in error &&
-    (error as NodeJS.ErrnoException).code === '23505'
-  );
+  return driverErrorCode(error) === '23505';
 }
 
 /**
  * Checks if an error is a PostgreSQL foreign key violation.
  */
 export function isForeignKeyViolation(error: unknown): boolean {
-  return (
-    error instanceof Error &&
-    'code' in error &&
-    (error as NodeJS.ErrnoException).code === '23503'
-  );
+  return driverErrorCode(error) === '23503';
 }
 
 /**
@@ -598,6 +624,6 @@ export function mapRowToDocumentVersion(row: DocumentVersionRow): DocumentVersio
     source: row.source,
     createdById: row.created_by_id,
     createdByType: row.created_by_type,
-    createdAt: row.created_at,
+    createdAt: toIsoTimestamp(row.created_at),
   };
 }

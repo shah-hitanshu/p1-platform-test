@@ -11,11 +11,6 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-vi.mock('../../src/db', () => ({
-  query: vi.fn(),
-  withTransaction: vi.fn(async (fn: () => Promise<unknown>) => fn()),
-}));
-
 vi.mock('../../src/services/checkpoint-service', () => ({
   createCheckpoint: vi.fn(),
   revertToCheckpoint: vi.fn(),
@@ -27,7 +22,8 @@ vi.mock('../../src/services/document-version-service', () => ({
   reconstructVersionSnapshot: vi.fn(),
 }));
 
-import { query } from '../../src/db';
+import { stubDatabase, type DatabaseStub } from '../__stubs__/database';
+import { documentVersions, migrationConflicts } from '../../src/db/schema';
 import {
   getLatestDocumentVersion,
   createDocumentVersion,
@@ -41,7 +37,6 @@ import {
 } from '../../src/services/migration-service';
 import { buildSlotDelta } from '../../src/services/slot-delta';
 
-const mockQuery = vi.mocked(query);
 const mockGetLatest = vi.mocked(getLatestDocumentVersion);
 const mockCreateVersion = vi.mocked(createDocumentVersion);
 const mockReconstruct = vi.mocked(reconstructVersionSnapshot);
@@ -73,8 +68,11 @@ const BRANCH_ID = 'branch-1';
 const PRINCIPAL = { id: 'user-1', type: 'user' as const };
 
 describe('extractTemplateDelta', () => {
+  let stub: DatabaseStub;
+
   beforeEach(() => {
     vi.resetAllMocks();
+    stub = stubDatabase();
   });
 
   it('derives the structural delta from the version snapshots keyed by slot id', async () => {
@@ -82,10 +80,9 @@ describe('extractTemplateDelta', () => {
       Promise.resolve(version === 1 ? snapshot([HERO]) : snapshot([HERO, BODY])),
     );
     // Stored editor actions contradicting the snapshots must not drive the delta.
-    mockQuery.mockResolvedValue({
-      rows: [{ action_metadata: { puckActions: [{ type: 'delete', sourceIndex: 0 }] } }],
-      rowCount: 1,
-    });
+    stub.on(documentVersions).select.returnsRaw([
+      { action_metadata: { puckActions: [{ type: 'delete', sourceIndex: 0 }] } },
+    ]);
 
     const delta = await extractTemplateDelta(TEMPLATE_ID, BRANCH_ID, 1, 2);
 
@@ -100,7 +97,6 @@ describe('extractTemplateDelta', () => {
     mockReconstruct.mockImplementation((_id, _branch, version) =>
       Promise.resolve(version === 1 ? snapshot([HERO]) : snapshot([heroV2])),
     );
-    mockQuery.mockResolvedValue({ rows: [], rowCount: 0 });
 
     const delta = await extractTemplateDelta(TEMPLATE_ID, BRANCH_ID, 1, 2);
 
@@ -117,7 +113,6 @@ describe('extractTemplateDelta', () => {
           : snapshot([HERO], { 'HeroBlock-aaaa:cta': [CTA] }),
       ),
     );
-    mockQuery.mockResolvedValue({ rows: [], rowCount: 0 });
 
     const delta = await extractTemplateDelta(TEMPLATE_ID, BRANCH_ID, 1, 2);
 
@@ -137,7 +132,6 @@ describe('extractTemplateDelta', () => {
     mockReconstruct.mockImplementation((_id, _branch, version) =>
       Promise.resolve(version === 1 ? manifest : snapshot([HERO, BODY])),
     );
-    mockQuery.mockResolvedValue({ rows: [], rowCount: 0 });
 
     const delta = await extractTemplateDelta(TEMPLATE_ID, BRANCH_ID, 1, 2);
 
@@ -149,8 +143,11 @@ describe('extractTemplateDelta', () => {
 });
 
 describe('detectDocumentConflicts', () => {
+  let stub: DatabaseStub;
+
   beforeEach(() => {
     vi.resetAllMocks();
+    stub = stubDatabase();
   });
 
   function primeBaseline(options: {
@@ -158,18 +155,13 @@ describe('detectDocumentConflicts', () => {
     earliestVersion?: number;
     baselineSnapshot: Record<string, unknown>;
   }): void {
-    mockQuery.mockImplementation((sql: string) => {
-      if (sql.includes("source = 'migration'")) {
-        return Promise.resolve({
-          rows: [{ version_number: options.lastMigrationVersion }],
-          rowCount: 1,
-        });
-      }
-      return Promise.resolve({
-        rows: [{ version_number: options.earliestVersion ?? 1 }],
-        rowCount: 1,
-      });
-    });
+    // Both reads project the versions table; the migration-sourced one is told
+    // apart by the source it binds rather than by the order it is issued in.
+    stub.on(documentVersions).select
+      .whenBound(['migration'])
+      .returnsRaw([{ versionNumber: options.lastMigrationVersion }]);
+    stub.on(documentVersions).select
+      .returnsRaw([{ versionNumber: options.earliestVersion ?? 1 }]);
     mockReconstruct.mockResolvedValue(options.baselineSnapshot);
   }
 
@@ -365,8 +357,11 @@ describe('applyDeltaToDocument', () => {
 });
 
 describe('resolveMigrationConflict', () => {
+  let stub: DatabaseStub;
+
   beforeEach(() => {
     vi.resetAllMocks();
+    stub = stubDatabase();
   });
 
   const conflictRow = (
@@ -391,15 +386,8 @@ describe('resolveMigrationConflict', () => {
 
   it('re-applies a stored slot delta when resolved with apply', async () => {
     const delta = buildSlotDelta(snapshot([HERO]), snapshot([HERO, BODY]));
-    mockQuery.mockImplementation((sql: string) => {
-      if (sql.startsWith('SELECT')) {
-        return Promise.resolve({ rows: [conflictRow(delta)], rowCount: 1 });
-      }
-      return Promise.resolve({
-        rows: [{ ...conflictRow(delta), resolution: 'apply', resolved_at: '2026-07-01T00:00:00Z' }],
-        rowCount: 1,
-      });
-    });
+    stub.on(migrationConflicts).select.returnsRaw([conflictRow(delta)]);
+    stub.on(migrationConflicts).update.returnsRaw([{ ...conflictRow(delta), resolution: 'apply', resolved_at: '2026-07-01T00:00:00Z' }]);
     mockGetLatest.mockResolvedValue({
       id: 'v-1',
       versionNumber: 4,
@@ -419,15 +407,8 @@ describe('resolveMigrationConflict', () => {
     const ctaOld = comp('CtaBlock', 'CtaBlock-cccc', { label: 'Go' });
     const ctaNew = comp('CtaBlock', 'CtaBlock-cccc', { label: 'New label' });
     const delta = buildSlotDelta(snapshot([HERO, ctaOld]), snapshot([HERO, ctaNew]));
-    mockQuery.mockImplementation((sql: string) => {
-      if (sql.startsWith('SELECT')) {
-        return Promise.resolve({ rows: [conflictRow(delta)], rowCount: 1 });
-      }
-      return Promise.resolve({
-        rows: [{ ...conflictRow(delta), resolution: 'apply', resolved_at: '2026-07-01T00:00:00Z' }],
-        rowCount: 1,
-      });
-    });
+    stub.on(migrationConflicts).select.returnsRaw([conflictRow(delta)]);
+    stub.on(migrationConflicts).update.returnsRaw([{ ...conflictRow(delta), resolution: 'apply', resolved_at: '2026-07-01T00:00:00Z' }]);
     mockReconstruct.mockImplementation((documentId, _branch, version) => {
       if (documentId === TEMPLATE_ID) {
         return Promise.resolve(version === 1 ? snapshot([HERO, ctaOld]) : snapshot([HERO, ctaNew]));
@@ -466,15 +447,8 @@ describe('resolveMigrationConflict', () => {
   it('sets the diverged prop to the template value when a prop conflict is applied', async () => {
     const ctaDiverged = comp('CtaBlock', 'CtaBlock-cccc', { label: 'Customized' });
     const row = propConflictRow();
-    mockQuery.mockImplementation((sql: string) => {
-      if (sql.startsWith('SELECT')) {
-        return Promise.resolve({ rows: [row], rowCount: 1 });
-      }
-      return Promise.resolve({
-        rows: [{ ...row, resolution: 'apply', resolved_at: '2026-07-01T00:00:00Z' }],
-        rowCount: 1,
-      });
-    });
+    stub.on(migrationConflicts).select.returnsRaw([row]);
+    stub.on(migrationConflicts).update.returnsRaw([{ ...row, resolution: 'apply', resolved_at: '2026-07-01T00:00:00Z' }]);
     mockGetLatest.mockResolvedValue({
       id: 'v-1',
       versionNumber: 4,
@@ -493,15 +467,8 @@ describe('resolveMigrationConflict', () => {
   it('keeps the local value and writes no version when a prop conflict is skipped', async () => {
     const ctaDiverged = comp('CtaBlock', 'CtaBlock-cccc', { label: 'Customized' });
     const row = propConflictRow();
-    mockQuery.mockImplementation((sql: string) => {
-      if (sql.startsWith('SELECT')) {
-        return Promise.resolve({ rows: [row], rowCount: 1 });
-      }
-      return Promise.resolve({
-        rows: [{ ...row, resolution: 'skip', resolved_at: '2026-07-01T00:00:00Z' }],
-        rowCount: 1,
-      });
-    });
+    stub.on(migrationConflicts).select.returnsRaw([row]);
+    stub.on(migrationConflicts).update.returnsRaw([{ ...row, resolution: 'skip', resolved_at: '2026-07-01T00:00:00Z' }]);
     mockGetLatest.mockResolvedValue({
       id: 'v-1',
       versionNumber: 4,
@@ -515,10 +482,9 @@ describe('resolveMigrationConflict', () => {
   });
 
   it('rejects applying a conflict stored with a legacy action-array payload', async () => {
-    mockQuery.mockResolvedValue({
-      rows: [conflictRow([{ type: 'insert', componentType: 'BodyBlock', destinationIndex: 1 }])],
-      rowCount: 1,
-    });
+    stub.on(migrationConflicts).select.returnsRaw([
+      conflictRow([{ type: 'insert', componentType: 'BodyBlock', destinationIndex: 1 }]),
+    ]);
 
     await expect(
       resolveMigrationConflict('conflict-1', 'apply', PRINCIPAL),
@@ -526,22 +492,12 @@ describe('resolveMigrationConflict', () => {
   });
 
   it('records skip resolutions without touching the document', async () => {
-    mockQuery.mockImplementation((sql: string) => {
-      if (sql.startsWith('SELECT')) {
-        return Promise.resolve({
-          rows: [conflictRow([{ type: 'insert' }])],
-          rowCount: 1,
-        });
-      }
-      return Promise.resolve({
-        rows: [{
-          ...conflictRow([{ type: 'insert' }]),
-          resolution: 'skip',
-          resolved_at: '2026-07-01T00:00:00Z',
-        }],
-        rowCount: 1,
-      });
-    });
+    stub.on(migrationConflicts).select.returnsRaw([conflictRow([{ type: 'insert' }])]);
+    stub.on(migrationConflicts).update.returnsRaw([{
+      ...conflictRow([{ type: 'insert' }]),
+      resolution: 'skip',
+      resolved_at: '2026-07-01T00:00:00Z',
+    }]);
 
     const resolved = await resolveMigrationConflict('conflict-1', 'skip', PRINCIPAL);
 

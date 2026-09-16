@@ -11,9 +11,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const CANONICAL_ID = 'doc-canonical';
 const TRANSLATION_ID = 'doc-translation';
 
-vi.mock('../../src/db', () => ({
-  query: vi.fn(),
-  withTransaction: vi.fn(async (fn: () => Promise<unknown>) => fn()),
+vi.mock('../../src/db/scope', () => ({
+  db: vi.fn(),
+  transaction: vi.fn(async (fn: () => Promise<unknown>) => fn()),
 }));
 
 vi.mock('../../src/services/document-service', () => ({
@@ -50,25 +50,23 @@ function uniqueViolation(constraintName: string): Error {
   return new Error('Failed query', { cause: driverError });
 }
 
-function versionRow(versionNumber: number): { rows: Record<string, unknown>[] } {
-  return {
-    rows: [
-      {
-        id: `version-${String(versionNumber)}`,
-        document_id: TRANSLATION_ID,
-        branch_id: 'branch-1',
-        version_number: versionNumber,
-        snapshot: {},
-        source: 'edit',
-        created_by_id: 'user-1',
-        created_by_type: 'user',
-        created_at: '2026-07-07T10:00:00.000Z',
-      },
-    ],
-  };
+function versionRow(versionNumber: number): Record<string, unknown>[] {
+  return [
+    {
+      id: `version-${String(versionNumber)}`,
+      document_id: TRANSLATION_ID,
+      branch_id: 'branch-1',
+      version_number: versionNumber,
+      snapshot: {},
+      source: 'edit',
+      created_by_id: 'user-1',
+      created_by_type: 'user',
+      created_at: '2026-07-07T10:00:00.000Z',
+    },
+  ];
 }
 
-const LOCKED = { rows: [{ id: CANONICAL_ID }] };
+const LOCKED = [{ id: CANONICAL_ID }];
 
 const HELD_BY_ANOTHER_BRANCH = {
   documentId: TRANSLATION_ID,
@@ -77,7 +75,20 @@ const HELD_BY_ANOTHER_BRANCH = {
   syncedUpstreamVersionId: null,
 };
 
-async function setupTakeOver(): Promise<void> {
+/**
+ * The one execute every statement on this path runs through. Its call order is
+ * the order the path issues them in: the canonical lock, the translation lock,
+ * then the version insert, once per attempt.
+ */
+async function setupTakeOver(): Promise<{
+  execute: ReturnType<typeof vi.fn>;
+  transaction: ReturnType<typeof vi.fn>;
+}> {
+  const scope = await import('../../src/db/scope');
+  const execute = vi.fn();
+  vi.mocked(scope.db).mockReturnValue({ execute } as never);
+  vi.mocked(scope.transaction).mockImplementation(async (fn) => fn());
+
   const documentService = await import('../../src/services/document-service');
   const versionService = await import('../../src/services/document-version-service');
   const relations = await import('../../src/services/relations-service');
@@ -108,6 +119,7 @@ async function setupTakeOver(): Promise<void> {
   } as never);
 
   vi.mocked(relations.findTranslationInLocale).mockResolvedValue(HELD_BY_ANOTHER_BRANCH);
+  return { execute, transaction: vi.mocked(scope.transaction) };
 }
 
 async function takeOver(): Promise<unknown> {
@@ -129,9 +141,8 @@ describe('Taking a locale over while another version of it is being written', ()
   });
 
   it('numbers the version again on a fresh transaction and returns the one that landed', async () => {
-    const db = await import('../../src/db');
-    await setupTakeOver();
-    vi.mocked(db.query)
+    const { execute, transaction } = await setupTakeOver();
+    vi.mocked(execute)
       .mockResolvedValueOnce(LOCKED)
       .mockResolvedValueOnce(LOCKED)
       .mockRejectedValueOnce(uniqueViolation(VERSION_NUMBER_KEY))
@@ -142,14 +153,13 @@ describe('Taking a locale over while another version of it is being written', ()
     const result = (await takeOver()) as { version: { versionNumber: number } };
 
     expect(result.version.versionNumber).toBe(8);
-    expect(vi.mocked(db.withTransaction)).toHaveBeenCalledTimes(2);
+    expect(transaction).toHaveBeenCalledTimes(2);
   });
 
   it('reports a translation the other writer made live rather than taking it over', async () => {
-    const db = await import('../../src/db');
     const relations = await import('../../src/services/relations-service');
-    await setupTakeOver();
-    vi.mocked(db.query)
+    const { execute } = await setupTakeOver();
+    vi.mocked(execute)
       .mockResolvedValueOnce(LOCKED)
       .mockResolvedValueOnce(LOCKED)
       .mockRejectedValueOnce(uniqueViolation(VERSION_NUMBER_KEY))
@@ -163,9 +173,8 @@ describe('Taking a locale over while another version of it is being written', ()
   });
 
   it('reports a collision that stands after the retry as a conflict', async () => {
-    const db = await import('../../src/db');
-    await setupTakeOver();
-    vi.mocked(db.query)
+    const { execute, transaction } = await setupTakeOver();
+    vi.mocked(execute)
       .mockResolvedValueOnce(LOCKED)
       .mockResolvedValueOnce(LOCKED)
       .mockRejectedValueOnce(uniqueViolation(VERSION_NUMBER_KEY))
@@ -175,17 +184,16 @@ describe('Taking a locale over while another version of it is being written', ()
 
     const { TranslationVersionContentionError } = await import('../../src/services/errors');
     await expect(takeOver()).rejects.toBeInstanceOf(TranslationVersionContentionError);
-    expect(vi.mocked(db.withTransaction)).toHaveBeenCalledTimes(2);
+    expect(transaction).toHaveBeenCalledTimes(2);
   });
 
   // The driver's rejection names the statement that was refused, and a statement
   // carries the content it was writing.
   it('keeps the refused statement out of what it reports', async () => {
-    const db = await import('../../src/db');
-    await setupTakeOver();
+    const { execute } = await setupTakeOver();
     const refused = uniqueViolation(VERSION_NUMBER_KEY);
     refused.message = 'Failed query: INSERT INTO app.document_versions ... Ein Betriebsgeheimnis';
-    vi.mocked(db.query)
+    vi.mocked(execute)
       .mockResolvedValueOnce(LOCKED)
       .mockResolvedValueOnce(LOCKED)
       .mockRejectedValueOnce(refused)
@@ -197,14 +205,13 @@ describe('Taking a locale over while another version of it is being written', ()
   });
 
   it('leaves a violation of another constraint to the caller unchanged', async () => {
-    const db = await import('../../src/db');
-    await setupTakeOver();
-    vi.mocked(db.query)
+    const { execute, transaction } = await setupTakeOver();
+    vi.mocked(execute)
       .mockResolvedValueOnce(LOCKED)
       .mockResolvedValueOnce(LOCKED)
       .mockRejectedValueOnce(uniqueViolation('documents_site_id_path_active_key'));
 
     await expect(takeOver()).rejects.toThrow('Failed query');
-    expect(vi.mocked(db.withTransaction)).toHaveBeenCalledTimes(1);
+    expect(transaction).toHaveBeenCalledTimes(1);
   });
 });

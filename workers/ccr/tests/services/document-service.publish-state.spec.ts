@@ -8,37 +8,32 @@
  * Issue #31: Surface document publish state in API responses.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
+import { stubDatabase, type DatabaseStub } from '../__stubs__/database';
+import { listDocumentsOnBranch } from '../../src/services/document-service';
 
-// Mock database module
-vi.mock('../../src/db', () => ({
-  query: vi.fn(),
-}));
+
+let stub: DatabaseStub;
 
 describe('Document Publish State in Branch Listings', () => {
   beforeEach(() => {
-    vi.resetAllMocks();
+    stub = stubDatabase();
   });
 
   describe('listDocumentsOnBranch with mainBranchId (COW mode)', () => {
     it('should include isPublished=true for documents with checkpoint entries', async () => {
-      const { listDocumentsOnBranch } = await import('../../src/services/document-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [
-          {
-            id: 'doc-1',
-            site_id: 'site-1',
-            path: 'pages/home',
-            created_at: '2026-01-01T00:00:00.000Z',
-            archived_at: null,
-            inherited: false,
-            published_version_id: 'ver-pub-1',
-            published_at: '2026-01-15T00:00:00.000Z',
-          },
-        ],
-      });
+      stub.on('u').select.returnsRaw([
+        {
+          id: 'doc-1',
+          site_id: 'site-1',
+          path: 'pages/home',
+          created_at: '2026-01-01T00:00:00.000Z',
+          archived_at: null,
+          inherited: false,
+          published_version_id: 'ver-pub-1',
+          published_at: '2026-01-15T00:00:00.000Z',
+        },
+      ]);
 
       const result = await listDocumentsOnBranch('branch-feature', {
         mainBranchId: 'branch-main',
@@ -51,23 +46,18 @@ describe('Document Publish State in Branch Listings', () => {
     });
 
     it('should include isPublished=false for documents without checkpoint entries', async () => {
-      const { listDocumentsOnBranch } = await import('../../src/services/document-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [
-          {
-            id: 'doc-2',
-            site_id: 'site-1',
-            path: 'pages/draft',
-            created_at: '2026-01-01T00:00:00.000Z',
-            archived_at: null,
-            inherited: false,
-            published_version_id: null,
-            published_at: null,
-          },
-        ],
-      });
+      stub.on('u').select.returnsRaw([
+        {
+          id: 'doc-2',
+          site_id: 'site-1',
+          path: 'pages/draft',
+          created_at: '2026-01-01T00:00:00.000Z',
+          archived_at: null,
+          inherited: false,
+          published_version_id: null,
+          published_at: null,
+        },
+      ]);
 
       const result = await listDocumentsOnBranch('branch-feature', {
         mainBranchId: 'branch-main',
@@ -80,16 +70,11 @@ describe('Document Publish State in Branch Listings', () => {
     });
 
     it('should include publish state in the COW UNION query SQL', async () => {
-      const { listDocumentsOnBranch } = await import('../../src/services/document-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
-
       await listDocumentsOnBranch('branch-feature', {
         mainBranchId: 'branch-main',
       });
 
-      const sql = vi.mocked(db.query).mock.calls[0][0];
+      const { sql } = stub.statements[0];
       // Should join checkpoint_documents for publish state
       expect(sql).toContain('checkpoint_documents');
       expect(sql).toContain('published_version_id');
@@ -99,23 +84,18 @@ describe('Document Publish State in Branch Listings', () => {
 
   describe('listDocumentsOnBranch without mainBranchId (main branch)', () => {
     it('should include publish state using branchId as main', async () => {
-      const { listDocumentsOnBranch } = await import('../../src/services/document-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [
-          {
-            id: 'doc-1',
-            site_id: 'site-1',
-            path: 'pages/home',
-            created_at: '2026-01-01T00:00:00.000Z',
-            archived_at: null,
-            inherited: false,
-            published_version_id: 'ver-pub-1',
-            published_at: '2026-01-10T00:00:00.000Z',
-          },
-        ],
-      });
+      stub.on('u').select.returnsRaw([
+        {
+          id: 'doc-1',
+          site_id: 'site-1',
+          path: 'pages/home',
+          created_at: '2026-01-01T00:00:00.000Z',
+          archived_at: null,
+          inherited: false,
+          published_version_id: 'ver-pub-1',
+          published_at: '2026-01-10T00:00:00.000Z',
+        },
+      ]);
 
       const result = await listDocumentsOnBranch('branch-main');
 
@@ -125,14 +105,9 @@ describe('Document Publish State in Branch Listings', () => {
     });
 
     it('should include checkpoint_documents in main branch query SQL', async () => {
-      const { listDocumentsOnBranch } = await import('../../src/services/document-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
-
       await listDocumentsOnBranch('branch-main');
 
-      const sql = vi.mocked(db.query).mock.calls[0][0];
+      const { sql } = stub.statements[0];
       expect(sql).toContain('checkpoint_documents');
       expect(sql).toContain('published_version_id');
     });
@@ -140,14 +115,9 @@ describe('Document Publish State in Branch Listings', () => {
 
   describe('isPublished and inherited visibility filter by checkpoint_type = publish', () => {
     it('COW mode query filters both LATERAL publish state and inherited visibility by checkpoint_type', async () => {
-      const { listDocumentsOnBranch } = await import('../../src/services/document-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
-
       await listDocumentsOnBranch('branch-feature', { mainBranchId: 'branch-main' });
 
-      const sql = vi.mocked(db.query).mock.calls[0][0];
+      const { sql } = stub.statements[0];
       // CoW query has 3 checkpoint_type = 'publish' filters:
       // 1. LATERAL for branch-side published_version_id
       // 2. outer WHERE for inherited document visibility
@@ -157,14 +127,9 @@ describe('Document Publish State in Branch Listings', () => {
     });
 
     it('main branch query should filter publish state by checkpoint_type = publish', async () => {
-      const { listDocumentsOnBranch } = await import('../../src/services/document-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
-
       await listDocumentsOnBranch('branch-main');
 
-      const sql = vi.mocked(db.query).mock.calls[0][0];
+      const { sql } = stub.statements[0];
       expect(sql).toContain('checkpoint_type');
       expect(sql).toContain("'publish'");
     });
@@ -172,23 +137,18 @@ describe('Document Publish State in Branch Listings', () => {
 
   describe('DocumentOnBranch publish state mapping', () => {
     it('should map null published_version_id to isPublished=false with no optional fields', async () => {
-      const { listDocumentsOnBranch } = await import('../../src/services/document-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [
-          {
-            id: 'doc-1',
-            site_id: 'site-1',
-            path: 'pages/unpublished',
-            created_at: '2026-01-01T00:00:00.000Z',
-            archived_at: null,
-            inherited: false,
-            published_version_id: null,
-            published_at: null,
-          },
-        ],
-      });
+      stub.on('u').select.returnsRaw([
+        {
+          id: 'doc-1',
+          site_id: 'site-1',
+          path: 'pages/unpublished',
+          created_at: '2026-01-01T00:00:00.000Z',
+          archived_at: null,
+          inherited: false,
+          published_version_id: null,
+          published_at: null,
+        },
+      ]);
 
       const result = await listDocumentsOnBranch('branch-main');
       const doc = result[0];
@@ -199,23 +159,18 @@ describe('Document Publish State in Branch Listings', () => {
     });
 
     it('should map non-null published_version_id to isPublished=true with fields present', async () => {
-      const { listDocumentsOnBranch } = await import('../../src/services/document-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [
-          {
-            id: 'doc-1',
-            site_id: 'site-1',
-            path: 'pages/published',
-            created_at: '2026-01-01T00:00:00.000Z',
-            archived_at: null,
-            inherited: true,
-            published_version_id: 'ver-123',
-            published_at: '2026-02-01T12:00:00.000Z',
-          },
-        ],
-      });
+      stub.on('u').select.returnsRaw([
+        {
+          id: 'doc-1',
+          site_id: 'site-1',
+          path: 'pages/published',
+          created_at: '2026-01-01T00:00:00.000Z',
+          archived_at: null,
+          inherited: true,
+          published_version_id: 'ver-123',
+          published_at: '2026-02-01T12:00:00.000Z',
+        },
+      ]);
 
       const result = await listDocumentsOnBranch('branch-feature', {
         mainBranchId: 'branch-main',

@@ -15,8 +15,10 @@
 
 import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
+import type { SQL } from 'drizzle-orm';
 import { getDatabaseInstance, setDatabaseInstance, runWithConnection } from '../../src/db';
 import type { Database, DatabaseConnection, QueryResult } from '../../src/db';
+import type { Transaction } from '../../src/db/executor';
 import * as schema from '../../src/db/schema';
 import { installDatabase } from '../../src/db/scope';
 
@@ -89,6 +91,61 @@ export function createRealDatabaseConnection(connectionString: string = TEST_CON
   const db = drizzle(drizzleClient, { schema });
   installDatabase(db);
   return { db, connection, sql };
+}
+
+/**
+ * The statement renderer every Drizzle handle carries. It is not part of the
+ * published handle type, so it is reached through this shape.
+ */
+interface Rendering {
+  dialect: { sqlToQuery: (query: SQL) => { sql: string } };
+}
+
+/** A handle that reports the statements issued through it. */
+export interface StatementRecorder {
+  /** Install this in place of the handle it wraps. */
+  db: Database;
+  /** Every statement issued so far, in order, as the driver received it. */
+  statements: string[];
+  /** Forget what has been recorded, so a test measures only its own work. */
+  clear: () => void;
+}
+
+/**
+ * Wraps a real handle so a test can assert on the statements a call issues —
+ * the integration-tier counterpart to the unit stub's `statements`.
+ *
+ * The transaction scope is wrapped too: a write inside one runs against a
+ * different handle from the one the transaction was opened on, and statements
+ * issued there would otherwise go unseen.
+ */
+export function recordStatements(handle: Database): StatementRecorder {
+  const statements: string[] = [];
+
+  const wrap = <T extends Database | Transaction>(target: T): T =>
+    new Proxy(target, {
+      get(inner, prop, receiver): unknown {
+        if (prop === 'execute') {
+          return (query: SQL) => {
+            statements.push((inner as unknown as Rendering).dialect.sqlToQuery(query).sql);
+            return (inner as Database).execute(query);
+          };
+        }
+        if (prop === 'transaction') {
+          return (callback: (tx: Transaction) => Promise<unknown>) =>
+            (inner as Database).transaction((tx) => callback(wrap(tx)));
+        }
+        return Reflect.get(inner, prop, receiver);
+      },
+    });
+
+  return {
+    db: wrap(handle),
+    statements,
+    clear: () => {
+      statements.length = 0;
+    },
+  };
 }
 
 /**

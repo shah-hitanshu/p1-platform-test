@@ -10,13 +10,10 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { stubDatabase } from '../__stubs__/database';
+import { documentRelations, documents, documentVersions, migrationJobs } from '../../src/db/schema';
 import type { DocumentVersionSource } from '../../src/types';
 import { buildSlotDelta } from '../../src/services/slot-delta';
-
-vi.mock('../../src/db', () => ({
-  query: vi.fn(),
-  withTransaction: vi.fn(async (fn: () => Promise<unknown>) => fn()),
-}));
 
 vi.mock('../../src/services/checkpoint-service', () => ({
   createCheckpoint: vi.fn(),
@@ -170,7 +167,6 @@ describe('Multi-version migration (v1→v3)', () => {
   describe('processMigration end-to-end v1→v3', () => {
     it('migrates a v1-bound document with a compound v1→v3 delta', async () => {
       const { processMigration } = await import('../../src/services/migration-service');
-      const db = await import('../../src/db');
       const {
         getLatestDocumentVersion,
         createDocumentVersion,
@@ -204,27 +200,20 @@ describe('Multi-version migration (v1→v3)', () => {
         zones: {},
       };
 
-      let docsServed = false;
-      vi.mocked(db.query).mockImplementation((sql: string) => {
-        if (sql.startsWith('SELECT') && sql.includes('app.migration_jobs')) {
-          return Promise.resolve({ rows: [mockJob], rowCount: 1 });
-        }
-        if (sql.includes('FROM app.documents')) {
-          if (docsServed) return Promise.resolve({ rows: [], rowCount: 0 });
-          docsServed = true;
-          return Promise.resolve({
-            rows: [{
-              id: 'doc-001', site_id: 'site-001', path: 'pages/home',
-              template_id: 'template-001', template_version: 1, snapshot: docSnapshot,
-            }],
-            rowCount: 1,
-          });
-        }
-        if (sql.includes("source = 'migration'")) {
-          return Promise.resolve({ rows: [{ version_number: 5 }], rowCount: 1 });
-        }
-        return Promise.resolve({ rows: [], rowCount: 1 });
-      });
+      const stub = stubDatabase();
+      stub.on(migrationJobs).select.returnsRaw([mockJob]);
+      stub.on(migrationJobs).update.returnsRaw([{ id: 'job-v1v3' }]);
+      stub.on(documentVersions).select.returnsRaw([{ versionNumber: 5 }]);
+      stub.on(documents).select.returnsRaw([{
+        id: 'doc-001', site_id: 'site-001', path: 'pages/home',
+        template_id: 'template-001', template_version: 1, snapshot: docSnapshot,
+      }]);
+      // A migrated document stops matching the listing, which is what ends the
+      // paging loop; the notification is the point at which that becomes true.
+      const migrated = (): Promise<void> => {
+        stub.on(documents).select.returnsRaw([]);
+        return Promise.resolve();
+      };
 
       // v1→v3 removes Old and adds New; the document is untouched since baseline.
       vi.mocked(reconstructVersionSnapshot).mockImplementation((id: string, _branch: string, version: number) => {
@@ -247,7 +236,7 @@ describe('Multi-version migration (v1→v3)', () => {
         createdById: 'user-001', createdByType: 'user', createdAt: '2026-06-20T00:01:00Z',
       });
 
-      const result = await processMigration('job-v1v3');
+      const result = await processMigration('job-v1v3', migrated);
 
       expect(result.processedDocuments).toBe(1);
       expect(result.conflictedDocuments).toBe(0);
@@ -257,12 +246,11 @@ describe('Multi-version migration (v1→v3)', () => {
       const content = (persisted.snapshot as { content: { props: { id: string } }[] }).content;
       expect(content.map((c) => c.props.id)).toEqual(['h1', 'b1', 'n1']);
 
-      const syncedVersionUpdates = vi.mocked(db.query).mock.calls.filter((call) => {
-        const sql = (call[0]).toUpperCase();
-        return sql.includes('UPDATE') && sql.includes('SYNCED_VERSION') && sql.includes('DOCUMENT_RELATIONS');
-      });
+      const syncedVersionUpdates = stub.calls(documentRelations).update.filter(
+        (call) => call.sql.toUpperCase().includes('SYNCED_VERSION'),
+      );
       expect(syncedVersionUpdates.length).toBeGreaterThanOrEqual(1);
-      expect(syncedVersionUpdates[0][1]).toContain(3);
+      expect(syncedVersionUpdates[0].params).toContain(3);
     });
   });
 });

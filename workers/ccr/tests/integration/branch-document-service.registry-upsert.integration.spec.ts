@@ -15,34 +15,23 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import postgres from 'postgres';
+import type postgres from 'postgres';
 import { setDatabaseInstance } from '../../src/db';
+import { createRealDatabaseConnection } from '../helpers/database';
 import { createDocumentOnBranch, DuplicateDocumentPathError } from '../../src/services';
 
-const TEST_DATABASE_URL =
-  process.env.POSTGRES_CONNECTION_STRING ??
-  'postgresql://cssuser:csspass@localhost:5432/cssdb';
-
-let sql: ReturnType<typeof postgres>;
+let sql: postgres.Sql;
+let closeConnection: () => Promise<void>;
 let testSiteId: string;
 let mainBranchId: string;
 
 const SYSTEM_ACTOR = '00000000-0000-0000-0000-000000000000';
 
 beforeAll(async () => {
-  sql = postgres(TEST_DATABASE_URL, { max: 1 });
-
-  const connection = {
-    async query(sqlQuery: string, params?: unknown[]): Promise<{ rows: unknown[]; rowCount: number }> {
-      const result = await sql.unsafe(sqlQuery, params as unknown as postgres.ParameterOrJSON<never>[]);
-      const rows = [...result];
-      const resultWithCount = result as unknown as { count?: number };
-      const rowCount = resultWithCount.count ?? rows.length;
-      return { rows, rowCount };
-    },
-    async close(): Promise<void> { /* managed by the postgres client in afterAll */ },
-  };
-  setDatabaseInstance(connection);
+  const real = createRealDatabaseConnection();
+  sql = real.sql;
+  closeConnection = real.connection.close.bind(real.connection);
+  setDatabaseInstance(real.connection);
 
   // Clean up stale data from previous failed runs
   const staleData = await sql<{ id: string }[]>`
@@ -110,7 +99,7 @@ afterAll(async () => {
   }
 
   setDatabaseInstance(null);
-  await sql.end();
+  await closeConnection();
 });
 
 describe('Branch Document Service — Registry Path Upsert-on-Conflict', () => {

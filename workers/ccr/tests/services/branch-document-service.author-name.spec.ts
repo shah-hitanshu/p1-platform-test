@@ -1,22 +1,19 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-
-vi.mock('../../src/db', () => ({
-  query: vi.fn(),
-}));
+import { describe, it, expect, beforeEach } from 'vitest';
+import { stubDatabase, type DatabaseStub } from '../__stubs__/database';
+import { listDocumentsOnBranch } from '../../src/services/branch-document-service';
+import { mapRowToDocumentOnBranch } from '../../src/services/document-types';
 
 describe('listDocumentsOnBranch author resolution', () => {
+  let stub: DatabaseStub;
+
   beforeEach(() => {
-    vi.resetAllMocks();
+    stub = stubDatabase();
   });
 
   it('selects a resolved last_modified_by_name in the outer query', async () => {
-    const { listDocumentsOnBranch } = await import('../../src/services/branch-document-service');
-    const db = await import('../../src/db');
-    vi.mocked(db.query).mockResolvedValueOnce({ rows: [], rowCount: 0 });
-
     await listDocumentsOnBranch('branch-1');
 
-    const [sql] = vi.mocked(db.query).mock.calls[0];
+    const { sql } = stub.statements[0];
     expect(sql).toContain('last_modified_by_name');
     // Aliases must not be `u` — the wrapper already owns that alias and the
     // ORDER BY reads u.created_at / u.branch_path.
@@ -25,13 +22,9 @@ describe('listDocumentsOnBranch author resolution', () => {
   });
 
   it('resolves each created_by_type, with email as the user fallback', async () => {
-    const { listDocumentsOnBranch } = await import('../../src/services/branch-document-service');
-    const db = await import('../../src/db');
-    vi.mocked(db.query).mockResolvedValueOnce({ rows: [], rowCount: 0 });
-
     await listDocumentsOnBranch('branch-1');
 
-    const [sql] = vi.mocked(db.query).mock.calls[0];
+    const { sql } = stub.statements[0];
     // A real person with no display name must not read as "System".
     expect(sql).toContain("WHEN 'user'  THEN COALESCE(au.name, au.email)");
     expect(sql).toContain("WHEN 'agent' THEN ag.name");
@@ -44,20 +37,14 @@ describe('listDocumentsOnBranch author resolution', () => {
   });
 
   it('keeps the outer ordering and pagination intact', async () => {
-    const { listDocumentsOnBranch } = await import('../../src/services/branch-document-service');
-    const db = await import('../../src/db');
-    vi.mocked(db.query).mockResolvedValueOnce({ rows: [], rowCount: 0 });
-
     await listDocumentsOnBranch('branch-1', { limit: 10, offset: 5 });
 
-    const [sql] = vi.mocked(db.query).mock.calls[0];
+    const { sql } = stub.statements[0];
     expect(sql.lastIndexOf('ORDER BY')).toBeLessThan(sql.lastIndexOf('LIMIT $'));
     expect(sql).toMatch(/ORDER BY COALESCE\(u\.branch_path, u\.path\) ASC\s+LIMIT \$/);
   });
 
   it('maps the resolved name onto the document', async () => {
-    const { mapRowToDocumentOnBranch } = await import('../../src/services/document-types');
-
     const doc = mapRowToDocumentOnBranch({
       id: 'doc-1',
       site_id: 'site-1',
@@ -78,6 +65,6 @@ describe('listDocumentsOnBranch author resolution', () => {
 
     expect(doc.lastModifiedByName).toBe('Alice Smith');
     expect(doc.lastModifiedByAvatarUrl).toBe('https://example.com/a.png');
-    expect(doc.updatedAt).toBe('2026-02-01T00:00:00Z');
+    expect(doc.updatedAt).toBe('2026-02-01T00:00:00.000Z');
   });
 });

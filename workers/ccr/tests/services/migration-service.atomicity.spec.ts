@@ -10,11 +10,20 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-
-vi.mock('../../src/db', () => ({
-  query: vi.fn(),
-  withTransaction: vi.fn(async (fn: () => Promise<unknown>) => fn()),
-}));
+import { stubDatabase, type DatabaseStub } from '../__stubs__/database';
+import {
+  documentRelations,
+  documents,
+  migrationConflicts,
+  migrationJobs,
+} from '../../src/db/schema';
+import { processMigration, resolveMigrationConflict } from '../../src/services/migration-service';
+import { ConflictAlreadyResolvedError } from '../../src/services/errors';
+import {
+  createDocumentVersion,
+  getLatestDocumentVersion,
+  reconstructVersionSnapshot,
+} from '../../src/services/document-version-service';
 
 vi.mock('../../src/services/checkpoint-service', () => ({
   createCheckpoint: vi.fn(),
@@ -31,11 +40,12 @@ vi.mock('@pantheon-systems/p1-content-validator', () => ({
   validateDocumentStructure: vi.fn().mockReturnValue({ errors: [] }),
 }));
 
-type QueryCall = [string, unknown[] | undefined];
-
 describe('Migration atomicity', () => {
+  let stub: DatabaseStub;
+
   beforeEach(() => {
     vi.resetAllMocks();
+    stub = stubDatabase();
   });
 
   const emptySnapshot = { content: [], root: { props: {} }, zones: {} };
@@ -82,32 +92,24 @@ describe('Migration atomicity', () => {
 
   describe('processMigration', () => {
     it('advances synced_version per document rather than once per batch', async () => {
-      const { processMigration } = await import('../../src/services/migration-service');
-      const db = await import('../../src/db');
-      const { getLatestDocumentVersion, createDocumentVersion, reconstructVersionSnapshot } =
-        await import('../../src/services/document-version-service');
 
       // Template unchanged across versions => empty delta => both documents clean.
       vi.mocked(reconstructVersionSnapshot).mockResolvedValue(emptySnapshot);
 
-      let served = false;
-      vi.mocked(db.query).mockImplementation((sql: string) => {
-        if (sql.startsWith('SELECT') && sql.includes('app.migration_jobs')) {
-          return Promise.resolve({ rows: [migrationJob()], rowCount: 1 });
-        }
-        if (sql.includes('FROM app.documents')) {
-          if (served) return Promise.resolve({ rows: [], rowCount: 0 });
-          served = true;
-          return Promise.resolve({
-            rows: [
-              { id: 'doc-a', site_id: 'site-1', path: 'a', template_id: 'template-1', template_version: 1, snapshot: emptySnapshot },
-              { id: 'doc-b', site_id: 'site-1', path: 'b', template_id: 'template-1', template_version: 1, snapshot: emptySnapshot },
-            ],
-            rowCount: 2,
-          });
-        }
-        return Promise.resolve({ rows: [], rowCount: 1 });
-      });
+      stub.on(migrationJobs).select.returnsRaw([migrationJob()]);
+      // Claiming the job is what moves it out of pending; the returned id is
+      // what says this run won the claim.
+      stub.on(migrationJobs).update.returnsRaw([{ id: 'job-1' }]);
+      stub.on(documents).select.returnsRaw([
+        { id: 'doc-a', site_id: 'site-1', path: 'a', template_id: 'template-1', template_version: 1, snapshot: emptySnapshot },
+        { id: 'doc-b', site_id: 'site-1', path: 'b', template_id: 'template-1', template_version: 1, snapshot: emptySnapshot },
+      ]);
+      // A migrated document stops matching the listing, which is what ends the
+      // paging loop; the notification is the point at which that becomes true.
+      const migrated = (): Promise<void> => {
+        stub.on(documents).select.returnsRaw([]);
+        return Promise.resolve();
+      };
 
       vi.mocked(getLatestDocumentVersion).mockResolvedValue({
         id: 'v-1', documentId: 'doc-a', branchId: 'branch-1', versionNumber: 1,
@@ -120,47 +122,35 @@ describe('Migration atomicity', () => {
         createdAt: '2026-07-01T00:01:00.000Z',
       });
 
-      const result = await processMigration('job-1');
+      const result = await processMigration('job-1', migrated);
       expect(result.processedDocuments).toBe(2);
       expect(result.conflictedDocuments).toBe(0);
 
-      const syncedCalls = (vi.mocked(db.query).mock.calls as QueryCall[]).filter(
-        ([sql]) => typeof sql === 'string'
-          && sql.includes('UPDATE app.document_relations')
-          && sql.includes('SET synced_version'),
+      const syncedCalls = stub.calls(documentRelations).update.filter(
+        (call) => call.sql.includes('SET synced_version'),
       );
 
       // One advance per clean document, each scoped to a single document id
       // rather than a batched ANY(array) of ids.
       expect(syncedCalls.length).toBe(2);
-      for (const [, params] of syncedCalls) {
-        expect(Array.isArray(params?.[1])).toBe(false);
+      for (const call of syncedCalls) {
+        expect(Array.isArray(call.params[1])).toBe(false);
       }
     });
 
     it('wraps each migrated document in a transaction', async () => {
-      const { processMigration } = await import('../../src/services/migration-service');
-      const db = await import('../../src/db');
-      const { getLatestDocumentVersion, createDocumentVersion, reconstructVersionSnapshot } =
-        await import('../../src/services/document-version-service');
 
       vi.mocked(reconstructVersionSnapshot).mockResolvedValue(emptySnapshot);
 
-      let served = false;
-      vi.mocked(db.query).mockImplementation((sql: string) => {
-        if (sql.startsWith('SELECT') && sql.includes('app.migration_jobs')) {
-          return Promise.resolve({ rows: [migrationJob({ total_documents: 1 })], rowCount: 1 });
-        }
-        if (sql.includes('FROM app.documents')) {
-          if (served) return Promise.resolve({ rows: [], rowCount: 0 });
-          served = true;
-          return Promise.resolve({
-            rows: [{ id: 'doc-a', site_id: 'site-1', path: 'a', template_id: 'template-1', template_version: 1, snapshot: emptySnapshot }],
-            rowCount: 1,
-          });
-        }
-        return Promise.resolve({ rows: [], rowCount: 1 });
-      });
+      stub.on(migrationJobs).select.returnsRaw([migrationJob({ total_documents: 1 })]);
+      stub.on(migrationJobs).update.returnsRaw([{ id: 'job-1' }]);
+      stub.on(documents).select.returnsRaw([
+        { id: 'doc-a', site_id: 'site-1', path: 'a', template_id: 'template-1', template_version: 1, snapshot: emptySnapshot },
+      ]);
+      const migrated = (): Promise<void> => {
+        stub.on(documents).select.returnsRaw([]);
+        return Promise.resolve();
+      };
 
       vi.mocked(getLatestDocumentVersion).mockResolvedValue({
         id: 'v-1', documentId: 'doc-a', branchId: 'branch-1', versionNumber: 1,
@@ -173,23 +163,18 @@ describe('Migration atomicity', () => {
         createdAt: '2026-07-01T00:01:00.000Z',
       });
 
-      await processMigration('job-1');
+      await processMigration('job-1', migrated);
 
-      expect(db.withTransaction).toHaveBeenCalled();
+      expect(stub.transaction.committed).toBeGreaterThan(0);
     });
   });
 
   describe('resolveMigrationConflict', () => {
     it('does not re-apply a conflict that is already resolved', async () => {
-      const { resolveMigrationConflict } = await import('../../src/services/migration-service');
-      const db = await import('../../src/db');
-      const { getLatestDocumentVersion, createDocumentVersion } =
-        await import('../../src/services/document-version-service');
 
-      vi.mocked(db.query).mockResolvedValue({
-        rows: [conflictRow({ resolution: 'apply', resolved_at: '2026-07-01T01:00:00.000Z' })],
-        rowCount: 1,
-      });
+      stub.on(migrationConflicts).select.returnsRaw([
+        conflictRow({ resolution: 'apply', resolved_at: '2026-07-01T01:00:00.000Z' }),
+      ]);
       // A snapshot is available, so an unguarded resolve would happily apply the
       // delta a second time and write a duplicate version.
       vi.mocked(getLatestDocumentVersion).mockResolvedValue({
@@ -210,17 +195,12 @@ describe('Migration atomicity', () => {
     });
 
     it('rejects re-resolving a conflict with a different resolution', async () => {
-      const { resolveMigrationConflict } = await import('../../src/services/migration-service');
-      const { ConflictAlreadyResolvedError } = await import('../../src/services/errors');
-      const db = await import('../../src/db');
-      const { createDocumentVersion } = await import('../../src/services/document-version-service');
 
       // Already settled as 'skip'; a follow-up 'apply' must not silently return
       // the stale record nor apply the delta on top of the prior outcome.
-      vi.mocked(db.query).mockResolvedValue({
-        rows: [conflictRow({ resolution: 'skip', resolved_at: '2026-07-01T01:00:00.000Z' })],
-        rowCount: 1,
-      });
+      stub.on(migrationConflicts).select.returnsRaw([
+        conflictRow({ resolution: 'skip', resolved_at: '2026-07-01T01:00:00.000Z' }),
+      ]);
 
       await expect(
         resolveMigrationConflict('conflict-1', 'apply', { id: 'user-1', type: 'user' }),
@@ -229,44 +209,27 @@ describe('Migration atomicity', () => {
     });
 
     it('locks the conflict row for update before resolving', async () => {
-      const { resolveMigrationConflict } = await import('../../src/services/migration-service');
-      const db = await import('../../src/db');
 
-      vi.mocked(db.query).mockImplementation((sql: string) => {
-        if (sql.startsWith('SELECT')) {
-          return Promise.resolve({ rows: [conflictRow()], rowCount: 1 });
-        }
-        return Promise.resolve({
-          rows: [conflictRow({ resolution: 'skip', resolved_at: '2026-07-01T01:00:00.000Z' })],
-          rowCount: 1,
-        });
-      });
+      stub.on(migrationConflicts).select.returnsRaw([conflictRow()]);
+      stub.on(migrationConflicts).update.returnsRaw([
+        conflictRow({ resolution: 'skip', resolved_at: '2026-07-01T01:00:00.000Z' }),
+      ]);
 
       await resolveMigrationConflict('conflict-1', 'skip', { id: 'user-1', type: 'user' });
 
-      const selectCall = (vi.mocked(db.query).mock.calls as QueryCall[]).find(
-        ([sql]) => typeof sql === 'string' && sql.startsWith('SELECT') && sql.includes('app.migration_conflicts'),
-      );
-      expect(selectCall?.[0]).toContain('FOR UPDATE');
+      expect(stub.calls(migrationConflicts).select[0].sql).toContain('FOR UPDATE');
     });
 
     it('runs conflict resolution inside a transaction', async () => {
-      const { resolveMigrationConflict } = await import('../../src/services/migration-service');
-      const db = await import('../../src/db');
 
-      vi.mocked(db.query).mockImplementation((sql: string) => {
-        if (sql.startsWith('SELECT')) {
-          return Promise.resolve({ rows: [conflictRow()], rowCount: 1 });
-        }
-        return Promise.resolve({
-          rows: [conflictRow({ resolution: 'skip', resolved_at: '2026-07-01T01:00:00.000Z' })],
-          rowCount: 1,
-        });
-      });
+      stub.on(migrationConflicts).select.returnsRaw([conflictRow()]);
+      stub.on(migrationConflicts).update.returnsRaw([
+        conflictRow({ resolution: 'skip', resolved_at: '2026-07-01T01:00:00.000Z' }),
+      ]);
 
       await resolveMigrationConflict('conflict-1', 'skip', { id: 'user-1', type: 'user' });
 
-      expect(db.withTransaction).toHaveBeenCalled();
+      expect(stub.transaction.committed).toBe(1);
     });
   });
 });

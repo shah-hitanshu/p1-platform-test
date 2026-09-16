@@ -6,41 +6,36 @@
  * the latest document_versions row for each document.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
+import { stubDatabase, type DatabaseStub } from '../__stubs__/database';
+import { listDocumentsOnBranch } from '../../src/services/document-service';
 
-// Mock database module
-vi.mock('../../src/db', () => ({
-  query: vi.fn(),
-}));
+
+let stub: DatabaseStub;
 
 describe('Document Last-Modified Metadata in Branch Listings', () => {
   beforeEach(() => {
-    vi.resetAllMocks();
+    stub = stubDatabase();
   });
 
   describe('listDocumentsOnBranch with mainBranchId (COW mode)', () => {
     it('should include updatedAt, lastModifiedById, lastModifiedByType from latest version', async () => {
-      const { listDocumentsOnBranch } = await import('../../src/services/document-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [
-          {
-            id: 'doc-1',
-            site_id: 'site-1',
-            path: 'pages/home',
-            created_at: '2026-01-01T00:00:00.000Z',
-            archived_at: null,
-            inherited: false,
-            published_version_id: null,
-            published_at: null,
-            snapshot_title: 'Home Page',
-            latest_version_at: '2026-03-15T14:30:00.000Z',
-            last_modified_by_id: 'user-42',
-            last_modified_by_type: 'user',
-          },
-        ],
-      });
+      stub.on('u').select.returnsRaw([
+        {
+          id: 'doc-1',
+          site_id: 'site-1',
+          path: 'pages/home',
+          created_at: '2026-01-01T00:00:00.000Z',
+          archived_at: null,
+          inherited: false,
+          published_version_id: null,
+          published_at: null,
+          snapshot_title: 'Home Page',
+          latest_version_at: '2026-03-15T14:30:00.000Z',
+          last_modified_by_id: 'user-42',
+          last_modified_by_type: 'user',
+        },
+      ]);
 
       const result = await listDocumentsOnBranch('branch-feature', {
         mainBranchId: 'branch-main',
@@ -53,27 +48,22 @@ describe('Document Last-Modified Metadata in Branch Listings', () => {
     });
 
     it('should omit last-modified fields when values are null', async () => {
-      const { listDocumentsOnBranch } = await import('../../src/services/document-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [
-          {
-            id: 'doc-1',
-            site_id: 'site-1',
-            path: 'pages/orphan',
-            created_at: '2026-01-01T00:00:00.000Z',
-            archived_at: null,
-            inherited: false,
-            published_version_id: null,
-            published_at: null,
-            snapshot_title: null,
-            latest_version_at: null,
-            last_modified_by_id: null,
-            last_modified_by_type: null,
-          },
-        ],
-      });
+      stub.on('u').select.returnsRaw([
+        {
+          id: 'doc-1',
+          site_id: 'site-1',
+          path: 'pages/orphan',
+          created_at: '2026-01-01T00:00:00.000Z',
+          archived_at: null,
+          inherited: false,
+          published_version_id: null,
+          published_at: null,
+          snapshot_title: null,
+          latest_version_at: null,
+          last_modified_by_id: null,
+          last_modified_by_type: null,
+        },
+      ]);
 
       const result = await listDocumentsOnBranch('branch-feature', {
         mainBranchId: 'branch-main',
@@ -86,16 +76,11 @@ describe('Document Last-Modified Metadata in Branch Listings', () => {
     });
 
     it('should include last-modified columns in the COW UNION query SQL', async () => {
-      const { listDocumentsOnBranch } = await import('../../src/services/document-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
-
       await listDocumentsOnBranch('branch-feature', {
         mainBranchId: 'branch-main',
       });
 
-      const sql = vi.mocked(db.query).mock.calls[0][0];
+      const { sql } = stub.statements[0];
       expect(sql).toContain('latest_version_at');
       expect(sql).toContain('last_modified_by_id');
       expect(sql).toContain('last_modified_by_type');
@@ -104,27 +89,22 @@ describe('Document Last-Modified Metadata in Branch Listings', () => {
 
   describe('listDocumentsOnBranch without mainBranchId (main branch)', () => {
     it('should include last-modified metadata using branchId as main', async () => {
-      const { listDocumentsOnBranch } = await import('../../src/services/document-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [
-          {
-            id: 'doc-1',
-            site_id: 'site-1',
-            path: 'pages/home',
-            created_at: '2026-01-01T00:00:00.000Z',
-            archived_at: null,
-            inherited: false,
-            published_version_id: null,
-            published_at: null,
-            snapshot_title: 'Home',
-            latest_version_at: '2026-02-20T09:00:00.000Z',
-            last_modified_by_id: 'agent-7',
-            last_modified_by_type: 'agent',
-          },
-        ],
-      });
+      stub.on('u').select.returnsRaw([
+        {
+          id: 'doc-1',
+          site_id: 'site-1',
+          path: 'pages/home',
+          created_at: '2026-01-01T00:00:00.000Z',
+          archived_at: null,
+          inherited: false,
+          published_version_id: null,
+          published_at: null,
+          snapshot_title: 'Home',
+          latest_version_at: '2026-02-20T09:00:00.000Z',
+          last_modified_by_id: 'agent-7',
+          last_modified_by_type: 'agent',
+        },
+      ]);
 
       const result = await listDocumentsOnBranch('branch-main');
 
@@ -135,14 +115,9 @@ describe('Document Last-Modified Metadata in Branch Listings', () => {
     });
 
     it('should include last-modified columns in main branch query SQL', async () => {
-      const { listDocumentsOnBranch } = await import('../../src/services/document-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
-
       await listDocumentsOnBranch('branch-main');
 
-      const sql = vi.mocked(db.query).mock.calls[0][0];
+      const { sql } = stub.statements[0];
       expect(sql).toContain('latest_version_at');
       expect(sql).toContain('last_modified_by_id');
       expect(sql).toContain('last_modified_by_type');
@@ -151,27 +126,22 @@ describe('Document Last-Modified Metadata in Branch Listings', () => {
 
   describe('DocumentOnBranch last-modified mapping', () => {
     it('should map null last-modified fields to absent properties', async () => {
-      const { listDocumentsOnBranch } = await import('../../src/services/document-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [
-          {
-            id: 'doc-1',
-            site_id: 'site-1',
-            path: 'pages/no-versions',
-            created_at: '2026-01-01T00:00:00.000Z',
-            archived_at: null,
-            inherited: false,
-            published_version_id: null,
-            published_at: null,
-            snapshot_title: null,
-            latest_version_at: null,
-            last_modified_by_id: null,
-            last_modified_by_type: null,
-          },
-        ],
-      });
+      stub.on('u').select.returnsRaw([
+        {
+          id: 'doc-1',
+          site_id: 'site-1',
+          path: 'pages/no-versions',
+          created_at: '2026-01-01T00:00:00.000Z',
+          archived_at: null,
+          inherited: false,
+          published_version_id: null,
+          published_at: null,
+          snapshot_title: null,
+          latest_version_at: null,
+          last_modified_by_id: null,
+          last_modified_by_type: null,
+        },
+      ]);
 
       const result = await listDocumentsOnBranch('branch-main');
       const doc = result[0];
@@ -182,27 +152,22 @@ describe('Document Last-Modified Metadata in Branch Listings', () => {
     });
 
     it('should map non-null last-modified fields to present properties', async () => {
-      const { listDocumentsOnBranch } = await import('../../src/services/document-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [
-          {
-            id: 'doc-1',
-            site_id: 'site-1',
-            path: 'pages/edited',
-            created_at: '2026-01-01T00:00:00.000Z',
-            archived_at: null,
-            inherited: true,
-            published_version_id: 'ver-pub-1',
-            published_at: '2026-02-01T12:00:00.000Z',
-            snapshot_title: 'Edited Page',
-            latest_version_at: '2026-04-01T16:45:00.000Z',
-            last_modified_by_id: 'service-deploy',
-            last_modified_by_type: 'service',
-          },
-        ],
-      });
+      stub.on('u').select.returnsRaw([
+        {
+          id: 'doc-1',
+          site_id: 'site-1',
+          path: 'pages/edited',
+          created_at: '2026-01-01T00:00:00.000Z',
+          archived_at: null,
+          inherited: true,
+          published_version_id: 'ver-pub-1',
+          published_at: '2026-02-01T12:00:00.000Z',
+          snapshot_title: 'Edited Page',
+          latest_version_at: '2026-04-01T16:45:00.000Z',
+          last_modified_by_id: 'service-deploy',
+          last_modified_by_type: 'service',
+        },
+      ]);
 
       const result = await listDocumentsOnBranch('branch-feature', {
         mainBranchId: 'branch-main',

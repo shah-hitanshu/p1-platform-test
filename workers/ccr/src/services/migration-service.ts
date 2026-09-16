@@ -20,7 +20,14 @@
  */
 
 import { compare as jsonPatchCompare, type Operation } from 'fast-json-patch';
-import { query, withTransaction } from '../db';
+import { and, count, desc, eq, isNull, sql, type SQL } from 'drizzle-orm';
+import { db, transaction } from '../db/scope';
+import {
+  documentVersions,
+  documents,
+  migrationConflicts,
+  migrationJobs,
+} from '../db/schema';
 import { createCheckpoint, revertToCheckpoint } from './checkpoint-service';
 import {
   getLatestDocumentVersion,
@@ -208,7 +215,13 @@ export interface MigrationPreview {
 // Row Mappers
 // =============================================================================
 
-interface MigrationJobRow {
+/**
+ * Type aliases rather than interfaces: db().execute<T>() constrains T to
+ * Record<string, unknown>, which an interface cannot satisfy because it carries
+ * no implicit index signature. The timestamps are the text form a raw statement
+ * returns; both mappers below build a Date from either that or a Date.
+ */
+type MigrationJobRow = {
   id: string;
   site_id: string;
   branch_id: string;
@@ -223,9 +236,9 @@ interface MigrationJobRow {
   created_by_type: string;
   created_at: string;
   completed_at: string | null;
-}
+};
 
-interface MigrationConflictRow {
+type MigrationConflictRow = {
   id: string;
   migration_job_id: string;
   document_id: string;
@@ -240,7 +253,7 @@ interface MigrationConflictRow {
   resolution: string | null;
   created_at: string;
   resolved_at: string | null;
-}
+};
 
 function mapRowToJob(row: MigrationJobRow): MigrationJob {
   return {
@@ -714,21 +727,17 @@ async function advanceSyncedVersion(
   useOverride: boolean,
 ): Promise<void> {
   if (useOverride) {
-    await query(
-      `INSERT INTO app.document_relation_branch_sync
+    await db().execute(sql`
+      INSERT INTO app.document_relation_branch_sync
          (source_document_id, relation_type, branch_id, synced_version)
-       VALUES ($1, 'template', $2, $3)
+       VALUES (${documentId}, 'template', ${branchId}, ${toVersion})
        ON CONFLICT (source_document_id, relation_type, branch_id)
-       DO UPDATE SET synced_version = EXCLUDED.synced_version, updated_at = NOW()`,
-      [documentId, branchId, toVersion],
-    );
+       DO UPDATE SET synced_version = EXCLUDED.synced_version, updated_at = NOW()`);
     return;
   }
-  await query(
-    `UPDATE app.document_relations SET synced_version = $1
-     WHERE source_document_id = $2 AND relation_type = 'template'`,
-    [toVersion, documentId],
-  );
+  await db().execute(sql`
+    UPDATE app.document_relations SET synced_version = ${toVersion}
+     WHERE source_document_id = ${documentId} AND relation_type = 'template'`);
 }
 
 export async function extractTemplateDelta(
@@ -751,41 +760,39 @@ export async function extractTemplateDelta(
 }
 
 export async function getMigrationJob(jobId: string): Promise<MigrationJob> {
-  const result = await query<MigrationJobRow>(
-    'SELECT * FROM app.migration_jobs WHERE id = $1',
-    [jobId],
+  const rows = await db().execute<MigrationJobRow>(
+    sql`SELECT * FROM app.migration_jobs WHERE id = ${jobId}`,
   );
 
-  if (result.rows.length === 0) {
-    throw new MigrationJobNotFoundError(jobId);
-  }
-
-  const jobRow = result.rows[0];
-  if (!jobRow) {
+  const jobRow = rows.at(0);
+  if (jobRow === undefined) {
     throw new MigrationJobNotFoundError(jobId);
   }
   return mapRowToJob(jobRow);
 }
 
 export async function listMigrationConflicts(jobId: string): Promise<MigrationConflict[]> {
-  const result = await query<MigrationConflictRow>(
-    'SELECT * FROM app.migration_conflicts WHERE migration_job_id = $1 ORDER BY created_at ASC',
-    [jobId],
-  );
+  const rows = await db().execute<MigrationConflictRow>(sql`
+    SELECT * FROM app.migration_conflicts
+     WHERE migration_job_id = ${jobId} ORDER BY created_at ASC`);
 
-  return result.rows.map(mapRowToConflict);
+  return rows.map(mapRowToConflict);
 }
 
-interface AffectedDocumentRow {
+/** A raw COUNT(*) comes back as text. */
+type CountRow = { count: string };
+
+/** On the same terms as {@link CountRow}. */
+type StaleCountRow = { count: string; oldest_version: number | null };
+
+type AffectedDocumentRow = {
   id: string;
   site_id: string;
   path: string;
   template_id: string | null;
   template_version: number | null;
   snapshot: Record<string, unknown>;
-}
-
-type AffectedDocumentsQuery = [sql: string, params: unknown[]];
+};
 
 // A page inherited from main — published there, not yet edited on this branch —
 // resolves its template edge through the branch's per-branch sync override. UNION
@@ -797,9 +804,8 @@ function affectedDocumentsInheritingMainQuery(
   limit: number,
   offset: number,
   mainBranchId: string,
-): AffectedDocumentsQuery {
-  return [
-    `SELECT id, site_id, path, template_id, template_version, snapshot FROM (
+): SQL {
+  return sql`SELECT id, site_id, path, template_id, template_version, snapshot FROM (
        SELECT d.id, d.site_id, d.path,
          dr.target_document_id AS template_id,
          COALESCE(brs.synced_version, dr.synced_version) AS template_version,
@@ -807,15 +813,16 @@ function affectedDocumentsInheritingMainQuery(
        FROM app.documents d
        ${TEMPLATE_RELATION_INNER_JOIN}
        LEFT JOIN app.document_relation_branch_sync brs
-         ON brs.source_document_id = d.id AND brs.relation_type = 'template' AND brs.branch_id = $1
+         ON brs.source_document_id = d.id AND brs.relation_type = 'template'
+            AND brs.branch_id = ${branchId}
        JOIN LATERAL (
          SELECT snapshot FROM app.document_versions local_dv
-         WHERE local_dv.document_id = d.id AND local_dv.branch_id = $1
+         WHERE local_dv.document_id = d.id AND local_dv.branch_id = ${branchId}
          ORDER BY local_dv.version_number DESC LIMIT 1
        ) dv ON true
-       WHERE dr.target_document_id = $2
+       WHERE dr.target_document_id = ${templateId}
          AND (COALESCE(brs.synced_version, dr.synced_version) IS NULL
-              OR COALESCE(brs.synced_version, dr.synced_version) < $3)
+              OR COALESCE(brs.synced_version, dr.synced_version) < ${toVersion})
          AND d.archived_at IS NULL
 
        UNION
@@ -829,29 +836,27 @@ function affectedDocumentsInheritingMainQuery(
        INNER JOIN app.document_versions dv ON dv.document_id = d.id
        INNER JOIN app.checkpoint_documents cd ON cd.document_version_id = dv.id
        INNER JOIN app.checkpoints cp ON cp.id = cd.checkpoint_id
-       WHERE dr.target_document_id = $2
-         AND (dr.synced_version IS NULL OR dr.synced_version < $3)
+       WHERE dr.target_document_id = ${templateId}
+         AND (dr.synced_version IS NULL OR dr.synced_version < ${toVersion})
          AND d.archived_at IS NULL
-         AND dv.branch_id = $6
-         AND cp.branch_id = $6
+         AND dv.branch_id = ${mainBranchId}
+         AND cp.branch_id = ${mainBranchId}
          AND cp.checkpoint_type = 'publish'
          AND NOT EXISTS (
            SELECT 1 FROM app.document_versions local_dv
-           WHERE local_dv.document_id = d.id AND local_dv.branch_id = $1
+           WHERE local_dv.document_id = d.id AND local_dv.branch_id = ${branchId}
          )
          AND dv.version_number = (
            SELECT MAX(pub_dv.version_number)
            FROM app.document_versions pub_dv
            INNER JOIN app.checkpoint_documents pub_cd ON pub_cd.document_version_id = pub_dv.id
            INNER JOIN app.checkpoints pub_cp ON pub_cp.id = pub_cd.checkpoint_id
-           WHERE pub_dv.document_id = d.id AND pub_dv.branch_id = $6
-             AND pub_cp.branch_id = $6 AND pub_cp.checkpoint_type = 'publish'
+           WHERE pub_dv.document_id = d.id AND pub_dv.branch_id = ${mainBranchId}
+             AND pub_cp.branch_id = ${mainBranchId} AND pub_cp.checkpoint_type = 'publish'
          )
      ) combined
      ORDER BY id
-     LIMIT $4 OFFSET $5`,
-    [branchId, templateId, toVersion, limit, offset, mainBranchId],
-  ];
+     LIMIT ${limit} OFFSET ${offset}`;
 }
 
 function affectedDocumentsLocalQuery(
@@ -860,9 +865,8 @@ function affectedDocumentsLocalQuery(
   toVersion: number,
   limit: number,
   offset: number,
-): AffectedDocumentsQuery {
-  return [
-    `SELECT d.id, d.site_id, d.path,
+): SQL {
+  return sql`SELECT d.id, d.site_id, d.path,
        dr.target_document_id AS template_id,
        dr.synced_version AS template_version,
        dv.snapshot
@@ -870,16 +874,14 @@ function affectedDocumentsLocalQuery(
      ${TEMPLATE_RELATION_INNER_JOIN}
      JOIN LATERAL (
        SELECT snapshot FROM app.document_versions
-       WHERE document_id = d.id AND branch_id = $1
+       WHERE document_id = d.id AND branch_id = ${branchId}
        ORDER BY version_number DESC LIMIT 1
      ) dv ON true
-     WHERE dr.target_document_id = $2
-       AND (dr.synced_version IS NULL OR dr.synced_version < $3)
+     WHERE dr.target_document_id = ${templateId}
+       AND (dr.synced_version IS NULL OR dr.synced_version < ${toVersion})
        AND d.archived_at IS NULL
      ORDER BY d.id
-     LIMIT $4 OFFSET $5`,
-    [branchId, templateId, toVersion, limit, offset],
-  ];
+     LIMIT ${limit} OFFSET ${offset}`;
 }
 
 export async function findAffectedDocuments(
@@ -897,13 +899,13 @@ export async function findAffectedDocuments(
   // non-main branch, a page inherited from main and not yet edited here also
   // counts, at main's latest published version; migrating it writes its first
   // branch-local version.
-  const [sql, params] = branchInheritsFromMain(branchId, mainBranchId)
+  const statement = branchInheritsFromMain(branchId, mainBranchId)
     ? affectedDocumentsInheritingMainQuery(branchId, templateId, toVersion, limit, offset, mainBranchId)
     : affectedDocumentsLocalQuery(branchId, templateId, toVersion, limit, offset);
 
-  const result = await query<AffectedDocumentRow>(sql, params);
+  const result = await db().execute<AffectedDocumentRow>(statement);
 
-  return result.rows.map((row) => ({
+  return result.map((row) => ({
     id: row.id,
     siteId: row.site_id,
     branchId,
@@ -1008,24 +1010,24 @@ export async function detectDocumentConflicts(
  * never been migrated.
  */
 async function resolveBaselineVersion(documentId: string, branchId: string): Promise<number> {
-  const lastMigration = await query<{ version_number: number }>(
-    `SELECT COALESCE(MAX(version_number), 0) as version_number
-     FROM app.document_versions
-     WHERE document_id = $1 AND branch_id = $2 AND source = 'migration'`,
-    [documentId, branchId],
+  const onBranch = and(
+    eq(documentVersions.documentId, documentId),
+    eq(documentVersions.branchId, branchId),
   );
-  const lastMigrationVersion = lastMigration.rows[0]?.version_number ?? 0;
+  const [lastMigration] = await db()
+    .select({ versionNumber: sql<number>`COALESCE(MAX(${documentVersions.versionNumber}), 0)` })
+    .from(documentVersions)
+    .where(and(onBranch, eq(documentVersions.source, 'migration')));
+  const lastMigrationVersion = lastMigration?.versionNumber ?? 0;
   if (lastMigrationVersion > 0) {
     return lastMigrationVersion;
   }
 
-  const earliest = await query<{ version_number: number }>(
-    `SELECT MIN(version_number) as version_number
-     FROM app.document_versions
-     WHERE document_id = $1 AND branch_id = $2`,
-    [documentId, branchId],
-  );
-  return earliest.rows[0]?.version_number ?? 1;
+  const [earliest] = await db()
+    .select({ versionNumber: sql<number | null>`MIN(${documentVersions.versionNumber})` })
+    .from(documentVersions)
+    .where(onBranch);
+  return earliest?.versionNumber ?? 1;
 }
 
 export async function applyDeltaToDocument(
@@ -1097,38 +1099,34 @@ export async function triggerMigration(
     throw new InvalidVersionRangeError(fromVersion, toVersion);
   }
 
-  const templateCheck = await query(
-    'SELECT id FROM app.documents WHERE id = $1 AND archived_at IS NULL',
-    [templateId],
-  );
-  if (templateCheck.rows.length === 0) {
+  const templateCheck = await db()
+    .select({ id: documents.id })
+    .from(documents)
+    .where(and(eq(documents.id, templateId), isNull(documents.archivedAt)));
+  if (templateCheck.length === 0) {
     throw new TemplateNotFoundError(templateId);
   }
 
   // Count against this branch's effective synced_version, so a page already
   // migrated here via its per-branch override is not counted as stale again.
   const countResult = branchInheritsFromMain(branchId, mainBranchId)
-    ? await query<{ count: string }>(
-      `SELECT COUNT(*) as count FROM app.documents d
+    ? await db().execute<CountRow>(sql`
+      SELECT COUNT(*) as count FROM app.documents d
        ${TEMPLATE_RELATION_INNER_JOIN}
        LEFT JOIN app.document_relation_branch_sync brs
-         ON brs.source_document_id = d.id AND brs.relation_type = 'template' AND brs.branch_id = $3
-       WHERE dr.target_document_id = $1
+         ON brs.source_document_id = d.id AND brs.relation_type = 'template'
+            AND brs.branch_id = ${branchId}
+       WHERE dr.target_document_id = ${templateId}
          AND (COALESCE(brs.synced_version, dr.synced_version) IS NULL
-              OR COALESCE(brs.synced_version, dr.synced_version) < $2)
-         AND d.archived_at IS NULL`,
-      [templateId, toVersion, branchId],
-    )
-    : await query<{ count: string }>(
-      `SELECT COUNT(*) as count FROM app.documents d
+              OR COALESCE(brs.synced_version, dr.synced_version) < ${toVersion})
+         AND d.archived_at IS NULL`)
+    : await db().execute<CountRow>(sql`
+      SELECT COUNT(*) as count FROM app.documents d
        ${TEMPLATE_RELATION_INNER_JOIN}
-       WHERE dr.target_document_id = $1
-         AND (dr.synced_version IS NULL OR dr.synced_version < $2)
-         AND d.archived_at IS NULL`,
-      [templateId, toVersion],
-    );
-  const countRow = countResult.rows[0];
-  const totalDocuments = parseInt(countRow?.count ?? '0', 10);
+       WHERE dr.target_document_id = ${templateId}
+         AND (dr.synced_version IS NULL OR dr.synced_version < ${toVersion})
+         AND d.archived_at IS NULL`);
+  const totalDocuments = parseInt(countResult.at(0)?.count ?? '0', 10);
 
   const { checkpoint } = await createCheckpoint({
     branchId,
@@ -1139,18 +1137,17 @@ export async function triggerMigration(
     forceFullSnapshot: true,
   });
 
-  const jobResult = await query<MigrationJobRow>(
-    `INSERT INTO app.migration_jobs (
+  const jobResult = await db().execute<MigrationJobRow>(sql`
+    INSERT INTO app.migration_jobs (
        site_id, branch_id, template_id, from_version, to_version,
        checkpoint_id, status, total_documents,
        created_by_id, created_by_type
-     ) VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7, $8, $9)
-     RETURNING *`,
-    [siteId, branchId, templateId, fromVersion, toVersion,
-      checkpoint.id, totalDocuments, principal.id, principal.type],
-  );
+     ) VALUES (${siteId}, ${branchId}, ${templateId}, ${fromVersion}, ${toVersion},
+               ${checkpoint.id}, 'pending', ${totalDocuments},
+               ${principal.id}, ${principal.type})
+     RETURNING *`);
 
-  const triggerJobRow = jobResult.rows[0];
+  const triggerJobRow = jobResult.at(0);
   if (!triggerJobRow) {
     throw new Error('Failed to create migration job');
   }
@@ -1194,11 +1191,12 @@ export async function processMigration(
 ): Promise<{ processedDocuments: number; conflictedDocuments: number }> {
   const job = await getMigrationJob(jobId);
 
-  const claimResult = await query(
-    'UPDATE app.migration_jobs SET status = \'in_progress\' WHERE id = $1 AND status = \'pending\'',
-    [jobId],
-  );
-  if ((claimResult.rowCount ?? 0) === 0) {
+  const claimResult = await db()
+    .update(migrationJobs)
+    .set({ status: 'in_progress' })
+    .where(and(eq(migrationJobs.id, jobId), eq(migrationJobs.status, 'pending')))
+    .returning({ id: migrationJobs.id });
+  if (claimResult.length === 0) {
     throw new Error(`Migration job ${jobId} is not in pending state (possible concurrent execution)`);
   }
 
@@ -1237,22 +1235,21 @@ export async function processMigration(
       );
 
       if (conflict?.hasConflict === true) {
-        await query(
-          `INSERT INTO app.migration_conflicts (
+        await db().execute(sql`
+          INSERT INTO app.migration_conflicts (
              migration_job_id, document_id, branch_id, template_id,
              from_version, to_version, template_delta, document_actions, conflict_type
-           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-          [jobId, doc.id, job.branchId, job.templateId,
-            job.fromVersion, job.toVersion,
-            templateDelta, conflict.documentDelta, 'structural'],
-        );
+           ) VALUES (${jobId}, ${doc.id}, ${job.branchId}, ${job.templateId},
+                     ${job.fromVersion}, ${job.toVersion},
+                     ${JSON.stringify(templateDelta)},
+                     ${JSON.stringify(conflict.documentDelta)}, 'structural')`);
         conflictedDocuments++;
       } else {
         try {
           // The delta application, any prop-divergence record, and the
           // synced_version advance commit together: a document is never left
           // migrated-but-unadvanced, so a re-run can never apply the delta twice.
-          await withTransaction(async () => {
+          await transaction(async () => {
             await applyDeltaToDocument(
               doc.id, job.branchId, templateDelta,
               { id: job.createdById, type: job.createdByType },
@@ -1263,17 +1260,16 @@ export async function processMigration(
             // The document's clean changes are applied; a diverged prop is left
             // local and recorded so the operator decides template vs. local.
             if (conflict?.propConflicts && conflict.propConflicts.length > 0) {
-              await query(
-                `INSERT INTO app.migration_conflicts (
+              await db().execute(sql`
+                INSERT INTO app.migration_conflicts (
                    migration_job_id, document_id, branch_id, template_id,
                    from_version, to_version, template_delta, document_actions,
                    prop_conflicts, conflict_type
-                 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10)`,
-                [jobId, doc.id, job.branchId, job.templateId,
-                  job.fromVersion, job.toVersion,
-                  templateDelta, conflict.documentDelta,
-                  JSON.stringify(conflict.propConflicts), 'prop'],
-              );
+                 ) VALUES (${jobId}, ${doc.id}, ${job.branchId}, ${job.templateId},
+                           ${job.fromVersion}, ${job.toVersion},
+                           ${JSON.stringify(templateDelta)},
+                           ${JSON.stringify(conflict.documentDelta)},
+                           ${JSON.stringify(conflict.propConflicts)}::jsonb, 'prop')`);
             }
 
             await advanceSyncedVersion(doc.id, job.branchId, job.toVersion, useSyncOverride);
@@ -1285,15 +1281,14 @@ export async function processMigration(
           cleanDocumentIds.push(doc.id);
         } catch (applyErr: unknown) {
           console.error(`Migration: failed to apply delta to document ${doc.id}:`, applyErr);
-          await query(
-            `INSERT INTO app.migration_conflicts (
+          await db().execute(sql`
+            INSERT INTO app.migration_conflicts (
                migration_job_id, document_id, branch_id, template_id,
                from_version, to_version, template_delta, document_actions, conflict_type
-             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-            [jobId, doc.id, job.branchId, job.templateId,
-              job.fromVersion, job.toVersion,
-              templateDelta, { error: String(applyErr) }, 'structural'],
-          );
+             ) VALUES (${jobId}, ${doc.id}, ${job.branchId}, ${job.templateId},
+                       ${job.fromVersion}, ${job.toVersion},
+                       ${JSON.stringify(templateDelta)},
+                       ${JSON.stringify({ error: String(applyErr) })}, 'structural')`);
           conflictedDocuments++;
         }
       }
@@ -1310,19 +1305,19 @@ export async function processMigration(
       }
     }
 
-    await query(
-      'UPDATE app.migration_jobs SET processed_documents = $1 WHERE id = $2',
-      [processedDocuments, jobId],
-    );
+    await db()
+      .update(migrationJobs)
+      .set({ processedDocuments })
+      .where(eq(migrationJobs.id, jobId));
 
     offset += docs.length - cleanDocumentIds.length;
   }
 
   const finalStatus = conflictedDocuments > 0 ? 'completed_with_conflicts' : 'completed';
-  await query(
-    'UPDATE app.migration_jobs SET status = $1, completed_at = NOW() WHERE id = $2',
-    [finalStatus, jobId],
-  );
+  await db()
+    .update(migrationJobs)
+    .set({ status: finalStatus, completedAt: sql`NOW()` })
+    .where(eq(migrationJobs.id, jobId));
 
   return { processedDocuments, conflictedDocuments };
 }
@@ -1355,22 +1350,21 @@ export async function rollbackMigration(
     // would reference them — so the page falls back to inheriting main.
     let inheritedReverted = 0;
     if (useSyncOverride) {
-      const inheritedRevert = await query(
-        `DELETE FROM app.document_versions dv
-         WHERE dv.branch_id = $2
+      const inheritedRevert = await db().execute(sql`
+        DELETE FROM app.document_versions dv
+         WHERE dv.branch_id = ${job.branchId}
            AND dv.source = 'migration'
-           AND dv.created_at >= $3
+           AND dv.created_at >= ${job.createdAt.toISOString()}
            AND dv.document_id IN (
              SELECT source_document_id FROM app.document_relations
-             WHERE target_document_id = $1 AND relation_type = 'template'
+             WHERE target_document_id = ${job.templateId} AND relation_type = 'template'
            )
            AND NOT EXISTS (
              SELECT 1 FROM app.checkpoint_documents cd
-             WHERE cd.checkpoint_id = $4 AND cd.document_id = dv.document_id
-           )`,
-        [job.templateId, job.branchId, job.createdAt.toISOString(), job.checkpointId],
-      );
-      inheritedReverted = inheritedRevert.rowCount ?? 0;
+             WHERE cd.checkpoint_id = ${job.checkpointId} AND cd.document_id = dv.document_id
+           )
+         RETURNING dv.id`);
+      inheritedReverted = inheritedRevert.length;
     }
 
     const result = await revertToCheckpoint({
@@ -1380,48 +1374,44 @@ export async function rollbackMigration(
     });
     rolledBackDocuments = result.documentsReverted + inheritedReverted;
   } else {
-    const deleteResult = await query(
-      `DELETE FROM app.document_versions
+    const deleteResult = await db().execute(sql`
+      DELETE FROM app.document_versions
        WHERE source = 'migration'
          AND document_id IN (
            SELECT source_document_id FROM app.document_relations
-           WHERE target_document_id = $1 AND relation_type = 'template'
+           WHERE target_document_id = ${job.templateId} AND relation_type = 'template'
          )
-         AND branch_id = $2
-         AND created_at >= $3`,
-      [job.templateId, job.branchId, job.createdAt.toISOString()],
-    );
-    rolledBackDocuments = deleteResult.rowCount ?? 0;
+         AND branch_id = ${job.branchId}
+         AND created_at >= ${job.createdAt.toISOString()}
+       RETURNING id`);
+    rolledBackDocuments = deleteResult.length;
   }
 
   // Reset only what the migration advanced: a branch that inherits the edge
   // advanced its per-branch override, so roll that back and leave the shared
   // base — main's version — untouched.
   if (useSyncOverride) {
-    await query(
-      `UPDATE app.document_relation_branch_sync brs SET synced_version = $1, updated_at = NOW()
-       FROM app.document_relations dr
+    await db().execute(sql`
+      UPDATE app.document_relation_branch_sync brs
+         SET synced_version = ${job.fromVersion}, updated_at = NOW()
+        FROM app.document_relations dr
        WHERE brs.source_document_id = dr.source_document_id
          AND brs.relation_type = 'template' AND dr.relation_type = 'template'
-         AND dr.target_document_id = $2
-         AND brs.branch_id = $4 AND brs.synced_version = $3`,
-      [job.fromVersion, job.templateId, job.toVersion, job.branchId],
-    );
+         AND dr.target_document_id = ${job.templateId}
+         AND brs.branch_id = ${job.branchId} AND brs.synced_version = ${job.toVersion}`);
   } else {
-    await query(
-      `UPDATE app.document_relations dr SET synced_version = $1
-       FROM app.documents d
+    await db().execute(sql`
+      UPDATE app.document_relations dr SET synced_version = ${job.fromVersion}
+        FROM app.documents d
        WHERE dr.source_document_id = d.id
-         AND dr.target_document_id = $2 AND dr.synced_version = $3
-         AND dr.relation_type = 'template' AND d.archived_at IS NULL`,
-      [job.fromVersion, job.templateId, job.toVersion],
-    );
+         AND dr.target_document_id = ${job.templateId} AND dr.synced_version = ${job.toVersion}
+         AND dr.relation_type = 'template' AND d.archived_at IS NULL`);
   }
 
-  await query(
-    'UPDATE app.migration_jobs SET status = \'failed\' WHERE id = $1',
-    [jobId],
-  );
+  await db()
+    .update(migrationJobs)
+    .set({ status: 'failed' })
+    .where(eq(migrationJobs.id, jobId));
 
   return { rolledBackDocuments };
 }
@@ -1444,11 +1434,11 @@ export async function previewMigration(
     throw new InvalidVersionRangeError(fromVersion, toVersion);
   }
 
-  const templateCheck = await query(
-    'SELECT id FROM app.documents WHERE id = $1 AND archived_at IS NULL',
-    [templateId],
-  );
-  if (templateCheck.rows.length === 0) {
+  const templateCheck = await db()
+    .select({ id: documents.id })
+    .from(documents)
+    .where(and(eq(documents.id, templateId), isNull(documents.archivedAt)));
+  if (templateCheck.length === 0) {
     throw new TemplateNotFoundError(templateId);
   }
 
@@ -1575,46 +1565,47 @@ export async function getMigrationStatus(
   // Get the latest version number of the template document, resolving against
   // main when this branch inherits the template rather than editing it locally.
   const templateReadBranchId = await resolveTemplateReadBranch(templateId, branchId, mainBranchId);
-  const versionResult = await query<{ version_number: number }>(
-    `SELECT version_number FROM app.document_versions
-     WHERE document_id = $1 AND branch_id = $2
-     ORDER BY version_number DESC LIMIT 1`,
-    [templateId, templateReadBranchId],
-  );
+  const versionResult = await db()
+    .select({ versionNumber: documentVersions.versionNumber })
+    .from(documentVersions)
+    .where(and(
+      eq(documentVersions.documentId, templateId),
+      eq(documentVersions.branchId, templateReadBranchId),
+    ))
+    .orderBy(desc(documentVersions.versionNumber))
+    .limit(1);
 
-  const versionRow = versionResult.rows[0];
+  const versionRow = versionResult.at(0);
   if (!versionRow) {
     throw new TemplateNotFoundError(templateId);
   }
 
-  const currentVersion = versionRow.version_number;
+  const currentVersion = versionRow.versionNumber;
 
   // Count stale documents and find the oldest version, resolving each edge's
   // synced_version against this branch's override when it inherits the edge.
   const staleResult = branchInheritsFromMain(branchId, mainBranchId)
-    ? await query<{ count: string; oldest_version: number | null }>(
-      `SELECT COUNT(*) as count, MIN(COALESCE(brs.synced_version, dr.synced_version, 0)) as oldest_version
+    ? await db().execute<StaleCountRow>(sql`
+      SELECT COUNT(*) as count,
+             MIN(COALESCE(brs.synced_version, dr.synced_version, 0)) as oldest_version
        FROM app.documents d
        ${TEMPLATE_RELATION_INNER_JOIN}
        LEFT JOIN app.document_relation_branch_sync brs
-         ON brs.source_document_id = d.id AND brs.relation_type = 'template' AND brs.branch_id = $3
-       WHERE dr.target_document_id = $1
+         ON brs.source_document_id = d.id AND brs.relation_type = 'template'
+            AND brs.branch_id = ${branchId}
+       WHERE dr.target_document_id = ${templateId}
          AND (COALESCE(brs.synced_version, dr.synced_version) IS NULL
-              OR COALESCE(brs.synced_version, dr.synced_version) < $2)
-         AND d.archived_at IS NULL`,
-      [templateId, currentVersion, branchId],
-    )
-    : await query<{ count: string; oldest_version: number | null }>(
-      `SELECT COUNT(*) as count, MIN(COALESCE(dr.synced_version, 0)) as oldest_version
+              OR COALESCE(brs.synced_version, dr.synced_version) < ${currentVersion})
+         AND d.archived_at IS NULL`)
+    : await db().execute<StaleCountRow>(sql`
+      SELECT COUNT(*) as count, MIN(COALESCE(dr.synced_version, 0)) as oldest_version
        FROM app.documents d
        ${TEMPLATE_RELATION_INNER_JOIN}
-       WHERE dr.target_document_id = $1
-         AND (dr.synced_version IS NULL OR dr.synced_version < $2)
-         AND d.archived_at IS NULL`,
-      [templateId, currentVersion],
-    );
+       WHERE dr.target_document_id = ${templateId}
+         AND (dr.synced_version IS NULL OR dr.synced_version < ${currentVersion})
+         AND d.archived_at IS NULL`);
 
-  const staleRow = staleResult.rows[0];
+  const staleRow = staleResult.at(0);
   const staleDocumentCount = parseInt(staleRow?.count ?? '0', 10);
   const oldestDocumentVersion = staleRow?.oldest_version ?? null;
 
@@ -1640,29 +1631,27 @@ async function getActiveMigration(
   templateId: string,
   branchId: string,
 ): Promise<ActiveMigration | null> {
-  const jobResult = await query<MigrationJobRow>(
-    `SELECT * FROM app.migration_jobs
-     WHERE template_id = $1 AND branch_id = $2
+  const jobRows = await db().execute<MigrationJobRow>(sql`
+    SELECT * FROM app.migration_jobs
+     WHERE template_id = ${templateId} AND branch_id = ${branchId}
      ORDER BY created_at DESC
-     LIMIT 1`,
-    [templateId, branchId],
-  );
+     LIMIT 1`);
 
-  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-  const latestJobRow = jobResult?.rows[0];
-  if (!latestJobRow) {
+  const latestJobRow = jobRows.at(0);
+  if (latestJobRow === undefined) {
     return null;
   }
 
   const job = mapRowToJob(latestJobRow);
 
-  const conflictResult = await query<{ count: string }>(
-    `SELECT COUNT(*) as count FROM app.migration_conflicts
-     WHERE migration_job_id = $1 AND resolution IS NULL`,
-    [job.id],
-  );
-  const conflictCountRow = conflictResult.rows[0];
-  const unresolvedConflicts = parseInt(conflictCountRow?.count ?? '0', 10);
+  const [conflictCount] = await db()
+    .select({ value: count() })
+    .from(migrationConflicts)
+    .where(and(
+      eq(migrationConflicts.migrationJobId, job.id),
+      isNull(migrationConflicts.resolution),
+    ));
+  const unresolvedConflicts = conflictCount?.value ?? 0;
 
   const isRunning = job.status === 'pending' || job.status === 'in_progress';
   const awaitingResolution = job.status === 'completed_with_conflicts' && unresolvedConflicts > 0;
@@ -1743,11 +1732,9 @@ export async function resolveMigrationConflict(
   // instead of spanning version reconstruction.
   let structuralPlan: { delta: SlotDelta; propMigration?: PropMigrationOptions } | undefined;
   if (resolution === 'apply') {
-    const initial = await query<MigrationConflictRow>(
-      'SELECT * FROM app.migration_conflicts WHERE id = $1',
-      [conflictId],
-    );
-    const conflict = initial.rows[0];
+    const initial = await db().execute<MigrationConflictRow>(sql`
+      SELECT * FROM app.migration_conflicts WHERE id = ${conflictId}`);
+    const conflict = initial.at(0);
     if (conflict === undefined) {
       throw new Error(`Migration conflict with ID "${conflictId}" not found.`);
     }
@@ -1792,13 +1779,11 @@ export async function resolveMigrationConflict(
     }
   }
 
-  return withTransaction(async () => {
-    const conflictResult = await query<MigrationConflictRow>(
-      'SELECT * FROM app.migration_conflicts WHERE id = $1 FOR UPDATE',
-      [conflictId],
-    );
+  return transaction(async () => {
+    const conflictResult = await db().execute<MigrationConflictRow>(sql`
+      SELECT * FROM app.migration_conflicts WHERE id = ${conflictId} FOR UPDATE`);
 
-    const conflict = conflictResult.rows[0];
+    const conflict = conflictResult.at(0);
     if (conflict === undefined) {
       throw new Error(`Migration conflict with ID "${conflictId}" not found.`);
     }
@@ -1840,15 +1825,13 @@ export async function resolveMigrationConflict(
       );
     }
 
-    const updateResult = await query<MigrationConflictRow>(
-      `UPDATE app.migration_conflicts
-       SET resolution = $1, resolved_at = NOW()
-       WHERE id = $2
-       RETURNING *`,
-      [resolution, conflictId],
-    );
+    const updateResult = await db().execute<MigrationConflictRow>(sql`
+      UPDATE app.migration_conflicts
+       SET resolution = ${resolution}, resolved_at = NOW()
+       WHERE id = ${conflictId}
+       RETURNING *`);
 
-    const resolved = updateResult.rows[0];
+    const resolved = updateResult.at(0);
     if (resolved === undefined) {
       throw new Error(`Migration conflict with ID "${conflictId}" not found.`);
     }

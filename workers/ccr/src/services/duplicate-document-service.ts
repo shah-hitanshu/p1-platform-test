@@ -12,7 +12,8 @@
  */
 
 import type { Document } from '../types';
-import { query, withTransaction } from '../db';
+import { sql } from 'drizzle-orm';
+import { db, transaction } from '../db/scope';
 import {
   mapRowToDocument,
   normalizePath,
@@ -88,14 +89,15 @@ async function findFreeSuffix(
       }
     }
 
-    const taken = await query<{ id: string }>(
-      `SELECT id FROM app.documents
-       WHERE site_id = $1 AND archived_at IS NULL AND path = ANY($2::text[])
-       LIMIT 1`,
-      [siteId, paths],
-    );
+    // sql.param keeps the path list one array parameter rather than a row
+    // constructor, which ANY cannot read.
+    const taken = await db().execute(sql`
+      SELECT id FROM app.documents
+       WHERE site_id = ${siteId} AND archived_at IS NULL
+         AND path = ANY(${sql.param(paths)}::text[])
+       LIMIT 1`);
 
-    if (taken.rows.length === 0) return { n, paths };
+    if (taken.length === 0) return { n, paths };
   }
 
   throw new PathAllocationExhaustedError(sourcePath);
@@ -178,12 +180,10 @@ async function insertCopy(
 
   // Without this the copy falls out of its template group and out of sync.
   if (source.templateId !== undefined) {
-    await query(
-      `INSERT INTO app.document_relations
+    await db().execute(sql`
+      INSERT INTO app.document_relations
          (source_document_id, target_document_id, relation_type, synced_version)
-       VALUES ($1, $2, 'template', $3)`,
-      [row.id, source.templateId, source.templateVersion ?? null],
-    );
+       VALUES (${row.id}, ${source.templateId}, 'template', ${source.templateVersion ?? null})`);
     document.templateId = source.templateId;
     if (source.templateVersion !== undefined) {
       document.templateVersion = source.templateVersion;
@@ -228,7 +228,7 @@ export async function duplicateDocument(
     [source, ...descendants].map((doc) => cloneSnapshot(doc.id, params)),
   ) as [Record<string, unknown>, ...Record<string, unknown>[]];
 
-  return withTransaction(async () => {
+  return transaction(async () => {
     const descendantPaths = descendants.map((d) => normalizePath(d.path));
     const { n, paths } = await findFreeSuffix(params.siteId, sourcePath, descendantPaths);
 

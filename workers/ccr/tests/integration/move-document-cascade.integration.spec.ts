@@ -2,7 +2,9 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import type postgres from 'postgres';
 import { setDatabaseInstance } from '../../src/db';
 import type { DatabaseConnection } from '../../src/db';
-import { createRealDatabaseConnection } from '../helpers/database';
+import { createRealDatabaseConnection, recordStatements } from '../helpers/database';
+import type { StatementRecorder } from '../helpers/database';
+import { installDatabase } from '../../src/db/scope';
 import {
   moveDocumentOnBranch,
   moveDocumentGlobally,
@@ -23,7 +25,7 @@ const SYSTEM_ACTOR = '00000000-0000-0000-0000-000000000000';
 const ids: Record<string, string> = {};
 
 // Every statement the services issue, so a test can count round trips.
-let statements: string[] = [];
+let recorder: StatementRecorder;
 
 async function override(docId: string): Promise<string | null> {
   const rows = await sql<{ path: string }[]>`
@@ -60,15 +62,9 @@ beforeAll(async () => {
   const handles = createRealDatabaseConnection();
   sql = handles.sql;
   connection = handles.connection;
-  // The raw connection is wrapped so a test can count the statements the
-  // services issue through it.
-  setDatabaseInstance({
-    ...connection,
-    query(sqlQuery: string, params?: unknown[]) {
-      statements.push(sqlQuery);
-      return connection.query(sqlQuery, params);
-    },
-  });
+  setDatabaseInstance(connection);
+  recorder = recordStatements(handles.db);
+  installDatabase(recorder.db);
 
   await purgeSite();
 
@@ -113,7 +109,7 @@ beforeEach(async () => {
   for (const [path, docId] of Object.entries(ids)) {
     await sql`UPDATE app.documents SET path = ${path} WHERE id = ${docId}`;
   }
-  statements = [];
+  recorder.clear();
 });
 
 
@@ -150,7 +146,7 @@ describe('moveDocumentOnBranch', () => {
 
   it('writes the whole cascade in a single statement', async () => {
     await moveDocumentOnBranch(workstreamId, ids.blog, 'news');
-    const writes = statements.filter((s) => s.includes('INSERT INTO app.branch_document_paths'));
+    const writes = recorder.statements.filter((s) => s.includes('INSERT INTO app.branch_document_paths'));
     expect(writes).toHaveLength(1);
   });
 
@@ -242,7 +238,7 @@ describe('moveDocumentGlobally', () => {
 
   it('writes the whole cascade in a single statement', async () => {
     await moveDocumentGlobally(ids.blog, 'news');
-    const writes = statements.filter((s) => s.includes('UPDATE app.documents'));
+    const writes = recorder.statements.filter((s) => s.includes('UPDATE app.documents'));
     expect(writes).toHaveLength(1);
   });
 });

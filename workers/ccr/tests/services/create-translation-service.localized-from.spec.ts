@@ -6,11 +6,11 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-
-vi.mock('../../src/db', () => ({
-  query: vi.fn(),
-  withTransaction: vi.fn(async (fn: () => Promise<unknown>) => fn()),
-}));
+import { stubDatabase, type DatabaseStub } from '../__stubs__/database';
+import { documents, documentVersions } from '../../src/db/schema';
+import { createTranslation } from '../../src/services/create-translation-service';
+import { getDocument } from '../../src/services/document-service';
+import { getLatestDocumentVersionWithFallback } from '../../src/services/document-version-service';
 
 vi.mock('../../src/services/document-service', () => ({
   getDocument: vi.fn(),
@@ -45,19 +45,15 @@ vi.mock('../../src/services/relations-service', () => ({
 
 const CANONICAL_ID = 'doc-canonical';
 
-async function setupHappyPath(): Promise<void> {
-  const db = await import('../../src/db');
-  const documentService = await import('../../src/services/document-service');
-  const versionService = await import('../../src/services/document-version-service');
-
-  vi.mocked(documentService.getDocument).mockResolvedValue({
+function setupHappyPath(stub: DatabaseStub): void {
+  vi.mocked(getDocument).mockResolvedValue({
     id: CANONICAL_ID,
     siteId: 'site-1',
     path: 'pages/home',
     createdAt: '2026-07-07T10:00:00.000Z',
   });
 
-  vi.mocked(versionService.getLatestDocumentVersionWithFallback).mockResolvedValue({
+  vi.mocked(getLatestDocumentVersionWithFallback).mockResolvedValue({
     version: {
       id: 'canonical-version-4',
       documentId: CANONICAL_ID,
@@ -72,44 +68,42 @@ async function setupHappyPath(): Promise<void> {
     inherited: false,
   } as never);
 
-  vi.mocked(db.query)
-    .mockResolvedValueOnce({ rows: [{ id: CANONICAL_ID }] }) // SELECT ... FOR UPDATE
-    .mockResolvedValueOnce({
-      rows: [
-        {
-          id: 'doc-translation',
-          site_id: 'site-1',
-          path: 'pages/home.fr-FR',
-          locale: 'fr-FR',
-          created_at: '2026-07-07T10:00:00.000Z',
-        },
-      ],
-    }) // INSERT document, RETURNING * — no localized_from_id column
-    .mockResolvedValueOnce({
-      rows: [
-        {
-          id: 'version-1',
-          document_id: 'doc-translation',
-          branch_id: 'branch-1',
-          version_number: 1,
-          snapshot: {},
-          source: 'edit',
-          created_by_id: 'user-1',
-          created_by_type: 'user',
-          created_at: '2026-07-07T10:00:00.000Z',
-        },
-      ],
-    }); // INSERT version
+  // The insert returns the stored row, which carries no localized_from_id: the
+  // edge does not exist yet when it runs.
+  stub.on(documents).insert.returnsRaw([
+    {
+      id: 'doc-translation',
+      site_id: 'site-1',
+      path: 'pages/home.fr-FR',
+      locale: 'fr-FR',
+      created_at: '2026-07-07T10:00:00.000Z',
+    },
+  ]);
+  stub.on(documentVersions).insert.returnsRaw([
+    {
+      id: 'version-1',
+      document_id: 'doc-translation',
+      branch_id: 'branch-1',
+      version_number: 1,
+      snapshot: {},
+      source: 'edit',
+      created_by_id: 'user-1',
+      created_by_type: 'user',
+      created_at: '2026-07-07T10:00:00.000Z',
+    },
+  ]);
 }
 
 describe('createTranslation result', () => {
+  let stub: DatabaseStub;
+
   beforeEach(() => {
     vi.resetAllMocks();
+    stub = stubDatabase();
   });
 
   it('names the canonical the translation was localized from', async () => {
-    const { createTranslation } = await import('../../src/services/create-translation-service');
-    await setupHappyPath();
+    setupHappyPath(stub);
 
     const result = await createTranslation({
       canonicalDocumentId: CANONICAL_ID,
@@ -123,8 +117,7 @@ describe('createTranslation result', () => {
   });
 
   it('agrees with the localization edge it returns alongside', async () => {
-    const { createTranslation } = await import('../../src/services/create-translation-service');
-    await setupHappyPath();
+    setupHappyPath(stub);
 
     const result = await createTranslation({
       canonicalDocumentId: CANONICAL_ID,
@@ -138,8 +131,7 @@ describe('createTranslation result', () => {
   });
 
   it('pins the edge to the identity of the canonical version it cloned', async () => {
-    const { createTranslation } = await import('../../src/services/create-translation-service');
-    await setupHappyPath();
+    setupHappyPath(stub);
 
     const result = await createTranslation({
       canonicalDocumentId: CANONICAL_ID,

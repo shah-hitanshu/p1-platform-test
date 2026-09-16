@@ -1,9 +1,10 @@
+import { sql, type SQL } from 'drizzle-orm';
+
 /**
  * LEFT JOIN attaching a document's 'template' relation as alias `dr`.
  * Expects the documents table to be aliased `d`.
  */
-export const TEMPLATE_RELATION_JOIN =
-  `LEFT JOIN app.document_relations dr
+export const TEMPLATE_RELATION_JOIN = sql`LEFT JOIN app.document_relations dr
      ON dr.source_document_id = d.id AND dr.relation_type = 'template'`;
 
 /**
@@ -11,8 +12,7 @@ export const TEMPLATE_RELATION_JOIN =
  * Expects the documents table to be aliased `d`; scope to a template by filtering
  * on `dr.target_document_id`.
  */
-export const TEMPLATE_RELATION_INNER_JOIN =
-  `JOIN app.document_relations dr
+export const TEMPLATE_RELATION_INNER_JOIN = sql`JOIN app.document_relations dr
      ON dr.source_document_id = d.id AND dr.relation_type = 'template'`;
 
 /**
@@ -20,15 +20,14 @@ export const TEMPLATE_RELATION_INNER_JOIN =
  * exposed as template_id and template_version, the shape mapRowToDocument reads.
  */
 export const DOCUMENT_WITH_TEMPLATE_COLUMNS =
-  'd.*, dr.target_document_id AS template_id, dr.synced_version AS template_version';
+  sql`d.*, dr.target_document_id AS template_id, dr.synced_version AS template_version`;
 
 /**
  * LEFT JOIN binding a document (alias `d`) to the localization edge it derives
  * from, as alias `lr`. A document sources at most one, so this cannot multiply
  * rows.
  */
-export const LOCALIZATION_RELATION_JOIN =
-  `LEFT JOIN app.document_relations lr
+export const LOCALIZATION_RELATION_JOIN = sql`LEFT JOIN app.document_relations lr
      ON lr.source_document_id = d.id AND lr.relation_type = 'localization'`;
 
 /**
@@ -36,7 +35,7 @@ export const LOCALIZATION_RELATION_JOIN =
  * {@link DOCUMENT_READ_COLUMNS} names. Use the two together: the columns
  * reference both aliases.
  */
-export const DOCUMENT_READ_JOINS = `${TEMPLATE_RELATION_JOIN}
+export const DOCUMENT_READ_JOINS = sql`${TEMPLATE_RELATION_JOIN}
      ${LOCALIZATION_RELATION_JOIN}`;
 
 /**
@@ -45,13 +44,13 @@ export const DOCUMENT_READ_JOINS = `${TEMPLATE_RELATION_JOIN}
  * the canonical it is a translation of.
  */
 export const DOCUMENT_READ_COLUMNS =
-  `${DOCUMENT_WITH_TEMPLATE_COLUMNS}, lr.target_document_id AS localized_from_id`;
+  sql`${DOCUMENT_WITH_TEMPLATE_COLUMNS}, lr.target_document_id AS localized_from_id`;
 
 /**
  * Columns the document listing reads off a document's latest version, selected
  * inside {@link latestVersionOnBranchJoin}.
  */
-export const LATEST_VERSION_LISTING_COLUMNS = `dv.is_tombstone,
+export const LATEST_VERSION_LISTING_COLUMNS = sql`dv.is_tombstone,
           COALESCE(dv.snapshot->'root'->'props'->>'title', dv.snapshot->>'title') AS snapshot_title,
           dv.created_at AS latest_version_at,
           dv.created_by_id AS last_modified_by_id,
@@ -67,11 +66,11 @@ export const LATEST_VERSION_LISTING_COLUMNS = `dv.is_tombstone,
  * Expects the documents table to be aliased `d`. The version is aliased `dv`
  * inside the lateral, so `columns` names its fields as such.
  */
-export function latestVersionOnBranchJoin(branchParam: string, columns: string): string {
-  return `INNER JOIN LATERAL (
+export function latestVersionOnBranchJoin(branchId: string, columns: SQL): SQL {
+  return sql`INNER JOIN LATERAL (
         SELECT ${columns}
         FROM app.document_versions dv
-        WHERE dv.document_id = d.id AND dv.branch_id = ${branchParam}
+        WHERE dv.document_id = d.id AND dv.branch_id = ${branchId}
         ORDER BY dv.version_number DESC
         LIMIT 1
       ) top ON true`;
@@ -87,13 +86,13 @@ export function latestVersionOnBranchJoin(branchParam: string, columns: string):
  *
  * Expects the documents table to be aliased `d`.
  */
-export function latestPublishOnBranchJoin(branchParam: string): string {
-  return `LEFT JOIN (
+export function latestPublishOnBranchJoin(branchId: string): SQL {
+  return sql`LEFT JOIN (
         SELECT DISTINCT ON (cd.document_id)
           cd.document_id, cd.document_version_id, cp.created_at AS published_at
         FROM app.checkpoint_documents cd
         INNER JOIN app.checkpoints cp ON cp.id = cd.checkpoint_id
-        WHERE cp.branch_id = ${branchParam}
+        WHERE cp.branch_id = ${branchId}
           AND cp.checkpoint_type = 'publish'
         ORDER BY cd.document_id, cp.created_at DESC
       ) pub ON pub.document_id = d.id`;
@@ -106,8 +105,8 @@ export function latestPublishOnBranchJoin(branchParam: string): string {
  * full: without this the listing probes every document in the database, across
  * every site, once per row. The predicate bounds that scan to one site.
  */
-export function documentInBranchSitePredicate(branchParam: string): string {
-  return `d.site_id = (SELECT site_id FROM app.branches WHERE id = ${branchParam})`;
+export function documentInBranchSitePredicate(branchId: string): SQL {
+  return sql`d.site_id = (SELECT site_id FROM app.branches WHERE id = ${branchId})`;
 }
 
 /**
@@ -121,8 +120,10 @@ export function documentInBranchSitePredicate(branchParam: string): string {
  *
  * Expects documents aliased `d` and the override join aliased `bdp`.
  */
-export function effectivePathPrefixPredicate(pathParam: string): string {
-  return `COALESCE(bdp.path, d.path) LIKE ${pathParam} ESCAPE '\\'`;
+export function effectivePathPrefixPredicate(pathPrefix: string): SQL {
+  // escapeLikePattern escapes with a backslash, which is LIKE's default escape
+  // character.
+  return sql`COALESCE(bdp.path, d.path) LIKE ${pathPrefix}`;
 }
 
 /**
@@ -134,9 +135,9 @@ export function effectivePathPrefixPredicate(pathParam: string): string {
  *
  * Expects the documents table to be aliased `d`.
  */
-export function branchDocumentPathJoin(branchParam: string): string {
-  return `LEFT JOIN app.branch_document_paths bdp
-        ON bdp.branch_id = ${branchParam} AND bdp.document_id = d.id`;
+export function branchDocumentPathJoin(branchId: string): SQL {
+  return sql`LEFT JOIN app.branch_document_paths bdp
+        ON bdp.branch_id = ${branchId} AND bdp.document_id = d.id`;
 }
 
 /**
@@ -149,18 +150,18 @@ export function branchDocumentPathJoin(branchParam: string): string {
  * documents carry more than a handful of versions
  */
 export function publishedOnBranchJoin(
-  joinAlias: string,
-  documentAlias: string,
-  branchParam: string,
-): string {
-  return `LEFT JOIN (
+  joinAlias: SQL,
+  documentAlias: SQL,
+  branchId: string,
+): SQL {
+  return sql`LEFT JOIN (
         SELECT DISTINCT dv_pub.document_id
           FROM app.document_versions dv_pub
           INNER JOIN app.checkpoint_documents cd_pub
             ON cd_pub.document_version_id = dv_pub.id
           INNER JOIN app.checkpoints cp_pub ON cp_pub.id = cd_pub.checkpoint_id
-         WHERE dv_pub.branch_id = ${branchParam}
-           AND cp_pub.branch_id = ${branchParam}
+         WHERE dv_pub.branch_id = ${branchId}
+           AND cp_pub.branch_id = ${branchId}
            AND cp_pub.checkpoint_type = 'publish'
       ) ${joinAlias} ON ${joinAlias}.document_id = ${documentAlias}.id`;
 }
@@ -171,15 +172,15 @@ export function publishedOnBranchJoin(
  *
  * Expects the documents table to be aliased `d`.
  */
-export function publishedOnBranchPredicate(branchParam: string): string {
-  return `EXISTS (
+export function publishedOnBranchPredicate(branchId: string): SQL {
+  return sql`EXISTS (
           SELECT 1
           FROM app.checkpoint_documents cd_pub
           INNER JOIN app.checkpoints cp_pub ON cp_pub.id = cd_pub.checkpoint_id
           INNER JOIN app.document_versions dv_pub ON dv_pub.id = cd_pub.document_version_id
           WHERE cd_pub.document_id = d.id
-            AND dv_pub.branch_id = ${branchParam}
-            AND cp_pub.branch_id = ${branchParam}
+            AND dv_pub.branch_id = ${branchId}
+            AND cp_pub.branch_id = ${branchId}
             AND cp_pub.checkpoint_type = 'publish'
         )`;
 }

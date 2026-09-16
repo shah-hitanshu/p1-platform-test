@@ -7,25 +7,28 @@
  * These tests are written BEFORE implementation following TDD methodology.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import type { DocumentVersionSource } from '../../src/types';
 import { stubDatabase, type DatabaseStub } from '../__stubs__/database';
 import { documentVersions } from '../../src/db/schema';
-
-// Mock database module. createDocumentVersion, getLatestDocumentVersion,
-// getLatestPublishedDocumentVersion, getDocumentVersionByNumber and
-// replayVersionChain still read through the legacy query() connection — see
-// the comments on those functions in document-version-service.ts. Everything
-// else reads through db() (Drizzle), stubbed below.
-vi.mock('../../src/db', () => ({
-  query: vi.fn(),
-}));
+import {
+  createDocumentVersion,
+  getDocumentVersion,
+  getDocumentVersionByNumber,
+  getLatestDocumentVersion,
+  getLatestDocumentVersionWithFallback,
+  getLatestVersionsForBranch,
+  listDocumentVersions,
+} from '../../src/services/document-version-service';
+import {
+  DocumentNotFoundError,
+  InvalidDocumentVersionParamsError,
+} from '../../src/services/errors';
 
 describe('Phase 3.3: Document Version Service', () => {
   let database: DatabaseStub;
 
   beforeEach(() => {
-    vi.resetAllMocks();
     database = stubDatabase();
   });
 
@@ -90,11 +93,8 @@ describe('Phase 3.3: Document Version Service', () => {
 
   describe('createDocumentVersion', () => {
     it('should create a document version with auto-incremented version number', async () => {
-      const { createDocumentVersion } = await import('../../src/services/document-version-service');
-      const db = await import('../../src/db');
-
       const mockRow = createMockVersionRow({ version_number: 1 });
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+      database.on(documentVersions).insert.returnsRaw([mockRow]);
 
       const result = await createDocumentVersion({
         documentId: 'doc-uuid-456',
@@ -117,14 +117,11 @@ describe('Phase 3.3: Document Version Service', () => {
     });
 
     it('should support different source types', async () => {
-      const { createDocumentVersion } = await import('../../src/services/document-version-service');
-      const db = await import('../../src/db');
-
       const sources: DocumentVersionSource[] = ['edit', 'merge', 'revert', 'checkpoint'];
 
       for (const source of sources) {
         const mockRow = createMockVersionRow({ source });
-        vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+        database.on(documentVersions).insert.returnsRaw([mockRow]);
 
         const result = await createDocumentVersion({
           documentId: 'doc-uuid-456',
@@ -140,20 +137,12 @@ describe('Phase 3.3: Document Version Service', () => {
     });
 
     it('should throw DocumentNotFoundError when document does not exist', async () => {
-      const { createDocumentVersion } = await import('../../src/services/document-version-service');
-      const { DocumentNotFoundError } = await import('../../src/services/errors');
-      const db = await import('../../src/db');
-
       const error = new Error('violates foreign key constraint');
       (error as NodeJS.ErrnoException).code = '23503';
 
-      // First call is getLatestDocumentVersion (returns null - no existing version)
-      // Second call is getLatestDocumentVersion again (for diff computation, returns null)
-      // Third call is the INSERT which fails with FK error
-      vi.mocked(db.query)
-        .mockResolvedValueOnce({ rows: [] })
-        .mockResolvedValueOnce({ rows: [] })
-        .mockRejectedValueOnce(error);
+      // No version exists yet, so the write goes straight to the insert, which
+      // is where the missing document surfaces.
+      database.on(documentVersions).insert.rejects(error);
 
       await expect(
         createDocumentVersion({
@@ -170,8 +159,6 @@ describe('Phase 3.3: Document Version Service', () => {
     // Note: snapshot validation is enforced by TypeScript at compile time
 
     it('should throw InvalidDocumentVersionParamsError when documentId is empty', async () => {
-      const { createDocumentVersion } = await import('../../src/services/document-version-service');
-      const { InvalidDocumentVersionParamsError } = await import('../../src/services/errors');
 
       await expect(
         createDocumentVersion({
@@ -186,8 +173,6 @@ describe('Phase 3.3: Document Version Service', () => {
     });
 
     it('should throw InvalidDocumentVersionParamsError when branchId is empty', async () => {
-      const { createDocumentVersion } = await import('../../src/services/document-version-service');
-      const { InvalidDocumentVersionParamsError } = await import('../../src/services/errors');
 
       await expect(
         createDocumentVersion({
@@ -202,17 +187,13 @@ describe('Phase 3.3: Document Version Service', () => {
     });
 
     it('should skip version creation when snapshot is unchanged from latest version', async () => {
-      const { createDocumentVersion } = await import('../../src/services/document-version-service');
-      const db = await import('../../src/db');
-
       const existingSnapshot = { title: 'Same Title', content: [{ id: 'item1' }] };
       const mockExistingVersion = createMockVersionRow({
         version_number: 5,
         snapshot: existingSnapshot,
       });
 
-      // First call: getLatestDocumentVersion returns existing version with same snapshot
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [mockExistingVersion] });
+      database.on(documentVersions).select.returnsRaw([mockExistingVersion]);
 
       const result = await createDocumentVersion({
         documentId: 'doc-uuid-456',
@@ -225,14 +206,10 @@ describe('Phase 3.3: Document Version Service', () => {
 
       // Should return existing version without creating new one
       expect(result.versionNumber).toBe(5);
-      // query should only be called once (for getLatestDocumentVersion)
-      expect(db.query).toHaveBeenCalledTimes(1);
+      expect(database.calls(documentVersions).insert).toEqual([]);
     });
 
     it('should update action_metadata on existing version when snapshot unchanged but puckActions provided', async () => {
-      const { createDocumentVersion } = await import('../../src/services/document-version-service');
-      const db = await import('../../src/db');
-
       const existingSnapshot = { title: 'Same', content: [{ type: 'A', props: { id: 'a1' } }] };
       const mockExistingVersion = createMockVersionRow({
         version_number: 5,
@@ -241,10 +218,7 @@ describe('Phase 3.3: Document Version Service', () => {
         action_metadata: null,
       });
 
-      // First call: getLatestDocumentVersion returns existing version with same snapshot
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [mockExistingVersion] });
-      // Second call: UPDATE action_type/action_metadata on existing version
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [], rowCount: 1 });
+      database.on(documentVersions).select.returnsRaw([mockExistingVersion]);
 
       const result = await createDocumentVersion({
         documentId: 'doc-uuid-456',
@@ -259,27 +233,22 @@ describe('Phase 3.3: Document Version Service', () => {
       // Should return existing version (no new version created)
       expect(result.versionNumber).toBe(5);
       // Should have called UPDATE to set action_metadata
-      expect(db.query).toHaveBeenCalledTimes(2);
-      const updateCall = vi.mocked(db.query).mock.calls[1];
-      const updateSql = updateCall[0];
-      expect(updateSql).toContain('UPDATE');
-      expect(updateSql).toContain('action_type');
-      expect(updateSql).toContain('action_metadata');
+      const [updateCall] = database.calls(documentVersions).update;
+      expect(updateCall.sql).toContain('UPDATE');
+      expect(updateCall.sql).toContain('action_type');
+      expect(updateCall.sql).toContain('action_metadata');
       // Should return with actionType set
       expect(result.actionType).toBe('structural');
     });
 
     it('should NOT update action_metadata when snapshot unchanged and no puckActions', async () => {
-      const { createDocumentVersion } = await import('../../src/services/document-version-service');
-      const db = await import('../../src/db');
-
       const existingSnapshot = { title: 'Same', content: [] };
       const mockExistingVersion = createMockVersionRow({
         version_number: 5,
         snapshot: existingSnapshot,
       });
 
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [mockExistingVersion] });
+      database.on(documentVersions).select.returnsRaw([mockExistingVersion]);
 
       const result = await createDocumentVersion({
         documentId: 'doc-uuid-456',
@@ -292,14 +261,10 @@ describe('Phase 3.3: Document Version Service', () => {
       });
 
       expect(result.versionNumber).toBe(5);
-      // Only one query (getLatestDocumentVersion), no UPDATE
-      expect(db.query).toHaveBeenCalledTimes(1);
+      expect(database.calls(documentVersions).update).toEqual([]);
     });
 
     it('should create new version when snapshot differs from latest', async () => {
-      const { createDocumentVersion } = await import('../../src/services/document-version-service');
-      const db = await import('../../src/db');
-
       const existingSnapshot = { title: 'Old Title' };
       const newSnapshot = { title: 'New Title' };
       const mockExistingVersion = createMockVersionRow({
@@ -311,11 +276,8 @@ describe('Phase 3.3: Document Version Service', () => {
         snapshot: newSnapshot,
       });
 
-      // First call: getLatestDocumentVersion returns existing version with different snapshot
-      // Second call: CTE with UPDATE (null previous snapshot) + INSERT (new baseline)
-      vi.mocked(db.query)
-        .mockResolvedValueOnce({ rows: [mockExistingVersion] })
-        .mockResolvedValueOnce({ rows: [mockNewVersion] });
+      database.on(documentVersions).select.returnsRaw([mockExistingVersion]);
+      database.on(documentVersions).insert.returnsRaw([mockNewVersion]);
 
       const result = await createDocumentVersion({
         documentId: 'doc-uuid-456',
@@ -328,22 +290,17 @@ describe('Phase 3.3: Document Version Service', () => {
 
       // Should create new version
       expect(result.versionNumber).toBe(6);
-      // query should be called twice (check latest + CTE insert with nullify)
-      expect(db.query).toHaveBeenCalledTimes(2);
+      expect(database.calls(documentVersions).insert).toHaveLength(1);
     });
 
     it('should skip deduplication check when skipDuplicateCheck is true', async () => {
-      const { createDocumentVersion } = await import('../../src/services/document-version-service');
-      const db = await import('../../src/db');
-
       const sameSnapshot = { title: 'Same Title' };
       const mockNewVersion = createMockVersionRow({
         version_number: 6,
         snapshot: sameSnapshot,
       });
 
-      // Only INSERT call (no getLatestDocumentVersion check)
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [mockNewVersion] });
+      database.on(documentVersions).insert.returnsRaw([mockNewVersion]);
 
       const result = await createDocumentVersion({
         documentId: 'doc-uuid-456',
@@ -358,14 +315,11 @@ describe('Phase 3.3: Document Version Service', () => {
 
       // Should create new version despite same snapshot
       expect(result.versionNumber).toBe(6);
-      // query should be called once (insert only, no check)
-      expect(db.query).toHaveBeenCalledTimes(1);
+      // The insert runs on its own: no version was read to compare against.
+      expect(database.statements).toHaveLength(1);
     });
 
     it('should persist sourceVersionId in the INSERT when provided', async () => {
-      const { createDocumentVersion } = await import('../../src/services/document-version-service');
-      const db = await import('../../src/db');
-
       const snapshot = { title: 'Restored Content' };
       const sourceVersionId = 'source-version-uuid-111';
       const mockRow = createMockVersionRow({
@@ -374,7 +328,7 @@ describe('Phase 3.3: Document Version Service', () => {
         source: 'revert',
       });
 
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [mockRow] });
+      database.on(documentVersions).insert.returnsRaw([mockRow]);
 
       await createDocumentVersion({
         documentId: 'doc-uuid-456',
@@ -388,19 +342,16 @@ describe('Phase 3.3: Document Version Service', () => {
         sourceVersionId,
       });
 
-      const insertCall = vi.mocked(db.query).mock.calls[0];
-      expect(insertCall[0]).toContain('source_version_id');
-      expect(insertCall[1]).toContain(sourceVersionId);
+      const [insertCall] = database.calls(documentVersions).insert;
+      expect(insertCall.sql).toContain('source_version_id');
+      expect(insertCall.params).toContain(sourceVersionId);
     });
 
     it('should leave source_version_id as null when sourceVersionId is omitted', async () => {
-      const { createDocumentVersion } = await import('../../src/services/document-version-service');
-      const db = await import('../../src/db');
-
       const snapshot = { title: 'Normal Edit' };
       const mockRow = createMockVersionRow({ version_number: 2, snapshot });
 
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [mockRow] });
+      database.on(documentVersions).insert.returnsRaw([mockRow]);
 
       await createDocumentVersion({
         documentId: 'doc-uuid-456',
@@ -413,17 +364,15 @@ describe('Phase 3.3: Document Version Service', () => {
         skipCompaction: true,
       });
 
-      const insertCall = vi.mocked(db.query).mock.calls[0];
-      const params = insertCall[1];
-      // source_version_id is the last param ($13); confirm it is null when omitted
-      const sourceVersionIdParam = params[params.length - 1];
-      expect(sourceVersionIdParam).toBeNull();
+      const [insertCall] = database.calls(documentVersions).insert;
+      // source_version_id is the last value the statement casts to uuid.
+      const cast = [...insertCall.sql.matchAll(/\$(\d+)::uuid/g)].at(-1) ?? [];
+      expect(insertCall.params[Number(cast[1]) - 1]).toBeNull();
     });
   });
 
   describe('getDocumentVersion', () => {
     it('should return a document version by ID', async () => {
-      const { getDocumentVersion } = await import('../../src/services/document-version-service');
 
       database.on(documentVersions).select.returnsRaw([createStubVersionRow()]);
 
@@ -436,7 +385,6 @@ describe('Phase 3.3: Document Version Service', () => {
     });
 
     it('should return null when version does not exist', async () => {
-      const { getDocumentVersion } = await import('../../src/services/document-version-service');
 
       const result = await getDocumentVersion('nonexistent-version');
 
@@ -446,11 +394,8 @@ describe('Phase 3.3: Document Version Service', () => {
 
   describe('getLatestDocumentVersion', () => {
     it('should return the latest version for a document on a branch', async () => {
-      const { getLatestDocumentVersion } = await import('../../src/services/document-version-service');
-      const db = await import('../../src/db');
-
       const mockRow = createMockVersionRow({ version_number: 5 });
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+      database.on(documentVersions).select.returnsRaw([mockRow]);
 
       const result = await getLatestDocumentVersion('doc-uuid-456', 'branch-uuid-789');
 
@@ -459,11 +404,6 @@ describe('Phase 3.3: Document Version Service', () => {
     });
 
     it('should return null when no versions exist for document on branch', async () => {
-      const { getLatestDocumentVersion } = await import('../../src/services/document-version-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
-
       const result = await getLatestDocumentVersion('doc-uuid-456', 'branch-uuid-789');
 
       expect(result).toBeNull();
@@ -472,7 +412,6 @@ describe('Phase 3.3: Document Version Service', () => {
 
   describe('getLatestVersionsForBranch', () => {
     it('should return latest versions for all documents on a branch', async () => {
-      const { getLatestVersionsForBranch } = await import('../../src/services/document-version-service');
 
       const mockRows = [
         createMockVersionRow({ id: 'v1', document_id: 'doc-1', version_number: 3 }),
@@ -491,7 +430,6 @@ describe('Phase 3.3: Document Version Service', () => {
     });
 
     it('should return empty array when no documents on branch', async () => {
-      const { getLatestVersionsForBranch } = await import('../../src/services/document-version-service');
 
       const result = await getLatestVersionsForBranch('branch-uuid-789');
 
@@ -501,7 +439,6 @@ describe('Phase 3.3: Document Version Service', () => {
 
   describe('listDocumentVersions', () => {
     it('should list all versions for a document on a branch in descending order', async () => {
-      const { listDocumentVersions } = await import('../../src/services/document-version-service');
 
       database.on(documentVersions).select.returnsRaw([
         createStubVersionRow({ versionNumber: 3 }),
@@ -518,7 +455,6 @@ describe('Phase 3.3: Document Version Service', () => {
     });
 
     it('should support pagination with limit', async () => {
-      const { listDocumentVersions } = await import('../../src/services/document-version-service');
 
       database.on(documentVersions).select.returnsRaw([
         createStubVersionRow({ versionNumber: 3 }),
@@ -532,7 +468,6 @@ describe('Phase 3.3: Document Version Service', () => {
     });
 
     it('should support pagination with offset', async () => {
-      const { listDocumentVersions } = await import('../../src/services/document-version-service');
 
       database.on(documentVersions).select.returnsRaw([createStubVersionRow({ versionNumber: 1 })]);
 
@@ -543,7 +478,6 @@ describe('Phase 3.3: Document Version Service', () => {
     });
 
     it('should return empty array when no versions exist', async () => {
-      const { listDocumentVersions } = await import('../../src/services/document-version-service');
 
       const result = await listDocumentVersions('doc-uuid-456', 'branch-uuid-789');
 
@@ -553,11 +487,8 @@ describe('Phase 3.3: Document Version Service', () => {
 
   describe('getDocumentVersionByNumber', () => {
     it('should return a specific version by version number', async () => {
-      const { getDocumentVersionByNumber } = await import('../../src/services/document-version-service');
-      const db = await import('../../src/db');
-
       const mockRow = createMockVersionRow({ version_number: 3 });
-      vi.mocked(db.query).mockResolvedValue({ rows: [mockRow] });
+      database.on(documentVersions).select.returnsRaw([mockRow]);
 
       const result = await getDocumentVersionByNumber('doc-uuid-456', 'branch-uuid-789', 3);
 
@@ -566,11 +497,6 @@ describe('Phase 3.3: Document Version Service', () => {
     });
 
     it('should return null when version number does not exist', async () => {
-      const { getDocumentVersionByNumber } = await import('../../src/services/document-version-service');
-      const db = await import('../../src/db');
-
-      vi.mocked(db.query).mockResolvedValue({ rows: [] });
-
       const result = await getDocumentVersionByNumber('doc-uuid-456', 'branch-uuid-789', 999);
 
       expect(result).toBeNull();
@@ -579,17 +505,13 @@ describe('Phase 3.3: Document Version Service', () => {
 
   describe('getLatestDocumentVersionWithFallback', () => {
     it('should return branch version with inherited=false when version exists on branch', async () => {
-      const { getLatestDocumentVersionWithFallback } = await import('../../src/services/document-version-service');
-      const db = await import('../../src/db');
-
       const mockRow = createMockVersionRow({
         id: 'branch-version-1',
         document_id: 'doc-uuid-456',
         branch_id: 'branch-feature-uuid',
         version_number: 3,
       });
-      // First query: getLatestDocumentVersion on the branch — returns a version
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [mockRow] });
+      database.on(documentVersions).select.whenBound(['branch-feature-uuid']).returnsRaw([mockRow]);
 
       const result = await getLatestDocumentVersionWithFallback(
         'doc-uuid-456',
@@ -604,9 +526,6 @@ describe('Phase 3.3: Document Version Service', () => {
     });
 
     it('should fall back to main published version with inherited=true when no branch version', async () => {
-      const { getLatestDocumentVersionWithFallback } = await import('../../src/services/document-version-service');
-      const db = await import('../../src/db');
-
       const mockMainPublishedRow = createMockVersionRow({
         id: 'main-published-version',
         document_id: 'doc-uuid-456',
@@ -614,10 +533,11 @@ describe('Phase 3.3: Document Version Service', () => {
         version_number: 10,
         source: 'checkpoint',
       });
-      // First query: getLatestDocumentVersion on branch — no version
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
-      // Second query: getLatestPublishedDocumentVersion on main — returns published version
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [mockMainPublishedRow] });
+      // The branch holds no version, so the read that answers is the one bound
+      // to main.
+      database.on(documentVersions).select
+        .whenBound(['branch-main-uuid'])
+        .returnsRaw([mockMainPublishedRow]);
 
       const result = await getLatestDocumentVersionWithFallback(
         'doc-uuid-456',
@@ -632,14 +552,6 @@ describe('Phase 3.3: Document Version Service', () => {
     });
 
     it('should return null when no version on branch AND no published version on main', async () => {
-      const { getLatestDocumentVersionWithFallback } = await import('../../src/services/document-version-service');
-      const db = await import('../../src/db');
-
-      // First query: getLatestDocumentVersion on branch — no version
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
-      // Second query: getLatestPublishedDocumentVersion on main — no version
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
-
       const result = await getLatestDocumentVersionWithFallback(
         'doc-uuid-456',
         'branch-feature-uuid',
@@ -650,18 +562,15 @@ describe('Phase 3.3: Document Version Service', () => {
     });
 
     it('should return branch version (not main) when both exist (branch takes priority)', async () => {
-      const { getLatestDocumentVersionWithFallback } = await import('../../src/services/document-version-service');
-      const db = await import('../../src/db');
-
       const mockBranchRow = createMockVersionRow({
         id: 'branch-version-local',
         document_id: 'doc-uuid-456',
         branch_id: 'branch-feature-uuid',
         version_number: 2,
       });
-      // First query: getLatestDocumentVersion on the branch — returns a version
-      // (should NOT proceed to second query)
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [mockBranchRow] });
+      database.on(documentVersions).select
+        .whenBound(['branch-feature-uuid'])
+        .returnsRaw([mockBranchRow]);
 
       const result = await getLatestDocumentVersionWithFallback(
         'doc-uuid-456',
@@ -673,16 +582,11 @@ describe('Phase 3.3: Document Version Service', () => {
       expect(result?.version.id).toBe('branch-version-local');
       expect(result?.inherited).toBe(false);
       // Should only query once — no fallback needed
-      expect(db.query).toHaveBeenCalledTimes(1);
+      expect(database.statements).toHaveLength(1);
     });
 
     it('should NOT fall back when branchId === mainBranchId (main branch, no fallback)', async () => {
-      const { getLatestDocumentVersionWithFallback } = await import('../../src/services/document-version-service');
-      const db = await import('../../src/db');
-
       // No version on main branch
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
-
       const result = await getLatestDocumentVersionWithFallback(
         'doc-uuid-456',
         'branch-main-uuid',
@@ -692,13 +596,10 @@ describe('Phase 3.3: Document Version Service', () => {
       // Should return null, not attempt fallback
       expect(result).toBeNull();
       // Should only query once — no fallback for main branch
-      expect(db.query).toHaveBeenCalledTimes(1);
+      expect(database.statements).toHaveLength(1);
     });
 
     it('should return inherited=true with main tombstone if main has tombstone and no branch version', async () => {
-      const { getLatestDocumentVersionWithFallback } = await import('../../src/services/document-version-service');
-      const db = await import('../../src/db');
-
       const mockMainTombstoneRow = createMockVersionRow({
         id: 'main-tombstone-version',
         document_id: 'doc-uuid-456',
@@ -707,10 +608,9 @@ describe('Phase 3.3: Document Version Service', () => {
         snapshot: { _deleted: true },
         source: 'edit',
       });
-      // First query: getLatestDocumentVersion on branch — no version
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [] });
-      // Second query: getLatestPublishedDocumentVersion on main — returns tombstone
-      vi.mocked(db.query).mockResolvedValueOnce({ rows: [mockMainTombstoneRow] });
+      database.on(documentVersions).select
+        .whenBound(['branch-main-uuid'])
+        .returnsRaw([mockMainTombstoneRow]);
 
       const result = await getLatestDocumentVersionWithFallback(
         'doc-uuid-456',

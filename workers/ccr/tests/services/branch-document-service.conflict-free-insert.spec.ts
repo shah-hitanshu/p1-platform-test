@@ -14,12 +14,13 @@
  * target whose predicate matches the index's.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-
-vi.mock('../../src/db', () => ({
-  query: vi.fn(),
-  withTransaction: vi.fn(async (fn: () => Promise<unknown>) => fn()),
-}));
+import { describe, it, expect, beforeEach } from 'vitest';
+import { stubDatabase, type DatabaseStub } from '../__stubs__/database';
+import { documents, documentVersions } from '../../src/db/schema';
+import {
+  createDocumentOnBranch,
+  deleteDocumentWithRedirect,
+} from '../../src/services/branch-document-service';
 
 function docRow(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
@@ -46,34 +47,17 @@ function versionRow(overrides: Record<string, unknown> = {}): Record<string, unk
   };
 }
 
-function documentInsertSql(calls: unknown[][]): string {
-  const call = calls.find(
-    (c) => typeof c[0] === 'string' && c[0].includes('INSERT INTO app.documents'),
-  );
-  if (call === undefined) {
-    throw new Error('No INSERT INTO app.documents call was captured');
-  }
-  return call[0] as string;
-}
-
 describe('conflict-free document inserts', () => {
+  let stub: DatabaseStub;
+
   beforeEach(() => {
-    vi.resetAllMocks();
+    stub = stubDatabase();
   });
 
   describe('createDocumentOnBranch', () => {
     it('inserts with ON CONFLICT DO NOTHING against the active-path index', async () => {
-      const { createDocumentOnBranch } = await import('../../src/services/branch-document-service');
-      const db = await import('../../src/db');
-      const queryMock = vi.mocked(db.query);
-
-      queryMock
-        .mockResolvedValueOnce({ rows: [] }) // BEGIN
-        .mockResolvedValueOnce({ rows: [docRow()] }) // INSERT document
-        .mockResolvedValueOnce({ rows: [] }) // SAVEPOINT insert_version
-        .mockResolvedValueOnce({ rows: [versionRow()] }) // INSERT version
-        .mockResolvedValueOnce({ rows: [] }) // RELEASE SAVEPOINT insert_version
-        .mockResolvedValueOnce({ rows: [] }); // COMMIT
+      stub.on(documents).insert.returnsRaw([docRow()]);
+      stub.on(documentVersions).insert.returnsRaw([versionRow()]);
 
       await createDocumentOnBranch({
         siteId: 'site-uuid-123',
@@ -83,22 +67,14 @@ describe('conflict-free document inserts', () => {
         createdByType: 'user',
       });
 
-      const sql = documentInsertSql(queryMock.mock.calls);
-      expect(sql).toContain('ON CONFLICT (site_id, path) WHERE archived_at IS NULL DO NOTHING');
+      expect(stub.calls(documents).insert[0].sql).toContain(
+        'ON CONFLICT (site_id, path) WHERE archived_at IS NULL DO NOTHING',
+      );
     });
 
     it('needs no SAVEPOINT around the document insert, which can no longer abort the transaction', async () => {
-      const { createDocumentOnBranch } = await import('../../src/services/branch-document-service');
-      const db = await import('../../src/db');
-      const queryMock = vi.mocked(db.query);
-
-      queryMock
-        .mockResolvedValueOnce({ rows: [] }) // BEGIN
-        .mockResolvedValueOnce({ rows: [docRow()] }) // INSERT document
-        .mockResolvedValueOnce({ rows: [] }) // SAVEPOINT insert_version
-        .mockResolvedValueOnce({ rows: [versionRow()] }) // INSERT version
-        .mockResolvedValueOnce({ rows: [] }) // RELEASE SAVEPOINT insert_version
-        .mockResolvedValueOnce({ rows: [] }); // COMMIT
+      stub.on(documents).insert.returnsRaw([docRow()]);
+      stub.on(documentVersions).insert.returnsRaw([versionRow()]);
 
       await createDocumentOnBranch({
         siteId: 'site-uuid-123',
@@ -108,27 +84,19 @@ describe('conflict-free document inserts', () => {
         createdByType: 'user',
       });
 
-      // insert_version keeps its own savepoint for the version-number race;
-      // what must be gone is the one the document insert needed to recover
+      // The version insert opens a savepoint for the version-number race, and
+      // the transaction scope issues that one; no statement of the service's
+      // own does, which is what the document insert used to need to recover
       // from its own aborted statement.
-      const statements = queryMock.mock.calls.map((c) => c[0]);
-      expect(statements).not.toContain('SAVEPOINT insert_doc');
+      expect(stub.statements.some((statement) => /savepoint/i.test(statement.sql))).toBe(false);
     });
 
     it('reuses the existing document when the insert returns no row', async () => {
-      const { createDocumentOnBranch } = await import('../../src/services/branch-document-service');
-      const db = await import('../../src/db');
-      const queryMock = vi.mocked(db.query);
-
-      queryMock
-        .mockResolvedValueOnce({ rows: [] }) // BEGIN
-        .mockResolvedValueOnce({ rows: [] }) // INSERT document -> conflict, no row
-        .mockResolvedValueOnce({ rows: [docRow({ id: 'existing-doc-id' })] }) // SELECT existing
-        .mockResolvedValueOnce({ rows: [] }) // SELECT latest version on branch (none)
-        .mockResolvedValueOnce({ rows: [] }) // SAVEPOINT insert_version
-        .mockResolvedValueOnce({ rows: [versionRow({ document_id: 'existing-doc-id' })] })
-        .mockResolvedValueOnce({ rows: [] }) // RELEASE SAVEPOINT insert_version
-        .mockResolvedValueOnce({ rows: [] }); // COMMIT
+      stub.on(documents).insert.returnsRaw([]);
+      stub.on(documents).select.returnsRaw([docRow({ id: 'existing-doc-id' })]);
+      stub.on(documentVersions).insert.returnsRaw([
+        versionRow({ document_id: 'existing-doc-id' }),
+      ]);
 
       const result = await createDocumentOnBranch({
         siteId: 'site-uuid-123',
@@ -144,16 +112,10 @@ describe('conflict-free document inserts', () => {
 
   describe('deleteDocumentWithRedirect', () => {
     it('inserts the redirect document with ON CONFLICT DO NOTHING', async () => {
-      const { deleteDocumentWithRedirect } = await import(
-        '../../src/services/branch-document-service'
-      );
-      const db = await import('../../src/db');
-      const queryMock = vi.mocked(db.query);
-
-      queryMock
-        .mockResolvedValueOnce({ rows: [versionRow({ snapshot: { _deleted: true } })] }) // tombstone
-        .mockResolvedValueOnce({ rows: [docRow({ id: 'redirect-doc-id' })] }) // INSERT redirect doc
-        .mockResolvedValueOnce({ rows: [versionRow({ document_id: 'redirect-doc-id' })] });
+      stub.on(documents).insert.returnsRaw([docRow({ id: 'redirect-doc-id' })]);
+      stub.on(documentVersions).insert.returnsRaw([
+        versionRow({ document_id: 'redirect-doc-id' }),
+      ]);
 
       await deleteDocumentWithRedirect({
         siteId: 'site-uuid-123',
@@ -169,8 +131,9 @@ describe('conflict-free document inserts', () => {
         },
       });
 
-      const sql = documentInsertSql(queryMock.mock.calls);
-      expect(sql).toContain('ON CONFLICT (site_id, path) WHERE archived_at IS NULL DO NOTHING');
+      expect(stub.calls(documents).insert[0].sql).toContain(
+        'ON CONFLICT (site_id, path) WHERE archived_at IS NULL DO NOTHING',
+      );
     });
   });
 });

@@ -8,8 +8,8 @@
  */
 
 import { and, desc, eq, exists, gt, inArray, sql } from 'drizzle-orm';
+import { driverErrorCode } from '../db/driver-error';
 import type { DocumentVersion, DocumentVersionSource } from '../types';
-import { query } from '../db';
 import { branches, checkpointDocuments, checkpoints, documentVersions } from '../db/schema';
 import { db } from '../db/scope';
 import { toIsoTimestamp } from '../db/helpers';
@@ -239,22 +239,14 @@ function getFirstRow<T>(rows: T[]): T {
  * Checks if an error is a PostgreSQL foreign key constraint violation.
  */
 function isForeignKeyViolation(error: unknown): boolean {
-  return (
-    error instanceof Error &&
-    'code' in error &&
-    (error as NodeJS.ErrnoException).code === '23503'
-  );
+  return driverErrorCode(error) === '23503';
 }
 
 /**
  * Checks if an error is a PostgreSQL unique constraint violation.
  */
 function isUniqueViolation(error: unknown): boolean {
-  return (
-    error instanceof Error &&
-    'code' in error &&
-    (error as NodeJS.ErrnoException).code === '23505'
-  );
+  return driverErrorCode(error) === '23505';
 }
 
 /**
@@ -348,11 +340,12 @@ export async function createDocumentVersion(
         const { actionType: computedType, actionMetadata: computedMeta } =
           classifyChange(undefined, params.puckActions);
         if (computedType !== null) {
-          await query(
-            `UPDATE app.document_versions SET action_type = $1, action_metadata = $2
-             WHERE id = $3 AND (action_type IS NULL OR action_type != 'structural')`,
-            [computedType, computedMeta, latestVersion.id],
-          );
+          await db().execute(sql`
+            UPDATE app.document_versions
+               SET action_type = ${computedType},
+                   action_metadata = ${computedMeta === null ? null : JSON.stringify(computedMeta)}
+             WHERE id = ${latestVersion.id}
+               AND (action_type IS NULL OR action_type != 'structural')`);
           console.log(
             `Updated action_metadata on existing version ${latestVersion.id} (snapshot unchanged)`,
           );
@@ -437,12 +430,21 @@ export async function createDocumentVersion(
       && latestVersion.patch != null
       && forwardPatch != null;
 
-    const result = await query<DocumentVersionRow>(
-      `WITH nullify_previous AS (
+    // The jsonb values are stringified: the Drizzle client serializes json as
+    // identity, so an object bound to a jsonb parameter would arrive as
+    // [object Object].
+    const patchJson = forwardPatch
+      ? JSON.stringify(forwardPatch)
+      : (params.patch ? JSON.stringify(params.patch) : null);
+    const previousVersionId = shouldNullPrevious && latestVersion
+      ? latestVersion.id
+      : '00000000-0000-0000-0000-000000000000';
+    const result = await db().execute<DocumentVersionRow>(sql`
+      WITH nullify_previous AS (
         UPDATE app.document_versions
         SET snapshot = NULL
-        WHERE id = $11::uuid
-          AND $12::boolean = true
+        WHERE id = ${previousVersionId}::uuid
+          AND ${shouldNullPrevious}::boolean = true
           AND patch IS NOT NULL
           AND pinned_at IS NULL
           AND NOT EXISTS (
@@ -459,35 +461,19 @@ export async function createDocumentVersion(
         source, created_by_id, created_by_type, is_tombstone,
         source_version_id
       )
-      SELECT $1, $2,
+      SELECT ${params.documentId}, ${params.branchId},
         COALESCE(MAX(version_number), 0) + 1,
-        $3,
-        $4, $5, $6,
-        $7, $8, $9, $10,
-        $13::uuid
+        ${JSON.stringify(snapshot)},
+        ${patchJson}, ${finalActionType},
+        ${finalActionMetadata == null ? null : JSON.stringify(finalActionMetadata)},
+        ${params.source}, ${params.createdById}, ${params.createdByType},
+        ${params.isTombstone === true},
+        ${params.sourceVersionId ?? null}::uuid
       FROM app.document_versions
-      WHERE document_id = $1 AND branch_id = $2
-      RETURNING *`,
-      [
-        params.documentId,          // $1
-        params.branchId,            // $2
-        snapshot,                   // $3
-        forwardPatch ? JSON.stringify(forwardPatch) : (params.patch ? JSON.stringify(params.patch) : null), // $4
-        finalActionType,            // $5
-        finalActionMetadata ?? null, // $6
-        params.source,              // $7
-        params.createdById,         // $8
-        params.createdByType,       // $9
-        params.isTombstone === true, // $10
-        shouldNullPrevious && latestVersion
-          ? latestVersion.id
-          : '00000000-0000-0000-0000-000000000000', // $11 — CTE WHERE id = $11
-        shouldNullPrevious,         // $12 — CTE WHERE $12::boolean = true
-        params.sourceVersionId ?? null, // $13
-      ],
-    );
+      WHERE document_id = ${params.documentId} AND branch_id = ${params.branchId}
+      RETURNING *`);
 
-    const newVersion = mapRowToDocumentVersion(getFirstRow(result.rows));
+    const newVersion = mapRowToDocumentVersion(getFirstRow(result));
     if (forwardPatch && latestVersion) {
       console.log(
         `Created v${String(newVersion.versionNumber)} with `
@@ -552,8 +538,8 @@ export async function getLatestDocumentVersion(
   documentId: string,
   branchId: string,
 ): Promise<DocumentVersion | null> {
-  const result = await query<DocumentVersionRow>(
-    `SELECT dv.*,
+  const result = await db().execute<DocumentVersionRow>(sql`
+    SELECT dv.*,
        dv.source_branch_id, dv.source_version_id, dv.published_to_version_id,
        b.name AS source_branch_name,
        EXISTS(
@@ -564,17 +550,15 @@ export async function getLatestDocumentVersion(
        ) AS is_published
      FROM app.document_versions dv
      LEFT JOIN app.branches b ON b.id = dv.source_branch_id
-     WHERE dv.document_id = $1 AND dv.branch_id = $2
+     WHERE dv.document_id = ${documentId} AND dv.branch_id = ${branchId}
      ORDER BY dv.version_number DESC
-     LIMIT 1`,
-    [documentId, branchId],
-  );
+     LIMIT 1`);
 
-  if (result.rows.length === 0) {
+  if (result.length === 0) {
     return null;
   }
 
-  return mapRowToDocumentVersion(getFirstRow(result.rows));
+  return mapRowToDocumentVersion(getFirstRow(result));
 }
 
 /**
@@ -628,33 +612,30 @@ export async function getLatestPublishedDocumentVersion(
    */
   maxVersionNumber?: number,
 ): Promise<DocumentVersion | null> {
-  const params: unknown[] = [documentId, branchId];
-  const ceiling = maxVersionNumber !== undefined
-    ? `AND dv.version_number <= $${String(params.push(maxVersionNumber))}`
-    : '';
-  const result = await query<DocumentVersionRow>(
-    `SELECT dv.*,
+  const ceiling = maxVersionNumber === undefined
+    ? sql``
+    : sql`AND dv.version_number <= ${maxVersionNumber}`;
+  const result = await db().execute<DocumentVersionRow>(sql`
+    SELECT dv.*,
        dv.source_branch_id, dv.source_version_id, dv.published_to_version_id,
        b.name AS source_branch_name
      FROM app.document_versions dv
      INNER JOIN app.checkpoint_documents cd ON cd.document_version_id = dv.id
      INNER JOIN app.checkpoints cp ON cp.id = cd.checkpoint_id
      LEFT JOIN app.branches b ON b.id = dv.source_branch_id
-     WHERE dv.document_id = $1
-       AND dv.branch_id = $2
-       AND cp.branch_id = $2
+     WHERE dv.document_id = ${documentId}
+       AND dv.branch_id = ${branchId}
+       AND cp.branch_id = ${branchId}
        AND cp.checkpoint_type = 'publish'
        ${ceiling}
      ORDER BY dv.version_number DESC
-     LIMIT 1`,
-    params,
-  );
+     LIMIT 1`);
 
-  if (result.rows.length === 0) {
+  if (result.length === 0) {
     return null;
   }
 
-  return mapRowToDocumentVersion(getFirstRow(result.rows));
+  return mapRowToDocumentVersion(getFirstRow(result));
 }
 
 /**
@@ -743,17 +724,16 @@ export async function getDocumentVersionByNumber(
   branchId: string,
   versionNumber: number,
 ): Promise<DocumentVersion | null> {
-  const result = await query<DocumentVersionRow>(
-    `SELECT * FROM app.document_versions
-     WHERE document_id = $1 AND branch_id = $2 AND version_number = $3`,
-    [documentId, branchId, versionNumber],
-  );
+  const result = await db().execute<DocumentVersionRow>(sql`
+    SELECT * FROM app.document_versions
+     WHERE document_id = ${documentId} AND branch_id = ${branchId}
+       AND version_number = ${versionNumber}`);
 
-  if (result.rows.length === 0) {
+  if (result.length === 0) {
     return null;
   }
 
-  return mapRowToDocumentVersion(getFirstRow(result.rows));
+  return mapRowToDocumentVersion(getFirstRow(result));
 }
 
 // =============================================================================
@@ -830,31 +810,28 @@ export async function replayVersionChain(
   }
 
   // 2. Find nearest baseline at or before this version
-  const baselineResult = await query<DocumentVersionRow>(
-    `SELECT * FROM app.document_versions
-     WHERE document_id = $1 AND branch_id = $2 AND version_number <= $3 AND snapshot IS NOT NULL
-     ORDER BY version_number DESC LIMIT 1`,
-    [documentId, branchId, versionNumber],
-  );
+  const baselineResult = await db().execute<DocumentVersionRow>(sql`
+    SELECT * FROM app.document_versions
+     WHERE document_id = ${documentId} AND branch_id = ${branchId}
+       AND version_number <= ${versionNumber} AND snapshot IS NOT NULL
+     ORDER BY version_number DESC LIMIT 1`);
 
-  const baseline = baselineResult.rows[0];
+  const baseline = baselineResult.at(0);
   if (!baseline?.snapshot) return null;
 
   // 3. Load all diff versions between baseline and requested version (exclusive baseline, inclusive target)
-  const diffsResult = await query<DocumentVersionRow>(
-    `SELECT * FROM app.document_versions
-     WHERE document_id = $1 AND branch_id = $2
-       AND version_number > $3 AND version_number <= $4
-     ORDER BY version_number ASC`,
-    [documentId, branchId, baseline.version_number, versionNumber],
-  );
+  const diffsResult = await db().execute<DocumentVersionRow>(sql`
+    SELECT * FROM app.document_versions
+     WHERE document_id = ${documentId} AND branch_id = ${branchId}
+       AND version_number > ${baseline.version_number} AND version_number <= ${versionNumber}
+     ORDER BY version_number ASC`);
 
   // 4. Apply patches forward — each version's patch is the forward diff from its predecessor
   let snapshot: Record<string, unknown> = typeof baseline.snapshot === 'string'
     ? JSON.parse(baseline.snapshot) as Record<string, unknown>
     : structuredClone(baseline.snapshot);
   let reachedVersion = baseline.version_number;
-  for (const diffRow of diffsResult.rows) {
+  for (const diffRow of diffsResult) {
     // Every row above the baseline has a null snapshot by construction, so one
     // without a patch cannot be rebuilt. Continuing past it would return the
     // content of an older version under the requested version's number.

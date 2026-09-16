@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { normalizePath, validatePath } from '../../src/services/document-types';
+import { normalizePath, pathPrefixPattern, validatePath } from '../../src/services/document-types';
 import { InvalidDocumentPathError } from '../../src/services/errors';
 
 describe('normalizePath', () => {
@@ -219,5 +219,28 @@ describe('Edge case handling', () => {
     expect(() => { validatePath('.hidden'); }).not.toThrow();
     expect(() => { validatePath('.git/config'); }).not.toThrow();
     expect(() => { validatePath('pages/.htaccess'); }).not.toThrow();
+  });
+});
+
+describe('pathPrefixPattern', () => {
+  it('matches a prefix against the normalized form paths are stored in', () => {
+    expect(pathPrefixPattern('/Pages\\Home')).toBe('pages/home%');
+  });
+
+  it('keeps a trailing slash so a directory prefix stops at the directory', () => {
+    // 'pages%' would also take 'pages-archive'.
+    expect(pathPrefixPattern('pages/')).toBe('pages/%');
+  });
+
+  it('bounds nothing for a prefix that names the root', () => {
+    expect(pathPrefixPattern(undefined)).toBeUndefined();
+    expect(pathPrefixPattern('')).toBeUndefined();
+    expect(pathPrefixPattern('   ')).toBeUndefined();
+    expect(pathPrefixPattern('/')).toBeUndefined();
+  });
+
+  it('escapes the LIKE wildcards a path is allowed to contain', () => {
+    expect(pathPrefixPattern('_queries/')).toBe('\\_queries/%');
+    expect(pathPrefixPattern('pages/100%_off')).toBe('pages/100\\%\\_off%');
   });
 });
