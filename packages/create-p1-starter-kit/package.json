@@ -14,7 +14,8 @@
     "lint:template": "node scripts/lint-template.js",
     "prepublishOnly": "npm run build && npm run lint:template",
     "test": "vitest run",
-    "test:scaffold": "node scripts/validate-scaffold.js"
+    "test:scaffold": "node scripts/validate-scaffold.js",
+    "scaffold:local": "node scripts/scaffold-local.js"
   },
   "files": [
     "index.js",
