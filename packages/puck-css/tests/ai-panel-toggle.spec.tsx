@@ -38,11 +38,21 @@ afterEach(() => {
   cleanup();
 });
 
-describe('P1EditorHeader — Pantheon Agent toggle', () => {
+describe('P1EditorHeader — Zappy toggle', () => {
   it('is absent unless the consumer opts in', () => {
     render(<P1EditorHeader {...baseProps} />);
 
     expect(screen.queryByTestId('ai-panel-toggle')).toBeNull();
+  });
+
+  // Icon-only, so `aria-label` is the whole accessible name — what a screen reader
+  // announces, and what the changeset tells consumers to select the toggle by.
+  it('is reachable by its accessible name', () => {
+    render(<P1EditorHeader {...baseProps} showAIPanelToggle />);
+
+    expect(screen.getByRole('button', { name: 'Zappy AI Assistant' })).toBe(
+      screen.getByTestId('ai-panel-toggle'),
+    );
   });
 
   it('opens and closes the panel, and reports its state to assistive tech', async () => {

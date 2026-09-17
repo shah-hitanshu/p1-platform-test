@@ -37,7 +37,7 @@ export function ChatPanelHeader({
               fontWeight: 'var(--pds-typography-fw-semibold)',
               color: 'var(--pds-color-foreground-default)',
             }}>
-              Pantheon Agent
+              Zappy
             </div>
             <div style={{
               fontSize: 'var(--pds-typography-size-2xs)',
