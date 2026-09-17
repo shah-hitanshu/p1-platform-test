@@ -33,6 +33,8 @@ export interface UseAgentChatReturn {
    */
   sendMessage: (text: string, opts?: SendMessageOptions) => Promise<void>;
   isLoading: boolean;
+  /** The turn in flight, by the id the agent knows it by; null when none. */
+  currentTurnId: string | null;
   /** True while the WebSocket for the current scope is open and usable. */
   ready: boolean;
   /** True between an unexpected disconnect and the next reconnect attempt. */
@@ -142,6 +144,7 @@ export function useAgentChat({
     submit,
     sendMessage: session.sendMessage,
     isLoading: state.isLoading,
+    currentTurnId: state.currentTurnId,
     ready: state.ready,
     reconnecting: state.reconnecting,
     historyLoaded: state.historyLoaded,

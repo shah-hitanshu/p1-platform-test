@@ -33,6 +33,15 @@ describe('presenceIdentityKey', () => {
     expect(presenceIdentityKey([])).toBe('');
   });
 
+  it('changes when an agent moves on to another turn', () => {
+    // Same agent, same intent, same regions: the turn is the only thing that moved, and
+    // a Stop reads it off this roster to decide whose turn it is ending.
+    const before = [actor({ actorId: 'agent-1', actorType: 'agent', turnId: 'turn-1' })];
+    const after = [actor({ actorId: 'agent-1', actorType: 'agent', turnId: 'turn-2' })];
+
+    expect(presenceIdentityKey(before)).not.toBe(presenceIdentityKey(after));
+  });
+
   it('changes when one actor is swapped for another at the same count', () => {
     // Alice leaves and Bob joins in the same WS frame: humans.length is identical,
     // so this key is the only signal that the roster changed.

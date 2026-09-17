@@ -782,6 +782,44 @@ describe('Agent Politeness Endpoints', () => {
           client.agentEdit.stopAgent('site-1', 'branch-1', '/home', 'agent-1')
         ).rejects.toThrow();
       });
+
+      it('sends an agent id for the string form', async () => {
+        mockFetch.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ success: true }) });
+
+        const client = new P1Client({ baseUrl, apiKey });
+        await client.agentEdit.stopAgent('site-1', 'branch-1', '/home', 'agent-1');
+
+        expect(mockFetch).toHaveBeenCalledWith(
+          `${baseUrl}/api/sites/site-1/branches/branch-1/documents/%2Fhome/agent-stop`,
+          expect.objectContaining({ method: 'POST', body: JSON.stringify({ agentId: 'agent-1' }) })
+        );
+      });
+
+      it('sends a turn id for the object form', async () => {
+        mockFetch.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ success: true }) });
+
+        const client = new P1Client({ baseUrl, apiKey });
+        await client.agentEdit.stopAgent('site-1', 'branch-1', '/home', { turnId: 'turn-abc' });
+
+        expect(mockFetch).toHaveBeenCalledWith(
+          `${baseUrl}/api/sites/site-1/branches/branch-1/documents/%2Fhome/agent-stop`,
+          expect.objectContaining({ method: 'POST', body: JSON.stringify({ turnId: 'turn-abc' }) })
+        );
+      });
+
+      it('reports that there was no turn to stop', async () => {
+        // The body the backend really sends for this case, not a convenient shorthand.
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ success: false, rolledBack: false, reason: 'no_active_turn' }),
+        });
+
+        const client = new P1Client({ baseUrl, apiKey });
+        const result = await client.agentEdit.stopAgent('site-1', 'branch-1', '/home', 'agent-1');
+
+        expect(result).toEqual({ success: false, rolledBack: false, reason: 'no_active_turn' });
+      });
     });
   });
 

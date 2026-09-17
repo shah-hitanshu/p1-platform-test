@@ -103,6 +103,37 @@ describe('restoreHistory', () => {
     expect(next.messages[0]?.parts).toBeUndefined();
     expect(next.messages[0]?.toolCalls).toHaveLength(1);
   });
+
+  // Live, Stop leaves the step it interrupted reading "didn't finish". Replaying it as done
+  // would tell the user work landed that never did.
+  it('replays the step a stop interrupted as abandoned', () => {
+    const next = restoreHistory(EMPTY_STATE, [
+      {
+        role: 'assistant',
+        content: 'Applying your changes.',
+        parts: [{ type: 'tool', tool: { name: 'apply_document_edits', abandoned: true } }],
+        toolCalls: [{ name: 'apply_document_edits', abandoned: true }],
+      },
+    ]);
+
+    const part = next.messages[0]?.parts?.[0];
+    expect(part?.type === 'tool' && part.tool.status).toBe('abandoned');
+    expect(next.messages[0]?.toolCalls?.[0]?.status).toBe('abandoned');
+  });
+
+  it('replays a stopped turn as stopped', () => {
+    const next = restoreHistory(EMPTY_STATE, [
+      { role: 'assistant', content: 'Applying your changes.', stopped: true },
+    ]);
+
+    expect(next.messages[0]?.stopped).toBe(true);
+  });
+
+  it('leaves a turn that ran to completion unmarked', () => {
+    const next = restoreHistory(EMPTY_STATE, [{ role: 'assistant', content: 'all done' }]);
+
+    expect(next.messages[0]?.stopped).toBeUndefined();
+  });
 });
 
 describe('beginTurn', () => {

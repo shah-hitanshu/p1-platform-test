@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useCallback, useMemo, useState } from 'react';
 import { Icon, IconButton, Textarea } from '@pantheon-systems/pds-toolkit-react';
 import { useP1Puck, useP1Auth } from '@pantheon-systems/puck-css';
+import type { AgentStopTarget } from '@pantheon-systems/puck-css';
 import { useAgentChat } from '../../hooks/useAgentChat.js';
 import { normalizeDocumentPath } from '../../lib/session/chatState.js';
 import { useDraftRequest } from '../../hooks/useDraftRequest.js';
@@ -108,7 +109,7 @@ export function ChatPanel({ options }: Props): React.ReactElement {
   }), []);
 
   const {
-    messages, input, setInput, submit, sendMessage, isLoading, ready,
+    messages, input, setInput, submit, sendMessage, isLoading, currentTurnId, ready,
     reconnecting, historyLoaded, canRetry, clearMessages, stop, retry, awaitingNewPage,
     writeSet, visitPage, addWritablePage, removeWritablePage,
     scopeExpanded, setScopeExpanded, attachments, attachFiles, removeAttachment,
@@ -190,6 +191,35 @@ export function ChatPanel({ options }: Props): React.ReactElement {
   useEffect(() => {
     if (isLoading) turnStartedRef.current = true;
   }, [isLoading]);
+
+  // Pulled off the context because both are stable while the context value around them
+  // changes identity on every presence update; re-registering the cancel that often would
+  // clobber any other registrant over and over.
+  const { registerAgentCancel, stopAgent } = ccr;
+
+  // Read through a ref for the same reason: the registration must not churn once per turn.
+  const currentTurnIdRef = useRef(currentTurnId);
+  currentTurnIdRef.current = currentTurnId;
+
+  // So the page's own Stop ends this turn too, but only when it is this turn being
+  // stopped: the banner stops whichever agent it shows, and ending our turn over an
+  // unrelated one is a stop the user never asked for. Presence and a stop by id both
+  // name the turn, so one test answers both.
+  const cancelIfOurs = useCallback((target: AgentStopTarget) => {
+    if (target.turnId === currentTurnIdRef.current) stop();
+  }, [stop]);
+
+  useEffect(() => {
+    if (!isLoading) return;
+    return registerAgentCancel?.(cancelIfOurs);
+  }, [registerAgentCancel, isLoading, cancelIfOurs]);
+
+  // Both halves, because the local cancel only reaches an agent this tab is still
+  // connected to, and the durable stop only reaches one that is still asking CCR.
+  const handleStop = useCallback(() => {
+    stop();
+    if (currentTurnId !== null) void stopAgent?.({ turnId: currentTurnId });
+  }, [stopAgent, currentTurnId, stop]);
 
   // What the panel's single live region announces. Naming the running step is the
   // useful signal ("Applying changes…"), so this reads it off the turn in flight rather
@@ -490,7 +520,7 @@ export function ChatPanel({ options }: Props): React.ReactElement {
               isLoading={isLoading}
               canSubmit={Boolean(input.trim()) && canSend && attachmentHold === null}
               onSubmit={submitAndStick}
-              onStop={stop}
+              onStop={handleStop}
             />
           </div>
         </div>

@@ -7,6 +7,7 @@ import type {
   PendingPage,
   ToolCallStatus,
   RestoredMessage,
+  RestoredToolCall,
   SendMessageOptions,
 } from '../../types.js';
 
@@ -25,6 +26,8 @@ export interface RetryTarget {
 export interface ChatSessionState {
   messages: ChatMessage[];
   isLoading: boolean;
+  /** The turn in flight, by the id the agent knows it by; null when none. */
+  currentTurnId: string | null;
   /** True while the socket for this scope is open and usable. */
   ready: boolean;
   /** The composer's text, kept here so a plugin-panel remount can't discard a half-written brief. */
@@ -66,6 +69,7 @@ export interface ChatSessionState {
 export const EMPTY_STATE: ChatSessionState = {
   messages: [],
   isLoading: false,
+  currentTurnId: null,
   ready: false,
   draft: '',
   historyLoaded: false,
@@ -221,12 +225,17 @@ function isAssetId(value: unknown): value is string {
   return typeof value === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(value);
 }
 
-/** Map a replayed turn into the UI message shape. Restored tool calls already ran, so 'done'. */
+/** A call the turn ended underneath has no result and never will; anything else has finished. */
+function restoredStatus(tc: RestoredToolCall): ToolCallStatus['status'] {
+  return tc.abandoned === true ? 'abandoned' : 'done';
+}
+
+/** Map a replayed turn into the UI message shape. */
 function restoredToChatMessage(m: RestoredMessage): ChatMessage {
   const id = makeId();
   const toolCalls: ToolCallStatus[] | undefined =
     m.toolCalls && m.toolCalls.length > 0
-      ? m.toolCalls.map(tc => ({ name: tc.name, input: tc.input, result: tc.result, status: 'done' as const }))
+      ? m.toolCalls.map(tc => ({ name: tc.name, input: tc.input, result: tc.result, status: restoredStatus(tc) }))
       : undefined;
   // Ordered parts when the Worker sent them, so a replayed turn renders as the live one did.
   const parts: MessagePart[] | undefined =
@@ -236,7 +245,7 @@ function restoredToChatMessage(m: RestoredMessage): ChatMessage {
             ? { type: 'text', id: `${id}-p${i}`, text: part.text }
             : {
                 type: 'tool',
-                tool: { name: part.tool.name, input: part.tool.input, result: part.tool.result, status: 'done' as const },
+                tool: { name: part.tool.name, input: part.tool.input, result: part.tool.result, status: restoredStatus(part.tool) },
               },
         )
       : undefined;
@@ -264,6 +273,7 @@ function restoredToChatMessage(m: RestoredMessage): ChatMessage {
     content: m.content,
     ...(parts ? { parts } : {}),
     ...(toolCalls ? { toolCalls } : {}),
+    ...(m.stopped === true ? { stopped: true } : {}),
   };
 }
 
@@ -339,6 +349,7 @@ export function beginTurn(
   return {
     ...state,
     isLoading: true,
+    currentTurnId: assistantId,
     // A new turn supersedes any pending offer; failure paths re-arm it.
     retry: null,
     messages: [
@@ -398,7 +409,7 @@ export function endTurn(
   assistantId: string | null,
   patch?: Partial<ChatMessage>,
 ): ChatSessionState {
-  const cleared = { ...state, isLoading: false };
+  const cleared = { ...state, isLoading: false, currentTurnId: null };
   if (!assistantId) return cleared;
   return mapMessage(cleared, assistantId, m => {
     const ended: ChatMessage = { ...m, isStreaming: false, ...(patch ?? {}) };

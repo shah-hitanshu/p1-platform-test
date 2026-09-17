@@ -347,6 +347,7 @@ export type {
   NotificationContextValue,
   // Presence types (Phase 9)
   PresenceState,
+  AgentStopTarget,
 } from './core/types.js';
 
 // AI chat panel

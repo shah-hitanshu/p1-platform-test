@@ -554,6 +554,8 @@ export interface ActorPresence {
   requestedById?: string;
   /** Display name of the human who triggered this agent session (human_requested sessions only) */
   requestedByName?: string;
+  /** The turn this agent is working on, when it named one. Names what a stop would end. */
+  turnId?: string;
   lastActivityAt: string;
   joinedAt: string;
 }
@@ -757,11 +759,15 @@ export interface AgentEditAbortResult {
 
 /**
  * Result of stopping an agent (human-initiated).
- * Server looks up the agent's session and performs rollback if needed.
+ * The stop bars the turn from writing again, and rolls back its edit session if it had one.
  */
 export interface AgentStopResult {
   success: boolean;
+  /** The turn that was barred, when the stop named or found one. */
+  stoppedTurnId?: string;
   rolledBack: boolean;
+  /** Why nothing was stopped: 'no_active_turn' when no agent was running. */
+  reason?: string;
   message?: string;
 }
 

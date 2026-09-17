@@ -5,7 +5,7 @@
  * Displays agent name, intent, and affected regions.
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { ActorPresence } from '@pantheon-systems/css-client';
 import { getAvatarColor } from '../utils/avatarColor.js';
 
@@ -23,6 +23,9 @@ export interface AgentActivityBannerProps {
 }
 
 const baseClass = 'css-puck-agent-banner';
+
+/** How long the label holds when a stop never completes. */
+const STOP_FALLBACK_MS = 10_000;
 
 /**
  * Get initials from a name.
@@ -47,6 +50,23 @@ export function AgentActivityBanner({
   className,
 }: AgentActivityBannerProps): React.JSX.Element | null {
   const [isDismissed, setIsDismissed] = useState(false);
+  const [stopping, setStopping] = useState(false);
+
+  // The editor header renders one banner for whichever agent is first, unkeyed, so this
+  // instance can be handed a different agent — or the same agent on a later turn — without
+  // unmounting. A stop belongs to the turn it was aimed at, and must not disable the button
+  // for whatever takes its place.
+  useEffect(() => {
+    setStopping(false);
+  }, [agent.actorId, agent.turnId]);
+
+  // Presence dropping the agent unmounts the banner, which is the real end of a stop.
+  // The timer only keeps a stop that goes nowhere from stranding the label.
+  useEffect(() => {
+    if (!stopping) return;
+    const timer = setTimeout(() => { setStopping(false); }, STOP_FALLBACK_MS);
+    return () => { clearTimeout(timer); };
+  }, [stopping]);
 
   // Don't show if agent is idle and showIdle is false
   if (agent.state === 'idle' && !showIdle) {
@@ -71,6 +91,7 @@ export function AgentActivityBanner({
   };
 
   const handleStopAgent = () => {
+    setStopping(true);
     onStopAgent?.(agent);
   };
 
@@ -109,9 +130,10 @@ export function AgentActivityBanner({
           type="button"
           className={`pds-button pds-button--critical-secondary pds-button--sm ${baseClass}__stop-btn`}
           onClick={handleStopAgent}
-          aria-label="Stop Agent"
+          disabled={stopping}
+          aria-label={stopping ? 'Stopping agent' : 'Stop Agent'}
         >
-          Stop Agent
+          {stopping ? 'Stopping…' : 'Stop Agent'}
         </button>
 
         {dismissible && (

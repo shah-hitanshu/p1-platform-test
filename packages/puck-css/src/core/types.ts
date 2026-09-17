@@ -196,6 +196,12 @@ export interface PuckDataOrigin {
 }
 
 /**
+ * What a stop names: an agent present on the document, or one turn of one.
+ * A turn between edits holds no session to be found by, so it names itself.
+ */
+export type AgentStopTarget = ActorPresence | { turnId: string };
+
+/**
  * Context value provided by P1PuckProvider.
  */
 export interface P1PuckContextValue {
@@ -604,10 +610,20 @@ export interface P1PuckContextValue {
   // =========================================================================
 
   /**
-   * Stop an agent's edit session (human-initiated).
-   * Calls the backend to roll back the agent's changes and end its session.
+   * Stop an agent editing this document, or one named turn of one.
+   * Bars the turn from writing again and rolls back the edit session it held.
    */
-  stopAgent: (agent: ActorPresence) => Promise<void>;
+  stopAgent: (target: AgentStopTarget) => Promise<void>;
+
+  /**
+   * Offer a way to stop an agent turn locally, for whatever holds a live
+   * connection to it. Returns the function that withdraws the offer.
+   *
+   * The offer is made to every stop, including ones aimed at other people's
+   * agents, so `cancel` is given the target and answers for itself whether the
+   * turn it holds is the one being stopped.
+   */
+  registerAgentCancel: (cancel: (target: AgentStopTarget) => void) => () => void;
 
   /**
    * Active conflict notifications.

@@ -15,7 +15,7 @@ import type {
   TranslationMode,
 } from '@pantheon-systems/css-client';
 import isEqual from 'lodash.isequal';
-import type { P1PuckConfig, P1PuckContextValue, PuckDataOrigin, SaveStatus, PresenceState } from '../core/types.js';
+import type { AgentStopTarget, P1PuckConfig, P1PuckContextValue, PuckDataOrigin, SaveStatus, PresenceState } from '../core/types.js';
 import { P1PuckContext } from '../core/P1PuckContext.js';
 import { NotificationProvider, useNotifications } from '../core/NotificationContext.js';
 import { PresenceContext } from '../core/PresenceContext.js';
@@ -1911,18 +1911,47 @@ function P1PuckProviderInner({
     setConflicts((prev) => prev.filter((c) => c.id !== id));
   }, []);
 
-  // Stop an agent's edit session (human-initiated)
+  // A stop has to reach an agent nobody in this tab is connected to, so the POST
+  // is the operation. A local cancel, when something registered one, only makes
+  // it prompt.
+  const agentCancelRef = useRef<((target: AgentStopTarget) => void) | null>(null);
+
+  const registerAgentCancel = useCallback((cancel: (target: AgentStopTarget) => void) => {
+    agentCancelRef.current = cancel;
+    return () => {
+      if (agentCancelRef.current === cancel) agentCancelRef.current = null;
+    };
+  }, []);
+
   const handleStopAgent = useCallback(
-    async (agent: ActorPresence) => {
+    async (target: AgentStopTarget) => {
+      // Before the document guard: cutting the local connection is the half of a stop
+      // that needs no document. Given the target, because the banner stops whichever
+      // agent it shows, which need not be one this tab has a turn with.
+      agentCancelRef.current?.(target);
+
       const documentPath = currentDocumentRef.current?.path;
       if (!documentPath) {
         notificationContext.addError('Cannot stop agent: no document loaded');
         return;
       }
+      // An actor on its own only bars the edit session it holds right now, so a stop sent
+      // between two edits bars nothing and the agent carries on at its next one.
+      const stopTarget = !('actorId' in target)
+        ? target
+        : target.turnId === undefined
+          ? target.actorId
+          : { agentId: target.actorId, turnId: target.turnId };
       try {
-        await userClient.agentEdit.stopAgent(siteId, branchId, documentPath, agent.actorId);
-        notificationContext.addSuccess(`Agent "${agent.name}" has been stopped`);
-        // Refresh presence to reflect the agent's removal
+        const result = await userClient.agentEdit.stopAgent(siteId, branchId, documentPath, stopTarget);
+        const subject = 'actorId' in target ? `Agent "${target.name}"` : 'Agent';
+        // A stop that found nothing to stop must not read like one that worked.
+        if (result.success) {
+          notificationContext.addSuccess(`${subject} has been stopped`);
+        } else {
+          notificationContext.addInfo(`${subject} had already stopped`);
+        }
+        // Either way, the roster that showed the agent is now out of date.
         if (presenceEnabled) {
           void fetchPresenceRef.current();
         }
@@ -2225,7 +2254,7 @@ function P1PuckProviderInner({
   const handleStopAgentRef = useRef(handleStopAgent);
   handleStopAgentRef.current = handleStopAgent;
   const stableStopAgent = useCallback(
-    (agent: ActorPresence) => handleStopAgentRef.current(agent),
+    (target: AgentStopTarget) => handleStopAgentRef.current(target),
     []
   );
 
@@ -2421,6 +2450,7 @@ function P1PuckProviderInner({
       agentEdit: agentEditCapabilities,
       triggerAgent: triggerAgentFn,
       stopAgent: stableStopAgent,
+      registerAgentCancel,
       conflicts,
       dismissConflict,
       // Feature configuration (Phase B.5)
@@ -2513,6 +2543,7 @@ function P1PuckProviderInner({
       agentEditCapabilities,
       triggerAgentFn,
       stableStopAgent,
+      registerAgentCancel,
       conflicts,
       dismissConflict,
       enableRealtime,

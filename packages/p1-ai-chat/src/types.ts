@@ -252,6 +252,8 @@ export interface RestoredToolCall {
   name: string;
   input?: unknown;
   result?: unknown;
+  /** The turn ended while this call was in flight, so it has no result and never will. */
+  abandoned?: boolean;
 }
 
 /** Per-turn overrides for a programmatic send. */
@@ -311,6 +313,8 @@ export interface RestoredMessage {
   parts?: RestoredPart[];
   /** Flat call list, used when `parts` is absent. */
   toolCalls?: RestoredToolCall[];
+  /** A user stopped this turn, so it reads as stopped rather than as an error. */
+  stopped?: boolean;
 }
 
 /**

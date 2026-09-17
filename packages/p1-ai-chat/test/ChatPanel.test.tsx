@@ -18,6 +18,12 @@ const branchDocuments = [
   { id: 'doc4', path: '_registry/components/Hero', archived: false },
 ];
 
+const stopAgent = vi.fn(async (_target: StopTarget) => ({ success: true }));
+
+/** What the provider hands a registered cancel: an agent on the page, or one turn. */
+type StopTarget = { actorId: string; requestedById?: string; turnId?: string } | { turnId: string };
+let registeredCancel: ((target: StopTarget) => void) | null = null;
+
 vi.mock('@pantheon-systems/puck-css', () => ({
   useP1Puck: () => ({
     userId: 'u1',
@@ -25,6 +31,11 @@ vi.mock('@pantheon-systems/puck-css', () => ({
     branchId: 'main',
     currentDocument,
     documents: branchDocuments,
+    stopAgent,
+    registerAgentCancel: (cancel: (target: StopTarget) => void) => {
+      registeredCancel = cancel;
+      return () => { registeredCancel = null; };
+    },
   }),
   useP1Auth: () => ({ getToken: async () => baseContext.token, isAuthenticated: true }),
   aiPanelStore: { close: vi.fn(), open: vi.fn(), toggle: vi.fn(), isOpen: () => true, subscribe: () => () => {} },
@@ -43,6 +54,8 @@ beforeEach(() => {
   MockWebSocket.instances = [];
   vi.stubGlobal('WebSocket', MockWebSocket);
   dispatch.mockClear();
+  stopAgent.mockClear();
+  registeredCancel = null;
   currentDocument = { id: 'doc1', path: '/current' };
 });
 afterEach(() => { vi.unstubAllGlobals(); });
@@ -250,6 +263,118 @@ describe('ChatPanel', () => {
       // unscoped query matches both.
       const transcript = screen.getByRole('region', { name: 'Conversation' });
       expect(within(transcript).getByText('Stopped')).toBeTruthy();
+    });
+
+    it('records the stop with the backend as well as ending the local turn', async () => {
+      const { ws } = await renderPanel();
+      await send('go', ws);
+      // Read back off the frame the agent was given rather than recomputed here: a stop
+      // recorded under any other id bars nothing.
+      const chat = ws().frames().find(f => f.type === 'chat') as { turnId?: string } | undefined;
+      expect(chat?.turnId).toBeTruthy();
+
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Stop' })); });
+
+      expect(ws().frames().some(f => f.type === 'cancel')).toBe(true);
+      expect(stopAgent).toHaveBeenCalledWith({ turnId: chat?.turnId });
+    });
+
+    it('ends the turn once, though the page cancel re-enters in the same click', async () => {
+      const { ws } = await renderPanel();
+      await send('go', ws);
+
+      // What the provider does with a stop: run the registered cancel first, then POST.
+      // The panel is registered, so its own Stop arrives back at it in the same tick.
+      stopAgent.mockImplementationOnce(async (target: StopTarget) => {
+        registeredCancel?.(target);
+        return { success: true };
+      });
+
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Stop' })); });
+
+      expect(ws().frames().filter(f => f.type === 'cancel')).toHaveLength(1);
+      const transcript = screen.getByRole('region', { name: 'Conversation' });
+      expect(within(transcript).getAllByText('Stopped')).toHaveLength(1);
+    });
+
+    /** The id the panel minted for the turn it just sent. */
+    const turnInFlight = (ws: () => MockWebSocket): string => {
+      const chat = ws().frames().find(f => f.type === 'chat') as { turnId?: string } | undefined;
+      if (chat?.turnId === undefined) throw new Error('the turn was sent without an id');
+      return chat.turnId;
+    };
+
+    const cancelled = (ws: () => MockWebSocket): boolean =>
+      ws().frames().some(f => f.type === 'cancel');
+
+    it('lets the page stop this turn', async () => {
+      const { ws } = await renderPanel();
+      await send('go', ws);
+
+      await act(async () => { registeredCancel?.({ turnId: turnInFlight(ws) }); });
+
+      expect(cancelled(ws)).toBe(true);
+      const transcript = screen.getByRole('region', { name: 'Conversation' });
+      expect(within(transcript).getByText('Stopped')).toBeTruthy();
+    });
+
+    // The banner stops whichever agent it is showing. Everything below is about a stop
+    // that is not this turn's: ending it would be a stop the user never asked for.
+    it('stops this turn when the page stops the agent running it', async () => {
+      const { ws } = await renderPanel();
+      await send('go', ws);
+
+      await act(async () => {
+        registeredCancel?.({ actorId: 'agent-1', requestedById: 'u1', turnId: turnInFlight(ws) });
+      });
+
+      expect(cancelled(ws)).toBe(true);
+    });
+
+    it('leaves this turn running when the page stops another person\'s agent', async () => {
+      const { ws } = await renderPanel();
+      await send('go', ws);
+
+      await act(async () => {
+        registeredCancel?.({ actorId: 'agent-1', requestedById: 'someone-else', turnId: 'their-turn' });
+      });
+
+      expect(cancelled(ws)).toBe(false);
+      const transcript = screen.getByRole('region', { name: 'Conversation' });
+      expect(within(transcript).queryByText('Stopped')).toBeNull();
+    });
+
+    // One person can have two agents running for them at once — the panel's, and one
+    // driven from outside the editor. Stopping the other one is not stopping this turn.
+    it('leaves this turn running when the page stops another agent of this person\'s', async () => {
+      const { ws } = await renderPanel();
+      await send('go', ws);
+
+      await act(async () => {
+        registeredCancel?.({ actorId: 'agent-2', requestedById: 'u1', turnId: 'their-other-turn' });
+      });
+
+      expect(cancelled(ws)).toBe(false);
+    });
+
+    it('leaves this turn running when the agent being stopped names no turn', async () => {
+      const { ws } = await renderPanel();
+      await send('go', ws);
+
+      await act(async () => {
+        registeredCancel?.({ actorId: 'agent-2', requestedById: 'u1' });
+      });
+
+      expect(cancelled(ws)).toBe(false);
+    });
+
+    it('leaves this turn running when another turn is stopped by id', async () => {
+      const { ws } = await renderPanel();
+      await send('go', ws);
+
+      await act(async () => { registeredCancel?.({ turnId: 'a-different-turn' }); });
+
+      expect(cancelled(ws)).toBe(false);
     });
 
     // A reply takes tens of seconds; locking the box made composing the follow-up wait.

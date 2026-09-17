@@ -98,6 +98,7 @@ const mockCcrContext = {
   agentEdit: null,
   triggerAgent: vi.fn(),
   stopAgent: vi.fn(),
+  registerAgentCancel: vi.fn(() => vi.fn()),
   conflicts: [],
   dismissConflict: vi.fn(),
   notifications: {

@@ -154,30 +154,29 @@ export class AgentEditEndpoint {
   }
 
   /**
-   * Stop an agent's edit session (human-initiated).
-   *
-   * Server looks up the agent's active session and rolls back
-   * to the checkpoint created at edit-start. This allows humans
-   * to stop an agent without knowing the session/checkpoint IDs.
+   * Stop an agent that is editing a document.
    *
    * @param siteId - Site ID
    * @param branchId - Branch ID
    * @param documentPath - Document path
-   * @param agentId - Agent ID to stop
+   * @param target - The agent to stop, or the specific turn to stop; at least one of
+   *   the two is required. Pass a turn when you know it: a turn between edits holds no
+   *   session to find it by.
    */
   async stopAgent(
     siteId: string,
     branchId: string,
     documentPath: string,
-    agentId: string
+    target: string | { agentId: string; turnId?: string } | { agentId?: string; turnId: string }
   ): Promise<AgentStopResult> {
     const encodedPath = this.encodeDocumentPath(documentPath);
+    const body = typeof target === 'string' ? { agentId: target } : target;
 
     return this.base.request<AgentStopResult>(
       `/api/sites/${siteId}/branches/${branchId}/documents/${encodedPath}/agent-stop`,
       {
         method: 'POST',
-        body: JSON.stringify({ agentId }),
+        body: JSON.stringify(body),
       }
     );
   }

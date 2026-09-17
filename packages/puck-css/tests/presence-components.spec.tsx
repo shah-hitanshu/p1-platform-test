@@ -5,8 +5,9 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import React from 'react';
+import type { ActorPresence, P1Client } from '@pantheon-systems/css-client';
 import {
   CollaboratorAvatars,
   PresenceIndicator,
@@ -14,7 +15,6 @@ import {
   FocusRegionHighlight,
 } from '../src/collaboration/index.js';
 import { PresenceContext } from '../src/core/PresenceContext.js';
-import type { ActorPresence, P1Client } from '@pantheon-systems/css-client';
 
 // =============================================================================
 // Mock Data
@@ -506,6 +506,99 @@ describe('AgentActivityBanner', () => {
       fireEvent.click(screen.getByRole('button', { name: /stop agent/i }));
 
       expect(handleStop).toHaveBeenCalledWith(mockAgentActor);
+    });
+  });
+
+  describe('stopping', () => {
+    it('says it is stopping once Stop is pressed', () => {
+      render(
+        <AgentActivityBanner agent={mockAgentActor} onStopAgent={vi.fn()} />,
+        { wrapper: TestWrapper }
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: 'Stop Agent' }));
+
+      expect(screen.getByText('Stopping…')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Stopping agent' })).toBeDisabled();
+    });
+
+    it('does not ask twice', () => {
+      const onStopAgent = vi.fn();
+      render(
+        <AgentActivityBanner agent={mockAgentActor} onStopAgent={onStopAgent} />,
+        { wrapper: TestWrapper }
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: 'Stop Agent' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Stopping agent' }));
+
+      expect(onStopAgent).toHaveBeenCalledTimes(1);
+    });
+
+    it('offers Stop again when the agent is still there', () => {
+      vi.useFakeTimers();
+      try {
+        render(
+          <AgentActivityBanner agent={mockAgentActor} onStopAgent={vi.fn()} />,
+          { wrapper: TestWrapper }
+        );
+        fireEvent.click(screen.getByRole('button', { name: 'Stop Agent' }));
+
+        act(() => { vi.advanceTimersByTime(10_000); });
+
+        expect(screen.getByRole('button', { name: 'Stop Agent' })).toBeEnabled();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    // The editor header renders a single banner for whichever agent is first, unkeyed, so
+    // the same instance gets handed a different agent when the roster shifts.
+    it('does not carry one agent\'s stop over to the next', () => {
+      const otherAgent: ActorPresence = {
+        ...mockAgentActor,
+        id: 'presence-4',
+        actorId: 'agent-999',
+        name: 'Copy Editor',
+      };
+      const { rerender } = render(
+        <AgentActivityBanner agent={mockAgentActor} onStopAgent={vi.fn()} />,
+        { wrapper: TestWrapper }
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Stop Agent' }));
+
+      rerender(<AgentActivityBanner agent={otherAgent} onStopAgent={vi.fn()} />);
+
+      expect(screen.getByText('Copy Editor')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Stop Agent' })).toBeEnabled();
+    });
+
+    it('does not carry a stop over to the next turn of the same agent', () => {
+      const nextTurn: ActorPresence = { ...mockAgentActor, turnId: 'turn-2' };
+      const { rerender } = render(
+        <AgentActivityBanner agent={{ ...mockAgentActor, turnId: 'turn-1' }} onStopAgent={vi.fn()} />,
+        { wrapper: TestWrapper }
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Stop Agent' }));
+
+      rerender(<AgentActivityBanner agent={nextTurn} onStopAgent={vi.fn()} />);
+
+      expect(screen.getByRole('button', { name: 'Stop Agent' })).toBeEnabled();
+    });
+
+    // Re-registering an actor mints a fresh presence id, so `id` changes for the same agent
+    // on every reconnect. Keying the reset on it would drop a stop the agent is still under.
+    it('keeps the stop through a reconnect that mints a new presence id', () => {
+      const reconnected: ActorPresence = { ...mockAgentActor, id: 'presence-5' };
+      const { rerender } = render(
+        <AgentActivityBanner agent={mockAgentActor} onStopAgent={vi.fn()} />,
+        { wrapper: TestWrapper }
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Stop Agent' }));
+
+      rerender(<AgentActivityBanner agent={reconnected} onStopAgent={vi.fn()} />);
+
+      expect(screen.getByRole('button', { name: 'Stopping agent' })).toBeDisabled();
     });
   });
 
