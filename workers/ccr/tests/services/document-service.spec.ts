@@ -917,12 +917,17 @@ describe('Phase 3.1: Document Service', () => {
         const existingDocRow = createMockDocumentRow({ id: 'existing-doc-id', path: 'pages/existing' });
         const tombstonedVersionRow = createMockVersionRow({
           document_id: 'existing-doc-id',
+          version_number: 3,
           snapshot: { _deleted: true },
           is_tombstone: true,
         });
+        // Prior versions on the branch (including the tombstone) are kept,
+        // not deleted — see PCC-3938: a checkpoint can hold a NO ACTION FK to
+        // any of them, and deleting threw a 500. The new version continues
+        // the branch's sequence rather than resetting to 1.
         const newVersionRow = createMockVersionRow({
           document_id: 'existing-doc-id',
-          version_number: 1,
+          version_number: 4,
           source: 'recreate',
         });
 
@@ -941,6 +946,7 @@ describe('Phase 3.1: Document Service', () => {
 
         expect(result.document.id).toBe('existing-doc-id');
         expect(result.version.source).toBe('recreate');
+        expect(result.version.versionNumber).toBe(4);
       });
 
       it('should throw SiteNotFoundError when site does not exist', async () => {

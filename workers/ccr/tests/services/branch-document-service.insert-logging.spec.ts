@@ -5,7 +5,7 @@
  * conflict — the wrong severity in the wrong place, but the only evidence that
  * path reuse was happening at all. ON CONFLICT DO NOTHING removes the line, so
  * these are what replace it: routine reuse at debug, and the one branch that
- * discards state at info.
+ * transitions a document back to live (recreation after a tombstone) at info.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -169,7 +169,7 @@ describe('document insert observability', () => {
     expect(contextOf(call!)).toMatchObject({ document_id: 'registry-doc' });
   });
 
-  it('reports a recreation after tombstone at info — it is the branch that discards state', async () => {
+  it('reports a recreation after tombstone at info', async () => {
     stub.on(documents).insert.returnsRaw([]);
     stub.on(documents).select.returnsRaw([docRow({ id: 'tombstoned-doc' })]);
     stub.on(documentVersions).select.returnsRaw([

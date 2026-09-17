@@ -821,16 +821,19 @@ export async function createDocumentOnBranch(
       const latestVersion = latestVersionResult.at(0);
       if (latestVersion !== undefined) {
         if (isTombstoneRow(latestVersion)) {
-          // This is a recreation after tombstone - delete all versions on this branch
-          // to start fresh with version 1
-          await db().execute(sql`
-            DELETE FROM app.document_versions
-             WHERE document_id = ${document.id} AND branch_id = ${params.branchId}`);
+          // This is a recreation after tombstone. The prior history is kept —
+          // not deleted — because app.checkpoint_documents.document_version_id
+          // has a plain (NO ACTION) FK to document_versions, and a checkpoint
+          // can pin any version on this branch, tombstone included. Deleting
+          // those rows here threw a FK violation and 500'd the recreate
+          // (PCC-3938). insertNextDocumentVersion below already scopes
+          // MAX(version_number) to (document_id, branch_id), so the new
+          // version simply continues the sequence instead of resetting to 1.
           isRecreation = true;
-          // Info rather than debug: this is the one branch here that discards
-          // state — every version on the branch goes, and numbering restarts.
-          // Rare, and the thing you want to find afterwards.
-          getLogger().info('document recreated after tombstone, branch history reset', {
+          // Info rather than debug: this is a state transition worth finding
+          // afterwards, even though the branch's version history now persists
+          // across it rather than being reset.
+          getLogger().info('document recreated after tombstone', {
             site_id: params.siteId,
             branch_id: params.branchId,
             document_id: document.id,
@@ -919,8 +922,10 @@ export async function createDocumentOnBranch(
       }
     }
 
-    // Create the initial version with provided snapshot or empty object
-    // After deletion of tombstoned versions, this will be version 1
+    // Create the version with provided snapshot or empty object. On a
+    // recreation this continues the branch's existing version sequence
+    // rather than resetting to 1 — see the comment above where isRecreation
+    // is set.
     const snapshot = enforceUniqueSlotIds(document.id, params.snapshot ?? {});
     const versionResult = await insertNextDocumentVersion({
       documentId: document.id,
