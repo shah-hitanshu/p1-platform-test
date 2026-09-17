@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { McpApiClient } from "./api-client.js";
+import { McpApiClient, isAgentTurnStopped, type CcrApiError } from "./api-client.js";
 
 const EDIT_REQUEST = {
   agentId: "agent-abc",
@@ -264,5 +264,85 @@ describe("McpApiClient template lookups", () => {
     const result = await client.getTemplate("site-1", "branch-1", "tpl-1");
     expect(capturedUrl).toBe("https://ccr.example.com/api/sites/site-1/branches/branch-1/templates/tpl-1");
     expect(result.id).toBe("tpl-1");
+  });
+});
+
+describe("McpApiClient turn stop enforcement", () => {
+  /** The X-Agent-Turn-Id the client actually puts on the wire for a given turn id. */
+  async function sentTurnIdHeader(turnId?: string): Promise<string | undefined> {
+    const seen: Record<string, string>[] = [];
+    const client = new McpApiClient({
+      baseUrl: "https://ccr.test",
+      agentId: "agent-1",
+      agentApiKey: "key",
+      ...(turnId === undefined ? {} : { turnId }),
+      fetcher: {
+        fetch: (_url, init) => {
+          seen.push(init?.headers as Record<string, string>);
+          return Promise.resolve(new Response(JSON.stringify({ documents: [] }), { status: 200 }));
+        },
+      },
+    });
+
+    await client.listDocuments("site-1", "branch-1");
+
+    return seen[0]["X-Agent-Turn-Id"];
+  }
+
+  // Each output must be byte-identical to what CCR's normalizeTurnId records for the same
+  // input — the 'turn\r\nabc' row pairs with stopped-turns.spec.ts — or a stop recorded
+  // server-side stops matching what the agent sends. CR/LF cannot ride in a header value
+  // at all, which is the injection row.
+  it.each([
+    ["sends the turn id", "turn-abc", "turn-abc"],
+    ["neutralises a header-injection attempt", "turn\r\nX-Injected: 1", "turn  X-Injected: 1"],
+    ["sanitizes to the value normalizeTurnId records", "turn\r\nabc", "turn  abc"],
+    ["truncates past the shared 128-character cap", "t".repeat(200), "t".repeat(128)],
+  ])("%s", async (_name, turnId, expected) => {
+    expect(await sentTurnIdHeader(turnId)).toBe(expected);
+  });
+
+  it("omits the turn id when none was given", async () => {
+    expect(await sentTurnIdHeader()).toBeUndefined();
+  });
+
+  it("recognises a stopped turn", async () => {
+    const client = new McpApiClient({
+      baseUrl: "https://ccr.test",
+      agentId: "agent-1",
+      agentApiKey: "key",
+      turnId: "turn-abc",
+      fetcher: {
+        fetch: () => Promise.resolve(
+          new Response(
+            JSON.stringify({ error: "Turn stopped by a user", code: "agent_turn_stopped" }),
+            { status: 409 },
+          ),
+        ),
+      },
+    });
+
+    const err = await client.listDocuments("site-1", "branch-1").catch((e: unknown) => e);
+
+    expect(isAgentTurnStopped(err)).toBe(true);
+    expect((err as CcrApiError).status).toBe(409);
+  });
+
+  it("does not mistake another conflict for a stop", async () => {
+    const client = new McpApiClient({
+      baseUrl: "https://ccr.test",
+      agentId: "agent-1",
+      agentApiKey: "key",
+      fetcher: {
+        fetch: () => Promise.resolve(
+          new Response(JSON.stringify({ error: "Region conflict" }), { status: 409 }),
+        ),
+      },
+    });
+
+    const err = await client.listDocuments("site-1", "branch-1").catch((e: unknown) => e);
+
+    expect(isAgentTurnStopped(err)).toBe(false);
+    expect((err as Error).message).toBe("Region conflict");
   });
 });

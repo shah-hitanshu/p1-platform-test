@@ -10,12 +10,13 @@ import { CCR_TOOLS, WEB_TOOLS, executeTool } from '../tools/execute-tool.js';
 import { validateCCRToken } from '../auth.js';
 import { createdDocumentPath, toolErrorResult, withCreatedPage } from '../conversation/scope.js';
 import type { StoredMessage } from '../conversation/history.js';
-import { appendTurn, forProvider, sanitizeHistory, trimForHistory, buildRestoredHistory, turnMayCommit, turnHasOutput, uploadedAssetIds } from '../conversation/history.js';
+import { appendTurn, forProvider, sanitizeHistory, trimForHistory, buildRestoredHistory, closeStoppedTurn, turnMayCommit, turnHasOutput, uploadedAssetIds } from '../conversation/history.js';
 import {
   MAX_TURN_STEPS,
   STEP_LIMIT_MESSAGE,
   TRUNCATED_NUDGE,
   afterCompletion,
+  afterToolError,
   atStepLimit,
   trackedEditSession,
   type TrackedEditSession,
@@ -387,6 +388,7 @@ export class ChatAgent extends Agent<Env, AgentState> {
         agentId: this.env.AGENT_ID,
         agentApiKey: this.env.AGENT_API_KEY,
         actingUser: { id: user.id, email: user.email, name: user.name },
+        turnId,
       });
 
       // Route model calls through the Cloudflare AI Gateway REST API. The Cloudflare API
@@ -475,6 +477,9 @@ export class ChatAgent extends Agent<Env, AgentState> {
       // Agentic loop — keep calling the model until it stops requesting tools. The
       // transport normalizes any provider's response to OpenAI-shaped tool calls.
       let stoppedAtStepLimit = false;
+      // The current step's streamed text, cleared once that step stores its own message —
+      // so a value left here means the stream was cut short before producing one.
+      let streamed = '';
       for (let step = 0; ; step++) {
         if (atStepLimit(step, MAX_TURN_STEPS)) {
           stoppedAtStepLimit = true;
@@ -491,7 +496,10 @@ export class ChatAgent extends Agent<Env, AgentState> {
               temperature: settings.temperature,
             },
             {
-              onText: delta => sendTurn({ type: 'token', content: delta }),
+              onText: delta => {
+                streamed += delta;
+                sendTurn({ type: 'token', content: delta });
+              },
               onToolCallStart: call =>
                 sendTurn({ type: 'tool_start', toolCallId: call.id, toolName: call.name }),
             },
@@ -526,6 +534,7 @@ export class ChatAgent extends Agent<Env, AgentState> {
         };
         history.push(assistantMsg);
         newEntries.push(assistantMsg);
+        streamed = '';
 
         if (next.kind === 'continue_truncated') {
           getLogger().warn('completion cut at the output limit', {
@@ -575,6 +584,13 @@ export class ChatAgent extends Agent<Env, AgentState> {
               activeEditSession = null;
             }
           } catch (err) {
+            // Ahead of toolErrorResult deliberately: handing a stop back to the model as a
+            // failed call is what let a stopped agent carry on working.
+            if (afterToolError(err) === 'end_turn') {
+              abort.abort();
+              cancelled = true;
+              break;
+            }
             result = toolErrorResult(err);
             isError = true;
           }
@@ -597,6 +613,10 @@ export class ChatAgent extends Agent<Env, AgentState> {
         }
         if (cancelled) break;
       }
+
+      // Nothing else in stored history tells a stop apart from a turn that simply ended, and
+      // the transcript a reopened tab renders is rebuilt from that history alone.
+      if (cancelled) closeStoppedTurn(newEntries, streamed);
 
       // A turn stopped early may have left an edit session open. Closing it matters more here
       // than on the error path: the user is still working in the editor and a stale

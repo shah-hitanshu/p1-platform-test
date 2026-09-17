@@ -124,6 +124,8 @@ export interface RestoredToolCall {
   name: string;
   input?: unknown;
   result?: unknown;
+  /** The turn ended while this call was in flight, so no result was ever stored. */
+  abandoned?: boolean;
 }
 
 /** One ordered piece of a replayed assistant turn, carrying the position `content` cannot. */
@@ -145,6 +147,8 @@ export interface RestoredMessage {
   parts?: RestoredPart[];
   /** Flat call list, superseded by {@link parts} and retained for version skew. */
   toolCalls?: RestoredToolCall[];
+  /** A user stopped this turn. Absent on a turn that ran to completion or failed. */
+  stopped?: boolean;
 }
 
 export interface ValidatedUser {

@@ -4,7 +4,16 @@ import { attachmentNamesOf } from './context.js';
 
 type Msg = OpenAI.Chat.Completions.ChatCompletionMessageParam;
 
-export type StoredMessage = Msg & { attachments?: AttachedFileName[] };
+export type StoredMessage = Msg & {
+  attachments?: AttachedFileName[];
+  /** On an assistant message: a user stopped this turn. */
+  stopped?: boolean;
+  /** On a tool result: the stop cut the call short rather than the tool returning. */
+  abandoned?: boolean;
+};
+
+/** Ours, not the provider's. Listed once so adding one cannot forget to strip it. */
+const BOOKKEEPING_KEYS = ['attachments', 'stopped', 'abandoned'] as const;
 
 /**
  * Strip the properties we added. Stored history goes straight into the next request, and a
@@ -12,10 +21,50 @@ export type StoredMessage = Msg & { attachments?: AttachedFileName[] };
  */
 export function forProvider(history: StoredMessage[]): Msg[] {
   return history.map(m => {
-    if (!('attachments' in m)) return m;
-    const { attachments: _names, ...rest } = m;
+    if (!BOOKKEEPING_KEYS.some(key => key in m)) return m;
+    const rest = { ...m };
+    for (const key of BOOKKEEPING_KEYS) delete rest[key];
     return rest as Msg;
   });
+}
+
+/** What the model is told about a call a stop cut short. */
+export const STOPPED_TOOL_RESULT = JSON.stringify({
+  stopped: 'The user stopped this turn before the tool returned.',
+});
+
+/**
+ * Close out a turn a user stopped: record the stop, and answer the calls it left in flight.
+ * Answering them is what keeps them: an unanswered call is stripped on the way into storage,
+ * so replay alone can never show the step the stop interrupted.
+ *
+ * `streamed` is what the model had said on a step the stop cut short, before that step
+ * could store a message of its own — nothing else holds it.
+ */
+export function closeStoppedTurn(entries: StoredMessage[], streamed = ''): void {
+  if (streamed !== '') entries.push({ role: 'assistant', content: streamed });
+
+  const answered = new Set<string>();
+  for (const m of entries) {
+    if (m.role === 'tool' && typeof m.tool_call_id === 'string') answered.add(m.tool_call_id);
+  }
+
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const entry = entries[i];
+    if (entry.role !== 'assistant') continue;
+    entries[i] = { ...entry, stopped: true };
+    for (const call of toolCallsOf(entry)) {
+      if (typeof call.id === 'string' && !answered.has(call.id)) {
+        entries.push({
+          role: 'tool',
+          tool_call_id: call.id,
+          content: STOPPED_TOOL_RESULT,
+          abandoned: true,
+        });
+      }
+    }
+    return;
+  }
 }
 
 // Guard against malformed or legacy (Anthropic-shaped, array-content) entries left
@@ -94,16 +143,20 @@ function toolCallsOf(m: Msg): { id?: string }[] {
   return Array.isArray(calls) ? (calls as { id?: string }[]) : [];
 }
 
-// Drop any leading messages before the first user message. Tool and assistant
-// messages only appear as replies, so slicing from the first user turn guarantees
-// the history never starts with an orphaned tool result (a tool message with no
-// preceding assistant tool_call) — which the model API rejects. Tool calls are then
-// re-paired, which catches the orphans slicing leaves mid-history.
+// Re-pairing catches the orphans slicing leaves mid-history. Model-facing only — the
+// transcript keeps its unanswered calls, so buildRestoredHistory does not pair.
 export function sanitizeHistory(history: StoredMessage[]): StoredMessage[] {
+  return pairToolCalls(validFromFirstUser(history));
+}
+
+// Drop any leading messages before the first user message. Tool and assistant messages only
+// appear as replies, so slicing from the first user turn guarantees the history never starts
+// with an orphaned tool result (a tool message with no preceding assistant tool_call).
+function validFromFirstUser(history: StoredMessage[]): StoredMessage[] {
   const valid = history.filter(isValidMessage);
   const firstUserIdx = valid.findIndex(m => m.role === 'user');
   if (firstUserIdx === -1) return [];
-  return pairToolCalls(firstUserIdx > 0 ? valid.slice(firstUserIdx) : valid);
+  return firstUserIdx > 0 ? valid.slice(firstUserIdx) : valid;
 }
 
 /**
@@ -208,10 +261,16 @@ type AccumulatingTurn = RestoredMessage & { parts: RestoredPart[]; toolCalls: Re
  * between two user messages merges, matching the single bubble streaming shows.
  */
 export function buildRestoredHistory(history: StoredMessage[]): RestoredMessage[] {
-  // Index tool results by call id so each restored tool call carries its outcome.
+  // Index tool results by call id so each restored tool call carries its outcome. What a
+  // stop cut short stored is a marker, not an outcome, so it is flagged instead.
   const toolResults = new Map<string, unknown>();
+  const abandoned = new Set<string>();
   for (const m of history) {
     if (m.role === 'tool' && typeof m.tool_call_id === 'string') {
+      if (m.abandoned === true) {
+        abandoned.add(m.tool_call_id);
+        continue;
+      }
       let parsed: unknown = m.content;
       try { parsed = JSON.parse(m.content as string); } catch { /* keep raw string */ }
       toolResults.set(m.tool_call_id, parsed);
@@ -235,6 +294,7 @@ export function buildRestoredHistory(history: StoredMessage[]): RestoredMessage[
         current = { role: 'assistant', content: '', parts: [], toolCalls: [] };
         restored.push(current);
       }
+      if (m.stopped === true) current.stopped = true;
       if (typeof m.content === 'string' && m.content) {
         current.content = current.content ? `${current.content}\n\n${m.content}` : m.content;
         current.parts.push({ type: 'text', text: m.content });
@@ -244,7 +304,8 @@ export function buildRestoredHistory(history: StoredMessage[]): RestoredMessage[
         let input: unknown = {};
         try { input = JSON.parse(fn.function?.arguments || '{}'); } catch { /* leave empty */ }
         const call: RestoredToolCall = { name: fn.function?.name ?? 'tool', input };
-        if (fn.id && toolResults.has(fn.id)) call.result = toolResults.get(fn.id);
+        if (fn.id && abandoned.has(fn.id)) call.abandoned = true;
+        else if (fn.id && toolResults.has(fn.id)) call.result = toolResults.get(fn.id);
         // Both: `parts` is what the panel renders, `toolCalls` what a plugin predating it reads.
         current.parts.push({ type: 'tool', tool: call });
         current.toolCalls.push(call);
@@ -263,6 +324,7 @@ export function buildRestoredHistory(history: StoredMessage[]): RestoredMessage[
       const out: RestoredMessage = { role: 'assistant', content: m.content };
       if (m.parts && m.parts.length > 0) out.parts = m.parts;
       if (m.toolCalls && m.toolCalls.length > 0) out.toolCalls = m.toolCalls;
+      if (m.stopped === true) out.stopped = true;
       return out;
     });
 }

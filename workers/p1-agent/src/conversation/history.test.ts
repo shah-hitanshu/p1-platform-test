@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type OpenAI from 'openai';
-import { trimHistory, sanitizeHistory, appendTurn, forProvider, trimForHistory, MAX_STORED_PATHS, buildRestoredHistory, turnMayCommit, turnHasOutput, uploadedAssetIds} from './history.js';
+import { trimHistory, sanitizeHistory, appendTurn, forProvider, trimForHistory, MAX_STORED_PATHS, buildRestoredHistory, closeStoppedTurn, STOPPED_TOOL_RESULT, turnMayCommit, turnHasOutput, uploadedAssetIds} from './history.js';
 
 import type { StoredMessage } from './history.js';
 
@@ -544,5 +544,73 @@ describe('uploadedAssetIds', () => {
 
   it('is empty for a conversation with no history', () => {
     expect(uploadedAssetIds([])).toEqual([]);
+  });
+});
+
+describe('replaying a turn the user stopped', () => {
+  // Content deliberately empty: the model calls the tool without narrating, and an assistant
+  // message with nothing else in it is the one pairing drops outright.
+  const callTurn = (id: string): StoredMessage => ({
+    role: 'assistant',
+    content: '',
+    tool_calls: [{ id, type: 'function', function: { name: 'apply_document_edits', arguments: '{}' } }],
+  });
+
+  // The round trip is the test that matters: appendTurn sanitizes on the way in, so a step kept
+  // only at replay time was already gone. This is what a reopened tab actually renders.
+  it('shows the interrupted step and the stop after a trip through storage', () => {
+    const turn: StoredMessage[] = [user('rewrite the intro'), callTurn('call-1')];
+    closeStoppedTurn(turn);
+
+    const restored = buildRestoredHistory(sanitizeHistory(appendTurn([], turn)));
+
+    expect(restored[1].stopped).toBe(true);
+    expect(restored[1].toolCalls).toEqual([
+      { name: 'apply_document_edits', input: {}, abandoned: true },
+    ]);
+  });
+
+  it('leaves an answered call unmarked', () => {
+    const turn: StoredMessage[] = [
+      user('go'),
+      callTurn('call-1'),
+      { role: 'tool', tool_call_id: 'call-1', content: '{"success":true}' },
+    ];
+    closeStoppedTurn(turn);
+
+    const restored = buildRestoredHistory(sanitizeHistory(appendTurn([], turn)));
+
+    expect(restored[1].toolCalls![0].abandoned).toBeUndefined();
+    expect(restored[1].toolCalls![0].result).toEqual({ success: true });
+  });
+
+  it('records the stop on the turn that was running, not an earlier one', () => {
+    const entries: StoredMessage[] = [assistant('first'), toolResult('t1'), assistant('second')];
+
+    closeStoppedTurn(entries);
+
+    expect(entries.map(m => m.stopped)).toEqual([undefined, undefined, true]);
+  });
+
+  // The marker has to reach the model as an ordinary tool result, or the next turn's history
+  // carries a call the provider rejects.
+  it('answers the in-flight call so the model sees a complete pair', () => {
+    const turn: StoredMessage[] = [user('go'), callTurn('call-1')];
+    closeStoppedTurn(turn);
+
+    const sent = forProvider(sanitizeHistory(appendTurn([], turn)));
+
+    expect(sent).toHaveLength(3);
+    expect(sent[2]).toEqual({ role: 'tool', tool_call_id: 'call-1', content: STOPPED_TOOL_RESULT });
+  });
+
+  it('never sends our own bookkeeping to the model', () => {
+    expect(forProvider([
+      { role: 'assistant', content: 'On it.', stopped: true },
+      { role: 'tool', tool_call_id: 'call-1', content: '{}', abandoned: true },
+    ])).toEqual([
+      { role: 'assistant', content: 'On it.' },
+      { role: 'tool', tool_call_id: 'call-1', content: '{}' },
+    ]);
   });
 });

@@ -193,4 +193,5 @@ export interface DocumentPresenceResponse {
 export interface ApiError {
   error: string;
   reason?: string;
+  code?: string;
 }

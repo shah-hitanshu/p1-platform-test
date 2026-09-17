@@ -31,12 +31,37 @@ import type {
  */
 export const CCR_REQUEST_TIMEOUT_MS = 30_000;
 
+/**
+ * Must equal CCR's `MAX_TURN_ID_LENGTH` (ccr `constants/security-limits.ts`), which this
+ * worker cannot import. CCR records a stopped turn under its own truncation of the id and
+ * bars writes by comparing; a cap that disagrees means the barred turn is never matched.
+ */
+const MAX_TURN_ID_HEADER_LENGTH = 128;
+
 export interface McpApiClientConfig {
   baseUrl: string;
   agentId: string;
   agentApiKey: string;
   actingUser?: { id: string; email: string; name?: string };
+  turnId?: string;
   fetcher?: { fetch(input: RequestInfo, init?: RequestInit): Promise<Response> };
+}
+
+/** A CCR response that was not ok, keeping the status and code the caller needs. */
+export class CcrApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly code?: string,
+  ) {
+    super(message);
+    this.name = 'CcrApiError';
+  }
+}
+
+/** Whether CCR refused this call because a user stopped the turn. */
+export function isAgentTurnStopped(err: unknown): boolean {
+  return err instanceof CcrApiError && err.code === 'agent_turn_stopped';
 }
 
 export class McpApiClient {
@@ -44,6 +69,7 @@ export class McpApiClient {
   private readonly agentId: string;
   private readonly agentApiKey: string;
   private readonly actingUser?: { id: string; email: string; name?: string };
+  private readonly turnId?: string;
   private readonly fetcher?: { fetch(input: RequestInfo, init?: RequestInit): Promise<Response> };
 
   constructor(config: McpApiClientConfig) {
@@ -55,6 +81,7 @@ export class McpApiClient {
     this.agentId = config.agentId;
     this.agentApiKey = config.agentApiKey;
     this.actingUser = config.actingUser;
+    this.turnId = config.turnId;
     this.fetcher = config.fetcher;
   }
 
@@ -78,6 +105,15 @@ export class McpApiClient {
         const safeName = this.actingUser.name.replace(/[\r\n]/g, ' ').trim().slice(0, 256);
         if (safeName) headers['X-Acting-User-Name'] = safeName;
       }
+    }
+    // Byte-for-byte CCR's `normalizeTurnId`, in this order: a header cannot carry CR/LF, and
+    // a stop is only enforced where both sides derive the same id from the same raw value.
+    if (typeof this.turnId === 'string') {
+      const safeTurnId = this.turnId
+        .replace(/[\r\n]/g, ' ')
+        .trim()
+        .slice(0, MAX_TURN_ID_HEADER_LENGTH);
+      if (safeTurnId) headers['X-Agent-Turn-Id'] = safeTurnId;
     }
     return headers;
   }
@@ -111,7 +147,11 @@ export class McpApiClient {
     const data = await response.json() as T | ApiError;
     if (!response.ok) {
       const errorData = data as ApiError;
-      throw new Error(errorData.error || `API error: ${response.status}`);
+      throw new CcrApiError(
+        errorData.error || `API error: ${response.status}`,
+        response.status,
+        errorData.code,
+      );
     }
     return data as T;
   }

@@ -1,10 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import type { CompletionResult, FnToolCall } from '../providers/transport.js';
+import { CcrApiError } from '../ccr/api-client.js';
 import {
   MAX_TURN_STEPS,
   STEP_LIMIT_MESSAGE,
   TRUNCATED_NUDGE,
   afterCompletion,
+  afterToolError,
   atStepLimit,
   trackedEditSession,
 } from './turn-step.js';
@@ -68,6 +70,26 @@ describe('afterCompletion', () => {
     const toolCalls = [call('get_document')];
     expect(afterCompletion(completion({ toolCalls }))).toEqual({ kind: 'run_tools', toolCalls });
     expect(afterCompletion(completion({}))).toEqual({ kind: 'complete' });
+  });
+});
+
+describe('afterToolError', () => {
+  it('ends the turn when a user stopped it', () => {
+    const err = new CcrApiError('Turn stopped by a user', 409, 'agent_turn_stopped');
+
+    expect(afterToolError(err)).toBe('end_turn');
+  });
+
+  it('hands an ordinary tool failure back to the model', () => {
+    expect(afterToolError(new Error('boom'))).toBe('report');
+  });
+
+  it('does not mistake another conflict for a stop', () => {
+    expect(afterToolError(new CcrApiError('Region conflict', 409))).toBe('report');
+  });
+
+  it('is not fooled by a plain object wearing the code', () => {
+    expect(afterToolError({ status: 409, code: 'agent_turn_stopped' })).toBe('report');
   });
 });
 

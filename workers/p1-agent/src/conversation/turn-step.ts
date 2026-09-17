@@ -1,4 +1,5 @@
 import type { CompletionResult, FnToolCall } from '../providers/transport.js';
+import { isAgentTurnStopped } from '../ccr/api-client.js';
 
 /**
  * What the agentic loop does next.
@@ -43,6 +44,15 @@ export function afterCompletion(completion: CompletionResult): TurnStep {
   }
   if (completion.toolCalls.length === 0) return { kind: 'complete' };
   return { kind: 'run_tools', toolCalls: completion.toolCalls };
+}
+
+/**
+ * A stop reaches the agent as a refusal, not a signal. Handed back to the model as a
+ * failed tool call it reads as one bad call, and the model tries another — which is
+ * precisely the retry a stop has to end.
+ */
+export function afterToolError(err: unknown): 'end_turn' | 'report' {
+  return isAgentTurnStopped(err) ? 'end_turn' : 'report';
 }
 
 /** The edit session the loop must close if the turn stops before the agent does. */
