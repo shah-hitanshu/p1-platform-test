@@ -35,6 +35,9 @@ import type {
   DocumentSessionEnv,
 } from './document-session-types';
 
+import {
+  recordStoppedTurn, normalizeTurnId, stoppedTurnResponse, type StoppedTurns,
+} from './stopped-turns';
 import { validateActorId } from './session-validators';
 import {
   createSessionPreEditCheckpoint,
@@ -62,6 +65,8 @@ export interface AgentPolitenessDeps {
   getConnectionCount: () => number;
   flushPendingPersist: () => Promise<void>;
   persistEditSessions: () => Promise<void>;
+  stoppedTurns: StoppedTurns;
+  persistStoppedTurns: () => Promise<void>;
   persistPresence: () => Promise<void>;
   broadcastPresenceUpdate: () => void;
   refreshOrganizationSettings: () => Promise<void>;
@@ -191,6 +196,9 @@ export async function handleCanAgentEdit(
   deps: AgentPolitenessDeps,
   request: Request,
 ): Promise<Response> {
+  const stopped = stoppedTurnResponse(deps.stoppedTurns, request);
+  if (stopped !== null) return stopped;
+
   let body: unknown;
   try {
     body = await request.json();
@@ -270,6 +278,9 @@ export async function handleAgentEditStart(
   deps: AgentPolitenessDeps,
   request: Request,
 ): Promise<Response> {
+  const stopped = stoppedTurnResponse(deps.stoppedTurns, request);
+  if (stopped !== null) return stopped;
+
   let body: unknown;
   try {
     body = await request.json();
@@ -368,6 +379,10 @@ export async function handleAgentEditStart(
   // Schedule cleanup alarm for HTTP-only clients (idempotent if already scheduled)
   void deps.scheduleCleanupAlarm();
 
+  // Client-supplied and unverified, which is fine: a turn id is an identifier, not a
+  // credential, and only a person can turn one into a stop.
+  const turnId = normalizeTurnId(request.headers.get('X-Agent-Turn-Id'));
+
   const newSession: EditSession = {
     id: editSessionId,
     ownerId: owner.id,
@@ -377,7 +392,14 @@ export async function handleAgentEditStart(
     targetRegions,
     checkpointId,
     startedAt: Date.now(),
+    turnId,
   };
+
+  // Checked again here, not only at entry: the permission check and the checkpoint are
+  // round trips, and the input gate does not hold across them. A stop landing in that
+  // window would otherwise leave a session nobody can use and nobody closes.
+  const stoppedMidway = stoppedTurnResponse(deps.stoppedTurns, request);
+  if (stoppedMidway !== null) return stoppedMidway;
 
   deps.editSessions.set(editSessionId, newSession);
   await deps.persistEditSessions();
@@ -409,6 +431,7 @@ export async function handleAgentEditStart(
     state: 'editing',
     requestedById,
     requestedByName,
+    turnId,
   });
 
   // Broadcast presence update to all connected clients
@@ -427,6 +450,9 @@ export async function handleAgentEditComplete(
   deps: AgentPolitenessDeps,
   request: Request,
 ): Promise<Response> {
+  const stopped = stoppedTurnResponse(deps.stoppedTurns, request);
+  if (stopped !== null) return stopped;
+
   let body: unknown;
   try {
     body = await request.json();
@@ -532,7 +558,9 @@ export async function handleAgentEditAbort(
   // Find the edit session
   const session = deps.editSessions.get(parsed.editSessionId);
   if (session === undefined) {
-    return deps.errorResponse(404, 'Edit session not found');
+    // A user-initiated stop deletes the session before the agent gets round to
+    // aborting it, so an already-gone session here is the ordinary path, not a fault.
+    return deps.jsonResponse(200, { success: true, rolledBack: false });
   }
 
   const notOwnerError = requireSessionOwner(deps, request, session);
@@ -575,11 +603,13 @@ export async function handleAgentEditAbort(
 }
 
 /**
- * Handle POST /agent-stop - Stop an agent's edit session (human-initiated)
+ * Handle POST /agent-stop - Record that a turn is stopped, so writes carrying
+ * it are refused, and end its session if one is open (human-initiated)
  *
- * Unlike /agent-edit-abort which requires the editSessionId, this endpoint
- * looks up the session by agentId, making it easier for humans to stop
- * an agent without knowing the session details.
+ * Takes one of `agentId` (looks up that agent's open session) or `turnId`
+ * (records the turn directly, whether or not a session names it). Recording
+ * is durable and independent of the session: it can succeed with no session
+ * found, and a session with no turn id is only cleared, not recorded.
  */
 export async function handleAgentStop(
   deps: AgentPolitenessDeps,
@@ -594,8 +624,11 @@ export async function handleAgentStop(
 
   const parsed = body as AgentStopRequest;
 
-  if (typeof parsed.agentId !== 'string' || parsed.agentId.length === 0) {
-    return deps.errorResponse(400, 'agentId is required');
+  if (
+    (typeof parsed.agentId !== 'string' || parsed.agentId.length === 0) &&
+    (typeof parsed.turnId !== 'string' || parsed.turnId.length === 0)
+  ) {
+    return deps.errorResponse(400, 'One of agentId or turnId is required');
   }
 
   if (parsed.reason !== undefined && parsed.reason.length > MAX_REASON_LENGTH) {
@@ -605,49 +638,65 @@ export async function handleAgentStop(
   // Only an agent's session can be stopped this way; a person ends their own.
   let session: EditSession | undefined;
   let sessionId: string | undefined;
-  for (const [id, s] of deps.editSessions.entries()) {
-    if (s.ownerType === 'agent' && s.ownerId === parsed.agentId) {
-      session = s;
-      sessionId = id;
-      break;
+  if (typeof parsed.agentId === 'string' && parsed.agentId.length > 0) {
+    for (const [id, s] of deps.editSessions.entries()) {
+      if (s.ownerType === 'agent' && s.ownerId === parsed.agentId) {
+        session = s;
+        sessionId = id;
+        break;
+      }
     }
   }
 
-  // If no active session, return success with rolledBack=false
-  if (session === undefined || sessionId === undefined) {
-    return deps.jsonResponse(200, {
-      success: true,
-      rolledBack: false,
-      message: 'No active session for agent',
-    });
+  const requestedTurnId = normalizeTurnId(parsed.turnId);
+  const stoppedTurnId = requestedTurnId ?? session?.turnId;
+
+  if (stoppedTurnId === undefined && session === undefined) {
+    return deps.jsonResponse(200, { success: false, rolledBack: false, reason: 'no_active_turn' });
   }
 
-  // Rollback if there was a checkpoint (for autonomous work)
+  // The caller's id and the session's own can name different real work when they
+  // disagree, so both are barred.
+  let barredATurn = false;
+  if (requestedTurnId !== undefined) {
+    recordStoppedTurn(deps.stoppedTurns, requestedTurnId, Date.now());
+    barredATurn = true;
+  }
+  if (session?.turnId !== undefined && session.turnId !== requestedTurnId) {
+    recordStoppedTurn(deps.stoppedTurns, session.turnId, Date.now());
+    barredATurn = true;
+  }
+  if (barredATurn) {
+    await deps.persistStoppedTurns();
+  }
+
   let rolledBack = false;
-  if (session.checkpointId !== undefined) {
-    rolledBack = await rollbackToSessionCheckpoint(
-      deps.env,
-      deps.sessionInfo,
-      session.checkpointId,
-      sessionOwner(session),
-      parsed.reason ?? 'Stopped by human user',
-    );
+  if (session !== undefined && sessionId !== undefined) {
+    if (session.checkpointId !== undefined) {
+      rolledBack = await rollbackToSessionCheckpoint(
+        deps.env,
+        deps.sessionInfo,
+        session.checkpointId,
+        sessionOwner(session),
+        parsed.reason ?? 'Stopped by human user',
+      );
+    }
+
+    // Clear agent's presence and persist to storage immediately
+    // (prevents stale presence from being restored on DO hibernation wake)
+    deps.presenceManager.unregisterByActorId(session.ownerId);
+    await deps.persistPresence();
+
+    deps.editSessions.delete(sessionId);
+    await deps.persistEditSessions();
+
+    // Broadcast presence update to all connected clients
+    deps.broadcastPresenceUpdate();
   }
-
-  // Clear agent's presence and persist to storage immediately
-  // (prevents stale presence from being restored on DO hibernation wake)
-  deps.presenceManager.unregisterByActorId(session.ownerId);
-  await deps.persistPresence();
-
-  // Remove the edit session
-  deps.editSessions.delete(sessionId);
-  await deps.persistEditSessions();
-
-  // Broadcast presence update to all connected clients
-  deps.broadcastPresenceUpdate();
 
   return deps.jsonResponse(200, {
     success: true,
+    stoppedTurnId,
     rolledBack,
   });
 }
@@ -668,6 +717,7 @@ export function handleGetEditSessions(
     startedAt: session.startedAt,
     conflicted: session.conflicted,
     conflictReason: session.conflictReason,
+    turnId: session.turnId,
   }));
 
   return deps.jsonResponse(200, { sessions });

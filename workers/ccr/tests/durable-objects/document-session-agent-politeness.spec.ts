@@ -15,6 +15,7 @@
 
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { readJson } from '../helpers/http';
+import { STOPPED_TURNS_STORAGE_KEY } from '../../src/durable-objects/document-session-types';
 
 // Mock cloudflare:workers DurableObject base class for Hibernatable WebSocket API
 vi.mock('cloudflare:workers', () => ({
@@ -620,6 +621,39 @@ describe('Phase 4.4: Agent Edit Workflow', () => {
       expect(agentPresence.requestedByName).toBe('Chris Yates');
     });
 
+    it('names the turn the session belongs to', async () => {
+      const { DocumentSession } = await import(
+        '../../src/durable-objects/document-session'
+      );
+
+      const state = createMockState();
+      const env = createMockEnv();
+      const session = new DocumentSession(state, env);
+
+      await session.fetch(
+        new Request('http://localhost/agent-edit-start', {
+          method: 'POST',
+          headers: {
+            'X-Verified-Actor-Id': 'agent-123',
+            'X-Agent-Turn-Id': 'turn-abc',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            agentId: 'agent-123',
+            trigger: 'human_requested',
+            intent: 'Rewrite the intro',
+            targetRegions: ['/content/0'],
+          }),
+        }),
+      );
+
+      // Without it, two agents working for the same person look alike to a reader
+      // deciding whether a stop is aimed at the turn it is holding.
+      const listed = await session.fetch(new Request('http://localhost/presences'));
+      const body = await readJson<{ presences: { actorId: string; turnId?: string }[] }>(listed);
+      expect(body.presences.find((p) => p.actorId === 'agent-123')?.turnId).toBe('turn-abc');
+    });
+
     it('should not populate requestedByName or requestedById for autonomous trigger', async () => {
       const { DocumentSession } = await import(
         '../../src/durable-objects/document-session'
@@ -740,6 +774,112 @@ describe('Phase 4.4: Agent Edit Workflow', () => {
       } else {
         expect(response.status).toBe(403);
       }
+    });
+
+    it('records the turn id an agent sends with its edit session', async () => {
+      const { DocumentSession } = await import('../../src/durable-objects/document-session');
+
+      const state = createMockState();
+      const env = createMockEnv();
+      const session = new DocumentSession(state, env);
+
+      const started = await session.fetch(new Request('http://localhost/agent-edit-start', {
+        method: 'POST',
+        headers: {
+          'X-Verified-Actor-Id': 'agent-123',
+          'X-Agent-Turn-Id': 'turn-abc',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          agentId: 'agent-123',
+          trigger: 'human_requested',
+          intent: 'Rewrite the intro',
+          targetRegions: ['/content/0'],
+        }),
+      }));
+      expect(started.status).toBe(200);
+
+      const listed = await session.fetch(new Request('http://localhost/edit-sessions'));
+      const body = await readJson<{ sessions: { turnId?: string }[] }>(listed);
+      expect(body.sessions[0].turnId).toBe('turn-abc');
+    });
+
+    it('leaves the turn id unset when the agent sends none', async () => {
+      const { DocumentSession } = await import('../../src/durable-objects/document-session');
+
+      const state = createMockState();
+      const env = createMockEnv();
+      const session = new DocumentSession(state, env);
+
+      const started = await session.fetch(new Request('http://localhost/agent-edit-start', {
+        method: 'POST',
+        headers: {
+          'X-Verified-Actor-Id': 'agent-123',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          agentId: 'agent-123',
+          trigger: 'human_requested',
+          intent: 'Rewrite the intro',
+          targetRegions: ['/content/0'],
+        }),
+      }));
+      expect(started.status).toBe(200);
+
+      const listed = await session.fetch(new Request('http://localhost/edit-sessions'));
+      const body = await readJson<{ sessions: { turnId?: string }[] }>(listed);
+      expect(body.sessions[0].turnId).toBeUndefined();
+    });
+
+    it('refuses the session when the stop lands while the permission check is out', async () => {
+      const { DocumentSession } = await import('../../src/durable-objects/document-session');
+      const { EditPermissionService } = await import('../../src/services/edit-permission-service');
+
+      const state = createMockState();
+      const env = createMockEnv();
+      const session = new DocumentSession(state, env);
+
+      // The permission check is a round trip and the input gate does not hold across it,
+      // so this is the person clicking stop after the entry check and before the session
+      // is stored — the window that used to leave a session nobody closes.
+      const permissionService = EditPermissionService.prototype;
+      const canEdit = permissionService.canEdit;
+      vi.spyOn(permissionService, 'canEdit').mockImplementation(async function (
+        this: typeof permissionService,
+        context,
+      ) {
+        const permission = await canEdit.call(this, context);
+        await session.fetch(new Request('http://localhost/agent-stop', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ turnId: 'turn-raced' }),
+        }));
+        return permission;
+      });
+
+      const started = await session.fetch(new Request('http://localhost/agent-edit-start', {
+        method: 'POST',
+        headers: {
+          'X-Verified-Actor-Id': 'agent-123',
+          'X-Agent-Turn-Id': 'turn-raced',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          agentId: 'agent-123',
+          trigger: 'human_requested',
+          intent: 'Rewrite the intro',
+          targetRegions: ['/content/0'],
+        }),
+      }));
+
+      expect(started.status).toBe(409);
+      expect(await readJson<{ code?: string }>(started)).toMatchObject({
+        code: 'agent_turn_stopped',
+      });
+
+      const listed = await session.fetch(new Request('http://localhost/edit-sessions'));
+      const body = await readJson<{ sessions: unknown[] }>(listed);
+      expect(body.sessions).toHaveLength(0);
     });
   });
 
@@ -1096,7 +1236,7 @@ describe('Phase 4.4: Agent Edit Workflow', () => {
       expect(response.status).toBe(200);
     });
 
-    it('should reject invalid edit session ID', async () => {
+    it('treats an unknown edit session as already released', async () => {
       const { DocumentSession } = await import(
         '../../src/durable-objects/document-session'
       );
@@ -1115,7 +1255,7 @@ describe('Phase 4.4: Agent Edit Workflow', () => {
 
       const response = await session.fetch(request);
 
-      expect(response.status).toBe(404);
+      expect(response.status).toBe(200);
     });
   });
 
@@ -1161,7 +1301,7 @@ describe('Phase 4.4: Agent Edit Workflow', () => {
       // In production with internal API, this would be true for autonomous sessions
     });
 
-    it('should return success with rolledBack=false when agent has no active session', async () => {
+    it('reports that there was nothing to stop when agent has no active session', async () => {
       const { DocumentSession } = await import(
         '../../src/durable-objects/document-session'
       );
@@ -1183,9 +1323,167 @@ describe('Phase 4.4: Agent Edit Workflow', () => {
 
       expect(response.status).toBe(200);
       const body = (await readJson(response));
+      expect(body).toEqual({ success: false, rolledBack: false, reason: 'no_active_turn' });
+    });
+
+    it('bars the turn named by the open edit session', async () => {
+      const { DocumentSession } = await import(
+        '../../src/durable-objects/document-session'
+      );
+
+      const state = createMockState();
+      const env = createMockEnv();
+      const session = new DocumentSession(state, env);
+
+      await session.fetch(
+        new Request('http://localhost/agent-edit-start', {
+          method: 'POST',
+          headers: {
+            'X-Verified-Actor-Id': 'agent-turn-test',
+            'X-Agent-Turn-Id': 'turn-abc',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            agentId: 'agent-turn-test',
+            trigger: 'human_requested',
+            intent: 'Rewrite the intro',
+            targetRegions: ['/content/0'],
+          }),
+        }),
+      );
+
+      const response = await session.fetch(
+        new Request('http://localhost/agent-stop', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ agentId: 'agent-turn-test' }),
+        }),
+      );
+
+      const body = await readJson<{ success: boolean; stoppedTurnId?: string }>(response);
+      expect(body).toMatchObject({ success: true, stoppedTurnId: 'turn-abc' });
+
+      // The response only echoes the id; this is what proves the turn was actually barred.
+      expect(state.storage.put).toHaveBeenCalledWith(
+        STOPPED_TURNS_STORAGE_KEY,
+        expect.stringContaining('turn-abc'),
+      );
+    });
+
+    it('bars a turn named directly, with no session open', async () => {
+      const { DocumentSession } = await import(
+        '../../src/durable-objects/document-session'
+      );
+
+      const state = createMockState();
+      const env = createMockEnv();
+      const session = new DocumentSession(state, env);
+
+      const response = await session.fetch(
+        new Request('http://localhost/agent-stop', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ turnId: 'turn-xyz' }),
+        }),
+      );
+
+      const body = await readJson<{ success: boolean; stoppedTurnId?: string }>(response);
+      expect(body).toMatchObject({ success: true, stoppedTurnId: 'turn-xyz' });
+
+      // The response only echoes the id; this is what proves the turn was actually barred.
+      expect(state.storage.put).toHaveBeenCalledWith(
+        STOPPED_TURNS_STORAGE_KEY,
+        expect.stringContaining('turn-xyz'),
+      );
+    });
+
+    it('bars both the caller-supplied turn and the session-named one when they disagree', async () => {
+      const { DocumentSession } = await import(
+        '../../src/durable-objects/document-session'
+      );
+
+      const state = createMockState();
+      const env = createMockEnv();
+      const session = new DocumentSession(state, env);
+
+      await session.fetch(
+        new Request('http://localhost/agent-edit-start', {
+          method: 'POST',
+          headers: {
+            'X-Verified-Actor-Id': 'agent-disagreeing-turns',
+            'X-Agent-Turn-Id': 'turn-session',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            agentId: 'agent-disagreeing-turns',
+            trigger: 'human_requested',
+            intent: 'Rewrite the intro',
+            targetRegions: ['/content/0'],
+          }),
+        }),
+      );
+
+      const response = await session.fetch(
+        new Request('http://localhost/agent-stop', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ agentId: 'agent-disagreeing-turns', turnId: 'turn-caller' }),
+        }),
+      );
+
+      const body = await readJson<{ success: boolean; stoppedTurnId?: string }>(response);
+      expect(body).toMatchObject({ success: true, stoppedTurnId: 'turn-caller' });
+
+      const putCalls = (state.storage.put as Mock).mock.calls;
+      const stoppedTurnsCall = putCalls.find((call) => call[0] === STOPPED_TURNS_STORAGE_KEY);
+      expect(stoppedTurnsCall?.[1]).toContain('turn-caller');
+      expect(stoppedTurnsCall?.[1]).toContain('turn-session');
+    });
+
+    it('still clears a session that named no turn', async () => {
+      const { DocumentSession } = await import(
+        '../../src/durable-objects/document-session'
+      );
+
+      const state = createMockState();
+      const env = createMockEnv();
+      const session = new DocumentSession(state, env);
+
+      await session.fetch(
+        new Request('http://localhost/agent-edit-start', {
+          method: 'POST',
+          headers: { 'X-Verified-Actor-Id': 'agent-no-turn', 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            agentId: 'agent-no-turn',
+            trigger: 'human_requested',
+            intent: 'Rewrite the intro',
+            targetRegions: ['/content/0'],
+          }),
+        }),
+      );
+
+      const response = await session.fetch(
+        new Request('http://localhost/agent-stop', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ agentId: 'agent-no-turn' }),
+        }),
+      );
+
+      const body = await readJson<{ success: boolean; stoppedTurnId?: string }>(response);
       expect(body.success).toBe(true);
-      expect(body.rolledBack).toBe(false);
-      expect(body.message).toBe('No active session for agent');
+      expect(body.stoppedTurnId).toBeUndefined();
+
+      const sessionsResponse = await session.fetch(new Request('http://localhost/edit-sessions'));
+      const sessionsBody = await readJson<{ sessions: unknown[] }>(sessionsResponse);
+      expect(sessionsBody.sessions).toHaveLength(0);
+
+      // No placeholder key: a turnless session must record nothing, since every
+      // MCP-opened session carries no turn id and would otherwise share one.
+      expect(state.storage.put).not.toHaveBeenCalledWith(
+        STOPPED_TURNS_STORAGE_KEY,
+        expect.anything(),
+      );
     });
 
     it('should clear agent presence when stopped', async () => {
@@ -2449,6 +2747,308 @@ describe('Verified identity enforcement', () => {
     );
 
     expect(response.status).toBe(403);
+  });
+});
+
+// =============================================================================
+// PCC-3993: Stopped-turn refusal guard
+// =============================================================================
+
+describe('PCC-3993: stopped-turn refusal guard', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.resetModules();
+  });
+
+  const TURN_HEADERS = { 'X-Agent-Turn-Id': 'turn-abc', 'Content-Type': 'application/json' };
+
+  it('refuses a new edit session for a stopped turn', async () => {
+    const { DocumentSession } = await import('../../src/durable-objects/document-session');
+    const session = new DocumentSession(createMockState(), createMockEnv());
+
+    await session.fetch(new Request('http://localhost/agent-edit-start', {
+      method: 'POST',
+      headers: { ...TURN_HEADERS, 'X-Verified-Actor-Id': 'agent-stopped-1' },
+      body: JSON.stringify({
+        agentId: 'agent-stopped-1',
+        trigger: 'human_requested',
+        intent: 'Rewrite',
+        targetRegions: ['/content/0'],
+      }),
+    }));
+
+    await session.fetch(new Request('http://localhost/agent-stop', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agentId: 'agent-stopped-1' }),
+    }));
+
+    const response = await session.fetch(new Request('http://localhost/agent-edit-start', {
+      method: 'POST',
+      headers: { ...TURN_HEADERS, 'X-Verified-Actor-Id': 'agent-stopped-1' },
+      body: JSON.stringify({
+        agentId: 'agent-stopped-1',
+        trigger: 'human_requested',
+        intent: 'Rewrite again',
+        targetRegions: ['/content/0'],
+      }),
+    }));
+
+    expect(response.status).toBe(409);
+    const body = await readJson<{ code?: string }>(response);
+    expect(body).toMatchObject({ code: 'agent_turn_stopped' });
+  });
+
+  it('refuses a permission check for a stopped turn', async () => {
+    const { DocumentSession } = await import('../../src/durable-objects/document-session');
+    const session = new DocumentSession(createMockState(), createMockEnv());
+
+    await session.fetch(new Request('http://localhost/agent-stop', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ turnId: 'turn-abc' }),
+    }));
+
+    const response = await session.fetch(new Request('http://localhost/can-agent-edit', {
+      method: 'POST',
+      headers: { ...TURN_HEADERS, 'X-Verified-Actor-Id': 'agent-123' },
+      body: JSON.stringify({
+        agentId: 'agent-123',
+        trigger: 'human_requested',
+        targetRegions: ['/content/0'],
+      }),
+    }));
+
+    expect(response.status).toBe(409);
+  });
+
+  it('bars a write via the client-sanitized header for a turn id stopped with an interior CR/LF', async () => {
+    // The stop body carries the raw turn id; a header cannot, so the agent sends it
+    // through the same CR/LF-then-trim transform normalizeTurnId applies. 'turn  abc'
+    // is a literal here and in stopped-turns.spec.ts — recomputing it would only ever
+    // agree with itself.
+    const { DocumentSession } = await import('../../src/durable-objects/document-session');
+    const session = new DocumentSession(createMockState(), createMockEnv());
+    const sanitized = { 'X-Agent-Turn-Id': 'turn  abc', 'Content-Type': 'application/json' };
+
+    const startResponse = await session.fetch(new Request('http://localhost/agent-edit-start', {
+      method: 'POST',
+      headers: { ...sanitized, 'X-Verified-Actor-Id': 'agent-crlf' },
+      body: JSON.stringify({
+        agentId: 'agent-crlf',
+        trigger: 'human_requested',
+        intent: 'Rewrite',
+        targetRegions: ['/content/0'],
+      }),
+    }));
+    const { editSessionId } = await readJson<{ editSessionId: string }>(startResponse);
+
+    // Stopping by turnId leaves the session open, so the only thing between this
+    // write and a 200 is the two sides agreeing on the id.
+    await session.fetch(new Request('http://localhost/agent-stop', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ turnId: 'turn\r\nabc' }),
+    }));
+
+    const response = await session.fetch(new Request('http://localhost/apply', {
+      method: 'POST',
+      headers: { ...sanitized, 'X-Actor-Type': 'agent' },
+      body: JSON.stringify({
+        actorId: 'agent-crlf',
+        editSessionId,
+        operations: [{ type: 'set', path: 'title', value: 'Should not apply' }],
+      }),
+    }));
+
+    expect(response.status).toBe(409);
+    const body = await readJson<{ code?: string }>(response);
+    expect(body).toMatchObject({ code: 'agent_turn_stopped' });
+  });
+
+  it('refuses a write for a stopped turn', async () => {
+    const { DocumentSession } = await import('../../src/durable-objects/document-session');
+    const session = new DocumentSession(createMockState(), createMockEnv());
+
+    const startResponse = await session.fetch(new Request('http://localhost/agent-edit-start', {
+      method: 'POST',
+      headers: { ...TURN_HEADERS, 'X-Verified-Actor-Id': 'agent-stopped-2' },
+      body: JSON.stringify({
+        agentId: 'agent-stopped-2',
+        trigger: 'human_requested',
+        intent: 'Rewrite',
+        targetRegions: ['/content/0'],
+      }),
+    }));
+    const { editSessionId } = await readJson<{ editSessionId: string }>(startResponse);
+
+    await session.fetch(new Request('http://localhost/agent-stop', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ turnId: 'turn-abc' }),
+    }));
+
+    const response = await session.fetch(new Request('http://localhost/apply', {
+      method: 'POST',
+      headers: { ...TURN_HEADERS, 'X-Actor-Type': 'agent' },
+      body: JSON.stringify({
+        actorId: 'agent-stopped-2',
+        editSessionId,
+        operations: [{ type: 'set', path: 'title', value: 'Should not apply' }],
+      }),
+    }));
+
+    expect(response.status).toBe(409);
+
+    const snapshotResponse = await session.fetch(new Request('http://localhost/snapshot'));
+    const snapshotBody = await readJson<{ snapshot: Record<string, unknown> }>(snapshotResponse);
+    expect(snapshotBody.snapshot.title).toBeUndefined();
+  });
+
+  it('refuses completing an edit session for a stopped turn', async () => {
+    const { DocumentSession } = await import('../../src/durable-objects/document-session');
+    const session = new DocumentSession(createMockState(), createMockEnv());
+
+    const startResponse = await session.fetch(new Request('http://localhost/agent-edit-start', {
+      method: 'POST',
+      headers: { ...TURN_HEADERS, 'X-Verified-Actor-Id': 'agent-stopped-3' },
+      body: JSON.stringify({
+        agentId: 'agent-stopped-3',
+        trigger: 'human_requested',
+        intent: 'Rewrite',
+        targetRegions: ['/content/0'],
+      }),
+    }));
+    const { editSessionId } = await readJson<{ editSessionId: string }>(startResponse);
+
+    await session.fetch(new Request('http://localhost/agent-stop', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ turnId: 'turn-abc' }),
+    }));
+
+    const response = await session.fetch(new Request('http://localhost/agent-edit-complete', {
+      method: 'POST',
+      headers: { ...TURN_HEADERS, 'X-Verified-Actor-Id': 'agent-stopped-3' },
+      body: JSON.stringify({ editSessionId }),
+    }));
+
+    expect(response.status).toBe(409);
+    const body = await readJson<{ code?: string }>(response);
+    expect(body).toMatchObject({ code: 'agent_turn_stopped' });
+  });
+
+  it('refuses a user-typed write that carries a stopped turn id', async () => {
+    // The gate this guards against being 'agent'-only: a request typed 'user',
+    // with no editSessionId and no session, would otherwise sail through to a 200.
+    const { DocumentSession } = await import('../../src/durable-objects/document-session');
+    const session = new DocumentSession(createMockState(), createMockEnv());
+
+    await session.fetch(new Request('http://localhost/agent-stop', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ turnId: 'turn-abc' }),
+    }));
+
+    const response = await session.fetch(new Request('http://localhost/apply', {
+      method: 'POST',
+      headers: { ...TURN_HEADERS, 'X-Actor-Type': 'user' },
+      body: JSON.stringify({
+        actorId: 'user-123',
+        operations: [{ type: 'set', path: 'title', value: 'Should not apply' }],
+      }),
+    }));
+
+    expect(response.status).toBe(409);
+    const body = await readJson<{ code?: string }>(response);
+    expect(body).toMatchObject({ code: 'agent_turn_stopped' });
+  });
+
+  it('refuses a write against a session the stop already deleted, not the 403 that would restart it', async () => {
+    const { DocumentSession } = await import('../../src/durable-objects/document-session');
+    const session = new DocumentSession(createMockState(), createMockEnv());
+
+    const startResponse = await session.fetch(new Request('http://localhost/agent-edit-start', {
+      method: 'POST',
+      headers: { ...TURN_HEADERS, 'X-Verified-Actor-Id': 'agent-stopped-4' },
+      body: JSON.stringify({
+        agentId: 'agent-stopped-4',
+        trigger: 'human_requested',
+        intent: 'Rewrite',
+        targetRegions: ['/content/0'],
+      }),
+    }));
+    const { editSessionId } = await readJson<{ editSessionId: string }>(startResponse);
+
+    // Stop by agentId, not turnId: this is what production sends, and it deletes
+    // the session — unlike stopping by turnId alone, which leaves it in place.
+    await session.fetch(new Request('http://localhost/agent-stop', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agentId: 'agent-stopped-4' }),
+    }));
+
+    const response = await session.fetch(new Request('http://localhost/apply', {
+      method: 'POST',
+      headers: { ...TURN_HEADERS, 'X-Actor-Type': 'agent' },
+      body: JSON.stringify({
+        actorId: 'agent-stopped-4',
+        editSessionId,
+        operations: [{ type: 'set', path: 'title', value: 'Should not apply' }],
+      }),
+    }));
+
+    expect(response.status).toBe(409);
+    const body = await readJson<{ code?: string }>(response);
+    expect(body).toMatchObject({ code: 'agent_turn_stopped' });
+  });
+
+  it('leaves a turn that was never stopped alone', async () => {
+    const { DocumentSession } = await import('../../src/durable-objects/document-session');
+    const session = new DocumentSession(createMockState(), createMockEnv());
+
+    await session.fetch(new Request('http://localhost/agent-stop', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ turnId: 'turn-other' }),
+    }));
+
+    const response = await session.fetch(new Request('http://localhost/agent-edit-start', {
+      method: 'POST',
+      headers: { ...TURN_HEADERS, 'X-Verified-Actor-Id': 'agent-untouched' },
+      body: JSON.stringify({
+        agentId: 'agent-untouched',
+        trigger: 'human_requested',
+        intent: 'Rewrite',
+        targetRegions: ['/content/0'],
+      }),
+    }));
+
+    expect(response.status).toBe(200);
+  });
+
+  it('leaves a caller that names no turn alone', async () => {
+    const { DocumentSession } = await import('../../src/durable-objects/document-session');
+    const session = new DocumentSession(createMockState(), createMockEnv());
+
+    await session.fetch(new Request('http://localhost/agent-stop', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ turnId: 'turn-abc' }),
+    }));
+
+    const response = await session.fetch(new Request('http://localhost/agent-edit-start', {
+      method: 'POST',
+      headers: { 'X-Verified-Actor-Id': 'agent-no-turn', 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        agentId: 'agent-no-turn',
+        trigger: 'human_requested',
+        intent: 'Rewrite',
+        targetRegions: ['/content/0'],
+      }),
+    }));
+
+    expect(response.status).toBe(200);
   });
 });
 

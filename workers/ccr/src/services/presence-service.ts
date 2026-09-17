@@ -39,6 +39,8 @@ export interface RegisterPresenceOptions {
   requestedById?: string;
   /** Display name of the human who triggered this agent session (human_requested sessions only) */
   requestedByName?: string;
+  /** The turn this agent's edit session belongs to, when the agent named one */
+  turnId?: string;
 }
 
 /**
@@ -158,6 +160,7 @@ export class PresenceManager {
       focusRegions: options.focusRegions,
       requestedById: options.requestedById,
       requestedByName: options.requestedByName,
+      turnId: options.turnId,
       lastActivityAt: now,
       joinedAt: now,
     };

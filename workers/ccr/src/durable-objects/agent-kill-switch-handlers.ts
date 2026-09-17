@@ -10,6 +10,8 @@
 
 import { MAX_REASON_LENGTH } from '../constants/security-limits';
 import type { AgentPolitenessDeps } from './agent-politeness-handlers';
+import type { EditSession } from './document-session-types';
+import { recordStoppedTurn } from './stopped-turns';
 
 /**
  * Handle POST /kick-agent - Terminate a specific agent's edit session
@@ -37,7 +39,7 @@ export async function handleKickAgent(
   }
 
   // The kill switch reaches agents only; a person's session is not an agent's to end.
-  let sessionToRemove: { id: string; ownerId: string } | undefined;
+  let sessionToRemove: EditSession | undefined;
   let sessionKey: string | undefined;
 
   for (const [key, session] of deps.editSessions.entries()) {
@@ -50,6 +52,14 @@ export async function handleKickAgent(
 
   if (sessionToRemove === undefined || sessionKey === undefined) {
     return deps.errorResponse(404, `Agent session not found for agentId: ${parsed.agentId}`);
+  }
+
+  // Deleting the session alone is the bug a kick is reached for in the first place: the
+  // agent reads the resulting 403 as "reserve another" and carries on. Bar the turn so
+  // its next call is refused instead.
+  if (sessionToRemove.turnId !== undefined) {
+    recordStoppedTurn(deps.stoppedTurns, sessionToRemove.turnId, Date.now());
+    await deps.persistStoppedTurns();
   }
 
   // Remove the edit session
@@ -99,13 +109,25 @@ export async function handleKickAllAgents(
 
   // Collect the agent-owned sessions; person-owned sessions are left running.
   const kickedAgents: string[] = [];
+  const stoppedTurnIds: string[] = [];
   for (const [key, session] of deps.editSessions.entries()) {
     if (session.ownerType === 'agent') {
       kickedAgents.push(session.ownerId);
+      if (session.turnId !== undefined) stoppedTurnIds.push(session.turnId);
       deps.editSessions.delete(key);
     }
   }
   await deps.persistEditSessions();
+
+  // As in handleKickAgent: a deleted session alone leaves the agent free to reserve
+  // another. One write for the whole kick rather than one per agent.
+  if (stoppedTurnIds.length > 0) {
+    const now = Date.now();
+    for (const turnId of stoppedTurnIds) {
+      recordStoppedTurn(deps.stoppedTurns, turnId, now);
+    }
+    await deps.persistStoppedTurns();
+  }
 
   // Clear all agent presences
   for (const agentId of kickedAgents) {

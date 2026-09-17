@@ -32,6 +32,7 @@ import { VALID_OPERATION_TYPES } from './document-session-types';
 import { applyOperation, initializeFromSnapshot } from './crdt-operations';
 import { validateActorId, validateOperation } from './session-validators';
 import { errorResponse } from './websocket-utils';
+import { stoppedTurnResponse, type StoppedTurns } from './stopped-turns';
 import type { PostgresSyncManager } from './postgres-sync-manager';
 import { getAllConnections } from './session-id-parser';
 
@@ -55,6 +56,7 @@ export interface CrdtEndpointDeps {
   storage: DurableObjectStorage;
   sessionInfo: SessionInfo;
   editSessions: Map<string, EditSession>;
+  stoppedTurns: StoppedTurns;
   activityDetector: ActivityDetector;
   syncManager: PostgresSyncManager;
   getWebSockets: () => WebSocket[];
@@ -134,6 +136,9 @@ export async function handleApplyOperations(
     id: body.actorId,
     type: actorTypeHeader === 'agent' ? 'agent' : 'user',
   };
+
+  const stopped = stoppedTurnResponse(deps.stoppedTurns, request);
+  if (stopped !== null) return stopped;
 
   const ownSession = Array.from(deps.editSessions.values()).find(
     (session) => session.ownerId === actor.id && session.ownerType === actor.type,

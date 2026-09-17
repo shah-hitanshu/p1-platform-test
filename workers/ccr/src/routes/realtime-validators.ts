@@ -19,6 +19,7 @@ import {
   MAX_EDIT_SESSION_ID_LENGTH,
   MAX_REASON_LENGTH,
   MAX_FOCUS_REGIONS_PER_REQUEST,
+  MAX_TURN_ID_LENGTH,
 } from '../constants/security-limits';
 import { errorResponse } from './realtime-utils';
 import type { CorsPattern } from '../utils/cors';
@@ -318,7 +319,7 @@ export async function validateAgentStopBody(
   request: Request,
   origin: string | null,
   patterns: CorsPattern[],
-): Promise<{ agentId: string; reason?: string } | Response> {
+): Promise<{ agentId?: string; turnId?: string; reason?: string } | Response> {
   // Check Content-Type
   const contentType = request.headers.get('Content-Type');
   const isJsonContentType = contentType?.includes('application/json') === true;
@@ -341,15 +342,41 @@ export async function validateAgentStopBody(
 
   const bodyObj = body as Record<string, unknown>;
 
-  // Validate required fields
-  if (!('agentId' in bodyObj) || typeof bodyObj.agentId !== 'string' || bodyObj.agentId === '') {
-    return errorResponse(400, 'Missing or invalid required field: agentId', origin, patterns);
+  // A field that is present but the wrong shape is rejected here rather than
+  // silently ignored, so it can't fall through to the one-of check below and
+  // have the other field carry the request as if the malformed one were absent.
+  // Emptiness is judged after trimming so this agrees with normalizeTurnId,
+  // which is what actually decides whether a turn id is present downstream.
+  if ('agentId' in bodyObj && (typeof bodyObj.agentId !== 'string' || bodyObj.agentId.trim() === '')) {
+    return errorResponse(400, 'agentId must be a non-empty string', origin, patterns);
+  }
+  if ('turnId' in bodyObj && (typeof bodyObj.turnId !== 'string' || bodyObj.turnId.trim() === '')) {
+    return errorResponse(400, 'turnId must be a non-empty string', origin, patterns);
   }
 
-  if (bodyObj.agentId.length > MAX_AGENT_ID_LENGTH) {
+  const hasAgentId = typeof bodyObj.agentId === 'string' && bodyObj.agentId !== '';
+  const hasTurnId = typeof bodyObj.turnId === 'string' && bodyObj.turnId !== '';
+  if (!hasAgentId && !hasTurnId) {
+    return errorResponse(
+      400,
+      'Missing or invalid required field: one of agentId or turnId',
+      origin,
+      patterns,
+    );
+  }
+  if (hasAgentId && (bodyObj.agentId as string).length > MAX_AGENT_ID_LENGTH) {
     return errorResponse(
       400,
       `agentId must be 1-${String(MAX_AGENT_ID_LENGTH)} characters`,
+      origin,
+      patterns,
+    );
+  }
+  // Measured trimmed, to agree with normalizeTurnId, which is what will actually cap it.
+  if (hasTurnId && (bodyObj.turnId as string).trim().length > MAX_TURN_ID_LENGTH) {
+    return errorResponse(
+      400,
+      `turnId must be 1-${String(MAX_TURN_ID_LENGTH)} characters`,
       origin,
       patterns,
     );
@@ -366,7 +393,8 @@ export async function validateAgentStopBody(
   }
 
   return {
-    agentId: bodyObj.agentId,
+    agentId: hasAgentId ? (bodyObj.agentId as string) : undefined,
+    turnId: hasTurnId ? (bodyObj.turnId as string) : undefined,
     reason: typeof bodyObj.reason === 'string' ? bodyObj.reason : undefined,
   };
 }

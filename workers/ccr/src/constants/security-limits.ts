@@ -93,6 +93,9 @@ export const MAX_REGION_PATH_LENGTH = 256;
  */
 export const MAX_REASON_LENGTH = 500;
 
+/** A turn id is caller-supplied and only ever compared, so this only bounds storage. */
+export const MAX_TURN_ID_LENGTH = 128;
+
 /**
  * Maximum operations per apply request.
  * Prevents large batch operations from overwhelming the system.

@@ -724,4 +724,110 @@ describe('Phase 6: Conflict Notification & Kill Switch', () => {
       expect(activeBody.agents.length).toBe(0);
     });
   });
+
+  describe('a kicked turn cannot carry on', () => {
+    /** Opens an agent edit session and hands back the id the agent must quote to write. */
+    async function startEditing(
+      session: { fetch: (req: Request) => Promise<Response> },
+      agentId: string,
+      turnId: string,
+      region: string,
+    ): Promise<string> {
+      const response = await session.fetch(
+        new Request('http://localhost/agent-edit-start', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Verified-Actor-Id': agentId,
+            'X-Actor-Id': agentId,
+            'X-Actor-Type': 'agent',
+            'X-Agent-Turn-Id': turnId,
+          },
+          body: JSON.stringify({
+            agentId,
+            targetRegions: [region],
+            trigger: 'autonomous',
+            intent: 'Test edit session',
+          }),
+        }),
+      );
+      const body = await readJson<{ editSessionId: string }>(response);
+      return body.editSessionId;
+    }
+
+    /** The write the agent makes next, quoting the session the kick just deleted. */
+    function applyAs(agentId: string, turnId: string, editSessionId: string): Request {
+      return new Request('http://localhost/apply', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Verified-Actor-Id': agentId,
+          'X-Actor-Id': agentId,
+          'X-Actor-Type': 'agent',
+          'X-Agent-Turn-Id': turnId,
+        },
+        body: JSON.stringify({
+          actorId: agentId,
+          editSessionId,
+          operations: [{ type: 'set', path: 'title', value: 'Should not apply' }],
+        }),
+      });
+    }
+
+    async function newSession(): Promise<{ fetch: (req: Request) => Promise<Response> }> {
+      const { DocumentSession } = await import('../../src/durable-objects/document-session');
+      const state = createMockState('aaaaaaaa-0000-4000-8000-000000000001:bbbbbbbb-0000-4000-8000-000000000001:cccccccc-0000-4000-8000-000000000001');
+      return new DocumentSession(state, createMockEnv());
+    }
+
+    // A kick that only deletes the session answers the agent's next write with 403, which is
+    // the agent's cue to reserve another one — the defect this whole branch exists to remove.
+    it('refuses the kicked turn rather than telling it to reserve another session', async () => {
+      const session = await newSession();
+      const editSessionId = await startEditing(session, 'agent-123', 'turn-1', '/content');
+
+      await session.fetch(
+        new Request('http://localhost/kick-agent', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Actor-Id': 'user-123',
+            'X-Actor-Type': 'user',
+          },
+          body: JSON.stringify({ agentId: 'agent-123', reason: 'Agent went rogue' }),
+        }),
+      );
+
+      const refused = await session.fetch(applyAs('agent-123', 'turn-1', editSessionId));
+      expect(refused.status).toBe(409);
+      expect(await readJson(refused)).toMatchObject({ code: 'agent_turn_stopped' });
+    });
+
+    it('bars every kicked agent on kick-all, and only those turns', async () => {
+      const session = await newSession();
+      // Distinct regions, or the second session is refused for overlapping the first.
+      const first = await startEditing(session, 'agent-123', 'turn-1', '/content/header');
+      const second = await startEditing(session, 'agent-456', 'turn-2', '/content/footer');
+
+      await session.fetch(
+        new Request('http://localhost/kick-all-agents', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Actor-Id': 'user-123',
+            'X-Actor-Type': 'user',
+          },
+          body: JSON.stringify({ reason: 'Emergency shutdown' }),
+        }),
+      );
+
+      expect((await session.fetch(applyAs('agent-123', 'turn-1', first))).status).toBe(409);
+      expect((await session.fetch(applyAs('agent-456', 'turn-2', second))).status).toBe(409);
+
+      // The half a "was it recorded?" assertion cannot see: kicking two turns must not
+      // bar every turn on the document.
+      const other = await session.fetch(applyAs('agent-789', 'turn-3', first));
+      expect(other.status).not.toBe(409);
+    });
+  });
 });

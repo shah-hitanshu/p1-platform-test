@@ -43,6 +43,7 @@ function createMockDeps(overrides: Partial<CrdtEndpointDeps> = {}): CrdtEndpoint
       siteId: 'site-1', documentId: 'doc-1', branchId: 'branch-1',
     },
     editSessions: new Map(),
+    stoppedTurns: new Map(),
     activityDetector: {} as CrdtEndpointDeps['activityDetector'],
     syncManager: {
       initializeFromPostgres: vi.fn().mockResolvedValue(undefined),

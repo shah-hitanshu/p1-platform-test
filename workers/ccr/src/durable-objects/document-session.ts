@@ -20,7 +20,12 @@ import {
 } from '../constants/security-limits';
 import { EditPermissionService } from '../services/edit-permission-service';
 import type { EditSession, SessionInfo, DocumentSessionEnv } from './document-session-types';
-import { YDOC_STORAGE_KEY, EDIT_SESSIONS_STORAGE_KEY, BRANCH_VERSION_STORAGE_KEY } from './document-session-types';
+import {
+  YDOC_STORAGE_KEY,
+  EDIT_SESSIONS_STORAGE_KEY,
+  BRANCH_VERSION_STORAGE_KEY,
+  STOPPED_TURNS_STORAGE_KEY,
+} from './document-session-types';
 import { PostgresSyncManager } from './postgres-sync-manager';
 import {
   isValidSessionInfo,
@@ -36,10 +41,13 @@ import {
   jsonResponse as jsonResponseFn,
 } from './websocket-utils';
 import { ensureLogger } from '../telemetry';
+import { getLogger } from '@pantheon-systems/p1-telemetry';
 import {
   persistEditSessions as persistEditSessionsFn,
   parseStoredEditSessions,
 } from './edit-session-store';
+import type { StoppedTurns } from './stopped-turns';
+import { serializeStoppedTurns, deserializeStoppedTurns } from './stopped-turns';
 import { rollbackToSessionCheckpoint } from './session-checkpoint-client';
 import {
   persistPresence as persistPresenceFn,
@@ -140,6 +148,7 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
   private readonly activityDetector: ActivityDetector;
   private readonly editPermissionService: EditPermissionService;
   private readonly editSessions = new Map<string, EditSession>();
+  private readonly stoppedTurns: StoppedTurns = new Map();
   private cachedOrganization: Organization | null | undefined = undefined;
   private orgSettingsLoaded = false;
 
@@ -355,6 +364,7 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
     }
 
     await this.loadOrgSettingsIfNeeded();
+    await this.restoreStoppedTurns();
     await this.restoreEditSessions();
     await this.cleanupOrphanedPresence();
     this.metadataInitialized = true;
@@ -513,6 +523,35 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
 
   private async persistEditSessions(): Promise<void> {
     await persistEditSessionsFn(this.state.storage, this.editSessions);
+  }
+
+  private async persistStoppedTurns(): Promise<void> {
+    await this.state.storage.put(
+      STOPPED_TURNS_STORAGE_KEY,
+      serializeStoppedTurns(this.stoppedTurns),
+    );
+  }
+
+  /**
+   * Restore stopped turns from DO storage into the in-memory map.
+   *
+   * Separate from edit-session restore because a stop has to survive a wake even
+   * when no agent holds an edit session.
+   */
+  private async restoreStoppedTurns(): Promise<void> {
+    try {
+      const stored = deserializeStoppedTurns(
+        await this.state.storage.get(STOPPED_TURNS_STORAGE_KEY),
+      );
+      for (const [turnId, stoppedAt] of stored) {
+        this.stoppedTurns.set(turnId, stoppedAt);
+      }
+    } catch (error) {
+      getLogger().warn('Failed to restore stopped turns from storage', {
+        siteId: this.sessionInfo.siteId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   /**
@@ -714,6 +753,7 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
       storage: this.state.storage,
       sessionInfo: this.sessionInfo,
       editSessions: this.editSessions,
+      stoppedTurns: this.stoppedTurns,
       activityDetector: this.activityDetector,
       syncManager: this.syncManager,
       getWebSockets: () => this.state.getWebSockets(),
@@ -809,6 +849,8 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
       getConnectionCount: () => this.getConnectionCount(),
       flushPendingPersist: () => this.flushPendingPersist(),
       persistEditSessions: () => this.persistEditSessions(),
+      stoppedTurns: this.stoppedTurns,
+      persistStoppedTurns: () => this.persistStoppedTurns(),
       persistPresence: () => this.persistPresence(),
       broadcastPresenceUpdate: (): void => {
         broadcastPresenceUpdate(this.getPresenceProtocolDeps());

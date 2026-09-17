@@ -454,7 +454,16 @@ export async function handleRealtimeRoutes(
       return errorResponse(405, 'Method not allowed. Use POST for agent-stop.', origin, patterns);
     }
 
-    // Validate request body - requires agentId
+    // Every stop inserts into the capped stopped-turn record — under the turn id in the
+    // body, or under the one the agent's own session reported, which is a header that
+    // agent chose. The record evicts its oldest to stay capped, so an agent able to stop
+    // could reserve and stop fifty turns of its own until the bar on its real turn fell
+    // off the front. A stop is a person's action, and nothing but the editor makes one.
+    if (context.principal.type !== 'user') {
+      return errorResponse(403, 'Stopping an agent requires an authenticated user', origin, patterns);
+    }
+
+    // Validate request body - requires one of agentId or turnId
     const bodyResult = await validateAgentStopBody(request, origin, patterns);
     if (bodyResult instanceof Response) {
       return bodyResult;

@@ -30,6 +30,12 @@ export interface ActorPresence {
   requestedById?: string;
   /** Display name of the human who triggered this agent session (human_requested sessions only) */
   requestedByName?: string;
+  /**
+   * The turn this agent's edit session belongs to, when the agent named one. Two agents
+   * working for the same person are otherwise indistinguishable to a client deciding
+   * whether a stop is aimed at the turn it is holding.
+   */
+  turnId?: string;
   lastActivityAt: string;
   joinedAt: string;
 }

@@ -29,6 +29,12 @@ export const PRESENCE_STORAGE_KEY = 'presenceState';
 export const EDIT_SESSIONS_STORAGE_KEY = 'editSessions';
 
 /**
+ * Storage key for persisted stopped-turn state.
+ * Survives DO eviction/re-instantiation so a stop is not lost to hibernation.
+ */
+export const STOPPED_TURNS_STORAGE_KEY = 'stoppedTurns';
+
+/**
  * Storage key for persisted branch version timestamp.
  * Persisted so that after DO hibernation wake, checkBranchInvalidation()
  * does not spuriously reload from Postgres when the KV timestamp
@@ -77,6 +83,8 @@ export interface EditSession {
   startedAt: number;
   conflicted?: boolean;
   conflictReason?: string;
+  /** The agent turn that opened this session, when the caller named one. */
+  turnId?: string;
 }
 
 /**
@@ -127,7 +135,8 @@ export interface AgentEditAbortRequest {
  * Request body for /agent-stop endpoint (human-initiated stop)
  */
 export interface AgentStopRequest {
-  agentId: string;
+  agentId?: string;
+  turnId?: string;
   reason?: string;
 }
 

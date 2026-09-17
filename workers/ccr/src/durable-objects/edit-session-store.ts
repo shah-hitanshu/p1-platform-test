@@ -83,6 +83,7 @@ export function parseStoredEditSessions(stored: unknown): Map<string, EditSessio
       startedAt: session.startedAt,
       conflicted: session.conflicted,
       conflictReason: session.conflictReason,
+      turnId: session.turnId,
     });
   }
 
