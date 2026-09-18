@@ -11,6 +11,7 @@ import { createUsePuck } from '@puckeditor/core';
 import { Icon } from '@pantheon-systems/pds-toolkit-react';
 import { useP1PuckOptional } from '../../core/P1PuckContext.js';
 import { GripHandleIcon } from '../icons/index.js';
+import { OutlineCommentState } from '../../features/threads/ui/OutlineCommentState.js';
 import { SafeIcon } from '../../pds/components/SafeIcon.js';
 import { DraggableRow } from './DraggableRow.js';
 import { PanelShell } from './PanelShell.js';
@@ -100,6 +101,7 @@ export function OutlinePanel(): React.ReactElement {
                   <BlockIcon type={row.type} label={row.label} />
                 </span>
                 <span className={styles.label}>{row.label}</span>
+                <OutlineCommentState blockId={row.id} />
                 <button
                   type="button"
                   className={styles.delete}
