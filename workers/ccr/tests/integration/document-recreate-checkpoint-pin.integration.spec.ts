@@ -23,7 +23,6 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type postgres from 'postgres';
-import type { DatabaseConnection } from '../../src/db';
 import { createRealDatabaseConnection } from '../helpers/database';
 import {
   createDocumentOnBranch,
@@ -38,7 +37,7 @@ const PANTHEON_SITE_ID = 'test-recreate-checkpoint-pin-site';
 const SYSTEM_ACTOR = '00000000-0000-0000-0000-000000000000';
 
 let sql: postgres.Sql;
-let connection: DatabaseConnection;
+let close: () => Promise<void>;
 let testSiteId: string;
 let mainBranchId: string;
 
@@ -65,7 +64,7 @@ async function purgeSite(siteId: string): Promise<void> {
 beforeAll(async () => {
   const handles = createRealDatabaseConnection();
   sql = handles.sql;
-  connection = handles.connection;
+  close = handles.close;
 
   const stale = await sql<{ id: string }[]>`
     SELECT id FROM app.sites WHERE pantheon_site_id = ${PANTHEON_SITE_ID}
@@ -95,7 +94,7 @@ afterAll(async () => {
   } catch {
     // Ignore cleanup errors
   }
-  await connection.close();
+  await close();
 });
 
 /** The document_version_id a specific checkpoint pinned for a document. */
