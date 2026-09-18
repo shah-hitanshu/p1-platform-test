@@ -1363,10 +1363,7 @@ async function handleBranchScopedDocumentRoutes(
       branchId,
       method === 'POST' ? 'canEditDocuments' : 'canView',
     );
-    // The branch belongs to context.siteId, so a canonical absent from the branch
-    // belongs to another tenant and is out of this caller's reach.
-    const exists = await documentExistsOnBranch(context.documentId, branchId);
-    if (!exists) {
+    if (!(await isReconcilableOnBranch(context.documentId, branchId, context.siteId))) {
       return errorResponse('Document not found on this branch', 404);
     }
     if (method === 'POST') {

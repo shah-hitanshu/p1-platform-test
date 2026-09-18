@@ -9,6 +9,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { makeBranch } from '../helpers/branch';
 import { makePrincipal } from '../helpers/principal';
 import type { DocumentRouteContext } from '../../src/routes/document-api';
+import type { DocumentWithArchive } from '../../src/services/document-types';
 import type { CreateTranslationResult } from '../../src/services/create-translation-service';
 
 vi.mock('../../src/services', async () => {
@@ -18,7 +19,9 @@ vi.mock('../../src/services', async () => {
     getBranch: vi.fn(),
     getMainBranch: vi.fn(),
     createTranslation: vi.fn(),
+    getDocument: vi.fn(),
     documentExistsOnBranch: vi.fn(),
+    isTombstonedOnBranch: vi.fn(),
   };
 });
 
@@ -81,6 +84,11 @@ const context: DocumentRouteContext = {
   principal: makePrincipal({ id: 'user-1', type: 'user' }),
 };
 
+/** The canonical document the route's gate reads, belonging to the site named. */
+function documentOnSite(siteId: string): DocumentWithArchive {
+  return { id: CANONICAL_ID, siteId } as unknown as DocumentWithArchive;
+}
+
 function postTranslationRequest(body: Record<string, unknown>): Request {
   return new Request(
     `https://api.example.com/api/sites/site-1/branches/branch-1/documents/${CANONICAL_ID}/translations`,
@@ -103,7 +111,8 @@ describe('POST create translation with a mode', () => {
     const services = await import('../../src/services');
 
     vi.mocked(services.getBranch).mockResolvedValueOnce(featureBranch);
-    vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(true);
+    vi.mocked(services.getDocument).mockResolvedValueOnce(documentOnSite('site-1'));
+    vi.mocked(services.isTombstonedOnBranch).mockResolvedValueOnce(false);
     vi.mocked(services.createTranslation).mockResolvedValueOnce(translationResult);
 
     const response = await handleDocumentRoutes(
@@ -121,7 +130,8 @@ describe('POST create translation with a mode', () => {
     const services = await import('../../src/services');
 
     vi.mocked(services.getBranch).mockResolvedValueOnce(featureBranch);
-    vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(true);
+    vi.mocked(services.getDocument).mockResolvedValueOnce(documentOnSite('site-1'));
+    vi.mocked(services.isTombstonedOnBranch).mockResolvedValueOnce(false);
     vi.mocked(services.createTranslation).mockResolvedValueOnce(translationResult);
 
     const response = await handleDocumentRoutes(
@@ -139,7 +149,8 @@ describe('POST create translation with a mode', () => {
     const services = await import('../../src/services');
 
     vi.mocked(services.getBranch).mockResolvedValueOnce(featureBranch);
-    vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(true);
+    vi.mocked(services.getDocument).mockResolvedValueOnce(documentOnSite('site-1'));
+    vi.mocked(services.isTombstonedOnBranch).mockResolvedValueOnce(false);
 
     const response = await handleDocumentRoutes(
       postTranslationRequest({ locale: 'fr-FR', mode }),
@@ -155,7 +166,8 @@ describe('POST create translation with a mode', () => {
     const services = await import('../../src/services');
 
     vi.mocked(services.getBranch).mockResolvedValueOnce(featureBranch);
-    vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(true);
+    vi.mocked(services.getDocument).mockResolvedValueOnce(documentOnSite('site-1'));
+    vi.mocked(services.isTombstonedOnBranch).mockResolvedValueOnce(false);
 
     const response = await handleDocumentRoutes(
       postTranslationRequest({ locale: 'fr-FR', mode: 'empty' }),
@@ -180,7 +192,8 @@ describe('POST create translation with a blank path', () => {
       const services = await import('../../src/services');
 
       vi.mocked(services.getBranch).mockResolvedValueOnce(featureBranch);
-      vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(true);
+      vi.mocked(services.getDocument).mockResolvedValueOnce(documentOnSite('site-1'));
+      vi.mocked(services.isTombstonedOnBranch).mockResolvedValueOnce(false);
 
       const response = await handleDocumentRoutes(
         postTranslationRequest({ locale: 'fr-FR', path }),

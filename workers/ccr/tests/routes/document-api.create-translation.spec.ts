@@ -9,6 +9,7 @@ import { makeBranch } from '../helpers/branch';
 import { makePrincipal } from '../helpers/principal';
 import { readJson } from '../helpers/http';
 import type { DocumentRouteContext } from '../../src/routes/document-api';
+import type { DocumentWithArchive } from '../../src/services/document-types';
 import type {
   CreateTranslationResult,
   LocaleVariantsResult,
@@ -32,6 +33,7 @@ vi.mock('../../src/services', async () => {
     listDocumentsOnBranch: vi.fn(),
     createDocumentOnBranch: vi.fn(),
     documentExistsOnBranch: vi.fn(),
+    isTombstonedOnBranch: vi.fn(),
     deleteDocumentOnBranch: vi.fn(),
     getLatestDocumentVersion: vi.fn(),
     getLatestDocumentVersionWithFallback: vi.fn(),
@@ -94,6 +96,11 @@ const translationResult: CreateTranslationResult = {
   },
 };
 
+/** The canonical document the route's gate reads, belonging to the site named. */
+function documentOnSite(siteId: string): DocumentWithArchive {
+  return { id: CANONICAL_ID, siteId } as unknown as DocumentWithArchive;
+}
+
 function postTranslationRequest(body: Record<string, unknown>): Request {
   return new Request(
     `https://api.example.com/api/sites/site-1/branches/branch-1/documents/${CANONICAL_ID}/translations`,
@@ -147,7 +154,8 @@ describe('POST create-translation', () => {
     const services = await import('../../src/services');
 
     vi.mocked(services.getBranch).mockResolvedValueOnce(featureBranch);
-    vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(true);
+    vi.mocked(services.getDocument).mockResolvedValueOnce(documentOnSite('site-1'));
+    vi.mocked(services.isTombstonedOnBranch).mockResolvedValueOnce(false);
     vi.mocked(services.createTranslation).mockResolvedValueOnce(translationResult);
 
     const response = await handleDocumentRoutes(postTranslationRequest({ locale: 'fr-FR' }), context);
@@ -171,7 +179,8 @@ describe('POST create-translation', () => {
     const services = await import('../../src/services');
 
     vi.mocked(services.getBranch).mockResolvedValueOnce(featureBranch);
-    vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(true);
+    vi.mocked(services.getDocument).mockResolvedValueOnce(documentOnSite('site-1'));
+    vi.mocked(services.isTombstonedOnBranch).mockResolvedValueOnce(false);
 
     const response = await handleDocumentRoutes(postTranslationRequest({}), context);
 
@@ -184,7 +193,8 @@ describe('POST create-translation', () => {
     const services = await import('../../src/services');
 
     vi.mocked(services.getBranch).mockResolvedValueOnce(featureBranch);
-    vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(true);
+    vi.mocked(services.getDocument).mockResolvedValueOnce(documentOnSite('site-1'));
+    vi.mocked(services.isTombstonedOnBranch).mockResolvedValueOnce(false);
     vi.mocked(services.createTranslation).mockRejectedValueOnce(
       new services.TranslationAlreadyExistsError(CANONICAL_ID, 'fr-FR'),
     );
@@ -198,7 +208,8 @@ describe('POST create-translation', () => {
     const services = await import('../../src/services');
 
     vi.mocked(services.getBranch).mockResolvedValueOnce(featureBranch);
-    vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(true);
+    vi.mocked(services.getDocument).mockResolvedValueOnce(documentOnSite('site-1'));
+    vi.mocked(services.isTombstonedOnBranch).mockResolvedValueOnce(false);
     vi.mocked(services.createTranslation).mockRejectedValueOnce(
       new services.DocumentNotFoundError('missing'),
     );
@@ -207,12 +218,26 @@ describe('POST create-translation', () => {
     expect(response.status).toBe(404);
   });
 
-  it('returns 404 when the canonical document is not on this branch', async () => {
+  it('returns 404 when the canonical document is tombstoned on this branch', async () => {
     const { handleDocumentRoutes } = await import('../../src/routes/document-api');
     const services = await import('../../src/services');
 
     vi.mocked(services.getBranch).mockResolvedValueOnce(featureBranch);
-    vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(false);
+    vi.mocked(services.getDocument).mockResolvedValueOnce(documentOnSite('site-1'));
+    vi.mocked(services.isTombstonedOnBranch).mockResolvedValueOnce(true);
+
+    const response = await handleDocumentRoutes(postTranslationRequest({ locale: 'fr-FR' }), context);
+
+    expect(response.status).toBe(404);
+    expect(services.createTranslation).not.toHaveBeenCalled();
+  });
+
+  it('returns 404 when the canonical document belongs to another site', async () => {
+    const { handleDocumentRoutes } = await import('../../src/routes/document-api');
+    const services = await import('../../src/services');
+
+    vi.mocked(services.getBranch).mockResolvedValueOnce(featureBranch);
+    vi.mocked(services.getDocument).mockResolvedValueOnce(documentOnSite('site-2'));
 
     const response = await handleDocumentRoutes(postTranslationRequest({ locale: 'fr-FR' }), context);
 
@@ -231,7 +256,8 @@ describe('GET list locale variants', () => {
     const services = await import('../../src/services');
 
     vi.mocked(services.getBranch).mockResolvedValueOnce(featureBranch);
-    vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(true);
+    vi.mocked(services.getDocument).mockResolvedValueOnce(documentOnSite('site-1'));
+    vi.mocked(services.isTombstonedOnBranch).mockResolvedValueOnce(false);
     vi.mocked(services.listLocaleVariants).mockResolvedValueOnce({
       canonical: {
         id: CANONICAL_ID,
@@ -253,14 +279,31 @@ describe('GET list locale variants', () => {
 
     // The listing is scoped to the branch named in the request.
     expect(services.listLocaleVariants).toHaveBeenCalledWith(CANONICAL_ID, 'branch-1');
+    // A page with no local version row on this branch (COW-inherited from main)
+    // still lists its locales.
+    expect(services.documentExistsOnBranch).not.toHaveBeenCalled();
   });
 
-  it('returns 404 when the canonical document is not on this branch', async () => {
+  it('returns 404 when the canonical document is tombstoned on this branch', async () => {
     const { handleDocumentRoutes } = await import('../../src/routes/document-api');
     const services = await import('../../src/services');
 
     vi.mocked(services.getBranch).mockResolvedValueOnce(featureBranch);
-    vi.mocked(services.documentExistsOnBranch).mockResolvedValueOnce(false);
+    vi.mocked(services.getDocument).mockResolvedValueOnce(documentOnSite('site-1'));
+    vi.mocked(services.isTombstonedOnBranch).mockResolvedValueOnce(true);
+
+    const response = await handleDocumentRoutes(getTranslationsRequest(), context);
+
+    expect(response.status).toBe(404);
+    expect(services.listLocaleVariants).not.toHaveBeenCalled();
+  });
+
+  it('returns 404 when the canonical document belongs to another site', async () => {
+    const { handleDocumentRoutes } = await import('../../src/routes/document-api');
+    const services = await import('../../src/services');
+
+    vi.mocked(services.getBranch).mockResolvedValueOnce(featureBranch);
+    vi.mocked(services.getDocument).mockResolvedValueOnce(documentOnSite('site-2'));
 
     const response = await handleDocumentRoutes(getTranslationsRequest(), context);
 
