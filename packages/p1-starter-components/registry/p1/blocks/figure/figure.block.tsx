@@ -1,5 +1,6 @@
 import type { ComponentConfig } from "@puckeditor/core";
-import { defineMeta, wireframe } from '@/registry/p1/internal/define-meta';
+import { defineMeta } from '@/registry/p1/internal/define-meta';
+import { P1_ASSETS } from '@/registry/p1/internal/assets';
 import { FigureRender, type FigureProps } from "./figure";
 export type { FigureProps };
 
@@ -64,7 +65,7 @@ export const FigureBlock: ComponentConfig<FigureProps> = {
     },
   },
   defaultProps: {
-    src: wireframe(1300, 731),
+    src: P1_ASSETS.LANDSCAPE,
     alt: "The team reviewing a preview together",
     caption: "The team reviews a preview link before anything reaches Live.",
     credit: "Photo — Pantheon",
@@ -81,4 +82,5 @@ export const meta = defineMeta({
   description: 'Single image with optional caption and photo credit, supporting aspect ratio, width, radius, and b&w treatment; use for editorial images.',
   categories: ["editorial"],
   published: true,
+  registryDependencies: ["@p1/tokens","@p1/internal-img"],
 });

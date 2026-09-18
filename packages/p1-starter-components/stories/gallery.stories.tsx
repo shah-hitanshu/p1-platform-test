@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { GalleryBlock, type GalleryProps } from "@/registry/p1/blocks/gallery/gallery.block";
-import { wireframe } from '@/registry/p1/internal/define-meta';
+import { P1_ASSETS } from '@/registry/p1/internal/assets';
 
 const GalleryWrapper = (props: GalleryProps) => {
   const Component = GalleryBlock.render as React.FC<GalleryProps>;
@@ -26,12 +26,12 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 const images = [
-  { src: wireframe(800, 600), caption: "Team offsite" },
-  { src: wireframe(800, 600), caption: "Workshop" },
-  { src: wireframe(800, 600), caption: "Launch day" },
-  { src: wireframe(800, 600), caption: "Planning" },
-  { src: wireframe(800, 600), caption: "Standup" },
-  { src: wireframe(800, 600), caption: "Ship it" },
+  { src: P1_ASSETS.LANDSCAPE, caption: "Team offsite" },
+  { src: P1_ASSETS.LANDSCAPE, caption: "Workshop" },
+  { src: P1_ASSETS.LANDSCAPE, caption: "Launch day" },
+  { src: P1_ASSETS.LANDSCAPE, caption: "Planning" },
+  { src: P1_ASSETS.LANDSCAPE, caption: "Standup" },
+  { src: P1_ASSETS.LANDSCAPE, caption: "Ship it" },
 ];
 
 const base: GalleryProps = {

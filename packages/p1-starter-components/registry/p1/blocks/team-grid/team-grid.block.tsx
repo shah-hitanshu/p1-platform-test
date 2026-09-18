@@ -1,5 +1,6 @@
 import type { ComponentConfig } from "@puckeditor/core";
-import { defineMeta, wireframe } from '@/registry/p1/internal/define-meta';
+import { defineMeta } from '@/registry/p1/internal/define-meta';
+import { P1_ASSETS } from '@/registry/p1/internal/assets';
 import { TeamGridRender, type TeamGridProps, type TeamMember } from "./team-grid";
 export type { TeamGridProps, TeamMember };
 
@@ -76,9 +77,9 @@ export const TeamGridBlock: ComponentConfig<TeamGridProps> = {
     shape: "circle",
     tone: "white",
     members: [
-      { name: "Jordan Ellis", role: "Head of Operations", avatar: wireframe(300, 300), bio: "" },
-      { name: "Sam Rivera", role: "Principal Engineer", avatar: wireframe(300, 300), bio: "" },
-      { name: "Priya Nair", role: "Design Lead", avatar: wireframe(300, 300), bio: "" },
+      { name: "Jordan Ellis", role: "Head of Operations", avatar: P1_ASSETS.AVATAR, bio: "" },
+      { name: "Sam Rivera", role: "Principal Engineer", avatar: P1_ASSETS.AVATAR, bio: "" },
+      { name: "Priya Nair", role: "Design Lead", avatar: P1_ASSETS.AVATAR, bio: "" },
     ],
   },
   render: TeamGridRender,
@@ -89,4 +90,5 @@ export const meta = defineMeta({
   description: 'Grid of team member cards with avatar, name, role, and bio in circle or rounded photo shape; use for About/Team pages.',
   categories: ["trust"],
   published: true,
+  registryDependencies: ["@p1/tokens","@p1/internal-img"],
 });

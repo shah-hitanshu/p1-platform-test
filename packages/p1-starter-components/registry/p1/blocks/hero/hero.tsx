@@ -1,4 +1,5 @@
-import { wireframe } from '@/registry/p1/internal/define-meta';
+import { P1_FALLBACKS } from '@/registry/p1/internal/assets';
+import { FallbackImg } from '@/registry/p1/internal/img';
 import { Btn } from "@/registry/p1/internal/btn";
 import "./hero.css";
 
@@ -20,7 +21,6 @@ export interface HeroProps {
   knockout: "off" | "on";
 }
 
-const FALLBACK_IMG = wireframe(1200, 675);
 
 const ALPHA: Record<HeroProps["overlayStrength"], number> = { light: 0.32, medium: 0.56, heavy: 0.8 };
 
@@ -54,13 +54,13 @@ export function HeroRender({
   overlayStrength,
   knockout,
 }: HeroProps) {
-  const img = imageSrc || FALLBACK_IMG;
+  const img = imageSrc || P1_FALLBACKS.LANDSCAPE;
   const onDark = layout === "full image" || tone !== "light";
 
   const koStyle: React.CSSProperties | undefined =
     knockout === "on"
       ? {
-          backgroundImage: `url(${img})`,
+          backgroundImage: `url(${img}), url(${P1_FALLBACKS.LANDSCAPE})`,
           backgroundSize: "cover",
           backgroundPosition: "center",
           WebkitBackgroundClip: "text",
@@ -88,7 +88,7 @@ export function HeroRender({
     const bg = overlayGradient(overlay, overlayStrength);
     return (
       <section className="p1-hero p1-block" data-layout="full-image">
-        <img src={img} alt="" className="p1-hero__bg-img" />
+        <FallbackImg src={img} alt="" className="p1-hero__bg-img" loading="eager" fetchPriority="high" />
         {bg && <div className="p1-hero__overlay" style={{ background: bg }} />}
         <div className="p1-hero__fullimg-content" data-align={align}>
           {copyBlock}
@@ -114,11 +114,11 @@ export function HeroRender({
   const imageEl =
     imageFill === "flush" ? (
       <div className="p1-hero__img-flush">
-        <img src={img} alt="" className="p1-hero__img" />
+        <FallbackImg src={img} alt="" className="p1-hero__img" loading="eager" fetchPriority="high" />
       </div>
     ) : (
       <div className="p1-hero__img-card">
-        <img src={img} alt="" className="p1-hero__img" />
+        <FallbackImg src={img} alt="" className="p1-hero__img" loading="eager" fetchPriority="high" />
       </div>
     );
 

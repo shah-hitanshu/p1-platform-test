@@ -1,5 +1,6 @@
 import type { ComponentConfig } from "@puckeditor/core";
-import { defineMeta, wireframe } from '@/registry/p1/internal/define-meta';
+import { defineMeta } from '@/registry/p1/internal/define-meta';
+import { P1_ASSETS } from '@/registry/p1/internal/assets';
 import { ImageRender, type ImageProps } from "./image";
 export type { ImageProps };
 
@@ -65,7 +66,7 @@ export const ImageBlock: ComponentConfig<ImageProps> = {
     },
   },
   defaultProps: {
-    src: wireframe(1100, 619),
+    src: P1_ASSETS.LANDSCAPE,
     alt: "Editorial photograph",
     width: "contained",
     ratio: "16 / 9",
@@ -82,4 +83,5 @@ export const meta = defineMeta({
   description: 'Simple full-bleed or contained image block with aspect ratio, fit, position, radius, and b&w treatment controls; use for standalone images.',
   categories: ["showcase"],
   published: true,
+  registryDependencies: ["@p1/tokens","@p1/internal-img"],
 });

@@ -10,6 +10,7 @@ type BlockMeta = {
   /** Additional internal registry deps beyond @p1/tokens. Common values:
    *  '@p1/internal-btn'   — uses the btn primitive
    *  '@p1/internal-icons' — uses SVG icons
+   *  '@p1/internal-img'   — uses the FallbackImg primitive
    *  '@p1/internal-rich'  — uses the rich-text field helper
    *  '@p1/internal-form'  — uses form/input primitives
    */

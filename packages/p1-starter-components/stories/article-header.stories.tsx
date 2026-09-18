@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { ArticleHeaderBlock, type ArticleHeaderProps } from "@/registry/p1/blocks/article-header/article-header.block";
-import { wireframe } from '@/registry/p1/internal/define-meta';
+import { P1_ASSETS } from '@/registry/p1/internal/assets';
 
 const ArticleHeaderWrapper = (props: ArticleHeaderProps) => {
   const Component = ArticleHeaderBlock.render as React.FC<ArticleHeaderProps>;
@@ -27,7 +27,7 @@ const base: ArticleHeaderProps = {
   standfirst:
     "A behind-the-scenes look at how the team moved from weeks to hours — and the small habits that made the difference.",
   authorName: "Jordan Ellis",
-  authorAvatar: wireframe(200, 200),
+  authorAvatar: P1_ASSETS.AVATAR,
   date: "April 18, 2026",
   readTime: "6 min read",
   align: "left",

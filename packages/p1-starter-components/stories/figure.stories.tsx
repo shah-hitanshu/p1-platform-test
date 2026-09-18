@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { FigureBlock, type FigureProps } from "@/registry/p1/blocks/figure/figure.block";
-import { wireframe } from '@/registry/p1/internal/define-meta';
+import { P1_ASSETS } from '@/registry/p1/internal/assets';
 
 const FigureWrapper = (props: FigureProps) => {
   const Component = FigureBlock.render as React.FC<FigureProps>;
@@ -24,7 +24,7 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 const base: FigureProps = {
-  src: wireframe(1300, 731),
+  src: P1_ASSETS.LANDSCAPE,
   alt: "The team reviewing a preview together",
   caption: "The team reviews a preview link before anything reaches Live.",
   credit: "Photo — Pantheon",

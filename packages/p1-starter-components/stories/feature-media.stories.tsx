@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { FeatureMediaBlock, type FeatureMediaProps } from "@/registry/p1/blocks/feature-media/feature-media.block";
-import { wireframe } from '@/registry/p1/internal/define-meta';
+import { P1_ASSETS } from '@/registry/p1/internal/assets';
 
 const FeatureMediaWrapper = (props: FeatureMediaProps) => {
   const Component = FeatureMediaBlock.render as React.FC<FeatureMediaProps>;
@@ -31,7 +31,7 @@ const base: FeatureMediaProps = {
     { text: "Publish in one click" },
   ],
   buttonLabel: "See how it works →",
-  imageSrc: wireframe(1000, 563),
+  imageSrc: P1_ASSETS.LANDSCAPE,
   mediaSide: "right",
   tone: "white",
 };

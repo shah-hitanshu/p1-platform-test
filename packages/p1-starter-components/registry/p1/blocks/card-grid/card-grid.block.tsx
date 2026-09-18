@@ -1,5 +1,6 @@
 import type { ComponentConfig } from "@puckeditor/core";
-import { defineMeta, wireframe } from '@/registry/p1/internal/define-meta';
+import { defineMeta } from '@/registry/p1/internal/define-meta';
+import { P1_ASSETS } from '@/registry/p1/internal/assets';
 import { CardGridRender, type CardGridProps, type CardGridItem } from "./card-grid";
 export type { CardGridProps, CardGridItem };
 
@@ -29,7 +30,7 @@ export const CardGridBlock: ComponentConfig<CardGridProps> = {
       defaultItemProps: {
         title: "Company",
         subtitle: "Industry · Result",
-        imageUrl: wireframe(600, 400),
+        imageUrl: P1_ASSETS.LANDSCAPE,
       },
       getItemSummary: (item: CardGridItem) => item.title || "Card",
     },
@@ -38,9 +39,9 @@ export const CardGridBlock: ComponentConfig<CardGridProps> = {
     heading: "Customer stories",
     columns: "3",
     items: [
-      { title: "Northwind", subtitle: "Retail · 38% faster launches", imageUrl: wireframe(600, 400) },
-      { title: "Atlas Media", subtitle: "Publishing · 2M monthly reads", imageUrl: wireframe(600, 400) },
-      { title: "Brightline", subtitle: "SaaS · 4.9/5 satisfaction", imageUrl: wireframe(600, 400) },
+      { title: "Northwind", subtitle: "Retail · 38% faster launches", imageUrl: P1_ASSETS.LANDSCAPE },
+      { title: "Atlas Media", subtitle: "Publishing · 2M monthly reads", imageUrl: P1_ASSETS.LANDSCAPE },
+      { title: "Brightline", subtitle: "SaaS · 4.9/5 satisfaction", imageUrl: P1_ASSETS.LANDSCAPE },
     ],
   },
   render: CardGridRender,
@@ -51,4 +52,5 @@ export const meta = defineMeta({
   description: 'Responsive 2–4 column grid of image+title+subtitle cards with an optional section heading; use for feature or product showcases.',
   categories: ["showcase"],
   published: true,
+  registryDependencies: ["@p1/tokens","@p1/internal-img"],
 });

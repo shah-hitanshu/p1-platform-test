@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { TestimonialBlock, type TestimonialProps } from "@/registry/p1/blocks/testimonial/testimonial.block";
-import { wireframe } from '@/registry/p1/internal/define-meta';
+import { P1_ASSETS } from '@/registry/p1/internal/assets';
 
 const TestimonialWrapper = (props: TestimonialProps) => {
   const Component = TestimonialBlock.render as React.FC<TestimonialProps>;
@@ -25,7 +25,7 @@ const base: TestimonialProps = {
   quote: "The team was up and running in a day, and we haven't looked back. It just works.",
   name: "Jordan Ellis",
   role: "Operations Lead",
-  avatarSrc: wireframe(200, 200),
+  avatarSrc: P1_ASSETS.AVATAR,
   layout: "centered",
   tone: "light",
 };

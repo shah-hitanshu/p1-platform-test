@@ -1,5 +1,6 @@
 import type { ComponentConfig } from "@puckeditor/core";
-import { defineMeta, wireframe } from '@/registry/p1/internal/define-meta';
+import { defineMeta } from '@/registry/p1/internal/define-meta';
+import { P1_ASSETS } from '@/registry/p1/internal/assets';
 import { HeroRender, type HeroProps } from "./hero";
 export type { HeroProps };
 
@@ -119,7 +120,7 @@ export const HeroBlock: ComponentConfig<HeroProps> = {
     secondaryLabel: "Book a demo →",
     tone: "accent",
     layout: "split",
-    imageSrc: wireframe(1200, 675),
+    imageSrc: P1_ASSETS.LANDSCAPE,
     imageSide: "right",
     imageFill: "card",
     splitRatio: "even",
@@ -136,5 +137,5 @@ export const meta = defineMeta({
   description: 'Large page hero with eyebrow, title, description, two CTA buttons, and an image in split/full-image/text-only layouts with overlay options.',
   categories: ["attention"],
   published: true,
-  registryDependencies: ["@p1/tokens","@p1/internal-btn"],
+  registryDependencies: ["@p1/tokens","@p1/internal-btn","@p1/internal-img"],
 });

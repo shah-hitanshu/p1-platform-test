@@ -1,4 +1,7 @@
+import { P1_FALLBACKS } from '@/registry/p1/internal/assets';
+import { FallbackImg } from '@/registry/p1/internal/img';
 import "./article-header.css";
+
 
 export interface ArticleHeaderProps {
   category: string;
@@ -31,7 +34,7 @@ export function ArticleHeaderRender({
         {standfirst && <p className="p1-article-header__standfirst">{standfirst}</p>}
         <div className="p1-article-header__byline">
           <div className="p1-article-header__avatar">
-            {authorAvatar && <img src={authorAvatar} alt={authorName} className="p1-article-header__avatar-img" />}
+            {authorAvatar && <FallbackImg src={authorAvatar} fallback={P1_FALLBACKS.AVATAR} alt={authorName} className="p1-article-header__avatar-img" />}
           </div>
           <div className="p1-article-header__author-info">
             <div className="p1-article-header__author-name">{authorName}</div>

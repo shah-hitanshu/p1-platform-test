@@ -1,5 +1,6 @@
 import type { ComponentConfig } from "@puckeditor/core";
-import { defineMeta, wireframe } from '@/registry/p1/internal/define-meta';
+import { defineMeta } from '@/registry/p1/internal/define-meta';
+import { P1_ASSETS } from '@/registry/p1/internal/assets';
 import { GalleryRender, type GalleryProps, type GalleryImage } from "./gallery";
 export type { GalleryProps, GalleryImage };
 
@@ -66,7 +67,7 @@ export const GalleryBlock: ComponentConfig<GalleryProps> = {
         src: { type: "text" as const },
         caption: { type: "text" as const, contentEditable: true, visible: false },
       },
-      defaultItemProps: { src: wireframe(800, 600), caption: "" },
+      defaultItemProps: { src: P1_ASSETS.LANDSCAPE, caption: "" },
       getItemSummary: (item: GalleryImage) => item.caption || "Image",
     },
   },
@@ -79,12 +80,12 @@ export const GalleryBlock: ComponentConfig<GalleryProps> = {
     radius: "soft",
     captions: "off",
     images: [
-      { src: wireframe(800, 600), caption: "Team offsite" },
-      { src: wireframe(800, 600), caption: "Workshop" },
-      { src: wireframe(800, 600), caption: "Launch day" },
-      { src: wireframe(800, 600), caption: "Planning" },
-      { src: wireframe(800, 600), caption: "Standup" },
-      { src: wireframe(800, 600), caption: "Ship it" },
+      { src: P1_ASSETS.LANDSCAPE, caption: "Team offsite" },
+      { src: P1_ASSETS.LANDSCAPE, caption: "Workshop" },
+      { src: P1_ASSETS.LANDSCAPE, caption: "Launch day" },
+      { src: P1_ASSETS.LANDSCAPE, caption: "Planning" },
+      { src: P1_ASSETS.LANDSCAPE, caption: "Standup" },
+      { src: P1_ASSETS.LANDSCAPE, caption: "Ship it" },
     ],
   },
   render: GalleryRender,
@@ -95,5 +96,5 @@ export const meta = defineMeta({
   description: 'Multi-image display in grid, masonry, filmstrip, or carousel layout with optional captions and configurable columns/gap/ratio; use for photo galleries.',
   categories: ["showcase"],
   published: true,
-  registryDependencies: ["@p1/tokens","@p1/internal-icons"],
+  registryDependencies: ["@p1/tokens","@p1/internal-icons","@p1/internal-img"],
 });

@@ -1,6 +1,8 @@
+import { FallbackImg } from '@/registry/p1/internal/img';
 import { Btn } from "@/registry/p1/internal/btn";
 import { Icon } from "@/registry/p1/internal/icons";
 import "./feature-media.css";
+
 
 export interface FeatureMediaBullet {
   text: string;
@@ -32,7 +34,7 @@ export function FeatureMediaRender({
       <div className="p1-feature-media__inner">
         <div className="p1-feature-media__media">
           <div className="p1-feature-media__img-frame">
-            {imageSrc && <img src={imageSrc} alt="" className="p1-feature-media__img" />}
+            {imageSrc && <FallbackImg src={imageSrc} alt="" className="p1-feature-media__img" />}
           </div>
         </div>
         <div className="p1-feature-media__copy">

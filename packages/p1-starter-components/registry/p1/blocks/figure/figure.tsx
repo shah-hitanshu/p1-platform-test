@@ -1,4 +1,6 @@
+import { FallbackImg } from '@/registry/p1/internal/img';
 import "./figure.css";
+
 
 export interface FigureProps {
   src: string;
@@ -16,7 +18,7 @@ export function FigureRender({ src, alt, caption, credit, ratio, width, radius, 
   return (
     <figure className="p1-figure p1-block" data-width={width} data-radius={radius}>
       <div className="p1-figure__frame" style={{ aspectRatio: ratio }}>
-        <img src={src} alt={alt} className="p1-figure__img" data-treatment={treatment} />
+        <FallbackImg src={src} alt={alt} className="p1-figure__img" data-treatment={treatment} />
       </div>
       {hasCap && (
         <figcaption className="p1-figure__caption">

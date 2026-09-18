@@ -1,4 +1,7 @@
+import { P1_FALLBACKS } from '@/registry/p1/internal/assets';
+import { FallbackImg } from '@/registry/p1/internal/img';
 import "./testimonial.css";
+
 
 export interface TestimonialProps {
   quote: string;
@@ -17,7 +20,7 @@ export function TestimonialRender({ quote, name, role, avatarSrc, layout, tone }
         <p className="p1-testimonial__quote">{quote}</p>
         <div className="p1-testimonial__attribution">
           <div className="p1-testimonial__avatar">
-            {avatarSrc && <img src={avatarSrc} alt={name} className="p1-testimonial__avatar-img" />}
+            {avatarSrc && <FallbackImg src={avatarSrc} fallback={P1_FALLBACKS.AVATAR} alt={name} className="p1-testimonial__avatar-img" />}
           </div>
           <div className="p1-testimonial__byline">
             <div className="p1-testimonial__name">{name}</div>

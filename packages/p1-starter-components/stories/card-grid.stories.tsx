@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { CardGridBlock, type CardGridProps } from "@/registry/p1/blocks/card-grid/card-grid.block";
-import { wireframe } from '@/registry/p1/internal/define-meta';
+import { P1_ASSETS } from '@/registry/p1/internal/assets';
 
 const CardGridWrapper = (props: CardGridProps) => {
   const Component = CardGridBlock.render as React.FC<CardGridProps>;
@@ -23,9 +23,9 @@ export const Default: Story = {
     heading: "Customer stories",
     columns: "3",
     items: [
-      { title: "Northwind", subtitle: "Retail · 38% faster launches", imageUrl: wireframe(600, 400) },
-      { title: "Atlas Media", subtitle: "Publishing · 2M monthly reads", imageUrl: wireframe(600, 400) },
-      { title: "Brightline", subtitle: "SaaS · 4.9/5 satisfaction", imageUrl: wireframe(600, 400) },
+      { title: "Northwind", subtitle: "Retail · 38% faster launches", imageUrl: P1_ASSETS.LANDSCAPE },
+      { title: "Atlas Media", subtitle: "Publishing · 2M monthly reads", imageUrl: P1_ASSETS.LANDSCAPE },
+      { title: "Brightline", subtitle: "SaaS · 4.9/5 satisfaction", imageUrl: P1_ASSETS.LANDSCAPE },
     ],
   },
 };

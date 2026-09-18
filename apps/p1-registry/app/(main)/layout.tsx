@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { Inter, Poppins } from 'next/font/google';
 import Link from 'next/link';
+import { P1_ASSETS } from '@/constants/assets';
 import './globals.css';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font' });
@@ -23,7 +24,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <header className="p1-header">
             <div className="p1-header__inner">
               <Link href="/" className="p1-header__brand">
-                <img src="/p1_logo.svg" alt="P1" className="p1-header__logo" />
+                <img src={P1_ASSETS.LOGO_URL} alt="P1" className="p1-header__logo" />
                 <span className="p1-header__brand-divider" aria-hidden="true" />
                 <span className="p1-header__brand-label">Components</span>
               </Link>

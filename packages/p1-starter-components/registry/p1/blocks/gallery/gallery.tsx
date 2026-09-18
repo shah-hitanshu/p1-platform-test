@@ -1,7 +1,9 @@
 "use client";
 import * as React from "react";
+import { FallbackImg } from '@/registry/p1/internal/img';
 import { Icon } from "@/registry/p1/internal/icons";
 import "./gallery.css";
+
 
 export interface GalleryImage {
   src: string;
@@ -45,7 +47,7 @@ const GalleryCarousel: React.FC<{
   return (
     <div className="p1-gallery__carousel">
       <div className={`p1-gallery__img-wrap ${radiusClass}`} style={{ aspectRatio: ratio }}>
-        <img src={im.src} alt={im.caption || ""} className="p1-gallery__img" />
+        <FallbackImg src={im.src} alt={im.caption || ""} className="p1-gallery__img" />
         {n > 1 &&
           (["prev", "next"] as const).map((dir) => (
             <button
@@ -91,7 +93,7 @@ export function GalleryRender({ heading, layout, columns, gap, ratio, radius, ca
   const tile = (im: GalleryImage, key: number, extra?: React.CSSProperties) => (
     <figure key={key} className="p1-gallery__tile" style={extra}>
       <div className={`p1-gallery__img-wrap ${radiusClass}`}>
-        <img
+        <FallbackImg
           src={im.src}
           alt={im.caption || ""}
           className="p1-gallery__img"

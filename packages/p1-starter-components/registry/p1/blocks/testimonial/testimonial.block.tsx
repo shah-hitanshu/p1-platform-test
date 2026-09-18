@@ -1,5 +1,6 @@
 import type { ComponentConfig } from "@puckeditor/core";
-import { defineMeta, wireframe } from '@/registry/p1/internal/define-meta';
+import { defineMeta } from '@/registry/p1/internal/define-meta';
+import { P1_ASSETS } from '@/registry/p1/internal/assets';
 import { TestimonialRender, type TestimonialProps } from "./testimonial";
 export type { TestimonialProps };
 
@@ -49,7 +50,7 @@ export const TestimonialBlock: ComponentConfig<TestimonialProps> = {
     quote: "The team was up and running in a day, and we haven't looked back. It just works.",
     name: "Jordan Ellis",
     role: "Operations Lead",
-    avatarSrc: wireframe(200, 200),
+    avatarSrc: P1_ASSETS.AVATAR,
     layout: "centered",
     tone: "light",
   },
@@ -61,4 +62,5 @@ export const meta = defineMeta({
   description: 'Customer testimonial with quote text, name, role, and avatar in centered/card/large layouts and multiple tones; use for social proof.',
   categories: ["trust"],
   published: true,
+  registryDependencies: ["@p1/tokens","@p1/internal-img"],
 });

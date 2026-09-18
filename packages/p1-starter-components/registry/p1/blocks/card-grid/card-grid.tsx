@@ -1,4 +1,6 @@
+import { FallbackImg } from '@/registry/p1/internal/img';
 import "./card-grid.css";
+
 
 export interface CardGridItem {
   title: string;
@@ -22,7 +24,7 @@ export function CardGridRender({ heading, columns, items }: CardGridProps) {
             <div key={i} className="p1-card-grid__card">
               {item.imageUrl && (
                 <div className="p1-card-grid__img-wrap">
-                  <img src={item.imageUrl} alt="" className="p1-card-grid__img" />
+                  <FallbackImg src={item.imageUrl} alt="" className="p1-card-grid__img" />
                 </div>
               )}
               <div className="p1-card-grid__body">

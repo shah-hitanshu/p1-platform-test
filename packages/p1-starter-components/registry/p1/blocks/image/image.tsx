@@ -1,4 +1,6 @@
+import { FallbackImg } from '@/registry/p1/internal/img';
 import "./image.css";
+
 
 export interface ImageProps {
   src: string;
@@ -20,7 +22,7 @@ export function ImageRender({ src, alt, width, ratio, fit, position, radius, tre
         data-radius={!full ? radius : undefined}
         style={{ aspectRatio: ratio }}
       >
-        <img
+        <FallbackImg
           src={src}
           alt={alt}
           className="p1-image__img"

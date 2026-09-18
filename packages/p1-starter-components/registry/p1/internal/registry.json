@@ -37,6 +37,25 @@
       }
     },
     {
+      "name": "internal-img",
+      "type": "registry:lib",
+      "title": "P1 image with fallback",
+      "description": "Image element and placeholder asset URLs used by the P1 image blocks. FallbackImg swaps to an inline SVG when a source fails to load.",
+      "files": [
+        {
+          "path": "img.tsx",
+          "type": "registry:lib"
+        },
+        {
+          "path": "assets.ts",
+          "type": "registry:lib"
+        }
+      ],
+      "meta": {
+        "version": "0.2.0"
+      }
+    },
+    {
       "name": "internal-meta",
       "type": "registry:lib",
       "title": "P1 block meta helper",

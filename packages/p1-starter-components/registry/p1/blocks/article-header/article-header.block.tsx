@@ -1,5 +1,6 @@
 import type { ComponentConfig } from "@puckeditor/core";
-import { defineMeta, wireframe } from '@/registry/p1/internal/define-meta';
+import { defineMeta } from '@/registry/p1/internal/define-meta';
+import { P1_ASSETS } from '@/registry/p1/internal/assets';
 import { ArticleHeaderRender, type ArticleHeaderProps } from "./article-header";
 export type { ArticleHeaderProps };
 
@@ -68,7 +69,7 @@ export const ArticleHeaderBlock: ComponentConfig<ArticleHeaderProps> = {
     standfirst:
       "A behind-the-scenes look at how the team moved from weeks to hours — and the small habits that made the difference.",
     authorName: "Jordan Ellis",
-    authorAvatar: wireframe(200, 200),
+    authorAvatar: P1_ASSETS.AVATAR,
     date: "April 18, 2026",
     readTime: "6 min read",
     align: "left",
@@ -82,4 +83,5 @@ export const meta = defineMeta({
   description: 'Blog/article masthead with category, title, standfirst, author avatar, date, and read-time; use at the top of editorial pages.',
   categories: ["editorial"],
   published: true,
+  registryDependencies: ["@p1/tokens","@p1/internal-img"],
 });

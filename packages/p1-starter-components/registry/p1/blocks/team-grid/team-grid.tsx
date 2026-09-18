@@ -1,4 +1,7 @@
+import { P1_FALLBACKS } from '@/registry/p1/internal/assets';
+import { FallbackImg } from '@/registry/p1/internal/img';
 import "./team-grid.css";
+
 
 export interface TeamMember {
   name: string;
@@ -27,7 +30,7 @@ export function TeamGridRender({ eyebrow, heading, columns, shape, tone, members
           {(members || []).map((m, i) => (
             <div key={i} className="p1-team-grid__member">
               <div className="p1-team-grid__avatar" data-shape={shape}>
-                {m.avatar && <img src={m.avatar} alt={m.name} className="p1-team-grid__avatar-img" />}
+                {m.avatar && <FallbackImg src={m.avatar} fallback={P1_FALLBACKS.AVATAR} alt={m.name} className="p1-team-grid__avatar-img" />}
               </div>
               <div className="p1-team-grid__name">{m.name}</div>
               <div className="p1-team-grid__role">{m.role}</div>

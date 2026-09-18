@@ -1,5 +1,6 @@
 import type { ComponentConfig } from "@puckeditor/core";
-import { defineMeta, wireframe } from '@/registry/p1/internal/define-meta';
+import { defineMeta } from '@/registry/p1/internal/define-meta';
+import { P1_ASSETS } from '@/registry/p1/internal/assets';
 import { FeatureMediaRender, type FeatureMediaProps, type FeatureMediaBullet } from "./feature-media";
 export type { FeatureMediaProps, FeatureMediaBullet };
 
@@ -72,7 +73,7 @@ export const FeatureMediaBlock: ComponentConfig<FeatureMediaProps> = {
       { text: "Publish in one click" },
     ],
     buttonLabel: "See how it works →",
-    imageSrc: wireframe(1000, 563),
+    imageSrc: P1_ASSETS.LANDSCAPE,
     mediaSide: "right",
     tone: "white",
   },
@@ -84,5 +85,5 @@ export const meta = defineMeta({
   description: 'Side-by-side text+image block with eyebrow, title, body, bullet points, and a CTA button; use for product feature highlights.',
   categories: ["value"],
   published: true,
-  registryDependencies: ["@p1/tokens","@p1/internal-btn","@p1/internal-icons"],
+  registryDependencies: ["@p1/tokens","@p1/internal-btn","@p1/internal-icons","@p1/internal-img"],
 });

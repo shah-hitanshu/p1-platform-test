@@ -94,6 +94,7 @@
       ],
       "registryDependencies": [
         "@p1/tokens",
+        "@p1/internal-img",
         "@p1/internal-meta"
       ],
       "meta": {
@@ -213,6 +214,7 @@
       ],
       "registryDependencies": [
         "@p1/tokens",
+        "@p1/internal-img",
         "@p1/internal-meta"
       ],
       "meta": {
@@ -531,6 +533,7 @@
         "@p1/tokens",
         "@p1/internal-btn",
         "@p1/internal-icons",
+        "@p1/internal-img",
         "@p1/internal-meta"
       ],
       "meta": {
@@ -609,6 +612,7 @@
       ],
       "registryDependencies": [
         "@p1/tokens",
+        "@p1/internal-img",
         "@p1/internal-meta"
       ],
       "meta": {
@@ -689,6 +693,7 @@
       "registryDependencies": [
         "@p1/tokens",
         "@p1/internal-icons",
+        "@p1/internal-img",
         "@p1/internal-meta"
       ],
       "meta": {
@@ -808,6 +813,7 @@
       "registryDependencies": [
         "@p1/tokens",
         "@p1/internal-btn",
+        "@p1/internal-img",
         "@p1/internal-meta"
       ],
       "meta": {
@@ -847,6 +853,7 @@
       ],
       "registryDependencies": [
         "@p1/tokens",
+        "@p1/internal-img",
         "@p1/internal-meta"
       ],
       "meta": {
@@ -1364,6 +1371,7 @@
       ],
       "registryDependencies": [
         "@p1/tokens",
+        "@p1/internal-img",
         "@p1/internal-meta"
       ],
       "meta": {
@@ -1403,6 +1411,7 @@
       ],
       "registryDependencies": [
         "@p1/tokens",
+        "@p1/internal-img",
         "@p1/internal-meta"
       ],
       "meta": {
