@@ -40,6 +40,7 @@ const SITE_PREFIX = 'resolution-writes-test';
 
 const HASH_A = 'sha256:aaaa';
 const HASH_B = 'sha256:bbbb';
+const HASH_C = 'sha256:cccc';
 
 const HEADING = {
   type: 'HeadingBlock',
@@ -821,6 +822,63 @@ describe('Upstream-resolution writes - Integration Tests', () => {
       });
     });
 
+    it('rejects a stale clear seeding a workstream with no row, once main has moved on', async () => {
+      // Chained-merge regression for PCC-3948's review: (1) the source inherits a
+      // review and clears it, (2) main records a newer review, (3) the source
+      // merges into a receiving workstream with no resolution row of its own. The
+      // unguarded seed would apply the stale clear and delete main's newer review;
+      // the receiver should keep it instead, and so should main once the receiver
+      // goes on to merge.
+      const thirdId = await makeBranch('carry-target');
+      await setUpstreamResolutions(translationId, branchId, one('HeadingBlock-1', '/title', HASH_A));
+      await clearUpstreamResolutions(
+        translationId,
+        otherId,
+        one('HeadingBlock-1', '/title'),
+        branchId,
+      );
+      await recordWhatItStartedWith(otherId);
+      await setUpstreamResolutions(translationId, branchId, one('HeadingBlock-1', '/title', HASH_B));
+
+      await carryUpstreamResolutions(otherId, thirdId, []);
+
+      const onThird = await getUpstreamResolutions(translationId, thirdId);
+      expect(onThird.get('HeadingBlock-1')?.get('/title')?.hash).toBe(HASH_B);
+
+      await carryUpstreamResolutions(thirdId, branchId, []);
+
+      const onMain = await getUpstreamResolutions(translationId, branchId);
+      expect(onMain.get('HeadingBlock-1')?.get('/title')?.hash).toBe(HASH_B);
+    });
+
+    it('rejects a stale set seeding a workstream with no row, once main has moved on', async () => {
+      // Same shape as the stale-clear case above, but the source's own diff is a
+      // set rather than a clear: the source settles a value against a baseline
+      // that main has since moved past. The unguarded seed would let the source's
+      // stale set overwrite main's newer value on the receiver; it should be
+      // rejected instead, on the receiver and through to main once it merges.
+      const thirdId = await makeBranch('carry-target');
+      await setUpstreamResolutions(translationId, branchId, one('HeadingBlock-1', '/title', HASH_A));
+      await setUpstreamResolutions(
+        translationId,
+        otherId,
+        one('HeadingBlock-1', '/title', HASH_B),
+        branchId,
+      );
+      await recordWhatItStartedWith(otherId);
+      await setUpstreamResolutions(translationId, branchId, one('HeadingBlock-1', '/title', HASH_C));
+
+      await carryUpstreamResolutions(otherId, thirdId, []);
+
+      const onThird = await getUpstreamResolutions(translationId, thirdId);
+      expect(onThird.get('HeadingBlock-1')?.get('/title')?.hash).toBe(HASH_C);
+
+      await carryUpstreamResolutions(thirdId, branchId, []);
+
+      const onMain = await getUpstreamResolutions(translationId, branchId);
+      expect(onMain.get('HeadingBlock-1')?.get('/title')?.hash).toBe(HASH_C);
+    });
+
     it('carries on what a workstream received, once that workstream merges', async () => {
       const thirdId = await makeBranch('carry-target');
       await setUpstreamResolutions(translationId, branchId, one('HeadingBlock-1', '/title'));
@@ -875,6 +933,56 @@ describe('Upstream-resolution writes - Integration Tests', () => {
       expect(await inheritedOn(thirdId)).toEqual({
         'HeadingBlock-1': { '/title': { hash: HASH_A, at: expect.any(String) } },
       });
+    });
+
+    it('keeps a mark the receiving workstream recorded on the same field while the source was open', async () => {
+      await setUpstreamResolutions(
+        translationId,
+        otherId,
+        one('HeadingBlock-1', '/title', HASH_A),
+        branchId,
+      );
+      await recordWhatItStartedWith(otherId);
+      await setUpstreamResolutions(translationId, branchId, one('HeadingBlock-1', '/title', HASH_B));
+
+      await carryUpstreamResolutions(otherId, branchId, []);
+
+      const onMain = await getUpstreamResolutions(translationId, branchId);
+      expect(onMain.get('HeadingBlock-1')?.get('/title')?.hash).toBe(HASH_B);
+    });
+
+    it('keeps a mark the receiving workstream re-settled on a field the source is clearing', async () => {
+      await setUpstreamResolutions(translationId, branchId, one('HeadingBlock-1', '/title', HASH_A));
+      await clearUpstreamResolutions(
+        translationId,
+        otherId,
+        one('HeadingBlock-1', '/title'),
+        branchId,
+      );
+      await recordWhatItStartedWith(otherId);
+      await setUpstreamResolutions(translationId, branchId, one('HeadingBlock-1', '/title', HASH_B));
+
+      await carryUpstreamResolutions(otherId, branchId, []);
+
+      const onMain = await getUpstreamResolutions(translationId, branchId);
+      expect(onMain.get('HeadingBlock-1')?.get('/title')?.hash).toBe(HASH_B);
+    });
+
+    it('does not resurrect a mark the receiving workstream cleared on a field the source resettles', async () => {
+      await setUpstreamResolutions(translationId, branchId, one('HeadingBlock-1', '/title', HASH_A));
+      await setUpstreamResolutions(
+        translationId,
+        otherId,
+        one('HeadingBlock-1', '/title', HASH_B),
+        branchId,
+      );
+      await recordWhatItStartedWith(otherId);
+      await clearUpstreamResolutions(translationId, branchId, one('HeadingBlock-1', '/title'));
+
+      await carryUpstreamResolutions(otherId, branchId, []);
+
+      const onMain = await getUpstreamResolutions(translationId, branchId);
+      expect(onMain.get('HeadingBlock-1')?.get('/title')).toBeUndefined();
     });
 
     it('reaches the same result run twice', async () => {

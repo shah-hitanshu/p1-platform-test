@@ -1038,10 +1038,16 @@ export async function clearUpstreamResolutions(
  * One row's difference from the map it started with, as the batches that carry it:
  * `sets` holds the resolutions to record, keyed by slot then pointer, and `clears`
  * the pointers to remove, keyed by slot.
+ *
+ * `baseline` names, for every pointer either batch touches, the value `inherited`
+ * held there — the value both this branch and the branch it inherited from last
+ * agreed on. It is what the receiving branch is expected to still hold for that
+ * pointer; a pointer left out of `baseline` was expected to hold nothing.
  */
 interface CarriedResolutions {
   sets: Record<string, Record<string, UpstreamResolution>>;
   clears: Record<string, string[]>;
+  baseline: Record<string, Record<string, UpstreamResolution>>;
 }
 
 /**
@@ -1063,6 +1069,12 @@ function carriedResolutions(
 ): CarriedResolutions | null {
   const sets = Object.create(null) as Record<string, Record<string, UpstreamResolution>>;
   const clears = Object.create(null) as Record<string, string[]>;
+  const baseline = Object.create(null) as Record<string, Record<string, UpstreamResolution>>;
+  const markBaseline = (slotId: string, propPath: string, resolution: UpstreamResolution): void => {
+    const slot = baseline[slotId] ?? (Object.create(null) as Record<string, UpstreamResolution>);
+    slot[propPath] = resolution;
+    baseline[slotId] = slot;
+  };
   let settled = false;
   for (const [slotId, props] of holds) {
     for (const [propPath, resolution] of props) {
@@ -1073,37 +1085,105 @@ function carriedResolutions(
       const slot = sets[slotId] ?? (Object.create(null) as Record<string, UpstreamResolution>);
       slot[propPath] = resolution;
       sets[slotId] = slot;
+      if (came !== undefined) {
+        markBaseline(slotId, propPath, came);
+      }
       settled = true;
     }
   }
   for (const [slotId, props] of inherited) {
-    for (const propPath of props.keys()) {
+    for (const [propPath, resolution] of props) {
       if (holds.get(slotId)?.has(propPath) === true) {
         continue;
       }
       clears[slotId] = [...(clears[slotId] ?? []), propPath];
+      markBaseline(slotId, propPath, resolution);
       settled = true;
     }
   }
-  return settled ? { sets, clears } : null;
+  return settled ? { sets, clears, baseline } : null;
+}
+
+/**
+ * The SET batch at `setsParam` (`{slot: {prop: resolution}}`), pruned to the
+ * pointers where `stored`'s current value for that pointer is not distinct from
+ * `baselineParam`'s — the value the carrying branch last agreed the receiving
+ * branch held there. A pointer `stored` now holds differently, or holds when
+ * `baselineParam` expected none, has been settled or cleared independently on the
+ * receiving branch since, and is left out so the carry does not overwrite it.
+ */
+function setsUnlessTargetDiverged(setsParam: SQL, stored: SQL, baselineParam: SQL): SQL {
+  return sql`(
+  SELECT COALESCE(jsonb_object_agg(b.slot, b.props), '{}'::jsonb) FROM (
+    SELECT slot.key AS slot,
+           (SELECT COALESCE(jsonb_object_agg(prop.key, prop.value), '{}'::jsonb)
+              FROM jsonb_each(slot.value) prop
+             WHERE NOT (
+               (${jsonObject(stored)} -> slot.key -> prop.key)
+                 IS DISTINCT FROM (${jsonObject(baselineParam)} -> slot.key -> prop.key)
+             )
+           ) AS props
+      FROM jsonb_each(${setsParam}) slot
+  ) b WHERE b.props <> '{}'::jsonb)`;
+}
+
+/**
+ * The CLEAR batch at `clearsParam` (`{slot: [prop, ...]}`), pruned on the same
+ * terms as `setsUnlessTargetDiverged`: only the pointers where `stored` still
+ * holds what `baselineParam` expects, so a clear from the batch does not remove a
+ * resolution the receiving branch has recorded, or changed, on its own since.
+ */
+function clearsUnlessTargetDiverged(clearsParam: SQL, stored: SQL, baselineParam: SQL): SQL {
+  return sql`(
+  SELECT COALESCE(jsonb_object_agg(b.slot, b.props), '{}'::jsonb) FROM (
+    SELECT slot.key AS slot,
+           (SELECT COALESCE(jsonb_agg(prop), '[]'::jsonb)
+              FROM jsonb_array_elements_text(slot.value) prop
+             WHERE NOT (
+               (${jsonObject(stored)} -> slot.key -> prop)
+                 IS DISTINCT FROM (${jsonObject(baselineParam)} -> slot.key -> prop)
+             )
+           ) AS props
+      FROM jsonb_each(${clearsParam}) slot
+  ) b WHERE b.props <> '[]'::jsonb)`;
 }
 
 /**
  * Applies one translation's carried batches to `targetBranchId`: the map that
- * branch holds minus the cleared pointers, merged with the recorded ones. `$3` is
- * the set batch, `$4` the clear batch, and `$5` the branch to inherit from.
+ * branch holds minus the cleared pointers, merged with the recorded ones. `sets`
+ * is the set batch, `clears` the clear batch, `mainBranchId` the branch to
+ * inherit from, and `baseline` the baseline the carrying branch last agreed the
+ * target held.
  *
  * A target with no row of its own is seeded the way its own first write seeds one:
  * main's map with the batches applied, and main's map recorded as what the row
  * started with. Main inherits nothing, so a row seeded for main starts empty.
+ * Absent a row, the target's effective value for every pointer either batch
+ * touches is whatever main currently holds there, so the seed guards both
+ * batches against `inherited` — main's current map — exactly as the existing-row
+ * path guards them against `r.resolutions`: a carried change is applied only
+ * where that current value still matches `baseline`, what the carrying branch
+ * last agreed the target held. Without this guard, "no row yet" would apply a
+ * stale set or clear whenever main moved on that pointer after the carrying
+ * branch captured its baseline — the same effective review protected only when
+ * the receiver happened to already have a row from resolving an unrelated field.
+ *
+ * For an existing row, a pointer either batch names is applied only where the
+ * row's current value for it still matches `baseline` — what the carrying branch
+ * last saw there. A pointer the target has since settled, cleared, or changed on
+ * its own no longer matches, and is left out of the merge, so the carry does not
+ * silently overwrite work the target did on its own while the carrying branch was
+ * open, in either direction.
  *
  * One statement per translation, applied slot-wise over the row's own map, so a
  * resolution recorded on the target while the carry runs survives it.
  *
  * The same statement enforces `MAX_OVERRIDE_ENTRIES` over the result. A seeded row
- * that would breach the ceiling holds the set batch alone and starts from nothing,
- * both columns turning on the one condition so they cannot disagree about which
- * map the row began as. An existing row the batches would take past the ceiling is
+ * that would breach the ceiling holds the guarded set batch alone and starts from
+ * nothing, both columns turning on the one condition so they cannot disagree
+ * about which map the row began as — the fallback reuses the same filtered batch
+ * the ceiling check itself was computed from, so it cannot reintroduce a set the
+ * guard just rejected. An existing row the batches would take past the ceiling is
  * left as it stands, and the changes it settled are listed again.
  *
  * A no-op when the document has no localization edge, so no resolutions are held
@@ -1117,14 +1197,19 @@ async function applyCarriedResolutions(
 ): Promise<void> {
   const sets = sql`${JSON.stringify(carried.sets)}::jsonb`;
   const clears = sql`${JSON.stringify(carried.clears)}::jsonb`;
+  const baseline = sql`${JSON.stringify(carried.baseline)}::jsonb`;
   const inherited = inheritedMap(derivedDocumentId, mainBranchId);
-  const seeded = mergedWithBatch(prunedByBatch(inherited, clears), sets);
-  const merged = mergedWithBatch(prunedByBatch(STORED_RESOLUTIONS, clears), sets);
+  const seededSets = setsUnlessTargetDiverged(sets, inherited, baseline);
+  const seededClears = clearsUnlessTargetDiverged(clears, inherited, baseline);
+  const seeded = mergedWithBatch(prunedByBatch(inherited, seededClears), seededSets);
+  const guardedSets = setsUnlessTargetDiverged(sets, STORED_RESOLUTIONS, baseline);
+  const guardedClears = clearsUnlessTargetDiverged(clears, STORED_RESOLUTIONS, baseline);
+  const merged = mergedWithBatch(prunedByBatch(STORED_RESOLUTIONS, guardedClears), guardedSets);
   await db().execute(sql`
     INSERT INTO app.document_relation_branch_resolutions AS r
        (source_document_id, relation_type, branch_id, resolutions, inherited)
      SELECT ${derivedDocumentId}, 'localization', ${targetBranchId},
-            CASE WHEN seed.within_ceiling THEN seed.resolutions ELSE ${sets} END,
+            CASE WHEN seed.within_ceiling THEN seed.resolutions ELSE ${seededSets} END,
             CASE WHEN seed.within_ceiling THEN seed.inherited ELSE '{}'::jsonb END
        FROM (
          SELECT ${seeded} AS resolutions,
@@ -1157,6 +1242,15 @@ async function applyCarriedResolutions(
  * cleared is removed from the target. An entry the two agree on came over
  * untouched, and the target's entry for it stands, whatever the target has settled
  * since.
+ *
+ * A mark the source branch's diff does touch is applied only where the target
+ * still holds, for that same pointer, what the source branch's own `inherited`
+ * recorded — the value both branches last agreed on. A pointer the target has
+ * since recorded, cleared, or changed on its own no longer matches, and is left
+ * where the target put it: the target may have settled or cleared that pointer
+ * itself while the source branch was open, and a carry must not silently
+ * overwrite that in either direction, any more than a source branch's own
+ * untouched entries should be.
  *
  * A carry leaves the target holding what it would hold had it settled those
  * changes itself. A workstream receiving one has its row seeded from main the way
