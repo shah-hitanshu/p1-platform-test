@@ -1,0 +1,28 @@
+/* Agent glyph on its own line above an attributed version's byline */
+.agentGlyph {
+  display: grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  margin-top: 4px;
+  border-radius: 50%;
+  background: var(--pds-color-foreground-default, #222);
+  color: #fff;
+}
+
+.agentGlyph svg {
+  width: 8px;
+  height: 8px;
+}
+
+/* What an attributed version changed, in the agent's words */
+.description {
+  font-size: 11.5px;
+  color: var(--pds-color-foreground-default, #222);
+  margin-top: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}

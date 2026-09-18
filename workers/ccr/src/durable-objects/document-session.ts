@@ -50,6 +50,7 @@ import {
 import type { StoppedTurns } from './stopped-turns';
 import { serializeStoppedTurns, deserializeStoppedTurns } from './stopped-turns';
 import { rollbackToSessionCheckpoint } from './session-checkpoint-client';
+import { internalApiConfig } from './internal-api-config';
 import {
   persistPresence as persistPresenceFn,
   restorePresence as restorePresenceFn,
@@ -465,7 +466,7 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
 
     if (!this.initialized) {
       console.log('CRDT restore: falling through to Postgres initialization');
-      const hasHttpApi = this.env.INTERNAL_API_URL !== undefined && this.env.INTERNAL_SECRET !== undefined;
+      const hasHttpApi = internalApiConfig(this.env) !== undefined;
       const hasHyperdrive = this.env.HYPERDRIVE !== undefined;
       if (hasHttpApi || hasHyperdrive) {
         try {

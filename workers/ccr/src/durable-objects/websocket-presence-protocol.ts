@@ -40,6 +40,7 @@ import {
   sendPresenceError,
   jsonResponse,
 } from './websocket-utils';
+import { internalApiConfig } from './internal-api-config';
 
 // =============================================================================
 // Dependencies interface
@@ -158,10 +159,8 @@ export async function handleWsPublishRequest(
     return;
   }
 
-  const internalApiUrl = deps.env.INTERNAL_API_URL;
-  const internalSecret = deps.env.INTERNAL_SECRET;
-
-  if (internalApiUrl === undefined || internalSecret === undefined) {
+  const internalApi = internalApiConfig(deps.env);
+  if (internalApi === undefined) {
     sendWsMessage(sender, {
       type: 'publish_result',
       requestId,
@@ -182,12 +181,12 @@ export async function handleWsPublishRequest(
     });
 
     // Step 2: Call internal publish endpoint
-    const publishUrl = `${internalApiUrl}/internal/publish`;
+    const publishUrl = `${internalApi.url}/internal/publish`;
     const publishResponse = await fetch(publishUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Internal-Secret': internalSecret,
+        'X-Internal-Secret': internalApi.secret,
       },
       body: JSON.stringify({
         siteId,

@@ -64,6 +64,7 @@ export async function handleSyncQueue(
       actionType: msg.actionType,
       actionMetadata: msg.actionMetadata,
       puckActions: msg.puckActions,
+      attribution: msg.attribution,
     }));
 
     // Open single connection per batch and persist

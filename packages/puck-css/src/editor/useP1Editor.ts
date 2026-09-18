@@ -11,11 +11,12 @@
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import type { Plugin } from '@puckeditor/core';
-import type { PuckData, DocumentVersion } from '@pantheon-systems/css-client';
+import { isAgentProposal, type PuckData, type DocumentVersion } from '@pantheon-systems/css-client';
 import type { UiState } from '@puckeditor/core';
 import { useP1Puck } from '../core/P1PuckContext.js';
 import { useVersions } from '../versioning/useVersions.js';
 import { useP1Auth } from '../auth/index.js';
+import { subscribeToThreadEvents } from '../features/threads/realtime-events.js';
 import type { P1PuckContextValue } from '../core/types.js';
 import { isDocumentGoneError, isDocumentNotFoundError } from '../data/utils.js';
 import { useP1Plugin } from './useP1Plugin.js';
@@ -410,6 +411,18 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
   useEffect(() => {
     if (ccr.saveStatus === 'saved') void refreshVersions();
   }, [ccr.saveStatus, refreshVersions]);
+
+  // An accepted proposal is written as a version before the acceptance is
+  // announced, so the rail can show it as soon as the event arrives.
+  useEffect(
+    () => subscribeToThreadEvents((event) => {
+      if (event.type !== 'comment_updated') return;
+      if (isAgentProposal(event.comment) && event.comment.metadata.status === 'accepted') {
+        void refreshVersions();
+      }
+    }),
+    [refreshVersions],
+  );
 
   // Select a version — latest returns to live editing, others load historical
   const handleVersionSelect = useCallback((version: DocumentVersion) => {

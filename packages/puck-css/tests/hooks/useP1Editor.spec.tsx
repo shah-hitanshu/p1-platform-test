@@ -7,7 +7,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import React from 'react';
-import type { P1Client, Branch, PuckData } from '@pantheon-systems/css-client';
+import type { P1Client, Branch, PuckData, ThreadEvent, ThreadOverview } from '@pantheon-systems/css-client';
 
 // =============================================================================
 // Mock useRealtime hook
@@ -47,6 +47,7 @@ vi.mock('../../src/auth/index.js', () => ({
 
 const { P1PuckProvider } = await import('../../src/editor/P1PuckProvider.js');
 const { useP1Editor } = await import('../../src/editor/useP1Editor.js');
+const { publishThreadEvent } = await import('../../src/features/threads/realtime-events.js');
 
 // =============================================================================
 // Mock Data
@@ -696,6 +697,75 @@ describe('useP1Editor', () => {
   // =========================================================================
   // Should throw outside provider
   // =========================================================================
+
+  // =========================================================================
+  // Versions after an accepted proposal
+  // =========================================================================
+
+  describe('when a proposal in the thread changes', () => {
+    const thread = { id: 'thread-1', siteId: 'site-1' } as ThreadOverview;
+    const author = { type: 'agent' as const, id: 'agent-1', name: 'Copy Editor', avatar: null };
+
+    function proposalEvent(status: 'proposed' | 'accepted' | 'dismissed'): ThreadEvent {
+      return {
+        type: 'comment_updated',
+        siteId: 'site-1',
+        thread,
+        comment: {
+          id: 'comment-1',
+          threadId: 'thread-1',
+          kind: 'agent_proposal',
+          body: '',
+          metadata: { status, summary: 'Shorten the headline', operations: [] },
+          author,
+          mentions: [],
+          createdAt: '2026-01-01T00:00:00Z',
+          editedAt: null,
+        },
+      };
+    }
+
+    async function renderLoadedEditor() {
+      const wrapper = createProviderWrapper(client);
+      renderHook(() => useP1Editor({ documentPath: '/pages/home', puckConfig: mockPuckConfig }), { wrapper });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(100);
+      });
+      return vi.mocked(client.versions.list);
+    }
+
+    it('reloads the versions once a proposal is accepted', async () => {
+      const listVersions = await renderLoadedEditor();
+      const before = listVersions.mock.calls.length;
+
+      await act(async () => {
+        publishThreadEvent(proposalEvent('accepted'));
+        await vi.advanceTimersByTimeAsync(0);
+      });
+
+      expect(listVersions.mock.calls.length).toBe(before + 1);
+    });
+
+    it('leaves the versions alone for anything else in the thread', async () => {
+      const listVersions = await renderLoadedEditor();
+      const before = listVersions.mock.calls.length;
+
+      await act(async () => {
+        publishThreadEvent(proposalEvent('dismissed'));
+        publishThreadEvent(proposalEvent('proposed'));
+        publishThreadEvent({ ...proposalEvent('accepted'), type: 'comment_posted' });
+        publishThreadEvent({
+          type: 'comment_updated',
+          siteId: 'site-1',
+          thread,
+          comment: { ...proposalEvent('accepted').comment, kind: 'message', metadata: null },
+        });
+        await vi.advanceTimersByTimeAsync(0);
+      });
+
+      expect(listVersions.mock.calls.length).toBe(before);
+    });
+  });
 
   it('should throw if used outside P1PuckProvider', () => {
     expect(() => {

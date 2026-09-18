@@ -89,4 +89,40 @@ describe('PCC-3468: batchSyncToPostgres jsonb[] serialization', () => {
     }
     expect(actionMetadatas[0]).toBeNull();
   });
+
+  it('folds an attribution into action_metadata, with or without other metadata', async () => {
+    const { batchSyncToPostgres } = await import('../../src/services/document-version-service');
+    const attribution = {
+      agent: { id: 'agent-1', name: 'Copy Editor' },
+      onBehalfOf: { id: 'user-legacy-001', name: 'Ada' },
+      description: 'Shorten the headline',
+    };
+
+    await batchSyncToPostgres([
+      {
+        documentId: 'doc-003',
+        branchId: 'branch-001',
+        snapshot: { root: {} },
+        actorId: 'user-legacy-001',
+        actorType: 'user',
+        attribution,
+      },
+      {
+        documentId: 'doc-004',
+        branchId: 'branch-001',
+        snapshot: { root: {} },
+        actorId: 'user-legacy-001',
+        actorType: 'user',
+        actionMetadata: { componentType: 'Hero' },
+        attribution,
+      },
+    ]);
+
+    const actionMetadatas = insertParams()[6];
+    if (!Array.isArray(actionMetadatas)) {
+      throw new Error('expected action_metadata bind to be an array');
+    }
+    expect(JSON.parse(actionMetadatas[0] as string)).toEqual({ attribution });
+    expect(JSON.parse(actionMetadatas[1] as string)).toEqual({ componentType: 'Hero', attribution });
+  });
 });

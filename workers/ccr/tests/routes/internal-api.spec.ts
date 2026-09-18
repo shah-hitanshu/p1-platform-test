@@ -108,6 +108,7 @@ describe('Phase 1.2: Internal API Routes', () => {
     snapshot: Record<string, unknown>;
     actorId: string;
     actorType: 'user' | 'agent';
+    attribution?: unknown;
   }
 
   // Helper to create a valid sync request body
@@ -241,6 +242,43 @@ describe('Phase 1.2: Internal API Routes', () => {
         actorId: syncBody.actorId,
         actorType: syncBody.actorType,
       });
+    });
+
+    it('forwards a well-formed attribution to the sync', async () => {
+      const { handleInternalRoutes } = await import('../../src/routes/internal-api');
+      const crdtSyncService = await import('../../src/services/crdt-sync-service');
+      const attribution = {
+        agent: { id: 'agent-1', name: 'Copy Editor' },
+        onBehalfOf: { id: 'user-uuid-789', name: 'Ada' },
+        description: 'Shorten the headline',
+      };
+
+      const response = await handleInternalRoutes(new Request('http://localhost/internal/crdt-sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Internal-Secret': 'correct-secret' },
+        body: JSON.stringify(createValidSyncBody({ attribution })),
+      }), { internalSecret: 'correct-secret' });
+
+      expect(response.status).toBe(200);
+      expect(crdtSyncService.syncCrdtToPostgres).toHaveBeenCalledWith(
+        expect.objectContaining({ attribution }),
+      );
+    });
+
+    it('refuses a malformed attribution before syncing', async () => {
+      const { handleInternalRoutes } = await import('../../src/routes/internal-api');
+      const crdtSyncService = await import('../../src/services/crdt-sync-service');
+
+      const response = await handleInternalRoutes(new Request('http://localhost/internal/crdt-sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Internal-Secret': 'correct-secret' },
+        body: JSON.stringify(createValidSyncBody({
+          attribution: { agent: { id: 'agent-1', name: 'Copy Editor' } },
+        })),
+      }), { internalSecret: 'correct-secret' });
+
+      expect(response.status).toBe(400);
+      expect(crdtSyncService.syncCrdtToPostgres).not.toHaveBeenCalled();
     });
 
     it('should return created version on success', async () => {

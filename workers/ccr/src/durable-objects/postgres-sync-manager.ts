@@ -13,6 +13,7 @@ import { runWithConnection } from '../db';
 import { db } from '../db/scope';
 import { branches, checkpointDocuments, checkpoints, documentVersions } from '../db/schema';
 import type { DocumentSessionEnv, SessionInfo } from './document-session-types';
+import { internalApiConfig } from './internal-api-config';
 import {
   YDOC_STORAGE_KEY,
   BASELINE_SOURCE_KEY,
@@ -24,6 +25,8 @@ import { reconstructVersionSnapshot } from '../services/document-version-service
 import { enforceUniqueSlotIds } from '../services/slot-id-backstop';
 import { extractComponentIds } from '../services/component-identity';
 import { classifyChange, type PuckAction } from '../services/action-classification';
+import { withAttribution } from '../services/document-version-service';
+import type { VersionAttribution } from '../types/domain';
 import { IMMEDIATE_SYNC_ACTION_TYPES } from '../constants/security-limits';
 
 /** Storage key for sync schedule (survives hibernation) */
@@ -43,12 +46,15 @@ export interface SyncSchedule {
   /** Verified display name of the actor (PCC-3457) */
   actorName?: string;
   puckActions?: { type: string; [key: string]: unknown }[];
+  attribution?: VersionAttribution;
 }
 
 /** Verified actor identity carried alongside actorId/actorType (PCC-3457) */
 export interface ActorIdentity {
   actorEmail?: string;
   actorName?: string;
+  /** Set when the write applies an agent's accepted proposal for the actor. */
+  attribution?: VersionAttribution;
 }
 
 /** Action metadata captured from the Puck client's WebSocket text messages */
@@ -253,24 +259,20 @@ export class PostgresSyncManager {
    * Load initial state via HTTP internal API (fallback path).
    */
   private async initializeFromHttpApi(): Promise<void> {
-    if (
-      this.env.INTERNAL_API_URL === undefined
-      || this.env.INTERNAL_SECRET === undefined
-    ) {
+    const internalApi = internalApiConfig(this.env);
+    if (internalApi === undefined) {
       return;
     }
 
     const { siteId, documentId, branchId } = this.sessionInfo;
-    const url = new URL(
-      `${this.env.INTERNAL_API_URL}/internal/crdt-state`,
-    );
+    const url = new URL(`${internalApi.url}/internal/crdt-state`);
     url.searchParams.set('siteId', siteId);
     url.searchParams.set('documentId', documentId);
     url.searchParams.set('branchId', branchId);
 
     const response = await fetch(url.toString(), {
       method: 'GET',
-      headers: { 'X-Internal-Secret': this.env.INTERNAL_SECRET },
+      headers: { 'X-Internal-Secret': internalApi.secret },
     });
 
     if (!response.ok) {
@@ -339,24 +341,23 @@ export class PostgresSyncManager {
     const syncActorType = actorType ?? schedule?.actorType ?? 'user';
     const syncActorEmail = identity?.actorEmail ?? schedule?.actorEmail;
     const syncActorName = identity?.actorName ?? schedule?.actorName;
+    const syncAttribution = identity?.attribution ?? schedule?.attribution;
 
     if (syncActorId === undefined) {
       console.log('Sync skipped: no sync schedule or actor info available');
       return;
     }
 
-    // Check if internal API is configured
-    const internalApiUrl = this.env.INTERNAL_API_URL;
-    const internalSecret = this.env.INTERNAL_SECRET;
-    if (internalApiUrl === undefined || internalSecret === undefined) {
+    const internalApi = internalApiConfig(this.env);
+    if (internalApi === undefined) {
       console.log('Sync skipped: INTERNAL_API_URL or INTERNAL_SECRET not configured');
       return;
     }
 
     // Set the lock before starting the sync
     const scheduledSync = this.performSync(
-      internalApiUrl, internalSecret, syncActorId, syncActorType, schedule?.puckActions,
-      { actorEmail: syncActorEmail, actorName: syncActorName },
+      internalApi.url, internalApi.secret, syncActorId, syncActorType, schedule?.puckActions,
+      { actorEmail: syncActorEmail, actorName: syncActorName, attribution: syncAttribution },
     );
     this.syncInProgress = scheduledSync;
 
@@ -434,6 +435,7 @@ export class PostgresSyncManager {
         actorType,
         ...(identity?.actorEmail !== undefined ? { actorEmail: identity.actorEmail } : {}),
         ...(identity?.actorName !== undefined ? { actorName: identity.actorName } : {}),
+        ...(identity?.attribution !== undefined ? { attribution: identity.attribution } : {}),
         ...(write.puckActions !== undefined ? { puckActions: write.puckActions } : {}),
       };
 
@@ -484,6 +486,15 @@ export class PostgresSyncManager {
    * state that write took: an edit that arrived while it was in flight still
    * owes a sync, and its schedule stays in place for the alarm to serve.
    */
+  /**
+   * Whether Postgres is behind this session. Pending Puck actions count even
+   * when the snapshot has not moved: the actions belong on the version.
+   */
+  hasUnsyncedChanges(): boolean {
+    return this.computeStateVectorHash() !== this.lastSyncedStateVectorHash
+      || this.pendingPuckActions.length > 0;
+  }
+
   private async recordSyncSuccess(write: PendingWrite): Promise<void> {
     this.lastSyncedStateVectorHash = write.stateVectorHash;
     this.pendingPuckActions.splice(0, write.takenActionCount);
@@ -510,9 +521,8 @@ export class PostgresSyncManager {
     flushPendingPersist: () => Promise<void>,
     fallback: { actorId: string; actorType: 'user' | 'agent' },
   ): Promise<string | undefined> {
-    const internalApiUrl = this.env.INTERNAL_API_URL;
-    const internalSecret = this.env.INTERNAL_SECRET;
-    if (internalApiUrl === undefined || internalSecret === undefined) {
+    const internalApi = internalApiConfig(this.env);
+    if (internalApi === undefined) {
       // Postgres is out of reach, but the CRDT state still belongs in DO storage.
       await flushPendingPersist();
       return undefined;
@@ -524,13 +534,14 @@ export class PostgresSyncManager {
     return this.runSerialized(async () => {
       const schedule = await this.storage.get<SyncSchedule>(SYNC_SCHEDULE_KEY);
       return await this.executeDirectSync(
-        internalApiUrl,
-        internalSecret,
+        internalApi.url,
+        internalApi.secret,
         schedule?.actorId ?? fallback.actorId,
         schedule?.actorType ?? fallback.actorType,
         {
           ...(schedule?.actorEmail !== undefined ? { actorEmail: schedule.actorEmail } : {}),
           ...(schedule?.actorName !== undefined ? { actorName: schedule.actorName } : {}),
+          ...(schedule?.attribution !== undefined ? { attribution: schedule.attribution } : {}),
         },
         schedule?.puckActions,
       );
@@ -612,7 +623,9 @@ export class PostgresSyncManager {
           { isHyperdrive: true },
           async () => {
             const { documentId, branchId } = this.sessionInfo;
-            const { actionType, actionMetadata } = classifyChange(undefined, puckActions);
+            const classified = classifyChange(undefined, puckActions);
+            const actionType = classified.actionType;
+            const actionMetadata = withAttribution(classified.actionMetadata, identity?.attribution);
             // The version number, the no-op check and the insert are one
             // statement so a concurrent write cannot land between them; there
             // is no builder form, so it stays raw (D6). Every value the row
@@ -702,6 +715,7 @@ export class PostgresSyncManager {
         actorType,
         ...(identity?.actorEmail !== undefined ? { actorEmail: identity.actorEmail } : {}),
         ...(identity?.actorName !== undefined ? { actorName: identity.actorName } : {}),
+        ...(identity?.attribution !== undefined ? { attribution: identity.attribution } : {}),
         ...(puckActions !== undefined ? { puckActions } : {}),
       }),
     });
@@ -740,17 +754,13 @@ export class PostgresSyncManager {
     actorType: 'user' | 'agent',
     identity?: ActorIdentity,
   ): Promise<void> {
-    // Check if the document has actually changed by comparing state vectors.
-    // Still schedule when pendingPuckActions exist — the actions need to be
-    // recorded on the version even if the snapshot is unchanged.
-    const currentHash = this.computeStateVectorHash();
-    if (currentHash === this.lastSyncedStateVectorHash && this.pendingPuckActions.length === 0) {
+    if (!this.hasUnsyncedChanges()) {
       console.log('Sync skipped: state vector unchanged (no actual content changes)');
       return;
     }
 
-    // Only schedule if we have internal API configured
-    if (this.env.INTERNAL_API_URL === undefined || this.env.INTERNAL_SECRET === undefined) {
+    const internalApi = internalApiConfig(this.env);
+    if (internalApi === undefined) {
       return;
     }
 
@@ -762,8 +772,8 @@ export class PostgresSyncManager {
       const actionType = this.pendingActionMetadata.actionType;
       try {
         await this.performDirectSync(
-          this.env.INTERNAL_API_URL,
-          this.env.INTERNAL_SECRET,
+          internalApi.url,
+          internalApi.secret,
           actorId,
           actorType,
           identity,
@@ -786,6 +796,7 @@ export class PostgresSyncManager {
       actorType,
       ...(identity?.actorEmail !== undefined ? { actorEmail: identity.actorEmail } : {}),
       ...(identity?.actorName !== undefined ? { actorName: identity.actorName } : {}),
+      ...(identity?.attribution !== undefined ? { attribution: identity.attribution } : {}),
       ...(this.pendingPuckActions.length > 0 ? {
         puckActions: this.pendingPuckActions,
       } : {}),

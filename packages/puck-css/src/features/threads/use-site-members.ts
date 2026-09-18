@@ -41,14 +41,18 @@ export function useSiteMembers(wanted: boolean): SiteMembersState {
   const siteId = ccr?.siteId;
   const ready = enabled && wanted && Boolean(client && siteId && queryClient);
 
-  useEffect(() => {
-    if (!ready || !queryClient || !client || !siteId) return;
+  const fetchRoster = useCallback(() => {
+    if (!queryClient || !client || !siteId) return;
     void queryClient.prefetchQuery({
       queryKey: siteMembersKey(siteId),
       queryFn: () => client.sites.members(siteId),
       staleTime: FRESH_FOR_MS,
     });
-  }, [ready, queryClient, client, siteId]);
+  }, [queryClient, client, siteId]);
+
+  useEffect(() => {
+    if (ready) fetchRoster();
+  }, [ready, fetchRoster]);
 
   const subscribe = useCallback(
     (onChange: () => void) => (queryClient ? subscribeToQueryCache(queryClient, onChange) : noop),
@@ -61,6 +65,13 @@ export function useSiteMembers(wanted: boolean): SiteMembersState {
   );
   const state = useSyncExternalStore(subscribe, read, read);
   const roster = state?.data;
+
+  // The cache drops a query nothing observes, and this hook only reads, so a thread left
+  // open long enough loses its roster; asking again when that happens brings it back.
+  const gone = state === undefined;
+  useEffect(() => {
+    if (ready && gone) fetchRoster();
+  }, [ready, gone, fetchRoster]);
 
   const candidates = useMemo(() => (roster ? mentionCandidates(roster) : NO_CANDIDATES), [roster]);
 

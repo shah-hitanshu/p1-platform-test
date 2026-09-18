@@ -9,7 +9,7 @@
 
 import { and, desc, eq, exists, gt, inArray, sql } from 'drizzle-orm';
 import { driverErrorCode } from '../db/driver-error';
-import type { DocumentVersion, DocumentVersionSource } from '../types';
+import type { DocumentVersion, DocumentVersionSource, VersionAttribution } from '../types';
 import { branches, checkpointDocuments, checkpoints, documentVersions } from '../db/schema';
 import { db } from '../db/scope';
 import { toIsoTimestamp } from '../db/helpers';
@@ -18,6 +18,7 @@ import { classifyChange } from './action-classification';
 import type { PuckAction } from './action-classification';
 import { createActorResolver } from './persistence-actor-service';
 import { enforceUniqueSlotIds } from './slot-id-backstop';
+import { attributionFromMetadata } from './version-attribution';
 import {
   DocumentNotFoundError,
   InvalidDocumentVersionParamsError,
@@ -44,6 +45,8 @@ export interface CreateDocumentVersionParams {
   actionType?: string; // Puck action type (e.g., "insert", "reorder", "set")
   actionMetadata?: Record<string, unknown>; // Additional Puck action context
   puckActions?: PuckAction[]; // Puck actions forwarded from the frontend
+  /** Stored alongside the action metadata when an agent's proposal was applied for someone. */
+  attribution?: VersionAttribution;
   /**
    * Skip duplicate snapshot check and always create a new version.
    * Use for reverts or explicit version creation where duplicates are intentional.
@@ -108,6 +111,14 @@ type DocumentVersionRow = {
 // Helper Functions
 // =============================================================================
 
+export function withAttribution(
+  metadata: Record<string, unknown> | null | undefined,
+  attribution: VersionAttribution | undefined,
+): Record<string, unknown> | null {
+  if (!attribution) return metadata ?? null;
+  return { ...(metadata ?? {}), attribution };
+}
+
 /**
  * Maps a database row to a DocumentVersion domain object.
  */
@@ -121,6 +132,7 @@ function mapRowToDocumentVersion(row: DocumentVersionRow): DocumentVersion {
     patch: row.patch ?? undefined,
     actionType: row.action_type ?? undefined,
     actionMetadata: row.action_metadata ?? undefined,
+    attribution: attributionFromMetadata(row.action_metadata),
     source: row.source,
     createdById: row.created_by_id,
     createdByType: row.created_by_type,
@@ -193,6 +205,7 @@ function mapDrizzleRowToDocumentVersion(row: DrizzleVersionRow): DocumentVersion
     patch: (row.patch as unknown[] | null) ?? undefined,
     actionType: row.actionType ?? undefined,
     actionMetadata: (row.actionMetadata as Record<string, unknown> | null) ?? undefined,
+    attribution: attributionFromMetadata(row.actionMetadata as Record<string, unknown> | null),
     source: row.source as DocumentVersionSource,
     createdById: row.createdById,
     createdByType: row.createdByType as DocumentVersion['createdByType'],
@@ -395,9 +408,10 @@ export async function createDocumentVersion(
   const finalActionType = params.forceNonStructural === true
     ? null
     : params.actionType ?? computedActionType;
-  const finalActionMetadata = params.forceNonStructural === true
-    ? null
-    : params.actionMetadata ?? computedActionMetadata;
+  const finalActionMetadata = withAttribution(
+    params.forceNonStructural === true ? null : params.actionMetadata ?? computedActionMetadata,
+    params.attribution,
+  );
 
   try {
     // Use a CTE to atomically:
@@ -887,6 +901,7 @@ export interface BatchSyncPayload {
   actionType?: string; // Puck action type
   actionMetadata?: Record<string, unknown>; // Puck action context
   puckActions?: PuckAction[]; // Puck actions forwarded from the frontend
+  attribution?: VersionAttribution;
 }
 
 /**
@@ -1067,10 +1082,10 @@ export async function batchSyncToPostgres(
     if (payload.puckActions && payload.puckActions.length > 0) {
       const classified = classifyChange(undefined, payload.puckActions);
       actionTypes.push(classified.actionType ?? null);
-      actionMetadatas.push(classified.actionMetadata ?? null);
+      actionMetadatas.push(withAttribution(classified.actionMetadata ?? null, payload.attribution));
     } else {
       actionTypes.push(payload.actionType ?? null);
-      actionMetadatas.push(payload.actionMetadata ?? null);
+      actionMetadatas.push(withAttribution(payload.actionMetadata ?? null, payload.attribution));
     }
   }
 

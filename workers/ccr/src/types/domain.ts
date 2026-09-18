@@ -197,6 +197,17 @@ export interface Document {
 }
 
 /**
+ * Who really made a version's change when an agent's accepted proposal was
+ * applied by a person: the agent that authored it, the person it was applied
+ * for, and the agent's own summary of the change.
+ */
+export interface VersionAttribution {
+  agent: { id: string; name: string };
+  onBehalfOf: { id: string; name: string };
+  description: string;
+}
+
+/**
  * Snapshot of document state on a specific branch at a point in time.
  */
 export interface DocumentVersion {
@@ -210,6 +221,7 @@ export interface DocumentVersion {
   crdtState?: string;
   actionType?: string; // Puck action type (e.g., "insert", "reorder", "set")
   actionMetadata?: Record<string, unknown>; // Additional Puck action context
+  attribution?: VersionAttribution;
   source: DocumentVersionSource;
   createdById: string;
   createdByType: 'user' | 'agent' | 'service' | 'system';

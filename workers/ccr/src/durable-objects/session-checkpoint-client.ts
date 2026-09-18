@@ -1,4 +1,5 @@
 import { runWithConnection } from '../db';
+import { internalApiConfig } from './internal-api-config';
 import {
   createCheckpoint as createCheckpointDirect,
   revertToCheckpoint as revertToCheckpointDirect,
@@ -50,19 +51,20 @@ export async function createSessionPreEditCheckpoint(
   }
 
   // Fallback: HTTP internal API
-  if (env.INTERNAL_API_URL === undefined || env.INTERNAL_SECRET === undefined) {
+  const internalApi = internalApiConfig(env);
+  if (internalApi === undefined) {
     console.log('Agent checkpoint skipped: no Hyperdrive or internal API configured, using placeholder');
     return `checkpoint-${String(Date.now())}-${Math.random().toString(36).substring(2, 9)}`;
   }
 
   try {
-    const checkpointUrl = `${env.INTERNAL_API_URL}/internal/agent-checkpoint-start`;
+    const checkpointUrl = `${internalApi.url}/internal/agent-checkpoint-start`;
 
     const response = await fetch(checkpointUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Internal-Secret': env.INTERNAL_SECRET,
+        'X-Internal-Secret': internalApi.secret,
       },
       body: JSON.stringify({
         branchId: sessionInfo.branchId,
@@ -131,19 +133,20 @@ export async function createSessionPostEditCheckpoint(
   }
 
   // Fallback: HTTP internal API
-  if (env.INTERNAL_API_URL === undefined || env.INTERNAL_SECRET === undefined) {
+  const internalApi = internalApiConfig(env);
+  if (internalApi === undefined) {
     console.log('Agent checkpoint skipped: no Hyperdrive or internal API configured');
     return undefined;
   }
 
   try {
-    const checkpointUrl = `${env.INTERNAL_API_URL}/internal/agent-checkpoint-complete`;
+    const checkpointUrl = `${internalApi.url}/internal/agent-checkpoint-complete`;
 
     const response = await fetch(checkpointUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Internal-Secret': env.INTERNAL_SECRET,
+        'X-Internal-Secret': internalApi.secret,
       },
       body: JSON.stringify({
         branchId: sessionInfo.branchId,
@@ -212,19 +215,20 @@ export async function rollbackToSessionCheckpoint(
   }
 
   // Fallback: HTTP internal API
-  if (env.INTERNAL_API_URL === undefined || env.INTERNAL_SECRET === undefined) {
+  const internalApi = internalApiConfig(env);
+  if (internalApi === undefined) {
     console.log('Agent rollback skipped: no Hyperdrive or internal API configured');
     return false;
   }
 
   try {
-    const rollbackUrl = `${env.INTERNAL_API_URL}/internal/agent-checkpoint-rollback`;
+    const rollbackUrl = `${internalApi.url}/internal/agent-checkpoint-rollback`;
 
     const response = await fetch(rollbackUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Internal-Secret': env.INTERNAL_SECRET,
+        'X-Internal-Secret': internalApi.secret,
       },
       body: JSON.stringify({
         checkpointId,

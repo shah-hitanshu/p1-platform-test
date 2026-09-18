@@ -3,6 +3,9 @@ import type { DocumentVersion } from '@pantheon-systems/css-client';
 import { formatVersionDate } from '../../versioning/utils/formatVersionDate.js';
 import { versionKinds, VERSION_KIND_META } from '../../versioning/utils/versionKind.js';
 import type { CurrentUser } from '../../pds/components/P1EditorHeader.js';
+import { SafeIcon } from '../../pds/components/SafeIcon.js';
+import { versionAuthorName } from '../../versioning/utils/versionAuthorName.js';
+import styles from './VersionTimeline.module.css';
 
 export interface VersionTimelineProps {
   dayGroups: { label: string; versions: DocumentVersion[] }[];
@@ -39,12 +42,8 @@ export function VersionTimeline({
               const isSelected = version.id === selectedVersionId;
               const kinds = versionKinds(version, currentVersionId);
               const primaryKind = kinds[0];
-              const authorName = resolveAuthorName?.(version.createdById, version.createdByType)
-                ?? (version.createdById === currentUser?.id
-                  ? (currentUser?.name ?? currentUser?.email ?? 'You')
-                  : version.createdByType === 'agent'
-                    ? version.createdById
-                    : 'User');
+              const attribution = version.attribution;
+              const authorName = versionAuthorName(version, { currentUser, resolveAuthorName });
 
               return (
                 <li
@@ -84,9 +83,24 @@ export function VersionTimeline({
                         </span>
                       ))}
                     </div>
-                    <div className="css-plugin-version-byline">
+                    {attribution && (
+                      <span className={styles.agentGlyph} aria-hidden="true">
+                        <SafeIcon iconName="sparkles" size="s" />
+                      </span>
+                    )}
+                    <div
+                      className={[
+                        'css-plugin-version-byline',
+                        attribution ? 'css-plugin-version-byline--attributed' : '',
+                      ].filter(Boolean).join(' ')}
+                    >
                       {formatVersionDate(version.createdAt)} · {authorName}
                     </div>
+                    {attribution && attribution.description !== '' && (
+                      <div className={styles.description} data-testid="version-description">
+                        {attribution.description}
+                      </div>
+                    )}
                     {version.source === 'revert' && version.sourceVersionId && (() => {
                       const sourceVer = allVersions.find(v => v.id === version.sourceVersionId);
                       return sourceVer ? (

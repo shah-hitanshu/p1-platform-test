@@ -137,6 +137,17 @@ export interface Document {
 export type DocumentVersionSource = 'edit' | 'merge' | 'revert' | 'initial';
 
 /**
+ * Who a version's change really came from when an agent's accepted proposal was
+ * applied by a person: the agent that proposed it, the person it was applied for,
+ * and the agent's summary of the change.
+ */
+export interface VersionAttribution {
+  agent: { id: string; name: string };
+  onBehalfOf: { id: string; name: string };
+  description: string;
+}
+
+/**
  * A version of a document on a specific branch.
  */
 export interface DocumentVersion {
@@ -157,6 +168,8 @@ export interface DocumentVersion {
   actionType?: string;
   /** Action metadata including puckActions array when structural */
   actionMetadata?: Record<string, unknown>;
+  /** Present when an agent's accepted proposal made this version. */
+  attribution?: VersionAttribution;
 }
 
 /**

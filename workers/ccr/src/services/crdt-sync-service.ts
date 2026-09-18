@@ -10,7 +10,7 @@
  * 3. State continuity: DOs can initialize from PostgreSQL if their local storage is empty
  */
 
-import type { DocumentVersion, DocumentVersionSource } from '../types';
+import type { DocumentVersion, DocumentVersionSource, VersionAttribution } from '../types';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/scope';
 import { getDocument } from './document-service';
@@ -73,6 +73,8 @@ export interface SyncCrdtToPostgresParams {
   actorName?: string;
   /** Puck actions behind this edit, which classify the version as structural or prop-only. */
   puckActions?: { type: string; [key: string]: unknown }[];
+  /** Present when the edit applies an agent's accepted proposal for the actor. */
+  attribution?: VersionAttribution;
 }
 
 /**
@@ -141,6 +143,7 @@ export async function syncCrdtToPostgres(
     createdById: resolution.actorId,
     createdByType: params.actorType,
     ...(params.puckActions !== undefined ? { puckActions: params.puckActions } : {}),
+    ...(params.attribution !== undefined ? { attribution: params.attribution } : {}),
   });
 
   return version;

@@ -1393,6 +1393,13 @@
   text-overflow: ellipsis;
 }
 
+/* An attributed byline names the agent and the person; wrap it instead of truncating */
+.css-plugin-version-byline--attributed {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+}
+
 /* "Reverted to v#" label under byline for revert versions */
 .css-plugin-version-revert-source {
   font-size: 11px;

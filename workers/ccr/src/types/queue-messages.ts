@@ -1,3 +1,5 @@
+import type { VersionAttribution } from './domain';
+
 /**
  * Phase 5.1: Message types for Cloudflare Queue-based sync
  *
@@ -20,6 +22,7 @@ export interface SyncQueueMessage {
   actionType?: string; // Puck action type (e.g., "insert", "reorder", "set")
   actionMetadata?: Record<string, unknown>; // Additional Puck action context
   puckActions?: { type: string; [key: string]: unknown }[]; // Batched Puck actions
+  attribution?: VersionAttribution;
 }
 
 /**

@@ -11,13 +11,8 @@
  */
 
 import * as Y from 'yjs';
-import { regionsOverlap } from '../services/presence-service';
 import type { ActivityDetector } from '../services/activity-detection-service';
-import {
-  MAX_OPERATIONS_PER_REQUEST,
-  MAX_CONFLICT_REGIONS_TO_REPORT,
-  MAX_CONFLICT_REASON_LENGTH,
-} from '../constants/security-limits';
+import { MAX_OPERATIONS_PER_REQUEST } from '../constants/security-limits';
 import type {
   EditSession,
   SessionOwner,
@@ -29,11 +24,19 @@ import type {
   DocumentSessionEnv,
 } from './document-session-types';
 import { VALID_OPERATION_TYPES } from './document-session-types';
-import { applyOperation, initializeFromSnapshot } from './crdt-operations';
+import { initializeFromSnapshot } from './crdt-operations';
 import { validateActorId, validateOperation } from './session-validators';
 import { errorResponse } from './websocket-utils';
 import { stoppedTurnResponse, type StoppedTurns } from './stopped-turns';
-import type { PostgresSyncManager } from './postgres-sync-manager';
+import type { ActorIdentity, PostgresSyncManager } from './postgres-sync-manager';
+import { isVersionAttribution } from '../services/version-attribution';
+import {
+  applyOperations,
+  ApplyOperationsError,
+  type ApplyOperationsResult,
+  type SessionConflict,
+} from './apply-operations';
+import { internalApiConfig } from './internal-api-config';
 import { getAllConnections } from './session-id-parser';
 
 /** Attribution for a flush with no pending sync: the platform, not a person. */
@@ -211,125 +214,57 @@ export async function handleApplyOperations(
     }
   }
 
-  // Apply operations within a transaction
+  if (body.attribution !== undefined && !isVersionAttribution(body.attribution)) {
+    return errorResponse(400, 'attribution must name an agent, who it acted for, and a description');
+  }
+
+  let result: ApplyOperationsResult;
   try {
-    const root = ydoc.getMap('root');
-    ydoc.transact(() => {
-      for (const op of body.operations) {
-        applyOperation(root, op);
-      }
-    }, body.actorId);
+    result = await applyOperations(deps, {
+      actor,
+      operations: body.operations,
+      ...syncIdentityFromHeaders(request, body.actorId),
+      ...(body.attribution !== undefined ? { attribution: body.attribution } : {}),
+    });
   } catch (error) {
-    return errorResponse(400, `Failed to apply operations: ${error instanceof Error ? error.message : 'Unknown error'}`);
-  }
-
-  // Persist state
-  try {
-    await deps.persist();
-  } catch {
-    return errorResponse(500, 'Failed to persist state');
-  }
-
-  // Broadcast update to connected clients
-  const update = Y.encodeStateAsUpdate(ydoc);
-  deps.broadcastUpdate(update);
-
-  // Extract regions (paths) from operations
-  const regions = body.operations
-    .map((op) => op.path)
-    .filter((path): path is string => typeof path === 'string');
-
-  // Sessions this actor's edits have reached into.
-  const sessionConflicts: {
-    ownerId: string;
-    ownerType: 'user' | 'agent';
-    regions: string[];
-    sessionId: string;
-  }[] = [];
-
-  // Only a person's edits make agents wait out the idle timeout.
-  if (actor.type === 'user') {
-    // Schedule cleanup alarm for HTTP-only clients (idempotent if already scheduled)
-    void deps.scheduleCleanupAlarm();
-    deps.activityDetector.recordHumanActivity(body.actorId, regions);
-  }
-
-  // Edits landing in a region another session reserved put that session in
-  // conflict, whichever kind of actor made them. Reservation stops two sessions
-  // declaring the same region, but not an actor editing outside what it declared.
-  // Optimized: early termination once conflict found, limited region collection
-  for (const session of deps.editSessions.values()) {
-    // An actor's own session is not in conflict with that actor's own edits.
-    if (session.ownerId === actor.id && session.ownerType === actor.type) {
-      continue;
+    if (error instanceof ApplyOperationsError) {
+      return errorResponse(error.status, error.message);
     }
-
-    const overlappingRegions: string[] = [];
-    let conflictFound = false;
-
-    // Use labeled loops for early termination
-    regionCheck:
-    for (const editedRegion of regions) {
-      for (const reservedRegion of session.targetRegions) {
-        if (regionsOverlap(editedRegion, reservedRegion)) {
-          overlappingRegions.push(reservedRegion);
-          conflictFound = true;
-          // Limit collected regions to prevent memory issues
-          if (overlappingRegions.length >= MAX_CONFLICT_REGIONS_TO_REPORT) {
-            break regionCheck;
-          }
-        }
-      }
-    }
-
-    if (conflictFound) {
-      session.conflicted = true;
-      const actorLabel = actor.type === 'user' ? 'Human' : 'Agent';
-      // Build reason with truncation for security
-      let reason = `${actorLabel} activity in overlapping regions: ${overlappingRegions.join(', ')}`;
-      if (reason.length > MAX_CONFLICT_REASON_LENGTH) {
-        reason = reason.substring(0, MAX_CONFLICT_REASON_LENGTH - 3) + '...';
-      }
-      session.conflictReason = reason;
-      sessionConflicts.push({
-        ownerId: session.ownerId,
-        ownerType: session.ownerType,
-        regions: overlappingRegions,
-        sessionId: session.id,
-      });
-    }
+    throw error;
   }
 
-  // Schedule sync to PostgreSQL after idle timeout. PCC-3457: carry the
-  // verified identity (worker-set headers — inbound forgeries are stripped at
-  // the route boundary) so unprovisioned OAuth principals editing over HTTP
-  // JIT-provision at sync time like websocket editors do.
-  const verifiedEmail = request.headers.get('X-Verified-Email') ?? undefined;
-  const verifiedName = request.headers.get('X-Verified-Name') ?? undefined;
-  // Attribution uses the resolved dbUserId (app.users.id) when present; body
-  // actorId (the OAuth subject, cross-checked against the verified id above)
-  // is the fallback for agents and unresolved principals.
-  const verifiedDbUserId = request.headers.get('X-Verified-Db-User-Id') ?? undefined;
-  await deps.syncManager.scheduleSync(verifiedDbUserId ?? body.actorId, actor.type, {
-    ...(verifiedEmail !== undefined ? { actorEmail: verifiedEmail } : {}),
-    ...(verifiedName !== undefined ? { actorName: verifiedName } : {}),
-  });
-
-  const root = ydoc.getMap('root');
-  const response: ApplyResponse & { sessionConflicts?: typeof sessionConflicts } = {
+  const response: ApplyResponse & { sessionConflicts?: SessionConflict[] } = {
     success: true,
-    snapshot: root.toJSON(),
+    snapshot: result.snapshot,
     operationsApplied: body.operations.length,
+    ...(result.sessionConflicts.length > 0 ? { sessionConflicts: result.sessionConflicts } : {}),
   };
-
-  if (sessionConflicts.length > 0) {
-    response.sessionConflicts = sessionConflicts;
-  }
-
   return new Response(
     JSON.stringify(response),
     { status: 200, headers: { 'Content-Type': 'application/json' } },
   );
+}
+
+/**
+ * The identity the version is written under. Attribution uses the resolved
+ * dbUserId (app.users.id) when present; the body actorId (the OAuth subject,
+ * cross-checked against the verified id) is the fallback for agents and
+ * unresolved principals.
+ */
+function syncIdentityFromHeaders(
+  request: Request,
+  actorId: string,
+): { syncActorId: string; identity: ActorIdentity } {
+  const verifiedEmail = request.headers.get('X-Verified-Email') ?? undefined;
+  const verifiedName = request.headers.get('X-Verified-Name') ?? undefined;
+  const verifiedDbUserId = request.headers.get('X-Verified-Db-User-Id') ?? undefined;
+  return {
+    syncActorId: verifiedDbUserId ?? actorId,
+    identity: {
+      ...(verifiedEmail !== undefined ? { actorEmail: verifiedEmail } : {}),
+      ...(verifiedName !== undefined ? { actorName: verifiedName } : {}),
+    },
+  };
 }
 
 /**
@@ -382,7 +317,7 @@ export async function handleFlush(
   }
 
   // Without sync config the CRDT state still belongs in DO storage.
-  if (deps.env.INTERNAL_API_URL === undefined || deps.env.INTERNAL_SECRET === undefined) {
+  if (internalApiConfig(deps.env) === undefined) {
     await deps.flushPendingPersist();
     return new Response(
       JSON.stringify({ flushed: false, reason: 'no_sync_config' }),

@@ -149,4 +149,37 @@ describe('P1Plugin Version History', () => {
     const dateElements = screen.getAllByText(/Jan/i);
     expect(dateElements.length).toBeGreaterThan(0);
   });
+
+  describe('a version an agent applied for someone', () => {
+    const attributed: DocumentVersion = {
+      ...mockVersions[0]!,
+      attribution: {
+        agent: { id: 'agent-1', name: 'Copy Editor' },
+        onBehalfOf: { id: 'user1', name: 'Dana Kim' },
+        description: 'Shortened the hero headline',
+      },
+    };
+
+    it('names both the agent and the person in the byline', () => {
+      const plugin = createP1Plugin({ ...baseOptions, versions: [attributed, ...mockVersions.slice(1)] });
+      render(plugin.render());
+
+      const byline = screen.getByText(/Copy Editor/);
+      expect(byline).toHaveTextContent(/Dana Kim/);
+    });
+
+    it('shows what the agent changed', () => {
+      const plugin = createP1Plugin({ ...baseOptions, versions: [attributed, ...mockVersions.slice(1)] });
+      render(plugin.render());
+
+      expect(screen.getByTestId('version-description')).toHaveTextContent('Shortened the hero headline');
+    });
+
+    it('shows no description for versions people saved themselves', () => {
+      const plugin = createP1Plugin({ ...baseOptions, versions: mockVersions });
+      render(plugin.render());
+
+      expect(screen.queryByTestId('version-description')).not.toBeInTheDocument();
+    });
+  });
 });

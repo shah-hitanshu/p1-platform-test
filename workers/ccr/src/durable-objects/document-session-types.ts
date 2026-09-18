@@ -155,6 +155,8 @@ export interface SessionInfo {
 export interface ApplyRequest {
   operations: import('../types').EditOperation[];
   actorId: string;
+  /** Set when the operations are an agent's accepted proposal, applied for the actor. */
+  attribution?: import('../types').VersionAttribution;
 }
 
 /**

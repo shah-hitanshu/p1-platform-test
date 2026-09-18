@@ -24,7 +24,8 @@ import {
   BranchNotFoundError,
   CheckpointNotFoundError,
 } from '../services/checkpoint-service';
-import type { CheckpointTrigger, SessionOwner } from '../types';
+import type { CheckpointTrigger, SessionOwner, VersionAttribution } from '../types';
+import { isVersionAttribution } from '../services/version-attribution';
 
 // =============================================================================
 // Types
@@ -54,6 +55,7 @@ interface CrdtSyncBody {
   actorName?: string;
   /** Puck actions behind this edit, which classify the version as structural or prop-only. */
   puckActions?: { type: string; [key: string]: unknown }[];
+  attribution?: VersionAttribution;
 }
 
 /**
@@ -197,6 +199,10 @@ function validateCrdtSyncBody(body: unknown): { valid: false; error: string } | 
     }
   }
 
+  if (data.attribution !== undefined && !isVersionAttribution(data.attribution)) {
+    return { valid: false, error: 'attribution must name an agent, who it acted for, and a description' };
+  }
+
   return {
     valid: true,
     data: {
@@ -211,6 +217,7 @@ function validateCrdtSyncBody(body: unknown): { valid: false; error: string } | 
       ...(data.puckActions !== undefined
         ? { puckActions: data.puckActions as { type: string; [key: string]: unknown }[] }
         : {}),
+      ...(data.attribution !== undefined ? { attribution: data.attribution } : {}),
     },
   };
 }
@@ -251,6 +258,7 @@ async function handleCrdtSync(request: Request): Promise<Response> {
       ...(data.actorEmail !== undefined ? { actorEmail: data.actorEmail } : {}),
       ...(data.actorName !== undefined ? { actorName: data.actorName } : {}),
       ...(data.puckActions !== undefined ? { puckActions: data.puckActions } : {}),
+      ...(data.attribution !== undefined ? { attribution: data.attribution } : {}),
     });
 
     return jsonResponse({ version });

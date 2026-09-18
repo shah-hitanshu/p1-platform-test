@@ -198,6 +198,42 @@ describe('Phase 1.1: CRDT Sync Service', () => {
       expect(result.source).toBe('realtime');
     });
 
+    it('hands the attribution on to the version it creates', async () => {
+      const { syncCrdtToPostgres } = await import('../../src/services/crdt-sync-service');
+      const documentService = await import('../../src/services/document-service');
+      const documentVersionService = await import('../../src/services/document-version-service');
+
+      const mockDoc = createMockDocument();
+      vi.mocked(documentService.getDocument).mockResolvedValue({
+        id: mockDoc.id,
+        siteId: mockDoc.site_id,
+        path: mockDoc.path,
+        createdAt: mockDoc.created_at,
+      });
+      vi.mocked(documentVersionService.createDocumentVersion).mockResolvedValue(
+        {} as Awaited<ReturnType<typeof documentVersionService.createDocumentVersion>>,
+      );
+      const attribution = {
+        agent: { id: 'agent-1', name: 'Copy Editor' },
+        onBehalfOf: { id: 'user-uuid-001', name: 'Ada' },
+        description: 'Shorten the headline',
+      };
+
+      await syncCrdtToPostgres({
+        siteId: 'site-uuid-456',
+        documentId: 'doc-uuid-123',
+        branchId: 'branch-uuid-456',
+        snapshot: { root: { title: 'Test' } },
+        actorId: 'user-uuid-001',
+        actorType: 'user',
+        attribution,
+      });
+
+      expect(documentVersionService.createDocumentVersion).toHaveBeenCalledWith(
+        expect.objectContaining({ createdById: 'user-uuid-001', createdByType: 'user', attribution }),
+      );
+    });
+
     it('should throw DocumentNotFoundError when document does not exist', async () => {
       const { syncCrdtToPostgres } = await import('../../src/services/crdt-sync-service');
       const { DocumentNotFoundError } = await import('../../src/services/errors');

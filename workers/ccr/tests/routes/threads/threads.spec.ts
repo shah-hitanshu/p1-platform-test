@@ -828,6 +828,11 @@ describe('threads routes', () => {
       expect(await applied.json()).toEqual({
         operations: [{ type: 'replace', path: 'content.0.props.title', content: 'Hello' }],
         actorId: USER_ID,
+        attribution: {
+          agent: { id: AGENT_ID, name: 'Copy Editor' },
+          onBehalfOf: { id: USER_ID, name: 'Ada Lovelace' },
+          description: 'Shorten the headline',
+        },
       });
       expect(stub.fetch.mock.invocationCallOrder[0]).toBeLessThan(
         vi.mocked(service.decideProposal).mock.invocationCallOrder[0] ?? 0,

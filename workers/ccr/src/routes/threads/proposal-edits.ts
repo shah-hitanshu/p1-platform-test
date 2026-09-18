@@ -4,8 +4,9 @@
  * A proposal speaks in dot paths (`content.2.props.title`); the document session
  * speaks in typed operations on a parent path. Translation happens here, then the
  * edits reach the page the same way a person's do: through the document session as
- * the person who accepted, so every open editor sees them arrive and the change is
- * attributed to the decider.
+ * the person who accepted, so every open editor sees them arrive. The version that
+ * records them names the agent that proposed them, the person they were applied
+ * for, and the proposal's own summary of the change.
  */
 
 import { assertPermission } from '../../auth/authorization';
@@ -13,8 +14,14 @@ import { getDocument } from '../../services/document-service';
 import { loadCanonicalComponentNames } from '../../services/component-type-registry';
 import { findComponentTypeViolations } from '../../services/component-type-validation';
 import { ThreadInputError } from '../../services/threads/errors';
-import type { AuthenticatedPrincipal, EditOperation } from '../../types';
-import { isAgentProposal, type Comment, type ProposedOperation, type ThreadOverview } from '../../types/threads';
+import type { AuthenticatedPrincipal, EditOperation, VersionAttribution } from '../../types';
+import {
+  isAgentProposal,
+  type AgentProposalMetadata,
+  type Comment,
+  type ProposedOperation,
+  type ThreadOverview,
+} from '../../types/threads';
 import { generateSessionId } from '../realtime-utils';
 import type { ThreadsRouteContext } from './types';
 
@@ -90,6 +97,17 @@ function verifiedHeaders(sessionId: string, principal: AuthenticatedPrincipal): 
   return headers;
 }
 
+function attributionFor(
+  comment: Pick<Comment, 'author'> & { metadata: AgentProposalMetadata },
+  principal: AuthenticatedPrincipal,
+): VersionAttribution {
+  return {
+    agent: { id: comment.author.id, name: comment.author.name ?? 'Agent' },
+    onBehalfOf: { id: principal.id, name: principal.name ?? principal.email ?? principal.id },
+    description: comment.metadata.summary,
+  };
+}
+
 async function refusal(response: Response): Promise<string> {
   const text = await response.text();
   try {
@@ -113,7 +131,7 @@ async function refusal(response: Response): Promise<string> {
 export async function applyAcceptedProposal(
   context: ThreadsRouteContext,
   thread: ThreadOverview,
-  comment: Pick<Comment, 'kind' | 'metadata'>,
+  comment: Pick<Comment, 'kind' | 'author' | 'metadata'>,
 ): Promise<void> {
   if (!isAgentProposal(comment)) return;
   if (context.env === undefined) throw new Error('Proposals cannot be applied without the document session binding');
@@ -136,7 +154,11 @@ export async function applyAcceptedProposal(
     new Request('http://internal/apply', {
       method: 'POST',
       headers: verifiedHeaders(sessionId, context.principal),
-      body: JSON.stringify({ operations, actorId: context.principal.id }),
+      body: JSON.stringify({
+        operations,
+        actorId: context.principal.id,
+        attribution: attributionFor(comment, context.principal),
+      }),
     }),
   );
   if (response.ok) return;

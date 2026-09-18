@@ -100,6 +100,13 @@ export function useThreadComments(threadId: string | undefined): ThreadCommentsS
   );
   const state = useSyncExternalStore(subscribe, read, read);
 
+  // The cache drops a query nothing observes, and this hook only reads, so a thread left
+  // open long enough loses its comments; asking again when that happens brings it back.
+  const gone = state === undefined;
+  useEffect(() => {
+    if (ready && gone) fetchThread(FRESH_FOR_MS);
+  }, [ready, gone, fetchThread]);
+
   const comments = state?.data?.comments;
   const polling = ready && comments !== undefined && awaitingAgent(comments, Date.now());
   useEffect(() => {

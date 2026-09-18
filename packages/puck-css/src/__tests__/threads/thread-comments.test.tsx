@@ -5,7 +5,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import React from 'react';
-import { render, renderHook, screen, cleanup, waitFor, fireEvent } from '@testing-library/react';
+import { act, render, renderHook, screen, cleanup, waitFor, fireEvent } from '@testing-library/react';
 import { QueryClient } from '@tanstack/react-query';
 import type { Comment, ThreadEvent, ThreadOverview, ThreadWithComments } from '@pantheon-systems/css-client';
 import type { P1PuckContextValue } from '../../core/types.js';
@@ -149,6 +149,27 @@ describe('opening a thread', () => {
 
     rerender({ threadId: 't-1' });
     expect(subscribe).toHaveBeenCalledTimes(1);
+  });
+
+  it('still shows the comments after the cache has let go of them', async () => {
+    vi.useFakeTimers();
+    try {
+      getThread.mockResolvedValue({ thread, comments: [first, second] });
+      const wrapper = ({ children }: { children: React.ReactNode }) => (
+        <Harness queryClient={queryClient}>{children}</Harness>
+      );
+      const { result } = renderHook(() => useThreadComments('t-1'), { wrapper });
+
+      await act(() => vi.advanceTimersByTimeAsync(0));
+      expect(result.current.comments.map((c) => c.id)).toEqual(['c-1', 'c-2']);
+
+      // Longer than the query client keeps an unobserved query around.
+      await act(() => vi.advanceTimersByTimeAsync(6 * 60_000));
+
+      expect(result.current.comments.map((c) => c.id)).toEqual(['c-1', 'c-2']);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('asks for nothing on a context with no thread', () => {

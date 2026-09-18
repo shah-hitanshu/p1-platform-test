@@ -50,6 +50,7 @@ export type {
   Branch,
   Document,
   DocumentVersion,
+  VersionAttribution,
   Checkpoint,
   SessionOwner,
   DocumentConflict,
