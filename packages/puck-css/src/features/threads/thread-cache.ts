@@ -2,6 +2,7 @@ import type { QueryClient } from '@tanstack/react-query';
 import type { ThreadEvent, ThreadOverview } from '@pantheon-systems/css-client';
 
 import { documentThreadsKey, overviewKey, type DocumentThreads } from './document-threads.js';
+import { appendThreadComment } from './thread-comments.js';
 
 /**
  * Writes one thread's latest overview into its page's loaded listing.
@@ -22,10 +23,19 @@ export function applyThreadOverview(queryClient: QueryClient, thread: ThreadOver
   return true;
 }
 
-/** Folds a change to a thread into the page listing it belongs to. */
+/**
+ * Folds a change to a thread into the page listing it belongs to, and a new
+ * comment into its thread as well when that thread is open.
+ *
+ * @returns Whether anything loaded was there to update.
+ */
 export function applyThreadEvent(queryClient: QueryClient, event: ThreadEvent): boolean {
   switch (event.type) {
-    case 'comment_posted':
+    case 'comment_posted': {
+      const listed = applyThreadOverview(queryClient, event.thread);
+      const appended = appendThreadComment(queryClient, event.siteId, event.comment);
+      return listed || appended;
+    }
     case 'thread_status_changed':
       return applyThreadOverview(queryClient, event.thread);
   }

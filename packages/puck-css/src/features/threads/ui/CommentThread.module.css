@@ -136,18 +136,24 @@
   background: var(--pds-color-surface-default-hover, oklch(0.9761 0 0));
 }
 
-.messages {
-  max-height: 20rem;
+.empty {
   margin: 0;
-  padding: 0;
-  overflow-y: auto;
-  list-style: none;
+  padding: 0.875rem 1rem;
+  color: var(--pds-color-foreground-default-secondary, oklch(0.5103 0 0));
+  font-size: 0.75rem;
 }
 
-/* An empty list still holds the place the messages will take, so the composer sits
- * where it will once there are some. */
-.messages:empty {
-  min-height: 1rem;
+.status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  color: var(--pds-color-foreground-default-secondary, oklch(0.5103 0 0));
+}
+
+.postFailed {
+  color: var(--pds-color-foreground-danger, oklch(0.5 0.2 25));
 }
 
 .composer {

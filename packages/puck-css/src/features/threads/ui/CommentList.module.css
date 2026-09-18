@@ -1,0 +1,18 @@
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+  /* Inside the canvas frame 100vh is the frame, so a short frame gets a shorter list. */
+  max-height: max(8rem, min(20rem, calc(100vh - 12rem)));
+  margin: 0;
+  padding: 0.875rem 1rem;
+  overflow-y: auto;
+  /* Reaching the end of the thread should not hand the scroll on to the page behind it. */
+  overscroll-behavior: contain;
+  list-style: none;
+}
+
+/* With nothing to list, the empty-state line below takes the list's place. */
+.list:empty {
+  display: none;
+}

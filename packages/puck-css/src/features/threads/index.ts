@@ -8,6 +8,9 @@ export { useDocumentThreads, useThreadOverview } from './use-document-threads.js
 export type { DocumentThreadsState } from './use-document-threads.js';
 export type { DocumentThreads } from './document-threads.js';
 export { useThreadsEnabled } from './enabled.js';
+export { useThreadComments } from './use-thread-comments.js';
+export type { ThreadCommentsState } from './use-thread-comments.js';
+export { appendThreadComment, storeThread } from './thread-comments.js';
 export { usePostComment } from './use-post-comment.js';
 export type { UsePostCommentOptions, PostCommentState } from './use-post-comment.js';
 export { applyThreadEvent, applyThreadOverview } from './thread-cache.js';

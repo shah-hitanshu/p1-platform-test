@@ -3,15 +3,29 @@
  * what matters is that it says what is being discussed, whether that discussion is
  * over, and that nothing can be posted until there is something to post.
  */
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 
 vi.mock('@pantheon-systems/pds-toolkit-react', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   Icon: ({ iconName, ...props }: any) => <span data-testid={`icon-${iconName}`} {...props} />,
 }));
 
+import type { Comment } from '@pantheon-systems/css-client';
 import { CommentThread } from '../../features/threads/ui/CommentThread.js';
+
+function comment(id: string, createdAt: string, author: Partial<Comment['author']> = {}): Comment {
+  return {
+    id,
+    threadId: 't-1',
+    kind: 'message',
+    body: 'Looks good',
+    author: { type: 'user', id: 'user-1', name: 'Nick', avatar: null, ...author },
+    mentions: [],
+    createdAt,
+    editedAt: null,
+  };
+}
 
 function renderThread(props: Partial<React.ComponentProps<typeof CommentThread>> = {}) {
   const onClose = vi.fn();
@@ -22,6 +36,75 @@ function renderThread(props: Partial<React.ComponentProps<typeof CommentThread>>
 }
 
 describe('CommentThread', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('says how long ago each comment was posted and keeps that current', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.parse('2026-09-13T12:00:00Z'));
+    renderThread({
+      comments: [
+        comment('c-1', '2026-09-13T11:08:00Z'),
+        comment('c-2', '2026-09-13T11:59:30Z'),
+      ],
+    });
+
+    const [first, second] = screen.getAllByRole('time');
+    expect(first).toHaveTextContent('52m');
+    expect(first).toHaveAttribute('datetime', '2026-09-13T11:08:00Z');
+    expect(second).toHaveTextContent('Just now');
+
+    act(() => {
+      vi.advanceTimersByTime(90_000);
+    });
+    expect(second).toHaveTextContent('1m');
+  });
+
+  it('shows mentions as chips, with the agent marked by its icon', () => {
+    const c = comment('c-1', '2026-09-13T11:00:00Z');
+    c.body = '${mention|agent:a-1} shorten this for ${mention|user:u-2}';
+    c.mentions = [
+      { type: 'agent', id: 'a-1', name: 'Pantheon Agent' },
+      { type: 'user', id: 'u-2', name: 'Marco' },
+    ];
+    renderThread({ comments: [c] });
+
+    const chips = screen.getAllByTestId('comment-mention');
+    expect(chips.map((el) => el.textContent)).toEqual(['@Pantheon Agent', '@Marco']);
+    expect(chips[0]?.querySelector('[data-testid="icon-sparkles"]')).not.toBeNull();
+    expect(chips[1]?.querySelector('[data-testid="icon-sparkles"]')).toBeNull();
+  });
+
+  it('says the thread is empty only when nothing is loading or broken', () => {
+    const { rerender } = renderThread({ contextType: 'page', contextId: '/about' });
+    expect(screen.getByTestId('comment-thread-empty')).toBeInTheDocument();
+
+    rerender(<CommentThread contextType="page" contextId="/about" loading onClose={() => {}} />);
+    expect(screen.queryByTestId('comment-thread-empty')).toBeNull();
+
+    rerender(
+      <CommentThread
+        contextType="page"
+        contextId="/about"
+        comments={[comment('c-1', '2026-09-13T11:00:00Z')]}
+        onClose={() => {}}
+      />,
+    );
+    expect(screen.queryByTestId('comment-thread-empty')).toBeNull();
+  });
+
+  it('marks a comment an agent posted', () => {
+    renderThread({
+      comments: [comment('c-1', '2026-09-13T11:00:00Z', { type: 'agent', name: 'Pantheon Agent' })],
+    });
+
+    const entry = screen.getByTestId('thread-comment');
+    expect(entry).toHaveTextContent('Pantheon Agent');
+    expect(entry).toHaveTextContent('Agent');
+    expect(screen.getByTestId('icon-sparkles')).toBeInTheDocument();
+  });
+
   it('names the thing being discussed, with an icon for its kind', () => {
     renderThread({ subject: { label: 'Hero Banner', icon: 'grid2' } });
 
@@ -96,6 +179,20 @@ describe('CommentThread', () => {
 
     expect(onPost).toHaveBeenCalledWith('Ship it');
     expect(draft).toHaveValue('');
+  });
+
+  it('keeps what was typed while the post was in flight', async () => {
+    let land: (landed: boolean) => void = () => {};
+    const onPost = vi.fn(() => new Promise<boolean>((resolve) => (land = resolve)));
+    renderThread({ onPost });
+    const draft = screen.getByRole('textbox', { name: 'New comment' });
+
+    fireEvent.change(draft, { target: { value: 'First' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Post' }));
+    fireEvent.change(draft, { target: { value: 'Second' } });
+    await act(async () => land(true));
+
+    expect(draft).toHaveValue('Second');
   });
 
   it('keeps Backspace and Delete from reaching the canvas document', () => {

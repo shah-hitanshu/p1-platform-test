@@ -1,9 +1,11 @@
 import { useCallback, useContext, useState } from 'react';
+import type { QueryClient } from '@tanstack/react-query';
 import type { ThreadContextType, P1Client, PostCommentResult } from '@pantheon-systems/css-client';
 
 import { useP1PuckOptional } from '../../core/P1PuckContext.js';
 import { P1SdkQueryClientContext } from '../../data/query-provider.js';
 import { applyThreadOverview } from './thread-cache.js';
+import { appendThreadComment, storeThread } from './thread-comments.js';
 
 export interface UsePostCommentOptions {
   contextType: ThreadContextType;
@@ -13,8 +15,11 @@ export interface UsePostCommentOptions {
 }
 
 export interface PostCommentState {
-  /** Sends the body. Absent where there is no editor to send it through. */
-  post?: (body: string) => Promise<void>;
+  /**
+   * Sends the comment and resolves to whether it landed. Absent where there is no
+   * editor to send it through.
+   */
+  post?: (body: string) => Promise<boolean>;
   posting: boolean;
   failed: boolean;
 }
@@ -45,9 +50,22 @@ function sendComment(
   });
 }
 
+/** Writes what was posted back where it is already shown: the listing and the open thread. */
+function rememberPosted(
+  queryClient: QueryClient,
+  siteId: string,
+  threadId: string | undefined,
+  result: PostCommentResult,
+): void {
+  applyThreadOverview(queryClient, result.thread);
+  if (threadId) appendThreadComment(queryClient, siteId, result.comment);
+  else storeThread(queryClient, { thread: result.thread, comments: [result.comment] });
+}
+
 /**
- * Posts a comment on one context and writes the thread it lands in back into the
- * page's loaded listing, so the trigger's count moves without another fetch.
+ * Posts a comment on one context and writes it back where it is already shown: the
+ * thread it lands in goes into the page's loaded listing, so the trigger's count moves,
+ * and the comment goes into the open thread, so it appears without another fetch.
  *
  * A comment on a resolved thread reopens it, so a known thread is always posted to
  * directly; only a context with no thread yet starts one.
@@ -66,15 +84,17 @@ export function usePostComment({ contextType, contextId, threadId }: UsePostComm
 
   const post = useCallback(
     async (body: string) => {
-      if (!client || !siteId) return;
+      if (!client || !siteId) return false;
       setPosting(true);
       setFailed(false);
       try {
         const target = { contextType, contextId, threadId, documentId, branchId };
         const result = await sendComment(client, siteId, target, body);
-        if (queryClient) applyThreadOverview(queryClient, result.thread);
+        if (queryClient) rememberPosted(queryClient, siteId, threadId, result);
+        return true;
       } catch {
         setFailed(true);
+        return false;
       } finally {
         setPosting(false);
       }

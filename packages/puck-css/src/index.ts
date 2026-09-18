@@ -61,9 +61,12 @@ export {
   useDocumentThreads,
   useThreadOverview,
   useThreadsEnabled,
+  useThreadComments,
   usePostComment,
   applyThreadEvent,
   applyThreadOverview,
+  appendThreadComment,
+  storeThread,
 } from './features/threads/index.js';
 export type {
   CommentTriggerProps,
@@ -71,6 +74,7 @@ export type {
   BlockCommentTriggerProps,
   DocumentThreads,
   DocumentThreadsState,
+  ThreadCommentsState,
   UsePostCommentOptions,
   PostCommentState,
   ThreadContext,

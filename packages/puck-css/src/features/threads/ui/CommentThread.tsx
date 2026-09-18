@@ -1,17 +1,35 @@
-import React, { useCallback, useId, useRef, useState } from 'react';
-import { Badge, Button, Icon, Textarea } from '@pantheon-systems/pds-toolkit-react';
+import React, { useCallback, useId, useState, useRef } from 'react';
+import { Badge, Button, Icon, Spinner, Textarea } from '@pantheon-systems/pds-toolkit-react';
+import type { Comment } from '@pantheon-systems/css-client';
 
 import { SafeIcon } from '../../../pds/components/SafeIcon.js';
 import type { ThreadContext, ThreadSubject } from '../types.js';
 import { useKeepInView } from '../use-keep-in-view.js';
+import { CommentList } from './CommentList.js';
 import styles from './CommentThread.module.css';
 
 export interface CommentThreadProps
   extends Pick<ThreadContext, 'contextType' | 'contextId' | 'threadId' | 'resolved'> {
   /** What to call the thing being discussed. Falls back to naming its kind. */
   subject?: ThreadSubject;
-  /** Called with the trimmed draft when the reader posts it. Absent when nothing can be posted. */
-  onPost?: (body: string) => void;
+  /** What has been said so far, oldest first. */
+  comments?: readonly Comment[];
+  /** The comments are on their way. */
+  loading?: boolean;
+  /** The comments could not be loaded. */
+  failed?: boolean;
+  /** Ask for the comments again, offered when they could not be loaded. */
+  onRetry?: () => void;
+  /**
+   * Called with the trimmed draft when the reader posts it. Absent when nothing can be
+   * posted. May resolve to `false` to say the body did not land, which keeps the
+   * draft in place for another try.
+   */
+  onPost?: (body: string) => void | Promise<boolean | void>;
+  /** A post is in flight. */
+  posting?: boolean;
+  /** The last post did not land. */
+  postFailed?: boolean;
   onClose: () => void;
 }
 
@@ -40,8 +58,8 @@ function isEditingKey(e: React.KeyboardEvent): boolean {
  * can tell which piece of content is being discussed when several threads are in reach.
  * The header names that content outright, for when the caret alone is not enough.
  *
- * The messages and the composer are slots for now: the list is empty until threads are
- * stored, and posting hands the draft to whoever mounted the view.
+ * Shows what has been said so far and hands a new draft to whoever mounted the view;
+ * loading the one and sending the other are the host's to do.
  */
 export function CommentThread({
   contextType,
@@ -49,19 +67,33 @@ export function CommentThread({
   threadId,
   resolved = false,
   subject,
+  comments = [],
+  loading = false,
+  failed = false,
+  onRetry,
   onPost,
+  posting = false,
+  postFailed = false,
   onClose,
 }: CommentThreadProps): React.ReactElement {
   const draftId = useId();
   const [draft, setDraft] = useState('');
   const body = draft.trim();
-  const canPost = body.length > 0;
+  const canPost = body.length > 0 && !posting;
 
   const post = useCallback(() => {
     if (!canPost) return;
-    onPost?.(body);
-    setDraft('');
-  }, [canPost, body, onPost]);
+    // Only what was sent is cleared; anything typed while the post was in flight stays.
+    const clearSent = () => setDraft((current) => (current === draft ? '' : current));
+    const result = onPost?.(body);
+    if (result instanceof Promise) {
+      void result.then((landed) => {
+        if (landed !== false) clearSent();
+      });
+    } else {
+      clearSent();
+    }
+  }, [canPost, draft, body, onPost]);
 
   const label = subject?.label ?? KIND_LABEL[contextType];
   const panelRef = useRef<HTMLDivElement>(null);
@@ -113,7 +145,23 @@ export function CommentThread({
         </button>
       </header>
 
-      <ol className={styles.messages} aria-label="Comments" data-testid="thread-comments" />
+      <CommentList comments={comments} />
+      {comments.length === 0 && !loading && !failed && (
+        <p className={styles.empty} data-testid="comment-thread-empty">
+          No comments on this {KIND_LABEL[contextType].toLowerCase()} yet.
+        </p>
+      )}
+      {loading && (
+        <div className={styles.status} role="status" data-testid="comment-thread-loading">
+          <Spinner isInline size="s" label="Loading comments" />
+        </div>
+      )}
+      {failed && (
+        <div className={styles.status} role="alert" data-testid="comment-thread-failed">
+          <span>Comments could not be loaded.</span>
+          {onRetry && <Button label="Retry" size="s" variant="secondary" onClick={onRetry} />}
+        </div>
+      )}
 
       <div className={styles.composer}>
         <Textarea
@@ -136,6 +184,11 @@ export function CommentThread({
             },
           }}
         />
+        {postFailed && (
+          <span className={styles.postFailed} role="alert" data-testid="comment-thread-post-failed">
+            Your comment could not be posted. Try again.
+          </span>
+        )}
         <div className={styles.composerFooter}>
           <span className={styles.help}>@ to mention · ⏎ to send</span>
           <Button

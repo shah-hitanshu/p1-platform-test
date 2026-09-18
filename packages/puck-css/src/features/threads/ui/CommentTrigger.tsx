@@ -10,6 +10,7 @@ import {
 } from '../open-thread.js';
 import { closeOnPointerDownOutside } from '../close-outside.js';
 import { usePostComment } from '../use-post-comment.js';
+import { useThreadComments } from '../use-thread-comments.js';
 import { CommentThread } from './CommentThread.js';
 import styles from './CommentTrigger.module.css';
 
@@ -60,7 +61,8 @@ export function CommentTrigger({
   const openThread = useSyncExternalStore(subscribeToOpenThread, getOpenThread, getOpenThread);
   const open = openThread === key;
   const hasThread = commentCount > 0;
-  const { post } = usePostComment({ contextType, contextId, threadId });
+  const { post, posting, failed: postFailed } = usePostComment({ contextType, contextId, threadId });
+  const thread = useThreadComments(open ? threadId : undefined);
 
   useEffect(() => {
     if (!open || !rootRef.current) return;
@@ -120,7 +122,13 @@ export function CommentTrigger({
           threadId={threadId}
           resolved={resolved}
           subject={subject}
+          comments={thread.comments}
+          loading={thread.loading}
+          failed={thread.failed}
+          onRetry={thread.retry}
           onPost={post}
+          posting={posting}
+          postFailed={postFailed}
           onClose={() => setOpenThread(null)}
         />
       )}
