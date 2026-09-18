@@ -1412,3 +1412,5 @@ export interface QueryResultsParams {
   includeMetadata?: boolean;
   includeSnapshot?: boolean;
 }
+
+export type * from './threads/index.js';

@@ -15,7 +15,7 @@ import type {
   WsFocusRegionUpdateMessage,
   WsPresenceHeartbeatMessage,
   WsServerMessage,
-} from './types';
+} from './types/index.js';
 
 /**
  * Configuration for reconnection behavior

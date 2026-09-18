@@ -10,7 +10,7 @@ export interface CommentThreadProps
   extends Pick<ThreadContext, 'contextType' | 'contextId' | 'threadId' | 'resolved'> {
   /** What to call the thing being discussed. Falls back to naming its kind. */
   subject?: ThreadSubject;
-  /** Called with the trimmed draft when the reader posts it. Absent until threads are stored. */
+  /** Called with the trimmed draft when the reader posts it. Absent when nothing can be posted. */
   onPost?: (body: string) => void;
   onClose: () => void;
 }

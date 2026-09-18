@@ -43,6 +43,7 @@ import { deriveDocState } from '../../pds/utils/deriveDocState.js';
 import { deriveLiveDocState } from '../../pds/utils/deriveLiveDocState.js';
 import type { Template } from '../../features/content-type-templates/types.js';
 import { useSiteMarkets } from '../../features/localization/useSiteMarkets.js';
+import { DocumentThreadsLoader } from '../../features/threads/ui/DocumentThreadsLoader.js';
 import { useCreateTranslation } from '../../features/localization/useCreateTranslation.js';
 import { localeLabel } from '../../features/localization/locale-labels.js';
 import { useEditorContext } from '../../p1/editor/index.js';
@@ -1135,6 +1136,8 @@ export function createP1Plugin(options: P1PluginOptions): PuckPlugin {
         <PermissionRefresher />
         {/* Reveal the right rail when the AI panel opens */}
         <AIPanelUiBridge />
+        {/* Load the page's threads before any block trigger asks for its own */}
+        <DocumentThreadsLoader />
         {/* Track selection changes for focus region reporting */}
         {options.onSelectionChange && (
           <PuckSelectionTracker onSelectionChange={options.onSelectionChange} />

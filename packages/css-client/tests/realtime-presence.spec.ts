@@ -9,7 +9,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type {
   WsPresenceUpdateMessage,
   WsFocusRegionBroadcastMessage,
-} from '../src/types';
+} from '../src/types/index.js';
 
 // Mock ReconnectingWebSocket options
 interface MockWSOptions {
@@ -27,14 +27,14 @@ class MockReconnectingWebSocket {
   static CLOSED = 3;
 
   readyState: number = MockReconnectingWebSocket.CONNECTING;
-  binaryType: string = 'arraybuffer';
-  retryCount: number = 0;
+  binaryType = 'arraybuffer';
+  retryCount = 0;
 
   url: string;
   protocols: string[];
   options: MockWSOptions;
 
-  private listeners: Map<string, Set<EventListener>> = new Map();
+  private listeners = new Map<string, Set<EventListener>>();
   sentMessages: (string | ArrayBuffer | Uint8Array)[] = [];
 
   constructor(url: string, protocols: string[] = [], options: MockWSOptions = {}) {

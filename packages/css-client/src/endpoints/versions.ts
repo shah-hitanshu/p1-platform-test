@@ -4,7 +4,7 @@
  * API operations for document versions.
  */
 
-import type { DocumentVersion, CreateDocumentVersionParams, PaginationOptions } from '../types.js';
+import type { DocumentVersion, CreateDocumentVersionParams, PaginationOptions } from '../types/index.js';
 import type { BaseEndpoint } from './base.js';
 
 export class VersionsEndpoint {

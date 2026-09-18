@@ -11,7 +11,7 @@ import type {
   AgentEditCompleteResult,
   AgentEditAbortResult,
   AgentStopResult,
-} from '../types.js';
+} from '../types/index.js';
 import type { BaseEndpoint } from './base.js';
 
 /**

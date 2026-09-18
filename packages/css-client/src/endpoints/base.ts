@@ -5,7 +5,7 @@
  */
 
 import type { AuthProvider } from '../auth.js';
-import type { Principal } from '../types.js';
+import type { Principal } from '../types/index.js';
 import {
   attachRequestId,
   P1ApiError,

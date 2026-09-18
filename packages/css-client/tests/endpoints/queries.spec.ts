@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { QueriesEndpoint } from '../../src/endpoints/queries.js';
 import type { BaseEndpoint } from '../../src/endpoints/base.js';
-import type { Query, QueryResults } from '../../src/types.js';
+import type { Query, QueryResults } from '../../src/types/index.js';
 
 function makeQuery(overrides: Partial<Query> = {}): Query {
   return {

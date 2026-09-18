@@ -1,3 +1,5 @@
+import type { ThreadContextType } from '@pantheon-systems/css-client';
+
 /**
  * What a thread can be attached to.
  *
@@ -5,7 +7,7 @@
  * pages, sites and workstreams, so what a trigger is talking about travels as a
  * (kind, id) pair rather than being inferred from where the trigger is rendered.
  */
-export type ThreadContextType = 'block' | 'page' | 'site' | 'workstream';
+export type { ThreadContextType } from '@pantheon-systems/css-client';
 
 export interface ThreadContext {
   contextType: ThreadContextType;

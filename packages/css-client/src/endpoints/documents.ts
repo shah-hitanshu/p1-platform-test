@@ -4,7 +4,7 @@
  * API operations for documents.
  */
 
-import type { Document, CreateDocumentParams, ListDocumentsOptions, PublishDocumentResult } from '../types.js';
+import type { Document, CreateDocumentParams, ListDocumentsOptions, PublishDocumentResult } from '../types/index.js';
 import { requirePathParams } from '../utils.js';
 import type { BaseEndpoint } from './base.js';
 

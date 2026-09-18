@@ -9,7 +9,7 @@ import type {
   BranchPresence,
   AgentGlobalPresence,
   UpdateFocusRegionsResponse,
-} from '../types.js';
+} from '../types/index.js';
 import type { BaseEndpoint } from './base.js';
 
 /**

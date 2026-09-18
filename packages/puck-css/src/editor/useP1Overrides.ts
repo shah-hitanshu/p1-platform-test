@@ -6,9 +6,10 @@
  * and wires them to createP1Overrides with correct options.
  */
 
-import { useRef, useMemo } from 'react';
+import { useRef, useMemo, useEffect } from 'react';
 import type { Checkpoint, ActorPresence } from '@pantheon-systems/css-client';
 import { useP1Puck } from '../core/P1PuckContext.js';
+import { setThreadsEnabled } from '../features/threads/enabled.js';
 import { createP1Overrides } from './plugin/createP1Overrides.js';
 import type { P1OverridesOptions, PuckOverrides } from './plugin/createP1Overrides.js';
 
@@ -90,6 +91,13 @@ export function useP1Overrides(options: UseP1OverridesOptions = {}): PuckOverrid
     publishedStatus: options.publishedStatus,
     threadsEnabled: options.threadsEnabled ?? false,
   };
+
+  // The loader and the triggers render in trees this hook has no place in, so the
+  // rollout answer is handed to a store they can all read.
+  const threadsEnabled = overridesOptions.threadsEnabled ?? false;
+  useEffect(() => {
+    setThreadsEnabled(threadsEnabled);
+  }, [threadsEnabled]);
 
   // Store options in a ref updated each render
   const optionsRef = useRef(overridesOptions);

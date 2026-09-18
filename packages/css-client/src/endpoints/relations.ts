@@ -11,7 +11,7 @@ import type {
   ChangeSummary,
   UpstreamResolutions,
   UpstreamResolutionTarget,
-} from '../types.js';
+} from '../types/index.js';
 import type { BaseEndpoint } from './base.js';
 
 export class RelationsEndpoint {

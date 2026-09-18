@@ -15,8 +15,8 @@ import type {
   WsPresenceErrorMessage,
   WsClientMessage,
   WsServerMessage,
-} from '../src/types';
-import type { ActorPresence, ActorState } from '../src/types';
+} from '../src/types/index.js';
+import type { ActorPresence, ActorState } from '../src/types/index.js';
 
 describe('WebSocket Presence Message Types', () => {
   describe('Client → Server Messages', () => {

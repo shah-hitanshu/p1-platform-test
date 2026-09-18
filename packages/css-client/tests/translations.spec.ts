@@ -11,7 +11,7 @@ import type {
   CreateTranslationResult,
   ListTranslationsResult,
   LocalizationRelation,
-} from '../src/types.js';
+} from '../src/types/index.js';
 
 const mockFetch = vi.fn();
 global.fetch = mockFetch;

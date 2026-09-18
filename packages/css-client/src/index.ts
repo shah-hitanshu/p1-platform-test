@@ -127,7 +127,8 @@ export type {
   ChangeSummary,
   UpstreamResolutions,
   UpstreamResolutionTarget,
-} from './types.js';
+} from './types/index.js';
+export type * from './types/threads/index.js';
 
 // Auth utilities and role types
 export {

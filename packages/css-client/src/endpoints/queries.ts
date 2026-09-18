@@ -1,4 +1,4 @@
-import type { Query, QueryResults, QueryResultsParams } from '../types.js';
+import type { Query, QueryResults, QueryResultsParams } from '../types/index.js';
 import { requirePathParams } from '../utils.js';
 import type { BaseEndpoint } from './base.js';
 

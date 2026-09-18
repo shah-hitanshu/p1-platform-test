@@ -15,8 +15,8 @@ import type {
   UpdateMergeRequestParams,
   ListMergeRequestsOptions,
   ExecuteMergeRequestOptions,
-} from '../types.js';
-import { TERMINAL_MERGE_JOB_STATUSES } from '../types.js';
+} from '../types/index.js';
+import { TERMINAL_MERGE_JOB_STATUSES } from '../types/index.js';
 import { requirePathParams } from '../utils.js';
 import type { BaseEndpoint } from './base.js';
 

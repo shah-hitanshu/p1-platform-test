@@ -7,7 +7,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { MigrationConflictsEndpoint } from '../../src/endpoints/migration-conflicts.js';
 import type { BaseEndpoint } from '../../src/endpoints/base.js';
-import type { MigrationConflict } from '../../src/types.js';
+import type { MigrationConflict } from '../../src/types/index.js';
 
 function makeConflict(overrides: Partial<MigrationConflict> = {}): MigrationConflict {
   return {

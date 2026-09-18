@@ -4,7 +4,7 @@
  * API operations for branches.
  */
 
-import type { Branch, CreateBranchParams, PaginationOptions } from '../types.js';
+import type { Branch, CreateBranchParams, PaginationOptions } from '../types/index.js';
 import { requirePathParams } from '../utils.js';
 import type { BaseEndpoint } from './base.js';
 

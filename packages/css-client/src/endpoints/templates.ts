@@ -11,7 +11,7 @@ import type {
   UpdateTemplateParams,
   MigrationJob,
   MigrationPreview,
-} from '../types.js';
+} from '../types/index.js';
 import { requirePathParams } from '../utils.js';
 import type { BaseEndpoint } from './base.js';
 

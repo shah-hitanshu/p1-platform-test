@@ -31,3 +31,6 @@ export { TranslationsEndpoint } from './translations.js';
 
 // Relation edges (localization + template derivation)
 export { RelationsEndpoint } from './relations.js';
+
+// Threads (comment threads)
+export { ThreadsEndpoint } from './threads.js';

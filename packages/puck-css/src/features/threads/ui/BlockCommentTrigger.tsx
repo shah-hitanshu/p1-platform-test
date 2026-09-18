@@ -2,6 +2,7 @@ import React, { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import { createUsePuck } from '@puckeditor/core';
 
 import { useBlockSubject } from '../use-block-subject.js';
+import { useThreadOverview } from '../use-document-threads.js';
 import { CommentTrigger } from './CommentTrigger.js';
 import styles from './BlockCommentTrigger.module.css';
 
@@ -51,8 +52,8 @@ function hover(block: HTMLElement, hovered: boolean): void {
 /**
  * The comment trigger for one block, pinned to the block's top right corner.
  *
- * The thread and its message count are not wired yet: until threads are stored,
- * every block reads as having none.
+ * The thread it shows is whichever the page's listing holds for this block: the open
+ * one, or the latest resolved one once every thread here has been resolved.
  */
 export function BlockCommentTrigger({ blockId }: BlockCommentTriggerProps): React.ReactElement {
   const anchorRef = useRef<HTMLDivElement>(null);
@@ -61,6 +62,7 @@ export function BlockCommentTrigger({ blockId }: BlockCommentTriggerProps): Reac
   const [scale, setScale] = useState(1);
   const selected = useBlockSelected(blockId);
   const subject = useBlockSubject(blockId);
+  const thread = useThreadOverview('block', blockId);
 
   useLayoutEffect(() => {
     const anchor = anchorRef.current;
@@ -125,6 +127,9 @@ export function BlockCommentTrigger({ blockId }: BlockCommentTriggerProps): Reac
         contextType="block"
         contextId={blockId}
         subject={subject}
+        threadId={thread?.id}
+        commentCount={thread?.commentCount}
+        resolved={thread?.status === 'resolved'}
         onOpenChange={onOpenChange}
       />
     </div>

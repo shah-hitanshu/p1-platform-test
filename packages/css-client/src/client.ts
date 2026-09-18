@@ -5,7 +5,7 @@
  */
 
 import type { AuthProvider } from './auth.js';
-import type { Principal } from './types.js';
+import type { Principal } from './types/index.js';
 import type { SdkIdentity } from './telemetry-headers.js';
 import {
   BaseEndpoint,
@@ -24,6 +24,7 @@ import {
   QueriesEndpoint,
   TranslationsEndpoint,
   RelationsEndpoint,
+  ThreadsEndpoint,
 } from './endpoints/index.js';
 
 /**
@@ -195,6 +196,10 @@ export class P1Client {
 
   /** Advisory endpoint: resolves the calling user's role on a branch. */
   public readonly auth: AuthEndpoint;
+  /**
+   * Comment threads anchored to blocks, pages, sites and workstreams.
+   */
+  public readonly threads: ThreadsEndpoint;
 
   constructor(config: P1ClientConfig | InternalConfig) {
     // Check if this is an internal config (has baseEndpoint)
@@ -247,6 +252,8 @@ export class P1Client {
 
     // Auth / role advisory
     this.auth = new AuthEndpoint(this.baseEndpoint);
+    // Threads
+    this.threads = new ThreadsEndpoint(this.baseEndpoint);
   }
 
   /**

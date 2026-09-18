@@ -10,7 +10,7 @@ import type {
   UpdateAgentParams,
   ListAgentsOptions,
   AgentStatus,
-} from '../types.js';
+} from '../types/index.js';
 import { requirePathParams } from '../utils.js';
 import type { BaseEndpoint } from './base.js';
 

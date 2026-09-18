@@ -4,7 +4,7 @@
  * API operations for sites.
  */
 
-import type { Site, PaginationOptions, SiteSettingsResult } from '../types.js';
+import type { Site, PaginationOptions, SiteSettingsResult } from '../types/index.js';
 import { requirePathParams } from '../utils.js';
 import type { BaseEndpoint } from './base.js';
 

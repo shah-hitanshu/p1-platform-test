@@ -4,7 +4,7 @@
  * API operations for reviewing and resolving template migration conflicts.
  */
 
-import type { MigrationConflict } from '../types.js';
+import type { MigrationConflict } from '../types/index.js';
 import type { BaseEndpoint } from './base.js';
 
 export class MigrationConflictsEndpoint {

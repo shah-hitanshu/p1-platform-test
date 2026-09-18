@@ -14,7 +14,7 @@ import type {
   CreateTemplateParams,
   UpdateTemplateParams,
   MigrationPreview,
-} from '../../src/types.js';
+} from '../../src/types/index.js';
 
 function makeTemplate(overrides: Partial<Template> = {}): Template {
   return {
