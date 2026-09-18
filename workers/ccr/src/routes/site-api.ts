@@ -26,12 +26,13 @@ import {
 import { assertPermission, getEffectiveRole, getSiteRole } from '../auth/authorization';
 import { ROLES } from '../auth/roles';
 import type { MASClient } from '../services/mas-client';
-import { canAccessOrganization } from '../utils/org-access';
+import { canAccessOrganization, isOrgAdmin } from '../utils/org-access';
 import { isSuperAdmin } from '../utils/admin-check';
 import type { ScreenshotProducerEnv } from '../queues/screenshot-producer';
 import { and, eq } from 'drizzle-orm';
-import { users } from '../db/schema';
+import { organizationMembers, users } from '../db/schema';
 import { db } from '../db/scope';
+import { grantRole as grantUserSiteRole } from '../services/user-site-role-service';
 import { validatePagination, validateAllowedOriginPatterns } from './validation';
 
 /**
@@ -61,6 +62,7 @@ interface CreateSiteBody {
   url?: string;
   workflowSettings?: Partial<WorkflowSettings>;
   allowedOrigins?: string[];
+  organizationId?: string;
 }
 
 /**
@@ -126,21 +128,24 @@ async function handleCreateSite(
     );
   }
 
+  const body = await parseJsonBody<CreateSiteBody>(request);
+
   // Creating a site is organization administration: an owner or admin of an
-  // active organization may do it, a plain member may not.
+  // active organization may do it, a plain member may not. When a specific
+  // org is requested, verify admin rights in that org rather than any org.
   if (!(await isSuperAdmin(context.principal))) {
-    const memberships = await getOrganizationsForUser(
-      context.principal.dbUserId ?? context.principal.id,
-    );
-    if (!memberships.some((m) => m.role === 'owner' || m.role === 'admin')) {
+    const permitted = body.organizationId !== undefined
+      ? await isOrgAdmin(context.principal, body.organizationId)
+      : (await getOrganizationsForUser(
+        context.principal.dbUserId ?? context.principal.id,
+      )).some((m) => m.role === 'owner' || m.role === 'admin');
+    if (!permitted) {
       return errorResponse(
         'Creating a site requires an admin or owner role in your organization.',
         403,
       );
     }
   }
-
-  const body = await parseJsonBody<CreateSiteBody>(request);
 
   if (body.name === undefined || body.name.trim() === '') {
     return errorResponse('name is required', 400);
@@ -168,10 +173,31 @@ async function handleCreateSite(
   );
 
   if (context.principal.dbUserId !== undefined) {
+    const creatorId = context.principal.dbUserId;
     try {
-      const orgId = await getUserOwnedOrg(context.principal.dbUserId);
+      const orgId = body.organizationId ?? await getUserOwnedOrg(creatorId);
       if (orgId !== null) {
         await linkSiteToOrganization(site.id, orgId);
+
+        // When the site lands in an org the creator doesn't own, grant each
+        // active org owner admin access so they can manage their own org's site.
+        const owners = await db()
+          .select({ userId: organizationMembers.userId })
+          .from(organizationMembers)
+          .where(
+            and(
+              eq(organizationMembers.organizationId, orgId),
+              eq(organizationMembers.role, 'owner'),
+              eq(organizationMembers.isActive, true),
+            ),
+          );
+        await Promise.all(
+          owners
+            .filter(({ userId }) => userId !== creatorId)
+            .map(({ userId }) =>
+              grantUserSiteRole({ userId, siteId: site.id, role: 'admin', grantedBy: creatorId }),
+            ),
+        );
       }
     } catch (orgError) {
       getLogger().error('Auto-assign org failed for site', orgError, { site_id: site.id });
