@@ -16,7 +16,13 @@ vi.mock('@puckeditor/core', () => ({
   ActionBar: ({ children }: any) => <div data-testid="action-bar">{children}</div>,
   FieldLabel: ({ children }: any) => <label>{children}</label>,
   createUsePuck: () => (selector: (s: any) => unknown) =>
-    selector({ selectedItem: null, appState: { data: { content: [], root: { props: {} } } } }),
+    selector({
+      selectedItem: null,
+      appState: { data: { content: [], root: { props: {} } } },
+      config: { components: { HeadingBlock: { label: 'Heading' }, CtaBlock: {} } },
+      getItemById: (id: string) =>
+        ({ 'comp-1': { type: 'HeadingBlock' }, 'comp-2': { type: 'CtaBlock' } })[id],
+    }),
 }));
 
 vi.mock('@pantheon-systems/pds-toolkit-react', async (importOriginal) => ({
@@ -164,6 +170,21 @@ describe('threads on the block overlay', () => {
     fireEvent.click(triggerIn('comp-2') as HTMLElement);
     expect(overlay.style.zIndex).toBe('');
     expect(screen.getByTestId('overlay-comp-2').style.zIndex).toBe('3');
+  });
+
+  // The block id the overlay hands over is opaque; the panel has to say which block it
+  // is about in the words the outline uses for it.
+  it('names the block in the thread it opens', () => {
+    renderBlocks({ threadsEnabled: true } as P1OverridesOptions, [
+      { id: 'comp-1' },
+      { id: 'comp-2' },
+    ]);
+
+    fireEvent.click(triggerIn('comp-1') as HTMLElement);
+    expect(screen.getByTestId('comment-thread-subject')).toHaveTextContent('Heading');
+
+    fireEvent.click(triggerIn('comp-2') as HTMLElement);
+    expect(screen.getByTestId('comment-thread-subject')).toHaveTextContent('CTA');
   });
 
   // Puck mounts the overlay on hover, so the trigger comes with it — a reader can

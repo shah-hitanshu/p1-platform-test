@@ -65,6 +65,7 @@ export type {
   BlockCommentTriggerProps,
   ThreadContext,
   ThreadContextType,
+  ThreadSubject,
 } from './features/threads/index.js';
 
 // Stable Consumer API Hooks

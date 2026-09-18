@@ -6,7 +6,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 
-vi.mock('@pantheon-systems/pds-toolkit-react', () => ({
+vi.mock('@pantheon-systems/pds-toolkit-react', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   Icon: ({ iconName, ...props }: any) => <span data-testid={`icon-${iconName}`} {...props} />,
   Tally: ({ label, ...props }: any) => (
     <span data-testid="tally" {...props}>
@@ -56,9 +57,9 @@ describe('CommentTrigger', () => {
     expect(screen.queryByTestId('comment-thread')).not.toBeInTheDocument();
     fireEvent.click(screen.getByTestId('comment-trigger'));
 
-    expect(screen.getByTestId('comment-thread').textContent).toContain(
-      'thread will go here for page with id /about'
-    );
+    const thread = screen.getByTestId('comment-thread');
+    expect(thread).toHaveAttribute('data-context-type', 'page');
+    expect(thread).toHaveAttribute('data-context-id', '/about');
   });
 
   it('names the thread it opened when one already exists', () => {
@@ -66,7 +67,25 @@ describe('CommentTrigger', () => {
 
     fireEvent.click(screen.getByTestId('comment-trigger'));
 
-    expect(screen.getByTestId('comment-thread').textContent).toContain('thread t-9');
+    expect(screen.getByTestId('comment-thread')).toHaveAttribute('data-thread-id', 't-9');
+  });
+
+  it('tells the thread what it is about and whether that is settled', () => {
+    render(
+      <CommentTrigger
+        contextType="block"
+        contextId="comp-1"
+        threadId="t-9"
+        commentCount={2}
+        resolved
+        subject={{ label: 'Hero Banner', icon: 'grid2' }}
+      />
+    );
+
+    fireEvent.click(screen.getByTestId('comment-trigger'));
+
+    expect(screen.getByTestId('comment-thread-subject')).toHaveTextContent('Hero Banner');
+    expect(screen.getByTestId('comment-thread-resolved')).toBeInTheDocument();
   });
 
   it('closes the thread again', () => {
@@ -100,7 +119,7 @@ describe('CommentTrigger', () => {
     expect(screen.getAllByTestId('comment-thread')).toHaveLength(1);
     expect(first).toHaveAttribute('aria-expanded', 'false');
     expect(second).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getByTestId('comment-thread').textContent).toContain('id comp-2');
+    expect(screen.getByTestId('comment-thread')).toHaveAttribute('data-context-id', 'comp-2');
   });
 
   it('closes the thread when the pointer goes down somewhere else', () => {
@@ -145,6 +164,7 @@ describe('CommentTrigger', () => {
       contextId: 'ws-2',
       threadId: 't-3',
       commentCount: 5,
+      resolved: undefined,
     });
     expect(screen.queryByTestId('comment-thread')).not.toBeInTheDocument();
   });

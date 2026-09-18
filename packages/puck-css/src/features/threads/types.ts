@@ -18,4 +18,21 @@ export interface ThreadContext {
   threadId?: string;
   /** How many comments the thread holds. Zero when there is no thread. */
   commentCount?: number;
+  /** Whether the thread has been resolved. Never true when there is no thread. */
+  resolved?: boolean;
+}
+
+/**
+ * How the thing being discussed is shown to a reader.
+ *
+ * A (kind, id) pair is enough to find the thing, but not enough to name it: the block id
+ * is opaque, and its name lives in the editor's config. Each kind of context has its own
+ * place to look that up, so whichever trigger knows where resolves it and hands the
+ * answer along, and the thread view only has to display it.
+ */
+export interface ThreadSubject {
+  /** What to call the thing being discussed — a block's name, a page's title. */
+  label: string;
+  /** A PDS icon name that reads as the kind of thing it is. */
+  icon?: string;
 }

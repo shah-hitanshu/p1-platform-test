@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useSyncExternalStore } from 'react';
 import { Icon, Tally } from '@pantheon-systems/pds-toolkit-react';
 
-import type { ThreadContext } from '../types.js';
+import type { ThreadContext, ThreadSubject } from '../types.js';
 import {
   getOpenThread,
   setOpenThread,
@@ -13,6 +13,8 @@ import { CommentThread } from './CommentThread.js';
 import styles from './CommentTrigger.module.css';
 
 export interface CommentTriggerProps extends ThreadContext {
+  /** What to call the thing being discussed, for the thread's header. */
+  subject?: ThreadSubject;
   /**
    * Called instead of opening the built-in thread view, for a host that renders the
    * thread somewhere of its own — a side panel rather than beside the content.
@@ -47,6 +49,8 @@ export function CommentTrigger({
   contextId,
   threadId,
   commentCount = 0,
+  resolved,
+  subject,
   onOpen,
   onOpenChange,
 }: CommentTriggerProps): React.ReactElement {
@@ -62,13 +66,13 @@ export function CommentTrigger({
   }, [open]);
 
   const handleClick = useCallback(() => {
-    const context = { contextType, contextId, threadId, commentCount };
+    const context = { contextType, contextId, threadId, commentCount, resolved };
     if (onOpen) {
       onOpen(context);
       return;
     }
     setOpenThread(open ? null : key);
-  }, [contextType, contextId, threadId, commentCount, onOpen, open, key]);
+  }, [contextType, contextId, threadId, commentCount, resolved, onOpen, open, key]);
 
   const reportedOpen = useRef(open);
   useEffect(() => {
@@ -112,6 +116,8 @@ export function CommentTrigger({
           contextType={contextType}
           contextId={contextId}
           threadId={threadId}
+          resolved={resolved}
+          subject={subject}
           onClose={() => setOpenThread(null)}
         />
       )}

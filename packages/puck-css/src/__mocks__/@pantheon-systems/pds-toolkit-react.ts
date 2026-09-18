@@ -18,7 +18,28 @@ export const TextInput = (props: Record<string, unknown>) => {
     onChange: props.onChange,
   });
 };
-export const Textarea = () => null;
+// Textarea stub: renders a native <textarea> so value, placeholder and key events work
+export const Textarea = (props: Record<string, unknown>) => {
+  const textareaProps = (props.textareaProps ?? {}) as Record<string, unknown>;
+  return React.createElement('textarea', {
+    ...textareaProps,
+    id: props.id,
+    'aria-label': props.label,
+    placeholder: props.placeholder,
+    rows: props.rows,
+    value: props.value,
+    disabled: props.disabled,
+    onChange: props.onChange,
+  });
+};
+// Badge stub: renders its label so status text is queryable
+export const Badge = (props: Record<string, unknown>) => {
+  return React.createElement(
+    'span',
+    { 'data-testid': props['data-testid'], className: 'pds-badge' },
+    props.label as React.ReactNode,
+  );
+};
 // Select stub: renders a native <select> so existing test queries (getByRole('combobox')) work
 export const Select = (props: Record<string, unknown>) => {
   const options = (props.options ?? []) as { label: string; value: string }[];

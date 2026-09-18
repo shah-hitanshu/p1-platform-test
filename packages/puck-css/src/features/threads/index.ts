@@ -4,4 +4,8 @@ export { CommentThread } from './ui/CommentThread.js';
 export type { CommentThreadProps } from './ui/CommentThread.js';
 export { BlockCommentTrigger } from './ui/BlockCommentTrigger.js';
 export type { BlockCommentTriggerProps } from './ui/BlockCommentTrigger.js';
-export type { ThreadContext, ThreadContextType } from './types.js';
+export type {
+  ThreadContext,
+  ThreadContextType,
+  ThreadSubject,
+} from './types.js';

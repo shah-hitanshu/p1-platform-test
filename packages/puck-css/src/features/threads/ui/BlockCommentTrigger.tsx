@@ -1,6 +1,7 @@
 import React, { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import { createUsePuck } from '@puckeditor/core';
 
+import { useBlockSubject } from '../use-block-subject.js';
 import { CommentTrigger } from './CommentTrigger.js';
 import styles from './BlockCommentTrigger.module.css';
 
@@ -59,6 +60,7 @@ export function BlockCommentTrigger({ blockId }: BlockCommentTriggerProps): Reac
   const threadOpen = useRef(false);
   const [scale, setScale] = useState(1);
   const selected = useBlockSelected(blockId);
+  const subject = useBlockSubject(blockId);
 
   useLayoutEffect(() => {
     const anchor = anchorRef.current;
@@ -119,7 +121,12 @@ export function BlockCommentTrigger({ blockId }: BlockCommentTriggerProps): Reac
       className={selected ? `${styles.anchor} ${styles.belowActionBar}` : styles.anchor}
       style={{ transform: `scale(${1 / scale})`, '--p1-trigger-scale': 1 / scale } as React.CSSProperties}
     >
-      <CommentTrigger contextType="block" contextId={blockId} onOpenChange={onOpenChange} />
+      <CommentTrigger
+        contextType="block"
+        contextId={blockId}
+        subject={subject}
+        onOpenChange={onOpenChange}
+      />
     </div>
   );
 }

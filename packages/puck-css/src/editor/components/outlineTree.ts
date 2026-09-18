@@ -40,7 +40,7 @@ interface OutlineComponentConfig {
   fields?: Record<string, { type?: string } | undefined>;
 }
 
-interface OutlineConfig {
+export interface OutlineConfig {
   components?: Record<string, OutlineComponentConfig>;
 }
 
@@ -50,6 +50,11 @@ function slotNames(config: OutlineConfig, type: string): string[] {
   return Object.entries(fields)
     .filter(([, field]) => field?.type === 'slot')
     .map(([name]) => name);
+}
+
+/** What a block is called anywhere it is named: the config's label, else its humanized type. */
+export function blockLabel(config: OutlineConfig, type: string): string {
+  return config.components?.[type]?.label ?? humanizeComponentName(type);
 }
 
 /**
@@ -73,7 +78,7 @@ export function flattenOutline(
     rows.push({
       id,
       type: item.type,
-      label: config.components?.[item.type]?.label ?? humanizeComponentName(item.type),
+      label: blockLabel(config, item.type),
       zone,
       index,
       depth,
