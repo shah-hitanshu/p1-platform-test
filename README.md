@@ -47,6 +47,42 @@ All run from the repo root.
 | `pnpm dev:logs` | local ndjson log collector (:8799) — run in its own terminal; see [Logging](#logging) |
 | `pnpm logs:tail` | live, human-readable view of `.logs/current.ndjson` |
 
+#### Local feature flags
+
+The dev scripts take `--flags=` to answer a browser feature flag locally, without asking
+LaunchDarkly:
+
+```bash
+pnpm dev:stack -- --flags=p1-collaboration
+```
+
+Comma-separate to force on more than one — `--flags=p1-collaboration,p1-something-else`. The
+keys are the flag keys themselves, the same spelling the LaunchDarkly dashboard uses. An
+unrecognised key stops the command and prints the keys that are overridable, because a typo
+would otherwise be indistinguishable from a flag that is switched off. `--flags` works on
+`dev:stack`, `dev:stack:full`, `dev:starter` and `dev:starter:staging`; every other argument is
+passed straight through.
+
+This is what lets a feature be worked on before its flag exists in the dashboard: when the
+override answers for every flag the browser gates, nothing is asked remotely at all, so there
+is no connection to wait on and no timeout to sit through.
+
+Two limits worth knowing:
+
+- **Only flags the browser SDK gates.** The overridable keys are the ones in
+  `packages/p1-next-sdk/src/experimental-features/features.ts`. A worker flag is overridden
+  through that worker's own `FLAG_OVERRIDES` var (see
+  [`p1-feature-flags`](packages/p1-feature-flags/README.md)), and a flag read through a
+  provider of its own is not reachable from here.
+- **It only moves the client.** Turning a flag on locally while pointed at a staging or
+  production backend produces an editor that offers what that backend will refuse, which is
+  the intended asymmetry, not a bug — the browser flag decides what is offered and the server
+  decides what is allowed.
+
+The mechanism is `NEXT_PUBLIC_P1_FLAG_OVERRIDES`, which `--flags=` sets for you; it can also go
+in `.env.fullstack.local` to persist across restarts. It is read only outside a production
+build, so nothing about it survives into a deployed bundle.
+
 ### Verification
 
 | Script | What it runs |

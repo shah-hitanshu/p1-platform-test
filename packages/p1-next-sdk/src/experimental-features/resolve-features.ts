@@ -1,6 +1,7 @@
 import { initialize, type LDClient, type LDContext } from "launchdarkly-js-client-sdk";
 
 import { ALL_OFF, readFeatures, type P1ExperimentalFeatureSet } from "./features";
+import { localFlagOverrides, overridesEveryFeature } from "./local-overrides";
 
 /**
  * How long to wait for LaunchDarkly before serving every feature off. Short on purpose:
@@ -39,6 +40,15 @@ export async function resolveFeatures(
   clientSideId: string,
   context: LDContext,
 ): Promise<P1ExperimentalFeatureSet> {
+  // A local override is the answer, so it wins over LaunchDarkly rather than seeding it
+  // — the same order a worker resolves in. One that answers for everything means there
+  // is nothing left to ask, so local development neither needs a reachable
+  // LaunchDarkly nor waits out the timeout for a flag that does not exist yet.
+  const overrides = localFlagOverrides();
+  if (overridesEveryFeature(overrides)) {
+    return { ...ALL_OFF, ...overrides };
+  }
+
   // Nothing here may throw: the caller caches this promise for the page's lifetime, and
   // a rejection would leave every later caller waiting on an answer that never comes.
   let client: LDClient | undefined;
@@ -48,11 +58,11 @@ export async function resolveFeatures(
       diagnosticOptOut: true,
     });
     await client.waitForInitialization(INITIALIZATION_TIMEOUT_SECONDS);
-    return readFeatures(client.allFlags());
+    return { ...readFeatures(client.allFlags()), ...overrides };
   } catch {
     // An unreachable or misconfigured LaunchDarkly means we do not know, and "we do not
     // know" has to mean off for a feature that is not finished.
-    return ALL_OFF;
+    return { ...ALL_OFF, ...overrides };
   } finally {
     void client?.close();
   }

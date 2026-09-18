@@ -95,6 +95,11 @@ This is how the local lane and the test suites run with no LD connection, and it
 way to move a deployed lane off a bad value while LaunchDarkly is unreachable. Only boolean
 members are honoured; a string `"true"` is ignored rather than guessed at.
 
+A flag gated in the browser is overridden separately, because nothing in a browser reads this
+var: `pnpm dev:stack -- --flags=<key>` sets the SDK's own override, which accepts this same JSON
+spelling as well as a plain list of keys. Overriding one side does not move the other, so a
+local client can offer what a staging backend refuses.
+
 ## Conventions
 
 - **Key naming:** `p1-<area>-<thing>`, matching `p1-chatbot` and `p1-merge-job-runner`.
