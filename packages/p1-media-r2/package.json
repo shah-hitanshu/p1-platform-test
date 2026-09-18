@@ -59,7 +59,7 @@
     "react-image-crop": "^11.1.2",
     "tsup": "^8.0.0",
     "typescript": "^5.7.0",
-    "vitest": "^3.2.7"
+    "vitest": "^4.1.11"
   },
   "homepage": "https://github.com/pantheon-systems/p1-platform/tree/main/packages/p1-media-r2"
 }
