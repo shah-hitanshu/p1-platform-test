@@ -115,7 +115,7 @@ describe('assertInScope', () => {
 
   it('refuses a read aimed at another branch', () => {
     expect(() => assertInScope({ ...writeAt('about'), branch_id: 'other' }, context))
-      .toThrow('Not your branch');
+      .toThrow('Not your workstream');
   });
 
   it('allows the session\'s own site and branch', () => {
@@ -167,7 +167,7 @@ describe('assertWritable', () => {
 
   it('refuses a write aimed at another branch of an allowed path', () => {
     const input = { ...writeAt('about'), branch_id: 'some-other-branch' };
-    expect(() => assertWritable('apply_document_edits', input, context)).toThrow('Not your branch');
+    expect(() => assertWritable('apply_document_edits', input, context)).toThrow('Not your workstream');
   });
 
   it('falls back to the open document when writeSet arrives malformed', () => {

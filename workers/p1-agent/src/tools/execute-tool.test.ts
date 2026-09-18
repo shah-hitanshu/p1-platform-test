@@ -139,7 +139,7 @@ describe('executeTool holds every tool to the session', () => {
       'list_documents',
       { site_id: 'site-1', branch_id: 'branch-2' },
       ccrApi, 'user-1', TEST_CONTEXT,
-    )).rejects.toThrow('Not your branch');
+    )).rejects.toThrow('Not your workstream');
   });
 });
 

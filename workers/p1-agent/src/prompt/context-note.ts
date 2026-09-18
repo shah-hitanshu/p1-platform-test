@@ -112,7 +112,7 @@ export function buildContextNote(
   const pendingPage = pendingPageOf(context);
   const lines: string[] = [contextHeader(context, pendingPage !== null)];
   if (context.siteId) lines.push(`Site ID: ${context.siteId}`);
-  if (context.branchId) lines.push(`Branch ID: ${context.branchId}`);
+  if (context.branchId) lines.push(`Workstream ID: ${context.branchId}`);
   // The page the user is looking at is left out while one is pending: they asked for a new page,
   // and naming another document here reliably got it edited instead.
   if (context.documentPath && !pendingPage) lines.push(`Document: ${context.documentPath}`);

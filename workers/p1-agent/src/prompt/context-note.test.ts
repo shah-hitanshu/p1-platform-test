@@ -171,7 +171,7 @@ describe('buildContextNote', () => {
     const note = buildContextNote({ ...base, newPage: true });
 
     expect(note).toContain('Site ID: s1');
-    expect(note).toContain('Branch ID: b1');
+    expect(note).toContain('Workstream ID: b1');
     expect(note).toContain('Document: /pricing');
   });
 

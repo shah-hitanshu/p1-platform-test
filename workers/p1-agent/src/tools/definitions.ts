@@ -154,7 +154,7 @@ const RAW_CCR_TOOLS: RawTool[] = [
   },
   {
     name: 'get_branch_presence',
-    description: 'Get all actors currently active on a branch across all documents.',
+    description: 'Get all actors currently active on a workstream across all documents.',
     input_schema: {
       type: 'object' as const,
       properties: {

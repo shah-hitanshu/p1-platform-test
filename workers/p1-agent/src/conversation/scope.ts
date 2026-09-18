@@ -87,7 +87,7 @@ export function assertInScope(toolInput: Record<string, unknown>, context: ChatC
   }
   if (toolInput.branch_id !== undefined && toolInput.branch_id !== context.branchId) {
     throw new Error(
-      `Not your branch. This conversation works in branch ${context.branchId}; use that branch_id.`,
+      `Not your workstream. This conversation works in workstream ${context.branchId}; use that branch_id.`,
     );
   }
 }
@@ -106,10 +106,10 @@ export function assertWritable(
   }
 
   // The write set holds bare paths, so a stale `branch_id` — which restored history still carries
-  // after a branch switch — would land an allowed path on another branch's copy of it.
+  // after a workstream switch — would land an allowed path on another workstream's copy of it.
   if (toolInput.branch_id !== context.branchId) {
     throw new Error(
-      `Not your branch. This conversation works in branch ${context.branchId}; use that branch_id.`,
+      `Not your workstream. This conversation works in workstream ${context.branchId}; use that branch_id.`,
     );
   }
 
