@@ -21,6 +21,8 @@ export interface LocaleRow {
   /** The document to open, or null when this locale has none yet. */
   documentId: string | null;
   state: LocaleRowState;
+  /** This row is the canonical's own document — the switcher's Source row. */
+  isSource: boolean;
 }
 
 export interface BuildLocaleRowsParams {
@@ -54,19 +56,30 @@ export function buildLocaleRows({
     documents.filter((document) => document.locale === locale);
 
   const rows: LocaleRow[] = [];
+  const isSource = (documentId: string): boolean => documentId === canonical.id;
 
   if (canonical.locale == null) {
-    rows.push({ locale: null, documentId: canonical.id, state: state(canonical.id) });
+    rows.push({
+      locale: null,
+      documentId: canonical.id,
+      state: state(canonical.id),
+      isSource: true,
+    });
   }
 
   for (const locale of markets) {
     const held = documentsIn(locale);
     if (held.length === 0) {
-      rows.push({ locale, documentId: null, state: 'available' });
+      rows.push({ locale, documentId: null, state: 'available', isSource: false });
       continue;
     }
     for (const document of held) {
-      rows.push({ locale, documentId: document.id, state: state(document.id) });
+      rows.push({
+        locale,
+        documentId: document.id,
+        state: state(document.id),
+        isSource: isSource(document.id),
+      });
     }
   }
 
@@ -76,7 +89,12 @@ export function buildLocaleRows({
   for (const document of documents) {
     const locale = document.locale;
     if (locale == null || markets.includes(locale)) continue;
-    rows.push({ locale, documentId: document.id, state: state(document.id) });
+    rows.push({
+      locale,
+      documentId: document.id,
+      state: state(document.id),
+      isSource: isSource(document.id),
+    });
   }
 
   return rows;

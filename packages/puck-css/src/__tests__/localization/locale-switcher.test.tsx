@@ -12,9 +12,9 @@ import { LocaleSwitcher } from '../../features/localization/ui/LocaleSwitcher.js
 import type { LocaleRow } from '../../features/localization/locale-rows.js';
 
 const rows: LocaleRow[] = [
-  { locale: null, documentId: 'doc-canonical', state: 'exists' },
-  { locale: 'fr-FR', documentId: 'doc-fr', state: 'current' },
-  { locale: 'de-DE', documentId: null, state: 'available' },
+  { locale: null, documentId: 'doc-canonical', state: 'exists', isSource: true },
+  { locale: 'fr-FR', documentId: 'doc-fr', state: 'current', isSource: false },
+  { locale: 'de-DE', documentId: null, state: 'available', isSource: false },
 ];
 
 const markets = ['fr-FR', 'de-DE'];
@@ -24,20 +24,28 @@ const documents = [
   { id: 'doc-fr', path: 'pricing.fr-FR' },
 ];
 
-function renderSwitcher(overrides: Partial<React.ComponentProps<typeof LocaleSwitcher>> = {}) {
-  return render(
+function SwitcherHarness({ overrides }: { overrides: Partial<React.ComponentProps<typeof LocaleSwitcher>> }) {
+  const [open, setOpen] = React.useState(false);
+  return (
     <LocaleSwitcher
       rows={rows}
       markets={markets}
       documents={documents}
       loading={false}
       failed={false}
+      open={open}
+      onOpenChange={setOpen}
+      reviewStatus={new Map()}
       onRetry={vi.fn()}
       onOpenLocale={vi.fn()}
       onAddLocale={vi.fn()}
       {...overrides}
-    />,
+    />
   );
+}
+
+function renderSwitcher(overrides: Partial<React.ComponentProps<typeof LocaleSwitcher>> = {}) {
+  return render(<SwitcherHarness overrides={overrides} />);
 }
 
 describe('LocaleSwitcher', () => {
@@ -81,8 +89,8 @@ describe('LocaleSwitcher', () => {
     renderSwitcher({
       markets: ['fr-FR'],
       rows: [
-        { locale: null, documentId: 'doc-canonical', state: 'current' },
-        { locale: 'fr-FR', documentId: null, state: 'available' },
+        { locale: null, documentId: 'doc-canonical', state: 'current', isSource: true },
+        { locale: 'fr-FR', documentId: null, state: 'available', isSource: false },
       ],
     });
 
@@ -105,8 +113,8 @@ describe('LocaleSwitcher', () => {
   it('lists both pages where two share a locale', () => {
     renderSwitcher({
       rows: [
-        { locale: 'fr-FR', documentId: 'doc-fr', state: 'current' },
-        { locale: 'fr-FR', documentId: 'doc-fr-old', state: 'exists' },
+        { locale: 'fr-FR', documentId: 'doc-fr', state: 'current', isSource: false },
+        { locale: 'fr-FR', documentId: 'doc-fr-old', state: 'exists', isSource: false },
       ],
       documents: [
         { id: 'doc-fr', path: 'pricing.fr-FR' },
@@ -121,8 +129,8 @@ describe('LocaleSwitcher', () => {
   it('names the page on each row where the locale cannot tell them apart', () => {
     renderSwitcher({
       rows: [
-        { locale: 'fr-FR', documentId: 'doc-fr', state: 'current' },
-        { locale: 'fr-FR', documentId: 'doc-fr-old', state: 'exists' },
+        { locale: 'fr-FR', documentId: 'doc-fr', state: 'current', isSource: false },
+        { locale: 'fr-FR', documentId: 'doc-fr-old', state: 'exists', isSource: false },
       ],
       documents: [
         { id: 'doc-fr', path: 'pricing.fr-FR' },
@@ -141,8 +149,8 @@ describe('LocaleSwitcher', () => {
     const onOpenLocale = vi.fn();
     renderSwitcher({
       rows: [
-        { locale: 'fr-FR', documentId: 'doc-fr', state: 'current' },
-        { locale: 'fr-FR', documentId: 'doc-fr-old', state: 'exists' },
+        { locale: 'fr-FR', documentId: 'doc-fr', state: 'current', isSource: false },
+        { locale: 'fr-FR', documentId: 'doc-fr-old', state: 'exists', isSource: false },
       ],
       documents: [
         { id: 'doc-fr', path: 'pricing.fr-FR' },
@@ -217,8 +225,8 @@ describe('LocaleSwitcher', () => {
     renderSwitcher({
       markets: ['fr-FR'],
       rows: [
-        { locale: null, documentId: 'doc-canonical', state: 'current' },
-        { locale: 'fr-FR', documentId: 'doc-fr', state: 'exists' },
+        { locale: null, documentId: 'doc-canonical', state: 'current', isSource: true },
+        { locale: 'fr-FR', documentId: 'doc-fr', state: 'exists', isSource: false },
       ],
     });
     fireEvent.click(screen.getByTestId('locale-switcher-trigger'));
@@ -256,18 +264,20 @@ describe('LocaleSwitcher', () => {
     expect(screen.getByTestId('locale-add-de-DE').textContent).toContain('Add DE');
   });
 
-  it('reports a market that already holds a version as localized', () => {
-    renderSwitcher();
+  it('shows progress while the review status is loading', () => {
+    renderSwitcher({ reviewStatus: new Map([['doc-fr', 'checking']]) });
     fireEvent.click(screen.getByTestId('locale-switcher-trigger'));
 
-    expect(screen.getByTestId('locale-status-fr-FR').textContent).toBe('Localized');
+    const status = screen.getByTestId('locale-status-fr-FR');
+    expect(status).toHaveAttribute('aria-label', 'Checking translation status');
+    expect(status.querySelector('.pds-spinner')).not.toBeNull();
   });
 
-  it('reports the untagged page as Unset rather than as a locale', () => {
+  it('names the source row by its unset locale, not as a market', () => {
     renderSwitcher();
     fireEvent.click(screen.getByTestId('locale-switcher-trigger'));
 
-    expect(screen.getByTestId('locale-row-none').textContent).toContain('Unset');
+    expect(screen.getByTestId('locale-row-none').textContent).toContain('Source locale unset');
     expect(screen.queryByTestId('locale-status-none')).toBeNull();
   });
 
@@ -275,8 +285,8 @@ describe('LocaleSwitcher', () => {
     renderSwitcher({
       markets: ['ar-AE', 'fr-FR'],
       rows: [
-        { locale: 'ar-AE', documentId: null, state: 'available' },
-        { locale: 'fr-FR', documentId: 'doc-fr', state: 'current' },
+        { locale: 'ar-AE', documentId: null, state: 'available', isSource: false },
+        { locale: 'fr-FR', documentId: 'doc-fr', state: 'current', isSource: false },
       ],
     });
     fireEvent.click(screen.getByTestId('locale-switcher-trigger'));
@@ -302,9 +312,57 @@ describe('LocaleSwitcher', () => {
   it('renders nothing for a site that publishes in no locales', () => {
     const { container } = renderSwitcher({
       markets: [],
-      rows: [{ locale: null, documentId: 'doc-canonical', state: 'current' }],
+      rows: [{ locale: null, documentId: 'doc-canonical', state: 'current', isSource: true }],
     });
 
     expect(container.firstChild).toBeNull();
+  });
+
+  it('groups the source row apart from the other locales', () => {
+    renderSwitcher();
+    fireEvent.click(screen.getByTestId('locale-switcher-trigger'));
+
+    const menu = screen.getByTestId('locale-switcher-menu');
+    expect(menu.textContent).toContain('Source');
+    expect(menu.textContent).toContain('Other locales');
+    // The canonical's own row lists under Source, not Other locales.
+    expect(screen.queryByTestId('locale-status-none')).toBeNull();
+  });
+
+  it('checks off the market currently open', () => {
+    renderSwitcher();
+    fireEvent.click(screen.getByTestId('locale-switcher-trigger'));
+
+    expect(screen.getByTestId('locale-current-fr-FR')).toBeDefined();
+    expect(screen.queryByTestId('locale-current-de-DE')).toBeNull();
+  });
+
+  it("flags a variant with the source's changes still pending as needing review", () => {
+    renderSwitcher({ reviewStatus: new Map([['doc-fr', 'needsReview']]) });
+    fireEvent.click(screen.getByTestId('locale-switcher-trigger'));
+    expect(screen.getByTestId('locale-status-fr-FR')).toHaveTextContent('Needs review');
+  });
+
+  it('visibly marks the source when it is the current page', () => {
+    renderSwitcher({ rows: rows.map((row) => ({ ...row, state: row.isSource ? 'current' : row.documentId ? 'exists' : 'available' })) });
+    fireEvent.click(screen.getByTestId('locale-switcher-trigger'));
+    expect(screen.getByTestId('locale-current-none')).toBeInTheDocument();
+  });
+
+  it('disambiguates only among other-locale rows', () => {
+    renderSwitcher({ rows: [
+      { locale: 'fr-FR', documentId: 'doc-canonical', state: 'exists', isSource: true },
+      { locale: 'fr-FR', documentId: 'doc-fr', state: 'current', isSource: false },
+    ] });
+    fireEvent.click(screen.getByTestId('locale-switcher-trigger'));
+    const translation = screen.getAllByRole('menuitem').find((row) => row.getAttribute('aria-current') === 'true');
+    expect(translation).toHaveTextContent('French');
+    expect(translation).not.toHaveTextContent('pricing');
+  });
+
+  it('reports a failed review check without a success badge', () => {
+    renderSwitcher({ reviewStatus: new Map([['doc-fr', 'unavailable']]) });
+    fireEvent.click(screen.getByTestId('locale-switcher-trigger'));
+    expect(screen.getByTestId('locale-status-fr-FR')).toHaveTextContent('Status unavailable');
   });
 });

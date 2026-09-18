@@ -14,7 +14,9 @@ import { SlideOverDrawer } from '../../../editor/components/SlideOverDrawer.js';
 import { localeLabel } from '../locale-labels.js';
 import { derivesFromUpstream } from '../relation.js';
 import { useUpstreamDiff, type UpstreamRelationType } from '../upstream-diff-query.js';
-import { UpstreamChangesPanel, entryKey } from './UpstreamChangesPanel.js';
+import { dismissalKey, useReviewSession } from '../review-session.js';
+import { useUpstreamResolution } from '../useUpstreamResolution.js';
+import { UpstreamChangesPanel } from './UpstreamChangesPanel.js';
 import styles from './UpstreamChanges.module.css';
 
 export interface UpstreamChangesControlProps {
@@ -50,7 +52,7 @@ export function UpstreamChangesControl({
     // The drawer's open state and the summary belong to the page being
     // reconciled; keying on it closes the drawer when the page changes.
     <UpstreamChangesTrigger
-      key={currentDocument.id}
+      key={`${siteId}:${branchId}:${currentDocument.id}:${relationType}`}
       relationType={relationType}
       documentId={currentDocument.id}
       documentPath={currentDocument.path}
@@ -82,6 +84,9 @@ function UpstreamChangesTrigger({
   branchId,
 }: UpstreamChangesTriggerProps): React.ReactElement | null {
   const [open, setOpen] = useState(false);
+
+  // Recovery and in-flight resolutions belong to the editing session, not the drawer.
+  const session = useReviewSession();
   const close = useCallback(() => setOpen(false), []);
 
   // A change with no edge to record on is dismissed here rather than in the
@@ -94,6 +99,7 @@ function UpstreamChangesTrigger({
   );
 
   const diff = useUpstreamDiff(client, siteId, branchId, documentId, relationType);
+  const resolution = useUpstreamResolution(client, siteId, branchId, documentId, relationType);
 
   if (diff.state === 'checking' || diff.state === 'noEdge') return null;
 
@@ -118,11 +124,19 @@ function UpstreamChangesTrigger({
   }
 
   const { summary } = diff;
-  const outstanding = summary.changes.filter((change) => !dismissed.has(entryKey(change))).length;
+  const visibleChanges = summary.changes.filter(
+    (change) => !dismissed.has(dismissalKey(summary, change)),
+  );
+  const outstanding = visibleChanges.filter((change) => change.classification !== 'structural').length;
+  const structuralOnly = outstanding === 0
+    && visibleChanges.some((change) => change.classification === 'structural');
+
   // The two version numbers are counted on their own branches, so the distance
   // between them is not a quantity. The list is: every change it holds is one
   // the page has yet to take.
-  const label = `${String(outstanding)} behind`;
+  const sourceName = relationType === 'localization' ? 'source' : 'template';
+  const changeCount = `${String(outstanding)} ${sourceName} ${outstanding === 1 ? 'change' : 'changes'}`;
+  const label = `${changeCount} since v${String(summary.fromVersion)}`;
   const locale = documentLocale === undefined ? null : localeLabel(documentLocale);
 
   // Only the pill answers to the count. An open drawer stays up when the last
@@ -131,23 +145,25 @@ function UpstreamChangesTrigger({
   // to it. The drawer retires itself a transition after it is closed.
   return (
     <>
-      {outstanding > 0 && (
+      {(outstanding > 0 || structuralOnly) && (
         <button
           type="button"
-          className={styles.pill}
-          data-testid="upstream-changes-pill"
+          className={`${styles.pill} ${structuralOnly ? styles.pillNeutral : ''}`}
+          data-testid={structuralOnly ? 'upstream-structural-changes-pill' : 'upstream-changes-pill'}
           onClick={() => setOpen(true)}
-          aria-label={`Review ${String(outstanding)} upstream ${outstanding === 1 ? 'change' : 'changes'}`}
+          aria-label={structuralOnly
+            ? `View structural changes from the ${sourceName}`
+            : `Review ${String(outstanding)} upstream ${outstanding === 1 ? 'change' : 'changes'}`}
         >
-          <Icon iconName="codeBranch" size="s" aria-hidden="true" />
-          {label}
+          <Icon iconName="globe" size="s" aria-hidden="true" />
+          {structuralOnly ? 'Structure changed' : label}
         </button>
       )}
 
       <SlideOverDrawer
         open={open}
         onClose={close}
-        ariaLabel="Upstream changes"
+        ariaLabel={relationType === 'localization' ? 'Source changes' : 'Template changes'}
         testId="upstream-changes-drawer"
         eyebrow={
           <>
@@ -159,7 +175,7 @@ function UpstreamChangesTrigger({
         meta={
           <div className={styles.versions}>
             <span className={styles.side}>
-              {relationType === 'localization' ? 'Canonical' : 'Template'} · v
+              {relationType === 'localization' ? 'Source' : 'Template'} · v
               {String(summary.toVersion)}
             </span>
             <span aria-hidden="true">→</span>
@@ -168,25 +184,27 @@ function UpstreamChangesTrigger({
               {locale === null ? 'This page' : locale.native} · synced from v
               {String(summary.fromVersion)}
             </span>
-            {outstanding > 0 && (
+            {(outstanding > 0 || structuralOnly) && (
               <span className={styles.behind} data-testid="upstream-changes-behind">
-                {label}
+                {structuralOnly ? 'Structure changed' : label}
               </span>
             )}
           </div>
         }
-        footer={
-          <p className={styles.status} data-testid="upstream-changes-status">
-            {(summary.resolvedCount ?? 0) > 0
-              ? `${String(summary.resolvedCount)} already reconciled.`
-              : 'Reconciling a change records it, so it stops being reported.'}
-          </p>
-        }
       >
         <UpstreamChangesPanel
-          relationType={relationType}
+          diff={diff}
+          documentLocale={documentLocale}
           dismissed={dismissed}
-          onDismiss={dismiss}
+          isPending={resolution.isPending}
+          onResolve={(entry) => {
+            if (relationType === 'localization' && entry.propPath !== undefined) {
+              resolution.resolve(entry, summary);
+            } else {
+              dismiss(dismissalKey(summary, entry));
+            }
+          }}
+          session={session}
         />
       </SlideOverDrawer>
     </>

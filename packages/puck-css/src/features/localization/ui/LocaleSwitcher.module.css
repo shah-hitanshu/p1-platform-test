@@ -116,6 +116,15 @@
   flex: 1;
 }
 
+.groupLabel {
+  padding: 0.5rem 0.64rem 0.25rem;
+  font-size: var(--pds-typography-size-2xs, 0.6875rem);
+  font-weight: var(--pds-typography-fw-semibold, 600);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--pds-color-foreground-default-secondary, oklch(0.5103 0 0));
+}
+
 .item {
   display: flex;
 }

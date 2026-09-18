@@ -212,8 +212,8 @@ describe('buildLocaleRows', () => {
     });
 
     expect(rows.filter((r) => r.locale === 'es-ES')).toEqual([
-      { locale: 'es-ES', documentId: 'doc-es-a', state: 'exists' },
-      { locale: 'es-ES', documentId: 'doc-es-b', state: 'exists' },
+      { locale: 'es-ES', documentId: 'doc-es-a', state: 'exists', isSource: false },
+      { locale: 'es-ES', documentId: 'doc-es-b', state: 'exists', isSource: false },
     ]);
   });
 
@@ -226,8 +226,8 @@ describe('buildLocaleRows', () => {
     });
 
     expect(rows.filter((r) => r.locale === 'fr-FR')).toEqual([
-      { locale: 'fr-FR', documentId: 'doc-fr-a', state: 'exists' },
-      { locale: 'fr-FR', documentId: 'doc-fr-b', state: 'current' },
+      { locale: 'fr-FR', documentId: 'doc-fr-a', state: 'exists', isSource: false },
+      { locale: 'fr-FR', documentId: 'doc-fr-b', state: 'current', isSource: false },
     ]);
   });
 
@@ -241,8 +241,8 @@ describe('buildLocaleRows', () => {
     });
 
     expect(rows.filter((r) => r.locale === 'fr-FR')).toEqual([
-      { locale: 'fr-FR', documentId: bornInMarket.id, state: 'current' },
-      { locale: 'fr-FR', documentId: 'doc-fr', state: 'exists' },
+      { locale: 'fr-FR', documentId: bornInMarket.id, state: 'current', isSource: true },
+      { locale: 'fr-FR', documentId: 'doc-fr', state: 'exists', isSource: false },
     ]);
   });
 
@@ -255,7 +255,20 @@ describe('buildLocaleRows', () => {
     });
 
     expect(rows).toEqual([
-      { locale: null, documentId: canonical.id, state: 'current' },
+      { locale: null, documentId: canonical.id, state: 'current', isSource: true },
+    ]);
+  });
+
+  it("marks only the canonical document's own row as the source", () => {
+    const rows = buildLocaleRows({
+      markets,
+      canonical,
+      variants: [variant('doc-fr', 'fr-FR')],
+      currentDocumentId: canonical.id,
+    });
+
+    expect(rows.filter((r) => r.isSource)).toEqual([
+      { locale: null, documentId: canonical.id, state: 'current', isSource: true },
     ]);
   });
 });

@@ -139,4 +139,33 @@ describe('P1Client relations', () => {
       ).rejects.toBeInstanceOf(NotFoundError);
     });
   });
+
+  describe('setUpstreamResolutions', () => {
+    it('names the exact upstream version shown by the diff', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ upstreamResolutions: {} }),
+      });
+
+      const client = new P1Client({ baseUrl, apiKey });
+      await client.relations.setUpstreamResolutions(
+        siteId,
+        branchId,
+        documentId,
+        [{ slotId: 'HeadingBlock-1', propPath: '/title' }],
+        '8f14e45f-ea2b-4c1f-9a3d-2b7c6d5e4f31',
+      );
+
+      const [url, init] = mockFetch.mock.calls[0];
+      expect(url).toBe(
+        `${baseUrl}/api/sites/${siteId}/branches/${branchId}/documents/${documentId}/upstream-resolutions`,
+      );
+      expect(init.method).toBe('PUT');
+      expect(JSON.parse(init.body)).toEqual({
+        targets: [{ slotId: 'HeadingBlock-1', propPath: '/title' }],
+        upstreamVersionId: '8f14e45f-ea2b-4c1f-9a3d-2b7c6d5e4f31',
+      });
+    });
+  });
 });

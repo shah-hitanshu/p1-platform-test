@@ -7,7 +7,6 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import React from 'react';
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient } from '@tanstack/react-query';
 import { NotFoundError } from '@pantheon-systems/css-client';
@@ -19,7 +18,11 @@ import { P1SdkQueryClientContext } from '../../data/query-provider.js';
 vi.mock('@puckeditor/core', () => ({
   usePuck: () => ({ dispatch: vi.fn(), refreshPermissions: vi.fn() }),
   createUsePuck: () => (selector: (s: unknown) => unknown) =>
-    selector({ dispatch: vi.fn(), selectedItem: null, config: {} }),
+    selector({ dispatch: vi.fn(), selectedItem: null, config: {},
+      appState: { data: { root: { props: { title: 'ホーム' } } } },
+      getSelectorForId: () => ({ zone: 'root:default-zone', index: 0 }),
+      getItemById: () => ({ type: 'HeadingBlock', props: { id: 'HeadingBlock-1', title: 'やめられない、あの食感。' } }),
+    }),
   useGetPuck: () => () => ({ appState: { data: { content: [], root: { props: {} } } } }),
 }));
 
@@ -158,7 +161,56 @@ describe('UpstreamChangesControl', () => {
 
     // One change listed, against a v10-to-v12 span: the version numbers belong
     // to different branches and do not count the changes between them.
-    expect(await screen.findByTestId('upstream-changes-pill')).toHaveTextContent('1 behind');
+    expect(await screen.findByTestId('upstream-changes-pill')).toHaveTextContent(
+      '1 source change since v10',
+    );
+  });
+
+  it('previews structural-only changes and expands the remainder', async () => {
+    getUpstreamDiff.mockResolvedValue(summary({
+      changes: [
+        { classification: 'structural', componentId: 'Section-1', structuralKind: 'moved' },
+        { classification: 'structural', componentId: 'Section-2', structuralKind: 'added' },
+        { classification: 'structural', componentId: 'Section-3', structuralKind: 'removed' },
+        { classification: 'structural', componentId: 'Section-4', structuralKind: 'moved' },
+      ],
+      counts: { structural: 4, prop: 0, advisory: 0, needsTranslation: 0, autoApplied: 0 },
+    }));
+    renderControl();
+
+    const pill = await screen.findByTestId('upstream-structural-changes-pill');
+    expect(pill).toHaveTextContent('Structure changed');
+    expect(pill).toHaveAttribute('aria-label', 'View structural changes from the source');
+
+    fireEvent.click(pill);
+    const disclosure = await screen.findByTestId('upstream-structural-disclosure');
+    expect(disclosure).toHaveTextContent('Page structure');
+    expect(screen.getAllByTestId('upstream-structural-note')).toHaveLength(3);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show 1 more structural change' }));
+    expect(screen.getAllByTestId('upstream-structural-note')).toHaveLength(4);
+    const collapse = screen.getByRole('button', { name: 'Show fewer structural changes' });
+    expect(collapse).toBeInTheDocument();
+    expect(collapse.closest('[data-testid="upstream-structural-list"]')).toBeNull();
+    expect(screen.getByTestId('upstream-structural-list').className).toContain(
+      'structuralListExpanded',
+    );
+  });
+
+  it('does not include structural changes in the actionable count', async () => {
+    getUpstreamDiff.mockResolvedValue(summary({
+      changes: [
+        ...summary().changes,
+        { classification: 'structural', componentId: 'Section-1', structuralKind: 'moved' },
+      ],
+      counts: { structural: 1, prop: 0, advisory: 0, needsTranslation: 1, autoApplied: 0 },
+    }));
+    renderControl();
+
+    expect(await screen.findByTestId('upstream-changes-pill')).toHaveTextContent(
+      '1 source change since v10',
+    );
+    expect(screen.queryByTestId('upstream-structural-changes-pill')).not.toBeInTheDocument();
   });
 
   it('counts the outstanding changes for a reader who cannot see the pill', async () => {
@@ -230,7 +282,9 @@ describe('UpstreamChangesControl', () => {
     getUpstreamDiff.mockResolvedValue(summary());
     fireEvent.click(screen.getByTestId('upstream-changes-unavailable'));
 
-    expect(await screen.findByTestId('upstream-changes-pill')).toHaveTextContent('1 behind');
+    expect(await screen.findByTestId('upstream-changes-pill')).toHaveTextContent(
+      '1 source change since v10',
+    );
   });
 
   it('keeps the last list read when a refresh fails, and says the refresh failed', async () => {
@@ -247,7 +301,7 @@ describe('UpstreamChangesControl', () => {
       'upstream diff unavailable. Showing the last list read.',
     );
     expect(screen.getByTestId('upstream-group-needsTranslation')).toBeInTheDocument();
-    expect(screen.getByTestId('upstream-changes-pill')).toHaveTextContent('1 behind');
+    expect(screen.getByTestId('upstream-changes-pill')).toHaveTextContent('1 source change since v10');
   });
 
   it('opens a drawer naming the versions being compared', async () => {
@@ -256,7 +310,7 @@ describe('UpstreamChangesControl', () => {
     fireEvent.click(await screen.findByTestId('upstream-changes-pill'));
 
     const drawer = await screen.findByTestId('upstream-changes-drawer');
-    expect(drawer).toHaveTextContent('Canonical · v12');
+    expect(drawer).toHaveTextContent('Source · v12');
     expect(drawer).toHaveTextContent('synced from v10');
     expect(drawer).toHaveTextContent('pages/home.ja-JP');
   });
@@ -277,17 +331,6 @@ describe('UpstreamChangesControl', () => {
     expect(await screen.findByTestId('upstream-group-needsTranslation')).toBeInTheDocument();
     expect(screen.getByTestId('upstream-current-value')).toHaveTextContent(
       'やめられない、あの食感。',
-    );
-  });
-
-  it('reports how many changes have already been reconciled', async () => {
-    getUpstreamDiff.mockResolvedValue(summary({ resolvedCount: 3 }));
-    renderControl();
-
-    fireEvent.click(await screen.findByTestId('upstream-changes-pill'));
-
-    expect(await screen.findByTestId('upstream-changes-status')).toHaveTextContent(
-      '3 already reconciled',
     );
   });
 

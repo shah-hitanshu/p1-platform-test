@@ -60,10 +60,10 @@ export class RelationsEndpoint {
    * reported. Taking the canonical value, writing your own translation of it, and
    * deciding the translation keeps what it has all count as reconciling.
    *
-   * `upstreamVersion` is the `toVersion` of the summary the changes were read
+   * `upstreamVersionId` is the `toVersionId` of the summary the changes were read
    * from, so what gets settled is the state that was shown; a change the canonical
-   * made after that stays outstanding. Rejects a version the canonical has not
-   * reached, and a slot it no longer holds.
+   * made after that stays outstanding. Rejects a version that does not belong to
+   * the canonical, and a slot it no longer holds.
    *
    * Recorded per branch, so reconciling on one branch leaves the others as they
    * were.
@@ -73,11 +73,11 @@ export class RelationsEndpoint {
     branchId: string,
     documentId: string,
     targets: UpstreamResolutionTarget[],
-    upstreamVersion: number,
+    upstreamVersionId: string,
   ): Promise<UpstreamResolutions> {
     return this.base.request<UpstreamResolutions>(
       `/api/sites/${siteId}/branches/${branchId}/documents/${documentId}/upstream-resolutions`,
-      { method: 'PUT', body: JSON.stringify({ targets, upstreamVersion }) },
+      { method: 'PUT', body: JSON.stringify({ targets, upstreamVersionId }) },
     );
   }
 
