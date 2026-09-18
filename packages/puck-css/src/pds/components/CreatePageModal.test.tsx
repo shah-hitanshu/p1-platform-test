@@ -392,6 +392,68 @@ describe('CreatePageModal', () => {
     expect(submit().disabled).toBe(false);
   });
 
+  it('strips colons from a route param value, not just slashes', () => {
+    // A concrete param value containing ':' would otherwise be
+    // indistinguishable from a dynamic-param marker to code that re-parses
+    // the path (see parsePattern's ':name' convention).
+    render(<CreatePageModal {...defaultProps} templates={templatesFixture} />);
+
+    fireEvent.click(screen.getByTestId('create-page-option-content-type-template'));
+    fireEvent.click(screen.getByTestId('create-page-content-type-article'));
+
+    fireEvent.change(screen.getByTestId('create-page-param-section'), {
+      target: { value: ':evil/news' },
+    });
+
+    expect(
+      (screen.getByTestId('create-page-param-section') as HTMLInputElement).value,
+    ).toBe('evilnews');
+  });
+
+  it('strips slashes and colons from the :slug param in a template route, like its siblings', () => {
+    // The :slug segment is one param among siblings (:year, :month) in the
+    // pattern builder, not the free-text slug field — it should get the same
+    // single-segment sanitization, closing the same ambiguity the sibling
+    // params are protected from.
+    render(<CreatePageModal {...defaultProps} templates={templatesFixture} />);
+
+    fireEvent.click(screen.getByTestId('create-page-option-content-type-template'));
+    fireEvent.click(screen.getByTestId('create-page-content-type-blog-post'));
+
+    fireEvent.change(screen.getByTestId('create-page-param-slug'), {
+      target: { value: ':evil/news' },
+    });
+
+    expect(
+      (screen.getByTestId('create-page-param-slug') as HTMLInputElement).value,
+    ).toBe('evilnews');
+  });
+
+  it('sanitizes a stale free-text slug carried over when a :slug template is picked', () => {
+    // Type a value with '/' and ':' — allowed as free text, kept as typed (no
+    // live stripping) — into the free-text slug field on "Blank page", no
+    // template chosen yet.
+    render(<CreatePageModal {...defaultProps} templates={templatesFixture} />);
+
+    fireEvent.change(screen.getByTestId('create-page-slug-input'), {
+      target: { value: 'sites/:evil/news' },
+    });
+    expect((screen.getByTestId('create-page-slug-input') as HTMLInputElement).value).toBe(
+      'sites/:evil/news',
+    );
+
+    // Switching starting points doesn't clear `slug` state. Picking a template
+    // whose pattern has a `:slug` param must not let that stale free-text
+    // value reach the param without also passing through sanitizeRouteParam,
+    // the same as a fresh edit does.
+    fireEvent.click(screen.getByTestId('create-page-option-content-type-template'));
+    fireEvent.click(screen.getByTestId('create-page-content-type-blog-post'));
+
+    const value = (screen.getByTestId('create-page-param-slug') as HTMLInputElement).value;
+    expect(value).not.toMatch(/[/:]/);
+    expect(value).toBe('sitesevilnews');
+  });
+
   it('creates a page from a selected content-type template (passes the template id)', async () => {
     const onCreateDocument = vi.fn().mockResolvedValue(undefined);
     const onNavigate = vi.fn();
@@ -586,7 +648,11 @@ describe('CreatePageModal', () => {
     );
   });
 
-  it('sanitizes a manually entered slug', () => {
+  it('does not mangle a manually entered slug as it is typed (no live stripping)', () => {
+    // The field used to sanitize on every keystroke, which fought the user
+    // when editing mid-string. It should now keep exactly what was typed,
+    // valid or not, and let getSlugError / the disabled button communicate
+    // validity instead.
     render(<CreatePageModal {...defaultProps} />);
 
     fireEvent.change(screen.getByTestId('create-page-slug-input'), {
@@ -594,8 +660,122 @@ describe('CreatePageModal', () => {
     });
 
     expect((screen.getByTestId('create-page-slug-input') as HTMLInputElement).value).toBe(
+      'My Custom Slug!',
+    );
+    expect(screen.getByTestId('create-page-slug-error').textContent).toMatch(
+      /lowercase letters, numbers/i,
+    );
+    expect(
+      (screen.getByTestId('create-page-submit') as HTMLButtonElement).disabled,
+    ).toBe(true);
+  });
+
+  it('shows no error and enables Create for a valid manually entered slug', () => {
+    render(<CreatePageModal {...defaultProps} />);
+
+    fireEvent.change(screen.getByTestId('create-page-slug-input'), {
+      target: { value: 'my-custom-slug' },
+    });
+
+    expect((screen.getByTestId('create-page-slug-input') as HTMLInputElement).value).toBe(
       'my-custom-slug',
     );
+    expect(screen.queryByTestId('create-page-slug-error')).toBeNull();
+    expect(
+      (screen.getByTestId('create-page-submit') as HTMLButtonElement).disabled,
+    ).toBe(false);
+  });
+
+  it('accepts colons in a manually entered slug (dynamic route params)', () => {
+    render(<CreatePageModal {...defaultProps} />);
+
+    fireEvent.change(screen.getByTestId('create-page-slug-input'), {
+      target: { value: ':category-:slug' },
+    });
+
+    expect((screen.getByTestId('create-page-slug-input') as HTMLInputElement).value).toBe(
+      ':category-:slug',
+    );
+    expect(screen.queryByTestId('create-page-slug-error')).toBeNull();
+    expect(
+      (screen.getByTestId('create-page-submit') as HTMLButtonElement).disabled,
+    ).toBe(false);
+  });
+
+  it('accepts slashes and colons in a manually entered multi-segment dynamic route', () => {
+    render(<CreatePageModal {...defaultProps} />);
+
+    fireEvent.change(screen.getByTestId('create-page-slug-input'), {
+      target: { value: 'sites/:siteid/foobar' },
+    });
+
+    expect((screen.getByTestId('create-page-slug-input') as HTMLInputElement).value).toBe(
+      'sites/:siteid/foobar',
+    );
+    expect(screen.queryByTestId('create-page-slug-error')).toBeNull();
+    expect(
+      (screen.getByTestId('create-page-submit') as HTMLButtonElement).disabled,
+    ).toBe(false);
+  });
+
+  it('flags a leading slash, repeated slashes, and uppercase as invalid and disables Create', () => {
+    render(<CreatePageModal {...defaultProps} />);
+
+    fireEvent.change(screen.getByTestId('create-page-slug-input'), {
+      target: { value: '//products//:category/:slug//' },
+    });
+
+    expect((screen.getByTestId('create-page-slug-input') as HTMLInputElement).value).toBe(
+      '//products//:category/:slug//',
+    );
+    expect(screen.getByTestId('create-page-slug-error')).toBeDefined();
+    expect(
+      (screen.getByTestId('create-page-submit') as HTMLButtonElement).disabled,
+    ).toBe(true);
+  });
+
+  it('flags genuinely invalid characters (spaces, ?, #) in a manually entered slug', () => {
+    render(<CreatePageModal {...defaultProps} />);
+
+    fireEvent.change(screen.getByTestId('create-page-slug-input'), {
+      target: { value: 'sites/:site Id/foo?bar#baz' },
+    });
+
+    expect((screen.getByTestId('create-page-slug-input') as HTMLInputElement).value).toBe(
+      'sites/:site Id/foo?bar#baz',
+    );
+    expect(screen.getByTestId('create-page-slug-error').textContent).toMatch(
+      /lowercase letters, numbers/i,
+    );
+    expect(
+      (screen.getByTestId('create-page-submit') as HTMLButtonElement).disabled,
+    ).toBe(true);
+  });
+
+  it('lets the user insert a "/" mid-string without the field fighting back', () => {
+    // The exact scenario nickh described: type "helloworld" then go back and
+    // insert a "/" in the middle. Simulate the cursor-position edit by firing
+    // the intermediate and final values a real edit would produce.
+    render(<CreatePageModal {...defaultProps} />);
+
+    const input = screen.getByTestId('create-page-slug-input') as HTMLInputElement;
+
+    fireEvent.change(input, { target: { value: 'helloworld' } });
+    expect(input.value).toBe('helloworld');
+    expect(screen.queryByTestId('create-page-slug-error')).toBeNull();
+    expect(
+      (screen.getByTestId('create-page-submit') as HTMLButtonElement).disabled,
+    ).toBe(false);
+
+    // Cursor placed after "hello", user types "/" — the field must not strip
+    // it or otherwise refuse the keystroke.
+    fireEvent.change(input, { target: { value: 'hello/world' } });
+
+    expect(input.value).toBe('hello/world');
+    expect(screen.queryByTestId('create-page-slug-error')).toBeNull();
+    expect(
+      (screen.getByTestId('create-page-submit') as HTMLButtonElement).disabled,
+    ).toBe(false);
   });
 
   it('uses the provided site host (with trailing slash) as the slug prefix', () => {

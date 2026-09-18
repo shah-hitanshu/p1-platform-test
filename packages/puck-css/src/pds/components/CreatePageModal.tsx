@@ -18,7 +18,12 @@
  *     "Generate with AI" are disabled; "New page template" is admin-only and
  *     disabled. Later phases enable the rest.
  *   - Page title auto-derives the slug until the slug is edited manually.
- *   - Slug is sanitized (lowercase, no spaces, no special characters).
+ *   - Once the slug is edited manually, it is typed free-text (no live
+ *     stripping — mangling characters as the user types made it impossible to
+ *     land the cursor mid-string and insert a `/`); the current value is
+ *     validated instead, with an inline error and a disabled "Create" button
+ *     while it's invalid (lowercase letters, digits, `-`, `/` and `:` only,
+ *     `:` kept so a dynamic route segment like `:category` can be typed).
  *   - The Advanced panel is rendered as designed but fully disabled.
  *   - "Create page" creates the page via onCreateDocument(slug, title); the
  *     title is persisted into the new page's root.props.title (see useDocuments).
@@ -361,12 +366,51 @@ function slugify(value: string): string {
     .replace(/^-+|-+$/g, '');
 }
 
-/** Sanitize a manually-typed slug: lowercase, spaces to hyphens, drop invalid chars. */
-function sanitizeSlug(value: string): string {
+/**
+ * Sanitize a single dynamic-route param value (e.g. what's typed for a
+ * template's `:category`, or for a `:slug` param inside a URL pattern). This
+ * field is one constrained segment, not a free-text path, so it's still
+ * stripped live rather than validated: lowercase, spaces to hyphens, invalid
+ * chars dropped, and `/` and `:` dropped too (either would split the value
+ * into extra path segments the template's URL pattern doesn't define, or
+ * make a concrete param value indistinguishable from a dynamic-param marker
+ * to code that re-parses the path — see `parsePattern` below).
+ */
+function sanitizeRouteParam(value: string): string {
   return value
     .toLowerCase()
     .replace(/\s+/g, '-')
     .replace(/[^a-z0-9-]/g, '');
+}
+
+/**
+ * Validate a manually-typed free-text slug, without mutating it — mirrors
+ * what `sanitizeRouteParam`'s sibling used to strip live, as a message
+ * instead: lowercase letters, digits, `-`, `/` and `:` only. `:` and `/` are
+ * allowed — the slug field doubles as the page's route, and a full
+ * dynamic-route pattern (e.g. "products/:category/:slug" or
+ * "sites/:siteId/foobar") needs both the colon for a param marker and a
+ * slash between segments. Repeated slashes and a leading or trailing slash
+ * (the field's own "host /" prefix already draws that boundary, and a page
+ * path has no trailing slash) are also flagged. This mirrors the CCR
+ * backend's own path validation (workers/ccr document-types `validatePath`),
+ * which never restricted paths to alphanumerics-and-hyphen in the first
+ * place — the colon- and slash-rejection was a UI-only restriction. Returns
+ * a message when the value is invalid, or null when it's valid or empty (an
+ * empty slug is required elsewhere, but emptiness alone isn't "invalid").
+ */
+function getSlugError(value: string): string | null {
+  if (value.trim() === '') return null;
+  if (/[^a-z0-9:/-]/.test(value)) {
+    return 'Only lowercase letters, numbers, “-”, “/” and “:” are allowed — no spaces.';
+  }
+  if (/\/{2,}/.test(value)) {
+    return 'Use a single “/” between path segments.';
+  }
+  if (/^\/|\/$/.test(value)) {
+    return 'Remove the leading or trailing “/”.';
+  }
+  return null;
 }
 
 // The form mounts when the modal opens and unmounts when it closes, so each
@@ -487,8 +531,22 @@ function CreatePageForm({
     [slugEdited],
   );
 
+  // Free-text: no live stripping. Mangling characters as the user types made
+  // it impossible to position the cursor mid-string and insert a `/` (e.g.
+  // to turn "helloworld" into "hello/world") without the field fighting back.
+  // The raw value is kept as typed; `getSlugError` validates it for the
+  // inline error message and the "Create" button's disabled state instead.
   const handleSlugChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    setSlug(sanitizeSlug(e.target.value));
+    setSlug(e.target.value);
+    setSlugEdited(true);
+  }, []);
+
+  // The `:slug` segment inside a template's URL pattern is one param among
+  // siblings (`:year`, `:category`, ...), not the full-path slug field above —
+  // it's a single constrained segment, not a free-text route, so it keeps the
+  // live sanitizeRouteParam behavior rather than switching to validate-only.
+  const handlePatternSlugChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setSlug(sanitizeRouteParam(e.target.value));
     setSlugEdited(true);
   }, []);
 
@@ -613,7 +671,7 @@ function CreatePageForm({
       }
 
       const finalSlug = slug.trim();
-      if (!finalSlug || submitting) return;
+      if (!finalSlug || submitting || getSlugError(finalSlug)) return;
 
       // Plug external data. "Everything on one page" → a single page that lists
       // all items. "Index + detail" → an index page plus a dynamic per-item page
@@ -780,14 +838,38 @@ function CreatePageForm({
       ? (contentTypeList.find((c) => c.key === contentType) ?? null)
       : null;
 
+  // A template's `:slug` param reuses the `slug` state (see `patternParamValue`
+  // below), but that state can still hold whatever the permissive free-text
+  // field (`handleSlugChange` / `sanitizeSlug`, which keeps `/` and `:`) last
+  // put there from before this template was picked — switching starting points
+  // doesn't clear it. Re-run it through the stricter `sanitizeRouteParam` the
+  // moment a pattern with a `:slug` param becomes active, so that stale value
+  // can't reach the param without passing through it, the same as every fresh
+  // edit does via `handlePatternSlugChange`.
+  useEffect(() => {
+    const pattern = selectedCt?.urlPattern;
+    if (!pattern) return;
+    const hasSlugParam = parsePattern(pattern).some(
+      (seg) => seg.type === 'param' && seg.value === 'slug',
+    );
+    if (!hasSlugParam) return;
+    setSlug((prev) => sanitizeRouteParam(prev));
+  }, [selectedCt?.urlPattern]);
+
+  // The free-text slug field's current validity — drives its inline error
+  // message and every "Create" gate that reads the plain slug (a pattern's
+  // `:param`s, incl. `:slug`, stay live-sanitized via sanitizeRouteParam and
+  // so are always valid by this same rule set).
+  const slugError = getSlugError(slug);
+
   // The content-type flow can create once a type is picked and the route is
   // defined: a template with a URL pattern needs its `:param`s (incl. `:slug`)
-  // filled; a template without a pattern needs a slug.
+  // filled; a template without a pattern needs a valid, non-empty slug.
   const canCreateContentType =
     selectedCt !== null &&
     (selectedCt.urlPattern
       ? patternParamsFilled(selectedCt.urlPattern, slug, params)
-      : slug.trim().length > 0);
+      : slug.trim().length > 0 && !slugError);
 
   // "New template" is a distinct screen within the modal.
   const isTemplateScreen = contentType === 'new-template';
@@ -847,11 +929,11 @@ function CreatePageForm({
     if (isTemplateScreen) return !canCreateTemplate;
     if (isTranslate) return !canTranslate;
     if (isPlugExternalData) {
-      return !pageStructure || !slug.trim() || collectionNeedsParam;
+      return !pageStructure || !slug.trim() || Boolean(slugError) || collectionNeedsParam;
     }
-    if (aiEnabled) return !brief.trim() || !slug.trim();
+    if (aiEnabled) return !brief.trim() || !slug.trim() || Boolean(slugError);
     if (selectedCt) return !canCreateContentType;
-    return selected !== 'blank' || !slug.trim();
+    return selected !== 'blank' || !slug.trim() || Boolean(slugError);
   }
 
   const content = (
@@ -1157,10 +1239,10 @@ function CreatePageForm({
                           value={seg.value === 'slug' ? slug : (params[seg.value] ?? '')}
                           onChange={(e) =>
                             seg.value === 'slug'
-                              ? handleSlugChange(e)
+                              ? handlePatternSlugChange(e)
                               : setParams((prev) => ({
                                   ...prev,
-                                  [seg.value]: sanitizeSlug(e.target.value),
+                                  [seg.value]: sanitizeRouteParam(e.target.value),
                                 }))
                           }
                         />
@@ -1189,8 +1271,18 @@ function CreatePageForm({
                     placeholder="new-page"
                     value={slug}
                     onChange={handleSlugChange}
+                    aria-invalid={slugError ? true : undefined}
                   />
                 </div>
+                {slugError && (
+                  <span
+                    data-testid="create-page-slug-error"
+                    role="alert"
+                    className={styles.errorMessage}
+                  >
+                    {slugError}
+                  </span>
+                )}
               </div>
             )}
           </div>
@@ -1402,8 +1494,18 @@ function CreatePageForm({
                             size={Math.max(slug.length, 8)}
                             value={slug}
                             onChange={handleSlugChange}
+                            aria-invalid={slugError ? true : undefined}
                           />
                         </div>
+                        {slugError && (
+                          <span
+                            data-testid="create-page-route-slug-error"
+                            role="alert"
+                            className={styles.errorMessage}
+                          >
+                            {slugError}
+                          </span>
+                        )}
                       </div>
                     )}
 
@@ -1430,8 +1532,18 @@ function CreatePageForm({
                             size={Math.max(slug.length, 8)}
                             value={slug}
                             onChange={handleSlugChange}
+                            aria-invalid={slugError ? true : undefined}
                           />
                         </div>
+                        {slugError && (
+                          <span
+                            data-testid="create-page-route-slug-error"
+                            role="alert"
+                            className={styles.errorMessage}
+                          >
+                            {slugError}
+                          </span>
+                        )}
                         <div
                           data-testid="create-page-route-detail"
                           className={styles.routeBuilder}
