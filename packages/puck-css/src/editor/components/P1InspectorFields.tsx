@@ -12,7 +12,6 @@
 
 import React from 'react';
 import { createUsePuck } from '@puckeditor/core';
-import { IconButton } from '@pantheon-systems/pds-toolkit-react';
 import { useP1PuckOptional } from '../../core/P1PuckContext.js';
 import { useSidebarScrollPreservation } from '../useSidebarScrollPreservation.js';
 import { templateFromRegistryPath } from '../utils/templatePath.js';
@@ -91,27 +90,6 @@ export function P1InspectorFields({
   const handleCollapse = () => {
     dispatch({ type: 'setUi', ui: { rightSideBarVisible: false } } as never);
   };
-
-  const handleReopen = () => {
-    dispatch({ type: 'setUi', ui: { rightSideBarVisible: true } } as never);
-  };
-
-  if (!rightSideBarVisible) {
-    return (
-      <div className="p1-inspector-reopen-strip">
-        <IconButton
-          ariaLabel="Open inspector panel"
-          iconName="tableRows"
-          size="s"
-          hasTooltip={false}
-          hasBorder={false}
-          onClick={handleReopen}
-          className="p1-inspector-reopen-btn"
-          data-testid="inspector-reopen-button"
-        />
-      </div>
-    );
-  }
 
   const template = templateFromRegistryPath(ccr?.currentDocument?.path, ccr?.templates);
   if (template && !itemSelector && ccr?.updateTemplate) {

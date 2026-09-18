@@ -141,51 +141,37 @@ test.describe('P1 Editor - delete page', () => {
   });
 });
 
-// PCC-3928: closing the right (page/description) panel left no visible control
-// to reopen it once the left panel was also closed. Puck's own grid gives the
-// collapsed right sidebar a 0px column unless our override (styles.css,
-// "Inspector Re-open Drawer Strip") reserves 48px for it — and that override
-// only covered the case where the left panel was still open, so the reopen
-// button existed in the DOM but had no width to render into. Only Puck's own
-// resize-handle (a sibling, unaffected by the column width) stayed hoverable,
-// which is the "hidden drag handle" workaround from the report.
-test.describe('P1 Editor - right panel escape hatch', () => {
-  test('the right panel can be reopened after closing both side panels', async ({ page }) => {
+// PCC-3928 added an in-canvas "reopen strip" so the right panel could be
+// reopened after closing both side panels. The team later decided (following
+// PCC-3928) that the strip was redundant with the top toolbar's own "Toggle
+// right panel" button and cost reserved canvas real estate the team wants to
+// avoid, so it was removed: the right panel now collapses fully to 0px, just
+// like the left panel, and reopens only via the top toggle.
+test.describe('P1 Editor - right panel toggle', () => {
+  test('the right panel collapses fully and reopens via the top toggle', async ({ page }) => {
     // Wide enough that useResponsivePanels' own auto-collapse budget (1308px)
     // doesn't close anything on our behalf — every collapse below is deliberate.
     await page.setViewportSize({ width: 1600, height: 900 });
     await openEditor(page);
 
-    // Each handler carries its own data-testid, so no locator needs to be
-    // scoped by Puck's own (hashed, implementation-detail) Sidebar classes.
-    //
-    // A test id alone isn't unique here, though: Puck mounts all four left
-    // plugin tabs at once and hides the inactive ones with CSS, so the
-    // inspector renders into its mobile Fields tab as well as the right
-    // sidebar, and every left panel wears the same PanelHeader. Only the right
-    // sidebar's inspector is on screen, and Blocks is the active left tab — so
-    // visibility and the Blocks panel's own test id pick out the live ones.
+    // A test id alone isn't unique here: Puck mounts all four left plugin tabs
+    // at once and hides the inactive ones with CSS, so the inspector renders
+    // into its mobile Fields tab as well as the right sidebar. Only the right
+    // sidebar's inspector is on screen, so visibility picks out the live one.
     const rightCollapseButton = page
       .getByTestId('inspector-collapse-button')
       .filter({ visible: true });
-    const reopenButton = page.getByTestId('inspector-reopen-button').filter({ visible: true });
-    const leftCollapseButton = page
-      .getByTestId('blocks-panel')
-      .getByTestId('panel-header-collapse-button');
+    const toggleRightPanelButton = page.getByRole('button', { name: 'Toggle right panel' });
 
     await expect(rightCollapseButton).toBeVisible();
     await rightCollapseButton.click();
-    await expect(reopenButton).toBeVisible();
 
-    // Closing the left panel too is the state the two reporters actually hit —
-    // it's the case the grid override missed.
-    await leftCollapseButton.click();
+    // No in-canvas reopen affordance remains — the panel collapses to 0px like
+    // the left panel does, with no strip reserving any width for it.
+    await expect(rightCollapseButton).toBeHidden();
+    await expect(page.getByTestId('inspector-reopen-button')).toHaveCount(0);
 
-    // The click is what discriminates: without the grid override the strip still
-    // reports a non-zero box, but its column is 0px wide so the canvas sits over
-    // the button and swallows the pointer event.
-    await expect(reopenButton).toBeVisible();
-    await reopenButton.click();
+    await toggleRightPanelButton.click();
     await expect(rightCollapseButton).toBeVisible();
   });
 });

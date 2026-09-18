@@ -213,27 +213,6 @@
   font-weight: 600;
 }
 
-/* Strip container: min-height bypasses ancestor height constraints;
-   overflow:hidden on _Sidebar--right_ clips it to the correct sidebar height. */
-.p1-inspector-reopen-strip {
-  width: 100%;
-  /* Follows the header/subheader knobs (P1EditorHeader/P1EditorSubheader modules) */
-  min-height: calc(100vh - (var(--p1-header-h, 60px) + var(--p1-subheader-h, 48px)));
-  background: var(--pds-color-surface-default, #fff);
-  border-left: 1px solid var(--pds-color-border-default, oklch(0.9401 0 0));
-  display: flex;
-  justify-content: center;
-  box-sizing: border-box;
-}
-
-.p1-inspector-reopen-btn {
-  flex-shrink: 0;
-}
-
-.p1-inspector-reopen-btn .pds-icon {
-  transform: rotate(180deg);
-}
-
 /* TODO: Delete this block once @puckeditor/core removes showBreadcrumbs: true from the
    fields SidebarSection (chunk-EBISZQTK.mjs line 7580). Puck hardcodes that prop so
    <Breadcrumbs /> always renders above our InspectorTabHeader with no public API to
@@ -244,41 +223,6 @@
   padding: 0 !important;
   border: 0 !important;
   min-height: 0 !important;
-}
-
-/* ============================================
-   Inspector Re-open Drawer Strip
-   ============================================ */
-
-/* When the right sidebar is collapsed, Puck sets the column to 0 and the sidebar
-   to display:none. Override both so the 48px strip stays in layout flow.
-   No fixed/portal positioning — canvas and monitor button are unaffected.
-   Written as two rules — one per left-sidebar state — because Puck's own grid
-   columns are equally state-dependent (they key off
-   `_PuckLayout--leftSideBarVisible_`/`_PuckLayout--rightSideBarVisible_`
-   combinators): the left column's width still has to come from
-   --puck-left-side-bar-width when that panel is open, or collapse to 0 when
-   it's also closed — a single rule can't express both. Without the second
-   rule, the strip silently loses its grid column whenever the user has
-   closed both panels, which is the state most people are in right before
-   they notice the right panel won't reopen: Puck's own resize-handle sibling
-   is unaffected by this column width and stays hoverable, so it reads as the
-   only escape hatch. */
-@media (min-width: 638px) {
-  [class*="_PuckLayout--mounted_"][class*="_PuckLayout--leftSideBarVisible_"]:not([class*="_PuckLayout--rightSideBarVisible_"]) [class*="_PuckLayout-inner_"] {
-    grid-template-columns: var(--puck-side-nav-width) var(--puck-left-side-bar-width) var(--puck-frame-width) 48px !important;
-  }
-
-  [class*="_PuckLayout--mounted_"]:not([class*="_PuckLayout--leftSideBarVisible_"]):not([class*="_PuckLayout--rightSideBarVisible_"]) [class*="_PuckLayout-inner_"] {
-    grid-template-columns: var(--puck-side-nav-width) 0 var(--puck-frame-width) 48px !important;
-  }
-}
-
-/* Override Puck's display:none — show the sidebar as a 48px strip.
-   overflow:hidden clips the strip to the sidebar's grid-placed dimensions. */
-[class*="_PuckLayout--mounted_"]:not([class*="_PuckLayout--rightSideBarVisible_"]) [class*="_Sidebar--right_"] {
-  display: flex !important;
-  overflow: hidden !important;
 }
 
 /* ============================================
