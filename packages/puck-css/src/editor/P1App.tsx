@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import { P1Client } from '@pantheon-systems/css-client';
+import { GlobalWrapper } from '@pantheon-systems/pds-toolkit-react';
 import { LoadingMessage } from '../pds/components/LoadingMessage.js';
 import { P1AuthProvider, useP1Auth, P1LoginPage } from '../auth/index.js';
 import { useP1Puck } from '../core/P1PuckContext.js';
@@ -216,19 +217,24 @@ export function P1App({
   // do not affect canvas content.
   return (
     <div className="puck-editor-theme">
-      <P1AuthProvider
-        authMode={config.authMode}
-        p1BaseUrl={config.baseUrl}
-      >
-        <AuthGate
-          config={config}
-          loadingFallback={loadingFallback}
-          loginFallback={loginFallback}
-          loginPageProps={loginPageProps}
+      {/* PDS's overlays read a context only GlobalWrapper supplies, and versions the peer
+          range still admits throw without it. At the root so chrome, the login page and
+          consumer children are all covered; it emits no DOM element and nesting is a no-op. */}
+      <GlobalWrapper>
+        <P1AuthProvider
+          authMode={config.authMode}
+          p1BaseUrl={config.baseUrl}
         >
-          {children}
-        </AuthGate>
-      </P1AuthProvider>
+          <AuthGate
+            config={config}
+            loadingFallback={loadingFallback}
+            loginFallback={loginFallback}
+            loginPageProps={loginPageProps}
+          >
+            {children}
+          </AuthGate>
+        </P1AuthProvider>
+      </GlobalWrapper>
     </div>
   );
 }

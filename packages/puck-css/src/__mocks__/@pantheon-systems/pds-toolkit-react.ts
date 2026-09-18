@@ -463,3 +463,24 @@ export const SplitButton = (props: Record<string, unknown>) => {
       ),
   );
 };
+
+/**
+ * Overlay context, modelled on the real package: `GlobalWrapper` is the only export that
+ * supplies it, and through 2.0.0-alpha.41 an overlay threw without it rather than falling
+ * back. The peer range still admits those versions, so the stub keeps the throw.
+ */
+const OverlayContext = React.createContext<object | null>(null);
+
+export const GlobalWrapper = (props: { children?: React.ReactNode }) =>
+  React.createElement(OverlayContext.Provider, { value: {} }, props.children);
+
+export const Modal = (props: Record<string, unknown>) => {
+  if (React.useContext(OverlayContext) === null) {
+    throw new Error('useOverlayContext must be used within OverlayContextProvider');
+  }
+  return React.createElement(
+    'div',
+    { role: 'dialog', 'aria-label': props.title as string },
+    props.children as React.ReactNode,
+  );
+};
