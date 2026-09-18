@@ -8,5 +8,12 @@ import type { ThreadOverview } from './thread';
  * `thread.id` + `thread.updatedAt`).
  */
 export type ThreadEvent =
-  | { type: 'comment_posted'; siteId: string; thread: ThreadOverview; comment: Comment }
+  | {
+    type: 'comment_posted';
+    siteId: string;
+    thread: ThreadOverview;
+    comment: Comment;
+    /** The poster with their email, when the roster has it, for consumers that act on their behalf. */
+    requester?: { id: string; email: string; name: string | null };
+  }
   | { type: 'thread_status_changed'; siteId: string; thread: ThreadOverview; actor: CommentAuthor };

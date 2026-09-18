@@ -32,6 +32,9 @@ export interface Env {
   // Secrets (set via wrangler secret / .dev.vars)
   AGENT_ID: string;
   AGENT_API_KEY: string;
+  // Shared with CCR, which presents it when it reports a comment that mentions this agent.
+  // Unset means mention notifications are refused.
+  AGENT_NOTIFY_SECRET?: string;
   // Cloudflare API token (AI Gateway Read/Edit + Workers AI Read) — authenticates the
   // Worker to the REST API via Bearer auth. Providers bill through the gateway's unified
   // billing, so no per-provider (Anthropic/OpenAI/…) key is needed.

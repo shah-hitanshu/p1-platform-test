@@ -132,13 +132,22 @@ wrangler secret put AGENT_API_KEY --env sbx1
 # paste the agent API key from step 2
 ```
 
-For local development, put the same keys in `workers/agent/.env` (gitignored) instead — `wrangler dev` loads them automatically:
+For local development, put the same keys in `workers/p1-agent/.env.local` (gitignored) instead — `wrangler dev` loads them automatically:
 
 ```env
 AI_GATEWAY_API_TOKEN=...
 AGENT_ID=...
 AGENT_API_KEY=...
+AGENT_NOTIFY_SECRET=...
 ```
+
+Against a local CCR with mock auth, `AGENT_ID`/`AGENT_API_KEY` can be one of the mock agents in `workers/ccr/src/auth/mock-auth.ts`. The Pantheon Agent (`a0000000-0000-0000-0000-000000000003`, key `test-agent-key-pantheon`) is the one flagged global by `pnpm db:seed`, so it appears in every site's roster and mention picker.
+
+### Answering comment mentions
+
+When a comment mentions an agent, CCR posts `{ siteId, threadId, commentId, agentIds, requestedBy }` to the worker's `/notifications/comment` with the shared secret in `X-Internal-Secret`. `requestedBy` is the poster (`{ id, email, name }`) when the site roster knows their email. The worker acknowledges with 202, then, if its own `AGENT_ID` is among `agentIds`, reads the thread back through the CCR API acting for that poster (the `X-Acting-User-*` headers), runs one model completion over the thread, and posts the reply as a comment attributed to the agent on the poster's behalf. Acting for the poster is what lets a global agent in: its implicit site access is bounded by the user it acts for, so a notification without `requestedBy` leaves the agent with no access and the comment is logged as failed. A re-delivered notification finds the agent's comment already in the thread and posts nothing.
+
+Both sides need the same secret: `AGENT_NOTIFY_SECRET` in the worker (`.env.local` locally, `wrangler secret put AGENT_NOTIFY_SECRET --env <lane>` when deployed) and in CCR (`workers/ccr/.dev.vars` locally, a secret on the CCR worker when deployed). CCR finds the worker through `AGENT_WORKER_URL` in its `wrangler.jsonc` vars; leaving either unset disables the dispatch, and a failed delivery is logged and dropped without affecting the comment.
 
 ### Configure environment variables
 

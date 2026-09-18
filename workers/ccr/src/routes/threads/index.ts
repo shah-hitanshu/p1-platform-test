@@ -34,6 +34,7 @@ import type {
 import { errorResponse, jsonResponse, NO_STORE_HEADERS } from '../../utils/http-helpers';
 import { isUuid } from '../../utils/uuid';
 import { validateBody, validateQuery, validationErrorResponse } from '../validation/request-validation';
+import { requesterFor } from './agent-notifications';
 import { emitThreadEvent } from './events';
 import type { ThreadsRouteContext } from './types';
 import {
@@ -263,6 +264,7 @@ function commentPostedResponse(
     siteId: context.siteId,
     thread: write.thread,
     comment,
+    requester: requesterFor(comment, roster),
   });
 
   getLogger().info('comment posted', {

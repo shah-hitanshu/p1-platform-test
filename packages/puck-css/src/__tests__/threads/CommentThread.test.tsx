@@ -222,3 +222,163 @@ describe('CommentThread', () => {
     expect(onPost).toHaveBeenCalledWith('From the keyboard');
   });
 });
+
+describe('CommentThread mentions', () => {
+  const agent = { type: 'agent' as const, id: 'a-1', name: 'Pantheon Agent', role: 'Editor', avatar: null };
+  const marco = { type: 'user' as const, id: 'u-1', name: 'Marco Reyes', role: 'Editor', avatar: null };
+  const nadia = { type: 'user' as const, id: 'u-2', name: 'Nadia Brooks', role: 'Site owner', avatar: null };
+  const candidates = [agent, marco, nadia];
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function typeDraft(draft: HTMLElement, value: string) {
+    fireEvent.change(draft, { target: { value } });
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+  }
+
+  function renderWithPicker(onPost = vi.fn()) {
+    vi.useFakeTimers();
+    renderThread({ onPost, mentionCandidates: candidates });
+    return { onPost, draft: screen.getByRole('textbox', { name: 'New comment' }) };
+  }
+
+  it('opens a grouped list of everyone once @ has settled, and filters it as the reader types', () => {
+    const { draft } = renderWithPicker();
+
+    fireEvent.change(draft, { target: { value: '@' } });
+    expect(screen.queryByTestId('mention-picker')).toBeNull();
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+
+    const picker = screen.getByRole('listbox', { name: 'Mention someone' });
+    expect(screen.getByRole('group', { name: 'Agent' })).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'Site members' })).toBeInTheDocument();
+    const rows = screen.getAllByRole('option');
+    expect(rows).toHaveLength(3);
+    expect(rows[0]).toHaveTextContent('Pantheon Agent');
+    expect(rows[1]).toHaveTextContent('Marco Reyes');
+    expect(rows[2]).toHaveTextContent('Nadia Brooks');
+
+    typeDraft(draft, '@NAD');
+    expect(picker).toBeInTheDocument();
+    expect(screen.getAllByRole('option')).toHaveLength(1);
+    expect(screen.getByRole('option', { name: /Nadia Brooks/ })).toHaveTextContent('Site owner');
+    expect(screen.queryByRole('group', { name: 'Agent' })).toBeNull();
+  });
+
+  it('goes away when a space follows the @ or nobody matches, leaving the text as typed', () => {
+    const { draft } = renderWithPicker();
+
+    typeDraft(draft, '@ ');
+    expect(screen.queryByTestId('mention-picker')).toBeNull();
+    expect(draft).toHaveValue('@ ');
+
+    typeDraft(draft, '@nonexistent');
+    expect(screen.queryByTestId('mention-picker')).toBeNull();
+    expect(draft).toHaveValue('@nonexistent');
+  });
+
+  it('moves with the arrow keys and inserts the highlighted name on Enter', () => {
+    const { draft, onPost } = renderWithPicker();
+    typeDraft(draft, 'hey @');
+
+    expect(screen.getAllByRole('option')[0]).toHaveAttribute('aria-selected', 'true');
+    fireEvent.keyDown(draft, { key: 'ArrowDown' });
+    expect(screen.getAllByRole('option')[1]).toHaveAttribute('aria-selected', 'true');
+    expect(draft).toHaveAttribute('aria-activedescendant', screen.getAllByRole('option')[1]?.id);
+
+    fireEvent.keyDown(draft, { key: 'Enter' });
+    expect(draft).toHaveValue('hey @Marco Reyes ');
+    expect(screen.queryByTestId('mention-picker')).toBeNull();
+    expect(onPost).not.toHaveBeenCalled();
+  });
+
+  it('selects with Tab and with a click', () => {
+    const { draft } = renderWithPicker();
+
+    typeDraft(draft, '@pan');
+    fireEvent.keyDown(draft, { key: 'Tab' });
+    expect(draft).toHaveValue('@Pantheon Agent ');
+
+    typeDraft(draft, '@Pantheon Agent @na');
+    fireEvent.click(screen.getByRole('option', { name: /Nadia Brooks/ }));
+    expect(draft).toHaveValue('@Pantheon Agent @Nadia Brooks ');
+  });
+
+  it('wraps around at either end of the list', () => {
+    const { draft } = renderWithPicker();
+    typeDraft(draft, '@');
+
+    fireEvent.keyDown(draft, { key: 'ArrowUp' });
+    expect(screen.getAllByRole('option')[2]).toHaveAttribute('aria-selected', 'true');
+    fireEvent.keyDown(draft, { key: 'ArrowDown' });
+    expect(screen.getAllByRole('option')[0]).toHaveAttribute('aria-selected', 'true');
+  });
+
+  describe('placement', () => {
+    const heightDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight');
+
+    function pickerOpenedWith(listHeight: number, composerTop: number) {
+      Object.defineProperty(HTMLElement.prototype, 'offsetHeight', { configurable: true, get: () => listHeight });
+      vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue({ top: composerTop } as DOMRect);
+      const { draft } = renderWithPicker();
+      typeDraft(draft, '@');
+      return screen.getByTestId('mention-picker');
+    }
+
+    afterEach(() => {
+      if (heightDescriptor) Object.defineProperty(HTMLElement.prototype, 'offsetHeight', heightDescriptor);
+      vi.restoreAllMocks();
+    });
+
+    it('opens above the composer when the list fits between it and the top of the frame', () => {
+      expect(pickerOpenedWith(200, 400)).toHaveAttribute('data-placement', 'above');
+    });
+
+    it('opens below the composer when the top of the frame would cut the list off', () => {
+      expect(pickerOpenedWith(200, 120)).toHaveAttribute('data-placement', 'below');
+    });
+  });
+
+  it('closes on Escape without touching the draft, and stays closed until the query changes', () => {
+    const { draft } = renderWithPicker();
+    typeDraft(draft, '@ma');
+
+    fireEvent.keyDown(draft, { key: 'Escape' });
+    expect(screen.queryByTestId('mention-picker')).toBeNull();
+    expect(draft).toHaveValue('@ma');
+
+    typeDraft(draft, '@mar');
+    expect(screen.getByTestId('mention-picker')).toBeInTheDocument();
+  });
+
+  it('posts the chosen names as mention tokens', () => {
+    const { draft, onPost } = renderWithPicker();
+
+    typeDraft(draft, '@pan');
+    fireEvent.keyDown(draft, { key: 'Enter' });
+    typeDraft(draft, '@Pantheon Agent please loop in @mar');
+    fireEvent.keyDown(draft, { key: 'Enter' });
+    typeDraft(draft, '@Pantheon Agent please loop in @Marco Reyes too');
+
+    fireEvent.keyDown(draft, { key: 'Enter' });
+    expect(onPost).toHaveBeenCalledWith('${mention|agent:a-1} please loop in ${mention|user:u-1} too');
+    expect(draft).toHaveValue('');
+  });
+
+  it('shows the agent with its glyph and badge, people with their role', () => {
+    const { draft } = renderWithPicker();
+    typeDraft(draft, '@');
+
+    const [agentRow, marcoRow] = screen.getAllByRole('option');
+    expect(agentRow?.querySelector('[data-testid="icon-sparkles"]')).not.toBeNull();
+    expect(agentRow).toHaveTextContent('Agent');
+    expect(marcoRow?.querySelector('[data-testid="icon-sparkles"]')).toBeNull();
+    expect(marcoRow).toHaveTextContent('Editor');
+  });
+});

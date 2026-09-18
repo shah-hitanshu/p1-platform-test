@@ -16,6 +16,7 @@ import {
   DEMO_SITE_2,
   DEMO_SITE_3,
   HELPER_AGENT,
+  PANTHEON_AGENT,
   MOCK_ORG,
   ZAPPY_AGENT,
   type Rows,
@@ -83,6 +84,14 @@ export const agents = [
     name: 'Helper Bot',
     description: 'Secondary mock agent for testing',
     capabilities: ['content_edit'],
+  },
+  {
+    id: PANTHEON_AGENT,
+    organizationId: mockOrg.id,
+    name: 'Pantheon Agent',
+    description: 'Platform agent, visible on every site',
+    capabilities: ['content_edit', 'content_create'],
+    isGlobal: true,
   },
 ] satisfies Rows<typeof schema.agents>;
 

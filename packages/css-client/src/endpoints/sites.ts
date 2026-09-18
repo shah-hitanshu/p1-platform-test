@@ -4,7 +4,7 @@
  * API operations for sites.
  */
 
-import type { Site, PaginationOptions, SiteSettingsResult } from '../types/index.js';
+import type { Site, PaginationOptions, SiteMembers, SiteSettingsResult } from '../types/index.js';
 import { requirePathParams } from '../utils.js';
 import type { BaseEndpoint } from './base.js';
 
@@ -29,6 +29,18 @@ export class SitesEndpoint {
     requirePathParams({ siteId }, 'sites.getSettings');
 
     return this.base.request<SiteSettingsResult>(`/api/sites/${siteId}/settings`, {
+      method: 'GET',
+    });
+  }
+
+  /**
+   * The people and agents on a site, for pickers. Anyone who can view the site
+   * can read its roster.
+   */
+  async members(siteId: string): Promise<SiteMembers> {
+    requirePathParams({ siteId }, 'sites.members');
+
+    return this.base.request<SiteMembers>(`/api/sites/${siteId}/members`, {
       method: 'GET',
     });
   }

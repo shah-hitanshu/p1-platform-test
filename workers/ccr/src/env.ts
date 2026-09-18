@@ -69,6 +69,9 @@ export interface Env {
   DASHBOARD_URL?: string;
   /** Local-only: a fake SendGrid to send to. Ignored unless ENVIRONMENT is 'local'. */
   SENDGRID_API_URL?: string;
+  // Agent worker that answers comment mentions; unset means nobody is told.
+  AGENT_WORKER_URL?: string;
+  AGENT_NOTIFY_SECRET?: string;
 
   // KV namespace for broker login transactions
   BROKER_KV?: KVNamespace;

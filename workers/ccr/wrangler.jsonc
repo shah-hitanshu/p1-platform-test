@@ -125,6 +125,7 @@
     "INTERNAL_API_URL": "http://localhost:8787",
     // Where the invite email sends people. SENDGRID_API_KEY (in .dev.vars) turns sending on.
     "DASHBOARD_URL": "http://localhost:3000",
+    "AGENT_WORKER_URL": "http://localhost:8790",
     // Content Publisher's LaunchDarkly proxy, used for the P1V0 self-service
     // onboarding gate (PCC-3479). Point at a staging/local proxy in .dev.vars;
     // unset means self-service onboarding is off and app.users stays the gate.
@@ -205,6 +206,7 @@
         "PUBLIC_ORIGIN": "https://staging.ccr.p1.pantheon.io",
         "DASHBOARD_URL": "https://staging.content.pantheon.io",
         "INTERNAL_API_URL": "https://collaborative-state-worker-staging.pantheon-content-publisher.workers.dev",
+        "AGENT_WORKER_URL": "https://p1-chatbot-agent-staging.pantheon-content-publisher.workers.dev",
         "WEBSOCKET_HEARTBEAT_INTERVAL": "30000",
         "DOCUMENT_SYNC_BATCH_SIZE": "50",
         "PRESENCE_TTL_SECONDS": "120",
@@ -304,6 +306,7 @@
         "PUBLIC_ORIGIN": "https://ccr.p1.pantheon.io",
         "DASHBOARD_URL": "https://content.pantheon.io",
         "INTERNAL_API_URL": "https://collaborative-state-worker-production.pantheon-p1-production.workers.dev",
+        "AGENT_WORKER_URL": "https://p1-chatbot-agent-production.pantheon-p1-production.workers.dev",
         "WEBSOCKET_HEARTBEAT_INTERVAL": "30000",
         "DOCUMENT_SYNC_BATCH_SIZE": "50",
         "PRESENCE_TTL_SECONDS": "120",

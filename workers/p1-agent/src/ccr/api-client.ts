@@ -2,6 +2,7 @@
  * CCR Backend API Client
  * Adapted from collaborative-state-system/workers/mcp-server/src/shared/api-client.ts
  */
+import type { PostCommentResponse, ThreadResponse } from './thread-types.js';
 import type {
   AbortAgentEditRequest,
   AbortAgentEditResponse,
@@ -362,5 +363,22 @@ export class McpApiClient {
       { method: 'GET', headers: this.getHeaders() },
     );
     return this.handleResponse<DocumentPresenceResponse>(response);
+  }
+
+  async getThread(siteId: string, threadId: string): Promise<ThreadResponse> {
+    const response = await this.doFetch(`${this.baseUrl}/api/sites/${siteId}/threads/${threadId}`, {
+      method: 'GET',
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse<ThreadResponse>(response);
+  }
+
+  async postThreadComment(siteId: string, threadId: string, body: string): Promise<PostCommentResponse> {
+    const response = await this.doFetch(`${this.baseUrl}/api/sites/${siteId}/threads/${threadId}/comments`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify({ body }),
+    });
+    return this.handleResponse<PostCommentResponse>(response);
   }
 }

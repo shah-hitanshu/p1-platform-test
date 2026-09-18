@@ -1,0 +1,131 @@
+/* Anchored to the composer, opening upward so it never covers the draft, or downward
+ * when the frame's top edge would cut it off. Rendered inside the canvas iframe, where
+ * no PDS component styles arrive, so every token has a literal. */
+.picker {
+  position: absolute;
+  left: 1rem;
+  right: 1rem;
+  bottom: calc(100% - 2px);
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  max-height: 16rem;
+  padding: 0.375rem;
+  overflow-y: auto;
+  background: var(--pds-color-surface-default, oklch(1 0 0));
+  border: 1px solid var(--pds-color-border-default, oklch(0.925 0 0));
+  border-radius: 0.5rem;
+  box-shadow: var(--pds-elevation-overlay, 0 0.25rem 1rem oklch(0 0 0 / 0.12));
+  color: var(--pds-color-foreground-default, oklch(0.2178 0 0));
+  text-align: left;
+}
+
+.picker.below {
+  top: calc(100% + 0.375rem);
+  bottom: auto;
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.group + .group {
+  margin-top: 0.25rem;
+  border-top: 1px solid var(--pds-color-border-default, oklch(0.925 0 0));
+}
+
+.group + .group .heading {
+  padding-top: 0.5rem;
+}
+
+.heading {
+  padding: 0.375rem 0.625rem 0.125rem;
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--pds-color-foreground-default-secondary, #9a9a9a);
+}
+
+.option {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  width: 100%;
+  margin: 0;
+  padding: 0.5rem 0.625rem;
+  background: transparent;
+  border: none;
+  border-radius: 0.375rem;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.option.active {
+  background: var(--pds-color-surface-default-secondary, oklch(0.943 0 0));
+}
+
+.avatar,
+.agentAvatar {
+  flex: none;
+  width: 1.5rem;
+  height: 1.5rem;
+  overflow: hidden;
+  border-radius: 50%;
+}
+
+.avatar {
+  background: var(--pds-color-surface-default-secondary, oklch(0.943 0 0));
+}
+
+.avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.agentAvatar {
+  display: grid;
+  place-items: center;
+  background: var(--pds-color-foreground-default, oklch(0.2178 0 0));
+  color: #fff;
+}
+
+.agentAvatar svg {
+  width: 0.75rem;
+  height: 0.75rem;
+}
+
+.name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.role {
+  flex: none;
+  font-size: 0.75rem;
+  color: var(--pds-color-foreground-default-secondary, oklch(0.4778 0.002 247.87));
+}
+
+.agentBadge {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  padding: 0.0625rem 0.375rem;
+  background: var(--pds-color-badge-silver-muted-background, oklch(0.943 0 0));
+  color: var(--pds-color-badge-silver-muted-foreground, oklch(0.3211 0 0));
+  border-radius: 0.375rem;
+  font-size: 0.6875rem;
+  font-weight: var(--pds-typography-fw-semibold, 600);
+  line-height: 1.25;
+}

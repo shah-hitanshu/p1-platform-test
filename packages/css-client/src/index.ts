@@ -127,6 +127,12 @@ export type {
   ChangeSummary,
   UpstreamResolutions,
   UpstreamResolutionTarget,
+  // Site member types
+  SiteMemberRole,
+  AgentSiteRole,
+  SiteMemberUser,
+  SiteMemberAgent,
+  SiteMembers,
 } from './types/index.js';
 export type * from './types/threads/index.js';
 

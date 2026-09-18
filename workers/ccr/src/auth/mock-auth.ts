@@ -83,6 +83,13 @@ export const DEFAULT_MOCK_CONFIG: MockIdentityConfig = {
       apiKey: 'test-agent-key-helper',
       siteRoles: { 'site-123': 'viewer', 'site-456': 'editor' },
     },
+    {
+      // ID must match database: a0000000-0000-0000-0000-000000000003 (global, so no site roles)
+      id: 'a0000000-0000-0000-0000-000000000003',
+      name: 'Pantheon Agent',
+      apiKey: 'test-agent-key-pantheon',
+      siteRoles: {},
+    },
   ],
 };
 

@@ -97,6 +97,10 @@ Rules:
   function logs `thread event` at debug and returns. PCC-3968 replaces its
   body with the presence lookup and Durable Object fan-out inside
   `ctx.waitUntil`; the call site, the service and the wire contract do not move.
+  PCC-3979 added the first consumer there: `comment_posted` events whose
+  mentions include an agent are posted, inside `ctx.waitUntil`, to the agent
+  worker at `AGENT_WORKER_URL` (`routes/threads/agent-notifications.ts`),
+  which replies in the thread as the agent principal.
 - `dispatchRoute` already receives `ctx`; `case 'threads'` passes it through.
   Handlers without `ctx` (tests) get a no-op emit.
 - Idempotency keys are the ids already in the payload: `comment.id` for
