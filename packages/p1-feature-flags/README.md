@@ -10,8 +10,8 @@ LaunchDarkly.
 
 ## Using it
 
-Every flag lives in `src/p1-feature-flags.ts` — the `P1FlagKey` union of every key this platform
-reads, and a `P1_FEATURE_FLAG_CONFIGURATIONS` entry per flag this service resolves. One file
+Every flag lives in `src/p1-feature-flags.ts` — `P1_FLAG_KEYS`, every key this platform reads in
+either runtime, and a `P1_FEATURE_FLAG_CONFIGURATIONS` entry per flag this service resolves. One file
 answers what exists, what it falls back to, and what it ramps on, and it is the one place to
 delete from when a flag retires:
 
@@ -25,11 +25,17 @@ export const P1_FEATURE_FLAG_CONFIGURATIONS = {
 } as const satisfies Record<string, P1FeatureFlag>;
 ```
 
-`key` is typed as `P1FlagKey`, so a flag cannot be declared under a key the union does not
-carry. The union also covers keys gated outside this service — `p1-chatbot` is read by the
-browser SDK in `apps/p1-starter` — because the key is the part two runtimes have to spell
-identically. Fallback and context kind are not shared: the same flag can ramp per site in a
-worker and per user in the browser.
+`key` is typed as `P1FlagKey`, which is derived from `P1_FLAG_KEYS`, so a flag cannot be
+declared under a key the vocabulary does not carry. That list also covers keys gated outside
+this service — `p1-chatbot` is read by the browser SDK in `apps/p1-starter`, `p1-collaboration`
+by `useP1ExperimentalFeatures` in `@pantheon-systems/p1-next-sdk` — because the key is the part
+two runtimes have to spell identically. Fallback and context kind are not shared: the same flag
+can ramp per site in a worker and per user in the browser.
+
+A browser-gated key is spelled twice, because this package is private and the SDK that reads it
+is published, so neither can import the other's catalog. `pnpm check:flag-keys` compares them
+and fails on a key that is not in `P1_FLAG_KEYS`; without it a misspelling resolves to off,
+which is indistinguishable from a flag that has not been rolled out yet.
 
 Build the isolate's service at request entry, next to `ensureLogger(env)`. Passing `ctx` starts
 initialization there rather than on the first gated request:
@@ -104,6 +110,7 @@ members are honoured; a string `"true"` is ignored rather than guessed at.
 | --- | --- | --- | --- |
 | `p1-merge-job-runner` | Merge execution through the job runner, versus the legacy inline path | `false` | `workers/ccr` |
 | `p1-chatbot` | The AI chatbot plugin in the editor | `false` | `apps/p1-starter` (browser SDK, not this package) |
+| `p1-collaboration` | Comment threads on blocks, pages and other addressable content | `false` | `@pantheon-systems/p1-next-sdk` (browser SDK, not this package) |
 
 ## Logging
 

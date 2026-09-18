@@ -53,6 +53,7 @@
     "@pantheon-systems/css-client": "workspace:*",
     "@pantheon-systems/p1-ai-chat": "workspace:*",
     "@pantheon-systems/puck-css": "workspace:*",
+    "launchdarkly-js-client-sdk": "^3.9.3",
     "launchdarkly-react-client-sdk": "^3.9.2",
     "server-only": "^0.0.1"
   },

@@ -6,11 +6,24 @@ import type { FlagContextKind } from './types.js';
  * The one part of a flag that is shared vocabulary: the key has to match the dashboard, and
  * two consumers gating the same flag have to spell it identically. Fallback and context kind
  * are not shared — the same flag can ramp per site in a worker and per user in the browser.
+ *
+ * A list rather than a bare union so the vocabulary can be enumerated at runtime: a key
+ * that matches nothing in LaunchDarkly resolves to off, which is indistinguishable from not
+ * yet rolled out, so `pnpm check:flag-keys` compares this against the browser catalog that
+ * cannot import it.
+ *
+ * Wider than `P1_FEATURE_FLAG_CONFIGURATIONS`: it also carries the keys gated elsewhere,
+ * which have no configuration here.
  */
-export type P1FlagKey =
-  | 'p1-merge-job-runner'
+export const P1_FLAG_KEYS = [
+  'p1-merge-job-runner',
   /** Gated in `apps/p1-starter` through the browser SDK, not by this service. */
-  | 'p1-chatbot';
+  'p1-chatbot',
+  /** Gated in the browser through `useP1ExperimentalFeatures`, not by this service. */
+  'p1-collaboration',
+] as const;
+
+export type P1FlagKey = (typeof P1_FLAG_KEYS)[number];
 
 /**
  * A boolean flag: its dashboard key, the value to resolve to when LaunchDarkly cannot answer,
@@ -31,9 +44,8 @@ export interface P1FeatureFlag {
  * Every flag this service resolves.
  *
  * `satisfies` rather than an annotation so each entry keeps its literal types while still being
- * checked; one object rather than loose consts so the catalog can be enumerated. The union is
- * hand-written rather than derived from these entries because it also carries keys gated
- * elsewhere, which have no configuration here.
+ * checked; one object rather than loose consts so the catalog can be enumerated. Only the flags
+ * this service resolves appear here — `P1_FLAG_KEYS` is the wider vocabulary.
  */
 export const P1_FEATURE_FLAG_CONFIGURATIONS = {
   /**

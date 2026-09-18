@@ -472,6 +472,9 @@ importers:
       '@puckeditor/core':
         specifier: 0.21.1
         version: 0.21.1(@floating-ui/dom@1.8.0)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(immer@11.1.15)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(use-sync-external-store@1.6.0(react@19.2.7))
+      launchdarkly-js-client-sdk:
+        specifier: ^3.9.3
+        version: 3.9.3
       launchdarkly-react-client-sdk:
         specifier: ^3.9.2
         version: 3.9.2(react-dom@19.2.7(react@19.2.7))(react@19.2.7)

@@ -113,6 +113,11 @@ jobs:
         run: pnpm exec turbo run build
       - name: Every package has a lint and typecheck task
         run: pnpm check:task-coverage
+      # The worker and browser flag catalogs cannot import each other, so a
+      # misspelled key is only caught by comparing them. It would otherwise
+      # resolve to off, which reads as "not rolled out yet".
+      - name: Browser-gated flag keys are in the shared vocabulary
+        run: pnpm check:flag-keys
       - name: Typecheck and lint
         run: pnpm exec turbo run typecheck lint lint:root
       - uses: ./.github/actions/turbo-cache-save

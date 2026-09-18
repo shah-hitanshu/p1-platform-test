@@ -18,6 +18,7 @@ export { P1FeatureFlagService } from './P1FeatureFlagService.js';
 
 export {
   P1_FEATURE_FLAG_CONFIGURATIONS,
+  P1_FLAG_KEYS,
   type P1FeatureFlag,
   type P1FlagKey,
 } from './p1-feature-flags.js';

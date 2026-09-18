@@ -9,3 +9,9 @@ export type {
   P1EditorContext,
   P1EditorExtensions,
 } from "./editor-client";
+export { useP1ExperimentalFeatures } from "./experimental-features";
+export type {
+  P1ExperimentalFeature,
+  P1ExperimentalFeatures,
+  UseP1ExperimentalFeaturesOptions,
+} from "./experimental-features";

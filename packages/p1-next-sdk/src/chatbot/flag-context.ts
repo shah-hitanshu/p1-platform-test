@@ -1,5 +1,7 @@
 import type { AuthUser } from "@pantheon-systems/puck-css";
 
+import { p1UserFlagKey } from "../launchdarkly/user-key";
+
 export interface FlagContext {
   kind: "user";
   key: string;
@@ -10,23 +12,20 @@ export interface FlagContext {
 /**
  * Build the LaunchDarkly evaluation context for the signed-in user.
  *
- * Keyed on the lowercased email because LaunchDarkly matches individual targets on
- * the key alone, and the rest of P1 identifies people to LaunchDarkly the same way.
- * Keying on anything else makes an email entered in the targeting UI match nothing,
- * with no error to say so.
- *
- * Falls back to the user id when email is absent, which AuthUser allows, so those
- * users stay individually targetable instead of sharing the anonymous context.
+ * Keyed by {@link p1UserFlagKey}, so the chatbot's targeting agrees with every other
+ * rollout check. A user with no key at all is pre-auth, and shares the anonymous
+ * context rather than being targetable.
  */
 export function buildFlagContext(user: AuthUser | null): FlagContext {
-  if (!user) {
+  const key = p1UserFlagKey(user);
+  if (!key) {
     return { kind: "user", key: "anonymous", anonymous: true };
   }
 
-  const email = user.email?.trim();
+  const email = user?.email?.trim();
   return {
     kind: "user",
-    key: email ? email.toLowerCase() : user.id,
+    key,
     ...(email && { email }),
   };
 }
