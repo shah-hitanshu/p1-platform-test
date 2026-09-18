@@ -1,0 +1,36 @@
+/* ============================================================================
+ * BlockCommentTrigger — CSS Module
+ *
+ * Drawn in the overlay the editor lays over a block, after the wash that tints the
+ * block on hover, so the tint does not settle over the button.
+ * ============================================================================ */
+
+/* The editor's action bar stays in view while a tall block scrolls past by being sticky
+ * inside the overlay. The trigger does the same, which means it has to be in flow at the
+ * top of the wrapper rather than absolutely placed. The wrapper's own child, the wash,
+ * is taken out of flow to cover the block on its own, leaving the trigger as the only
+ * thing the wrapper lays out. */
+[data-puck-overlay] > :has(> .anchor) > :not(.anchor) {
+  position: absolute;
+  inset: 0;
+}
+
+.anchor {
+  position: sticky;
+  top: 0;
+  width: fit-content;
+  height: 0;
+  margin-left: auto;
+  padding: 0.5rem;
+  transform-origin: top right;
+  /* The overlay is inert so the canvas reads as a canvas. The trigger is the exception. */
+  pointer-events: auto;
+}
+
+/* A selected block's action bar sits above the block until the block's top scrolls out
+ * of view, when it sticks 8px below the viewport top and the trigger sticks under it.
+ * The bar starts a fixed 8px down but is drawn at screen size whatever the canvas zoom,
+ * so the rest of the offset undoes the zoom the same way. */
+.belowActionBar {
+  top: calc(0.5rem + 3rem * var(--p1-trigger-scale, 1));
+}

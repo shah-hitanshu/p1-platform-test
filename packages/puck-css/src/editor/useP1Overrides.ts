@@ -30,6 +30,11 @@ export interface UseP1OverridesOptions {
   showAgentActivityBanner?: boolean;
   /** Published status for the header badge */
   publishedStatus?: 'published' | 'unpublished-changes' | 'draft';
+  /**
+   * Whether threads are available to this reader. Resolved from the rollout flag
+   * by the host application; off by default, and while off none of it is reachable.
+   */
+  threadsEnabled?: boolean;
 }
 
 /**
@@ -83,6 +88,7 @@ export function useP1Overrides(options: UseP1OverridesOptions = {}): PuckOverrid
     isAgentEditing: (fc?.enableAgentBanner ?? true) && ccr.hasActiveAgents,
     onStopAgent: options.onStopAgent ?? ccr.stopAgent,
     publishedStatus: options.publishedStatus,
+    threadsEnabled: options.threadsEnabled ?? false,
   };
 
   // Store options in a ref updated each render

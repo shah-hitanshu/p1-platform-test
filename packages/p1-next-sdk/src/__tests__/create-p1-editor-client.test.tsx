@@ -21,7 +21,9 @@ const h = vi.hoisted(() => {
     state,
     push: vi.fn(),
     useP1Editor: vi.fn(),
+    useP1ExperimentalFeatures: vi.fn(),
     p1Plugin: { name: "p1-plugin" },
+    features: { threads: false },
   };
 });
 
@@ -57,6 +59,7 @@ vi.mock("@pantheon-systems/puck-css", () => ({
     <div data-testid="reload-overlay" data-reloading={String(reloading)} />
   ),
   useEditorContext: () => ({ data: { remoteDatasourceRegistry: [] } }),
+  useP1Auth: () => ({ user: { id: "u-1", email: "editor@example.com" } }),
   useP1Editor: (opts: any) => h.useP1Editor(opts),
   useP1Plugins: () => [h.p1Plugin],
   useRemoteDatasourceContext: () => ({ context: {} }),
@@ -70,6 +73,17 @@ vi.mock("@pantheon-systems/puck-css/fields", () => ({
 
 vi.mock("@pantheon-systems/puck-css/pds", () => ({
   LoadingMessage: ({ message, ...rest }: any) => <div {...rest}>{message}</div>,
+}));
+
+// The rollout answer is LaunchDarkly's; the shell's own behaviour is what is under test.
+vi.mock("../experimental-features", () => ({
+  useP1ExperimentalFeatures: (options: { userId: string | null; siteId?: string | null }) => {
+    h.useP1ExperimentalFeatures(options);
+    return {
+      isEnabled: (feature: "threads") => h.features[feature],
+      resolved: true,
+    };
+  },
 }));
 
 vi.mock("../P1NextRouterProvider", () => ({
@@ -112,6 +126,8 @@ beforeEach(() => {
   h.push.mockReset();
   h.useP1Editor.mockReset();
   h.useP1Editor.mockImplementation(() => h.state.editor);
+  h.useP1ExperimentalFeatures.mockReset();
+  h.features.threads = false;
   localStorage.clear();
 });
 
@@ -369,5 +385,44 @@ describe("render-time extensions", () => {
     suffix = "-b";
     rerender(<Client />);
     expect(screen.getByTestId("puck").getAttribute("data-instance")).not.toBe(before);
+  });
+});
+
+describe("experimental features", () => {
+  it("evaluates the rollout for this person on this site", () => {
+    const Client = createP1EditorClient({ puckConfig });
+    render(<Client />);
+
+    expect(h.useP1ExperimentalFeatures).toHaveBeenCalledWith({
+      userId: "editor@example.com",
+      siteId: "site-1",
+    });
+  });
+
+  it("keeps threads out of the editor while the rollout is off", () => {
+    const Client = createP1EditorClient({ puckConfig });
+    render(<Client />);
+
+    expect(lastEditorOptions().overrideOptions.threadsEnabled).toBe(false);
+  });
+
+  it("passes threads through to the editor once the rollout is on", () => {
+    h.features.threads = true;
+    const Client = createP1EditorClient({ puckConfig });
+    render(<Client />);
+
+    expect(lastEditorOptions().overrideOptions.threadsEnabled).toBe(true);
+  });
+
+  // Availability is Pantheon's to decide, so an application cannot turn an unfinished
+  // feature on for itself by passing the option.
+  it("ignores an application that asks for threads itself", () => {
+    const Client = createP1EditorClient({
+      puckConfig,
+      overrideOptions: { threadsEnabled: true } as never,
+    });
+    render(<Client />);
+
+    expect(lastEditorOptions().overrideOptions.threadsEnabled).toBe(false);
   });
 });

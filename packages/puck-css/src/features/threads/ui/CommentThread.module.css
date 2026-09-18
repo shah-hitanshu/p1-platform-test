@@ -1,0 +1,76 @@
+/* ============================================================================
+ * CommentThread — CSS Module
+ *
+ * Placeholder surface for the thread view. Sized and positioned as the
+ * real thread panel will be so the trigger's behaviour can be judged now.
+ * ============================================================================ */
+
+.panel {
+  position: absolute;
+  /* Nudged by however much keeps the whole panel inside the canvas viewport. */
+  top: var(--p1-thread-shift, 0px);
+  /* Opens beside the trigger rather than over the content being discussed. */
+  right: calc(100% + 0.75rem);
+  z-index: 1;
+  width: 20rem;
+  padding: 1rem;
+  background: var(--pds-color-surface-default, oklch(1 0 0));
+  border: 1px solid var(--pds-color-border-default, oklch(0.9401 0 0));
+  border-radius: 0.75rem;
+  box-shadow: 0 8px 24px oklch(0 0 0 / 12%);
+  font-family: var(--pds-typography-ff-default, 'Inter', sans-serif);
+  font-size: var(--pds-typography-size-xs, 0.75rem);
+  color: var(--pds-color-foreground-default, oklch(0.2393 0 0));
+  text-align: left;
+  cursor: auto;
+}
+
+/* Points back at the trigger the thread was opened from. A square turned on its
+ * corner, showing the two sides that continue the panel's border. */
+.caret {
+  position: absolute;
+  /* Stays level with the trigger however far the panel itself has moved. */
+  top: clamp(0.5rem, calc(0.5rem - var(--p1-thread-shift, 0px)), calc(100% - 1.5rem));
+  right: -0.3125rem;
+  width: 0.625rem;
+  height: 0.625rem;
+  background: inherit;
+  border-top: 1px solid var(--pds-color-border-default, oklch(0.9401 0 0));
+  border-right: 1px solid var(--pds-color-border-default, oklch(0.9401 0 0));
+  transform: rotate(45deg);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.title {
+  font-weight: var(--pds-typography-fw-semibold, 600);
+}
+
+.close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: 0.25rem;
+  color: var(--pds-color-foreground-default-secondary, oklch(0.5103 0 0));
+  cursor: pointer;
+}
+
+.close:hover {
+  background: var(--pds-color-surface-default-hover, oklch(0.9761 0 0));
+}
+
+.body {
+  margin: 0;
+  color: var(--pds-color-foreground-default-secondary, oklch(0.5103 0 0));
+}

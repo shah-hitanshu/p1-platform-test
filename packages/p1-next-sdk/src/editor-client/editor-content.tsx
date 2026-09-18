@@ -5,11 +5,14 @@ import { useRouter } from "next/navigation";
 import {
   editorPathHref,
   useEditorContext,
+  useP1Auth,
   useP1Editor,
   useP1Plugins,
   useRemoteDatasourceContext,
 } from "@pantheon-systems/puck-css";
 
+import { useP1ExperimentalFeatures } from "../experimental-features";
+import { p1UserFlagKey } from "../launchdarkly/user-key";
 import { EditorCanvas } from "./editor-canvas";
 import { useReturnToRedirect } from "./return-to";
 import type { EditorRuntime } from "./runtime";
@@ -34,6 +37,15 @@ export function EditorContent({
     datasourceRegistry,
   );
   const p1Plugins = useP1Plugins(path, runtime.puckConfig);
+
+  // Which experimental features this person has on this site. Resolved here rather
+  // than per app so a feature reaches every P1 editor as a flag change, and so an app
+  // cannot leave a half-built one reachable.
+  const { user } = useP1Auth();
+  const features = useP1ExperimentalFeatures({
+    userId: p1UserFlagKey(user),
+    siteId: runtime.config?.siteId,
+  });
 
   const openDocument = useCallback(
     (documentPath: string) => {
@@ -72,6 +84,9 @@ export function EditorContent({
       showDefaultPublish: false,
       ...runtime.overrideOptions,
       ...extensions.overrideOptions,
+      // Last, because availability is Pantheon's to decide: an application cannot turn
+      // an unfinished feature on for itself.
+      threadsEnabled: features.isEnabled("threads"),
     },
   });
 

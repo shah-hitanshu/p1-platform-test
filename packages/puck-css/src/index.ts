@@ -53,6 +53,20 @@ export type { UseBranchPresenceOptions, UseBranchPresenceReturn } from './collab
 export { useSitePresence } from './collaboration/useSitePresence.js';
 export type { UseSitePresenceOptions, UseSitePresenceReturn } from './collaboration/useSitePresence.js';
 
+// Threads
+export {
+  CommentTrigger,
+  CommentThread,
+  BlockCommentTrigger,
+} from './features/threads/index.js';
+export type {
+  CommentTriggerProps,
+  CommentThreadProps,
+  BlockCommentTriggerProps,
+  ThreadContext,
+  ThreadContextType,
+} from './features/threads/index.js';
+
 // Stable Consumer API Hooks
 export { useP1Plugin } from './editor/useP1Plugin.js';
 export type { UseP1PluginOptions } from './editor/useP1Plugin.js';

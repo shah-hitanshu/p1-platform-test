@@ -1,0 +1,73 @@
+/* A speech-bubble pin — round but for a tight bottom-left corner. Quiet when nothing
+ * has been said about this content, filled blue with the comment count badged on its
+ * corner when a thread exists.
+ * This is drawn inside the canvas iframe, which PDS component styles never reach
+ * (see P1App's canvas isolation note), so the tally is styled here in full and
+ * every token carries a fallback. */
+
+.root {
+  position: relative;
+  display: inline-flex;
+}
+
+.trigger {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.875rem;
+  height: 1.875rem;
+  padding: 0;
+  background: var(--pds-color-surface-default, oklch(1 0 0));
+  color: var(--pds-color-foreground-default, oklch(0.2178 0 0));
+  border: none;
+  border-radius: 0.875rem 0.875rem 0.875rem 0.25rem;
+  box-shadow:
+    0 0 0 2px var(--pds-color-surface-default, oklch(1 0 0)),
+    0 3px 10px rgb(0 0 0 / 28%);
+  cursor: pointer;
+  line-height: 1;
+  transition: background 0.15s, color 0.15s;
+}
+
+.trigger:hover {
+  background: var(--pds-color-surface-default-hover, oklch(0.9761 0 0));
+}
+
+.trigger:focus-visible {
+  outline: 2px solid var(--pds-color-interactive-focus, oklch(0.59 0.1689 253.6));
+  outline-offset: 3px;
+}
+
+/* A thread already exists: blue inside a white ring, with the count on the top right corner. */
+.hasThread {
+  background: var(--pds-color-interactive-focus, oklch(0.59 0.1689 253.6));
+  color: oklch(1 0 0);
+  box-shadow:
+    0 0 0 2px oklch(1 0 0),
+    0 3px 10px rgb(0 0 0 / 28%);
+}
+
+.hasThread:hover {
+  background: oklch(0.55 0.16 253.6);
+}
+
+.tally {
+  position: absolute;
+  top: -0.375rem;
+  right: -0.375rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1rem;
+  height: 1rem;
+  padding: 0 0.25rem;
+  background: oklch(0.22 0 0);
+  color: oklch(1 0 0);
+  border-radius: 9999px;
+  box-shadow: 0 0 0 2px oklch(1 0 0);
+  font-size: 0.625rem;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+}

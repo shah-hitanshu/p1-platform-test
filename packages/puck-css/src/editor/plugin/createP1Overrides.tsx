@@ -14,6 +14,7 @@ import { CollaboratorAvatars } from '../../collaboration/components/Collaborator
 import { AgentActivityBanner } from '../../collaboration/components/AgentActivityBanner.js';
 import { PublishedStatusBadge } from '../components/PublishedStatusBadge.js';
 import { ActionBarPinButton } from '../../features/content-type-templates/ui/ActionBarPinButton.js';
+import { BlockCommentTrigger } from '../../features/threads/ui/BlockCommentTrigger.js';
 import { P1InspectorFields } from '../components/P1InspectorFields.js';
 import { CollapsibleFieldSection } from '../components/CollapsibleFieldSection.js';
 import { CollapsibleFieldContext } from '../components/collapsibleSectionContext.js';
@@ -141,6 +142,11 @@ export interface P1OverridesOptions {
   onStopAgent?: (agent: ActorPresence) => void;
   /** Published status of the current document version */
   publishedStatus?: 'published' | 'unpublished-changes' | 'draft';
+  /**
+   * Whether threads are available to this reader. Off by default: the feature is
+   * behind a rollout flag, and while it is off none of it is reachable.
+   */
+  threadsEnabled?: boolean;
 }
 
 /**
@@ -325,6 +331,22 @@ export function createP1Overrides(options: P1OverridesOptions): PuckOverrides {
         {children}
         <ActionBarPinButton />
       </ActionBar>
+    ),
+    // The overlay is the only override Puck tells which block it is drawing for, and it
+    // is mounted whenever the block is hovered or selected — so it is what a per-block
+    // affordance hangs off. Read `threadsEnabled` lazily from options (a Proxy) so
+    // a rollout answer arriving after mount still reaches it.
+    componentOverlay: ({
+      children,
+      componentId,
+    }: {
+      children: React.ReactNode;
+      componentId: string;
+    }) => (
+      <>
+        {children}
+        {options.threadsEnabled && <BlockCommentTrigger blockId={componentId} />}
+      </>
     ),
     fields: ({ children }: { children: React.ReactNode }) => (
       <P1InspectorFields>{children}</P1InspectorFields>
