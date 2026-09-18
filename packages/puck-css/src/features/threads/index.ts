@@ -21,6 +21,10 @@ export type { UsePostCommentOptions, PostCommentState } from './use-post-comment
 export { applyThreadEvent, applyThreadOverview } from './thread-cache.js';
 export { useThreadStatus } from './use-thread-status.js';
 export type { UseThreadStatusOptions, ThreadStatusState } from './use-thread-status.js';
+export {
+  publishThreadEvent,
+  subscribeToThreadEvents,
+} from './realtime-events.js';
 export { useProposalDecision } from './use-proposal-decision.js';
 export type { UseProposalDecisionOptions } from './use-proposal-decision.js';
 export type { ProposalActions } from './proposals.js';

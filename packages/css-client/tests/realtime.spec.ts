@@ -24,15 +24,15 @@ class MockReconnectingWebSocket {
   static CLOSED = 3;
 
   readyState: number = MockReconnectingWebSocket.CONNECTING;
-  binaryType: string = 'arraybuffer';
-  retryCount: number = 0;
+  binaryType = 'arraybuffer';
+  retryCount = 0;
 
   // Store constructor args for verification
   url: string;
   protocols: string[];
   options: MockWSOptions;
 
-  private listeners: Map<string, Set<EventListener>> = new Map();
+  private listeners = new Map<string, Set<EventListener>>();
   private onopen: ((event: Event) => void) | null = null;
   private onclose: ((event: CloseEvent) => void) | null = null;
   private onerror: ((event: Event) => void) | null = null;
@@ -408,6 +408,41 @@ describe('Phase 2.1: RealtimeClient', () => {
       expect(onUpdate).toHaveBeenCalledWith(
         expect.objectContaining({ title: 'Test Document' }),
       );
+
+      client.disconnect();
+    });
+
+    it('hands a thread event to the callback', async () => {
+      const { RealtimeClient } = await import('../src/realtime.js');
+
+      const onThreadEvent = vi.fn();
+      const client = new RealtimeClient({
+        baseUrl: 'ws://localhost:8787',
+        onThreadEvent,
+      });
+
+      client.connect({
+        siteId: 'site-123',
+        branchId: 'branch-456',
+        documentPath: 'pages/home',
+        actorId: 'user-789',
+        actorType: 'user',
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      const event = {
+        type: 'comment_posted',
+        siteId: 'site-123',
+        thread: { id: 'thread-1', documentId: 'doc-1' },
+        comment: { id: 'comment-1', threadId: 'thread-1', body: 'hello' },
+      };
+      mockWSInstances[0].simulateMessage(
+        JSON.stringify({ type: 'thread_event', event, timestamp: 1 }),
+      );
+
+      expect(onThreadEvent).toHaveBeenCalledTimes(1);
+      expect(onThreadEvent).toHaveBeenCalledWith(event);
 
       client.disconnect();
     });

@@ -40,6 +40,7 @@ import {
   errorResponse as errorResponseFn,
   jsonResponse as jsonResponseFn,
 } from './websocket-utils';
+import { handleThreadNotify } from './thread-notify-handler';
 import { ensureLogger } from '../telemetry';
 import { getLogger } from '@pantheon-systems/p1-telemetry';
 import {
@@ -291,6 +292,9 @@ export class DocumentSession extends DurableObject<DocumentSessionEnv> {
         case '/activity-state':
           await this.initializeMetadataIfNeeded();
           return handleGetActivityState(this.getPresenceProtocolDeps());
+        case '/notify':
+          await this.initializeMetadataIfNeeded();
+          return await handleThreadNotify(request, () => this.state.getWebSockets());
 
         case '/can-agent-edit':
           await this.initializeMetadataIfNeeded();

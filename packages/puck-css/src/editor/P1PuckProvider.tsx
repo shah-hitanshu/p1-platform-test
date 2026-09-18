@@ -35,6 +35,10 @@ import { createPuckPermissions } from '../features/content-type-templates/permis
 import { useResolvePermissions } from '../features/content-type-templates/permissions/useResolvePermissions.js';
 import { useTemplateList } from '../features/content-type-templates/hooks/useTemplateList.js';
 import { presenceIdentityKey } from '../collaboration/utils/presenceIdentity.js';
+import {
+  publishThreadEvent,
+  publishThreadsReconnect,
+} from '../features/threads/realtime-events.js';
 import { DocumentPathNotFoundError, isNotFoundStatus } from '../data/utils.js';
 import { DEFAULT_CCR_FEATURE_PLUGINS } from './defaultPlugins.js';
 import {
@@ -447,6 +451,7 @@ function P1PuckProviderInner({
     onServerReload: () => {
       notificationContext.addInfo('Document is being refreshed by the server. Reconnecting...');
     },
+    onThreadEvent: publishThreadEvent,
     onBaselineReset: () => {
       notificationContext.addInfo('Your local changes could not be synced after a branch merge. Reconnecting with fresh content...');
       const docPath = currentDocumentRef.current?.path;
@@ -641,6 +646,18 @@ function P1PuckProviderInner({
   // Keep realtime connection ref in sync (used by performSave to avoid stale closure)
   useEffect(() => {
     realtimeConnectedRef.current = realtime.connected;
+  }, [realtime.connected]);
+
+  // Changes made while the socket was down were never pushed; say so on the way back.
+  const hasDisconnectedRef = useRef(false);
+  useEffect(() => {
+    if (!realtime.connected) {
+      hasDisconnectedRef.current = true;
+      return;
+    }
+    if (!hasDisconnectedRef.current) return;
+    hasDisconnectedRef.current = false;
+    publishThreadsReconnect();
   }, [realtime.connected]);
 
   // Create client with user principal

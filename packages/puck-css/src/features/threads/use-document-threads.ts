@@ -15,6 +15,8 @@ import { useThreadsEnabled } from './enabled.js';
 import { threadKey } from './open-thread.js';
 import { subscribeToQueryCache } from './query-cache.js';
 
+const LISTING_RECHECK_MS = 60_000;
+
 export interface DocumentThreadsState {
   /** Empty until the listing arrives, and for a page nobody has commented on. */
   threads: DocumentThreads;
@@ -49,6 +51,8 @@ export function useDocumentThreads(): DocumentThreadsState {
         return fetchDocumentThreads(client, siteId, documentId);
       },
       enabled: enabled && documentId !== undefined,
+      // Changes normally arrive pushed; this catches any the socket dropped.
+      refetchInterval: LISTING_RECHECK_MS,
     },
     queryClient,
   );

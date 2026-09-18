@@ -4,6 +4,8 @@
  * TypeScript types matching Pantheon's P1 content platform API.
  */
 
+import type { ThreadEvent } from './threads/index.js';
+
 // =============================================================================
 // Core Domain Types
 // =============================================================================
@@ -926,6 +928,16 @@ export interface WsSyncBaselineMessage {
 }
 
 /**
+ * A comment or thread on this document changed. Carries the thread as it now
+ * stands and the comment involved, so caches can be updated without a refetch.
+ */
+export interface WsThreadEventMessage {
+  type: 'thread_event';
+  event: ThreadEvent;
+  timestamp: number;
+}
+
+/**
  * Union of all server-to-client WebSocket messages.
  */
 export type WsServerMessage =
@@ -935,7 +947,8 @@ export type WsServerMessage =
   | WsPresenceErrorMessage
   | WsDeliveryAckMessage
   | WsPublishResultMessage
-  | WsSyncBaselineMessage;
+  | WsSyncBaselineMessage
+  | WsThreadEventMessage;
 
 // =============================================================================
 // Merge Types

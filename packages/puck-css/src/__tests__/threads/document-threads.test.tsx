@@ -17,6 +17,10 @@ import {
   useThreadOverview,
 } from '../../features/threads/use-document-threads.js';
 import { DocumentThreadsLoader } from '../../features/threads/ui/DocumentThreadsLoader.js';
+import {
+  publishThreadEvent,
+  publishThreadsReconnect,
+} from '../../features/threads/realtime-events.js';
 
 vi.mock('@pantheon-systems/pds-toolkit-react', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
@@ -268,6 +272,61 @@ describe('DocumentThreadsLoader', () => {
 
     expect(container).toBeEmptyDOMElement();
     expect(listThreads).not.toHaveBeenCalled();
+  });
+
+  it('folds a pushed comment into the listing, once, however many times it arrives', async () => {
+    listThreads.mockResolvedValueOnce({
+      threads: [overview('comp-1', { commentCount: 2 })],
+      nextCursor: null,
+    });
+
+    render(
+      <Harness ctx={makeCtx()} queryClient={queryClient}>
+        <DocumentThreadsLoader />
+        <OverviewProbe blockId="comp-1" />
+        <OverviewProbe blockId="comp-2" />
+      </Harness>
+    );
+    await waitFor(() => expect(screen.getByTestId('overview-comp-1').textContent).toBe('2'));
+
+    const pushed = {
+      type: 'comment_posted' as const,
+      siteId: 'site-1',
+      thread: overview('comp-2', { commentCount: 1 }),
+      comment: {
+        id: 'comment-9',
+        threadId: 'thread-comp-2',
+        siteId: 'site-1',
+        author: { id: 'user-2', type: 'user' as const, name: 'Other' },
+        body: 'hello',
+        mentions: [],
+        state: 'posted' as const,
+        proposal: null,
+        createdAt: '2026-09-14T00:00:00Z',
+        updatedAt: '2026-09-14T00:00:00Z',
+      },
+    };
+    act(() => publishThreadEvent(pushed as never));
+    act(() => publishThreadEvent(pushed as never));
+
+    await waitFor(() => expect(screen.getByTestId('overview-comp-2').textContent).toBe('1'));
+    expect(screen.getByTestId('overview-comp-1').textContent).toBe('2');
+    expect(listThreads).toHaveBeenCalledTimes(1);
+  });
+
+  it('asks for the listing again when the socket comes back', async () => {
+    listThreads.mockResolvedValue({ threads: [], nextCursor: null });
+
+    render(
+      <Harness ctx={makeCtx()} queryClient={queryClient}>
+        <DocumentThreadsLoader />
+      </Harness>
+    );
+    await waitFor(() => expect(listThreads).toHaveBeenCalledTimes(1));
+
+    act(() => publishThreadsReconnect());
+
+    await waitFor(() => expect(listThreads).toHaveBeenCalledTimes(2));
   });
 });
 

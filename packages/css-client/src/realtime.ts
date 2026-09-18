@@ -11,6 +11,7 @@ import { WebSocket as ReconnectingWebSocket } from 'partysocket';
 import type {
   ActorPresence,
   ActorState,
+  ThreadEvent,
   PublishResult,
   WsFocusRegionUpdateMessage,
   WsPresenceHeartbeatMessage,
@@ -127,6 +128,11 @@ export interface RealtimeClientConfig {
    * Use this to notify users that the document is being refreshed.
    */
   onServerReload?: () => void;
+
+  /**
+   * Called when a comment or thread on this document changes, from any editor.
+   */
+  onThreadEvent?: (event: ThreadEvent) => void;
 
   /**
    * Called when the server reports this client's Yjs history has diverged from
@@ -944,6 +950,10 @@ export class RealtimeClient {
           }
           break;
         }
+
+        case 'thread_event':
+          this.config.onThreadEvent?.(message.event);
+          break;
 
         case 'presence_error':
           if (message.code === 'RATE_LIMITED') {

@@ -7,7 +7,7 @@
 
 import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { RealtimeClient } from '@pantheon-systems/css-client';
-import type { PuckData, ActorPresence, ActorState, PublishResult } from '@pantheon-systems/css-client';
+import type { PuckData, ActorPresence, ActorState, ThreadEvent, PublishResult } from '@pantheon-systems/css-client';
 import {
   createPuckYjsBinding,
   type PuckData as BindingPuckData,
@@ -93,6 +93,9 @@ export interface UseRealtimeParams {
    * Reconnection is halted; caller should reseed from REST and reconnect.
    */
   onBaselineReset?: () => void;
+
+  /** Called when a comment or thread on this document changes, from any editor. */
+  onThreadEvent?: (event: ThreadEvent) => void;
 
   /**
    * External reset key: incrementing this tears down the current client and
@@ -210,6 +213,7 @@ export function useRealtime(params: UseRealtimeParams): UseRealtimeReturn {
     onFocusRegionBroadcast,
     onServerReload,
     onBaselineReset,
+    onThreadEvent,
     resetKey = 0,
   } = params;
 
@@ -231,6 +235,7 @@ export function useRealtime(params: UseRealtimeParams): UseRealtimeReturn {
   const onFocusRegionBroadcastRef = useRef(onFocusRegionBroadcast);
   const onServerReloadRef = useRef(onServerReload);
   const onBaselineResetRef = useRef(onBaselineReset);
+  const onThreadEventRef = useRef(onThreadEvent);
   // Keep tokenRefresher in a ref so the RealtimeClient always calls the
   // latest version without needing to be recreated on reference changes.
   const tokenRefresherRef = useRef(tokenRefresher);
@@ -261,6 +266,10 @@ export function useRealtime(params: UseRealtimeParams): UseRealtimeReturn {
   useEffect(() => {
     onBaselineResetRef.current = onBaselineReset;
   }, [onBaselineReset]);
+
+  useEffect(() => {
+    onThreadEventRef.current = onThreadEvent;
+  }, [onThreadEvent]);
 
   // Eagerly clean up binding and client refs when dependencies change.
   // useLayoutEffect cleanup runs BEFORE regular useEffect callbacks (including
@@ -338,6 +347,9 @@ export function useRealtime(params: UseRealtimeParams): UseRealtimeReturn {
       },
       onServerReload: () => {
         onServerReloadRef.current?.();
+      },
+      onThreadEvent: (event) => {
+        onThreadEventRef.current?.(event);
       },
       onBaselineReset: () => {
         // Guard: ignore callbacks from stale clients (see onConnect comment).

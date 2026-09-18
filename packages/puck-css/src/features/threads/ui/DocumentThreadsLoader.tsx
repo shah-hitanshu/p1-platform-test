@@ -1,17 +1,43 @@
-import React, { useContext } from 'react';
+import React, { useContext, useEffect } from 'react';
 
-import { P1SdkQueryClientContext } from '../../../data/query-provider.js';
+import { useP1Puck } from '../../../core/P1PuckContext.js';
+import { P1SdkQueryClientContext, useP1SdkQueryClient } from '../../../data/query-provider.js';
+import { documentThreadsKey } from '../document-threads.js';
 import { useThreadsEnabled } from '../enabled.js';
+import {
+  subscribeToThreadEvents,
+  subscribeToThreadsReconnect,
+} from '../realtime-events.js';
+import { applyThreadEvent } from '../thread-cache.js';
 import { useDocumentThreads } from '../use-document-threads.js';
 
 function Loader(): null {
   useDocumentThreads();
+  const queryClient = useP1SdkQueryClient();
+  const { siteId, currentDocument } = useP1Puck();
+  const documentId = currentDocument?.id;
+
+  useEffect(
+    () => subscribeToThreadEvents((event) => {
+      applyThreadEvent(queryClient, event);
+    }),
+    [queryClient],
+  );
+
+  useEffect(
+    () => subscribeToThreadsReconnect(() => {
+      void queryClient.invalidateQueries({ queryKey: documentThreadsKey(siteId, documentId) });
+    }),
+    [queryClient, siteId, documentId],
+  );
+
   return null;
 }
 
 /**
  * Primes the current page's threads as soon as the editor is up, so the first block a
- * reader hovers already shows its count instead of fetching on demand.
+ * reader hovers already shows its count instead of fetching on demand, and folds in
+ * changes pushed from other editors for as long as the page is open.
  *
  * Renders nothing. Mounted where it outlives any one block overlay, and only once
  * threads are on, so a reader without the feature makes no request.

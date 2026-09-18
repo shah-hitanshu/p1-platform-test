@@ -13,6 +13,7 @@
  */
 
 import type { ActorPresence, Checkpoint, PresenceState } from '../types';
+import type { ThreadBroadcast } from './threads';
 
 // =============================================================================
 // Client → Server Messages
@@ -203,6 +204,19 @@ export interface WsSyncBaselineMessage {
 }
 
 /**
+ * A change to a thread on this document, pushed to every editor that has
+ * it open. Carries the committed thread and comment so a client can update what
+ * it shows without asking again; the poster's own client sees the same shape
+ * from its write, so applying it twice changes nothing.
+ */
+export interface WsThreadEventMessage {
+  type: 'thread_event';
+  event: ThreadBroadcast;
+  /** Server timestamp */
+  timestamp: number;
+}
+
+/**
  * Union of all server-to-client WebSocket messages.
  */
 export type WsServerMessage =
@@ -212,7 +226,8 @@ export type WsServerMessage =
   | WsPresenceErrorMessage
   | WsDeliveryAckMessage
   | WsPublishResultMessage
-  | WsSyncBaselineMessage;
+  | WsSyncBaselineMessage
+  | WsThreadEventMessage;
 
 // =============================================================================
 // Type Guards

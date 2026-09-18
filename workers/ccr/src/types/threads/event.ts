@@ -20,3 +20,20 @@ export type ThreadEvent =
   }
   | { type: 'comment_updated'; siteId: string; thread: ThreadOverview; comment: Comment }
   | { type: 'thread_status_changed'; siteId: string; thread: ThreadOverview; actor: CommentAuthor };
+
+/** The event as sent to other editors: everything but the requester's email. */
+export type ThreadBroadcast =
+  | { type: 'comment_posted'; siteId: string; thread: ThreadOverview; comment: Comment }
+  | { type: 'comment_updated'; siteId: string; thread: ThreadOverview; comment: Comment }
+  | { type: 'thread_status_changed'; siteId: string; thread: ThreadOverview; actor: CommentAuthor };
+
+export function toThreadBroadcast(event: ThreadEvent): ThreadBroadcast {
+  switch (event.type) {
+    case 'comment_posted':
+      return { type: event.type, siteId: event.siteId, thread: event.thread, comment: event.comment };
+    case 'comment_updated':
+      return { type: event.type, siteId: event.siteId, thread: event.thread, comment: event.comment };
+    case 'thread_status_changed':
+      return { type: event.type, siteId: event.siteId, thread: event.thread, actor: event.actor };
+  }
+}

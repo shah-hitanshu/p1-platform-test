@@ -340,6 +340,17 @@ export class PresenceManager extends DurableObject<PresenceManagerEnv> {
     return { actors, documentSummary };
   }
 
+  /** The branches on which someone currently has this document open. */
+  async getDocumentBranches(documentId: string): Promise<string[]> {
+    await this.initializeIfNeeded();
+
+    const branchIds: string[] = [];
+    for (const [branchId, docMap] of this.index.entries()) {
+      if ((docMap.get(documentId)?.size ?? 0) > 0) branchIds.push(branchId);
+    }
+    return branchIds;
+  }
+
   /**
    * Get all presence data across the entire site.
    */

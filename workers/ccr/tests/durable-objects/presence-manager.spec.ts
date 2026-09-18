@@ -248,6 +248,41 @@ describe('Phase 3.2: PresenceManager Durable Object', () => {
     });
   });
 
+  describe('getDocumentBranches()', () => {
+    const actor = (actorId: string) => ({
+      id: `p-${actorId}`,
+      actorId,
+      actorType: 'user' as const,
+      role: 'human' as const,
+      name: actorId,
+      state: 'active' as const,
+      lastActivityAt: new Date().toISOString(),
+      joinedAt: new Date().toISOString(),
+    });
+
+    it('names each branch on which someone has the document open, and no other', async () => {
+      const { PresenceManager } = await import('../../src/durable-objects/presence-manager');
+      const pm = new PresenceManager(mockState as unknown as DurableObjectState, mockEnv);
+
+      await pm.actorJoined({ siteId: 'site-1', branchId: 'branch-1', documentId: 'doc-1', actor: actor('user-1') });
+      await pm.actorJoined({ siteId: 'site-1', branchId: 'branch-2', documentId: 'doc-1', actor: actor('user-2') });
+      await pm.actorJoined({ siteId: 'site-1', branchId: 'branch-3', documentId: 'doc-2', actor: actor('user-3') });
+
+      expect((await pm.getDocumentBranches('doc-1')).sort()).toEqual(['branch-1', 'branch-2']);
+      expect(await pm.getDocumentBranches('doc-9')).toEqual([]);
+    });
+
+    it('forgets a branch once its last reader leaves', async () => {
+      const { PresenceManager } = await import('../../src/durable-objects/presence-manager');
+      const pm = new PresenceManager(mockState as unknown as DurableObjectState, mockEnv);
+
+      await pm.actorJoined({ siteId: 'site-1', branchId: 'branch-1', documentId: 'doc-1', actor: actor('user-1') });
+      await pm.actorLeft({ siteId: 'site-1', branchId: 'branch-1', documentId: 'doc-1', actorId: 'user-1' });
+
+      expect(await pm.getDocumentBranches('doc-1')).toEqual([]);
+    });
+  });
+
   describe('focusChanged()', () => {
     it('should update an actor\'s focus regions', async () => {
       const { PresenceManager } = await import('../../src/durable-objects/presence-manager');
