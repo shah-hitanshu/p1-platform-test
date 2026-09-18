@@ -11,9 +11,11 @@ vi.mock('@pantheon-systems/pds-toolkit-react', async (importOriginal) => ({
   Icon: ({ iconName, ...props }: any) => <span data-testid={`icon-${iconName}`} {...props} />,
 }));
 
+const puckState = { selectedItem: { type: 'ListBlock', props: { id: 'comp-1' } } };
+
 vi.mock('@puckeditor/core', () => ({
-  createUsePuck: () => (selector: (state: unknown) => unknown) =>
-    selector({ selectedItem: { type: 'ListBlock', props: { id: 'comp-1' } } }),
+  createUsePuck: () => (selector: (state: unknown) => unknown) => selector(puckState),
+  useGetPuck: () => () => puckState,
 }));
 
 import { BlockCommentTrigger } from '../../features/threads/ui/BlockCommentTrigger.js';

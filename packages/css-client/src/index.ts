@@ -135,6 +135,7 @@ export type {
   SiteMembers,
 } from './types/index.js';
 export type * from './types/threads/index.js';
+export { isAgentProposal, isAgentWorking } from './types/threads/index.js';
 
 // Auth utilities and role types
 export {

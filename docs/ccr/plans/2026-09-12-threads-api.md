@@ -138,9 +138,9 @@ Indexes: partial unique `(site_id, context_type, context_id) WHERE status = 'ope
 |---|---|---|
 | `id` | uuid pk | |
 | `thread_id` | uuid not null, FK `comment_threads` on delete cascade | |
-| `kind` | text not null default `message`, CHECK in (`message`) | PCC-3964/3966 widen the CHECK for agent proposal and activity rows |
+| `kind` | text not null default `message`, CHECK in (`message`, `agent_activity`, `agent_proposal`) | widened from `message` alone by `0011_comment_kinds` for the agent states below |
 | `body` | text not null | plain text; length enforced in the service |
-| `metadata` | jsonb null | reserved for non-message kinds |
+| `metadata` | jsonb null | `{ status }` for `agent_activity`; `{ status, summary, operations, decidedBy?, decidedAt? }` for `agent_proposal`; null for `message` |
 | `author_type` / `author_id` | text / uuid not null | |
 | `acting_user_id` | uuid null | set when an agent posts on a user's behalf |
 | `created_at` | timestamptz not null default now() | |
@@ -201,14 +201,21 @@ interface CommentAuthor {
 interface Comment {
   id: string;
   threadId: string;
-  kind: 'message';
+  kind: 'message' | 'agent_activity' | 'agent_proposal';
   body: string;                                        // mention tokens inline, see below
+  metadata: CommentMetadata | null;                    // per kind, see "Agent comment states"
   author: CommentAuthor;
   mentions: Array<{ type: 'user' | 'agent'; id: string; name: string | null }>;
   createdAt: string;
-  editedAt: string | null;                             // always null in this PR
+  editedAt: string | null;
 }
 ```
+
+### Agent comment states live on one row
+
+An agent answering a mention posts an `agent_activity` comment (`metadata.status: 'working'`) the moment it starts, then replaces that same row with its answer through `PUT /threads/{id}/comments/{commentId}`: a plain `message`, an `agent_proposal` (`status: 'proposed'`, a `summary`, and the `operations` CCR applies to the document on acceptance), or `agent_activity` with `status: 'failed'`. Only the comment's author may replace it, and a working line becoming the answer does not set `editedAt`; any other replacement does. Non-`message` kinds can only be posted by an agent principal.
+
+Anyone who `canComment` can settle a proposal with `PUT /threads/{id}/comments/{commentId}/decision` `{ decision: 'accepted' | 'dismissed' }`. The decision, the decider (`decidedBy`, same shape as an author) and `decidedAt` are folded into the proposal's `metadata`; a second decision is refused with a 400 on `decision`. Both PUTs return `{ thread, comment }` and emit a `comment_updated` event. Accepting applies the operations first: CCR translates the proposal's dot-path operations into document-session edits and applies them as the deciding user (who therefore also needs `canEditDocuments`), so every open editor receives the change over realtime and the edit is attributed to the person who accepted. Before the edits go in, the accept claims the proposal under a row lock, moving `metadata.status` to `applying` with a `claimedAt`; a second accept, a dismiss, or an agent rewrite of the proposal arriving while the claim is held is refused with a 400, so the operations cannot be applied twice, and a claim older than a minute is treated as abandoned and taken over. A refusal from the document session releases the claim and is a 400 on `operations`; the decision is written only once the edits have landed, and drops `claimedAt`. Only `proposed` proposals can be rewritten by their author, and a proposal's paths must begin at `content`, `root` or `zones`.
 
 There is no existing "who did this" wire type to reuse outright: `AuditActor` is id+type only, `ResolvableActor` is a persistence input, `ActorPresence` is a live-session shape. `CommentAuthor` is a `Pick` of the roster shapes plus `type`, exported from the route's `types.ts` next to them. Author names and avatars are resolved at read time by joining `app.users` and `app.agents`, so a rename shows everywhere and a departed member still has a name on old comments. Emails are not returned.
 
@@ -313,7 +320,6 @@ Log lines: `comment posted` (`site_id`, `thread_id`, `comment_id`, `context_type
 
 - Socket notification of a new comment (PCC-3968): replaces the body of `emitThreadEvent`; feasibility in `2026-09-12-threads-realtime.md`.
 - Comment count in the block outline (PCC-3962): consumes `GET /threads?documentId=`.
-- Agent proposal message kinds (PCC-3964, PCC-3966): widen the `kind` CHECK, fill `metadata`.
 - Edit and delete comments; see "Editing a comment is not built, but nothing blocks it".
 - `packages/css-client` `client.threads` endpoint for PCC-3965: separate small PR once the shapes here are stable.
 - Archiving threads on branch delete or document archive.

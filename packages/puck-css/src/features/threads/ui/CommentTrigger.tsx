@@ -10,8 +10,10 @@ import {
 } from '../open-thread.js';
 import { closeOnPointerDownOutside } from '../close-outside.js';
 import { usePostComment } from '../use-post-comment.js';
+import { useProposalDecision } from '../use-proposal-decision.js';
 import { useSiteMembers } from '../use-site-members.js';
 import { useThreadComments } from '../use-thread-comments.js';
+import { useThreadStatus } from '../use-thread-status.js';
 import { CommentThread } from './CommentThread.js';
 import styles from './CommentTrigger.module.css';
 
@@ -65,6 +67,8 @@ export function CommentTrigger({
   const { post, posting, failed: postFailed } = usePostComment({ contextType, contextId, threadId });
   const thread = useThreadComments(open ? threadId : undefined);
   const { candidates: mentionCandidates } = useSiteMembers(open);
+  const proposalActions = useProposalDecision({ threadId });
+  const status = useThreadStatus({ threadId });
 
   useEffect(() => {
     if (!open || !rootRef.current) return;
@@ -132,6 +136,10 @@ export function CommentTrigger({
           posting={posting}
           postFailed={postFailed}
           mentionCandidates={mentionCandidates}
+          proposalActions={proposalActions}
+          onResolve={status.resolve}
+          resolving={status.saving}
+          resolveFailed={status.failed}
           onClose={() => setOpenThread(null)}
         />
       )}

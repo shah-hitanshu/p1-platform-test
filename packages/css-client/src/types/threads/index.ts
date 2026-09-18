@@ -4,6 +4,8 @@
  */
 export type * from './api.js';
 export type * from './comment.js';
+export type * from './agent.js';
+export { isAgentProposal, isAgentWorking } from './agent.js';
 export type * from './context.js';
 export type * from './event.js';
 export type * from './thread.js';

@@ -37,6 +37,8 @@ const getThread = asRequest(service.getThread);
 const listThreads = asRequest(service.listThreads);
 const listThreadsForContext = asRequest(service.listThreadsForContext);
 const setThreadStatus = asRequest(service.setThreadStatus);
+const updateComment = asRequest(service.updateComment);
+const decideProposal = asRequest(service.decideProposal);
 
 let db: Database;
 let sql: postgres.Sql;
@@ -218,6 +220,102 @@ describe('replyToThread', () => {
     const first = await post();
 
     expect(await replyToThread(otherSite, first.thread.id, 'x', actor)).toBeNull();
+  });
+});
+
+describe('agent proposals', () => {
+  it('turns a working line into a proposal, claims it while applying, then records who accepted it', async () => {
+    const first = await post();
+    const [organization] = await sql<{ id: string }[]>`
+      INSERT INTO app.organizations (name) VALUES ('Proposal Test Org') RETURNING id`;
+    if (organization === undefined) throw new Error('organization insert returned no row');
+    const [agent] = await sql<{ id: string }[]>`
+      INSERT INTO app.agents (organization_id, name) VALUES (${organization.id}, 'Copy Editor') RETURNING id`;
+    if (agent === undefined) throw new Error('agent insert returned no row');
+    const agentActor: ThreadActor = { type: 'agent', id: agent.id, actingUserId: actor.id };
+    const proposal = {
+      status: 'proposed' as const,
+      summary: 'Shorten the headline',
+      operations: [{ op: 'replace' as const, path: 'content.0.props.title', value: 'Hello' }],
+    };
+
+    try {
+      const working = await replyToThread(
+        siteId,
+        first.thread.id,
+        { kind: 'agent_activity', body: 'Looking into it', metadata: { status: 'working' } },
+        agentActor,
+      );
+      if (!working) throw new Error('working line was not posted');
+      expect(working.comment.metadata).toEqual({ status: 'working' });
+
+      await expect(
+        updateComment(siteId, first.thread.id, working.comment.id, { kind: 'message', body: 'x' }, actor),
+      ).rejects.toBeInstanceOf(service.ThreadForbiddenError);
+
+      const proposed = await updateComment(
+        siteId,
+        first.thread.id,
+        working.comment.id,
+        { kind: 'agent_proposal', body: 'Try a tighter headline.', metadata: proposal },
+        agentActor,
+      );
+      expect(proposed?.comment).toMatchObject({
+        id: working.comment.id,
+        kind: 'agent_proposal',
+        editedAt: null,
+        metadata: proposal,
+      });
+
+      const claimed = await service.claimProposal(siteId, first.thread.id, working.comment.id);
+      expect(claimed?.comment.metadata).toMatchObject({ status: 'applying', claimedAt: expect.any(String) });
+      await expect(service.claimProposal(siteId, first.thread.id, working.comment.id)).rejects.toThrow(
+        /being applied/,
+      );
+      await expect(
+        updateComment(
+          siteId,
+          first.thread.id,
+          working.comment.id,
+          { kind: 'agent_proposal', body: 'Try another.', metadata: proposal },
+          agentActor,
+        ),
+      ).rejects.toBeInstanceOf(service.ThreadInputError);
+      await expect(
+        decideProposal(siteId, first.thread.id, working.comment.id, 'dismissed', actor),
+      ).rejects.toBeInstanceOf(service.ThreadInputError);
+
+      await service.releaseProposal(siteId, first.thread.id, working.comment.id);
+      expect((await getThread(siteId, first.thread.id))?.comments[1]?.metadata).toEqual(proposal);
+
+      await service.claimProposal(siteId, first.thread.id, working.comment.id);
+      const accepted = await decideProposal(siteId, first.thread.id, working.comment.id, 'accepted', actor);
+      expect(accepted?.comment.metadata).toMatchObject({
+        status: 'accepted',
+        operations: proposal.operations,
+        decidedBy: { type: 'user', id: actor.id, name: 'Ada Lovelace' },
+      });
+      expect(accepted?.comment.metadata).not.toHaveProperty('claimedAt');
+      await expect(
+        decideProposal(siteId, first.thread.id, working.comment.id, 'dismissed', actor),
+      ).rejects.toBeInstanceOf(service.ThreadInputError);
+      await expect(
+        updateComment(
+          siteId,
+          first.thread.id,
+          working.comment.id,
+          { kind: 'agent_proposal', body: 'Try another.', metadata: proposal },
+          agentActor,
+        ),
+      ).rejects.toBeInstanceOf(service.ThreadInputError);
+
+      const thread = await getThread(siteId, first.thread.id);
+      expect(thread?.comments.map((c) => c.kind)).toEqual(['message', 'agent_proposal']);
+    } finally {
+      await sql`DELETE FROM app.comments WHERE author_id::text = ${agent.id}`;
+      await sql`DELETE FROM app.agents WHERE id = ${agent.id}`;
+      await sql`DELETE FROM app.organizations WHERE id = ${organization.id}`;
+    }
   });
 });
 

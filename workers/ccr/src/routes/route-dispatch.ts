@@ -315,6 +315,8 @@ export async function dispatchRoute(
         siteId: route.params.siteId ?? '',
         threadId: route.params.threadId,
         subResource: route.params.subResource,
+        commentId: route.params.commentId,
+        commentAction: route.params.commentAction,
         contextType: route.params.contextType,
         contextId: route.params.contextId,
         principal,

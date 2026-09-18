@@ -297,6 +297,20 @@
   color: #ffffff !important;
 }
 
+/* Collapsed, the controls slide their row out of view and clip it, but the wrapper
+ * keeps the row's width and still catches clicks. It floats over the canvas iframe, so
+ * a pointerdown there lands in this document instead of in the comment thread drawn
+ * underneath and closes the thread. Only the toggle button stays clickable. */
+.puck-editor-theme
+  [class*="_ViewportControls--fullScreen_"]:not([class*="_ViewportControls--isExpanded_"]) {
+  pointer-events: none;
+}
+.puck-editor-theme
+  [class*="_ViewportControls--fullScreen_"]:not([class*="_ViewportControls--isExpanded_"])
+  [class*="_ViewportControls-toggleButton_"] {
+  pointer-events: auto;
+}
+
 /* ── Canvas: grey gutter around a rounded page ────────────────────────────
    The canvas (_PuckCanvas_) already has a grey background (grey-11), but in
    full-screen mode Puck zeroes its padding so the page fills it edge-to-edge

@@ -1,6 +1,7 @@
 import React, { useCallback, useLayoutEffect, useRef, useState } from 'react';
-import { createUsePuck } from '@puckeditor/core';
+import { createUsePuck, useGetPuck } from '@puckeditor/core';
 
+import { ProposalPreviewContext, type ProposalPreviewLookup } from '../proposal-preview-context.js';
 import { useBlockSubject } from '../use-block-subject.js';
 import { useThreadOverview } from '../use-document-threads.js';
 import { CommentTrigger } from './CommentTrigger.js';
@@ -63,6 +64,11 @@ export function BlockCommentTrigger({ blockId }: BlockCommentTriggerProps): Reac
   const selected = useBlockSelected(blockId);
   const subject = useBlockSubject(blockId);
   const thread = useThreadOverview('block', blockId);
+  const getPuck = useGetPuck();
+  const previewSource = useCallback<ProposalPreviewLookup>(() => {
+    const { appState, config } = getPuck();
+    return { data: appState.data, config };
+  }, [getPuck]);
 
   useLayoutEffect(() => {
     const anchor = anchorRef.current;
@@ -87,10 +93,13 @@ export function BlockCommentTrigger({ blockId }: BlockCommentTriggerProps): Reac
 
     // An open thread outlives the pointer, so the block has to stay hovered for it: the
     // overlay is what the thread is drawn in, and the editor takes the overlay away the
-    // moment the block stops reading as hovered. This listener is added after the
-    // editor's own, so handing the hover straight back lands in the same render.
+    // moment the block stops reading as hovered. The editor's own mouseout listener and
+    // this one both run in the same dispatch, and the last hover written wins — but the
+    // editor re-adds its listener whenever the block is selected or deselected, which
+    // puts it after this one. Handing the hover back in a microtask runs after every
+    // listener whatever their order, while still landing in the same render.
     const holdHover = () => {
-      if (threadOpen.current) hover(block, true);
+      if (threadOpen.current) queueMicrotask(() => hover(block, true));
     };
 
     anchor.addEventListener('mouseover', followPointer);
@@ -123,15 +132,17 @@ export function BlockCommentTrigger({ blockId }: BlockCommentTriggerProps): Reac
       className={selected ? `${styles.anchor} ${styles.belowActionBar}` : styles.anchor}
       style={{ transform: `scale(${1 / scale})`, '--p1-trigger-scale': 1 / scale } as React.CSSProperties}
     >
-      <CommentTrigger
-        contextType="block"
-        contextId={blockId}
-        subject={subject}
-        threadId={thread?.id}
-        commentCount={thread?.commentCount}
-        resolved={thread?.status === 'resolved'}
-        onOpenChange={onOpenChange}
-      />
+      <ProposalPreviewContext.Provider value={previewSource}>
+        <CommentTrigger
+          contextType="block"
+          contextId={blockId}
+          subject={subject}
+          threadId={thread?.id}
+          commentCount={thread?.commentCount}
+          resolved={thread?.status === 'resolved'}
+          onOpenChange={onOpenChange}
+        />
+      </ProposalPreviewContext.Provider>
     </div>
   );
 }

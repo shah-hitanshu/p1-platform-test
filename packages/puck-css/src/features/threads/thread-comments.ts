@@ -4,7 +4,8 @@
  * Comments are kept in the order they were posted, oldest first, the way the API
  * returns them. A comment that arrives later, whether this reader posted it or someone
  * else did, is slotted in by its time rather than tacked on the end, so two writers
- * posting at once read the same way to both of them.
+ * posting at once read the same way to both of them. An agent rewrites its own comment
+ * as its work moves along, so a comment already in the thread is replaced in place.
  */
 import type { QueryClient } from '@tanstack/react-query';
 import type { Comment, ThreadWithComments } from '@pantheon-systems/css-client';
@@ -18,7 +19,13 @@ export function threadCommentsKey(siteId: string | undefined, threadId: string |
 }
 
 export function insertComment(comments: readonly Comment[], comment: Comment): readonly Comment[] {
-  if (comments.some((c) => c.id === comment.id)) return comments;
+  const at = comments.findIndex((c) => c.id === comment.id);
+  if (at === -1) return insertNew(comments, comment);
+  if (comments[at] === comment) return comments;
+  return comments.map((c) => (c.id === comment.id ? comment : c));
+}
+
+function insertNew(comments: readonly Comment[], comment: Comment): readonly Comment[] {
   const at = comments.findIndex((c) => c.createdAt > comment.createdAt);
   if (at === -1) return [...comments, comment];
   return [...comments.slice(0, at), comment, ...comments.slice(at)];
@@ -33,8 +40,9 @@ export function storeThread(queryClient: QueryClient, thread: ThreadWithComments
 }
 
 /**
- * Adds one comment to its thread, if that thread has been loaded. A thread nobody has
- * opened is left alone: one comment would stand in for a thread never fetched.
+ * Adds one comment to its thread, or replaces the one it rewrites, if that thread has
+ * been loaded. A thread nobody has opened is left alone: one comment would stand in for
+ * a thread never fetched.
  *
  * @returns Whether a loaded thread was there to add to.
  */

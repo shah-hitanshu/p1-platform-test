@@ -4,7 +4,7 @@
  * coupled to.
  */
 
-import type { Comment } from './comment';
+import type { Comment, CommentContent, ProposalDecision } from './comment';
 import type { ThreadContextRef } from './context';
 import type { ThreadOverview, ThreadStatus } from './thread';
 
@@ -15,8 +15,14 @@ export interface PostThreadRequest {
   body: string;
 }
 
-export interface PostCommentRequest {
-  body: string;
+/** A bare `body` posts a plain comment; an agent may post the other kinds with their state. */
+export type PostCommentRequest = { body: string } | CommentContent;
+
+/** Replaces an agent's own comment wholesale: kind, body and state together. */
+export type UpdateCommentRequest = CommentContent;
+
+export interface DecideProposalRequest {
+  decision: ProposalDecision;
 }
 
 export interface SetThreadStatusRequest {
@@ -24,6 +30,11 @@ export interface SetThreadStatusRequest {
 }
 
 export interface PostCommentResponse {
+  thread: ThreadOverview;
+  comment: Comment;
+}
+
+export interface CommentResponse {
   thread: ThreadOverview;
   comment: Comment;
 }

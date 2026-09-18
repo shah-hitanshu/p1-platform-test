@@ -16,6 +16,8 @@ export const createUsePuck =
     return selector ? selector(state) : state;
   };
 
+export const useGetPuck = () => puckState;
+
 export const usePuck = () => ({
   dispatch: vi.fn(),
   refreshPermissions: vi.fn().mockResolvedValue(undefined),

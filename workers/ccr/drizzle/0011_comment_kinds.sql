@@ -1,0 +1,2 @@
+ALTER TABLE "app"."comments" DROP CONSTRAINT "comments_kind_check";--> statement-breakpoint
+ALTER TABLE "app"."comments" ADD CONSTRAINT "comments_kind_check" CHECK (kind = ANY (ARRAY['message'::text, 'agent_activity'::text, 'agent_proposal'::text]));

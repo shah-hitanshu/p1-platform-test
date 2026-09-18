@@ -9,6 +9,8 @@ export interface ThreadOverview {
   siteId: string;
   context: ThreadContextRef;
   documentId: string | null;
+  /** The branch the thread was opened on, when it was opened from a document. */
+  branchId: string | null;
   status: ThreadStatus;
   commentCount: number;
   lastCommentAt: string;

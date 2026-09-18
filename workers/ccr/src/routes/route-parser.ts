@@ -38,6 +38,8 @@ export interface RouteParams {
   datasourceName?: string;
   queryName?: string;
   threadId?: string;
+  commentId?: string;
+  commentAction?: string;
   contextType?: string;
   contextId?: string;
 }
@@ -916,15 +918,22 @@ export function parseRoute(path: string): { handler: string; params: RouteParams
   // /api/sites/{siteId}/threads
   // /api/sites/{siteId}/threads/{threadId}
   // /api/sites/{siteId}/threads/{threadId}/comments
+  // /api/sites/{siteId}/threads/{threadId}/comments/{commentId}
+  // /api/sites/{siteId}/threads/{threadId}/comments/{commentId}/decision
   // /api/sites/{siteId}/threads/{threadId}/status
-  const threadsMatch = /^\/api\/sites\/([^/]+)\/threads(?:\/([^/]+)(?:\/(comments|status))?)?$/.exec(normalizedPath);
+  const threadsMatch =
+    /^\/api\/sites\/([^/]+)\/threads(?:\/([^/]+)(?:\/(comments)(?:\/([^/]+)(?:\/(decision))?)?|\/(status))?)?$/.exec(
+      normalizedPath,
+    );
   if (threadsMatch) {
     return {
       handler: 'threads',
       params: {
         siteId: threadsMatch[1],
         threadId: threadsMatch[2],
-        subResource: threadsMatch[3],
+        subResource: threadsMatch[3] ?? threadsMatch[6],
+        commentId: threadsMatch[4],
+        commentAction: threadsMatch[5],
       },
     };
   }

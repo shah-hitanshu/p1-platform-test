@@ -1,8 +1,8 @@
 /* ============================================================================
  * CommentThread — CSS Module
  *
- * Three stacked sections — header, messages, composer — divided by rules, so
- * the parts that are still slots read as parts of one panel.
+ * The panel and what sits between its header and composer; those two style
+ * themselves in their own modules.
  * ============================================================================ */
 
 .panel {
@@ -43,99 +43,6 @@
   transform: rotate(45deg);
 }
 
-.header {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.75rem 0.75rem 0.625rem 1rem;
-  border-bottom: 1px solid var(--pds-color-border-default, oklch(0.925 0 0));
-}
-
-/* PDS badge and button styles never reach the canvas iframe (see P1App's canvas
- * isolation note), so the header's badges and the composer's controls carry their own
- * look, with a fallback on every token. */
-.subject {
-  display: inline-flex;
-  flex-shrink: 1;
-  align-items: center;
-  gap: 0.375rem;
-  min-width: 0;
-  padding: 0.1875rem 0.5rem 0.1875rem 0.375rem;
-  background: var(--pds-color-badge-silver-muted-background, oklch(0.943 0 0));
-  color: var(--pds-color-badge-silver-muted-foreground, oklch(0.3211 0 0));
-  border-radius: 0.375rem;
-  font-family: var(--pds-typography-ff-default, 'Inter', sans-serif);
-  font-size: 0.75rem;
-  font-weight: var(--pds-typography-fw-semibold, 600);
-  line-height: 1.25;
-  white-space: nowrap;
-}
-
-/* PDS Badge wraps its label in an inner span, so the flex layout has to live there. */
-.subject > span,
-.resolved > span {
-  display: inline-flex;
-  align-items: center;
-  gap: inherit;
-  min-width: 0;
-}
-
-.subject svg {
-  flex-shrink: 0;
-  width: 0.6875rem;
-  height: 0.6875rem;
-}
-
-.resolved svg {
-  flex-shrink: 0;
-  width: 0.75rem;
-  height: 0.75rem;
-}
-
-.subjectLabel {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.resolved {
-  display: inline-flex;
-  flex-shrink: 0;
-  align-items: center;
-  gap: 0.25rem;
-  height: 1.25rem;
-  padding-inline: 0.5rem;
-  background: var(--pds-color-badge-success-muted-background, oklch(0.8896 0.0468 134.36));
-  color: var(--pds-color-badge-success-muted-foreground, oklch(0.2998 0.0893 136.08));
-  border-radius: var(--pds-border-radius-default, 0.25rem);
-  font-size: 0.75rem;
-  font-weight: var(--pds-typography-fw-medium, 500);
-  line-height: 1;
-  white-space: nowrap;
-}
-
-.spacer {
-  flex: 1;
-}
-
-.close {
-  display: inline-flex;
-  flex-shrink: 0;
-  align-items: center;
-  justify-content: center;
-  width: 2rem;
-  height: 2rem;
-  padding: 0;
-  background: none;
-  border: none;
-  border-radius: var(--pds-border-radius-default, 0.25rem);
-  color: var(--pds-color-foreground-default, oklch(0.2178 0 0));
-  cursor: pointer;
-}
-
-.close:hover {
-  background: var(--pds-color-surface-default-hover, oklch(0.9761 0 0));
-}
-
 .empty {
   margin: 0;
   padding: 0.875rem 1rem;
@@ -150,83 +57,4 @@
   gap: 0.75rem;
   padding: 0.75rem 1rem;
   color: var(--pds-color-foreground-default-secondary, oklch(0.5103 0 0));
-}
-
-.postFailed {
-  color: var(--pds-color-foreground-danger, oklch(0.5 0.2 25));
-}
-
-.composer {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  padding: 0.625rem 1rem 0.875rem;
-  border-top: 1px solid var(--pds-color-border-default, oklch(0.925 0 0));
-}
-
-.draft textarea {
-  display: block;
-  width: 100%;
-  min-height: 3.625rem;
-  margin: 0;
-  padding: 0.5625rem 0.6875rem;
-  box-sizing: border-box;
-  background: var(--pds-color-surface-default, oklch(1 0 0));
-  color: var(--pds-color-foreground-default, oklch(0.2178 0 0));
-  border: 1px solid var(--pds-color-border-input, oklch(0.8761 0 0));
-  border-radius: 0.375rem;
-  font: inherit;
-  font-size: 0.8125rem;
-  line-height: 1.5;
-  resize: vertical;
-}
-
-.draft textarea::placeholder {
-  color: var(--pds-color-foreground-default-secondary, oklch(0.4778 0.002 247.87));
-}
-
-.draft textarea:focus {
-  outline: none;
-  border-color: var(--pds-color-interactive-focus, oklch(0.59 0.1689 253.6));
-  box-shadow: 0 0 0 2px
-    color-mix(in oklch, var(--pds-color-interactive-focus, oklch(0.59 0.1689 253.6)) 25%, transparent);
-}
-
-.composerFooter {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-}
-
-.post {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: 2rem;
-  padding: 0 1rem;
-  background: var(--pds-color-button-primary-background-default, oklch(0.2178 0 0));
-  color: var(--pds-color-button-primary-foreground, oklch(1 0 0));
-  border: none;
-  border-radius: var(--pds-border-radius-button, 3.5rem);
-  font-family: inherit;
-  font-size: var(--pds-typography-size-s, 0.875rem);
-  font-weight: var(--pds-typography-fw-medium, 500);
-  line-height: 1;
-  cursor: pointer;
-}
-
-.post:hover:enabled {
-  background: var(--pds-color-button-primary-background-hover, oklch(0.31 0 0));
-}
-
-.post:disabled {
-  cursor: not-allowed;
-  opacity: 0.4;
-}
-
-.help {
-  color: var(--pds-color-foreground-default-secondary, oklch(0.4778 0.002 247.87));
-  font-size: var(--pds-typography-size-2xs, 0.625rem);
 }

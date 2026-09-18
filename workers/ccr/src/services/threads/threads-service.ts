@@ -16,19 +16,23 @@ import type { SQL } from 'drizzle-orm';
 import { db, transaction } from '../../db/scope';
 import type { AuthenticatedPrincipal } from '../../types';
 import type {
+  AgentProposalMetadata,
   CommentAuthor,
+  CommentContent,
   ThreadActor,
   ThreadContextRef,
+  ProposalDecision,
   StoredComment,
   ThreadOverview,
   ThreadStatus,
 } from '../../types/threads';
+import { isAgentProposal } from '../../types/threads';
 import { decodeCursor, encodeCursor } from './cursor';
-import { ThreadInputError } from './errors';
+import { ThreadForbiddenError, ThreadInputError } from './errors';
 import { toStoredComment, toThreadOverview } from './factories';
 import type { AuthorRow, CommentRow, ThreadRow } from './rows';
 
-export { ThreadInputError } from './errors';
+export { ThreadForbiddenError, ThreadInputError } from './errors';
 
 export interface PostCommentInput {
   siteId: string;
@@ -45,6 +49,12 @@ export interface CommentWriteResult {
   comment: StoredComment;
   /** The thread was resolved before this comment and is open now. */
   reopened: boolean;
+}
+
+/** A comment after it was changed in place, and the thread as it stands afterwards. */
+export interface CommentUpdateResult {
+  thread: ThreadOverview;
+  comment: StoredComment;
 }
 
 export interface ThreadListOptions {
@@ -66,7 +76,7 @@ export interface ThreadStatusResult {
 }
 
 const THREAD_SELECT = sql`
-  SELECT t.id, t.site_id, t.context_type, t.context_id, t.document_id, t.status,
+  SELECT t.id, t.site_id, t.context_type, t.context_id, t.document_id, t.branch_id, t.status,
          t.created_at, t.updated_at, t.resolved_at, t.resolved_by_type, t.resolved_by_id,
          COALESCE(ru.name, ra.name) AS resolved_by_name,
          ru.avatar_url AS resolved_by_avatar,
@@ -79,7 +89,7 @@ const THREAD_SELECT = sql`
   LEFT JOIN app.agents ra ON t.resolved_by_type = 'agent' AND ra.id = t.resolved_by_id::text`;
 
 const COMMENT_SELECT = sql`
-  SELECT c.id, c.thread_id, c.kind, c.body, c.author_type, c.author_id, c.acting_user_id,
+  SELECT c.id, c.thread_id, c.kind, c.body, c.metadata, c.author_type, c.author_id, c.acting_user_id,
          c.created_at, c.edited_at,
          COALESCE(au.name, aa.name) AS author_name,
          au.avatar_url AS author_avatar,
@@ -104,17 +114,162 @@ export async function postComment(input: PostCommentInput): Promise<CommentWrite
   });
 }
 
-/** Reply on a known thread; null when the site has no such thread. */
+/**
+ * Reply on a known thread; null when the site has no such thread. A plain
+ * string is a plain comment; an agent passes the full content to leave a working
+ * line or a proposal instead.
+ */
 export async function replyToThread(
   siteId: string,
   threadId: string,
-  body: string,
+  content: string | CommentContent,
   actor: ThreadActor,
 ): Promise<CommentWriteResult | null> {
   return transaction(async () => {
     const thread = await lockThread(siteId, threadId);
     if (thread === null) return null;
-    return appendComment(thread, body, actor);
+    return appendComment(thread, content, actor);
+  });
+}
+
+/**
+ * Replaces one of the caller's own comments: kind, body and state together.
+ * This is how an agent's working line becomes its answer. Null when the site
+ * has no such thread or the thread no such comment; a comment someone else
+ * wrote is refused.
+ */
+export async function updateComment(
+  siteId: string,
+  threadId: string,
+  commentId: string,
+  content: CommentContent,
+  actor: ThreadActor,
+): Promise<CommentUpdateResult | null> {
+  return transaction(async () => {
+    const thread = await lockThread(siteId, threadId);
+    if (thread === null) return null;
+    const current = await lockComment(threadId, commentId);
+    if (current === null) return null;
+    if (current.author.type !== actor.type || current.author.id !== actor.id) {
+      throw new ThreadForbiddenError('Only the author can change a comment');
+    }
+    if (isAgentProposal(current) && current.metadata.status !== 'proposed') {
+      throw new ThreadInputError('kind', `A proposal already ${current.metadata.status} cannot be rewritten`);
+    }
+
+    // A working line turning into the answer is not an edit; anything else is.
+    const editedAt = current.kind === 'agent_activity' ? sql`` : sql`, edited_at = now()`;
+    await db().execute(sql`
+      UPDATE app.comments
+      SET kind = ${content.kind}, body = ${content.body}, metadata = ${jsonParam(content.metadata)}::jsonb${editedAt}
+      WHERE id = ${commentId}`);
+    return touchedThread(thread, commentId);
+  });
+}
+
+/** A claim older than this belongs to an accept that never finished, and may be taken over. */
+const APPLY_CLAIM_MS = 60_000;
+
+function isClaimable(metadata: AgentProposalMetadata, now: number): boolean {
+  if (metadata.status === 'proposed') return true;
+  if (metadata.status !== 'applying' || metadata.claimedAt === undefined) return false;
+  return now - Date.parse(metadata.claimedAt) > APPLY_CLAIM_MS;
+}
+
+async function lockProposal(
+  siteId: string,
+  threadId: string,
+  commentId: string,
+): Promise<{ thread: ThreadOverview; comment: StoredComment & { metadata: AgentProposalMetadata } } | null> {
+  const thread = await lockThread(siteId, threadId);
+  if (thread === null) return null;
+  const comment = await lockComment(threadId, commentId);
+  if (comment === null) return null;
+  if (!isAgentProposal(comment)) {
+    throw new ThreadInputError('decision', 'Only an agent proposal can be accepted or dismissed');
+  }
+  return { thread, comment };
+}
+
+async function writeProposalMetadata(commentId: string, metadata: AgentProposalMetadata): Promise<void> {
+  await db().execute(sql`UPDATE app.comments SET metadata = ${jsonParam(metadata)}::jsonb WHERE id = ${commentId}`);
+}
+
+/**
+ * Marks a waiting proposal as being applied and hands it back for the edits to
+ * be made. Only one accept can hold the claim: a second one arriving while the
+ * first is still at work is refused, so the edits cannot land twice. A claim
+ * left behind by an accept that never recorded its decision is taken over.
+ */
+export async function claimProposal(
+  siteId: string,
+  threadId: string,
+  commentId: string,
+): Promise<CommentUpdateResult | null> {
+  return transaction(async () => {
+    const locked = await lockProposal(siteId, threadId, commentId);
+    if (locked === null) return null;
+    const { status } = locked.comment.metadata;
+    if (!isClaimable(locked.comment.metadata, Date.now())) {
+      throw new ThreadInputError(
+        'decision',
+        status === 'applying' ? 'This proposal is being applied' : `This proposal was already ${status}`,
+      );
+    }
+    const metadata: AgentProposalMetadata = {
+      ...locked.comment.metadata,
+      status: 'applying',
+      claimedAt: new Date().toISOString(),
+    };
+    await writeProposalMetadata(commentId, metadata);
+    return { thread: locked.thread, comment: { ...locked.comment, metadata } };
+  });
+}
+
+/** Puts a claimed proposal back to waiting after its edits could not be made. Anything else is left alone. */
+export async function releaseProposal(siteId: string, threadId: string, commentId: string): Promise<void> {
+  await transaction(async () => {
+    const locked = await lockProposal(siteId, threadId, commentId);
+    if (locked?.comment.metadata.status !== 'applying') return;
+    await writeProposalMetadata(commentId, { ...locked.comment.metadata, status: 'proposed', claimedAt: undefined });
+  });
+}
+
+/**
+ * Accepts or dismisses an agent's proposal on behalf of whoever is looking at
+ * it. A proposal can be dismissed while it waits and accepted while it waits
+ * or once its edits are being applied under a claim; a second decision is
+ * refused rather than overwriting the first.
+ */
+export async function decideProposal(
+  siteId: string,
+  threadId: string,
+  commentId: string,
+  decision: ProposalDecision,
+  actor: ThreadActor,
+): Promise<CommentUpdateResult | null> {
+  return transaction(async () => {
+    const locked = await lockProposal(siteId, threadId, commentId);
+    if (locked === null) return null;
+    const { thread, comment: current } = locked;
+    const { status } = current.metadata;
+    if (status === 'applying' && decision === 'dismissed') {
+      throw new ThreadInputError('decision', 'This proposal is being applied');
+    }
+    if (status !== 'proposed' && status !== 'applying') {
+      throw new ThreadInputError('decision', `This proposal was already ${status}`);
+    }
+
+    const decidedBy = await loadAuthor(actor);
+    const metadata: AgentProposalMetadata = {
+      ...current.metadata,
+      status: decision,
+      decidedBy,
+      decidedAt: new Date().toISOString(),
+      claimedAt: undefined,
+    };
+    await writeProposalMetadata(commentId, metadata);
+    return touchedThread(thread, commentId);
   });
 }
 
@@ -286,12 +441,14 @@ async function createThread(input: PostCommentInput): Promise<ThreadOverview> {
 
 async function appendComment(
   thread: ThreadOverview,
-  body: string,
+  content: string | CommentContent,
   actor: ThreadActor,
 ): Promise<CommentWriteResult> {
+  const written: CommentContent = typeof content === 'string' ? { kind: 'message', body: content } : content;
   const inserted = await db().execute<{ id: string }>(sql`
-    INSERT INTO app.comments (thread_id, body, author_type, author_id, acting_user_id)
-    VALUES (${thread.id}, ${body}, ${actor.type}, ${actor.id}, ${actor.actingUserId ?? null})
+    INSERT INTO app.comments (thread_id, kind, body, metadata, author_type, author_id, acting_user_id)
+    VALUES (${thread.id}, ${written.kind}, ${written.body}, ${jsonParam(written.metadata)}::jsonb,
+            ${actor.type}, ${actor.id}, ${actor.actingUserId ?? null})
     RETURNING id`);
   const commentId = inserted.at(0)?.id;
   if (commentId === undefined) throw new Error('Comment insert returned no row');
@@ -313,8 +470,26 @@ async function appendComment(
   return { thread: updatedThread, comment, reopened };
 }
 
+/** Bumps the thread's activity clock and reads the changed comment back with it. */
+async function touchedThread(thread: ThreadOverview, commentId: string): Promise<CommentUpdateResult> {
+  await touchThread(thread.id);
+  const [updatedThread, comment] = await Promise.all([loadThread(thread.siteId, thread.id), loadComment(commentId)]);
+  if (updatedThread === null || comment === null) {
+    throw new Error('Comment update could not be read back');
+  }
+  return { thread: updatedThread, comment };
+}
+
 async function touchThread(threadId: string): Promise<void> {
   await db().execute(sql`UPDATE app.comment_threads SET updated_at = now() WHERE id = ${threadId}`);
+}
+
+/**
+ * The handle's client sends an object parameter as text, which jsonb rejects;
+ * the value is serialised here and cast by the statement.
+ */
+function jsonParam(value: unknown): string | null {
+  return typeof value === 'object' && value !== null ? JSON.stringify(value) : null;
 }
 
 async function reopenThread(threadId: string): Promise<void> {
@@ -340,6 +515,16 @@ async function lockThread(siteId: string, threadId: string): Promise<ThreadOverv
   );
   const row = rows.at(0);
   return row === undefined ? null : toThreadOverview(row);
+}
+
+/** Like loadComment, scoped to its thread and held for the rest of the transaction. */
+async function lockComment(threadId: string, commentId: string): Promise<StoredComment | null> {
+  const rows = await db().execute<CommentRow>(sql`
+    ${COMMENT_SELECT}
+    WHERE c.id = ${commentId} AND c.thread_id = ${threadId} AND c.deleted_at IS NULL
+    FOR UPDATE OF c`);
+  const row = rows.at(0);
+  return row === undefined ? null : toStoredComment(row);
 }
 
 async function loadComment(commentId: string): Promise<StoredComment | null> {

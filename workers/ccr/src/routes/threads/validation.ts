@@ -5,12 +5,17 @@
 
 import { z } from 'zod';
 import {
+  ACTIVITY_STATUSES,
   CONTEXT_TYPES,
   DEFAULT_LIST_LIMIT,
   MAX_BODY_LENGTH,
   MAX_CONTEXT_ID_LENGTH,
   MAX_LIST_LIMIT,
+  MAX_PROPOSAL_OPERATIONS,
+  MAX_PROPOSAL_SUMMARY_LENGTH,
+  OPERATION_TYPES,
   THREAD_STATUSES,
+  type CommentContent,
 } from '../../types/threads';
 
 const commentBody = z
@@ -68,7 +73,52 @@ export function siteContextMismatch(input: z.infer<typeof postThreadSchema>, sit
   return null;
 }
 
-export const postCommentSchema = z.object({ body: commentBody });
+/** The keys the document session holds page data under; a path anywhere else would land outside the page. */
+const DOCUMENT_DATA_ROOTS: readonly string[] = ['content', 'root', 'zones'];
+
+const documentDataPath = z
+  .string()
+  .min(1)
+  .refine((path) => DOCUMENT_DATA_ROOTS.includes(path.split('.')[0] ?? ''), {
+    message: 'path must be within content, root or zones',
+  });
+
+const proposedOperation = z.object({
+  op: z.enum(OPERATION_TYPES),
+  path: documentDataPath,
+  value: z.unknown().optional(),
+  from: documentDataPath.optional(),
+});
+
+/** What an agent may write: a proposal always arrives undecided; deciding it is a separate request. */
+const commentContentSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('message'), body: commentBody, metadata: z.null().optional() }),
+  z.object({
+    kind: z.literal('agent_activity'),
+    body: commentBody,
+    metadata: z.object({ status: z.enum(ACTIVITY_STATUSES) }),
+  }),
+  z.object({
+    kind: z.literal('agent_proposal'),
+    body: commentBody,
+    metadata: z.object({
+      status: z.literal('proposed'),
+      summary: z.string().trim().min(1).max(MAX_PROPOSAL_SUMMARY_LENGTH),
+      operations: z.array(proposedOperation).min(1).max(MAX_PROPOSAL_OPERATIONS),
+    }),
+  }),
+]) satisfies z.ZodType<CommentContent>;
+
+/** A body on its own is a plain comment. */
+export const postCommentSchema = z.preprocess(
+  (value) =>
+    typeof value === 'object' && value !== null && !('kind' in value) ? { ...value, kind: 'message' } : value,
+  commentContentSchema,
+);
+
+export const updateCommentSchema = commentContentSchema;
+
+export const decideProposalSchema = z.object({ decision: z.enum(['accepted', 'dismissed']) });
 
 export const setThreadStatusSchema = z.object({ status: z.enum(THREAD_STATUSES) });
 

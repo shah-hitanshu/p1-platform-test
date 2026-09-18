@@ -17,7 +17,7 @@ export function emitThreadEvent(
     event_type: event.type,
     site_id: event.siteId,
     thread_id: event.thread.id,
-    comment_id: event.type === 'comment_posted' ? event.comment.id : undefined,
+    comment_id: event.type === 'thread_status_changed' ? undefined : event.comment.id,
     context_type: event.thread.context.type,
   });
 

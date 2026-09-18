@@ -2,7 +2,7 @@
  * CCR Backend API Client
  * Adapted from collaborative-state-system/workers/mcp-server/src/shared/api-client.ts
  */
-import type { PostCommentResponse, ThreadResponse } from './thread-types.js';
+import type { CommentContent, PostCommentResponse, ThreadResponse } from './thread-types.js';
 import type {
   AbortAgentEditRequest,
   AbortAgentEditResponse,
@@ -373,12 +373,26 @@ export class McpApiClient {
     return this.handleResponse<ThreadResponse>(response);
   }
 
-  async postThreadComment(siteId: string, threadId: string, body: string): Promise<PostCommentResponse> {
+  async postThreadComment(siteId: string, threadId: string, content: string | CommentContent): Promise<PostCommentResponse> {
     const response = await this.doFetch(`${this.baseUrl}/api/sites/${siteId}/threads/${threadId}/comments`, {
       method: 'POST',
       headers: this.getHeaders(),
-      body: JSON.stringify({ body }),
+      body: JSON.stringify(typeof content === 'string' ? { body: content } : content),
     });
+    return this.handleResponse<PostCommentResponse>(response);
+  }
+
+  /** Replaces one of this agent's own comments; how a working line becomes the answer. */
+  async updateThreadComment(
+    siteId: string,
+    threadId: string,
+    commentId: string,
+    content: CommentContent,
+  ): Promise<PostCommentResponse> {
+    const response = await this.doFetch(
+      `${this.baseUrl}/api/sites/${siteId}/threads/${threadId}/comments/${commentId}`,
+      { method: 'PUT', headers: this.getHeaders(), body: JSON.stringify(content) },
+    );
     return this.handleResponse<PostCommentResponse>(response);
   }
 }

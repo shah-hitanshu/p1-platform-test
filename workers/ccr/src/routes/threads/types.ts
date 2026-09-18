@@ -9,6 +9,9 @@ export interface ThreadsRouteContext {
   threadId?: string;
   /** `comments` or `status` under a thread; absent on the thread itself. */
   subResource?: string;
+  /** One comment under `comments`, and `decision` when its proposal is being decided. */
+  commentId?: string;
+  commentAction?: string;
   contextType?: string;
   contextId?: string;
   principal: AuthenticatedPrincipal;

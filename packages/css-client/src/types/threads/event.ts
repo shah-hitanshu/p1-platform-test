@@ -8,4 +8,5 @@ import type { ThreadOverview } from './thread.js';
  */
 export type ThreadEvent =
   | { type: 'comment_posted'; siteId: string; thread: ThreadOverview; comment: Comment }
+  | { type: 'comment_updated'; siteId: string; thread: ThreadOverview; comment: Comment }
   | { type: 'thread_status_changed'; siteId: string; thread: ThreadOverview; actor: CommentAuthor };

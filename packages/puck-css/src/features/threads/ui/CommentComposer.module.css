@@ -1,0 +1,80 @@
+.composer {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.625rem 1rem 0.875rem;
+  border-top: 1px solid var(--pds-color-border-default, oklch(0.925 0 0));
+}
+
+/* PDS input and button styles never reach the canvas iframe (see P1App's canvas
+ * isolation note), so the controls carry their own look, with a fallback on every token. */
+.draft textarea {
+  display: block;
+  width: 100%;
+  min-height: 3.625rem;
+  margin: 0;
+  padding: 0.5625rem 0.6875rem;
+  box-sizing: border-box;
+  background: var(--pds-color-surface-default, oklch(1 0 0));
+  color: var(--pds-color-foreground-default, oklch(0.2178 0 0));
+  border: 1px solid var(--pds-color-border-input, oklch(0.8761 0 0));
+  border-radius: 0.375rem;
+  font: inherit;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.draft textarea::placeholder {
+  color: var(--pds-color-foreground-default-secondary, oklch(0.4778 0.002 247.87));
+}
+
+.draft textarea:focus {
+  outline: none;
+  border-color: var(--pds-color-interactive-focus, oklch(0.59 0.1689 253.6));
+  box-shadow: 0 0 0 2px
+    color-mix(in oklch, var(--pds-color-interactive-focus, oklch(0.59 0.1689 253.6)) 25%, transparent);
+}
+
+.postFailed {
+  color: var(--pds-color-foreground-danger, oklch(0.5 0.2 25));
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.post {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 2rem;
+  padding: 0 1rem;
+  background: var(--pds-color-button-primary-background-default, oklch(0.2178 0 0));
+  color: var(--pds-color-button-primary-foreground, oklch(1 0 0));
+  border: none;
+  border-radius: var(--pds-border-radius-button, 3.5rem);
+  font-family: inherit;
+  font-size: var(--pds-typography-size-s, 0.875rem);
+  font-weight: var(--pds-typography-fw-medium, 500);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.post:hover:enabled {
+  background: var(--pds-color-button-primary-background-hover, oklch(0.31 0 0));
+}
+
+.post:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.help {
+  color: var(--pds-color-foreground-default-secondary, oklch(0.4778 0.002 247.87));
+  font-size: var(--pds-typography-size-2xs, 0.625rem);
+}

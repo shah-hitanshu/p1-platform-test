@@ -45,6 +45,7 @@ const thread: ThreadOverview = {
   updatedAt: '2026-09-01T00:02:00Z',
   resolvedAt: null,
   resolvedBy: null,
+  branchId: null,
 };
 
 function comment(id: string, body: string, minute: number, extra: Partial<Comment> = {}): Comment {
@@ -53,6 +54,7 @@ function comment(id: string, body: string, minute: number, extra: Partial<Commen
     threadId: 't-1',
     kind: 'message',
     body,
+    metadata: null,
     author: { type: 'user', id: 'user-1', name: 'Nick', avatar: null },
     mentions: [],
     createdAt: `2026-09-01T00:0${minute}:00Z`,

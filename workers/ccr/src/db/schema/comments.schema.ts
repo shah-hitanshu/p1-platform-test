@@ -22,6 +22,6 @@ export const comments = app.table('comments', {
     foreignColumns: [commentThreads.id],
     name: 'comments_thread_id_fkey',
   }).onDelete('cascade'),
-  check('comments_kind_check', sql`kind = ANY (ARRAY['message'::text])`),
+  check('comments_kind_check', sql`kind = ANY (ARRAY['message'::text, 'agent_activity'::text, 'agent_proposal'::text])`),
   check('comments_author_type_check', sql`author_type = ANY (ARRAY['user'::text, 'agent'::text])`),
 ]);

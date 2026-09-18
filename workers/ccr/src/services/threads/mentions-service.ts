@@ -89,6 +89,12 @@ export function withMentions(comment: StoredComment, roster: SiteMembers | null)
   return { ...comment, mentions: roster === null ? [] : hydrateMentions(comment.body, roster) };
 }
 
+/** Hydrates one stored comment, fetching the roster only when its body has a token. */
+export async function hydrateComment(siteId: string, comment: StoredComment, masClient?: MASClient): Promise<Comment> {
+  const roster = parseMentions(comment.body).length > 0 ? await getSiteMembers(siteId, masClient) : null;
+  return withMentions(comment, roster);
+}
+
 /** Hydrates a thread's comments, fetching the roster only when some body has a token. */
 export async function hydrateComments(
   siteId: string,

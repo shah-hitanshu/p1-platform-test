@@ -19,8 +19,19 @@ export type { MentionPickerProps } from './ui/MentionPicker.js';
 export type { MentionCandidate } from './mentions.js';
 export type { UsePostCommentOptions, PostCommentState } from './use-post-comment.js';
 export { applyThreadEvent, applyThreadOverview } from './thread-cache.js';
+export { useThreadStatus } from './use-thread-status.js';
+export type { UseThreadStatusOptions, ThreadStatusState } from './use-thread-status.js';
+export { useProposalDecision } from './use-proposal-decision.js';
+export type { UseProposalDecisionOptions } from './use-proposal-decision.js';
+export type { ProposalActions } from './proposals.js';
+export { ProposalCard } from './ui/ProposalCard.js';
+export type { ProposalCardProps } from './ui/ProposalCard.js';
 export type {
   ThreadContext,
   ThreadContextType,
   ThreadSubject,
 } from './types.js';
+export { describeChange, describeChanges } from './proposal-preview.js';
+export type { ProposalChange, ProposalPreviewSource } from './proposal-preview.js';
+export { ProposalPreviewContext } from './proposal-preview-context.js';
+export type { ProposalPreviewLookup } from './proposal-preview-context.js';

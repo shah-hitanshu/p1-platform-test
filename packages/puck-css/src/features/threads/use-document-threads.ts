@@ -13,6 +13,7 @@ import {
 } from './document-threads.js';
 import { useThreadsEnabled } from './enabled.js';
 import { threadKey } from './open-thread.js';
+import { subscribeToQueryCache } from './query-cache.js';
 
 export interface DocumentThreadsState {
   /** Empty until the listing arrives, and for a page nobody has commented on. */
@@ -93,7 +94,7 @@ export function useThreadOverview(
   const key = threadKey(contextType, contextId);
 
   const subscribe = useCallback(
-    (onChange: () => void) => (queryClient ? queryClient.getQueryCache().subscribe(onChange) : noop),
+    (onChange: () => void) => (queryClient ? subscribeToQueryCache(queryClient, onChange) : noop),
     [queryClient],
   );
   const read = useCallback(

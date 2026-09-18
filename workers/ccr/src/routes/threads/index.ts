@@ -1,8 +1,10 @@
 /**
  * /api/sites/{siteId}/threads and /api/sites/{siteId}/contexts/{type}/{id}/threads.
  *
- * Reading needs canView; posting, replying and changing status need
- * canComment. Each endpoint is its own small function behind one gate so the
+ * Reading needs canView; posting, replying, changing status and deciding a
+ * proposal need canComment, and accepting one also needs canEditDocuments on
+ * the page it edits. An agent may also rewrite a comment of its own.
+ * Each endpoint is its own small function behind one gate so the
  * set maps onto a router's per-route handlers when one arrives.
  */
 
@@ -10,24 +12,31 @@ import { getLogger } from '@pantheon-systems/p1-telemetry';
 import { assertPermission, AuthorizationError } from '../../auth/authorization';
 import { getMainBranch } from '../../services/branch-service';
 import {
+  claimProposal,
+  decideProposal,
   getThread,
   listThreads,
   listThreadsForContext,
   postComment,
+  releaseProposal,
   replyToThread,
   setThreadStatus,
   toThreadActor,
+  updateComment,
   type CommentWriteResult,
 } from '../../services/threads/threads-service';
-import { ThreadInputError } from '../../services/threads/errors';
-import { hydrateComments, resolveMentions, withMentions } from '../../services/threads/mentions-service';
+import { ThreadForbiddenError, ThreadInputError } from '../../services/threads/errors';
+import { hydrateComment, hydrateComments, resolveMentions, withMentions } from '../../services/threads/mentions-service';
 import type { SiteMembers } from '../../services/site-members-service';
 import type { RolePermissions } from '../../types';
 import type {
+  Comment,
+  CommentResponse,
   ContextThreadsResponse,
   ThreadActor,
   PostCommentResponse,
   ThreadListResponse,
+  ThreadOverview,
   ThreadResponse,
   ThreadStatusResponse,
 } from '../../types/threads';
@@ -36,14 +45,17 @@ import { isUuid } from '../../utils/uuid';
 import { validateBody, validateQuery, validationErrorResponse } from '../validation/request-validation';
 import { requesterFor } from './agent-notifications';
 import { emitThreadEvent } from './events';
+import { applyAcceptedProposal } from './proposal-edits';
 import type { ThreadsRouteContext } from './types';
 import {
   contextTypeSchema,
+  decideProposalSchema,
   listThreadsQuerySchema,
   postCommentSchema,
   postThreadSchema,
   setThreadStatusSchema,
   siteContextMismatch,
+  updateCommentSchema,
 } from './validation';
 
 export type * from './types';
@@ -103,7 +115,13 @@ function selectEndpoint(method: string, context: ThreadsRouteContext): Endpoint 
     case undefined:
       return method === 'GET' ? { permission: 'canView', handle: getThreadById } : null;
     case 'comments':
-      return method === 'POST' ? { permission: 'canComment', handle: postThreadComment } : null;
+      if (context.commentId === undefined) {
+        return method === 'POST' ? { permission: 'canComment', handle: postThreadComment } : null;
+      }
+      if (context.commentAction === undefined) {
+        return method === 'PUT' ? { permission: 'canComment', handle: putComment } : null;
+      }
+      return method === 'PUT' ? { permission: 'canComment', handle: putProposalDecision } : null;
     case 'status':
       return method === 'PUT' ? { permission: 'canComment', handle: putThreadStatus } : null;
     default:
@@ -138,11 +156,68 @@ async function postThreadComment(
 
   const input = validateBody(postCommentSchema, await readJsonBody(request));
   const actor = await requireActor(context);
+  requireAgentForKind(input.kind, actor);
   const roster = await resolveMentions(context.siteId, input.body, context.masClient);
 
-  const write = await replyToThread(context.siteId, threadId, input.body, actor);
+  const write = await replyToThread(context.siteId, threadId, input.kind === 'message' ? input.body : input, actor);
   if (write === null) return threadNotFound();
   return commentPostedResponse(write, roster, context, startedAt);
+}
+
+async function putComment(
+  request: Request,
+  context: ThreadsRouteContext,
+  startedAt: number,
+): Promise<Response> {
+  const ids = requireCommentIds(context);
+  if (ids === null) return commentNotFound();
+
+  const input = validateBody(updateCommentSchema, await readJsonBody(request));
+  const actor = await requireActor(context);
+  requireAgentForKind(input.kind, actor);
+  const roster = await resolveMentions(context.siteId, input.body, context.masClient);
+
+  const result = await updateComment(context.siteId, ids.threadId, ids.commentId, input, actor);
+  if (result === null) return commentNotFound();
+  const comment = withMentions(result.comment, roster);
+  return commentUpdatedResponse(result.thread, comment, context, startedAt, 'comment updated');
+}
+
+async function putProposalDecision(
+  request: Request,
+  context: ThreadsRouteContext,
+  startedAt: number,
+): Promise<Response> {
+  const ids = requireCommentIds(context);
+  if (ids === null) return commentNotFound();
+
+  const input = validateBody(decideProposalSchema, await readJsonBody(request));
+  const actor = await requireActor(context);
+
+  if (input.decision === 'accepted') {
+    const claimed = await claimProposal(context.siteId, ids.threadId, ids.commentId);
+    if (claimed === null) return commentNotFound();
+    try {
+      await applyAcceptedProposal(context, claimed.thread, claimed.comment);
+    } catch (error) {
+      await releaseClaim(context.siteId, ids.threadId, ids.commentId);
+      throw error;
+    }
+  }
+
+  const result = await decideProposal(context.siteId, ids.threadId, ids.commentId, input.decision, actor);
+  if (result === null) return commentNotFound();
+  const comment = await hydrateComment(context.siteId, result.comment, context.masClient);
+  return commentUpdatedResponse(result.thread, comment, context, startedAt, 'proposal decided');
+}
+
+/** The apply failed and is being reported; a release that fails too is logged rather than replacing that report. */
+async function releaseClaim(siteId: string, threadId: string, commentId: string): Promise<void> {
+  try {
+    await releaseProposal(siteId, threadId, commentId);
+  } catch (error) {
+    getLogger().error('proposal claim could not be released', error, { siteId, threadId, commentId });
+  }
 }
 
 async function getThreadById(
@@ -282,6 +357,41 @@ function commentPostedResponse(
   return jsonResponse(body, 201, NO_STORE_HEADERS);
 }
 
+function commentUpdatedResponse(
+  thread: ThreadOverview,
+  comment: Comment,
+  context: ThreadsRouteContext,
+  startedAt: number,
+  message: string,
+): Response {
+  emitThreadEvent(context.ctx, context.env, {
+    type: 'comment_updated',
+    siteId: context.siteId,
+    thread,
+    comment,
+  });
+
+  getLogger().info(message, {
+    site_id: context.siteId,
+    thread_id: thread.id,
+    comment_id: comment.id,
+    context_type: thread.context.type,
+    kind: comment.kind,
+    duration_ms: Date.now() - startedAt,
+    outcome: 'ok',
+  });
+
+  const body: CommentResponse = { thread, comment };
+  return jsonResponse(body, 200, NO_STORE_HEADERS);
+}
+
+/** The working line and the proposal are an agent's to write; people write plain comments. */
+function requireAgentForKind(kind: string, actor: ThreadActor): void {
+  if (kind !== 'message' && actor.type !== 'agent') {
+    throw new AuthorizationError(`Only an agent can post a comment of kind ${kind}`, 'canComment', 'NO_ACCESS');
+  }
+}
+
 async function requireActor(context: ThreadsRouteContext): Promise<ThreadActor> {
   const actor = await toThreadActor(context.principal);
   if (actor === null) {
@@ -296,8 +406,18 @@ function requireThreadId(context: ThreadsRouteContext): string | null {
   return isUuid(threadId) ? threadId : null;
 }
 
+function requireCommentIds(context: ThreadsRouteContext): { threadId: string; commentId: string } | null {
+  const threadId = requireThreadId(context);
+  const commentId = context.commentId ?? '';
+  return threadId !== null && isUuid(commentId) ? { threadId, commentId } : null;
+}
+
 function threadNotFound(): Response {
   return errorResponse('Thread not found', 404);
+}
+
+function commentNotFound(): Response {
+  return errorResponse('Comment not found', 404);
 }
 
 async function readJsonBody(request: Request): Promise<unknown> {
@@ -314,6 +434,10 @@ function failureResponse(error: unknown, context: ThreadsRouteContext, startedAt
 
   if (error instanceof ThreadInputError) {
     return errorResponse(error.message, 400, { [error.field]: error.details });
+  }
+
+  if (error instanceof ThreadForbiddenError) {
+    return errorResponse(error.message, 403);
   }
 
   if (error instanceof AuthorizationError) {

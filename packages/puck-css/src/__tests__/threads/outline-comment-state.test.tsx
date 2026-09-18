@@ -4,7 +4,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import React from 'react';
-import { render, screen, cleanup, act } from '@testing-library/react';
+import { render, screen, cleanup, waitFor } from '@testing-library/react';
 import { QueryClient } from '@tanstack/react-query';
 import type { ThreadOverview } from '@pantheon-systems/css-client';
 import type { P1PuckContextValue } from '../../core/types.js';
@@ -101,20 +101,16 @@ describe('OutlineCommentState', () => {
     expect(screen.queryByTestId('outline-comment-count')).toBeNull();
   });
 
-  it('follows the listing as threads change', () => {
+  it('follows the listing as threads change', async () => {
     queryClient.setQueryData(KEY, indexThreads([overview('hero', { commentCount: 1 })]));
     renderState('hero');
     expect(screen.getByTestId('outline-comment-count')).toHaveTextContent('1');
 
-    act(() => {
-      applyThreadOverview(queryClient, overview('hero', { commentCount: 2 }));
-    });
-    expect(screen.getByTestId('outline-comment-count')).toHaveTextContent('2');
+    applyThreadOverview(queryClient, overview('hero', { commentCount: 2 }));
+    await waitFor(() => expect(screen.getByTestId('outline-comment-count')).toHaveTextContent('2'));
 
-    act(() => {
-      applyThreadOverview(queryClient, overview('hero', { status: 'resolved' }));
-    });
-    expect(screen.getByTestId('outline-comments-resolved')).toBeInTheDocument();
+    applyThreadOverview(queryClient, overview('hero', { status: 'resolved' }));
+    await waitFor(() => expect(screen.getByTestId('outline-comments-resolved')).toBeInTheDocument());
   });
 
   it('shows nothing while threads are off, whatever the listing holds', () => {

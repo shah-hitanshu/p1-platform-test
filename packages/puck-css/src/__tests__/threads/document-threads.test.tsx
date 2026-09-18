@@ -28,12 +28,14 @@ vi.mock('@pantheon-systems/pds-toolkit-react', async (importOriginal) => ({
   ),
 }));
 
+const puckState = {
+  config: { components: { HeadingBlock: { label: 'Heading' } } },
+  getItemById: () => ({ type: 'HeadingBlock' }),
+};
+
 vi.mock('@puckeditor/core', () => ({
-  createUsePuck: () => (selector: (s: any) => unknown) =>
-    selector({
-      config: { components: { HeadingBlock: { label: 'Heading' } } },
-      getItemById: () => ({ type: 'HeadingBlock' }),
-    }),
+  createUsePuck: () => (selector: (s: any) => unknown) => selector(puckState),
+  useGetPuck: () => () => puckState,
 }));
 
 import { BlockCommentTrigger } from '../../features/threads/ui/BlockCommentTrigger.js';

@@ -19,10 +19,11 @@ export const TextInput = (props: Record<string, unknown>) => {
   });
 };
 // Textarea stub: renders a native <textarea> so value, placeholder and key events work
-export const Textarea = (props: Record<string, unknown>) => {
+export const Textarea = React.forwardRef<HTMLTextAreaElement, Record<string, unknown>>((props, ref) => {
   const textareaProps = (props.textareaProps ?? {}) as Record<string, unknown>;
   return React.createElement('textarea', {
     ...textareaProps,
+    ref,
     id: props.id,
     'aria-label': props.label,
     placeholder: props.placeholder,
@@ -31,7 +32,7 @@ export const Textarea = (props: Record<string, unknown>) => {
     disabled: props.disabled,
     onChange: props.onChange,
   });
-};
+});
 // Badge stub: renders its label so status text is queryable
 export const Badge = (props: Record<string, unknown>) => {
   return React.createElement(

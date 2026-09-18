@@ -169,6 +169,61 @@ describe('P1Client threads', () => {
     });
   });
 
+  describe('postComment with agent content', () => {
+    it('POSTs the whole content object when given one', async () => {
+      respond(201, { thread, comment });
+      const client = new P1Client({ baseUrl, apiKey });
+      const content = { kind: 'agent_activity' as const, body: 'Looking into it', metadata: { status: 'working' as const } };
+
+      await client.threads.postComment(siteId, threadId, content);
+
+      const [, init] = mockFetch.mock.calls[0];
+      expect(JSON.parse(init.body)).toEqual(content);
+    });
+  });
+
+  describe('updateComment', () => {
+    it('PUTs the new content to the comment route', async () => {
+      respond(200, { thread, comment });
+      const client = new P1Client({ baseUrl, apiKey });
+      const content = {
+        kind: 'agent_proposal' as const,
+        body: 'Try this',
+        metadata: { status: 'proposed' as const, summary: 'Shorten it', operations: [{ op: 'replace' as const, path: 'root.props.title', value: 'Hi' }] },
+      };
+
+      await client.threads.updateComment(siteId, threadId, comment.id, content);
+
+      const [url, init] = mockFetch.mock.calls[0];
+      expect(url).toBe(`${baseUrl}/api/sites/${siteId}/threads/${threadId}/comments/${comment.id}`);
+      expect(init.method).toBe('PUT');
+      expect(JSON.parse(init.body)).toEqual(content);
+    });
+
+    it('rejects with MissingParameterError before fetching when commentId is empty', async () => {
+      const client = new P1Client({ baseUrl, apiKey });
+
+      await expect(
+        client.threads.updateComment(siteId, threadId, '', { kind: 'message', body: 'x' }),
+      ).rejects.toBeInstanceOf(MissingParameterError);
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('decideProposal', () => {
+    it('PUTs the decision to the comment decision route', async () => {
+      respond(200, { thread, comment });
+      const client = new P1Client({ baseUrl, apiKey });
+
+      await client.threads.decideProposal(siteId, threadId, comment.id, 'accepted');
+
+      const [url, init] = mockFetch.mock.calls[0];
+      expect(url).toBe(`${baseUrl}/api/sites/${siteId}/threads/${threadId}/comments/${comment.id}/decision`);
+      expect(init.method).toBe('PUT');
+      expect(JSON.parse(init.body)).toEqual({ decision: 'accepted' });
+    });
+  });
+
   describe('setThreadStatus', () => {
     it('PUTs the status and unwraps the thread', async () => {
       const resolved = { ...thread, status: 'resolved', resolvedAt: '2026-09-12T01:00:00Z', resolvedBy: author };

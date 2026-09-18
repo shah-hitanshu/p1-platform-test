@@ -1,4 +1,4 @@
-import type { CommentAuthorType, ThreadContextType, ThreadStatus } from '../../types/threads';
+import type { CommentAuthorType, CommentKind, ThreadContextType, ThreadStatus } from '../../types/threads';
 
 // Type aliases rather than interfaces: db().execute<T>() constrains T to
 // Record<string, unknown>, which an interface does not satisfy.
@@ -9,6 +9,7 @@ export type ThreadRow = {
   context_type: ThreadContextType;
   context_id: string;
   document_id: string | null;
+  branch_id: string | null;
   status: ThreadStatus;
   comment_count: number | string;
   last_comment_at: Date | string | null;
@@ -24,8 +25,9 @@ export type ThreadRow = {
 export type CommentRow = {
   id: string;
   thread_id: string;
-  kind: 'message';
+  kind: CommentKind;
   body: string;
+  metadata: unknown;
   author_type: CommentAuthorType;
   author_id: string;
   author_name: string | null;

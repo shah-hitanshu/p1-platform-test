@@ -20,6 +20,7 @@ function comment(id: string, createdAt: string, author: Partial<Comment['author'
     threadId: 't-1',
     kind: 'message',
     body: 'Looks good',
+    metadata: null,
     author: { type: 'user', id: 'user-1', name: 'Nick', avatar: null, ...author },
     mentions: [],
     createdAt,
@@ -38,6 +39,11 @@ function renderThread(props: Partial<React.ComponentProps<typeof CommentThread>>
 describe('CommentThread', () => {
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it('puts the cursor in the composer as soon as the thread opens', () => {
+    renderThread({ onPost: vi.fn() });
+    expect(screen.getByRole('textbox', { name: 'New comment' })).toHaveFocus();
   });
 
   it('says how long ago each comment was posted and keeps that current', () => {
@@ -137,6 +143,48 @@ describe('CommentThread', () => {
 
     rerender(<CommentThread contextType="block" contextId="comp-1" threadId="t-1" resolved onClose={() => {}} />);
     expect(screen.getByTestId('comment-thread-resolved')).toHaveTextContent('Resolved');
+  });
+
+  it('offers to resolve an open thread, and the badge instead once it is resolved', () => {
+    const onResolve = vi.fn();
+    const { rerender } = renderThread({ threadId: 't-1', onResolve });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Resolve thread' }));
+    expect(onResolve).toHaveBeenCalledTimes(1);
+
+    rerender(
+      <CommentThread contextType="block" contextId="comp-1" threadId="t-1" resolved onResolve={onResolve} onClose={() => {}} />,
+    );
+    expect(screen.queryByTestId('comment-thread-resolve')).not.toBeInTheDocument();
+    expect(screen.getByTestId('comment-thread-resolved')).toBeInTheDocument();
+  });
+
+  // A reader looking at a thread on a context nothing can be sent through — no editor,
+  // no thread started yet — is shown no control they cannot use.
+  it('offers no way to resolve when resolving is not on offer', () => {
+    renderThread({ threadId: 't-1' });
+
+    expect(screen.queryByTestId('comment-thread-resolve')).not.toBeInTheDocument();
+  });
+
+  it('holds the resolve button while the change is in flight, and says when it did not land', () => {
+    const onResolve = vi.fn();
+    const { rerender } = renderThread({ threadId: 't-1', onResolve, resolving: true });
+    expect(screen.getByTestId('comment-thread-resolve')).toBeDisabled();
+
+    rerender(
+      <CommentThread
+        contextType="block"
+        contextId="comp-1"
+        threadId="t-1"
+        onResolve={onResolve}
+        resolveFailed
+        onClose={() => {}}
+      />,
+    );
+    const button = screen.getByTestId('comment-thread-resolve');
+    expect(button).toBeEnabled();
+    expect(button).toHaveAccessibleName('Resolve thread, last attempt failed');
   });
 
   it('closes from its header', () => {

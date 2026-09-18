@@ -12,17 +12,19 @@ import { describe, it, expect, vi } from 'vitest';
 import React from 'react';
 import { render, screen, fireEvent, within } from '@testing-library/react';
 
+const puckState = {
+  selectedItem: null,
+  appState: { data: { content: [], root: { props: {} } } },
+  config: { components: { HeadingBlock: { label: 'Heading' }, CtaBlock: {} } },
+  getItemById: (id: string) =>
+    ({ 'comp-1': { type: 'HeadingBlock' }, 'comp-2': { type: 'CtaBlock' } })[id],
+};
+
 vi.mock('@puckeditor/core', () => ({
   ActionBar: ({ children }: any) => <div data-testid="action-bar">{children}</div>,
   FieldLabel: ({ children }: any) => <label>{children}</label>,
-  createUsePuck: () => (selector: (s: any) => unknown) =>
-    selector({
-      selectedItem: null,
-      appState: { data: { content: [], root: { props: {} } } },
-      config: { components: { HeadingBlock: { label: 'Heading' }, CtaBlock: {} } },
-      getItemById: (id: string) =>
-        ({ 'comp-1': { type: 'HeadingBlock' }, 'comp-2': { type: 'CtaBlock' } })[id],
-    }),
+  createUsePuck: () => (selector: (s: any) => unknown) => selector(puckState),
+  useGetPuck: () => () => puckState,
 }));
 
 vi.mock('@pantheon-systems/pds-toolkit-react', async (importOriginal) => ({
@@ -139,7 +141,7 @@ describe('threads on the block overlay', () => {
 
   // The thread is drawn in the overlay, and the editor takes the overlay away as soon
   // as the block stops reading as hovered — so an open thread has to hold the hover.
-  it('keeps the block hovered while its thread is open', () => {
+  it('keeps the block hovered while its thread is open', async () => {
     renderBlocks({ threadsEnabled: true } as P1OverridesOptions);
 
     const block = screen.getByTestId('block-comp-1');
@@ -150,7 +152,27 @@ describe('threads on the block overlay', () => {
     expect(screen.getByTestId('comment-thread')).toBeInTheDocument();
 
     fireEvent.mouseOut(block, { relatedTarget: document.body });
+    await Promise.resolve();
     expect(seen).toEqual(['mouseover']);
+  });
+
+  // The editor re-adds its own hover listeners whenever the block is selected or
+  // deselected, which puts them after the trigger's. The hover it hands back has to
+  // be the last word even then, or the overlay closes and takes the open thread with it.
+  it('keeps the block hovered when the editor hears the mouseout after the trigger does', async () => {
+    renderBlocks({ threadsEnabled: true } as P1OverridesOptions);
+
+    const block = screen.getByTestId('block-comp-1');
+    fireEvent.click(triggerIn('comp-1') as HTMLElement);
+
+    let hovered = true;
+    block.addEventListener('mouseover', () => (hovered = true));
+    block.addEventListener('mouseout', () => (hovered = false));
+
+    fireEvent.mouseOut(block, { relatedTarget: document.body });
+    expect(hovered).toBe(false);
+    await Promise.resolve();
+    expect(hovered).toBe(true);
   });
 
   // Overlays are siblings with no stacking order of their own, so a thread reaching

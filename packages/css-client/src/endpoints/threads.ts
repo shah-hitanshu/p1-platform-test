@@ -6,10 +6,12 @@
  */
 
 import type {
+  CommentContent,
   ThreadContextRef,
   ListThreadsOptions,
   PostCommentResult,
   PostThreadParams,
+  ProposalDecision,
   ThreadListPage,
   ThreadOverview,
   ThreadStatus,
@@ -81,15 +83,55 @@ export class ThreadsEndpoint {
   }
 
   /**
-   * Reply to an existing thread. Replying to a resolved thread reopens it.
+   * Reply to an existing thread. Replying to a resolved thread reopens it. A
+   * plain string posts a message; an agent passes the full content to leave
+   * a working line or a proposal.
    */
-  async postComment(siteId: string, threadId: string, body: string): Promise<PostCommentResult> {
+  async postComment(siteId: string, threadId: string, content: string | CommentContent): Promise<PostCommentResult> {
     requirePathParams({ siteId, threadId }, 'threads.postComment');
 
     return this.base.request<PostCommentResult>(`/api/sites/${siteId}/threads/${threadId}/comments`, {
       method: 'POST',
-      body: JSON.stringify({ body }),
+      body: JSON.stringify(typeof content === 'string' ? { body: content } : content),
     });
+  }
+
+  /**
+   * Replace one of the caller's own comments, kind and state included. This is
+   * how an agent turns its working line into its answer.
+   */
+  async updateComment(
+    siteId: string,
+    threadId: string,
+    commentId: string,
+    content: CommentContent,
+  ): Promise<PostCommentResult> {
+    requirePathParams({ siteId, threadId, commentId }, 'threads.updateComment');
+
+    return this.base.request<PostCommentResult>(
+      `/api/sites/${siteId}/threads/${threadId}/comments/${commentId}`,
+      { method: 'PUT', body: JSON.stringify(content) },
+    );
+  }
+
+  /**
+   * Accept or dismiss an agent's proposal. Only a proposal still waiting can be
+   * decided. Accepting applies the proposed operations to the document as the
+   * deciding user before the decision is recorded, so the change reaches every
+   * open editor over realtime; a refusal leaves the proposal undecided.
+   */
+  async decideProposal(
+    siteId: string,
+    threadId: string,
+    commentId: string,
+    decision: ProposalDecision,
+  ): Promise<PostCommentResult> {
+    requirePathParams({ siteId, threadId, commentId }, 'threads.decideProposal');
+
+    return this.base.request<PostCommentResult>(
+      `/api/sites/${siteId}/threads/${threadId}/comments/${commentId}/decision`,
+      { method: 'PUT', body: JSON.stringify({ decision }) },
+    );
   }
 
   /**

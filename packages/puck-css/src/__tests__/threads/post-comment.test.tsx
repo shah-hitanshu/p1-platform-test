@@ -44,6 +44,7 @@ function overview(contextId: string, extra: Partial<ThreadOverview> = {}): Threa
     updatedAt: '2026-09-01T00:00:00Z',
     resolvedAt: null,
     resolvedBy: null,
+    branchId: null,
     ...extra,
   };
 }
@@ -53,6 +54,7 @@ const comment = {
   threadId: 'thread-comp-1',
   kind: 'message' as const,
   body: 'hi',
+  metadata: null,
   author: { type: 'user' as const, id: 'user-1', name: 'Nick', avatar: null },
   mentions: [],
   createdAt: '2026-09-01T00:00:00Z',

@@ -34,8 +34,28 @@ describe('parseRoute — threads', () => {
     });
   });
 
+  it('parses one comment and its decision', () => {
+    expect(parseRoute('/api/sites/site-1/threads/thread-1/comments/comment-1')?.params).toMatchObject({
+      threadId: 'thread-1',
+      subResource: 'comments',
+      commentId: 'comment-1',
+      commentAction: undefined,
+    });
+    expect(parseRoute('/api/sites/site-1/threads/thread-1/comments/comment-1/decision')?.params).toMatchObject({
+      threadId: 'thread-1',
+      subResource: 'comments',
+      commentId: 'comment-1',
+      commentAction: 'decision',
+    });
+  });
+
   it('does not claim an unknown sub-resource under a thread', () => {
     expect(parseRoute('/api/sites/site-1/threads/thread-1/likes')?.handler).not.toBe('threads');
+  });
+
+  it('does not claim anything under status or an unknown action under a comment', () => {
+    expect(parseRoute('/api/sites/site-1/threads/thread-1/status/x')?.handler).not.toBe('threads');
+    expect(parseRoute('/api/sites/site-1/threads/thread-1/comments/comment-1/likes')?.handler).not.toBe('threads');
   });
 
   it('parses the per-context listing and decodes the context id', () => {

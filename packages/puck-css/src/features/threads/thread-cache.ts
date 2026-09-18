@@ -24,14 +24,15 @@ export function applyThreadOverview(queryClient: QueryClient, thread: ThreadOver
 }
 
 /**
- * Folds a change to a thread into the page listing it belongs to, and a new
- * comment into its thread as well when that thread is open.
+ * Folds a change to a thread into the page listing it belongs to, and a new or
+ * rewritten comment into its thread as well when that thread is open.
  *
  * @returns Whether anything loaded was there to update.
  */
 export function applyThreadEvent(queryClient: QueryClient, event: ThreadEvent): boolean {
   switch (event.type) {
-    case 'comment_posted': {
+    case 'comment_posted':
+    case 'comment_updated': {
       const listed = applyThreadOverview(queryClient, event.thread);
       const appended = appendThreadComment(queryClient, event.siteId, event.comment);
       return listed || appended;

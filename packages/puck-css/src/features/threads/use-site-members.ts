@@ -6,6 +6,7 @@ import { useP1PuckOptional } from '../../core/P1PuckContext.js';
 import { P1SdkQueryClientContext } from '../../data/query-provider.js';
 import { useThreadsEnabled } from './enabled.js';
 import { mentionCandidates, type MentionCandidate } from './mentions.js';
+import { subscribeToQueryCache } from './query-cache.js';
 
 export const SITE_MEMBERS_KEY = 'p1-site-members';
 
@@ -50,7 +51,7 @@ export function useSiteMembers(wanted: boolean): SiteMembersState {
   }, [ready, queryClient, client, siteId]);
 
   const subscribe = useCallback(
-    (onChange: () => void) => (queryClient ? queryClient.getQueryCache().subscribe(onChange) : noop),
+    (onChange: () => void) => (queryClient ? subscribeToQueryCache(queryClient, onChange) : noop),
     [queryClient],
   );
   const read = useCallback(
