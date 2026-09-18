@@ -584,6 +584,68 @@ describe('replaying a turn the user stopped', () => {
     expect(restored[1].toolCalls![0].result).toEqual({ success: true });
   });
 
+  const cutArgs = '{"ops":[{"path":"content.17","text":"At the heart of';
+
+  const cutOffCallTurn = (id: string, args: string): StoredMessage => ({
+    role: 'assistant',
+    content: '',
+    tool_calls: [{
+      id,
+      type: 'function',
+      function: { name: 'apply_document_edits', arguments: args },
+    }],
+  });
+
+  const argumentsSentFor = (args: string): string => {
+    const turn: StoredMessage[] = [user('rewrite the intro'), cutOffCallTurn('call-1', args)];
+    closeStoppedTurn(turn);
+    const sent = forProvider(sanitizeHistory(appendTurn([], turn)));
+    return (sent[1] as { tool_calls: { function: { arguments: string } }[] })
+      .tool_calls[0].function.arguments;
+  };
+
+  it('sends a call the stop cut mid-arguments in a shape the provider accepts', () => {
+    expect(() => JSON.parse(argumentsSentFor(cutArgs))).not.toThrow();
+  });
+
+  it('sends a call the stop cut before its arguments began in the same shape', () => {
+    expect(() => JSON.parse(argumentsSentFor(''))).not.toThrow();
+  });
+
+  it('leaves a call that finished alone when it repairs the one beside it', () => {
+    const done = '{"documentPath":"/contact-us"}';
+    const turn: StoredMessage[] = [
+      user('rewrite the intro'),
+      {
+        role: 'assistant',
+        content: '',
+        tool_calls: [
+          { id: 'call-1', type: 'function', function: { name: 'get_document', arguments: done } },
+          { id: 'call-2', type: 'function', function: { name: 'apply_document_edits', arguments: cutArgs } },
+        ],
+      },
+    ];
+    closeStoppedTurn(turn);
+
+    const sent = forProvider(sanitizeHistory(appendTurn([], turn)));
+    const calls = (sent[1] as { tool_calls: { function: { arguments: string } }[] }).tool_calls;
+
+    expect(calls[0].function.arguments).toBe(done);
+    expect(calls[1].function.arguments).toBe('{}');
+  });
+
+  it('still shows the step whose arguments the stop cut short', () => {
+    const turn: StoredMessage[] = [user('rewrite the intro'), cutOffCallTurn('call-1', cutArgs)];
+    closeStoppedTurn(turn);
+
+    const restored = buildRestoredHistory(sanitizeHistory(appendTurn([], turn)));
+
+    expect(restored[1].stopped).toBe(true);
+    expect(restored[1].toolCalls).toEqual([
+      { name: 'apply_document_edits', input: {}, abandoned: true },
+    ]);
+  });
+
   it('records the stop on the turn that was running, not an earlier one', () => {
     const entries: StoredMessage[] = [assistant('first'), toolResult('t1'), assistant('second')];
 

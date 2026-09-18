@@ -43,6 +43,7 @@ export const STOPPED_TOOL_RESULT = JSON.stringify({
  */
 export function closeStoppedTurn(entries: StoredMessage[], streamed = ''): void {
   if (streamed !== '') entries.push({ role: 'assistant', content: streamed });
+  repairCutOffArguments(entries);
 
   const answered = new Set<string>();
   for (const m of entries) {
@@ -138,9 +139,41 @@ export function pairToolCalls(history: StoredMessage[]): StoredMessage[] {
   return out;
 }
 
-function toolCallsOf(m: Msg): { id?: string }[] {
+type StoredToolCall = { id?: string; function?: { name?: string; arguments?: string } };
+
+function toolCallsOf(m: Msg): StoredToolCall[] {
   const calls = (m as { tool_calls?: unknown }).tool_calls;
-  return Array.isArray(calls) ? (calls as { id?: string }[]) : [];
+  return Array.isArray(calls) ? (calls as StoredToolCall[]) : [];
+}
+
+/** `''` is not "no arguments": the provider rejects an empty string as hard as a truncated one. */
+function argumentsAreValid(call: StoredToolCall): boolean {
+  if (call.function === undefined) return true;
+  try {
+    JSON.parse(call.function.arguments ?? '');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * One unparseable `arguments` is rejected for the whole conversation, not just the turn it sits
+ * in, so a single stop leaves every later message failing. Repaired rather than dropped so the
+ * interrupted step still shows in the transcript — and only once the turn is over, because a
+ * call the model never finished asking for must not become one the loop can execute.
+ */
+function repairCutOffArguments(entries: StoredMessage[]): void {
+  for (let i = 0; i < entries.length; i++) {
+    const calls = toolCallsOf(entries[i]);
+    if (calls.every(argumentsAreValid)) continue;
+    entries[i] = {
+      ...entries[i],
+      tool_calls: calls.map(call => (
+        argumentsAreValid(call) ? call : { ...call, function: { ...call.function, arguments: '{}' } }
+      )),
+    } as StoredMessage;
+  }
 }
 
 // Re-pairing catches the orphans slicing leaves mid-history. Model-facing only — the
