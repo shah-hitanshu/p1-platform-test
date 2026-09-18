@@ -10,7 +10,7 @@ import { getLogger } from '@pantheon-systems/p1-telemetry';
 import { assertPermission, AuthorizationError } from '../../auth/authorization';
 import { getMainBranch } from '../../services/branch-service';
 import { getSiteMembers, type SiteMembers } from '../../services/site-members-service';
-import { errorResponse, jsonResponse } from '../../utils/http-helpers';
+import { errorResponse, jsonResponse, NO_STORE_HEADERS } from '../../utils/http-helpers';
 import type { SiteMembersResponse, SiteMembersRouteContext } from './types';
 
 export type {
@@ -22,10 +22,6 @@ export type {
   SiteMembersRouteContext,
 } from './types';
 
-// Not cacheable in front of the worker: a shared cache there keys on the bare
-// URL and never sees the per-member gate, so these names and email addresses
-// would go to anyone who guessed the path. The memo lives behind the gate.
-const NO_STORE_HEADERS = { 'Cache-Control': 'private, no-store' } as const;
 
 /** A stale roster was rescued by the memo after a failed upstream call, so it is not 'ok'. */
 const DEGRADED_SOURCES = new Set(['unavailable', 'stale']);

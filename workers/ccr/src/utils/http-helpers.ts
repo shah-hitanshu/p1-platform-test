@@ -41,6 +41,12 @@ export function errorResponse(
   return jsonResponse({ error, details }, status);
 }
 
+/**
+ * For per-member responses: a shared cache in front of the worker keys on the
+ * URL and never sees the permission gate.
+ */
+export const NO_STORE_HEADERS = { 'Cache-Control': 'private, no-store' } as const;
+
 /** Allowed headers for main API routes */
 export const MAIN_ALLOWED_HEADERS = withCorrelationHeaders([
   'Content-Type',

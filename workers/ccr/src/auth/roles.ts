@@ -25,6 +25,7 @@ export const ROLES: Record<RoleName, RolePermissions> = {
     canMergeToMain: false,
     canManageGrants: false,
     canManageTemplates: false,
+    canComment: false,
   },
 
   VIEWER: {
@@ -38,6 +39,7 @@ export const ROLES: Record<RoleName, RolePermissions> = {
     canMergeToMain: false,
     canManageGrants: false,
     canManageTemplates: false,
+    canComment: true,
   },
 
   // The everyday content role: edits, publishes and merges to live. Workstreams,
@@ -53,6 +55,7 @@ export const ROLES: Record<RoleName, RolePermissions> = {
     canMergeToMain: true,
     canManageGrants: false,
     canManageTemplates: false,
+    canComment: true,
   },
 
   ADMIN: {
@@ -66,6 +69,7 @@ export const ROLES: Record<RoleName, RolePermissions> = {
     canMergeToMain: true,
     canManageGrants: true,
     canManageTemplates: true,
+    canComment: true,
   },
 } as const;
 

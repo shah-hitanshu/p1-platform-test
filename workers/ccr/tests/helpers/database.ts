@@ -157,8 +157,8 @@ export async function asConcurrentRequests(
 /**
  * Deletes a site and everything reachable from it, children first.
  *
- * Only `app.sites`' own dependents cascade; branches, documents and versions are
- * `NO ACTION`, so deleting a site without clearing them first raises a foreign key
+ * Only `app.sites`' own dependents cascade; branches, documents, versions and
+ * comment threads are `NO ACTION`, so deleting a site without clearing them first raises a foreign key
  * violation and the site's rows outlive the run. `branches.source_checkpoint_id`
  * and `checkpoints.branch_id` reference each other, so the branch's pointer is
  * cleared before the checkpoints it names are deleted.
@@ -172,6 +172,7 @@ export async function deleteSiteCascade(sql: postgres.Sql, siteId: string): Prom
   const checkpoints = sql`SELECT id FROM app.checkpoints WHERE branch_id IN (${branches})`;
 
   await sql`UPDATE app.branches SET source_checkpoint_id = NULL WHERE site_id = ${siteId}`;
+  await sql`DELETE FROM app.comment_threads WHERE site_id = ${siteId}`;
   await sql`DELETE FROM app.checkpoint_documents WHERE checkpoint_id IN (${checkpoints})`;
   await sql`DELETE FROM app.checkpoint_document_metadata WHERE checkpoint_id IN (${checkpoints})`;
   await sql`DELETE FROM app.checkpoint_structures WHERE checkpoint_id IN (${checkpoints})`;

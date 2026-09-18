@@ -31,6 +31,7 @@ import { handleMergeRoutes } from './merge-api';
 import { handleGrantRoutes } from './grant-api';
 import { handleCollaboratorRoutes } from './collaborator-api';
 import { handleSiteMembersRoutes } from './site-members';
+import { handleThreadRoutes } from './threads';
 import { handleRolesRoutes } from './roles-api';
 import { handleCurrentUserRoute, handleUsersRoutes } from './users-api';
 import { handleOrgUsersRoutes } from './org-users-api';
@@ -307,6 +308,19 @@ export async function dispatchRoute(
         siteId: route.params.siteId ?? '',
         principal,
         masClient,
+      });
+
+    case 'threads':
+      return await handleThreadRoutes(request, {
+        siteId: route.params.siteId ?? '',
+        threadId: route.params.threadId,
+        subResource: route.params.subResource,
+        contextType: route.params.contextType,
+        contextId: route.params.contextId,
+        principal,
+        masClient,
+        ctx,
+        env,
       });
 
     case 'collaborators':

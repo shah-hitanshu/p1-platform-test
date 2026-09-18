@@ -6,6 +6,40 @@ This document tracks the implementation progress of the Collaborative JSON State
 
 ---
 
+## Threads API — threads and comments under a site
+
+**Status:** Implementation complete — awaiting PR review
+**Branch:** `claude/threads-api`
+**Date:** 2026-09-12
+**Plan:** `docs/ccr/plans/2026-09-12-threads-api.md`
+**Tickets:** PCC-3963 (child of PCC-3926); realtime fan-out split into PCC-3968
+
+### Summary
+
+The editor's commenting prototype gets a backend: threaded comments anchored to a block, page, site or workstream, with mentions of users and agents, resolve/reopen, and per-page and per-site listings that carry counts and resolved state. Reading needs `canView`; posting, replying and changing status need the new `canComment` permission, which every role except `NO_ACCESS` holds.
+
+### What changed
+
+- **Permission:** `canComment` lands on `RolePermissions`. It is gated on a permission rather than a role tier so a future custom role can grant or withhold commenting on its own.
+- **Schema:** migration `0010_comment_threads` adds `app.comment_threads` and `app.comments`. Threads are keyed on (site, context type, context id) with a partial unique index that allows one open thread per context while leaving room for a resolved history. Comments carry `kind`, `metadata`, `edited_at` and `deleted_at` so proposal variants and editing need no later migration.
+- **Endpoints** under `/api/sites/{siteId}`: `POST /threads` (first comment, creates or appends), `POST /threads/{id}/comments` (reply, reopens a resolved thread), `GET /threads/{id}`, `GET /threads[?documentId=]` (one overview per context, open preferred, cursor paged), `GET /contexts/{type}/{id}/threads` (full history), `PUT /threads/{id}/status`.
+- **Mentions** travel inline in the body as `${mention|user:uuid}` / `${mention|agent:id}` tokens. They are validated against the site roster on write (unknown members are a 400 naming them) and hydrated with name and avatar on read. No mentions table.
+- **Events:** every committed write goes through `emitThreadEvent(ctx, env, event)`, which only logs today. The realtime work replaces its body with the Durable Object fan-out; callers do not change.
+- **Layout:** `routes/threads/` holds the gate, one handler per endpoint, and zod schemas; `services/threads/` holds the SQL service, the mentions service, row factories, cursor and errors; `types/threads/` holds the models one per file. Shared `utils/uuid.ts` and `NO_STORE_HEADERS` in `utils/http-helpers.ts` came out of it.
+
+### Verification
+
+- 77 tests across seven specs: route method/permission matrix, validation and response shapes; observability lines; parser; mentions; service cursor and actor handling; a real-Postgres spec covering the first-post race, reopen on reply, the per-context collapse and cursor paging; the `canComment` role matrix.
+- Full `workers/ccr` suite green, lint and typecheck clean, `check:typecheck-tests` unchanged at 819.
+
+### Remaining
+
+- Realtime fan-out of thread events over the document socket (PCC-3968), plan at `docs/ccr/plans/2026-09-12-threads-realtime.md`.
+- Consolidate the UUID regex the worker still inlines in eight other modules onto `utils/uuid.ts`.
+- Comment editing and deletion: columns exist, no route yet.
+
+---
+
 ## Drizzle ORM migration — Phase 0: schema source of truth and migration cut-over
 
 **Status:** Phase 0 complete — awaiting PR review

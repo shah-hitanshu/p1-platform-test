@@ -13,6 +13,8 @@ export { checkpointDocumentMetadata } from './checkpoint-document-metadata.schem
 export { checkpointDocuments } from './checkpoint-documents.schema';
 export { checkpointStructures } from './checkpoint-structures.schema';
 export { checkpoints } from './checkpoints.schema';
+export { commentThreads } from './comment-threads.schema';
+export { comments } from './comments.schema';
 export { documentRelationBranchResolutions } from './document-relation-branch-resolutions.schema';
 export { documentRelationBranchSync } from './document-relation-branch-sync.schema';
 export { documentRelations } from './document-relations.schema';

@@ -125,6 +125,17 @@ export function ensureLogger(env: TelemetryEnv): P1Logger {
       'member_count',
       'agent_count',
       'roster_source',
+      // Threads: which thread and comment a line is about, and how many
+      // of each a read returned.
+      'thread_id',
+      'comment_id',
+      'context_type',
+      'thread_count',
+      'comment_count',
+      'mention_count',
+      'event_type',
+      'reopened',
+      'changed',
     ],
   });
   return logger;

@@ -38,6 +38,12 @@ export interface RolePermissions {
    * document's own content.
    */
   canManageTemplates: boolean;
+  /**
+   * Taking part in threads: posting comments, replying, and resolving or
+   * reopening a thread. Every role that can see a site holds it; it is a
+   * separate flag so a custom role can hand it out or withhold it on its own.
+   */
+  canComment: boolean;
 }
 
 /**

@@ -483,6 +483,7 @@ describe('Phase 1.3: Core TypeScript Types', () => {
           canMergeToMain: false,
           canManageGrants: false,
           canManageTemplates: false,
+          canComment: true,
         };
         assertType<RolePermissions>(permissions);
         expect(permissions.canView).toBe(true);
@@ -502,6 +503,7 @@ describe('Phase 1.3: Core TypeScript Types', () => {
             canMergeToMain: false,
             canManageGrants: false,
             canManageTemplates: false,
+            canComment: true,
           },
         };
         assertType<Role>(role);

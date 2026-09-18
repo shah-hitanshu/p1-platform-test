@@ -71,9 +71,11 @@ Roles are ordered from lowest to highest privilege:
 | Level | Role | Key Permissions |
 |-------|------|-----------------|
 | 0 | `NO_ACCESS` | None |
-| 1 | `VIEWER` | `canView` |
-| 2 | `EDITOR` | `canView`, `canEdit`, `canCreateBranch`, `canEditDocuments`, `canCreateCheckpoint`, `canProposeMerge`, `canMerge` |
-| 3 | `ADMIN` | All of EDITOR + `canMergeToMain`, `canManageGrants` |
+| 1 | `VIEWER` | `canView`, `canComment` |
+| 2 | `EDITOR` | All of VIEWER + `canEdit`, `canCreateBranch`, `canEditDocuments`, `canCreateCheckpoint`, `canProposeMerge`, `canMerge` |
+| 3 | `ADMIN` | All of EDITOR + `canMergeToMain`, `canManageGrants`, `canManageTemplates` |
+
+`canComment` is the first permission held by every role rather than by a tier: it exists so a future custom role can grant or withhold commenting on its own, not because any role today lacks it.
 
 The `max()` operation selects the role with the higher privilege level.
 

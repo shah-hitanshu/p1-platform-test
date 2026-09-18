@@ -37,6 +37,9 @@ export interface RouteParams {
   conflictId?: string;
   datasourceName?: string;
   queryName?: string;
+  threadId?: string;
+  contextType?: string;
+  contextId?: string;
 }
 
 /**
@@ -905,6 +908,36 @@ export function parseRoute(path: string): { handler: string; params: RouteParams
       handler: 'site-members',
       params: {
         siteId: siteMembersMatch[1],
+      },
+    };
+  }
+
+  // Thread routes
+  // /api/sites/{siteId}/threads
+  // /api/sites/{siteId}/threads/{threadId}
+  // /api/sites/{siteId}/threads/{threadId}/comments
+  // /api/sites/{siteId}/threads/{threadId}/status
+  const threadsMatch = /^\/api\/sites\/([^/]+)\/threads(?:\/([^/]+)(?:\/(comments|status))?)?$/.exec(normalizedPath);
+  if (threadsMatch) {
+    return {
+      handler: 'threads',
+      params: {
+        siteId: threadsMatch[1],
+        threadId: threadsMatch[2],
+        subResource: threadsMatch[3],
+      },
+    };
+  }
+
+  // /api/sites/{siteId}/contexts/{contextType}/{contextId}/threads
+  const contextThreadsMatch = /^\/api\/sites\/([^/]+)\/contexts\/([^/]+)\/([^/]+)\/threads$/.exec(normalizedPath);
+  if (contextThreadsMatch) {
+    return {
+      handler: 'threads',
+      params: {
+        siteId: contextThreadsMatch[1],
+        contextType: contextThreadsMatch[2],
+        contextId: decodeURIComponent(contextThreadsMatch[3] ?? ''),
       },
     };
   }
