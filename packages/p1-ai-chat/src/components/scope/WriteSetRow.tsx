@@ -62,7 +62,7 @@ export function WriteSetRow({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '10px 16px' }}>
       <div style={rowStyle}>
-        <Icon iconName="globe" size="s" />
+        <Icon iconName="globe" size="xs" />
         <span><span style={keyStyle}>Reading:</span> entire site</span>
         <button
           type="button"
@@ -71,11 +71,11 @@ export function WriteSetRow({
           style={collapseStyle}
           onClick={() => onExpandedChange(false)}
         >
-          <Icon iconName="angleUp" size="s" />
+          <Icon iconName="angleUp" size="xs" />
         </button>
       </div>
       <div style={rowStyle}>
-        <Icon iconName="pen" size="s" />
+        <Icon iconName="pen" size="xs" />
         <span style={keyStyle}>Editing:</span>
         <WritablePages
           pages={pages}

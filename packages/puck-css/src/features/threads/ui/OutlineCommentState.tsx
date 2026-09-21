@@ -34,7 +34,7 @@ export function OutlineCommentState({ blockId }: OutlineCommentStateProps): Reac
         aria-label="Comments resolved"
         data-testid="outline-comments-resolved"
       >
-        <Icon iconName="check" size="s" aria-hidden="true" />
+        <Icon iconName="check" size="xs" aria-hidden="true" />
       </span>
     );
   }
@@ -46,7 +46,7 @@ export function OutlineCommentState({ blockId }: OutlineCommentStateProps): Reac
       aria-label={commentsLabel(thread.commentCount)}
       data-testid="outline-comment-count"
     >
-      <Icon iconName="comment" size="s" aria-hidden="true" />
+      <Icon iconName="comment" size="xs" aria-hidden="true" />
       {thread.commentCount}
     </span>
   );

@@ -297,7 +297,7 @@ function ChatMessageError({
           color="critical"
           label={
             <>
-              <Icon iconName="circleExclamation" size="s" verticalAlign="-0.1em" style={{ width: '0.625rem', height: '0.625rem' }} />
+              <Icon iconName="circleExclamation" size="xs" verticalAlign="-0.1em" style={{ width: '0.625rem', height: '0.625rem' }} />
               {' '}Something went wrong
             </>
           }

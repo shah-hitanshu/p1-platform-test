@@ -23,7 +23,7 @@ function CandidateAvatar({ candidate }: { candidate: MentionCandidate }): React.
   if (candidate.type === 'agent') {
     return (
       <span className={styles.agentAvatar} aria-hidden="true">
-        <SafeIcon iconName="sparkles" size="s" />
+        <SafeIcon iconName="sparkles" size="xs" />
       </span>
     );
   }

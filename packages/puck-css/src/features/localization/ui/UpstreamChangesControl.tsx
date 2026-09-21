@@ -117,7 +117,7 @@ function UpstreamChangesTrigger({
         title={diff.message}
         aria-label={`Upstream changes could not be checked: ${diff.message}. Check again.`}
       >
-        <Icon iconName="codeBranch" size="s" aria-hidden="true" />
+        <Icon iconName="codeBranch" size="xs" aria-hidden="true" />
         Check failed
       </button>
     );
@@ -155,7 +155,7 @@ function UpstreamChangesTrigger({
             ? `View structural changes from the ${sourceName}`
             : `Review ${String(outstanding)} upstream ${outstanding === 1 ? 'change' : 'changes'}`}
         >
-          <Icon iconName="globe" size="s" aria-hidden="true" />
+          <Icon iconName="globe" size="xs" aria-hidden="true" />
           {structuralOnly ? 'Structure changed' : label}
         </button>
       )}
@@ -167,7 +167,7 @@ function UpstreamChangesTrigger({
         testId="upstream-changes-drawer"
         eyebrow={
           <>
-            <Icon iconName="codeBranch" size="s" aria-hidden="true" />
+            <Icon iconName="codeBranch" size="xs" aria-hidden="true" />
             {EYEBROW[relationType]}
           </>
         }

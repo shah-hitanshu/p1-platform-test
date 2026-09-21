@@ -100,7 +100,7 @@ function AttachmentCard({
         aria-label={`Remove ${attachment.filename}`}
         onClick={() => onRemove(attachment.id)}
       >
-        <Icon iconName="xmark" size="s" />
+        <Icon iconName="xmark" size="xs" />
       </button>
     </div>
   );
@@ -131,7 +131,7 @@ function FailedAttachments({
     <>
       {attachments.map(attachment => (
         <div key={attachment.id} style={errorRowStyle}>
-          <Icon iconName="circleExclamation" size="s" />
+          <Icon iconName="circleExclamation" size="xs" />
           <span style={{ flex: 1, minWidth: 0 }}>
             {attachment.filename} — {attachment.error}
           </span>

@@ -82,7 +82,7 @@ export function VersionBannerActions({
                   disabled={prevDisabled}
                   onClick={onPrevious}
                 >
-                  <Icon iconName="angleLeft" size="s" aria-hidden="true" />
+                  <Icon iconName="angleLeft" size="xs" aria-hidden="true" />
                 </button>
               </StepperTooltip>
             )}
@@ -95,7 +95,7 @@ export function VersionBannerActions({
                   disabled={nextDisabled}
                   onClick={onNext}
                 >
-                  <Icon iconName="angleRight" size="s" aria-hidden="true" />
+                  <Icon iconName="angleRight" size="xs" aria-hidden="true" />
                 </button>
               </StepperTooltip>
             )}
@@ -128,7 +128,7 @@ export function VersionBannerActions({
               </>
             ) : (
               <>
-                <Icon iconName="rotateLeft" size="s" aria-hidden="true" />
+                <Icon iconName="rotateLeft" size="xs" aria-hidden="true" />
                 Revert to this version
               </>
             )}

@@ -81,11 +81,11 @@ function ToolRow({ tool }: { tool: ToolCallStatus }): React.ReactElement {
     <>
       <Icon
         iconName={outcome === 'done' ? 'circleCheck' : 'circleExclamation'}
-        size="s"
+        size="xs"
         style={ROW_ICON}
       />
       <span style={{ overflowWrap: 'anywhere', flex: 1 }}>{toolCallLabel(tool)}</span>
-      {note && <Icon iconName={showDetail ? 'caretDown' : 'caretRight'} size="s" style={ROW_ICON} />}
+      {note && <Icon iconName={showDetail ? 'caretDown' : 'caretRight'} size="xs" style={ROW_ICON} />}
     </>
   );
 

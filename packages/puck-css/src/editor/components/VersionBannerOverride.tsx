@@ -166,7 +166,7 @@ export function VersionBannerOverride({
               <PageNotFound {...pageNotFound} />
             ) : (
               <>
-                <Icon iconName="userAstronaut" size="3xl" aria-hidden="true" />
+                <Icon iconName="userAstronaut" size="4xl" aria-hidden="true" />
                 <p style={{ margin: 0, fontFamily: 'Poppins, sans-serif', fontSize: '1rem' }}>
                   Choose a page from the menu above
                 </p>

@@ -25,7 +25,7 @@ const usePuckOutline = createUsePuck();
 
 function BlockIcon({ type, label }: { type: string; label?: string }): React.ReactElement | null {
   const iconName = getIconForComponent(type, label);
-  return iconName ? <SafeIcon iconName={iconName} size="s" /> : null;
+  return iconName ? <SafeIcon iconName={iconName} size="xs" /> : null;
 }
 
 export function OutlinePanel(): React.ReactElement {
@@ -123,7 +123,7 @@ export function OutlinePanel(): React.ReactElement {
                     }}
                     onKeyDown={(e) => e.stopPropagation()}
                   >
-                    <Icon iconName="trash" size="s" />
+                    <Icon iconName="trash" size="xs" />
                   </button>
                 )}
               </DraggableRow>

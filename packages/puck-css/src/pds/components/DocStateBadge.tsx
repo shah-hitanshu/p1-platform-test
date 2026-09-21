@@ -44,7 +44,7 @@ export function DocStateBadge({ docState, hasDrift = false }: DocStateBadgeProps
           title={DRIFT_TOOLTIP[docState]}
           style={{ color: '#b45309', display: 'inline-flex', alignItems: 'center' }}
         >
-          <Icon iconName="triangleExclamation" size="s" />
+          <Icon iconName="triangleExclamation" size="xs" />
         </span>
       )}
     </span>

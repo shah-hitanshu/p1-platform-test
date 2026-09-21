@@ -387,7 +387,7 @@ export function P1EditorHeader({
       <div className={styles.divider} aria-hidden="true" />
       {/* Site label — visual only, dropdown not yet supported */}
       <div data-testid="site-label" className={styles.siteLabel}>
-        <Icon iconName="globe" size="s" aria-hidden="true" />
+        <Icon iconName="globe" size="xs" aria-hidden="true" />
         <span className="visually-hidden">Site: {siteName}</span>
         <span className={styles.siteName} aria-hidden="true">
           {siteName}
@@ -406,10 +406,10 @@ export function P1EditorHeader({
           aria-haspopup="true"
           aria-expanded={pageNavigatorOpen}
         >
-          <Icon iconName="folderTree" size="s" aria-hidden="true" />
+          <Icon iconName="folderTree" size="xs" aria-hidden="true" />
           <span className={styles.labelText}>
             {currentDocument?.path || selectedDocumentPath || 'Select a page'}
-            <Icon iconName="angleDown" size="s" aria-hidden="true" />
+            <Icon iconName="angleDown" size="xs" aria-hidden="true" />
           </span>
         </button>
 
@@ -596,7 +596,7 @@ export function P1EditorHeader({
                 onLogout();
               }}
             >
-              <Icon iconName="bracketRight" size="s" aria-hidden="true" />
+              <Icon iconName="bracketRight" size="xs" aria-hidden="true" />
               {isLoggingOut ? 'Logging out…' : 'Log out'}
             </button>
           </div>,

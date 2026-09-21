@@ -110,7 +110,7 @@ export function CommentTrigger({
         data-context-id={contextId}
         onClick={handleClick}
       >
-        <Icon iconName="comment" size="s" aria-hidden="true" />
+        <Icon iconName="comment" size="xs" aria-hidden="true" />
         {hasThread && (
           <Tally
             label={commentCount}

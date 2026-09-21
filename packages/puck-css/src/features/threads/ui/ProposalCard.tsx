@@ -117,7 +117,7 @@ export function ProposalCard({ comment, actions, now }: ProposalCardProps): Reac
         data-testid="agent-proposal"
         data-status={status}
       >
-        <SafeIcon iconName={accepted ? 'check' : 'xmark'} size="s" />
+        <SafeIcon iconName={accepted ? 'check' : 'xmark'} size="xs" />
         <span data-testid="agent-proposal-outcome">
           {accepted ? `Applied by ${agentName(comment)}` : 'Dismissed'}
           {decider && (

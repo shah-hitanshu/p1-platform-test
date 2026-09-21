@@ -38,7 +38,7 @@ export function DropOverlay(): React.ReactElement {
   return (
     <div style={overlayStyle} data-testid="chat-drop-overlay">
       <div style={frameStyle}>
-        <Icon iconName="upload" size="l" />
+        <Icon iconName="upload" size="xl" />
         <div style={{ fontSize: 'var(--pds-typography-size-s)', fontWeight: 'var(--pds-typography-fw-semibold)' }}>
           Drop to attach
         </div>

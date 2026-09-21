@@ -20,7 +20,7 @@ import { Icon } from '@pantheon-systems/pds-toolkit-react';
 export interface SafeIconProps {
   /** Any pds-toolkit icon name. Unknown names render nothing. */
   iconName: string;
-  size?: 's' | 'm' | 'l';
+  size?: 'xs' | 'm' | 'xl';
 }
 
 interface BoundaryState {
@@ -42,7 +42,7 @@ class IconBoundary extends React.Component<
   }
 }
 
-export function SafeIcon({ iconName, size = 's' }: SafeIconProps): React.ReactElement {
+export function SafeIcon({ iconName, size = 'xs' }: SafeIconProps): React.ReactElement {
   return (
     <IconBoundary key={iconName}>
       <Icon iconName={iconName as never} size={size} />

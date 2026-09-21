@@ -85,7 +85,7 @@ export function VersionTimeline({
                     </div>
                     {attribution && (
                       <span className={styles.agentGlyph} aria-hidden="true">
-                        <SafeIcon iconName="sparkles" size="s" />
+                        <SafeIcon iconName="sparkles" size="xs" />
                       </span>
                     )}
                     <div

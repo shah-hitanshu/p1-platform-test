@@ -128,7 +128,7 @@ export function SlideOverDrawer({
               aria-label={`Close ${ariaLabel.toLowerCase()}`}
               data-testid={testId === undefined ? undefined : `${testId}-close`}
             >
-              <Icon iconName="xmark" size="s" aria-hidden="true" />
+              <Icon iconName="xmark" size="xs" aria-hidden="true" />
             </button>
           </div>
           <h2 className={styles.title}>{title}</h2>

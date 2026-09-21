@@ -151,8 +151,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/p1-next-sdk
       '@pantheon-systems/pds-toolkit-react':
-        specifier: 2.0.0-alpha.67
-        version: 2.0.0-alpha.67(@types/react@19.2.17)(prop-types@15.8.1)(react-dom@19.2.7(react@19.2.7))(react-is@18.3.1)(react@19.2.7)(redux@5.0.1)
+        specifier: 2.0.0-alpha.87
+        version: 2.0.0-alpha.87(@types/react@19.2.17)(prop-types@15.8.1)(react-dom@19.2.7(react@19.2.7))(react-is@18.3.1)(react@19.2.7)(redux@5.0.1)
       '@pantheon-systems/puck-css':
         specifier: workspace:*
         version: link:../../packages/puck-css
@@ -354,8 +354,8 @@ importers:
         specifier: workspace:*
         version: link:../eslint-config
       '@pantheon-systems/pds-toolkit-react':
-        specifier: 2.0.0-alpha.67
-        version: 2.0.0-alpha.67(@types/react@19.2.17)(prop-types@15.8.1)(react-dom@19.2.7(react@19.2.7))(react-is@18.3.1)(react@19.2.7)(redux@5.0.1)
+        specifier: 2.0.0-alpha.87
+        version: 2.0.0-alpha.87(@types/react@19.2.17)(prop-types@15.8.1)(react-dom@19.2.7(react@19.2.7))(react-is@18.3.1)(react@19.2.7)(redux@5.0.1)
       '@pantheon-systems/puck-css':
         specifier: workspace:*
         version: link:../puck-css
@@ -665,8 +665,8 @@ importers:
         specifier: workspace:*
         version: link:../eslint-config
       '@pantheon-systems/pds-toolkit-react':
-        specifier: 2.0.0-alpha.67
-        version: 2.0.0-alpha.67(@types/react@19.2.17)(prop-types@15.8.1)(react-dom@19.2.7(react@19.2.7))(react-is@18.3.1)(react@19.2.7)(redux@5.0.1)
+        specifier: 2.0.0-alpha.87
+        version: 2.0.0-alpha.87(@types/react@19.2.17)(prop-types@15.8.1)(react-dom@19.2.7(react@19.2.7))(react-is@18.3.1)(react@19.2.7)(redux@5.0.1)
       '@tanstack/react-query':
         specifier: ^5.99.0
         version: 5.101.3(@types/react@19.2.17)(react@19.2.7)
@@ -2292,8 +2292,19 @@ packages:
   '@pantheon-systems/pds-design-tokens@2.0.0-alpha.67':
     resolution: {integrity: sha512-cR1ObD4sqFIeaCbraZHFL/1cmB7YyVA+94K8bI1zWZ/fxuqp1AhB8dQ6+shfvSENW/9RX2pXETiIk9VFm5YJIQ==}
 
+  '@pantheon-systems/pds-design-tokens@2.0.0-alpha.70':
+    resolution: {integrity: sha512-ODRj9SVX5WQF/InG3mYdhFdQvAk60TW8SgofV1UBRCp7AAp79oZZ6FKUWHDT8BzMX/4xiHV4C7vicz2BKYnRjQ==}
+
   '@pantheon-systems/pds-toolkit-react@2.0.0-alpha.67':
     resolution: {integrity: sha512-dmqMIeB7WqJK4ILLhIHAwBQRIOBCxEOZI89Om81VTYeik3gi+qLZdV3Xc+oxzV336z8sfE3J5He67k9Cuwwr/A==}
+    engines: {node: '>=18.0.0 <=24.x'}
+    hasBin: true
+    peerDependencies:
+      react: ^18.0.0 || ^19.0.0
+      react-dom: ^18.0.0 || ^19.0.0
+
+  '@pantheon-systems/pds-toolkit-react@2.0.0-alpha.87':
+    resolution: {integrity: sha512-XudIMcHEdnLZBeaWxMKHpPPCwNwLaRHy1+9qIvNoOp7w4MhHvSVjGPYBNNuwEm3QLHyvq48haPwW41Xb0InbJw==}
     engines: {node: '>=18.0.0 <=24.x'}
     hasBin: true
     peerDependencies:
@@ -9151,6 +9162,8 @@ snapshots:
 
   '@pantheon-systems/pds-design-tokens@2.0.0-alpha.67': {}
 
+  '@pantheon-systems/pds-design-tokens@2.0.0-alpha.70': {}
+
   '@pantheon-systems/pds-toolkit-react@2.0.0-alpha.67(@types/react@19.2.17)(prop-types@15.8.1)(react-dom@19.2.7(react@19.2.7))(react-is@18.3.1)(react@19.2.7)(redux@5.0.1)':
     dependencies:
       '@dnd-kit/core': 6.3.1(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
@@ -9160,6 +9173,44 @@ snapshots:
       '@floating-ui/react-dom': 1.3.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       '@internationalized/date': 3.12.3
       '@pantheon-systems/pds-design-tokens': 2.0.0-alpha.67
+      '@reactuses/core': 5.0.23(react@19.2.7)
+      date-fns: 4.4.0
+      downshift: 9.4.0(react@19.2.7)
+      express: 5.2.1
+      express-rate-limit: 8.6.0(express@5.2.1)
+      focus-trap-react: 10.3.1(prop-types@15.8.1)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      hash-sum: 2.0.0
+      modern-normalize: 3.0.1
+      pino: 10.3.1
+      pino-http: 11.0.0
+      prism-react-renderer: 2.4.1(react@19.2.7)
+      prismjs: 1.30.0
+      react: 19.2.7
+      react-aria: 3.51.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      react-code-block: 1.1.3(prism-react-renderer@2.4.1(react@19.2.7))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      react-device-detect: 2.2.3(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      react-dom: 19.2.7(react@19.2.7)
+      react-hotkeys-hook: 4.6.2(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      react-stately: 3.49.0(react@19.2.7)
+      react-toastify: 11.1.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      recharts: 3.9.2(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react-is@18.3.1)(react@19.2.7)(redux@5.0.1)
+    transitivePeerDependencies:
+      - '@types/react'
+      - prop-types
+      - qrcode
+      - react-is
+      - redux
+      - supports-color
+
+  '@pantheon-systems/pds-toolkit-react@2.0.0-alpha.87(@types/react@19.2.17)(prop-types@15.8.1)(react-dom@19.2.7(react@19.2.7))(react-is@18.3.1)(react@19.2.7)(redux@5.0.1)':
+    dependencies:
+      '@dnd-kit/core': 6.3.1(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      '@dnd-kit/sortable': 10.0.0(@dnd-kit/core@6.3.1(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(react@19.2.7)
+      '@dnd-kit/utilities': 3.2.2(react@19.2.7)
+      '@floating-ui/react': 0.24.8(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      '@floating-ui/react-dom': 1.3.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      '@internationalized/date': 3.12.3
+      '@pantheon-systems/pds-design-tokens': 2.0.0-alpha.70
       '@reactuses/core': 5.0.23(react@19.2.7)
       date-fns: 4.4.0
       downshift: 9.4.0(react@19.2.7)

@@ -52,7 +52,7 @@ export function CollapsibleSectionHeader({
         {count !== undefined && (
           <span className={styles.count}>{count}</span>
         )}
-        <Icon iconName={open ? 'angleUp' : 'angleDown'} size="s" />
+        <Icon iconName={open ? 'angleUp' : 'angleDown'} size="xs" />
       </span>
     </button>
   );

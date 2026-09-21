@@ -39,7 +39,7 @@ export function CommentThreadHeader({
         data-testid="comment-thread-subject"
         label={
           <>
-            {icon && <SafeIcon iconName={icon} size="s" aria-hidden="true" />}
+            {icon && <SafeIcon iconName={icon} size="xs" aria-hidden="true" />}
             <span className={styles.subjectLabel}>{label}</span>
           </>
         }
@@ -52,7 +52,7 @@ export function CommentThreadHeader({
           data-testid="comment-thread-resolved"
           label={
             <>
-              <Icon iconName="check" size="s" aria-hidden="true" />
+              <Icon iconName="check" size="xs" aria-hidden="true" />
               Resolved
             </>
           }

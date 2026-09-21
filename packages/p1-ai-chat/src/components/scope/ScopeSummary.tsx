@@ -29,9 +29,9 @@ function summarize(count: number): string {
 export function ScopeSummary({ pageCount, onExpand }: ScopeSummaryProps): React.ReactElement {
   return (
     <button type="button" aria-expanded={false} style={buttonStyle} onClick={onExpand}>
-      <Icon iconName="pen" size="s" />
+      <Icon iconName="pen" size="xs" />
       <span>{summarize(pageCount)}</span>
-      <Icon iconName="angleDown" size="s" />
+      <Icon iconName="angleDown" size="xs" />
     </button>
   );
 }

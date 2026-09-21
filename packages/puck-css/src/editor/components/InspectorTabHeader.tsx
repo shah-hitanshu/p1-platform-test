@@ -58,7 +58,7 @@ export function InspectorTabHeader({
           title="Collapse panel"
           data-testid="inspector-collapse-button"
         >
-          <Icon iconName="angleRight" size="s" aria-hidden="true" />
+          <Icon iconName="angleRight" size="xs" aria-hidden="true" />
         </button>
       )}
     </div>

@@ -142,7 +142,7 @@ export function LocaleSwitcher({
           aria-label="Locales unavailable, try again"
           onClick={onRetry}
         >
-          <Icon iconName="triangleExclamation" size="s" aria-hidden="true" />
+          <Icon iconName="triangleExclamation" size="xs" aria-hidden="true" />
           <span className={styles.triggerLabel}>
             <span className={styles.triggerName}>Locales unavailable</span>
           </span>
@@ -225,7 +225,7 @@ export function LocaleSwitcher({
             : row.state === 'available'
               ? (
                   <span className={styles.add} data-testid={`locale-add-${testKey}`}>
-                    <Icon iconName="plus" size="s" aria-hidden="true" />
+                    <Icon iconName="plus" size="xs" aria-hidden="true" />
                     Add {label?.tag}
                   </span>
                 )
@@ -254,7 +254,7 @@ export function LocaleSwitcher({
                 )}
           {row.state === 'current' && (
             <span data-testid={`locale-current-${testKey}`} aria-hidden="true">
-              <Icon iconName="circleCheck" size="s" />
+              <Icon iconName="circleCheck" size="xs" />
             </span>
           )}
         </button>
@@ -274,11 +274,11 @@ export function LocaleSwitcher({
         aria-haspopup="menu"
         onClick={toggle}
       >
-        <Icon iconName="globe" size="s" aria-hidden="true" />
+        <Icon iconName="globe" size="xs" aria-hidden="true" />
         <span className={styles.triggerLabel}>
           <span className={styles.triggerName}>{currentLabel?.native ?? UNTAGGED_LABEL}</span>
           {currentLabel !== null && <span className={styles.badge}>{currentLabel.tag}</span>}
-          <Icon iconName="angleDown" size="s" aria-hidden="true" />
+          <Icon iconName="angleDown" size="xs" aria-hidden="true" />
         </span>
       </button>
 

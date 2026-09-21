@@ -29,7 +29,7 @@ function AuthorAvatar({ comment }: { comment: CommentRecord }): React.ReactEleme
   if (comment.author.type === 'agent') {
     return (
       <span className={styles.agentAvatar} aria-hidden="true">
-        <SafeIcon iconName="sparkles" size="s" />
+        <SafeIcon iconName="sparkles" size="xs" />
       </span>
     );
   }
@@ -53,7 +53,7 @@ function Body({ comment }: { comment: CommentRecord }): React.ReactElement {
           <React.Fragment key={i}>{part.text}</React.Fragment>
         ) : (
           <span key={i} className={styles.mention} data-testid="comment-mention">
-            {part.type === 'agent' && <SafeIcon iconName="sparkles" size="s" />}@{part.name}
+            {part.type === 'agent' && <SafeIcon iconName="sparkles" size="xs" />}@{part.name}
           </span>
         ),
       )}
