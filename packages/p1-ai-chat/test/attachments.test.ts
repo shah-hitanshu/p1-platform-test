@@ -3,6 +3,7 @@ import { AttachmentError } from '../src/lib/attachments/attachmentError.js';
 import { truncateBrief } from '../src/lib/attachments/briefText.js';
 import { checkAttachment } from '../src/lib/attachments/checkAttachment.js';
 import { clipboardFiles } from '../src/lib/attachments/clipboardFiles.js';
+import { uniqueFilename } from '../src/lib/attachments/uniqueFilename.js';
 import { ACCEPTED_FILE_TYPES, MAX_BRIEF_CHARS, MAX_DOCUMENT_BYTES, MAX_IMAGE_BYTES, isHtmlFile } from '../src/lib/attachments/fileRules.js';
 import { attachmentBlocker, readyAttachments } from '../src/lib/attachments/pendingAttachments.js';
 import type { PendingAttachment } from '../src/types.js';
@@ -125,6 +126,39 @@ describe('clipboardFiles', () => {
   it('finds nothing on a clipboard carrying only text', () => {
     expect(clipboardFiles({ files: [] })).toEqual([]);
     expect(clipboardFiles(null)).toEqual([]);
+  });
+});
+
+describe('uniqueFilename', () => {
+  it('leaves a name nothing else is using alone', () => {
+    expect(uniqueFilename('logo.png', ['hero.png'])).toBe('logo.png');
+  });
+
+  it('numbers a name that is already taken', () => {
+    expect(uniqueFilename('logo.png', ['logo.png'])).toBe('logo-2.png');
+  });
+
+  it('keeps counting when the numbered name is taken too', () => {
+    expect(uniqueFilename('logo.png', ['logo.png', 'logo-2.png'])).toBe('logo-3.png');
+  });
+
+  it('numbers a name that has no extension', () => {
+    expect(uniqueFilename('README', ['README'])).toBe('README-2');
+  });
+
+  it('splits on the last dot, leaving a leading dot as part of the name', () => {
+    expect(uniqueFilename('notes.tar.gz', ['notes.tar.gz'])).toBe('notes.tar-2.gz');
+    expect(uniqueFilename('.gitignore', ['.gitignore'])).toBe('.gitignore-2');
+  });
+
+  it('treats names differing only in case as different', () => {
+    expect(uniqueFilename('Logo.png', ['logo.png'])).toBe('Logo.png');
+  });
+
+  // Two screenshots in one conversation both arrive as the browser's `image.png`. Numbering is
+  // what tells them apart, and the name is the only handle the assistant has on an image.
+  it('tells two pasted screenshots apart', () => {
+    expect(uniqueFilename('image.png', ['image.png'])).toBe('image-2.png');
   });
 });
 

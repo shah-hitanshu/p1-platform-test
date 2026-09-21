@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, act, screen, fireEvent, waitFor, createEvent } from '@testing-library/react';
 import type { ChatContext, DraftRequest, DraftRequestChannel } from '../src/types.js';
 import { AttachmentError } from '../src/lib/attachments/attachmentError.js';
-import { MAX_BRIEF_CHARS } from '../src/lib/attachments/fileRules.js';
+import { MAX_BRIEF_CHARS, MAX_DOCUMENT_BYTES } from '../src/lib/attachments/fileRules.js';
 import { MockWebSocket, baseContext } from './testSupport.js';
 
 // Canvas decoding is not implemented in happy-dom, and it is not what these tests are
@@ -175,6 +175,62 @@ describe('pasting a file', () => {
     await pasteFiles();
 
     expect(screen.queryByRole('button', { name: /Remove/ })).toBeNull();
+  });
+});
+
+describe('two files of the same name', () => {
+  it('numbers the second, so the composer shows them apart', async () => {
+    await mountPanel();
+
+    await dropFiles(briefFile('first', 'notes.md'), briefFile('second', 'notes.md'));
+
+    await waitFor(() => { expect(screen.getByText(/notes\.md/)).toBeTruthy(); });
+    expect(screen.getByText(/notes-2\.md/)).toBeTruthy();
+  });
+
+  it('leaves the name alone when only a refused file was using it', async () => {
+    const ws = await mountPanel();
+
+    await dropFiles(briefFile('x'.repeat(MAX_DOCUMENT_BYTES + 1), 'notes.md'));
+    await waitFor(() => { expect(screen.getByText(/over the 512 KB limit/)).toBeTruthy(); });
+    await dropFiles(briefFile('short', 'notes.md'));
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /Dismiss/ })); });
+    await sendTurn('read this');
+
+    expect(chatContext(ws)?.attachments).toEqual([
+      { kind: 'document', filename: 'notes.md', text: 'short' },
+    ]);
+  });
+
+  it('leaves it alone when the refusal arrived in the same drop', async () => {
+    const ws = await mountPanel();
+
+    await dropFiles(
+      briefFile('x'.repeat(MAX_DOCUMENT_BYTES + 1), 'notes.md'),
+      briefFile('short', 'notes.md'),
+    );
+    await waitFor(() => { expect(screen.getByText(/over the 512 KB limit/)).toBeTruthy(); });
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /Dismiss/ })); });
+    await sendTurn('read this');
+
+    expect(chatContext(ws)?.attachments).toEqual([
+      { kind: 'document', filename: 'notes.md', text: 'short' },
+    ]);
+  });
+
+  it('numbers one repeating a name an earlier turn already carried', async () => {
+    const ws = await mountPanel();
+
+    await dropFiles(briefFile('first', 'notes.md'));
+    await sendTurn('read this');
+    await act(async () => { ws.emit({ type: 'done' }); });
+    await dropFiles(briefFile('second', 'notes.md'));
+    await sendTurn('and this');
+
+    const sent = ws.sent
+      .map(s => JSON.parse(s) as { type: string; context?: ChatContext })
+      .filter(f => f.type === 'chat');
+    expect(sent[1]?.context?.attachments?.[0]?.filename).toBe('notes-2.md');
   });
 });
 

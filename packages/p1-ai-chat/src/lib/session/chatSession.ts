@@ -16,6 +16,7 @@ import {
   type PresignedChatUpload,
 } from '../attachments/mediaApi.js';
 import { MAX_ATTACHMENTS, isHtmlFile } from '../attachments/fileRules.js';
+import { uniqueFilename } from '../attachments/uniqueFilename.js';
 import {
   EMPTY_STATE,
   makeId,
@@ -480,7 +481,14 @@ async function connect(session: ChatSession): Promise<WebSocket> {
  */
 function sessionAttachFiles(session: ChatSession, files: File[]): void {
   const contextForDrop = dropContextFactory(session);
-  for (const file of files) {
+  const taken = attachedFilenames(session.state);
+  for (const dropped of files) {
+    const filename = uniqueFilename(dropped.name, taken);
+    // Renamed on the File itself, not just the card, so the upload stores it under the name
+    // the assistant was told.
+    const file = filename === dropped.name
+      ? dropped
+      : new File([dropped], filename, { type: dropped.type });
     const id = makeId();
     const verdict = checkAttachment(file);
     // Only files that will travel count: counting refusals tells someone looking at three
@@ -494,17 +502,37 @@ function sessionAttachFiles(session: ChatSession, files: File[]): void {
 
     if (refusal !== null) {
       update(session, addAttachment(session.state, {
-        id, kind, filename: file.name, status: 'error', error: refusal,
+        id, kind, filename, status: 'error', error: refusal,
       }));
       continue;
     }
 
-    const pending: PendingAttachment = { id, kind, filename: file.name, status: 'pending' };
+    // Reserved only now: a name a refusal above walked away from is still free.
+    taken.add(filename);
+    const pending: PendingAttachment = { id, kind, filename, status: 'pending' };
     update(session, addAttachment(session.state, pending));
     // Not awaited as a batch: a slow image must not hold up the brief dropped with it.
     void settleAttachment(session, id, file, kind);
     stageUpload(session, id, file, contextForDrop());
   }
+}
+
+/**
+ * Every filename this conversation has already used. Turns that have been sent count too, not
+ * just the composer: the assistant can still be asked to act on a file from an earlier one.
+ *
+ * A refused file holds no name, for the same reason it does not count towards the cap — it
+ * never reaches the conversation, so numbering the next one would answer a clash nobody has.
+ */
+function attachedFilenames(state: ChatSessionState): Set<string> {
+  const names = new Set<string>();
+  for (const attachment of state.attachments) {
+    if (attachment.status !== 'error') names.add(attachment.filename);
+  }
+  for (const message of state.messages) {
+    for (const attachment of message.attachments ?? []) names.add(attachment.filename);
+  }
+  return names;
 }
 
 /**
@@ -628,8 +656,11 @@ async function uploadTarget(
   }
 }
 
-/** Long enough for a typical attachment; short enough that a slow one doesn't read as stuck. */
-const KEEP_DEADLINE_MS = 3_000;
+/**
+ * Bounds sending the bytes: long enough for a typical attachment, short enough that a slow
+ * one doesn't read as stuck.
+ */
+const UPLOAD_DEADLINE_MS = 3_000;
 
 /**
  * Records the uploads for the files going out with this turn. Recording is what makes a file
@@ -654,9 +685,13 @@ async function recordUploads(
   if (target === null) return new Map();
 
   const recorded = new Map<string, string>();
-  const keeping = Promise.all(
+  await Promise.all(
     staged.map(async ({ id, upload }) => {
-      const reserved = await upload;
+      // Only the bytes are raced, because they can be megabytes and the user should not be
+      // stuck behind their own upload. Recording them is one small call with its own request
+      // timeout, waited out in full: the reference only persists if it rides in this turn's
+      // frame, so losing it to a merely slow service loses it for good.
+      const reserved = await Promise.race([upload, after(UPLOAD_DEADLINE_MS).then(() => null)]);
       if (reserved === null) return;
       try {
         recorded.set(id, await finalizeChatUpload(target, reserved));
@@ -665,11 +700,6 @@ async function recordUploads(
       }
     }),
   );
-
-  // The reference only persists if it goes out in this turn's frame, so the turn has to wait.
-  // But sending the original can take much longer than reading it, and the user should not be
-  // stuck behind their own upload. Anything past the deadline still finishes, then gets swept.
-  await Promise.race([keeping, after(KEEP_DEADLINE_MS)]);
   return recorded;
 }
 
@@ -729,7 +759,7 @@ async function sessionSendMessage(
     // Awaited together for speed, but reported separately: resolving the context fetches an
     // auth token, and calling that "Connection failed" sends the user to check their network.
     // recordUploads joins this instead of running first: the turn already waits on the socket,
-    // so keeping the files adds no wall clock. It never rejects.
+    // so keeping the files usually adds no wall clock. It never rejects.
     const [ws, baseContext, recorded] = await Promise.all([
       connect(session).catch(() => {
         throw new SendFailureError('Connection failed');

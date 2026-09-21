@@ -1,5 +1,6 @@
-import { attachmentsOf, pendingPageOf, selectedBlockOf } from '../conversation/context.js';
-import type { Attachment, ChatContext, SelectedBlock } from '../types.js';
+import { attachmentNames, attachmentsOf, pendingPageOf, selectedBlockOf } from '../conversation/context.js';
+import { imageKey } from '../conversation/attached-images.js';
+import type { AttachedFileName, Attachment, ChatContext, SelectedBlock } from '../types.js';
 import { writableDocuments } from '../conversation/scope.js';
 
 /**
@@ -94,6 +95,34 @@ function attachmentLines(attachments: Attachment[], seesImages: boolean): string
   return lines;
 }
 
+/** Enough to cover a working conversation without crowding out the ids and the write set. */
+const EARLIER_IMAGE_LIMIT = 10;
+
+/**
+ * Images from earlier turns, named because the name is the only handle
+ * `add_attachment_to_library` takes. Told only that the picture is gone, the model asks the user
+ * for alt text it wrote itself a turn earlier, so it is pointed back at its own description.
+ *
+ * One that never finished uploading is listed too, marked: left out, the model would deny an
+ * image the user can still see in the transcript.
+ */
+function earlierImageLines(images: AttachedFileName[], attachments: Attachment[]): string[] {
+  const onThisMessage = new Set(attachmentNames(attachments).map(imageKey));
+  const earlier = images.filter(image => !onThisMessage.has(imageKey(image)));
+  if (earlier.length === 0) return [];
+
+  const lines = ['', 'Images attached earlier in this conversation. The pictures themselves are no'
+    + ' longer in front of you, but what you said about them still is: propose alt text from your'
+    + ' own earlier description, and ask the user to describe an image only if you never saw it.'
+    + ' Add one to the media library by passing its name here to add_attachment_to_library:'];
+  for (const image of earlier.slice(0, EARLIER_IMAGE_LIMIT)) {
+    lines.push(image.assetId === undefined
+      ? `"${image.filename}" — this one did not finish uploading, so it cannot be added. Say so and ask the user to attach it again.`
+      : `"${image.filename}"`);
+  }
+  return lines;
+}
+
 /**
  * The context block prepended to the user's message for the model only.
  *
@@ -103,12 +132,17 @@ function attachmentLines(attachments: Attachment[], seesImages: boolean): string
  */
 export function buildContextNote(
   context: ChatContext,
-  options?: { pinnedSlots?: string[]; seesImages?: boolean },
+  options?: { pinnedSlots?: string[]; seesImages?: boolean; attachedImages?: AttachedFileName[] },
 ): string {
   // Defaults to the answer that cannot mislead: a caller that says nothing gets a note that
   // makes no claim about an image having been seen.
   const seesImages = options?.seesImages ?? false;
   const attachments = attachmentsOf(context);
+  // Ahead of this turn's block, which can carry a whole brief inline.
+  const fileLines = [
+    ...earlierImageLines(options?.attachedImages ?? [], attachments),
+    ...attachmentLines(attachments, seesImages),
+  ];
   const pendingPage = pendingPageOf(context);
   const lines: string[] = [contextHeader(context, pendingPage !== null)];
   if (context.siteId) lines.push(`Site ID: ${context.siteId}`);
@@ -150,7 +184,7 @@ export function buildContextNote(
         : 'Pass a title drawn from the brief as root_props.title when you create the page.',
       ...WRITE_META_DESCRIPTION,
     );
-    return [...lines, ...attachmentLines(attachments, seesImages)].join('\n');
+    return [...lines, ...fileLines].join('\n');
   }
 
   if (context.newPage) {
@@ -186,6 +220,6 @@ export function buildContextNote(
   if (pinnedSlots.length > 0 && !context.newPage) {
     lines.push('This page follows a page template.', ...pinnedSlotLines(pinnedSlots));
   }
-  lines.push(...attachmentLines(attachments, seesImages));
+  lines.push(...fileLines);
   return lines.length > 1 ? lines.join('\n') : '';
 }

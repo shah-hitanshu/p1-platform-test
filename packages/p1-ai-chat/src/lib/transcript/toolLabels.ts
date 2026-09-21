@@ -197,6 +197,12 @@ const LABELS: Record<string, LabelSpec> = {
       return search ? `matching "${search}"` : undefined;
     },
   },
+  add_attachment_to_library: {
+    running: 'Adding the image to the media library',
+    done: 'Added the image to the media library',
+    failed: "Couldn't add the image to the media library",
+    detail: input => readString(input, 'filename'),
+  },
   fetch_page: {
     running: 'Fetching the page',
     done: 'Fetched the page',

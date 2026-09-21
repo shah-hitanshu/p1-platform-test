@@ -100,8 +100,8 @@ describe('validatePublicUrl', () => {
 // ---------------------------------------------------------------------------
 
 describe('WEB_TOOLS', () => {
-  it('exports exactly two tools', () => {
-    expect(WEB_TOOLS).toHaveLength(2);
+  it('exports exactly three tools', () => {
+    expect(WEB_TOOLS).toHaveLength(3);
   });
 
   it('has list_media as first tool with required site_id', () => {
@@ -114,6 +114,17 @@ describe('WEB_TOOLS', () => {
     const tool = WEB_TOOLS[1];
     expect(tool.name).toBe('fetch_page');
     expect((tool.input_schema as { required?: string[] }).required).toContain('url');
+  });
+
+  it('has add_attachment_to_library as third tool, requiring alt but not asset_id', () => {
+    const tool = WEB_TOOLS[2];
+    expect(tool.name).toBe('add_attachment_to_library');
+    const schema = tool.input_schema as {
+      required?: string[];
+      properties?: Record<string, unknown>;
+    };
+    expect(schema.required).toEqual(['site_id', 'filename', 'alt']);
+    expect(schema.properties).toHaveProperty('asset_id');
   });
 });
 
@@ -245,6 +256,131 @@ describe('executeTool list_media', () => {
     ).rejects.toThrow('403');
   });
 });
+
+// ---------------------------------------------------------------------------
+// executeTool — add_attachment_to_library
+// ---------------------------------------------------------------------------
+
+describe('executeTool add_attachment_to_library', () => {
+  const stubCcrApi = {} as McpApiClient;
+  const webConfig = { token: 'test-token', mediaWorkerUrl: 'https://media.example.com' };
+  const images = [{ kind: 'image' as const, filename: 'hero.png', assetId: 'asset-1' }];
+
+  const add = (
+    toolInput: Record<string, unknown>,
+    attached: typeof images = images,
+  ): Promise<unknown> =>
+    executeTool(
+      'add_attachment_to_library', toolInput, stubCcrApi, 'user-1', TEST_CONTEXT, webConfig,
+      attached,
+    );
+
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn());
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('refuses a call that left the alt text out, rather than adding the image without one',
+    async () => {
+      await expect(add({ site_id: 'site-1', filename: 'hero.png' }))
+        .rejects.toThrow(/alt text/);
+      expect(fetch).not.toHaveBeenCalled();
+    });
+
+  it('takes an empty alt, which is how the user says the image is decorative', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true, status: 200, json: () => Promise.resolve({}),
+    });
+    vi.stubGlobal('fetch', mockFetch);
+
+    await add({ site_id: 'site-1', filename: 'hero.png', alt: '' });
+
+    expect(JSON.parse(String(mockFetch.mock.calls[0][1].body))).toEqual({ metadata: { alt: '' } });
+  });
+
+  it('promotes the named image, as the user, with the alt text they agreed to', async () => {
+    const promoted = { assetId: 'asset-1', filename: 'hero.png', url: 'https://cdn/hero.png' };
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve(promoted),
+    });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const result = await add({ site_id: 'site-1', filename: 'hero.png', alt: 'A hero shot' });
+
+    const [calledUrl, calledInit] = mockFetch.mock.calls[0] as [string, RequestInit];
+    expect(calledUrl).toBe('https://media.example.com/media/asset-1/promote?siteId=site-1');
+    expect(calledInit.method).toBe('POST');
+    expect((calledInit.headers as Record<string, string>)['Authorization'])
+      .toBe('Bearer test-token');
+    expect(JSON.parse(calledInit.body as string)).toEqual({ metadata: { alt: 'A hero shot' } });
+    expect(result).toEqual(promoted);
+  });
+
+  it('refuses a name nothing matches without calling the media worker', async () => {
+    const mockFetch = vi.fn();
+    vi.stubGlobal('fetch', mockFetch);
+
+    await expect(add({ site_id: 'site-1', filename: 'banner.png', alt: 'x' }))
+      .rejects.toThrow('hero.png');
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it('refuses a foreign site before it reaches the media worker', async () => {
+    const mockFetch = vi.fn();
+    vi.stubGlobal('fetch', mockFetch);
+
+    await expect(add({ site_id: 'site-2', filename: 'hero.png', alt: 'x' }))
+      .rejects.toThrow('Not your site');
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it("passes a refusal through in the media worker's own words", async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: false,
+      status: 415,
+      json: () => Promise.resolve({ error: 'Only image files can be added to the media library' }),
+    }));
+
+    await expect(add({ site_id: 'site-1', filename: 'hero.png', alt: 'x' }))
+      .rejects.toThrow('Only image files can be added to the media library');
+  });
+
+  it('reports a file retention has already collected', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: false,
+      status: 404,
+      json: () => Promise.resolve({}),
+    }));
+
+    await expect(add({ site_id: 'site-1', filename: 'hero.png', alt: 'x' }))
+      .rejects.toThrow('no longer stored');
+  });
+
+  it('reports a server failure as a status rather than its body', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: false,
+      status: 502,
+      json: () => Promise.resolve({ error: 'upstream connect error' }),
+    }));
+
+    await expect(add({ site_id: 'site-1', filename: 'hero.png', alt: 'x' }))
+      .rejects.toThrow('502');
+  });
+
+  it('throws when webConfig is not provided', async () => {
+    await expect(executeTool(
+      'add_attachment_to_library',
+      { site_id: 'site-1', filename: 'hero.png', alt: 'x' },
+      stubCcrApi, 'user-1', TEST_CONTEXT, undefined, images,
+    )).rejects.toThrow('not available');
+  });
+});
+
 
 // ---------------------------------------------------------------------------
 // executeTool — fetch_page

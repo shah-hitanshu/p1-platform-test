@@ -227,6 +227,30 @@ describe('toolCallOutcome — result shapes that are not obviously failures', ()
   });
 });
 
+describe('add_attachment_to_library', () => {
+  it('names the action in plain language rather than showing the tool name', () => {
+    expect(toolCallLabel(call({
+      name: 'add_attachment_to_library',
+      status: 'running',
+      input: { filename: 'diagram.png' },
+    }))).toBe('Adding the image to the media library · diagram.png');
+    expect(toolCallLabel(call({
+      name: 'add_attachment_to_library',
+      status: 'done',
+      input: { filename: 'diagram.png' },
+    }))).toBe('Added the image to the media library · diagram.png');
+  });
+
+  // The past tense would tell the user the image is in their library when it is not.
+  it('does not claim the image was added when the call failed', () => {
+    expect(toolCallLabel(call({
+      name: 'add_attachment_to_library',
+      input: { filename: 'diagram.png' },
+      result: { error: 'no such attachment' },
+    }))).toBe("Couldn't add the image to the media library");
+  });
+});
+
 describe('toolCallLabel for abandoned calls', () => {
   it('keeps the present tense and says it did not finish', () => {
     // Past tense ("Applied changes") would assert a completion we never observed.

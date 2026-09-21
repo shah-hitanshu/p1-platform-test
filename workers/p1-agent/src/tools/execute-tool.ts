@@ -2,7 +2,8 @@ import { validateOps, validateDocumentStructure } from '@pantheon-systems/p1-con
 import type { ComponentSchema } from '@pantheon-systems/p1-content-validator';
 import type { McpApiClient } from '../ccr/api-client.js';
 import type { TemplateSummaryInfo } from '../ccr/types.js';
-import type { ChatContext } from '../types.js';
+import type { AttachedFileName, ChatContext } from '../types.js';
+import { resolveAttachedImage } from '../conversation/attached-images.js';
 import {
   assertDocumentWritable,
   assertInScope,
@@ -266,6 +267,16 @@ async function fetchPublicPage(rawUrl: string): Promise<{ response: Response; ur
   }
 }
 
+/** The `error` string a media worker refusal carries, when it carries one. */
+async function refusalReason(response: Response): Promise<string | undefined> {
+  try {
+    const body = await response.json() as { error?: unknown };
+    return typeof body.error === 'string' && body.error !== '' ? body.error : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 // Execute a tool call from Claude against the CCR backend or web tools
 export async function executeTool(
   toolName: string,
@@ -274,6 +285,8 @@ export async function executeTool(
   userId: string,
   context: ChatContext,
   webConfig?: { token: string; mediaWorkerUrl: string },
+  /** Images this conversation can still reach. Empty means nothing is promotable. */
+  attachedImages: AttachedFileName[] = [],
 ): Promise<unknown> {
   const name = toolName as ToolName;
   assertInScope(toolInput, context);
@@ -684,6 +697,41 @@ export async function executeTool(
         throw new Error(`Media worker returned ${res.status}: ${await res.text()}`);
       }
       return res.json() as Promise<{ key: string; url: string; filename: string; size: number; lastModified: string }[]>;
+    }
+
+    case 'add_attachment_to_library': {
+      if (!webConfig) throw new Error('add_attachment_to_library is not available in this context');
+      const { mediaWorkerUrl, token } = webConfig;
+      const requested = typeof toolInput.filename === 'string' ? toolInput.filename : '';
+      const image = resolveAttachedImage(requested, toolInput.asset_id, attachedImages);
+
+      // Refused rather than defaulted: an empty string means the user called the image
+      // decorative, which a forgotten argument must not be able to say on their behalf.
+      if (typeof toolInput.alt !== 'string') {
+        throw new Error('Pass the alt text the user agreed to, or an empty string if they said '
+          + 'the image is decorative.');
+      }
+
+      // The conversation's site, not the model's: assertInScope refuses a site_id that
+      // disagrees but lets an absent one through, which would reach the worker as undefined.
+      const url = `${mediaWorkerUrl}/media/${encodeURIComponent(image.assetId)}/promote`
+        + `?siteId=${encodeURIComponent(context.siteId)}`;
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ metadata: { alt: toolInput.alt } }),
+        signal: AbortSignal.timeout(OUTBOUND_TIMEOUT_MS),
+      });
+      if (res.status === 404) {
+        throw new Error('That file is no longer stored, so it cannot be added to the library.');
+      }
+      if (!res.ok) {
+        // 4xx only: the media worker phrases those for a person, while a 5xx body names an
+        // upstream the user can do nothing about.
+        const reason = res.status < 500 ? await refusalReason(res) : undefined;
+        throw new Error(reason ?? `The media library refused the file (${String(res.status)}).`);
+      }
+      return res.json() as Promise<{ assetId: string; filename: string; url: string }>;
     }
 
     case 'fetch_page': {

@@ -435,3 +435,45 @@ describe('a file still uploading when the turn is sent', () => {
   });
 
 });
+
+describe('a recording that lands slowly', () => {
+  /** Holds the recording call only; the bytes go up immediately. */
+  function heldFinalize() {
+    let release: () => void = () => undefined;
+    const held = new Promise<void>(resolve => { release = resolve; });
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/media/presign')) {
+        return new Response(JSON.stringify({
+          assetId: 'asset-slow', versionId: 'v1', filename: 'brief.md', uploadUrl: 'https://storage.test/put',
+        }), { status: 200 });
+      }
+      if (url.startsWith('https://storage.test/')) return new Response(null, { status: 200 });
+      if (url.includes('/media/finalize')) { await held; return new Response('{}', { status: 201 }); }
+      return new Response('{}', { status: 201 });
+    });
+    return { fetchImpl, release: () => release() };
+  }
+
+  it('keeps the reference when recording outlasts the upload deadline', { timeout: 20_000 }, async () => {
+    const { fetchImpl, release } = heldFinalize();
+    fetchMock = fetchImpl;
+    vi.stubGlobal('fetch', fetchMock);
+
+    const ws = await mountPanel(MEDIA_URL);
+    await dropBrief();
+    await waitFor(() => { expect(screen.getByText(/brief\.md/)).toBeTruthy(); });
+
+    // Released past the deadline that bounds the upload, so the turn can only carry the
+    // reference if that deadline no longer governs the recording call.
+    const sent = sendTurn('build this');
+    const landsLate = setTimeout(release, 4_000);
+    await sent;
+    await waitFor(() => { expect(chatContext(ws)).toBeTruthy(); }, { timeout: 15_000 });
+    clearTimeout(landsLate);
+
+    expect(chatContext(ws)?.attachments).toEqual([
+      { kind: 'document', filename: 'brief.md', text: '# hi', assetId: 'asset-slow' },
+    ]);
+  });
+});

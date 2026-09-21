@@ -2,6 +2,7 @@ import { Agent } from 'agents';
 import type { AgentContext, Connection, ConnectionContext, WSMessage } from 'agents';
 import { getLogger } from '@pantheon-systems/p1-telemetry';
 import { pinnedSlotIds } from '../ccr/pinned-slots.js';
+import { conversationImages } from '../conversation/attached-images.js';
 import { attachmentNames, readAttachments } from '../conversation/context.js';
 import type { Env } from '../env.js';
 import type { ChatContext, IncomingMessage, OutgoingMessage, TurnFrame, ValidatedUser } from '../types.js';
@@ -412,6 +413,8 @@ export class ChatAgent extends Agent<Env, AgentState> {
         tools: [...CCR_TOOLS, ...WEB_TOOLS],
       });
 
+      const attachedImages = conversationImages(context, this.state.conversationHistory);
+
       // Inject page context into the user message sent to the model, but persist the raw
       // message so stored turns don't carry stale context blocks.
       const contextNote = buildContextNote(context, {
@@ -421,6 +424,7 @@ export class ChatAgent extends Agent<Env, AgentState> {
           ? []
           : await resolvePinnedSlots(ccrApi, context, this.templateIdByPath),
         seesImages,
+        attachedImages,
       });
       const userContent = contextNote ? `${contextNote}\n\n${message}` : message;
 
@@ -567,7 +571,7 @@ export class ChatAgent extends Agent<Env, AgentState> {
             result = await executeTool(tc.function.name, input, ccrApi, user.id, scope, {
               token: context.token,
               mediaWorkerUrl: this.env.MEDIA_WORKER_URL,
-            });
+            }, attachedImages);
 
             if (tc.function.name === 'create_page') {
               const created = createdDocumentPath(result);

@@ -263,6 +263,42 @@ const RAW_WEB_TOOLS: RawTool[] = [
       required: ['url'],
     },
   },
+  {
+    name: 'add_attachment_to_library',
+    description: [
+      "Add an image the user attached to this conversation to the site's media library, where it",
+      'gets an address that can go on a page. Images only.',
+      '',
+      'ONLY call this after the user has asked for it AND agreed to the alt text you proposed.',
+      'Adding a file to their library is a write to their site, not a convenience.',
+      '',
+      'The image is found by filename, so name the file in the proposal you ask them to confirm.',
+      'The result carries the address the image now has. That address and the ids beside it are',
+      'for apply_document_edits, not for the user — confirm the image by filename and offer to',
+      'place it. Never print the URL or the ids into the reply.',
+    ].join('\n'),
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        site_id: { type: 'string' },
+        filename: {
+          type: 'string',
+          description: 'The attached image, named exactly as the context block named it.',
+        },
+        alt: {
+          type: 'string',
+          description: 'Alt text the user has agreed to. Pass an empty string only when they '
+            + 'said the image is decorative.',
+        },
+        asset_id: {
+          type: 'string',
+          description: 'Only when a previous call reported two images with the same filename: '
+            + 'the one the user picked. Leave it out otherwise.',
+        },
+      },
+      required: ['site_id', 'filename', 'alt'],
+    },
+  },
 ];
 
 /**

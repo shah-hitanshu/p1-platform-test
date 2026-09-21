@@ -304,7 +304,7 @@ It asserts a cache write on the first call and a cache read on the second, and s
 
 ## 8. Available tools
 
-The agent is offered 12 tools (`list_sites`/`list_branches`/`list_documents` are intentionally **not** exposed — the site, branch, and document always come from the editor context):
+The agent is offered 13 tools (`list_sites`/`list_branches`/`list_documents` are intentionally **not** exposed — the site, branch, and document always come from the editor context):
 
 | Tool | Purpose |
 |---|---|
@@ -319,4 +319,5 @@ The agent is offered 12 tools (`list_sites`/`list_branches`/`list_documents` are
 | `get_document_presence` | See who's editing a specific document |
 | `create_page` | Create a new page with Puck components |
 | `list_media` | List media files in the site's media library |
+| `add_attachment_to_library` | Add an image the user attached to the site's media library |
 | `fetch_page` | Fetch a public web page and extract its content |

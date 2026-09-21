@@ -326,6 +326,58 @@ describe('buildContextNote', () => {
   });
 });
 
+describe('images from earlier messages', () => {
+  const base = { siteId: 's1', branchId: 'b1', documentPath: '/pricing', token: 't' };
+  const stored = { kind: 'image' as const, filename: 'image.png', assetId: 'asset-1' };
+
+  it('names one, so the user approving alt text on a later turn need not supply the filename', () => {
+    const note = buildContextNote(base, { attachedImages: [stored] });
+
+    expect(note).toContain('image.png');
+    expect(note).toContain('add_attachment_to_library');
+  });
+
+  it('does not claim the image can still be seen', () => {
+    const note = buildContextNote(base, { attachedImages: [stored], seesImages: true });
+
+    expect(note).not.toContain('for you to look at');
+  });
+
+  it('says so when an image never finished uploading, rather than leaving it out', () => {
+    const note = buildContextNote(base, {
+      attachedImages: [{ kind: 'image', filename: 'lost.png' }],
+    });
+
+    expect(note).toContain('lost.png');
+    expect(note).toMatch(/lost\.png.*(did not|cannot)/);
+  });
+
+  it('leaves out an image already listed as attached to this message', () => {
+    const attachments = [
+      { kind: 'image' as const, filename: 'hero.png', dataUrl: 'data:image/png;base64,QUJD', assetId: 'asset-2' },
+    ];
+    const note = buildContextNote(
+      { ...base, attachments },
+      { attachedImages: [{ kind: 'image', filename: 'hero.png', assetId: 'asset-2' }], seesImages: true },
+    );
+
+    expect(note).toContain('Files attached to this message:');
+    expect(note.match(/hero\.png/g)).toHaveLength(1);
+  });
+
+  it('points the model at its own earlier description of the image', () => {
+    const note = buildContextNote(base, { attachedImages: [stored] });
+
+    // Told only that the image is gone, the model asks the user to write alt text it already
+    // wrote a turn earlier. The picture leaves the request; what it said about it does not.
+    expect(note).toMatch(/your own earlier description/i);
+  });
+
+  it('says nothing at all when no earlier image is reachable', () => {
+    expect(buildContextNote(base, { attachedImages: [] })).not.toContain('earlier');
+  });
+});
+
 describe('what the prompt claims about an attached image', () => {
   const context = {
     siteId: 's1', branchId: 'b1', documentPath: '/pricing', token: 't',
