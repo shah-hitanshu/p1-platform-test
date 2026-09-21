@@ -12,6 +12,9 @@ import type { Comment } from '../../types/threads';
 
 export const AGENT_NOTIFICATION_PATH = '/notifications/comment';
 export const AGENT_NOTIFICATION_HEADER = 'X-Internal-Secret';
+// Bounds only the agent's 202 ack. AGENT_START_MS in packages/puck-css
+// (features/threads/pending-agent.ts) has to cover this plus the reply the agent posts after
+// it, so raising this without raising that makes the thread give up mid-reply.
 const DELIVERY_TIMEOUT_MS = 5_000;
 
 /** The person whose comment did the mentioning; the agent acts for them when it answers. */

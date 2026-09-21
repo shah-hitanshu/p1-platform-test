@@ -68,6 +68,10 @@ const working: Comment = {
 };
 
 describe('withPendingAgents', () => {
+  // Copy of DELIVERY_TIMEOUT_MS in workers/ccr (routes/threads/agent-notifications.ts); a
+  // published package must not import from workers/*, so nothing keeps the two in step.
+  const CCR_DELIVERY_TIMEOUT_MS = 5_000;
+
   it('shows a mentioned agent working until it has had long enough to start', () => {
     const [, standIn] = withPendingAgents([ask], NOW + 1_000);
     expect(standIn?.kind).toBe('agent_activity');
@@ -76,6 +80,11 @@ describe('withPendingAgents', () => {
 
     const [, late] = withPendingAgents([ask], NOW + AGENT_START_MS);
     expect(late?.metadata).toEqual({ status: 'failed' });
+  });
+
+  it('still shows the agent working while a mention delivery could be in flight', () => {
+    const [, standIn] = withPendingAgents([ask], NOW + CCR_DELIVERY_TIMEOUT_MS);
+    expect(standIn?.metadata).toEqual({ status: 'working' });
   });
 
   it('stands aside once the agent has spoken', () => {

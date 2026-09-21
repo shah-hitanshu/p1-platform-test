@@ -1,7 +1,10 @@
 import type { Comment, CommentMention } from '@pantheon-systems/css-client';
 
+// Covers the whole round trip, not just CCR's 5s mention delivery timeout: that call waits
+// only for the agent's 202, which the agent returns before it reads the thread back, posts its
+// reply, and that reply reaches this client over a socket push or a 2.5s poll.
 /** How long a mentioned agent has to say it is working before the thread says it did not. */
-export const AGENT_START_MS = 4_000;
+export const AGENT_START_MS = 10_000;
 
 /**
  * Stands in for each agent the latest comment mentions until that agent speaks for
