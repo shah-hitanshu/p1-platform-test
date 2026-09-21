@@ -136,6 +136,8 @@ export function ensureLogger(env: TelemetryEnv): P1Logger {
       'event_type',
       'reopened',
       'changed',
+      // A 202 is `ok` either way, so without this a declined mention and an answered one log the same.
+      'accepted',
     ],
   });
   return logger;

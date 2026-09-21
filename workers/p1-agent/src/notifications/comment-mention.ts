@@ -93,6 +93,7 @@ export async function handleCommentNotification(
   ctx: ExecutionContext,
   deps: MentionCommentDeps = {},
 ): Promise<Response> {
+  const receivedAt = Date.now();
   if (request.method !== 'POST') return new Response('Method not allowed', { status: 405 });
 
   const secret = env.AGENT_NOTIFY_SECRET;
@@ -107,7 +108,7 @@ export async function handleCommentNotification(
     return Response.json({ accepted: false, reason: 'not_addressed' }, { status: 202 });
   }
 
-  ctx.waitUntil(replyToMention(notification, env, deps));
+  ctx.waitUntil(replyToMention(notification, env, deps, receivedAt));
   return Response.json({ accepted: true }, { status: 202 });
 }
 
@@ -142,6 +143,7 @@ export async function replyToMention(
   notification: CommentMentionNotification,
   env: Env,
   deps: MentionCommentDeps = {},
+  receivedAt: number = Date.now(),
 ): Promise<void> {
   const logger = getLogger();
   const fields = { site_id: notification.siteId, thread_id: notification.threadId, comment_id: notification.commentId };
@@ -164,6 +166,8 @@ export async function replyToMention(
       body: WORKING_LINE,
       metadata: { status: 'working' },
     });
+    // Time-to-ack decides whether the reader sees the "did not respond" stand-in instead of this.
+    logger.info('mention ack posted', { ...fields, duration_ms: Date.now() - receivedAt });
     const finish = (content: CommentContent) =>
       ccr.updateThreadComment(notification.siteId, notification.threadId, placeholder.comment.id, content);
 
@@ -185,20 +189,30 @@ export async function replyToMention(
           body: addressComment(proposal.note ?? proposal.summary, trigger),
           metadata: { status: 'proposed', summary: proposal.summary, operations: proposal.operations },
         });
-        logger.info('mention reply posted a proposal', { ...fields, operations: proposal.operations.length });
+        logger.info('mention reply posted a proposal', {
+          ...fields,
+          count: proposal.operations.length,
+          duration_ms: Date.now() - receivedAt,
+        });
         return;
       }
 
       const text = completion.content.trim();
       if (text === '') throw new Error('model produced neither text nor a proposal');
       await finish({ kind: 'message', body: addressComment(text, trigger) });
-      logger.info('mention reply posted', fields);
+      logger.info('mention reply posted', { ...fields, duration_ms: Date.now() - receivedAt });
     } catch (error) {
-      logger.error('mention reply failed', error instanceof Error ? error : new Error(String(error)), fields);
+      logger.error('mention reply failed', error instanceof Error ? error : new Error(String(error)), {
+        ...fields,
+        duration_ms: Date.now() - receivedAt,
+      });
       await finish({ kind: 'agent_activity', body: FAILED_LINE, metadata: { status: 'failed' } });
     }
   } catch (error) {
-    logger.error('mention reply failed', error instanceof Error ? error : new Error(String(error)), fields);
+    logger.error('mention reply failed', error instanceof Error ? error : new Error(String(error)), {
+      ...fields,
+      duration_ms: Date.now() - receivedAt,
+    });
   }
 }
 

@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { contextFromRequest, withRequestContext } from "@pantheon-systems/p1-telemetry";
 import { McpApiClient, isAgentTurnStopped, type CcrApiError } from "./api-client.js";
 
 const EDIT_REQUEST = {
@@ -344,5 +345,41 @@ describe("McpApiClient turn stop enforcement", () => {
 
     expect(isAgentTurnStopped(err)).toBe(false);
     expect((err as Error).message).toBe("Region conflict");
+  });
+});
+
+describe("McpApiClient trace propagation", () => {
+  async function headersFor(run: (call: () => Promise<unknown>) => unknown): Promise<Record<string, string>> {
+    let captured: Record<string, string> = {};
+    const client = new McpApiClient({
+      baseUrl: "https://ccr.example.com",
+      agentId: "agent-abc",
+      agentApiKey: "key-xyz",
+      fetcher: {
+        fetch: async (_input, init) => {
+          captured = init?.headers as Record<string, string>;
+          return new Response(JSON.stringify({ documents: [] }), { status: 200 });
+        },
+      },
+    });
+    await run(() => client.listDocuments("site-1", "branch-1"));
+    return captured;
+  }
+
+  it("carries the caller's traceparent so the call joins its trace", async () => {
+    const inbound = new Request("https://agent.example.com/notifications/comment", {
+      headers: { traceparent: "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01" },
+    });
+    const headers = await headersFor((call) =>
+      withRequestContext(contextFromRequest(inbound), call),
+    );
+
+    expect(headers.traceparent).toContain("4bf92f3577b34da6a3ce929d0e0e4736");
+    expect(headers["X-API-Key"]).toBe("key-xyz");
+  });
+
+  it("sends no trace headers when there is no context to carry", async () => {
+    const headers = await headersFor((call) => call());
+    expect(headers).not.toHaveProperty("traceparent");
   });
 });

@@ -2,6 +2,7 @@
  * CCR Backend API Client
  * Adapted from collaborative-state-system/workers/mcp-server/src/shared/api-client.ts
  */
+import { outboundHeaders } from '@pantheon-systems/p1-telemetry';
 import type { CommentContent, PostCommentResponse, ThreadResponse } from './thread-types.js';
 import type {
   AbortAgentEditRequest,
@@ -98,6 +99,7 @@ export class McpApiClient {
       'X-API-Key': this.agentApiKey,
       'X-Actor-Type': 'agent',
       'X-Actor-Id': this.agentId,
+      ...outboundHeaders(),
     };
     if (this.actingUser) {
       headers['X-Acting-User-Id'] = this.actingUser.id;

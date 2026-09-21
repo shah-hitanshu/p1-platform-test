@@ -4,7 +4,8 @@
  * failed delivery is logged and dropped.
  */
 
-import { getLogger } from '@pantheon-systems/p1-telemetry';
+import { getLogger, outboundHeaders } from '@pantheon-systems/p1-telemetry';
+import { z } from 'zod';
 import type { Env } from '../../env';
 import type { SiteMembers } from '../../services/site-members-service';
 import type { Comment } from '../../types/threads';
@@ -64,7 +65,7 @@ export function notifyMentionedAgents(
   const target = env?.AGENT_WORKER_URL;
   const secret = env?.AGENT_NOTIFY_SECRET;
   if (target === undefined || target === '' || secret === undefined || secret === '') {
-    getLogger().debug('agent mention not delivered: agent worker not configured', {
+    getLogger().warn('agent mention not delivered: agent worker not configured', {
       site_id: siteId,
       thread_id: comment.threadId,
       comment_id: comment.id,
@@ -90,19 +91,66 @@ async function deliver(url: string, secret: string, payload: CommentMentionNotif
     comment_id: payload.commentId,
     agent_count: payload.agentIds.length,
   };
+  const startedAt = Date.now();
+  // Called at each outcome rather than once after `fetch`, which resolves on headers:
+  // reading the body is part of the delivery and can be most of its duration.
+  const timed = (): typeof fields & { duration_ms: number } => ({
+    ...fields,
+    duration_ms: Date.now() - startedAt,
+  });
   try {
     const response = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', [AGENT_NOTIFICATION_HEADER]: secret },
+      headers: {
+        'Content-Type': 'application/json',
+        [AGENT_NOTIFICATION_HEADER]: secret,
+        ...outboundHeaders(),
+      },
       body: JSON.stringify(payload),
       signal: AbortSignal.timeout(DELIVERY_TIMEOUT_MS),
     });
     if (!response.ok) {
-      getLogger().warn('agent mention delivery rejected', { ...fields, status: response.status });
+      getLogger().warn('agent mention delivery rejected', {
+        ...timed(),
+        'http.response.status_code': response.status,
+      });
       return;
     }
-    getLogger().info('agent mention delivered', fields);
+    // A 202 is `ok` whether the agent took the mention or declined it, so the body
+    // is the only thing that separates an answered mention from a dropped one.
+    const { accepted, reason } = await readAcceptance(response);
+    if (accepted === false) {
+      getLogger().warn('agent mention declined', { ...timed(), reason: reason ?? 'unspecified', accepted });
+      return;
+    }
+    const outcome = timed();
+    getLogger().info('agent mention delivered', accepted === undefined ? outcome : { ...outcome, accepted });
   } catch (error) {
-    getLogger().warn('agent mention delivery failed', { ...fields, error: error instanceof Error ? error.message : String(error) });
+    // `warn` takes no error argument, and a bare `error` field is not on the
+    // telemetry allow-list — `error.type` and `reason` are what survive redaction.
+    getLogger().warn('agent mention delivery failed', {
+      ...timed(),
+      'error.type': error instanceof Error ? error.name : typeof error,
+      reason: error instanceof Error ? error.message : String(error),
+    });
   }
+}
+
+const acceptanceSchema = z.object({
+  accepted: z.boolean().optional(),
+  reason: z.string().optional(),
+});
+
+async function readAcceptance(response: Response): Promise<z.infer<typeof acceptanceSchema>> {
+  let body: unknown;
+  try {
+    body = await response.json();
+  } catch (error) {
+    // A body that isn't JSON is just a mention with no verdict; a read that aborted
+    // is a failed delivery, and has to reach the caller's handler to be logged as one.
+    if (error instanceof SyntaxError) return {};
+    throw error;
+  }
+  const result = acceptanceSchema.safeParse(body);
+  return result.success ? result.data : {};
 }

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { CompletionRequest, CompletionResult } from '../providers/transport.js';
 import type { Comment, CommentContent, ThreadResponse } from '../ccr/thread-types.js';
 import type { Env } from '../env.js';
@@ -13,6 +13,13 @@ import {
   replyToMention,
   type MentionCommentDeps,
 } from './comment-mention.js';
+
+const logger = vi.hoisted(() => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }));
+
+vi.mock('@pantheon-systems/p1-telemetry', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@pantheon-systems/p1-telemetry')>();
+  return { ...actual, getLogger: () => logger };
+});
 
 const AGENT_ID = 'a0000000-0000-0000-0000-000000000003';
 const USER_ID = '11111111-1111-1111-1111-111111111111';
@@ -330,5 +337,58 @@ describe('renderThread', () => {
       author: { type: 'agent', id: AGENT_ID, name: 'Pantheon Agent' },
     });
     expect(renderThread(thread([comment({}), working]), comment({}))).not.toContain('Looking into it');
+  });
+});
+
+describe('mention path telemetry', () => {
+  beforeEach(() => {
+    logger.info.mockReset();
+    logger.error.mockReset();
+  });
+
+  it('logs the ack as soon as the working line is up, with the time it took to get there', async () => {
+    const { d, complete } = deps(thread([comment({})]));
+    await replyToMention(notification, env, d, Date.now() - 250);
+
+    const ack = logger.info.mock.calls.find(([msg]) => msg === 'mention ack posted');
+    expect(ack?.[1]).toMatchObject({ site_id: SITE_ID, thread_id: THREAD_ID, comment_id: 'c1' });
+    expect(ack?.[1]).toHaveProperty('duration_ms', expect.any(Number));
+    expect((ack?.[1] as { duration_ms: number }).duration_ms).toBeGreaterThanOrEqual(250);
+    // The ack is what the reader is waiting on, so it must be timed before the model runs.
+    expect(complete).toHaveBeenCalled();
+    expect(logger.info.mock.calls.indexOf(ack!)).toBeLessThan(
+      logger.info.mock.calls.findIndex(([msg]) => msg === 'mention reply posted'),
+    );
+  });
+
+  it('times the whole turn on the line that ends it', async () => {
+    const { d } = deps(thread([comment({})]));
+    await replyToMention(notification, env, d);
+
+    const posted = logger.info.mock.calls.find(([msg]) => msg === 'mention reply posted');
+    expect(posted?.[1]).toHaveProperty('duration_ms', expect.any(Number));
+  });
+
+  it('times a proposal turn too, and counts its operations under an allow-listed name', async () => {
+    const { d } = deps(onBranch(thread([comment({})])), {
+      content: '',
+      toolCalls: [proposalCall({ summary: 'Shorter', operations: [{ op: 'replace', path: 'content.1.props.title', value: 'Ship faster' }] })],
+    });
+    await replyToMention(notification, env, d);
+
+    expect(logger.info).toHaveBeenCalledWith(
+      'mention reply posted a proposal',
+      expect.objectContaining({ count: 1, duration_ms: expect.any(Number) }),
+    );
+  });
+
+  it('times a turn that died before it could answer', async () => {
+    const { d, getThread } = deps(thread([comment({})]));
+    getThread.mockRejectedValue(new Error('403 forbidden'));
+    await replyToMention(notification, env, d);
+
+    const [, , fields] = logger.error.mock.calls[0] as [string, unknown, Record<string, unknown>];
+    expect(fields).toMatchObject({ comment_id: 'c1' });
+    expect(fields).toHaveProperty('duration_ms', expect.any(Number));
   });
 });

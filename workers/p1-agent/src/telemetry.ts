@@ -64,6 +64,8 @@ export function ensureLogger(env: TelemetryEnv): P1Logger {
     // it is what decides whether this process is handling real content.
     dataClass: resolveDataClass(env.CCR_BACKEND_URL),
     sinks: buildSinks(env),
+    // Without the same pair CCR allows, a mention's two halves cannot be joined when no trace context arrived.
+    allowFields: ['thread_id', 'comment_id'],
   });
   return logger;
 }

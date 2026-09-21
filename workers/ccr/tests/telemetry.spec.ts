@@ -146,6 +146,24 @@ describe('field allow-list extensions', () => {
     expect(context.broken_version).toBe(15);
     expect(context._dropped).toBeUndefined();
   });
+
+  it('keeps every field the agent-mention delivery lines emit', () => {
+    const logger = ensureLogger(envWith());
+    const lines: Record<string, unknown>[] = [];
+    logger.addSink({
+      id: 'capture',
+      write: (line) => lines.push(line as unknown as Record<string, unknown>),
+      flush: async () => undefined,
+    });
+
+    logger.warn('probe', {
+      site_id: 's', thread_id: 't', comment_id: 'c', agent_count: 1,
+      duration_ms: 12, accepted: false, reason: 'not_addressed',
+      'http.response.status_code': 503, 'error.type': 'TimeoutError',
+    });
+
+    expect((lines[0]?.context as Record<string, unknown>)._dropped).toBeUndefined();
+  });
 });
 
 describe('local ndjson sink', () => {
