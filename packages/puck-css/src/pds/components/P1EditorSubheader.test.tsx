@@ -197,6 +197,20 @@ describe('P1EditorSubheader', () => {
     expect((redoBtn as HTMLButtonElement).disabled).toBe(false);
   });
 
+  it('keeps undo and redo disabled for a role that cannot edit documents', () => {
+    const readOnlyPermissions = {
+      canView: true, canEdit: false, canCreateBranch: false, canEditDocuments: false,
+      canCreateCheckpoint: false, canProposeMerge: false, canMerge: false,
+      canMergeToMain: false, canManageGrants: false, canManageTemplates: false,
+    };
+    render(
+      <P1EditorSubheader {...defaultProps} hasPast={true} hasFuture={true} permissions={readOnlyPermissions} />
+    );
+
+    expect((screen.getByTestId('undo-btn') as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByTestId('redo-btn') as HTMLButtonElement).disabled).toBe(true);
+  });
+
   it('clicking undo button calls onUndo', () => {
     const onUndo = vi.fn();
     render(<P1EditorSubheader {...defaultProps} hasPast={true} onUndo={onUndo} />);

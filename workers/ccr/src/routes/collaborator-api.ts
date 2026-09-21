@@ -217,22 +217,20 @@ export async function handleCollaboratorRoutes(
   const method = request.method;
 
   try {
-    // Require ADMIN role on the site for all collaborator operations
     const mainBranch = await getMainBranch(context.siteId);
     if (mainBranch === null) {
       return errorResponse('Site not found', 404);
     }
 
-    await assertPermission(
-      context.principal,
-      context.siteId,
-      mainBranch.id,
-      'canManageGrants',
-      context.masClient,
-    );
-
-    // Single collaborator operations (with userId)
+    // Single collaborator operations (with userId) — writes only, require canManageGrants
     if (context.userId !== undefined) {
+      await assertPermission(
+        context.principal,
+        context.siteId,
+        mainBranch.id,
+        'canManageGrants',
+        context.masClient,
+      );
       switch (method) {
         case 'DELETE':
           return await handleRemoveCollaborator(context);
@@ -244,8 +242,23 @@ export async function handleCollaboratorRoutes(
     // Collection operations
     switch (method) {
       case 'GET':
+        // All site members may list collaborators; writes require canManageGrants.
+        await assertPermission(
+          context.principal,
+          context.siteId,
+          mainBranch.id,
+          'canView',
+          context.masClient,
+        );
         return await handleListCollaborators(context);
       case 'POST':
+        await assertPermission(
+          context.principal,
+          context.siteId,
+          mainBranch.id,
+          'canManageGrants',
+          context.masClient,
+        );
         return await handleGrantAccess(request, context);
       default:
         return errorResponse('Method not allowed', 405);

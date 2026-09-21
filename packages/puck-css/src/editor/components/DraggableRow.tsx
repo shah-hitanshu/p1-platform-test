@@ -11,7 +11,8 @@ interface DraggableRowProps {
   isSelected: boolean;
   isDropTarget: boolean;
   onSelect: () => void;
-  dragHandlers: DragHandlers;
+  /** Absent for a row that may be selected but not moved. */
+  dragHandlers?: DragHandlers;
   children: React.ReactNode;
 }
 

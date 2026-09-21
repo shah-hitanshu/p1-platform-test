@@ -8,7 +8,7 @@
 import React from 'react';
 
 export interface VersionReadOnlyBannerProps {
-  versionNumber: number;
+  versionNumber?: number | null;
 }
 
 export function VersionReadOnlyBanner({
@@ -16,7 +16,9 @@ export function VersionReadOnlyBanner({
 }: VersionReadOnlyBannerProps): React.ReactElement {
   return (
     <div className="p1-version-readonly-banner">
-      Viewing v{versionNumber}. Fields are read-only.
+      {versionNumber != null
+        ? `Viewing v${versionNumber}. Fields are read-only.`
+        : 'You have view-only access. Changes are not saved.'}
     </div>
   );
 }

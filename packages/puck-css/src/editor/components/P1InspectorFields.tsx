@@ -120,7 +120,7 @@ export function P1InspectorFields({
         rightSideBarVisible={rightSideBarVisible}
         onCollapse={handleCollapse}
       />
-      {isReadOnly && versionNumber !== null && (
+      {isReadOnly && (
         <VersionReadOnlyBanner versionNumber={versionNumber} />
       )}
       {activeTab === 'block' && selectedBlockLabel && (

@@ -76,7 +76,11 @@ function LiveThumbnailDrawer({
   config: RenderConfig;
   options: LiveThumbnailDrawerOptions;
 }) {
-  const { isViewingHistoricalVersion, viewingVersion, returnToLatest } = useP1Puck();
+  const { isViewingHistoricalVersion, viewingVersion, returnToLatest, permissions } = useP1Puck();
+  // Puck's insert permission gates the drop, not the pick-up; a read-only role
+  // must not be able to start dragging a block at all.
+  const readOnly =
+    isViewingHistoricalVersion || (permissions ? !permissions.canEditDocuments : false);
   const sections = React.useMemo(() => computeSections(config), [config]);
 
   const [expanded, setExpanded] = React.useState<Record<string, boolean>>(() => {
@@ -143,7 +147,7 @@ function LiveThumbnailDrawer({
                 <Drawer>
                   <div id={gridId} className="p1-blocks-drawer__grid">
                     {section.names.map((name) => (
-                      <Drawer.Item key={name} name={name}>
+                      <Drawer.Item key={name} name={name} isDragDisabled={readOnly}>
                         {() => (
                           <ThumbnailCard
                             config={config}

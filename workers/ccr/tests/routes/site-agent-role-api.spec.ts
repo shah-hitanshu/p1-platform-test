@@ -102,12 +102,12 @@ describe('Site Agent Role Routes — authorization (PCC-3676)', () => {
     expect(roleService.grantRole).not.toHaveBeenCalled();
   });
 
-  it('rejects listing agent roles without canManageGrants (403)', async () => {
+  it('rejects listing agent roles without canView (403)', async () => {
     const { handleSiteAgentRoleRoutes } = await import('../../src/routes/site-agent-role-api');
     const roleService = await import('../../src/services/agent-site-role-service');
     const { assertPermission, AuthorizationError } = await import('../../src/auth/authorization');
     vi.mocked(assertPermission).mockRejectedValueOnce(
-      new AuthorizationError('Missing permission: canManageGrants.', 'canManageGrants', 'VIEWER'),
+      new AuthorizationError('Missing permission: canView.', 'canView', 'NO_ACCESS'),
     );
 
     const response = await handleSiteAgentRoleRoutes(
@@ -117,6 +117,21 @@ describe('Site Agent Role Routes — authorization (PCC-3676)', () => {
 
     expect(response.status).toBe(403);
     expect(roleService.listRolesBySite).not.toHaveBeenCalled();
+  });
+
+  it('lists agent roles for anyone who can view the site (200)', async () => {
+    const { handleSiteAgentRoleRoutes } = await import('../../src/routes/site-agent-role-api');
+    const roleService = await import('../../src/services/agent-site-role-service');
+    const { assertPermission } = await import('../../src/auth/authorization');
+    vi.mocked(roleService.listRolesBySite).mockResolvedValue([]);
+
+    const response = await handleSiteAgentRoleRoutes(
+      new Request('https://api.example.com/api/sites/site-uuid-100/agent-roles', { method: 'GET' }),
+      { siteId: 'site-uuid-100', principal: adminUser },
+    );
+
+    expect(response.status).toBe(200);
+    expect(assertPermission).toHaveBeenCalledWith(adminUser, 'site-uuid-100', expect.any(String), 'canView');
   });
 
   // A global agent's access is implicit on every site, so granting it an

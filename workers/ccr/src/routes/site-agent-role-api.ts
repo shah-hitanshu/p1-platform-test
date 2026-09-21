@@ -63,18 +63,15 @@ export async function handleSiteAgentRoleRoutes(
   }
 
   try {
-    // Granting an agent a role on a site, listing those roles, or revoking one
-    // are all grant-management operations: require site admin (canManageGrants),
-    // mirroring collaborator-api [PCC-3676]. Without this, any allowlisted user
-    // could grant an agent admin on a site they don't administer and then act
-    // through that agent — a cross-site privilege escalation.
     const mainBranch = await getMainBranch(siteId);
     if (mainBranch === null) {
       return errorResponse('Site not found', 404);
     }
-    await assertPermission(principal, siteId, mainBranch.id, 'canManageGrants');
 
+    // Granting or revoking is site administration (canManageGrants); anyone who
+    // can view the site may see which agents already have access.
     if (roleId !== undefined && roleId !== '') {
+      await assertPermission(principal, siteId, mainBranch.id, 'canManageGrants');
       if (method === 'DELETE') {
         return await handleRevokeRole(siteId, roleId);
       }
@@ -83,8 +80,10 @@ export async function handleSiteAgentRoleRoutes(
 
     switch (method) {
       case 'POST':
+        await assertPermission(principal, siteId, mainBranch.id, 'canManageGrants');
         return await handleGrantRole(request, siteId, principal);
       case 'GET':
+        await assertPermission(principal, siteId, mainBranch.id, 'canView');
         return await handleListRoles(siteId);
       default:
         return errorResponse('Method not allowed', 405);

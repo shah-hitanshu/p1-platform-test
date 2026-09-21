@@ -79,6 +79,12 @@ describe('VersionReadOnlyBanner', () => {
     const { container } = render(<VersionReadOnlyBanner versionNumber={1} />);
     expect(container.querySelector('.p1-version-readonly-banner')).not.toBeNull();
   });
+
+  it('renders a view-only message when versionNumber is null', () => {
+    const { container } = render(<VersionReadOnlyBanner versionNumber={null} />);
+    expect(container.textContent).toMatch(/view-only access/i);
+    expect(container.textContent).not.toMatch(/Viewing v/);
+  });
 });
 
 // =============================================================================
@@ -158,6 +164,7 @@ const mockVersion: DocumentVersion = {
 const mockP1Context = {
   isViewingHistoricalVersion: false,
   viewingVersion: null as DocumentVersion | null,
+  permissions: null as { canEditDocuments: boolean } | null,
   templates: [],
   currentDocument: null as { path: string } | null,
   updateTemplate: undefined as unknown,
@@ -188,6 +195,7 @@ describe('P1InspectorFields', () => {
     // Reset mutable mock state
     mockP1Context.isViewingHistoricalVersion = false;
     mockP1Context.viewingVersion = null;
+    mockP1Context.permissions = null;
     mockP1Context.currentDocument = null;
     mockP1Context.updateTemplate = undefined;
     mockAppState.ui.itemSelector = null;
@@ -293,5 +301,28 @@ describe('P1InspectorFields', () => {
       </P1InspectorFields>
     );
     expect(screen.getByTestId('child-content')).toBeInTheDocument();
+  });
+
+  it('renders a view-only banner for a viewer role (no version number)', () => {
+    mockP1Context.permissions = { canEditDocuments: false };
+
+    render(
+      <P1InspectorFields>
+        <span>fields</span>
+      </P1InspectorFields>
+    );
+    expect(screen.getByText(/view-only access/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Viewing v/i)).toBeNull();
+  });
+
+  it('applies inert to the fields guard for a viewer role', () => {
+    mockP1Context.permissions = { canEditDocuments: false };
+
+    const { container } = render(
+      <P1InspectorFields>
+        <span>fields</span>
+      </P1InspectorFields>
+    );
+    expect(container.querySelector('[inert]')).not.toBeNull();
   });
 });

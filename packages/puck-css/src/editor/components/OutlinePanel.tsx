@@ -33,6 +33,11 @@ export function OutlinePanel(): React.ReactElement {
   const isViewingHistoricalVersion = p1Puck?.isViewingHistoricalVersion ?? false;
   const viewingVersion = p1Puck?.viewingVersion ?? null;
   const returnToLatest = p1Puck?.returnToLatest ?? (() => {});
+  // The historical overlay blocks the whole panel; a read-only role gets no
+  // overlay, so its rows must not offer reorder or delete themselves.
+  const readOnly =
+    isViewingHistoricalVersion ||
+    (p1Puck?.permissions ? !p1Puck.permissions.canEditDocuments : false);
 
   const content = usePuckOutline(
     (s) => s.appState.data.content,
@@ -92,31 +97,35 @@ export function OutlinePanel(): React.ReactElement {
                 isSelected={isSelected(row)}
                 isDropTarget={dropTargetId === row.id}
                 onSelect={() => select(row)}
-                dragHandlers={getDragHandlers(row)}
+                dragHandlers={readOnly ? undefined : getDragHandlers(row)}
               >
-                <span className={styles.grip} aria-hidden="true">
-                  <GripHandleIcon />
-                </span>
+                {!readOnly && (
+                  <span className={styles.grip} aria-hidden="true">
+                    <GripHandleIcon />
+                  </span>
+                )}
                 <span className={styles.icon} aria-hidden="true">
                   <BlockIcon type={row.type} label={row.label} />
                 </span>
                 <span className={styles.label}>{row.label}</span>
                 <OutlineCommentState blockId={row.id} />
-                <button
-                  type="button"
-                  className={styles.delete}
-                  aria-label={`Delete ${row.label}`}
-                  // stopPropagation on both onClick and onKeyDown: the row div's
-                  // onKeyDown fires on Space/Enter bubbling up from this button,
-                  // which would call select(row) for a block being deleted.
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    remove(row);
-                  }}
-                  onKeyDown={(e) => e.stopPropagation()}
-                >
-                  <Icon iconName="trash" size="s" />
-                </button>
+                {!readOnly && (
+                  <button
+                    type="button"
+                    className={styles.delete}
+                    aria-label={`Delete ${row.label}`}
+                    // stopPropagation on both onClick and onKeyDown: the row div's
+                    // onKeyDown fires on Space/Enter bubbling up from this button,
+                    // which would call select(row) for a block being deleted.
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      remove(row);
+                    }}
+                    onKeyDown={(e) => e.stopPropagation()}
+                  >
+                    <Icon iconName="trash" size="s" />
+                  </button>
+                )}
               </DraggableRow>
             ))}
           </>

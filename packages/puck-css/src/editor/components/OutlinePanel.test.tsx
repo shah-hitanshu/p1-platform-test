@@ -40,11 +40,14 @@ vi.mock('@pantheon-systems/pds-toolkit-react', async () => {
   };
 });
 
+let mockPermissions: { canEditDocuments: boolean } | null = null;
+
 vi.mock('../../core/P1PuckContext.js', () => ({
   useP1PuckOptional: () => ({
     isViewingHistoricalVersion: false,
     viewingVersion: null,
     returnToLatest: vi.fn(),
+    permissions: mockPermissions,
   }),
 }));
 
@@ -52,6 +55,7 @@ import { OutlinePanel } from './OutlinePanel.js';
 
 beforeEach(() => {
   dispatchSpy.mockReset();
+  mockPermissions = null;
   state.current.appState.ui.itemSelector = null;
   state.current.appState.data.content = [
     { type: 'HeadingBlock', props: { id: 'h1' } },
@@ -98,6 +102,32 @@ describe('OutlinePanel', () => {
     state.current.appState.data.content = [];
     render(<OutlinePanel />);
     expect(screen.getByText('No blocks yet. Add one from the Blocks panel.')).toBeInTheDocument();
+  });
+
+  // ── Read-only role ────────────────────────────────────────────────────────
+
+  it('offers no drag handle or delete to a role that cannot edit documents', () => {
+    mockPermissions = { canEditDocuments: false };
+    render(<OutlinePanel />);
+    expect(screen.getByRole('button', { name: 'Heading' })).not.toHaveAttribute('draggable');
+    expect(screen.queryByRole('button', { name: 'Delete Heading' })).toBeNull();
+  });
+
+  it('still lets a read-only role select a block', () => {
+    mockPermissions = { canEditDocuments: false };
+    render(<OutlinePanel />);
+    fireEvent.click(screen.getByText('Paragraph'));
+    expect(dispatchSpy).toHaveBeenCalledWith({
+      type: 'setUi',
+      ui: { itemSelector: { index: 1, zone: 'root:default-zone' } },
+    });
+  });
+
+  it('keeps drag and delete for a role that can edit documents', () => {
+    mockPermissions = { canEditDocuments: true };
+    render(<OutlinePanel />);
+    expect(screen.getByRole('button', { name: 'Heading' })).toHaveAttribute('draggable', 'true');
+    expect(screen.getByRole('button', { name: 'Delete Heading' })).toBeInTheDocument();
   });
 
   // ── Reorder ───────────────────────────────────────────────────────────────

@@ -99,6 +99,9 @@ export function P1EditorSubheader({
   onCreateBranch,
   permissions,
 }: P1EditorSubheaderProps): React.ReactElement {
+  // Undo/redo replay local edits that a read-only role could never save.
+  const canEdit = permissions?.canEditDocuments ?? true;
+
   return (
     <div data-testid="p1-editor-subheader" className={styles.subheader}>
       {/* Panel toggles — hidden on mobile */}
@@ -134,7 +137,7 @@ export function P1EditorSubheader({
           ariaLabel="Undo"
           iconName="rotateLeft"
           size="s"
-          disabled={!hasPast}
+          disabled={!hasPast || !canEdit}
           onClick={onUndo}
           hasTooltip={false}
           hasBorder={false}
@@ -144,7 +147,7 @@ export function P1EditorSubheader({
           ariaLabel="Redo"
           iconName="rotateRight"
           size="s"
-          disabled={!hasFuture}
+          disabled={!hasFuture || !canEdit}
           onClick={onRedo}
           hasTooltip={false}
           hasBorder={false}

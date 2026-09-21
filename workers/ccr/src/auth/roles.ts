@@ -84,11 +84,11 @@ const ROLE_ORDER: RoleName[] = ['NO_ACCESS', 'VIEWER', 'EDITOR', 'ADMIN'];
  *
  * Pantheon roles map as follows:
  * - owner, admin -> ADMIN
- * - developer, team_member, author, editor -> EDITOR
+ * - member, developer, team_member, author, editor -> EDITOR
  * - viewer -> VIEWER
  * - undefined/unknown -> NO_ACCESS
  *
- * @param pantheonRole - The Pantheon site role (owner, admin, developer, team_member, author, editor, viewer)
+ * @param pantheonRole - The Pantheon site role (owner, admin, member, developer, team_member, author, editor, viewer)
  * @returns The corresponding system role name
  */
 export function mapPantheonRole(pantheonRole: PantheonRole | undefined): RoleName {
@@ -96,6 +96,7 @@ export function mapPantheonRole(pantheonRole: PantheonRole | undefined): RoleNam
     case 'owner':
     case 'admin':
       return 'ADMIN';
+    case 'member':
     case 'developer':
     case 'team_member':
     case 'author':

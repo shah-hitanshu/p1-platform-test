@@ -20,6 +20,7 @@ export interface RoleOption<T extends string> {
 const USER_ROLE_LABELS = {
   owner: 'Owner',
   admin: 'Admin',
+  member: 'Member',
   developer: 'Developer',
   team_member: 'Team Member',
   author: 'Author',

@@ -11,10 +11,10 @@ const { renderSpy, dispatchSpy } = vi.hoisted(() => ({
 vi.mock('@puckeditor/core', async () => {
   const ReactMod = await import('react');
 
-  const Item = ({ name, children }: any) =>
+  const Item = ({ name, children, isDragDisabled }: any) =>
     ReactMod.createElement(
       'div',
-      { 'data-testid': 'drawer-item', 'data-name': name },
+      { 'data-testid': 'drawer-item', 'data-name': name, 'data-drag-disabled': String(!!isDragDisabled) },
       typeof children === 'function' ? children({ children: null, name }) : children,
     );
 
@@ -29,12 +29,15 @@ vi.mock('@puckeditor/core', async () => {
   };
 });
 
-// P1 context — drawer reads live version state from here.
+// P1 context — drawer reads live version state and permissions from here.
+let mockPermissions: { canEditDocuments: boolean } | null = null;
+
 vi.mock('../../core/P1PuckContext.js', () => ({
   useP1Puck: () => ({
     isViewingHistoricalVersion: false,
     viewingVersion: null,
     returnToLatest: vi.fn(),
+    permissions: mockPermissions,
   }),
 }));
 
@@ -75,6 +78,7 @@ beforeEach(() => {
   renderSpy.mockReset();
   renderSpy.mockImplementation(() => null);
   dispatchSpy.mockReset();
+  mockPermissions = null;
 });
 
 describe('buildLiveThumbnailDrawer', () => {
@@ -134,6 +138,22 @@ describe('buildLiveThumbnailDrawer', () => {
   });
 
   // ── Panel header (added in commit 24b8b16) ────────────────────────────────
+
+  it('lets blocks be picked up when the role can edit documents', () => {
+    mockPermissions = { canEditDocuments: true };
+    renderDrawer();
+    const items = screen.getAllByTestId('drawer-item');
+    expect(items.length).toBeGreaterThan(0);
+    for (const item of items) expect(item).toHaveAttribute('data-drag-disabled', 'false');
+  });
+
+  it('disables picking up blocks for a role that cannot edit documents', () => {
+    mockPermissions = { canEditDocuments: false };
+    renderDrawer();
+    const items = screen.getAllByTestId('drawer-item');
+    expect(items.length).toBeGreaterThan(0);
+    for (const item of items) expect(item).toHaveAttribute('data-drag-disabled', 'true');
+  });
 
   it('renders the panel header with "Blocks" title', () => {
     renderDrawer();

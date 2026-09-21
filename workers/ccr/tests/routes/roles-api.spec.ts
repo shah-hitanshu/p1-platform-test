@@ -36,6 +36,7 @@ describe('Custom Role Management API', () => {
 
       expect(userRoles.map((r) => r.value)).toEqual([
         'admin',
+        'member',
         'developer',
         'team_member',
         'author',

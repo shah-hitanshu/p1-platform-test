@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+import { useP1PuckOptional } from "../../../core/P1PuckContext.js";
 import type { RemoteDatasourceScope } from "../../../data/remote-datasources/user-remote-datasource-types";
 import {
   card,
@@ -24,10 +25,16 @@ import {
   type UiRemoteDatasource,
 } from "./remote-datasource-form-helpers";
 
+const READ_ONLY_HINT =
+  "You have view-only access. Saving or deleting data sources needs edit permission on this site.";
+
 export function RemoteDatasourceManager({ editorPath }: { editorPath: string }) {
   const { data: datasourcesData } = useRemoteDatasources(editorPath);
   const saveMutation = useSaveRemoteDatasource(editorPath);
   const removeMutation = useRemoveRemoteDatasource(editorPath);
+  const p1 = useP1PuckOptional();
+  const readOnly = p1?.permissions ? !p1.permissions.canEditDocuments : false;
+  const disabledStyle = readOnly ? { opacity: 0.5, cursor: "not-allowed" as const } : null;
 
   const [scope, setScope] = useState<RemoteDatasourceScope>("page");
   const [id, setId] = useState("");
@@ -134,10 +141,14 @@ export function RemoteDatasourceManager({ editorPath }: { editorPath: string }) 
         <button
           type="button"
           onClick={save}
-          style={{ ...primaryButton, width: "fit-content" }}
+          disabled={readOnly}
+          aria-disabled={readOnly}
+          title={readOnly ? READ_ONLY_HINT : undefined}
+          style={{ ...primaryButton, width: "fit-content", ...disabledStyle }}
         >
           Save datasource
         </button>
+        {readOnly ? <p style={{ ...muted, margin: 0 }}>{READ_ONLY_HINT}</p> : null}
         {error ? <p style={errorText}>{error}</p> : null}
       </div>
       {all.length > 0 ? (
@@ -186,7 +197,14 @@ export function RemoteDatasourceManager({ editorPath }: { editorPath: string }) 
                   >
                     Edit
                   </button>
-                  <button type="button" style={secondaryButton} onClick={() => removeMutation.mutate({ scope: d.scope, path: editorPath, id: d.id })}>
+                  <button
+                    type="button"
+                    disabled={readOnly}
+                    aria-disabled={readOnly}
+                    title={readOnly ? READ_ONLY_HINT : undefined}
+                    style={{ ...secondaryButton, ...disabledStyle }}
+                    onClick={() => removeMutation.mutate({ scope: d.scope, path: editorPath, id: d.id })}
+                  >
                     Delete
                   </button>
                 </div>
