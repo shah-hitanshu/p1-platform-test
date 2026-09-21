@@ -117,6 +117,10 @@ module "secrets" {
     "CCR_MCP_STATE_SIGNING_SECRET",
     "CCR_BACKEND_AUTH0_CLIENT_SECRET",
     "MEDIA_WORKER_PURGE_ADMIN_TOKEN",
+    # Shared: the ccr and p1-agent deploy jobs both read this one id. Splitting it
+    # in two lets the halves drift, and the mismatch surfaces only as agent
+    # mentions silently going unanswered.
+    "P1_AGENT_NOTIFY_SECRET",
   ]
   accessor_members = [
     "serviceAccount:${module.github_actions_wif.service_account_email}",

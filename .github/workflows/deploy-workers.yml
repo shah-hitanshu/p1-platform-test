@@ -119,6 +119,7 @@ jobs:
           secrets: |-
             cf_token:${{ vars.GCP_PROJECT_ID }}/P1_CF_DEPLOY_TOKEN
             auth0_client_secret:${{ vars.GCP_PROJECT_ID }}/CCR_BACKEND_AUTH0_CLIENT_SECRET
+            agent_notify_secret:${{ vars.GCP_PROJECT_ID }}/P1_AGENT_NOTIFY_SECRET
 
       - name: Start Cloud SQL Auth Proxy
         if: needs.config.outputs.run_migrations == 'true'
@@ -143,6 +144,8 @@ jobs:
           export POSTGRES_CONNECTION_STRING="postgresql://${ENC_USER}@localhost:5432/${{ vars.CLOUDSQL_DB_NAME }}"
           pnpm --filter ccr-worker db:migrate
 
+      # AGENT_NOTIFY_SECRET is the same Secret Manager id the p1-agent job reads, so
+      # the two ends of the mention notification cannot be given different values.
       - name: Set Wrangler secrets
         if: ${{ needs.config.outputs.dry_run != 'true' }}
         working-directory: workers/ccr
@@ -150,9 +153,11 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ steps.secrets.outputs.cf_token }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
           AUTH0_CLIENT_SECRET: ${{ steps.secrets.outputs.auth0_client_secret }}
+          AGENT_NOTIFY_SECRET: ${{ steps.secrets.outputs.agent_notify_secret }}
           DEPLOY_ENV: ${{ needs.config.outputs.environment }}
         run: |
           printf '%s' "$AUTH0_CLIENT_SECRET" | pnpm exec wrangler secret put AUTH0_CLIENT_SECRET --env "$DEPLOY_ENV"
+          printf '%s' "$AGENT_NOTIFY_SECRET" | pnpm exec wrangler secret put AGENT_NOTIFY_SECRET --env "$DEPLOY_ENV"
 
       - name: Deploy
         run: >
@@ -258,9 +263,12 @@ jobs:
             agent_id:${{ vars.GCP_PROJECT_ID }}/P1_AGENT_CCR_AGENT_ID
             agent_api_key:${{ vars.GCP_PROJECT_ID }}/P1_AGENT_CCR_API_KEY
             ai_gateway_api_token:${{ vars.GCP_PROJECT_ID }}/P1_AGENT_AI_GATEWAY_API_TOKEN
+            agent_notify_secret:${{ vars.GCP_PROJECT_ID }}/P1_AGENT_NOTIFY_SECRET
 
       # The agent's runtime credentials: its CCR identity and the token it calls
       # the AI Gateway REST API with. Distinct from the ephemeral CF deploy token.
+      # AGENT_NOTIFY_SECRET is the same Secret Manager id the ccr job reads, so the
+      # two ends of the mention notification cannot be given different values.
       - name: Set Wrangler secrets
         if: ${{ needs.config.outputs.dry_run != 'true' }}
         working-directory: workers/p1-agent
@@ -270,11 +278,13 @@ jobs:
           AGENT_ID: ${{ steps.secrets.outputs.agent_id }}
           AGENT_API_KEY: ${{ steps.secrets.outputs.agent_api_key }}
           AI_GATEWAY_API_TOKEN: ${{ steps.secrets.outputs.ai_gateway_api_token }}
+          AGENT_NOTIFY_SECRET: ${{ steps.secrets.outputs.agent_notify_secret }}
           DEPLOY_ENV: ${{ needs.config.outputs.environment }}
         run: |
           printf '%s' "$AGENT_ID" | pnpm exec wrangler secret put AGENT_ID --env "$DEPLOY_ENV"
           printf '%s' "$AGENT_API_KEY" | pnpm exec wrangler secret put AGENT_API_KEY --env "$DEPLOY_ENV"
           printf '%s' "$AI_GATEWAY_API_TOKEN" | pnpm exec wrangler secret put AI_GATEWAY_API_TOKEN --env "$DEPLOY_ENV"
+          printf '%s' "$AGENT_NOTIFY_SECRET" | pnpm exec wrangler secret put AGENT_NOTIFY_SECRET --env "$DEPLOY_ENV"
 
       - name: Deploy
         run: >
