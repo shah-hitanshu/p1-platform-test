@@ -85,6 +85,13 @@
       "when": 1789339974305,
       "tag": "0011_comment_kinds",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1789426374305,
+      "tag": "0012_unmark_surviving_latest_version",
+      "breakpoints": true
     }
   ]
 }

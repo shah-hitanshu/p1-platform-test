@@ -22,7 +22,10 @@ import { createRealDatabaseConnection, deleteSiteCascade } from '../helpers/data
 
 import { createSite } from '../../src/services/site-service';
 import { createBranch } from '../../src/services/branch-service';
-import { createDocumentVersion } from '../../src/services/document-version-service';
+import {
+  createDocumentVersion,
+  getLatestVersionsForBranch,
+} from '../../src/services/document-version-service';
 import { publishDocument } from '../../src/services/checkpoint-publish';
 import { createCheckpoint } from '../../src/services/checkpoint-service';
 import {
@@ -174,6 +177,86 @@ describe('Superseded version marking - Integration Tests', () => {
       const onFeature = await liveVersions(documentId, featureBranch.id);
       expect(onFeature).toHaveLength(1);
       expect(onFeature[0].version_number).toBe(VERSION_DEPTH);
+    });
+  });
+
+  describe('deletes', () => {
+    // Nothing in the insert trigger walks a mark back, so a delete that removes
+    // the newest version leaves its already-marked predecessor as the surviving
+    // latest — invisible to every filtered read while history still shows it.
+    it('promotes the survivor when the newest version is deleted', async () => {
+      const documentId = await createWithHistory('pages/newest-deleted', mainBranchId);
+
+      await sql`
+        DELETE FROM app.document_versions
+        WHERE document_id = ${documentId} AND branch_id = ${mainBranchId}
+          AND version_number = ${VERSION_DEPTH}`;
+
+      const live = await liveVersions(documentId, mainBranchId);
+      expect(live).toHaveLength(1);
+      expect(live[0].version_number).toBe(VERSION_DEPTH - 1);
+    });
+
+    it('keeps the document visible to counts and latest-version reads', async () => {
+      const documentId = await createWithHistory('pages/survivor-visible', mainBranchId);
+      const countBefore = await countDocumentsOnBranch(mainBranchId);
+
+      await sql`
+        DELETE FROM app.document_versions
+        WHERE document_id = ${documentId} AND branch_id = ${mainBranchId}
+          AND version_number = ${VERSION_DEPTH}`;
+
+      expect(await countDocumentsOnBranch(mainBranchId)).toBe(countBefore);
+      const latest = await getLatestVersionsForBranch(mainBranchId);
+      const survivor = latest.find((v) => v.documentId === documentId);
+      expect(survivor?.versionNumber).toBe(VERSION_DEPTH - 1);
+    });
+
+    it('promotes every affected document in a single bulk delete', async () => {
+      // The real deleters — rollback, branch and site removal — delete in bulk,
+      // and the trigger sees them as one statement.
+      const branch = await createBranch({
+        name: `bulk-delete-${String(Date.now())}`,
+        siteId,
+        sourceBranchId: mainBranchId,
+        createdById: TEST_USER_ID,
+        createdByType: 'user',
+      });
+      const first = await createWithHistory('pages/bulk-a', branch.id);
+      const second = await createWithHistory('pages/bulk-b', branch.id);
+
+      await sql`
+        DELETE FROM app.document_versions
+        WHERE branch_id = ${branch.id} AND version_number = ${VERSION_DEPTH}`;
+
+      for (const documentId of [first, second]) {
+        const live = await liveVersions(documentId, branch.id);
+        expect(live).toHaveLength(1);
+        expect(live[0].version_number).toBe(VERSION_DEPTH - 1);
+      }
+    });
+
+    it('leaves the marks alone when the deleted version was not the newest', async () => {
+      const documentId = await createWithHistory('pages/middle-deleted', mainBranchId);
+
+      await sql`
+        DELETE FROM app.document_versions
+        WHERE document_id = ${documentId} AND branch_id = ${mainBranchId}
+          AND version_number = 3`;
+
+      const live = await liveVersions(documentId, mainBranchId);
+      expect(live).toHaveLength(1);
+      expect(live[0].version_number).toBe(VERSION_DEPTH);
+    });
+
+    it('has nothing to promote when every version of a document goes', async () => {
+      const documentId = await createWithHistory('pages/all-versions-deleted', mainBranchId);
+
+      await sql`
+        DELETE FROM app.document_versions
+        WHERE document_id = ${documentId} AND branch_id = ${mainBranchId}`;
+
+      expect(await liveVersions(documentId, mainBranchId)).toHaveLength(0);
     });
   });
 
