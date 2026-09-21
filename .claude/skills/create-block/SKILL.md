@@ -131,7 +131,7 @@ render: ({ text }: { text?: string | ReactNode }) => {
   `allowedTags`/`allowedAttrs`; they extend the defaults and cannot remove a
   protection. Do **not** feed any HTML
   string to `dangerouslySetInnerHTML` unsanitized — see also the link-safety
-  checks in `list-block.tsx` and `connectable.tsx`.
+  checks in `connectable.tsx`.
 - Add the `prose max-w-prose` classes so formatted HTML (lists, emphasis) gets
   sensible typography.
 

@@ -63,7 +63,7 @@ export const REMOTE_DATASOURCE_REGISTRY: RemoteDatasourceDefinition[] = [
     id: "swapi_list",
     label: "Star Wars characters list",
     description:
-      "First page of SWAPI `/people/` (loaded every request). Use with a List block and `markdownLinks` token.",
+      "First page of SWAPI `/people/` (loaded every request). Exposes an `items` array of `{ id, name, url }` rows.",
     resolution:
       "First `/people/` page is fetched on every request (alongside the single-person `swapi` row). Extra SWAPI traffic on person-scoped pages; swap to lazy loading if you need to optimize.",
     fields: [
@@ -71,11 +71,6 @@ export const REMOTE_DATASOURCE_REGISTRY: RemoteDatasourceDefinition[] = [
         path: "items",
         description:
           "Array of `{ id, name, url }` rows from SWAPI `/people/`. In an Array field, set value to `{{ swapi_list.items }}` to hydrate cards/rows.",
-      },
-      {
-        path: "markdownLinks",
-        description:
-          'In a List block\'s items field: `{{ swapi_list.markdownLinks "/jedi/{id}" }}` (or bare `{{ swapi_list.markdownLinks }}`) -- expands to one `[name](/jedi/n)` line per person.',
       },
       { path: "items[].id", description: "Person ID (extracted from URL)" },
       { path: "items[].name", description: "Character name" },

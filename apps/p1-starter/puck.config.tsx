@@ -5,7 +5,6 @@ import { dividerBlock } from "./components/puck/divider-block";
 import { headingBlock } from "./components/puck/heading-block";
 import { imageBlock } from "./components/puck/image-block";
 import { gridBlock } from "./components/puck/grid-block";
-import { listBlock } from "./components/puck/list-block";
 import { mediaFigureBlock } from "./components/puck/media-figure-block";
 import { paragraphBlock } from "./components/puck/paragraph-block";
 import { quoteBlock } from "./components/puck/quote-block";
@@ -20,7 +19,7 @@ export const config = {
     ...p1Categories,
     typography: {
       title: "Typography",
-      components: ["HeadingBlock", "ParagraphBlock", "QuoteBlock", "ListBlock"],
+      components: ["HeadingBlock", "ParagraphBlock", "QuoteBlock"],
     },
     media: {
       title: "Media",
@@ -52,7 +51,6 @@ export const config = {
     MediaFigureBlock: mediaFigureBlock,
     GridBlock: gridBlock,
     QuoteBlock: quoteBlock,
-    ListBlock: listBlock,
     DividerBlock: dividerBlock,
     SpacerBlock: spacerBlock,
     ButtonBlock: buttonBlock,
