@@ -440,6 +440,7 @@ export const SplitButton = (props: Record<string, unknown>) => {
         {
           type: 'button',
           'aria-label': (props.moreActionsLabel as string) ?? 'More actions',
+          disabled: props.disabled,
           onClick: () => setMenuOpen((prev: boolean) => !prev),
         },
       ),

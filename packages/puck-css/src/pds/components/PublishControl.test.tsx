@@ -523,6 +523,48 @@ describe('PublishControl — permissions filtering', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Disabled publish button
+// ---------------------------------------------------------------------------
+
+describe('PublishControl — disabled', () => {
+  it('disables the primary button and the more-actions trigger', () => {
+    render(
+      <PublishControl docState="modified" context="main" onPublish={vi.fn()} disabled />,
+    );
+    expect(screen.getByRole('button', { name: 'Publish to live' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'More actions' })).toBeDisabled();
+  });
+
+  it('does not request publish confirmation while disabled', () => {
+    const onPublish = vi.fn();
+    render(
+      <PublishControl docState="modified" context="main" onPublish={onPublish} disabled />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Publish to live' }));
+    expect(__toastCalls).toHaveLength(0);
+    expect(onPublish).not.toHaveBeenCalled();
+  });
+
+  it('disables the button-only rendering too', () => {
+    render(
+      <PublishControl
+        docState="modified"
+        context="main"
+        onPublish={vi.fn()}
+        disabled
+        renderButtonOnly
+      />,
+    );
+    expect(screen.getByRole('button', { name: 'Publish to live' })).toBeDisabled();
+  });
+
+  it('leaves the button enabled by default', () => {
+    render(<PublishControl docState="modified" context="main" onPublish={vi.fn()} />);
+    expect(screen.getByRole('button', { name: 'Publish to live' })).not.toBeDisabled();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Compound component — no external DocStateBadge needed
 // ---------------------------------------------------------------------------
 

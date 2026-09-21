@@ -667,7 +667,7 @@ function P1SubheaderBridgeInner({
   p1Context: ReturnType<typeof useP1Puck>;
   showMergeReviewRef: { current: () => void };
 }): React.ReactElement | null {
-  const { currentDocument, currentBranch, presence, publishDocument, permissions } = p1Context;
+  const { currentDocument, currentBranch, presence, publishDocument, permissions, isViewingHistoricalVersion } = p1Context;
 
   // Read Puck history state — must be called unconditionally (Rules of Hooks)
   const history = usePluginPuckHistory((s) => (s as unknown as PuckStateWithHistory).history);
@@ -697,8 +697,12 @@ function P1SubheaderBridgeInner({
   const docState = deriveDocState(currentDocument, isOnMain);
   // The publish *badge* is shown ONLY on the Live (main) branch and reflects the
   // real published state; off-main (or while the status is unknown) it's
-  // undefined → hidden. We never show a guessed state.
-  const badgeDocState = deriveLiveDocState(options.publishedStatus, isOnMain);
+  // undefined → hidden. We never show a guessed state. A historical-version
+  // preview is read-only and the status describes the current version, not the
+  // one on screen, so the badge is hidden there too.
+  const badgeDocState = isViewingHistoricalVersion
+    ? undefined
+    : deriveLiveDocState(options.publishedStatus, isOnMain);
 
   // Map agent presence to subheader chips. Human collaborators are rendered as
   // avatars by P1EditorHeader instead (PCC-3511), so they're selected there.
@@ -771,6 +775,7 @@ function P1SubheaderBridgeInner({
           badgeDocState={badgeDocState}
           hasDrift={false}
           context={isOnMain ? 'main' : 'branch'}
+          publishDisabled={isViewingHistoricalVersion}
           agents={agentActors}
           onStopAgent={handleStopAgent}
           onPublish={handlePublish}

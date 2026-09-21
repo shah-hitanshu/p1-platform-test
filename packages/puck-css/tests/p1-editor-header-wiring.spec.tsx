@@ -199,10 +199,12 @@ vi.mock('../src/pds/components/P1EditorSubheader.js', () => ({
     onUndo,
     onRedo,
     docState,
+    badgeDocState,
     context,
     agents,
     hasDrift,
     onPublish,
+    publishDisabled,
   }: Record<string, unknown>) => (
     <div data-testid="p1-editor-subheader">
       <button
@@ -222,11 +224,13 @@ vi.mock('../src/pds/components/P1EditorSubheader.js', () => ({
         Redo
       </button>
       <span data-testid="doc-state">{docState as string}</span>
+      <span data-testid="badge-doc-state">{(badgeDocState as string) ?? ''}</span>
       <span data-testid="branch-context">{context as string}</span>
       <span data-testid="agent-count">{(agents as unknown[])?.length ?? 0}</span>
       <span data-testid="has-drift">{String(hasDrift)}</span>
       <button
         data-testid="publish-btn"
+        disabled={Boolean(publishDisabled)}
         onClick={onPublish as () => void}
         type="button"
       >
@@ -327,6 +331,7 @@ afterEach(() => {
   mockP1Context.presence = null;
   mockP1Context.hasActiveHumans = false;
   mockP1Context.humanPresenceCount = 0;
+  mockP1Context.isViewingHistoricalVersion = false;
 });
 
 function renderHeader(plugin: ReturnType<typeof createP1Plugin>) {
@@ -656,6 +661,40 @@ describe('createP1Plugin render() — P1EditorSubheader portal', () => {
     renderPlugin(plugin);
     await waitFor(() => {
       expect(screen.getByTestId('doc-state').textContent).toBe('modified');
+    });
+  });
+
+  it('hides the publish badge while a historical version is previewed', async () => {
+    mockP1Context.isViewingHistoricalVersion = true;
+    const plugin = createP1Plugin({ ...baseOptions, publishedStatus: 'unpublished-changes' });
+    renderPlugin(plugin);
+    await waitFor(() => {
+      expect(screen.getByTestId('badge-doc-state').textContent).toBe('');
+    });
+  });
+
+  it('shows the publish badge on the latest version', async () => {
+    const plugin = createP1Plugin({ ...baseOptions, publishedStatus: 'unpublished-changes' });
+    renderPlugin(plugin);
+    await waitFor(() => {
+      expect(screen.getByTestId('badge-doc-state').textContent).toBe('unpublished');
+    });
+  });
+
+  it('disables the publish button while a historical version is previewed', async () => {
+    mockP1Context.isViewingHistoricalVersion = true;
+    const plugin = createP1Plugin(baseOptions);
+    renderPlugin(plugin);
+    await waitFor(() => {
+      expect(screen.getByTestId('publish-btn')).toBeDisabled();
+    });
+  });
+
+  it('leaves the publish button enabled on the latest version', async () => {
+    const plugin = createP1Plugin(baseOptions);
+    renderPlugin(plugin);
+    await waitFor(() => {
+      expect(screen.getByTestId('publish-btn')).not.toBeDisabled();
     });
   });
 

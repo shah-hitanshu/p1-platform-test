@@ -40,6 +40,8 @@ export interface P1EditorSubheaderProps {
   badgeDocState?: DocState;
   hasDrift?: boolean;
   context: 'branch' | 'main';
+  /** Greys out the publish button, e.g. while a historical version is previewed. */
+  publishDisabled?: boolean;
   agents: SubheaderActor[];
   onStopAgent: (id: string) => void;
   onPublish?: () => Promise<void> | void;
@@ -76,6 +78,7 @@ export function P1EditorSubheader({
   badgeDocState,
   hasDrift,
   context,
+  publishDisabled,
   agents,
   onStopAgent,
   onPublish,
@@ -227,6 +230,7 @@ export function P1EditorSubheader({
           onCreateWorkstream={onCreateWorkstream}
           onDeleteDocument={onDeleteDocument}
           permissions={permissions}
+          disabled={publishDisabled}
           renderButtonOnly
         />
       </div>

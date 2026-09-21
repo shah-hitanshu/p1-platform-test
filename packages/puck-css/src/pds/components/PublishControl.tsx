@@ -20,6 +20,8 @@ interface PublishControlProps {
   onDeleteDocument?: () => Promise<void> | void;
   renderBadgeOnly?: boolean;
   renderButtonOnly?: boolean;
+  /** Greys out the publish button and blocks its actions. */
+  disabled?: boolean;
   /** Backend-resolved permissions; absent means no restrictions (backward compat). */
   permissions?: RolePermissions | null;
 }
@@ -91,6 +93,7 @@ export function PublishControl({
   onDeleteDocument,
   renderBadgeOnly = false,
   renderButtonOnly = false,
+  disabled = false,
   permissions,
 }: PublishControlProps): React.ReactElement {
   const [addToast, toastApi] = useToast();
@@ -178,6 +181,7 @@ export function PublishControl({
         id="publish-split-button"
         data-testid="publish-split-button"
         actionItems={actionItems}
+        disabled={disabled}
         size="s"
         variant="primary"
       />
@@ -196,6 +200,7 @@ export function PublishControl({
           id="publish-split-button"
           data-testid="publish-split-button"
           actionItems={actionItems}
+          disabled={disabled}
           size="s"
           variant="primary"
         />
