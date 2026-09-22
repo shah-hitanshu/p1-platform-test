@@ -23,6 +23,9 @@ import { getCachedSiteAllowedOrigins } from '../services/site-service.js';
 import { resolveBrokerRedirectUrl } from '../auth/broker/redirect-origin.js';
 import { getLogger } from '@pantheon-systems/p1-telemetry';
 
+// Broker JWTs are stateless (no jti denylist, logout doesn't revoke them), so this TTL is the entire exposure window.
+const BROKER_SESSION_JWT_TTL_SECONDS = 12 * 60 * 60;
+
 function loggedOutPage(): Response {
   return new Response(
     '<html><body><h1>Logged out</h1><p>You have been logged out. You may close this window.</p></body></html>',
@@ -389,7 +392,7 @@ export async function handleBrokerRoutes(
         issuer,
         subject: tx.userId ?? '',
         audience: env.BROKER_JWT_AUDIENCE ?? 'css-api',
-        ttlSeconds: 3600,
+        ttlSeconds: BROKER_SESSION_JWT_TTL_SECONDS,
         siteId: tx.siteId,
         email: tx.userEmail ?? '',
         name: tx.userName,

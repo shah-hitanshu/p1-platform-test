@@ -757,6 +757,49 @@ describe('BrokerRoutes', () => {
       );
     });
 
+    it('issues the broker JWT with a 12-hour TTL', async () => {
+      const { handleBrokerRoutes } = await import('../../../src/routes/broker-routes.js');
+      const { issueBrokerJwt } = await import('../../../src/auth/broker/jwt-issuer.js');
+      const { authenticate } = await import('../../../src/middleware/authentication.js');
+
+      vi.mocked(authenticate).mockResolvedValue({
+        id: 'token-id-1',
+        type: 'service',
+        authProvider: 'site_token',
+        siteId: 'site-123',
+        pantheonSiteRoles: {},
+        tokenExpiry: new Date(Date.now() + 3600000).toISOString(),
+      });
+
+      mockTransactionResponse = {
+        id: 'tx-ttl-1',
+        siteId: 'site-123',
+        siteApiTokenId: 'token-id-1',
+        status: 'redeemed',
+        createdAt: 1000,
+        expiresAt: 1300,
+        userId: 'auth0|user-1',
+        userEmail: 'user@example.com',
+        userName: 'Test User',
+      };
+
+      vi.mocked(issueBrokerJwt).mockResolvedValue('mock.broker.jwt');
+
+      const request = new Request('https://css.example.com/broker/redeem', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ transactionId: 'tx-ttl-1' }),
+      });
+
+      await handleBrokerRoutes(request, createMockEnv(), '/broker/redeem');
+
+      expect(issueBrokerJwt).toHaveBeenCalledWith(
+        expect.objectContaining({
+          ttlSeconds: 43200,
+        }),
+      );
+    });
+
     it('returns 400 if transactionId is missing', async () => {
       const { handleBrokerRoutes } = await import('../../../src/routes/broker-routes.js');
       const { authenticate } = await import('../../../src/middleware/authentication.js');

@@ -121,6 +121,42 @@ describe('BrokerJwtIssuer', () => {
       vi.useRealTimers();
     });
 
+    it('sets exp 12 hours after iat for a 12-hour ttlSeconds', async () => {
+      const { macSign, getPrimaryKeyVersion } = await import('../../../src/auth/broker/gcp-kms-client.js');
+      const { issueBrokerJwt } = await import('../../../src/auth/broker/jwt-issuer.js');
+
+      vi.mocked(getPrimaryKeyVersion).mockResolvedValueOnce(KEY_VERSION);
+      vi.mocked(macSign).mockResolvedValueOnce({
+        mac: new Uint8Array([1, 2, 3]),
+        keyVersion: KEY_VERSION,
+      });
+
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-05-07T12:00:00Z'));
+
+      const jwt = await issueBrokerJwt({
+        serviceAccountKeyJson: '{}',
+        keyResource: KEY_RESOURCE,
+        issuer: 'https://css.example.com',
+        subject: 'user-uuid-123',
+        audience: 'css-api',
+        ttlSeconds: 12 * 60 * 60,
+        siteId: 'site-456',
+        email: 'alice@example.com',
+        name: 'Alice',
+        provider: 'auth0',
+      });
+
+      const payloadB64 = jwt.split('.')[1];
+      const padded = payloadB64.replace(/-/g, '+').replace(/_/g, '/') +
+        '='.repeat((4 - payloadB64.length % 4) % 4);
+      const payload = JSON.parse(atob(padded));
+
+      expect(payload.exp).toBe(Number(payload.iat) + 12 * 60 * 60);
+
+      vi.useRealTimers();
+    });
+
     it('calls macSign exactly once with raw signing input', async () => {
       const { macSign, getPrimaryKeyVersion } = await import('../../../src/auth/broker/gcp-kms-client.js');
       const { issueBrokerJwt } = await import('../../../src/auth/broker/jwt-issuer.js');
