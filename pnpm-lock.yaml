@@ -264,6 +264,9 @@ importers:
       '@pantheon-systems/eslint-config':
         specifier: workspace:*
         version: link:../eslint-config
+      '@pantheon-systems/p1-media':
+        specifier: workspace:*
+        version: link:../p1-media-r2
       '@pantheon-systems/puck-css':
         specifier: workspace:*
         version: link:../puck-css

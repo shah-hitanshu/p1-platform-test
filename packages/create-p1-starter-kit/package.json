@@ -46,6 +46,7 @@
   "devDependencies": {
     "@pantheon-systems/css-client": "workspace:*",
     "@pantheon-systems/eslint-config": "workspace:*",
+    "@pantheon-systems/p1-media": "workspace:*",
     "@pantheon-systems/puck-css": "workspace:*",
     "@vitejs/plugin-react": "^6.0.5",
     "eslint": "^9.27.0",

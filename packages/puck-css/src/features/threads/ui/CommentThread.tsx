@@ -126,7 +126,7 @@ export function CommentThread({
         onClose={onClose}
       />
 
-      <CommentList comments={comments} proposalActions={actions} />
+      <CommentList threadId={threadId} comments={comments} proposalActions={actions} />
       {comments.length === 0 && !loading && !failed && (
         <p className={styles.empty} data-testid="comment-thread-empty">
           No comments on this {KIND_LABEL[contextType].toLowerCase()} yet.
