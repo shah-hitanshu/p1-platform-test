@@ -175,6 +175,25 @@ describe('P1EditorSubheader', () => {
     expect(onRedo).toHaveBeenCalledTimes(1);
   });
 
+  it('names each toolbar button on hover', () => {
+    render(<P1EditorSubheader {...defaultProps} hasPast={true} hasFuture={true} />);
+
+    for (const label of ['Toggle left panel', 'Toggle right panel', 'Undo', 'Redo']) {
+      const button = screen.getByLabelText(label);
+      expect(button.querySelector('.pds-tooltip')).not.toBeNull();
+    }
+  });
+
+  it('still names a history button that is disabled', () => {
+    render(<P1EditorSubheader {...defaultProps} hasPast={false} hasFuture={false} />);
+
+    for (const testId of ['undo-btn', 'redo-btn']) {
+      const button = screen.getByTestId(testId);
+      expect((button as HTMLButtonElement).disabled).toBe(true);
+      expect(button.closest('.pds-tooltip')).not.toBeNull();
+    }
+  });
+
   // ---------------------------------------------------------------------------
   // Plugin rail — permanent, no toggle
   // ---------------------------------------------------------------------------

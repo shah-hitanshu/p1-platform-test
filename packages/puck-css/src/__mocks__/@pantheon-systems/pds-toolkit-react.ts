@@ -238,15 +238,24 @@ export const Spinner = (props: Record<string, unknown>) => {
 export const PantheonLogo = (props: Record<string, unknown>) => {
   return React.createElement('span', { 'data-testid': props['data-testid'], className: 'pds-pantheon-logo' });
 };
-// IconButton stub: renders a <button> forwarding data-testid, aria-label, disabled, onClick
+// IconButton stub: renders a <button> forwarding data-testid, aria-label, disabled, onClick.
+// Mirrors the real component's tooltip shape: a hover tooltip nested in the
+// button, or a title attribute when there is none.
 export const IconButton = (props: Record<string, unknown>) => {
-  return React.createElement('button', {
-    'data-testid': props['data-testid'],
-    'aria-label': props.ariaLabel,
-    disabled: props.disabled,
-    onClick: props.onClick,
-    type: 'button',
-  });
+  const hasTooltip = props.hasTooltip !== false && !props.disabled;
+  return React.createElement(
+    'button',
+    {
+      'data-testid': props['data-testid'],
+      'aria-label': props.ariaLabel,
+      disabled: props.disabled,
+      onClick: props.onClick,
+      title: hasTooltip ? undefined : (props.ariaLabel as string),
+      type: 'button',
+    },
+    // The real tooltip only renders its text while open, so the stub leaves it empty.
+    hasTooltip ? React.createElement('span', { className: 'pds-tooltip' }) : null,
+  );
 };
 // Button stub: renders a <button> so data-testid, onClick, etc. are accessible in tests
 export const Button = (props: Record<string, unknown>) => {
@@ -289,7 +298,7 @@ export const Avatar = (props: Record<string, unknown>) => {
 export const Tooltip = (props: Record<string, unknown>) => {
   return React.createElement(
     'span',
-    { title: props.content as string },
+    { className: 'pds-tooltip', title: props.content as string },
     props.customTrigger ?? props.children,
   );
 };

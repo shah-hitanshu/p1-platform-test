@@ -11,7 +11,7 @@
  */
 
 import React from 'react';
-import { IconButton } from '@pantheon-systems/pds-toolkit-react';
+import { IconButton, Tooltip } from '@pantheon-systems/pds-toolkit-react';
 import type { Branch, RolePermissions } from '@pantheon-systems/css-client';
 import type { DocState } from '../types.js';
 import { PublishControl } from './PublishControl.js';
@@ -59,6 +59,58 @@ export interface P1EditorSubheaderProps {
   permissions?: RolePermissions | null;
 }
 
+interface ToolbarIconButtonProps {
+  label: string;
+  iconName: string;
+  disabled?: boolean;
+  pressed?: boolean;
+  onClick?: () => void;
+  className?: string;
+  testId?: string;
+}
+
+/**
+ * An icon-only toolbar button that names itself on hover.
+ *
+ * PDS drops its own tooltip on a disabled button, and a disabled button
+ * swallows pointer events, so the disabled case puts the tooltip on a wrapper
+ * and stops the button from eating the hover.
+ */
+function ToolbarIconButton({
+  label,
+  iconName,
+  disabled,
+  pressed,
+  onClick,
+  className,
+  testId,
+}: ToolbarIconButtonProps): React.ReactElement {
+  const button = (
+    <IconButton
+      data-testid={testId}
+      ariaLabel={label}
+      iconName={iconName}
+      size="s"
+      disabled={disabled}
+      aria-pressed={pressed}
+      onClick={onClick}
+      hasTooltip={!disabled}
+      hasBorder={false}
+      className={className}
+    />
+  );
+
+  if (!disabled) return button;
+
+  return (
+    <Tooltip
+      content={label}
+      preferredPlacement="bottom"
+      customTrigger={<span className={styles.tooltipTarget}>{button}</span>}
+    />
+  );
+}
+
 export function P1EditorSubheader({
   puckActions,
   docState,
@@ -94,22 +146,16 @@ export function P1EditorSubheader({
     <div data-testid="p1-editor-subheader" className={styles.subheader}>
       {/* Panel toggles — hidden on mobile */}
       <div data-testid="panel-toggles" className={styles.panelToggles}>
-        <IconButton
-          ariaLabel="Toggle left panel"
+        <ToolbarIconButton
+          label="Toggle left panel"
           iconName="tableRows"
-          size="s"
-          hasTooltip={false}
-          hasBorder={false}
-          aria-pressed={leftPanelVisible}
+          pressed={leftPanelVisible}
           onClick={onToggleLeftPanel}
         />
-        <IconButton
-          ariaLabel="Toggle right panel"
+        <ToolbarIconButton
+          label="Toggle right panel"
           iconName="tableRows"
-          size="s"
-          hasTooltip={false}
-          hasBorder={false}
-          aria-pressed={rightPanelVisible}
+          pressed={rightPanelVisible}
           onClick={onToggleRightPanel}
           className={styles.rightPanelToggle}
         />
@@ -120,25 +166,19 @@ export function P1EditorSubheader({
 
       {/* Manual undo/redo */}
       <div data-testid="device-selector" className={styles.historyGroup}>
-        <IconButton
-          data-testid="undo-btn"
-          ariaLabel="Undo"
+        <ToolbarIconButton
+          testId="undo-btn"
+          label="Undo"
           iconName="rotateLeft"
-          size="s"
           disabled={!hasPast || !canEdit}
           onClick={onUndo}
-          hasTooltip={false}
-          hasBorder={false}
         />
-        <IconButton
-          data-testid="redo-btn"
-          ariaLabel="Redo"
+        <ToolbarIconButton
+          testId="redo-btn"
+          label="Redo"
           iconName="rotateRight"
-          size="s"
           disabled={!hasFuture || !canEdit}
           onClick={onRedo}
-          hasTooltip={false}
-          hasBorder={false}
         />
       </div>
 

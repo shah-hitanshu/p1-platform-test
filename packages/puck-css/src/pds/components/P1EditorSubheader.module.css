@@ -115,3 +115,15 @@
     gap: var(--pds-spacing-xs, 0.5rem);
   }
 }
+
+/* ── Hover target for a disabled toolbar button ──────────────────────── */
+
+/* A disabled button dispatches no pointer events, so the wrapper has to be
+   the thing the tooltip hovers on. */
+.tooltipTarget {
+  display: inline-flex;
+}
+
+.tooltipTarget :global(.pds-icon-button:disabled) {
+  pointer-events: none;
+}
