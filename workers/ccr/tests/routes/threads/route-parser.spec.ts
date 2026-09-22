@@ -1,7 +1,7 @@
 /**
  * Route parser tests for the threads endpoints.
  *
- * Five paths share one handler; the parameters they extract decide which
+ * Six paths share one handler; the parameters they extract decide which
  * endpoint (and which permission) a request reaches, so each shape is pinned.
  */
 
@@ -47,6 +47,15 @@ describe('parseRoute — threads', () => {
       commentId: 'comment-1',
       commentAction: 'decision',
     });
+  });
+
+  it('parses the unanswered mentions sub-resource', () => {
+    expect(parseRoute('/api/sites/site-1/threads/thread-1/unanswered-mentions')?.params).toMatchObject({
+      siteId: 'site-1',
+      threadId: 'thread-1',
+      subResource: 'unanswered-mentions',
+    });
+    expect(parseRoute('/api/sites/site-1/threads/thread-1/unanswered-mentions/x')?.handler).not.toBe('threads');
   });
 
   it('does not claim an unknown sub-resource under a thread', () => {

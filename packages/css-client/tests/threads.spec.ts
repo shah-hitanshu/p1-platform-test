@@ -240,4 +240,38 @@ describe('P1Client threads', () => {
       expect(result.resolvedBy).toEqual(author);
     });
   });
+
+  describe('reportUnansweredMention', () => {
+    const report = { commentId: comment.id, agentId: 'agent-1', elapsedMs: 4_200 };
+
+    it('POSTs the report to the thread and resolves on an empty 204', async () => {
+      respond(204, undefined);
+      const client = new P1Client({ baseUrl, apiKey });
+
+      await expect(client.threads.reportUnansweredMention(siteId, threadId, report)).resolves.toBeUndefined();
+
+      const [url, init] = mockFetch.mock.calls[0];
+      expect(url).toBe(`${baseUrl}/api/sites/${siteId}/threads/${threadId}/unanswered-mentions`);
+      expect(init.method).toBe('POST');
+      expect(JSON.parse(init.body)).toEqual(report);
+    });
+
+    it('lets the report outlive the page', async () => {
+      respond(204, undefined);
+      const client = new P1Client({ baseUrl, apiKey });
+
+      await client.threads.reportUnansweredMention(siteId, threadId, report);
+
+      expect(mockFetch.mock.calls[0][1].keepalive).toBe(true);
+    });
+
+    it('refuses to build a path from a missing thread id', async () => {
+      const client = new P1Client({ baseUrl, apiKey });
+
+      await expect(client.threads.reportUnansweredMention(siteId, '', report)).rejects.toBeInstanceOf(
+        MissingParameterError,
+      );
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+  });
 });

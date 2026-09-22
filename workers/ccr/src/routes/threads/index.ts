@@ -4,6 +4,8 @@
  * Reading needs canView; posting, replying, changing status and deciding a
  * proposal need canComment, and accepting one also needs canEditDocuments on
  * the page it edits. An agent may also rewrite a comment of its own.
+ * Reporting an unanswered mention needs only canView, because a reader with
+ * no more than that still sees the thread say the agent never replied.
  * Each endpoint is its own small function behind one gate so the
  * set maps onto a router's per-route handlers when one arrives.
  */
@@ -53,6 +55,7 @@ import {
   listThreadsQuerySchema,
   postCommentSchema,
   postThreadSchema,
+  reportUnansweredMentionSchema,
   setThreadStatusSchema,
   siteContextMismatch,
   updateCommentSchema,
@@ -124,6 +127,8 @@ function selectEndpoint(method: string, context: ThreadsRouteContext): Endpoint 
       return method === 'PUT' ? { permission: 'canComment', handle: putProposalDecision } : null;
     case 'status':
       return method === 'PUT' ? { permission: 'canComment', handle: putThreadStatus } : null;
+    case 'unanswered-mentions':
+      return method === 'POST' ? { permission: 'canView', handle: postUnansweredMention } : null;
     default:
       return null;
   }
@@ -324,6 +329,46 @@ async function putThreadStatus(
   });
   const body: ThreadStatusResponse = { thread: result.thread };
   return jsonResponse(body, 200, NO_STORE_HEADERS);
+}
+
+/**
+ * A reader waited for a mentioned agent and it never spoke. Nothing is stored: the
+ * point is the count, and a reader with nothing but view rights still sees the line.
+ */
+async function postUnansweredMention(
+  request: Request,
+  context: ThreadsRouteContext,
+  startedAt: number,
+): Promise<Response> {
+  const threadId = requireThreadId(context);
+  if (threadId === null) return threadNotFound();
+
+  const body = await readJsonBody(request);
+  let input;
+  try {
+    input = validateBody(reportUnansweredMentionSchema, body);
+  } catch (error) {
+    // Without this the count reads zero whether no agent failed or every report was
+    // refused, and zero is the one answer this endpoint must not give ambiguously.
+    getLogger().warn('agent mention report rejected', {
+      site_id: context.siteId,
+      thread_id: threadId,
+      reason: 'invalid_report',
+      duration_ms: Date.now() - startedAt,
+    });
+    throw error;
+  }
+
+  getLogger().warn('agent mention unanswered', {
+    site_id: context.siteId,
+    thread_id: threadId,
+    comment_id: input.commentId,
+    agent_id: input.agentId,
+    age_ms: input.elapsedMs,
+    reason: 'no_agent_response',
+    duration_ms: Date.now() - startedAt,
+  });
+  return new Response(null, { status: 204, headers: NO_STORE_HEADERS });
 }
 
 function commentPostedResponse(

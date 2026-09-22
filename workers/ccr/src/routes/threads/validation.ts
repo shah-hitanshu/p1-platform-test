@@ -17,6 +17,7 @@ import {
   THREAD_STATUSES,
   type CommentContent,
 } from '../../types/threads';
+import { UUID_PATTERN } from '../../utils/uuid';
 
 const commentBody = z
   .string()
@@ -121,6 +122,19 @@ export const updateCommentSchema = commentContentSchema;
 export const decideProposalSchema = z.object({ decision: z.enum(['accepted', 'dismissed']) });
 
 export const setThreadStatusSchema = z.object({ status: z.enum(THREAD_STATUSES) });
+
+/** Well above the window a client reports within, so tuning that window cannot start rejecting reports. */
+const MAX_ELAPSED_MS = 600_000;
+
+// `z.uuid()` enforces the RFC 4122 version nibble, which agent and user ids in this
+// system do not all carry; `UUID_PATTERN` is what admits the thread id on the same request.
+const idSchema = z.string().regex(UUID_PATTERN, 'Invalid UUID');
+
+export const reportUnansweredMentionSchema = z.object({
+  commentId: idSchema,
+  agentId: idSchema,
+  elapsedMs: z.number().int().min(0).max(MAX_ELAPSED_MS),
+});
 
 export const listThreadsQuerySchema = z.object({
   documentId: z.uuid().optional(),

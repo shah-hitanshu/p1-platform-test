@@ -8,6 +8,7 @@ import { useThreadsEnabled } from './enabled.js';
 import { pendingAgentDeadline, withPendingAgents } from './pending-agent.js';
 import { NO_COMMENTS, threadCommentsKey } from './thread-comments.js';
 import { subscribeToQueryCache } from './query-cache.js';
+import { useUnansweredMentionReport } from './unanswered-mention.js';
 
 export interface ThreadCommentsState {
   /**
@@ -129,6 +130,7 @@ export function useThreadComments(threadId: string | undefined): ThreadCommentsS
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `tick` stands for the clock having moved
     [comments, tick],
   );
+  useUnansweredMentionReport(ready ? threadId : undefined, comments, shown);
 
   if (!ready) return IDLE;
 

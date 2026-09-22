@@ -7,7 +7,7 @@ export type * from '../../types/threads';
 export interface ThreadsRouteContext {
   siteId: string;
   threadId?: string;
-  /** `comments` or `status` under a thread; absent on the thread itself. */
+  /** `comments`, `status` or `unanswered-mentions` under a thread; absent on the thread itself. */
   subResource?: string;
   /** One comment under `comments`, and `decision` when its proposal is being decided. */
   commentId?: string;

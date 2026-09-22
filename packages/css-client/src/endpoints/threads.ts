@@ -146,4 +146,24 @@ export class ThreadsEndpoint {
     );
     return response.thread;
   }
+
+  /**
+   * Record that a mentioned agent never replied, so the share of mentions that go
+   * unanswered can be measured rather than guessed at. Takes the id of the comment
+   * that did the mentioning and how long the reader waited. Nothing is stored
+   * against the thread, and viewing the thread is enough permission to report.
+   */
+  async reportUnansweredMention(
+    siteId: string,
+    threadId: string,
+    report: { commentId: string; agentId: string; elapsedMs: number },
+  ): Promise<void> {
+    requirePathParams({ siteId, threadId }, 'threads.reportUnansweredMention');
+
+    await this.base.request<void>(`/api/sites/${siteId}/threads/${threadId}/unanswered-mentions`, {
+      method: 'POST',
+      body: JSON.stringify(report),
+      keepalive: true,
+    });
+  }
 }

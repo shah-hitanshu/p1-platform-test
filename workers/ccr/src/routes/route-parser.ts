@@ -915,6 +915,19 @@ export function parseRoute(path: string): { handler: string; params: RouteParams
   }
 
   // Thread routes
+  // /api/sites/{siteId}/threads/{threadId}/unanswered-mentions
+  const unansweredMatch = /^\/api\/sites\/([^/]+)\/threads\/([^/]+)\/unanswered-mentions$/.exec(normalizedPath);
+  if (unansweredMatch) {
+    return {
+      handler: 'threads',
+      params: {
+        siteId: unansweredMatch[1],
+        threadId: unansweredMatch[2],
+        subResource: 'unanswered-mentions',
+      },
+    };
+  }
+
   // /api/sites/{siteId}/threads
   // /api/sites/{siteId}/threads/{threadId}
   // /api/sites/{siteId}/threads/{threadId}/comments
