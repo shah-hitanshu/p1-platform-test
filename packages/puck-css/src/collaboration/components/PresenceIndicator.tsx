@@ -6,6 +6,7 @@
 
 import React, { useState } from 'react';
 import type { ActorPresence } from '@pantheon-systems/css-client';
+import { actorDisplayName } from '../utils/actorDisplayName.js';
 
 export interface PresenceIndicatorProps {
   /** List of actors to display */
@@ -64,7 +65,7 @@ export function PresenceIndicator({
             {actors.map((actor) => (
               <li key={actor.id} className={`${baseClass}__item`}>
                 <div className={`${baseClass}__actor`}>
-                  <span className={`${baseClass}__name`}>{actor.name}</span>
+                  <span className={`${baseClass}__name`}>{actorDisplayName(actor)}</span>
                   <span
                     className={`${baseClass}__state ${baseClass}__state--${actor.state}`}
                   >

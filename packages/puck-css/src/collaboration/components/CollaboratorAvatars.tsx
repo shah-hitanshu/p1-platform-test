@@ -7,6 +7,7 @@
 import React from 'react';
 import type { ActorPresence } from '@pantheon-systems/css-client';
 import { getAvatarColor } from '../utils/avatarColor.js';
+import { actorDisplayName } from '../utils/actorDisplayName.js';
 
 export interface CollaboratorAvatarsProps {
   /** List of actors to display */
@@ -38,7 +39,7 @@ function getInitials(name: string): string {
  * Build tooltip text for an actor.
  */
 function getTooltip(actor: ActorPresence): string {
-  const parts = [actor.name];
+  const parts = [actorDisplayName(actor)];
   if (actor.role === 'agent' && actor.intent) {
     parts.push(`Intent: ${actor.intent}`);
   }
@@ -60,6 +61,7 @@ function Avatar({
 }) {
   const isEditing = actor.state === 'editing';
   const isAgent = actor.role === 'agent';
+  const displayName = actorDisplayName(actor);
 
   const avatarClasses = [
     `${baseClass}__avatar`,
@@ -90,12 +92,12 @@ function Avatar({
       {actor.avatar ? (
         <img
           src={actor.avatar}
-          alt={actor.name}
+          alt={displayName}
           className={`${baseClass}__image`}
           referrerPolicy="no-referrer"
         />
       ) : (
-        <span className={`${baseClass}__initials`}>{getInitials(actor.name)}</span>
+        <span className={`${baseClass}__initials`}>{getInitials(displayName)}</span>
       )}
       {isAgent && <span className={`${baseClass}__agent-badge`} aria-hidden="true" />}
     </div>

@@ -7,6 +7,7 @@
 
 import React from 'react';
 import type { ActorPresence } from '@pantheon-systems/css-client';
+import { actorDisplayName } from '../utils/actorDisplayName.js';
 
 export interface FocusRegionHighlightProps {
   /** Actor whose regions to highlight */
@@ -38,7 +39,8 @@ export function FocusRegionHighlight({
   actor,
   color,
 }: FocusRegionHighlightProps): React.JSX.Element | null {
-  const { focusRegions, state, name } = actor;
+  const { focusRegions, state } = actor;
+  const name = actorDisplayName(actor);
 
   // Don't render if no focus regions
   if (!focusRegions || focusRegions.length === 0) {

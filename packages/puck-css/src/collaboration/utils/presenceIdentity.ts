@@ -23,8 +23,8 @@ import type { ActorPresence } from '@pantheon-systems/css-client';
  *
  *  - human avatars (PresenceStack) use actorId, name, avatar and state — state
  *    drives the live dot, and a transition changes neither count nor ids;
- *  - agent chips (P1EditorSubheader, mapped in P1Plugin) use actorId, name,
- *    intent, requestedById and requestedByName;
+ *  - the agent's banner uses name and intent, and its block marker (mapped in
+ *    focusRegionMap) uses actorId, state and requestedByName;
  *  - a Stop carries the agent's turnId, which decides whether a panel holding a
  *    turn of its own ends it, so a stale one would leave that turn running.
  *

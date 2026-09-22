@@ -178,7 +178,7 @@ describe('stopping an agent from the editor', () => {
     await act(async () => { await result.current.stopAgent(agentActor); });
 
     expect(result.current.notifications.notifications).toContainEqual(
-      expect.objectContaining({ severity: 'success', message: 'Agent "Writer" has been stopped' }),
+      expect.objectContaining({ severity: 'success', message: 'Zappy has been stopped' }),
     );
   });
 
@@ -191,7 +191,7 @@ describe('stopping an agent from the editor', () => {
 
     const notes = result.current.notifications.notifications;
     expect(notes).toContainEqual(
-      expect.objectContaining({ severity: 'info', message: 'Agent "Writer" had already stopped' }),
+      expect.objectContaining({ severity: 'info', message: 'Zappy had already stopped' }),
     );
     expect(notes.some(n => n.severity === 'success')).toBe(false);
   });

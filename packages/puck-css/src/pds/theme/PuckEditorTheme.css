@@ -319,8 +319,11 @@
    floating-page look. The [class*="_PuckCanvas_"] selector matches only the
    outer element (children use a hyphen after "Canvas"); higher specificity
    than Puck's own ._PuckCanvas--fullScreen_ so the padding wins. */
+/* Sized for the agent marker on a page's first block, which hangs into this
+   gutter: keep it above MARKER_OVERHANG in agentBlockHosts.ts. The other sides
+   match so the page sits square. */
 .puck-editor-theme [class*="_PuckCanvas_"] {
-  padding: 8px;
+  padding: 24px;
 }
 .puck-editor-theme [class*="_PuckCanvas-root_"] {
   border-radius: 8px;

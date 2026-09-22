@@ -123,10 +123,11 @@ describe('PuckEditorTheme.css', () => {
   });
 
   describe('canvas layout', () => {
+    // The first block's agent marker hangs into this gutter; see MARKER_OVERHANG.
     it('reveals the canvas grey background as a gutter via padding', () => {
       const css = readThemeCSS();
       // Matches only the outer _PuckCanvas_ element (children use a hyphen).
-      expect(css).toMatch(/\[class\*="_PuckCanvas_"\]\s*\{[^}]*padding:\s*8px/);
+      expect(css).toMatch(/\[class\*="_PuckCanvas_"\]\s*\{[^}]*padding:\s*24px/);
     });
 
     it('rounds and clips the inner page (_PuckCanvas-root_)', () => {

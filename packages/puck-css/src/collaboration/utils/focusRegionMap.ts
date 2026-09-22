@@ -5,7 +5,8 @@
  * and creating focus highlight information from actor presence data.
  */
 
-import type { PuckData, ActorPresence } from '@pantheon-systems/css-client';
+import type { PuckData, PuckComponentData, ActorPresence } from '@pantheon-systems/css-client';
+import { actorDisplayName } from './actorDisplayName.js';
 
 /**
  * Information about a focus highlight for a component.
@@ -19,72 +20,95 @@ export interface FocusHighlight {
   color: string;
   /** Whether the actor is actively editing (vs just viewing) */
   isEditing: boolean;
+  /** Whether the focus belongs to an AI agent rather than a person */
+  isAgent?: boolean;
+  /** Name of the person an agent is acting for, when it was asked to act */
+  onBehalfOf?: string;
+  /** The turn an agent is working on, when it named one. Distinguishes one run from the next */
+  turnId?: string;
+}
+
+/** Agents share one color: they are one kind of activity, not identities. */
+const AGENT_HIGHLIGHT_COLOR = '#000000';
+
+/**
+ * A pointer segment can itself contain a dot (`/content/0/props/meta.title`),
+ * so the separator is chosen per path rather than both applied.
+ */
+function splitRegionPath(path: string): string[] {
+  const body = path.startsWith('/') ? path.slice(1) : path;
+  const separator = body.includes('/') ? '/' : '.';
+  return body.split(separator).filter((segment) => segment.length > 0);
+}
+
+/** `root` carries props but no `type`, so requiring both keeps `/root` out. */
+function isComponent(value: unknown): value is PuckComponentData {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+  const node = value as { type?: unknown; props?: unknown };
+  if (typeof node.type !== 'string') {
+    return false;
+  }
+  const props = node.props as { id?: unknown } | undefined;
+  return typeof props?.id === 'string' && props.id.length > 0;
 }
 
 /**
  * Convert a focus region path to a component ID.
  *
- * Supported path formats:
- * - "/content/N" - Content array at index N
- * - "/zones/ZoneName/N" - Zone array at index N
+ * Accepts JSON-pointer (`/content/0`) and dot notation (`content.0`), and
+ * resolves to the deepest component the path passes through: a prop path names
+ * the component owning the prop, and a slot path the nested child. A path
+ * naming no component (`content`) resolves to null.
  *
  * @param data - Puck data containing content and zones
- * @param path - Focus region path (e.g., "/content/0" or "/zones/Header:left/1")
- * @returns Component ID if found, null otherwise
+ * @param path - Focus region path (e.g., "/content/0" or "content.0.props.title")
+ * @returns Component ID if the path passes through one, null otherwise
  *
  * @example
  * ```typescript
- * const id = pathToComponentId(puckData, '/content/0');
- * // Returns the ID of the first component in content array
- *
- * const zoneId = pathToComponentId(puckData, '/zones/Header:left/0');
- * // Returns the ID of the first component in Header:left zone
+ * pathToComponentId(puckData, '/content/0');            // first component in content
+ * pathToComponentId(puckData, 'content.0.props.title'); // same component, via its prop
+ * pathToComponentId(puckData, '/zones/Header:left/0');  // first component in a zone
  * ```
  */
 export function pathToComponentId(data: PuckData, path: string): string | null {
-  if (!path || path.length === 0) {
+  const segments = splitRegionPath(path);
+  if (segments.length === 0) {
     return null;
   }
 
-  // Parse content paths: /content/N
-  const contentMatch = path.match(/^\/content\/(\d+)$/);
-  if (contentMatch && contentMatch[1] !== undefined) {
-    const index = parseInt(contentMatch[1], 10);
-    const component = data.content[index];
-    return component?.props?.id ?? null;
-  }
+  // Puck's internal name for the content array, which the data has no key for.
+  const normalized =
+    segments[0] === 'root' && segments[1] === 'default-zone'
+      ? ['content', ...segments.slice(2)]
+      : segments;
 
-  // Parse Puck's root zone path: /root/default-zone/N
-  // Puck uses "root:default-zone" internally for the main content area
-  const rootZoneMatch = path.match(/^\/root\/default-zone\/(\d+)$/);
-  if (rootZoneMatch && rootZoneMatch[1] !== undefined) {
-    const index = parseInt(rootZoneMatch[1], 10);
-    const component = data.content[index];
-    return component?.props?.id ?? null;
-  }
+  let node: unknown = data;
+  let deepestId: string | null = null;
 
-  // Parse zone paths: /zones/ZoneName/N
-  // Zone names can contain colons (e.g., "Header:left")
-  const zoneMatch = path.match(/^\/zones\/(.+)\/(\d+)$/);
-  if (zoneMatch && zoneMatch[1] !== undefined && zoneMatch[2] !== undefined) {
-    const zoneName = zoneMatch[1];
-    const index = parseInt(zoneMatch[2], 10);
-
-    if (!data.zones) {
-      return null;
+  for (const segment of normalized) {
+    if (Array.isArray(node)) {
+      if (!/^\d+$/.test(segment)) {
+        return deepestId;
+      }
+      node = node[Number(segment)];
+    } else if (typeof node === 'object' && node !== null) {
+      node = (node as Record<string, unknown>)[segment];
+    } else {
+      return deepestId;
     }
 
-    const zone = data.zones[zoneName];
-    if (!zone) {
-      return null;
+    if (node === undefined || node === null) {
+      return deepestId;
     }
-
-    const component = zone[index];
-    return component?.props?.id ?? null;
+    if (isComponent(node)) {
+      deepestId = node.props.id;
+    }
   }
 
-  // Unknown path format
-  return null;
+  return deepestId;
 }
 
 /**
@@ -101,11 +125,9 @@ export function pathToComponentId(data: PuckData, path: string): string | null {
  * ```typescript
  * const focusMap = createFocusRegionMap(puckData, otherActors);
  *
- * // Check if a component is focused
  * const highlight = focusMap.get('hero-component-1');
- * if (highlight) {
- *   console.log(`${highlight.actorName} is ${highlight.isEditing ? 'editing' : 'viewing'}`);
- * }
+ * const label =
+ *   highlight === undefined ? 'nobody' : highlight.isEditing ? 'editing' : 'viewing';
  * ```
  */
 export function createFocusRegionMap(
@@ -115,6 +137,7 @@ export function createFocusRegionMap(
   const map = new Map<string, FocusHighlight>();
 
   for (const actor of actors) {
+    const isAgent = actor.role === 'agent';
     const focusRegions = actor.focusRegions ?? [];
 
     for (const path of focusRegions) {
@@ -124,15 +147,20 @@ export function createFocusRegionMap(
         continue;
       }
 
-      // Create highlight info for this component
-      const highlight: FocusHighlight = {
-        actorId: actor.actorId,
-        actorName: actor.name,
-        color: generateActorColor(actor.actorId),
-        isEditing: actor.state === 'editing',
-      };
+      // An agent wins a block over a person: it is the one about to change it.
+      if (!isAgent && map.get(componentId)?.isAgent === true) {
+        continue;
+      }
 
-      map.set(componentId, highlight);
+      map.set(componentId, {
+        actorId: actor.actorId,
+        actorName: actorDisplayName(actor),
+        color: isAgent ? AGENT_HIGHLIGHT_COLOR : generateActorColor(actor.actorId),
+        isEditing: actor.state === 'editing',
+        isAgent,
+        onBehalfOf: isAgent ? actor.requestedByName : undefined,
+        turnId: isAgent ? actor.turnId : undefined,
+      });
     }
   }
 

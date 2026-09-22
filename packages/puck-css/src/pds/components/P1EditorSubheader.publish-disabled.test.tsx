@@ -13,10 +13,6 @@ import { P1EditorSubheader } from './P1EditorSubheader.js';
 
 const publishControlProps: Record<string, unknown>[] = [];
 
-vi.mock('./AgentChip.js', () => ({
-  AgentChip: () => <div data-testid="agent-chip" />,
-}));
-
 vi.mock('./WorkstreamSwitcher.js', () => ({
   WorkstreamSwitcher: () => <div data-testid="workstream-trigger" />,
 }));
@@ -44,8 +40,6 @@ const defaultProps = {
   puckActions: <></>,
   docState: 'unpublished' as const,
   context: 'main' as const,
-  agents: [],
-  onStopAgent: () => {},
   hasPast: false,
   hasFuture: false,
   onUndo: () => {},

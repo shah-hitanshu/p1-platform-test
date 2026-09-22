@@ -28,6 +28,7 @@ import { PuckDataSynchronizer } from '../components/PuckDataSynchronizer.js';
 import { useAIPanelOpen } from '../aiPanelStore.js';
 import { useResponsivePanels } from '../useResponsivePanels.js';
 import { AgentActivityBanner } from '../../collaboration/components/AgentActivityBanner.js';
+import { actorDisplayName } from '../../collaboration/utils/actorDisplayName.js';
 import { PuckSelectionTracker } from '../components/PuckSelectionTracker.js';
 import { PuckDataCapture } from '../components/PuckDataCapture.js';
 import { useP1Puck, useP1PuckOptional } from '../../core/P1PuckContext.js';
@@ -38,7 +39,6 @@ import { NavIcon } from '../../pds/components/NavIcon.js';
 import type { SiteMenuItem, CurrentUser } from '../../pds/components/P1EditorHeader.js';
 import { P1EditorSubheader } from '../../pds/components/P1EditorSubheader.js';
 
-import type { SubheaderActor } from '../../pds/components/P1EditorSubheader.js';
 import { deriveDocState } from '../../pds/utils/deriveDocState.js';
 import { deriveLiveDocState } from '../../pds/utils/deriveLiveDocState.js';
 import type { Template } from '../../features/content-type-templates/types.js';
@@ -301,7 +301,7 @@ function P1PluginPanel({
                 const safeState = ALLOWED_ACTOR_STATES.has(actor.state) ? actor.state : 'idle';
                 return (
                   <li key={actor.id} className="css-plugin-presence-item">
-                    <span className="css-plugin-presence-name">{actor.name}</span>
+                    <span className="css-plugin-presence-name">{actorDisplayName(actor)}</span>
                     <span
                       className={`css-plugin-presence-state css-plugin-presence-state--${safeState}`}
                     >
@@ -667,7 +667,8 @@ function P1SubheaderBridgeInner({
   p1Context: ReturnType<typeof useP1Puck>;
   showMergeReviewRef: { current: () => void };
 }): React.ReactElement | null {
-  const { currentDocument, currentBranch, presence, publishDocument, permissions, isViewingHistoricalVersion } = p1Context;
+  const { currentDocument, currentBranch, publishDocument, permissions, isViewingHistoricalVersion } =
+    p1Context;
 
   // Read Puck history state — must be called unconditionally (Rules of Hooks)
   const history = usePluginPuckHistory((s) => (s as unknown as PuckStateWithHistory).history);
@@ -704,17 +705,6 @@ function P1SubheaderBridgeInner({
     ? undefined
     : deriveLiveDocState(options.publishedStatus, isOnMain);
 
-  // Map agent presence to subheader chips. Human collaborators are rendered as
-  // avatars by P1EditorHeader instead (PCC-3511), so they're selected there.
-  const agentActors: SubheaderActor[] = (presence?.agents ?? []).map((a) => ({
-    id: a.actorId,
-    name: a.name,
-    isAgent: true,
-    intent: a.intent,
-    requestedById: (a as any).requestedById,
-    requestedByName: (a as any).requestedByName,
-  }));
-
   // History
   const hasPast = history?.hasPast ?? false;
   const hasFuture = history?.hasFuture ?? false;
@@ -738,16 +728,6 @@ function P1SubheaderBridgeInner({
   };
   const handleToggleRightPanel = () => {
     puckDispatch?.({ type: 'setUi', ui: { rightSideBarVisible: !rightPanelVisible } });
-  };
-
-  // onStopAgent: stop by actorId
-  const handleStopAgent = (id: string) => {
-    if (options.onStopAgent) {
-      const agent = presence?.agents.find((a) => a.actorId === id);
-      if (agent) {
-        options.onStopAgent(agent);
-      }
-    }
   };
 
   // Curry delete so PublishControl gets a zero-arg callback
@@ -776,8 +756,6 @@ function P1SubheaderBridgeInner({
           hasDrift={false}
           context={isOnMain ? 'main' : 'branch'}
           publishDisabled={isViewingHistoricalVersion}
-          agents={agentActors}
-          onStopAgent={handleStopAgent}
           onPublish={handlePublish}
           onReviewAndPublish={options.onReviewAndPublish}
           onReviewWorkstream={options.onReviewWorkstream ?? options.onReviewAndPublish ?? (() => {

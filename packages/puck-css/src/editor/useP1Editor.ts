@@ -836,7 +836,7 @@ export function useP1Editor(options: UseP1EditorOptions): UseP1EditorReturn {
   const initialSidebarUi = useMemo<Partial<UiState>>(() => initialPanelUi(), [puckKey]);
 
   // Focus highlighting is handled via direct DOM manipulation in
-  // PresenceFocusBridge (P1App.tsx) — no config wrapping needed.
+  // PresenceFocusBridge — no config wrapping needed.
 
   // Inject per-component resolvePermissions into the Puck config.
   // Puck doesn't have a top-level resolvePermissions prop — permissions

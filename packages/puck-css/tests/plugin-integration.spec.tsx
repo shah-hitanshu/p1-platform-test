@@ -11,8 +11,8 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { createP1Plugin, createP1Overrides } from '../src/editor/plugin/index.js';
 import type { Branch, RegisteredAgent, ActorPresence } from '@pantheon-systems/css-client';
+import { createP1Plugin, createP1Overrides } from '../src/editor/plugin/index.js';
 
 // =============================================================================
 // Mock Data
@@ -143,6 +143,21 @@ describe('createP1Plugin with presence/agent features', () => {
     expect(screen.getByText('Alice Smith')).toBeInTheDocument();
   });
 
+  it('should show an agent in the presence section under the product name', () => {
+    // @ts-expect-error - Testing new options not yet in types
+    const plugin = createP1Plugin({
+      branches: [mockBranch],
+      currentBranch: mockBranch,
+      onBranchSwitch: vi.fn(),
+      showPresenceIndicator: true,
+      presence: [mockHumanPresence, mockAgentPresence],
+    });
+    render(<>{plugin.render()}</>);
+    expect(screen.getByText('Alice Smith')).toBeInTheDocument();
+    expect(screen.getByText('Zappy')).toBeInTheDocument();
+    expect(screen.queryByText('Layout Optimizer')).not.toBeInTheDocument();
+  });
+
   it('should render agent activity section with agent name', () => {
     // @ts-expect-error - Testing new options not yet in types
     const plugin = createP1Plugin({
@@ -154,7 +169,7 @@ describe('createP1Plugin with presence/agent features', () => {
     });
     render(<>{plugin.render()}</>);
     expect(screen.getByText(/agent activity|agents/i)).toBeInTheDocument();
-    expect(screen.getByText('Layout Optimizer')).toBeInTheDocument();
+    expect(screen.getByText('Zappy')).toBeInTheDocument();
   });
 
   it('should render agent actions button when enabled', () => {

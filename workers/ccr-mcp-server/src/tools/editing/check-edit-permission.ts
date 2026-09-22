@@ -4,7 +4,7 @@ import { EditIntentInputSchema } from './shared-schemas.js';
 
 export const checkEditPermissionTool = defineTool({
   description:
-    'Check if you have permission to edit a document. You MUST call this before start_edit_session to verify no humans are actively editing the same regions. Specify target_regions as JSON paths for the areas you intend to modify (e.g., ["/content/0/props", "/content/1"]). Be specific — only claim regions you actually plan to change. If permission is denied due to conflicts, inform the user and wait rather than retrying immediately.',
+    'Check if you have permission to edit a document. You MUST call this before start_edit_session to verify no humans are actively editing the same regions. Specify target_regions as the path of each block you intend to modify (e.g., ["content.0.props", "content.1"]). Be specific — only claim regions you actually plan to change. If permission is denied due to conflicts, inform the user and wait rather than retrying immediately.',
   inputSchema: EditIntentInputSchema,
   annotations: { title: 'Check edit permission', readOnlyHint: true },
   mutates: false,

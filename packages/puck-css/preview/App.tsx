@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import '@pantheon-systems/pds-toolkit-react/dist/css/pds-core.css';
 import '../src/pds/theme/PuckEditorTheme.css';
-import { AgentChip } from '../src/pds/components/AgentChip';
 import { DocStateBadge } from '../src/pds/components/DocStateBadge';
 import { P1EditorHeader } from '../src/pds/components/P1EditorHeader';
 import { P1EditorSubheader } from '../src/pds/components/P1EditorSubheader';
@@ -34,11 +33,6 @@ const SITE_MENU_ITEMS = [
   { label: 'Environments', iconName: 'server', callback: () => console.log('Environments') },
 ];
 
-const AGENTS = [
-  { id: 'a1', name: 'Layout Agent', isAgent: true },
-  { id: 'a2', name: 'Content Writer', isAgent: true },
-];
-
 const HUMAN_ACTORS = [
   { id: 'h1', name: 'Alice Johnson', isAgent: false },
   { id: 'h2', name: 'Bob Smith', isAgent: false },
@@ -57,35 +51,6 @@ const PRESENCE_ACTORS = HUMAN_ACTORS.map((a) => ({
   lastActivityAt: new Date().toISOString(),
   joinedAt: new Date().toISOString(),
 }));
-
-const AGENT_CHIPS = [
-  {
-    id: 'agent-1',
-    name: 'Layout Agent',
-    initials: 'LA',
-    gradient: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-    intent: 'Reorganizing hero section',
-    progress: '65%',
-    workstream: 'feat/hero-redesign',
-  },
-  {
-    id: 'agent-2',
-    name: 'Content Writer',
-    initials: 'CW',
-    gradient: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
-    intent: 'Drafting blog post',
-    workstream: 'main',
-  },
-  {
-    id: 'agent-3',
-    name: 'SEO Optimizer',
-    initials: 'SO',
-    gradient: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
-    intent: 'Analyzing meta tags',
-    progress: '90%',
-    workstream: 'feat/hero-redesign',
-  },
-];
 
 const DOC_STATES: DocState[] = ['modified', 'unpublished', 'live', 'liveOnly'];
 
@@ -146,8 +111,6 @@ export default function App() {
             puckActions={<span style={{ fontSize: '0.75rem', color: '#999', padding: '0 0.5rem' }}>[Puck actions slot]</span>}
             docState="modified"
             context="branch"
-            agents={AGENTS}
-            onStopAgent={(id) => console.log('Stop agent:', id)}
             onPublish={log('Publish to live clicked')}
             hasPast={true}
             hasFuture={false}
@@ -163,8 +126,6 @@ export default function App() {
             puckActions={<span style={{ fontSize: '0.75rem', color: '#999', padding: '0 0.5rem' }}>[Puck actions slot]</span>}
             docState="unpublished"
             context="main"
-            agents={[]}
-            onStopAgent={noop}
             onPublish={log('Publish clicked')}
             onCreateWorkstream={log('Create workstream clicked')}
             hasPast={false}
@@ -181,8 +142,6 @@ export default function App() {
             puckActions={<span style={{ fontSize: '0.75rem', color: '#999', padding: '0 0.5rem' }}>[Puck actions slot]</span>}
             docState="live"
             context="branch"
-            agents={[]}
-            onStopAgent={noop}
             hasPast={false}
             hasFuture={false}
             onUndo={log('Undo')}
@@ -255,28 +214,6 @@ export default function App() {
                 <span style={{ fontSize: '0.7rem', color: '#999', fontFamily: 'monospace' }}>live (badge only)</span>
               </div>
             </div>
-          </SubSection>
-        </Section>
-
-        <Section title="AgentChip">
-          <SubSection label="With progress + workstream badge">
-            <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-              {AGENT_CHIPS.map((agent) => (
-                <AgentChip
-                  key={agent.id}
-                  agent={agent}
-                  onStop={(id) => console.log('Stop:', id)}
-                  currentWorkstream="main"
-                />
-              ))}
-            </div>
-          </SubSection>
-          <SubSection label="Same workstream (no badge)">
-            <AgentChip
-              agent={AGENT_CHIPS[1]}
-              onStop={noop}
-              currentWorkstream="main"
-            />
           </SubSection>
         </Section>
 

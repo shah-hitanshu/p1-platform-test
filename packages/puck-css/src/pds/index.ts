@@ -49,7 +49,6 @@ export type { PageNavigatorDocument } from './components/P1EditorHeader.js';
 export { P1EditorSubheader } from './components/P1EditorSubheader.js';
 export { WorkstreamSwitcher } from './components/WorkstreamSwitcher.js';
 export { PageNavigator } from './components/PageNavigator.js';
-export { AgentChip } from './components/AgentChip.js';
 export { PresenceStack } from './components/PresenceStack.js';
 export { DocStateBadge } from './components/DocStateBadge.js';
 export { PublishControl } from './components/PublishControl.js';

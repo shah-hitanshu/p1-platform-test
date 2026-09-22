@@ -201,7 +201,6 @@ vi.mock('../src/pds/components/P1EditorSubheader.js', () => ({
     docState,
     badgeDocState,
     context,
-    agents,
     hasDrift,
     onPublish,
     publishDisabled,
@@ -226,7 +225,6 @@ vi.mock('../src/pds/components/P1EditorSubheader.js', () => ({
       <span data-testid="doc-state">{docState as string}</span>
       <span data-testid="badge-doc-state">{(badgeDocState as string) ?? ''}</span>
       <span data-testid="branch-context">{context as string}</span>
-      <span data-testid="agent-count">{(agents as unknown[])?.length ?? 0}</span>
       <span data-testid="has-drift">{String(hasDrift)}</span>
       <button
         data-testid="publish-btn"
@@ -719,62 +717,6 @@ describe('createP1Plugin render() — P1EditorSubheader portal', () => {
     await waitFor(() => {
       expect(screen.getByTestId('branch-context').textContent).toBe('branch');
     });
-  });
-
-  it('maps agent presence actors to agents prop', async () => {
-    const agentPresence: ActorPresence = {
-      id: 'p-1',
-      actorId: 'agent-1',
-      actorType: 'agent',
-      role: 'agent',
-      name: 'Zappy Bot',
-      state: 'editing',
-      lastActivityAt: '',
-      joinedAt: '',
-    };
-    mockP1Context.presence = {
-      actors: [agentPresence],
-      agents: [agentPresence],
-      humans: [],
-      hasActiveHumans: false,
-      hasActiveAgents: true,
-      refresh: vi.fn(),
-    } as unknown as typeof mockP1Context.presence;
-    const plugin = createP1Plugin(baseOptions);
-    renderPlugin(plugin);
-    await waitFor(() => {
-      expect(screen.getByTestId('agent-count').textContent).toBe('1');
-    });
-  });
-
-  it('does not send human presence to the subheader — those render in the header', async () => {
-    const humanPresence: ActorPresence = {
-      id: 'p-2',
-      actorId: 'user-1',
-      actorType: 'user',
-      role: 'human',
-      name: 'Alice Smith',
-      state: 'active',
-      lastActivityAt: '',
-      joinedAt: '',
-    };
-    mockP1Context.hasActiveHumans = true;
-    mockP1Context.humanPresenceCount = 1;
-    mockP1Context.presence = {
-      actors: [humanPresence],
-      agents: [],
-      humans: [humanPresence],
-      hasActiveHumans: true,
-      hasActiveAgents: false,
-      refresh: vi.fn(),
-    } as unknown as typeof mockP1Context.presence;
-    const plugin = createP1Plugin(baseOptions);
-    renderPlugin(plugin);
-    await waitFor(() => {
-      expect(screen.getByTestId('p1-editor-subheader')).toBeTruthy();
-    });
-    // Agents still map through; humans are absent from this bar entirely.
-    expect(screen.getByTestId('agent-count').textContent).toBe('0');
   });
 
   it('wires onPublish to ccr.publishDocument from context', async () => {

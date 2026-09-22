@@ -8,7 +8,7 @@ export const DocumentOnBranchInputSchema = z.object({
 
 export const EditIntentInputSchema = DocumentOnBranchInputSchema.extend({
   intent: z.string().describe('Description of what you intend to do'),
-  target_regions: z.array(z.string()).describe('JSON paths of regions to edit'),
+  target_regions: z.array(z.string()).describe('Dot-notation path of each block you will change, e.g. ["content.0", "content.3"]. Name the blocks, never the bare "content" array — that reserves the entire page and highlights nothing for the people editing it.'),
 });
 
 export const EditOperationSchema = z.object({

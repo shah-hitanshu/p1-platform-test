@@ -1929,3 +1929,73 @@ describe('injectPuckIds', () => {
     expect(injectPuckIds({ notAComponent: true })).toEqual({ notAComponent: true });
   });
 });
+
+// ---------------------------------------------------------------------------
+// executeTool — region reservations
+// ---------------------------------------------------------------------------
+
+describe('executeTool region reservations', () => {
+  const siteId = 'site-1';
+  const branchId = 'branch-1';
+
+  function makeCcrApi(): McpApiClient {
+    return {
+      lookupDocumentByPath: vi.fn().mockResolvedValue(null),
+      listComponents: vi.fn().mockResolvedValue({
+        components: [{ name: 'Stats', defaultProps: { columns: '3', theme: 'light' } }],
+      }),
+      createDocument: vi.fn().mockResolvedValue({ documentId: 'doc-1', documentPath: 'about', versionId: 'v-1' }),
+      canAgentEdit: vi.fn().mockResolvedValue({ canEdit: true }),
+      startAgentEdit: vi.fn().mockResolvedValue({
+        editSessionId: 'session-1', checkpointId: 'ck-1', expiresAt: '', reservedRegions: [],
+      }),
+      applyEdits: vi.fn().mockResolvedValue({ success: true }),
+      completeAgentEdit: vi.fn().mockResolvedValue({ success: true, checkpointId: 'ck-1' }),
+    } as unknown as McpApiClient;
+  }
+
+  const stats = { type: 'Stats', props: { columns: '3' } };
+
+  function reservedBy(method: unknown): string[] {
+    const mock = vi.mocked(method as (request: { targetRegions: string[] }) => unknown);
+    return mock.mock.calls[0][0].targetRegions;
+  }
+
+  // A reservation on the array names no block, so the editor has nothing to mark up.
+  it('reserves each new block by path rather than the array holding them', async () => {
+    const ccrApi = makeCcrApi();
+    await executeTool('create_page', {
+      site_id: siteId,
+      branch_id: branchId,
+      document_path: 'about',
+      components: [stats, stats],
+    }, ccrApi, 'user-1', TEST_CONTEXT);
+
+    expect(reservedBy(ccrApi.canAgentEdit)).toEqual(['content.0', 'content.1']);
+    expect(reservedBy(ccrApi.startAgentEdit)).toEqual(['content.0', 'content.1']);
+  });
+
+  // The backend refuses a session reserving more than 100 regions, and a page that
+  // long is still worth creating unmarked.
+  it('falls back to the array only past the number a session may reserve', async () => {
+    const atCap = makeCcrApi();
+    await executeTool('create_page', {
+      site_id: siteId,
+      branch_id: branchId,
+      document_path: 'about',
+      components: Array.from({ length: 100 }, () => stats),
+    }, atCap, 'user-1', TEST_CONTEXT);
+
+    expect(reservedBy(atCap.startAgentEdit)).toHaveLength(100);
+
+    const overCap = makeCcrApi();
+    await executeTool('create_page', {
+      site_id: siteId,
+      branch_id: branchId,
+      document_path: 'about',
+      components: Array.from({ length: 101 }, () => stats),
+    }, overCap, 'user-1', TEST_CONTEXT);
+
+    expect(reservedBy(overCap.startAgentEdit)).toEqual(['content']);
+  });
+});

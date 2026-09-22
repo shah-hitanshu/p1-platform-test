@@ -131,9 +131,9 @@ describe('CollaboratorAvatars', () => {
         { wrapper: TestWrapper }
       );
 
-      // Alice Smith has avatar image, Layout Optimizer has no image so shows initials
+      // Alice Smith has avatar image, the agent has none so shows initials
       expect(screen.getByRole('img', { name: 'Alice Smith' })).toBeInTheDocument();
-      expect(screen.getByText('LO')).toBeInTheDocument(); // Layout Optimizer initials
+      expect(screen.getByText('Z')).toBeInTheDocument(); // the editor names every agent "Zappy"
     });
 
     it('should render avatar images when provided', () => {
@@ -244,7 +244,7 @@ describe('CollaboratorAvatars', () => {
       );
 
       // Agent has no avatar, so initials are shown
-      const avatar = screen.getByText('LO').closest('[data-tooltip]');
+      const avatar = screen.getByText('Z').closest('[data-tooltip]');
       expect(avatar?.getAttribute('data-tooltip')).toContain('Optimizing layout for mobile');
     });
   });
@@ -411,7 +411,7 @@ describe('AgentActivityBanner', () => {
         { wrapper: TestWrapper }
       );
 
-      expect(screen.getByText('Layout Optimizer')).toBeInTheDocument();
+      expect(screen.getByText('Zappy')).toBeInTheDocument();
       expect(screen.getByText('Optimizing layout for mobile')).toBeInTheDocument();
     });
 
@@ -430,7 +430,7 @@ describe('AgentActivityBanner', () => {
         { wrapper: TestWrapper }
       );
 
-      expect(screen.getByText('Content Assistant')).toBeInTheDocument();
+      expect(screen.getByText('Zappy')).toBeInTheDocument();
     });
 
     it('should apply custom className', () => {
@@ -569,7 +569,8 @@ describe('AgentActivityBanner', () => {
 
       rerender(<AgentActivityBanner agent={otherAgent} onStopAgent={vi.fn()} />);
 
-      expect(screen.getByText('Copy Editor')).toBeInTheDocument();
+      // The banner names every agent 'Zappy', so the handover is only observable
+      // through the stop state resetting.
       expect(screen.getByRole('button', { name: 'Stop Agent' })).toBeEnabled();
     });
 
@@ -703,7 +704,7 @@ describe('FocusRegionHighlight', () => {
         { wrapper: TestWrapper }
       );
 
-      expect(screen.getByLabelText(/Layout Optimizer/)).toBeInTheDocument();
+      expect(screen.getByLabelText(/Zappy/)).toBeInTheDocument();
     });
   });
 });

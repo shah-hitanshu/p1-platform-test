@@ -37,6 +37,9 @@ function generateULID(): string {
   return id;
 }
 
+/** Mirrors the reservation limit the backend enforces on an edit session. */
+const MAX_TARGET_REGIONS = 100;
+
 // Accepts dot-notation or JSON Pointer (/content/0/props/title → content.0.props.title)
 function normalizePath(path: string): string {
   if (path.startsWith('/')) {
@@ -618,11 +621,17 @@ export async function executeTool(
         return createResult;
       }
 
+      // The editor marks up the blocks a reservation names, and the whole array
+      // names none of them. Past the backend's cap the array is all that fits.
+      const targetRegions = contentComponents.length > MAX_TARGET_REGIONS
+        ? ['content']
+        : contentComponents.map((_, i) => `content.${String(i)}`);
+
       // Step 2: Apply components via edit session so the CRDT layer picks them up
       const editCheck = await ccrApi.canAgentEdit({
         siteId, branchId, documentPath,
         intent: 'Populating new page with initial components',
-        targetRegions: ['content'],
+        targetRegions,
         trigger: 'human_requested',
         requestedById: userId,
       });
@@ -633,7 +642,7 @@ export async function executeTool(
       const editSession = await ccrApi.startAgentEdit({
         siteId, branchId, documentPath,
         intent: 'Populating new page with initial components',
-        targetRegions: ['content'],
+        targetRegions,
         trigger: 'human_requested',
         requestedById: userId,
       });

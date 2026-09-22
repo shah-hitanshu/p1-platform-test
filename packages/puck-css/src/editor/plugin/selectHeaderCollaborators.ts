@@ -1,7 +1,8 @@
 /**
  * Selects the human collaborators shown as avatars in the editor header.
  *
- * Agents are deliberately excluded — they render as chips in the subheader.
+ * Agents are deliberately excluded — an editing agent renders on the block it
+ * holds, not in the roster.
  *
  */
 

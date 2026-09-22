@@ -6,14 +6,13 @@
  */
 
 import React from 'react';
-import { ActionBar, FieldLabel } from '@puckeditor/core';
+import { FieldLabel } from '@puckeditor/core';
 import type { Checkpoint, DocumentVersion, PuckData, ActorPresence } from '@pantheon-systems/css-client';
 import type { SaveStatus } from '../../core/types.js';
 import { SaveIndicator } from '../components/SaveIndicator.js';
 import { CollaboratorAvatars } from '../../collaboration/components/CollaboratorAvatars.js';
 import { AgentActivityBanner } from '../../collaboration/components/AgentActivityBanner.js';
 import { PublishedStatusBadge } from '../components/PublishedStatusBadge.js';
-import { ActionBarPinButton } from '../../features/content-type-templates/ui/ActionBarPinButton.js';
 import { BlockCommentTrigger } from '../../features/threads/ui/BlockCommentTrigger.js';
 import { P1InspectorFields } from '../components/P1InspectorFields.js';
 import { CollapsibleFieldSection } from '../components/CollapsibleFieldSection.js';
@@ -25,6 +24,7 @@ import {
 } from '../../features/localization/ui/TranslationGlyph.js';
 import { resolvePropTarget } from '../../features/localization/prop-target.js';
 import { FieldBindControl } from '../../p1/editor/connect/FieldBindControl.js';
+import { P1ActionBar } from './P1ActionBar.js';
 import { fieldGuidanceFieldTypes } from './fieldGuidance.js';
 // NOTE: PuckDataSynchronizer is NOT imported here - it's used in P1Plugin instead
 // because headerActions renders outside Puck's context where usePuck() doesn't work.
@@ -326,12 +326,7 @@ export function createP1Overrides(options: P1OverridesOptions): PuckOverrides {
       };
 
   return {
-    actionBar: ({ label, children }: { label?: string; children: React.ReactNode }) => (
-      <ActionBar label={label}>
-        {children}
-        <ActionBarPinButton />
-      </ActionBar>
-    ),
+    actionBar: P1ActionBar,
     // The overlay is the only override Puck tells which block it is drawing for, and it
     // is mounted whenever the block is hovered or selected — so it is what a per-block
     // affordance hangs off. Read `threadsEnabled` lazily from options (a Proxy) so

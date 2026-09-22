@@ -2033,6 +2033,377 @@
 }
 
 /* ============================================
+   Agent Block Overlay
+
+   Drawn in the page, except the marker of a run at its very top, which goes in
+   the editor's gutter. Colours and type are stated rather than inherited, as
+   the design system reaches only one of those documents.
+   ============================================ */
+
+/* An animation, not a transition: it plays its whole ramp from any opacity, so
+   an overlay that had not finished appearing still fades. */
+@keyframes focus-region-agent-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes focus-region-agent-sheen {
+  from {
+    background-position-y: 95%;
+  }
+
+  to {
+    background-position-y: -20%;
+  }
+}
+
+/* The rim, the badge's ring and the pill share this clock, so they read as one. */
+@keyframes focus-region-agent-flow {
+  from {
+    background-position: 0% 50%;
+  }
+
+  to {
+    background-position: 100% 50%;
+  }
+}
+
+/* An agent carries neither a person's initial nor their pulse. */
+.focus-region-highlight[data-focus-role='agent']::after {
+  content: none;
+}
+
+.focus-region-highlight--editing[data-focus-role='agent'] {
+  animation: none;
+}
+
+.focus-region-highlight[data-focus-role='agent'] {
+  outline: none;
+}
+
+/* Pinned to the page's origin, so overlays are placed against the page itself. */
+.focus-region-agent-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  /* Above Puck's hover outline (1) and block controls (2), added after this. */
+  z-index: 3;
+}
+
+.focus-region-agent-host {
+  --agent-frame: 2px;
+  --agent-flow: 1.5s;
+  --agent-sheen: 2.7s;
+  --agent-fade: 0.3s;
+  --agent-aurora: linear-gradient(115deg, #7c5cfc 0%, #4fa8ff 33%, #ff6fb0 66%, #7c5cfc 100%);
+  position: absolute;
+  /* Not auto: the shimmer's -1 needs a stacking context. In the gutter, 0 keeps
+     it under Puck's ._PuckCanvas-controls (1), as neither canvas wrapper is a
+     stacking context. */
+  z-index: 0;
+  border-radius: 6px;
+  pointer-events: none;
+  /* The default lets the marker hang above the run; positionAgentHosts cuts the
+     gutter's marker back as its run scrolls away. */
+  clip-path: inset(var(--agent-clip-top, -20px) 0 var(--agent-clip-bottom, 0px) 0);
+}
+
+/* The rim: a gradient with its middle masked out, as an inset shadow cannot
+   carry one. Three times the box, so a band travels rather than the spectrum. */
+.focus-region-agent-host::before {
+  content: '';
+  box-sizing: border-box;
+  position: absolute;
+  inset: 0;
+  padding: var(--agent-frame);
+  border-radius: inherit;
+  background-image: var(--agent-aurora);
+  background-size: 300% 300%;
+  background-repeat: no-repeat;
+  animation: focus-region-agent-flow var(--agent-flow) linear infinite;
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+}
+
+/* The gutter's copy is the marker alone. */
+.focus-region-agent-host[data-gutter]::before {
+  content: none;
+}
+
+/* The editor's zoom reaches overlays in the page. --agent-unzoom scales the
+   rim, marker and banner back to their own size. */
+.focus-region-agent-layer > .focus-region-agent-host {
+  border-radius: calc(6px * var(--agent-unzoom, 1));
+  /* The page cuts these to its viewport itself. */
+  clip-path: none;
+}
+
+.focus-region-agent-layer > .focus-region-agent-host::before {
+  padding: calc(var(--agent-frame) * var(--agent-unzoom, 1));
+}
+
+/* Paired with AGENT_FADE_MS. */
+.focus-region-agent-host[data-leaving] {
+  animation: focus-region-agent-out var(--agent-fade) linear forwards;
+  pointer-events: none;
+}
+
+/* Under the rim and badge; the host's z-index keeps the -1 off the page. */
+.focus-region-agent__shimmer {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  border-radius: inherit;
+}
+
+/* Two bands half a cycle apart, so the sheen does not pulse. The gradient slides
+   within a covering layer, as a moving box leaves hard edges; the canvas is
+   square in pixels so the angle holds whatever the block's height. */
+.focus-region-agent__shimmer::before,
+.focus-region-agent__shimmer::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    -45deg,
+    transparent 44%,
+    rgb(255 253 248 / 6%) 47%,
+    rgb(255 253 248 / 40%) 50%,
+    rgb(255 253 248 / 6%) 53%,
+    transparent 56%
+  );
+  background-size: 3600px 3600px;
+  background-position-x: 50%;
+  background-repeat: no-repeat;
+  animation: focus-region-agent-sheen var(--agent-sheen) ease-in-out infinite;
+}
+
+/* Derived, so the bands stay opposite whatever the duration. */
+.focus-region-agent__shimmer::before {
+  animation-delay: calc(var(--agent-sheen) / -2);
+}
+
+/* Astride the block's top edge. */
+.focus-region-agent__marker {
+  position: absolute;
+  top: 0;
+  left: 16px;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* For a host that has closed the gutter PuckEditorTheme.css holds open. A run
+   scrolled out of view is cut off instead. */
+.focus-region-agent-host[data-at-page-top] .focus-region-agent__marker {
+  top: auto;
+  bottom: 0;
+  transform: translateY(50%);
+}
+
+/* Drawn whole in the gutter instead. */
+.focus-region-agent-host[data-gutter-marker] .focus-region-agent__marker {
+  display: none;
+}
+
+/* Scaled about its left middle, so the edge still runs through it. */
+.focus-region-agent-layer .focus-region-agent__marker {
+  left: calc(16px * var(--agent-unzoom, 1));
+  transform: translateY(-50%) scale(var(--agent-unzoom, 1));
+  transform-origin: left center;
+}
+
+.focus-region-agent__avatar {
+  position: relative;
+  box-sizing: border-box;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #141414;
+  /* The keyline separates the badge from the block. */
+  box-shadow: 0 0 0 2px #fff;
+  color: #fff;
+}
+
+/* Outside the keyline, on the rim's own clock. */
+.focus-region-agent__avatar::after {
+  content: '';
+  box-sizing: border-box;
+  position: absolute;
+  inset: -4px;
+  padding: var(--agent-frame);
+  border-radius: 50%;
+  background-image: var(--agent-aurora);
+  background-size: 300% 300%;
+  background-repeat: no-repeat;
+  animation: focus-region-agent-flow var(--agent-flow) linear infinite;
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+}
+
+/* Darker than the rim: a ground behind white text, not a line. */
+.focus-region-agent__name {
+  display: flex;
+  align-items: center;
+  padding: 6px 14px;
+  border-radius: 8px;
+  background-image: linear-gradient(115deg, #5b3fe0 0%, #2f7fd8 33%, #c7427f 66%, #5b3fe0 100%);
+  background-size: 300% 300%;
+  animation: focus-region-agent-flow var(--agent-flow) linear infinite;
+  color: #fff;
+  font-family: 'Inter Tight', Inter, system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+/* The corner the editor's block toolbar takes on every other block, so it is
+   set to that toolbar: 28px controls in 4px of ground, its face, size and grey. */
+.focus-region-agent__banner {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  max-width: calc(100% - 64px);
+  display: flex;
+  align-items: center;
+  padding: 4px 0;
+  border-radius: 8px;
+  /* Stop runs to the right edge, so the banner turns that corner. */
+  overflow: hidden;
+  /* A literal: --pds-color-foreground-default inverts under a dark theme. */
+  background: oklch(0.2046 0 0);
+  color: var(--puck-color-grey-08, #c3c3c3);
+  font-family: var(--puck-font-family, 'Inter Tight', Inter, system-ui, sans-serif);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 18px;
+  box-shadow: 0 4px 14px rgb(35 35 45 / 8%), 0 2px 4px rgb(35 35 45 / 4%);
+  /* Opacity, not display, so Stop stays in the tab order and focusing it
+     reveals the banner. */
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 160ms ease;
+}
+
+.focus-region-agent-host[data-selected] .focus-region-agent__banner,
+.focus-region-agent-host:focus-within .focus-region-agent__banner {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Scaled from the corner it sits in, and held to the same room as unscaled. */
+.focus-region-agent-layer .focus-region-agent__banner {
+  top: calc(8px * var(--agent-unzoom, 1));
+  right: calc(8px * var(--agent-unzoom, 1));
+  max-width: calc((100% - 64px * var(--agent-unzoom, 1)) / var(--agent-unzoom, 1));
+  transform: scale(var(--agent-unzoom, 1));
+  transform-origin: top right;
+}
+
+/* Inset as far as the toolbar insets its label. */
+.focus-region-agent__label {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-inline: 4px;
+  padding: 0 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.focus-region-agent__icon {
+  display: block;
+  width: 0.875rem;
+  height: 0.875rem;
+  flex-shrink: 0;
+  fill: currentColor;
+}
+
+.focus-region-agent__avatar .focus-region-agent__icon {
+  width: 14px;
+  height: 14px;
+}
+
+.focus-region-agent__banner .focus-region-agent__icon {
+  width: 13px;
+  height: 13px;
+}
+
+.focus-region-agent__stop .focus-region-agent__icon {
+  width: 11px;
+  height: 11px;
+}
+
+/* The toolbar's control height, which sets the banner's. */
+.focus-region-agent__stop {
+  align-self: stretch;
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  padding: 0 12px;
+  border: none;
+  border-left: 1px solid rgb(255 255 255 / 16%);
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.focus-region-agent__stop:hover {
+  background: rgb(255 255 255 / 18%);
+}
+
+.focus-region-agent__stop:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: -2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .focus-region-agent-host::before {
+    animation: none;
+  }
+
+  .focus-region-agent__avatar::after {
+    animation: none;
+  }
+
+  .focus-region-agent__name {
+    animation: none;
+  }
+
+  .focus-region-agent__shimmer::before,
+  .focus-region-agent__shimmer::after {
+    animation: none;
+  }
+
+  .focus-region-agent-host[data-leaving] {
+    animation: none;
+    opacity: 0;
+  }
+
+  .focus-region-agent__banner {
+    transition: none;
+  }
+}
+
+/* ============================================
    Merge Preview Panel
    ============================================ */
 

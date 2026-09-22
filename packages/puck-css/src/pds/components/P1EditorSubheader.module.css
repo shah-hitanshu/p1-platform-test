@@ -76,24 +76,6 @@
   flex-shrink: 0;
 }
 
-/* ── Actors area (agents + presence) — scrollable on overflow ────────── */
-/* flex-shrink allows the spacer to collapse first, then this area scrolls
-   horizontally, keeping the divider and PublishControl always visible. */
-
-.actorsArea {
-  display: flex;
-  align-items: center;
-  gap: var(--pds-spacing-xs, 0.5rem);
-  min-width: 0;
-  overflow-x: auto;
-  scrollbar-width: none;
-  flex-shrink: 1;
-}
-
-.actorsArea::-webkit-scrollbar {
-  display: none;
-}
-
 /* ── Right panel toggle rotation ─────────────────────────────────────── */
 
 .rightPanelToggle :global(.pds-icon) {

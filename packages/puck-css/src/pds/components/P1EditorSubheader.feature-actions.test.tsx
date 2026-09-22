@@ -11,10 +11,6 @@ import React from 'react';
 import { render, screen, cleanup } from '@testing-library/react';
 import { P1EditorSubheader } from './P1EditorSubheader.js';
 
-vi.mock('./AgentChip.js', () => ({
-  AgentChip: () => <div data-testid="agent-chip" />,
-}));
-
 vi.mock('./PublishControl.js', () => ({
   PublishControl: () => <div data-testid="publish-control" />,
 }));
@@ -35,8 +31,6 @@ const defaultProps = {
   puckActions: <></>,
   docState: 'modified' as const,
   context: 'main' as const,
-  agents: [],
-  onStopAgent: () => {},
   hasPast: false,
   hasFuture: false,
   onUndo: () => {},

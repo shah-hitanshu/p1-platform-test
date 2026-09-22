@@ -8,6 +8,7 @@
 import React, { useState, useEffect } from 'react';
 import type { ActorPresence } from '@pantheon-systems/css-client';
 import { getAvatarColor } from '../utils/avatarColor.js';
+import { actorDisplayName } from '../utils/actorDisplayName.js';
 
 export interface AgentActivityBannerProps {
   /** The agent actor to display */
@@ -78,6 +79,8 @@ export function AgentActivityBanner({
     return null;
   }
 
+  const displayName = actorDisplayName(agent);
+
   const containerClasses = [
     baseClass,
     `${baseClass}--${agent.state}`,
@@ -102,12 +105,12 @@ export function AgentActivityBanner({
           className={`${baseClass}__avatar`}
           style={{ backgroundColor: getAvatarColor(agent.actorId) }}
         >
-          <span className={`${baseClass}__initials`}>{getInitials(agent.name)}</span>
+          <span className={`${baseClass}__initials`}>{getInitials(displayName)}</span>
           <span className={`${baseClass}__agent-icon`} aria-hidden="true" />
         </div>
 
         <div className={`${baseClass}__info`}>
-          <span className={`${baseClass}__name`}>{agent.name}</span>
+          <span className={`${baseClass}__name`}>{displayName}</span>
           {agent.intent && (
             <span className={`${baseClass}__intent`}>{agent.intent}</span>
           )}

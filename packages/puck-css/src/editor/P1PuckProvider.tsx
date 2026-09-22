@@ -36,6 +36,10 @@ import { useResolvePermissions } from '../features/content-type-templates/permis
 import { useTemplateList } from '../features/content-type-templates/hooks/useTemplateList.js';
 import { presenceIdentityKey } from '../collaboration/utils/presenceIdentity.js';
 import {
+  AGENT_DISPLAY_NAME,
+  actorDisplayName,
+} from '../collaboration/utils/actorDisplayName.js';
+import {
   publishThreadEvent,
   publishThreadsReconnect,
 } from '../features/threads/realtime-events.js';
@@ -1972,8 +1976,13 @@ function P1PuckProviderInner({
           ? target.actorId
           : { agentId: target.actorId, turnId: target.turnId };
       try {
-        const result = await userClient.agentEdit.stopAgent(siteId, branchId, documentPath, stopTarget);
-        const subject = 'actorId' in target ? `Agent "${target.name}"` : 'Agent';
+        const result = await userClient.agentEdit.stopAgent(
+          siteId,
+          branchId,
+          documentPath,
+          stopTarget,
+        );
+        const subject = 'actorId' in target ? actorDisplayName(target) : AGENT_DISPLAY_NAME;
         // A stop that found nothing to stop must not read like one that worked.
         if (result.success) {
           notificationContext.addSuccess(`${subject} has been stopped`);
