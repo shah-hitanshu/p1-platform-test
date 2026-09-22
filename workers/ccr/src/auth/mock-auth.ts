@@ -64,9 +64,9 @@ export const DEFAULT_MOCK_CONFIG: MockIdentityConfig = {
   defaultSiteRoles: {},
   agents: [
     {
-      // ID must match database: a0000000-0000-0000-0000-000000000001 (Zappy)
+      // ID must match database: a0000000-0000-0000-0000-000000000001 (Mock Agent)
       id: 'a0000000-0000-0000-0000-000000000001',
-      name: 'Zappy AI Assistant',
+      name: 'Mock Agent',
       apiKey: 'test-agent-key-zappy',
       siteRoles: {
         'site-123': 'editor',
@@ -86,7 +86,7 @@ export const DEFAULT_MOCK_CONFIG: MockIdentityConfig = {
     {
       // ID must match database: a0000000-0000-0000-0000-000000000003 (global, so no site roles)
       id: 'a0000000-0000-0000-0000-000000000003',
-      name: 'Pantheon Agent',
+      name: 'Zappy',
       apiKey: 'test-agent-key-pantheon',
       siteRoles: {},
     },

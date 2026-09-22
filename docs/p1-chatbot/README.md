@@ -141,7 +141,7 @@ AGENT_API_KEY=...
 AGENT_NOTIFY_SECRET=...
 ```
 
-Against a local CCR with mock auth, `AGENT_ID`/`AGENT_API_KEY` can be one of the mock agents in `workers/ccr/src/auth/mock-auth.ts`. The Pantheon Agent (`a0000000-0000-0000-0000-000000000003`, key `test-agent-key-pantheon`) is the one flagged global by `pnpm db:seed`, so it appears in every site's roster and mention picker.
+Against a local CCR with mock auth, `AGENT_ID`/`AGENT_API_KEY` can be one of the mock agents in `workers/ccr/src/auth/mock-auth.ts`. Zappy (`a0000000-0000-0000-0000-000000000003`, key `test-agent-key-pantheon`) is the one flagged global by `pnpm db:seed`, so it appears in every site's roster and mention picker.
 
 ### Answering comment mentions
 

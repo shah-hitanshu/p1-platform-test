@@ -16,9 +16,9 @@ import {
   DEMO_SITE_2,
   DEMO_SITE_3,
   HELPER_AGENT,
-  PANTHEON_AGENT,
+  PLATFORM_AGENT,
   MOCK_ORG,
-  ZAPPY_AGENT,
+  MOCK_AGENT,
   type Rows,
 } from './ids';
 
@@ -72,9 +72,9 @@ export const organizationMembers = [
 
 export const agents = [
   {
-    id: ZAPPY_AGENT,
+    id: MOCK_AGENT,
     organizationId: mockOrg.id,
-    name: 'Zappy AI Assistant',
+    name: 'Mock Agent',
     description: 'Mock agent for local development and testing',
     capabilities: ['content_edit', 'content_create'],
   },
@@ -86,9 +86,9 @@ export const agents = [
     capabilities: ['content_edit'],
   },
   {
-    id: PANTHEON_AGENT,
+    id: PLATFORM_AGENT,
     organizationId: mockOrg.id,
-    name: 'Pantheon Agent',
+    name: 'Zappy',
     description: 'Platform agent, visible on every site',
     capabilities: ['content_edit', 'content_create'],
     isGlobal: true,
@@ -169,7 +169,7 @@ export const userSiteRoles = [
 ] satisfies Rows<typeof schema.userSiteRoles>;
 
 export const agentSiteRoles = [
-  { agentId: ZAPPY_AGENT, siteId: audi.id, role: 'admin' },
-  { agentId: ZAPPY_AGENT, siteId: demo2.id, role: 'admin' },
-  { agentId: ZAPPY_AGENT, siteId: demo3.id, role: 'admin' },
+  { agentId: MOCK_AGENT, siteId: audi.id, role: 'admin' },
+  { agentId: MOCK_AGENT, siteId: demo2.id, role: 'admin' },
+  { agentId: MOCK_AGENT, siteId: demo3.id, role: 'admin' },
 ] satisfies Rows<typeof schema.agentSiteRoles>;
