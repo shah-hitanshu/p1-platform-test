@@ -204,7 +204,7 @@ function P1PuckProviderInner({
   realtimeTokenRefresher,
   // Phase 9: Presence props
   presenceEnabled = true,
-  presencePollingInterval = 5000,
+  presencePollingInterval = 10000,
   userName: _userName,
   userAvatar: _userAvatar,
   userNameResolver,
@@ -1609,6 +1609,11 @@ function P1PuckProviderInner({
   // Track previous actors for onPresenceChange callback comparison
   const prevActorsRef = useRef<ActorPresence[]>([]);
 
+  const wsPresenceActorsRef = useRef(wsPresenceActors);
+  wsPresenceActorsRef.current = wsPresenceActors;
+  const wsPresenceActiveRef = useRef(wsPresenceActive);
+  wsPresenceActiveRef.current = wsPresenceActive;
+
   // Conflict notifications state
   const [conflicts, setConflicts] = useState<ConflictNotification[]>([]);
 
@@ -1628,24 +1633,11 @@ function P1PuckProviderInner({
       const filteredActors = branchPresence.actors.filter(
         (actor) => actor.actorId !== userId
       );
-      const enrichedActors = enrichActorsWithNames(filteredActors);
-
-      setPresenceActors(enrichedActors);
-
-      // Call onPresenceChange if actors changed
-      if (onPresenceChange) {
-        const actorsChanged =
-          JSON.stringify(enrichedActors.map((a) => a.id).sort()) !==
-          JSON.stringify(prevActorsRef.current.map((a) => a.id).sort());
-        if (actorsChanged) {
-          onPresenceChange(enrichedActors);
-          prevActorsRef.current = enrichedActors;
-        }
-      }
+      setPresenceActors(enrichActorsWithNames(filteredActors));
     } catch (error) {
       console.error('Failed to fetch presence:', error);
     }
-  }, [presenceEnabled, branchId, siteId, userId, userClient, onPresenceChange, enrichActorsWithNames]);
+  }, [presenceEnabled, branchId, siteId, userId, userClient, enrichActorsWithNames]);
 
   // Keep fetchPresence in a ref to avoid restarting the interval when callback changes
   const fetchPresenceRef = useRef(fetchPresence);
@@ -1654,32 +1646,43 @@ function P1PuckProviderInner({
   }, [fetchPresence]);
 
   // Initial presence fetch and polling
-  // HTTP polling is skipped when WebSocket presence is active and connected
   useEffect(() => {
     if (!presenceEnabled) return;
 
-    // Skip HTTP polling if WebSocket presence is handling updates
-    const shouldSkipPolling = wsPresenceActive && realtime.connected;
+    if (wsPresenceActive && realtime.connected) {
+      presenceInitializedRef.current = false;
+      return;
+    }
 
-    // Initial fetch (only if WS isn't active yet)
-    if (!presenceInitializedRef.current && !shouldSkipPolling) {
+    if (typeof document === 'undefined') return;
+
+    const tick = () => {
+      if (document.visibilityState !== 'visible') return;
+      void fetchPresenceRef.current();
+    };
+
+    if (!presenceInitializedRef.current && document.visibilityState === 'visible') {
       presenceInitializedRef.current = true;
       void fetchPresenceRef.current();
     }
 
-    // Set up polling - use ref to avoid restarting interval when callback changes
-    // Skip polling when WebSocket is handling presence
-    const intervalId = setInterval(() => {
-      // Check again at each interval - WS state may have changed
-      if (!wsPresenceActive || !realtime.connected) {
-        void fetchPresenceRef.current();
-      }
-    }, presencePollingInterval);
+    let intervalId = setInterval(tick, presencePollingInterval);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== 'visible') return;
+      presenceInitializedRef.current = true;
+      void fetchPresenceRef.current();
+      // Restart the interval so the next tick is a full period after this fetch.
+      clearInterval(intervalId);
+      intervalId = setInterval(tick, presencePollingInterval);
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
       clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [presenceEnabled, presencePollingInterval, realtime.connected]);
+  }, [presenceEnabled, presencePollingInterval, realtime.connected, wsPresenceActive]);
 
   // Reset presence when disabled
   useEffect(() => {
@@ -1689,25 +1692,23 @@ function P1PuckProviderInner({
     }
   }, [presenceEnabled]);
 
-  // Reset WebSocket presence state when disconnected so the UI falls back
-  // to HTTP-polled presence data. Without this, wsPresenceActive stays
-  // true after disconnect and the UI shows stale WebSocket presence
-  // (e.g. an agent that already completed its edit session still appears).
+  // Without this reset an agent that already completed its edit session keeps showing.
   useEffect(() => {
     if (!realtime.connected) {
+      if (wsPresenceActiveRef.current) {
+        setPresenceActors(wsPresenceActorsRef.current);
+      }
       setWsPresenceActive(false);
       setWsPresenceActors([]);
     }
   }, [realtime.connected]);
 
   // Compute derived presence values
-  // Prefer WebSocket presence when connected for instant updates
+  // Prefer WebSocket presence for instant updates
   const presenceState: PresenceState | null = useMemo(() => {
     if (!presenceEnabled) return null;
 
-    // Use WebSocket presence when active and connected, otherwise fall back to HTTP polling data
-    const effectiveActors =
-      wsPresenceActive && realtime.connected ? wsPresenceActors : presenceActors;
+    const effectiveActors = wsPresenceActive ? wsPresenceActors : presenceActors;
 
     const humans = effectiveActors.filter((actor) => actor.role === 'human');
     const agents = effectiveActors.filter((actor) => actor.role === 'agent');
@@ -1726,13 +1727,24 @@ function P1PuckProviderInner({
       hasActiveAgents,
       refresh: fetchPresence,
     };
-  }, [presenceEnabled, presenceActors, wsPresenceActors, wsPresenceActive, realtime.connected, fetchPresence]);
+  }, [presenceEnabled, presenceActors, wsPresenceActors, wsPresenceActive, fetchPresence]);
 
   // Keep presence in a ref so it can be read via getter without triggering
   // context recreation. Presence changes frequently (focus region broadcasts)
   // but shouldn't cause PuckDataSynchronizer or plugin re-renders.
   const presenceStateRef = useRef(presenceState);
   presenceStateRef.current = presenceState;
+
+  useEffect(() => {
+    if (!onPresenceChange) return;
+    const actors = presenceState?.actors ?? [];
+    const actorsChanged =
+      JSON.stringify(actors.map((a) => a.id).sort()) !==
+      JSON.stringify(prevActorsRef.current.map((a) => a.id).sort());
+    if (!actorsChanged) return;
+    prevActorsRef.current = actors;
+    onPresenceChange(actors);
+  }, [presenceState, onPresenceChange]);
 
 
   const humanPresenceKey = presenceIdentityKey(presenceState?.humans);

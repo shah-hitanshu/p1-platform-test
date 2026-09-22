@@ -7,8 +7,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
 import React from 'react';
-import { P1PuckProvider } from '../src/editor/P1PuckProvider.js';
-import { useP1Puck } from '../src/core/P1PuckContext.js';
 import type {
   P1Client,
   ActorPresence,
@@ -16,6 +14,8 @@ import type {
   Branch,
   RegisteredAgent,
 } from '@pantheon-systems/css-client';
+import { P1PuckProvider } from '../src/editor/P1PuckProvider.js';
+import { useP1Puck } from '../src/core/P1PuckContext.js';
 import type { ConflictNotification } from '../src/merge/components/conflict-notifications/index.js';
 
 // =============================================================================
@@ -357,6 +357,31 @@ describe('P1PuckProvider Enhancement - Phase 9', () => {
         });
 
         expect(typeof result.current.presence?.refresh).toBe('function');
+      });
+
+      it('should default to a 10000ms polling interval', async () => {
+        const client = createMockClient();
+        renderHook(() => useP1Puck(), {
+          wrapper: createProviderWrapper(client, { presenceEnabled: true }),
+        });
+
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(100);
+        });
+
+        expect(client.presence.getBranchPresence).toHaveBeenCalledTimes(1);
+
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(5000);
+        });
+
+        expect(client.presence.getBranchPresence).toHaveBeenCalledTimes(1);
+
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(5000);
+        });
+
+        expect(client.presence.getBranchPresence).toHaveBeenCalledTimes(2);
       });
 
       it('should use custom polling interval', async () => {

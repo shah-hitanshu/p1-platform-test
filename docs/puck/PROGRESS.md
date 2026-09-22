@@ -849,7 +849,7 @@ Enhanced `CSSPuckProvider` with presence and agent mode support:
 
 **New Props (CSSPuckConfig):**
 - `presenceEnabled` - Enable presence tracking (default: false)
-- `presencePollingInterval` - Polling interval in ms (default: 5000)
+- `presencePollingInterval` - Polling interval in ms (default: 10000)
 - `userName`, `userAvatar` - Display info for presence
 - `agentModeEnabled` - Enable agent mode features (default: false)
 - `agentId` - When client IS an agent

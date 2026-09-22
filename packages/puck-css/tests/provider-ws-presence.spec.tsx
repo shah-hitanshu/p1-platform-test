@@ -433,6 +433,132 @@ describe('P1PuckProvider WebSocket Presence Integration', () => {
       // HTTP polling should have been called after disconnect
       expect(mockClient.presence.getBranchPresence).toHaveBeenCalled();
     });
+
+    it('should stop HTTP polling once a WebSocket presence update arrives', async () => {
+      const { P1PuckProvider } = await import('../src/editor/P1PuckProvider.js');
+      const { PresenceContext } = await import('../src/core/PresenceContext.js');
+      const { P1PuckContext } = await import('../src/core/P1PuckContext.js');
+
+      let presenceValue: { actors: ActorPresence[] } | null = null;
+      let loadDocumentFn: ((path: string) => Promise<void>) | null = null;
+
+      const TestConsumer = () => {
+        presenceValue = useContext(PresenceContext);
+        loadDocumentFn = useContext(P1PuckContext)?.loadDocument ?? null;
+        return <div>Test</div>;
+      };
+
+      render(
+        <P1PuckProvider
+          client={mockClient}
+          siteId="site-1"
+          branchId="branch-1"
+          userId="user-1"
+          enableRealtime={true}
+          wsBaseUrl="ws://localhost:8787"
+          presenceEnabled={true}
+          presencePollingInterval={5000}
+        >
+          <TestConsumer />
+        </P1PuckProvider>
+      );
+
+      await act(async () => { await vi.advanceTimersByTimeAsync(10); });
+      await act(async () => { await loadDocumentFn?.('pages/home'); });
+      await act(async () => { await vi.advanceTimersByTimeAsync(50); });
+
+      const realtimeClient = getLatestClient();
+      expect(realtimeClient?.isConnected()).toBe(true);
+
+      const getBranchPresence = mockClient.presence
+        .getBranchPresence as ReturnType<typeof vi.fn>;
+
+      // Polling is still running at this point, and the fake clock drives it
+      getBranchPresence.mockClear();
+      await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+      expect(getBranchPresence).toHaveBeenCalled();
+
+      const wsActors: ActorPresence[] = [
+        {
+          id: 'ws-presence-1',
+          actorId: 'user-3',
+          actorType: 'user',
+          role: 'human',
+          name: 'WS User',
+          state: 'active',
+          lastActivityAt: new Date().toISOString(),
+          joinedAt: new Date().toISOString(),
+        },
+      ];
+
+      await act(async () => { realtimeClient?.simulatePresenceUpdate(wsActors); });
+
+      expect(
+        presenceValue!.actors.some((a: ActorPresence) => a.actorId === 'user-3')
+      ).toBe(true);
+
+      getBranchPresence.mockClear();
+      await act(async () => { await vi.advanceTimersByTimeAsync(15000); });
+
+      expect(getBranchPresence).toHaveBeenCalledTimes(0);
+    });
+
+    it('should refresh presence immediately when the WebSocket disconnects', async () => {
+      const { P1PuckProvider } = await import('../src/editor/P1PuckProvider.js');
+      const { P1PuckContext } = await import('../src/core/P1PuckContext.js');
+
+      let loadDocumentFn: ((path: string) => Promise<void>) | null = null;
+
+      const TestConsumer = () => {
+        loadDocumentFn = useContext(P1PuckContext)?.loadDocument ?? null;
+        return <div>Test</div>;
+      };
+
+      render(
+        <P1PuckProvider
+          client={mockClient}
+          siteId="site-1"
+          branchId="branch-1"
+          userId="user-1"
+          enableRealtime={true}
+          wsBaseUrl="ws://localhost:8787"
+          presenceEnabled={true}
+          presencePollingInterval={5000}
+        >
+          <TestConsumer />
+        </P1PuckProvider>
+      );
+
+      await act(async () => { await vi.advanceTimersByTimeAsync(10); });
+      await act(async () => { await loadDocumentFn?.('pages/home'); });
+      await act(async () => { await vi.advanceTimersByTimeAsync(50); });
+
+      const realtimeClient = getLatestClient();
+      expect(realtimeClient?.isConnected()).toBe(true);
+
+      await act(async () => {
+        realtimeClient?.simulatePresenceUpdate([
+          {
+            id: 'ws-presence-1',
+            actorId: 'user-3',
+            actorType: 'user',
+            role: 'human',
+            name: 'WS User',
+            state: 'active',
+            lastActivityAt: new Date().toISOString(),
+            joinedAt: new Date().toISOString(),
+          },
+        ]);
+      });
+
+      const getBranchPresence = mockClient.presence
+        .getBranchPresence as ReturnType<typeof vi.fn>;
+      getBranchPresence.mockClear();
+
+      await act(async () => { realtimeClient?.simulateDisconnect(); });
+
+      expect(getBranchPresence).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe('sendFocusRegions via context', () => {
@@ -467,6 +593,203 @@ describe('P1PuckProvider WebSocket Presence Integration', () => {
 
       expect(contextValue).not.toBeNull();
       expect(typeof contextValue?.sendFocusRegions).toBe('function');
+    });
+  });
+
+  describe('presence handoff when the WebSocket disconnects', () => {
+    it('should keep the actors the WebSocket last reported instead of the stale polled list', async () => {
+      const { P1PuckProvider } = await import('../src/editor/P1PuckProvider.js');
+      const { PresenceContext } = await import('../src/core/PresenceContext.js');
+      const { P1PuckContext } = await import('../src/core/P1PuckContext.js');
+
+      const getBranchPresence = mockClient.presence
+        .getBranchPresence as ReturnType<typeof vi.fn>;
+      getBranchPresence.mockResolvedValue({ ...mockBranchPresence, actors: [] });
+      getBranchPresence.mockResolvedValueOnce(mockBranchPresence);
+
+      const renderedActors: string[] = [];
+      let loadDocumentFn: ((path: string) => Promise<void>) | null = null;
+
+      const TestConsumer = () => {
+        const presenceContext = useContext(PresenceContext);
+        loadDocumentFn = useContext(P1PuckContext)?.loadDocument ?? null;
+        const actorIds = (presenceContext?.actors ?? [])
+          .map((a: ActorPresence) => a.actorId)
+          .join(',');
+        React.useEffect(() => {
+          if (renderedActors[renderedActors.length - 1] !== actorIds) {
+            renderedActors.push(actorIds);
+          }
+        });
+        return <div data-testid="actors">{actorIds}</div>;
+      };
+
+      render(
+        <P1PuckProvider
+          client={mockClient}
+          siteId="site-1"
+          branchId="branch-1"
+          userId="user-1"
+          enableRealtime={true}
+          wsBaseUrl="ws://localhost:8787"
+          presenceEnabled={true}
+          presencePollingInterval={5000}
+        >
+          <TestConsumer />
+        </P1PuckProvider>
+      );
+
+      await act(async () => { await vi.advanceTimersByTimeAsync(10); });
+      await act(async () => { await loadDocumentFn?.('pages/home'); });
+      await act(async () => { await vi.advanceTimersByTimeAsync(50); });
+
+      const realtimeClient = getLatestClient();
+      expect(realtimeClient?.isConnected()).toBe(true);
+      expect(screen.getByTestId('actors').textContent).toBe('user-2');
+
+      await act(async () => {
+        realtimeClient?.simulatePresenceUpdate([
+          {
+            id: 'ws-presence-1',
+            actorId: 'user-3',
+            actorType: 'user',
+            role: 'human',
+            name: 'WS User',
+            state: 'active',
+            lastActivityAt: new Date().toISOString(),
+            joinedAt: new Date().toISOString(),
+          },
+        ]);
+      });
+
+      expect(screen.getByTestId('actors').textContent).toBe('user-3');
+
+      await act(async () => { await vi.advanceTimersByTimeAsync(20000); });
+      await act(async () => { realtimeClient?.simulateDisconnect(); });
+      await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+
+      expect(screen.getByTestId('actors').textContent).toBe('');
+      expect(renderedActors).toEqual(['', 'user-2', 'user-3', '']);
+    });
+  });
+
+  describe('onPresenceChange with WebSocket presence', () => {
+    it('should fire onPresenceChange with the actors a presence update delivers', async () => {
+      const { P1PuckProvider } = await import('../src/editor/P1PuckProvider.js');
+      const { P1PuckContext } = await import('../src/core/P1PuckContext.js');
+
+      const onPresenceChange = vi.fn();
+      let loadDocumentFn: ((path: string) => Promise<void>) | null = null;
+
+      const TestConsumer = () => {
+        loadDocumentFn = useContext(P1PuckContext)?.loadDocument ?? null;
+        return <div>Test</div>;
+      };
+
+      render(
+        <P1PuckProvider
+          client={mockClient}
+          siteId="site-1"
+          branchId="branch-1"
+          userId="user-1"
+          enableRealtime={true}
+          wsBaseUrl="ws://localhost:8787"
+          presenceEnabled={true}
+          presencePollingInterval={5000}
+          onPresenceChange={onPresenceChange}
+        >
+          <TestConsumer />
+        </P1PuckProvider>
+      );
+
+      await act(async () => { await vi.advanceTimersByTimeAsync(10); });
+      await act(async () => { await loadDocumentFn?.('pages/home'); });
+      await act(async () => { await vi.advanceTimersByTimeAsync(50); });
+
+      const realtimeClient = getLatestClient();
+      expect(realtimeClient?.isConnected()).toBe(true);
+
+      await act(async () => {
+        realtimeClient?.simulatePresenceUpdate([
+          {
+            id: 'ws-presence-1',
+            actorId: 'user-3',
+            actorType: 'user',
+            role: 'human',
+            name: 'WS User',
+            state: 'active',
+            lastActivityAt: new Date().toISOString(),
+            joinedAt: new Date().toISOString(),
+          },
+        ]);
+      });
+
+      expect(onPresenceChange).toHaveBeenLastCalledWith([
+        expect.objectContaining({ actorId: 'user-3' }),
+      ]);
+    });
+
+    it('should not fire onPresenceChange for focus region broadcasts that leave the actor set unchanged', async () => {
+      const { P1PuckProvider } = await import('../src/editor/P1PuckProvider.js');
+      const { P1PuckContext } = await import('../src/core/P1PuckContext.js');
+
+      const onPresenceChange = vi.fn();
+      let loadDocumentFn: ((path: string) => Promise<void>) | null = null;
+
+      const TestConsumer = () => {
+        loadDocumentFn = useContext(P1PuckContext)?.loadDocument ?? null;
+        return <div>Test</div>;
+      };
+
+      render(
+        <P1PuckProvider
+          client={mockClient}
+          siteId="site-1"
+          branchId="branch-1"
+          userId="user-1"
+          enableRealtime={true}
+          wsBaseUrl="ws://localhost:8787"
+          presenceEnabled={true}
+          presencePollingInterval={5000}
+          onPresenceChange={onPresenceChange}
+        >
+          <TestConsumer />
+        </P1PuckProvider>
+      );
+
+      await act(async () => { await vi.advanceTimersByTimeAsync(10); });
+      await act(async () => { await loadDocumentFn?.('pages/home'); });
+      await act(async () => { await vi.advanceTimersByTimeAsync(50); });
+
+      const realtimeClient = getLatestClient();
+      expect(realtimeClient?.isConnected()).toBe(true);
+
+      await act(async () => {
+        realtimeClient?.simulatePresenceUpdate([
+          {
+            id: 'ws-presence-1',
+            actorId: 'user-3',
+            actorType: 'user',
+            role: 'human',
+            name: 'WS User',
+            state: 'active',
+            focusRegions: [],
+            lastActivityAt: new Date().toISOString(),
+            joinedAt: new Date().toISOString(),
+          },
+        ]);
+      });
+
+      onPresenceChange.mockClear();
+
+      await act(async () => {
+        realtimeClient?.simulateFocusRegionBroadcast('user-3', ['$.hero']);
+      });
+      await act(async () => {
+        realtimeClient?.simulateFocusRegionBroadcast('user-3', ['$.hero', '$.content']);
+      });
+
+      expect(onPresenceChange).not.toHaveBeenCalled();
     });
   });
 

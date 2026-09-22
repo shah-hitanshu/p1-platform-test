@@ -112,7 +112,9 @@ export interface P1PuckConfig {
 
   /**
    * Polling interval for presence updates in milliseconds.
-   * @default 5000
+   * Polling pauses while a realtime connection is supplying presence and
+   * while the browser tab is hidden.
+   * @default 10000
    */
   presencePollingInterval?: number;
 
