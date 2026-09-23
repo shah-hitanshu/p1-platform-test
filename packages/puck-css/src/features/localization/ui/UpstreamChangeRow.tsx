@@ -4,7 +4,11 @@ import isEqual from 'lodash.isequal';
 import type { ChangeSummary, ChangeSummaryEntry } from '@pantheon-systems/css-client';
 import { useP1PuckOptional } from '../../../core/P1PuckContext.js';
 import { localeLabel } from '../locale-labels.js';
-import { resolveComponentLabel, resolveFieldLabel, resolveFieldType } from '../resolve-change-label.js';
+import {
+  resolveComponentLabel,
+  resolveFieldLabel,
+  resolveFieldPresentation,
+} from '../resolve-change-label.js';
 import { entryKey, replacementState, type ReviewSession } from '../review-session.js';
 import {
   replaceReviewValue,
@@ -78,7 +82,9 @@ export function UpstreamChangeRow({
   const needsTranslation = entry.classification === 'needsTranslation';
   const locale = documentLocale === undefined ? null : localeLabel(documentLocale);
   const fieldLabel = resolveFieldLabel(target.config, entry.componentId, pointer, target.type);
-  const richtext = resolveFieldType(target.config, entry.componentId, pointer, target.type) === 'richtext';
+  const presentation = resolveFieldPresentation(
+    target.config, entry.componentId, pointer, target.type,
+  );
 
   // Previewing a replacement that is already in the field, or one the page has
   // no field to take, would show the reader their own current value back.
@@ -142,7 +148,7 @@ export function UpstreamChangeRow({
             data-testid="upstream-new-value"
             dir="auto"
           >
-            <ReviewValue value={entry.upstreamNewValue} richtext={richtext} />
+            <ReviewValue value={entry.upstreamNewValue} presentation={presentation} />
           </span>
         </div>
         <div className={styles.col}>
@@ -159,7 +165,10 @@ export function UpstreamChangeRow({
             lang={locale?.lang}
           >
             {target.available
-              ? <ReviewValue value={target.field.exists ? target.field.value : undefined} richtext={richtext} />
+              ? <ReviewValue
+                  value={target.field.exists ? target.field.value : undefined}
+                  presentation={presentation}
+                />
               : 'Block unavailable'}
           </span>
           {showsReplacement && (
@@ -170,7 +179,7 @@ export function UpstreamChangeRow({
                 data-testid="upstream-replacement-preview"
                 dir="auto"
               >
-                <ReviewValue value={entry.upstreamNewValue} richtext={richtext} />
+                <ReviewValue value={entry.upstreamNewValue} presentation={presentation} />
               </span>
             </>
           )}

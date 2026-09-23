@@ -9,6 +9,7 @@
  */
 
 import { humanizeComponentName } from '../../editor/thumbnails/humanizeComponentName.js';
+import { isDefaultMediaFieldName } from '../../data/media-field-name.js';
 import { ROOT_SLOT_ID } from './prop-target.js';
 import { pointerSegments } from './prop-value.js';
 
@@ -23,6 +24,8 @@ interface ComponentConfig {
   label?: string;
   fields?: Record<string, FieldConfig | undefined>;
 }
+
+export type FieldPresentation = 'default' | 'image' | 'richtext';
 
 export interface ChangeLabelConfig {
   components?: Record<string, ComponentConfig | undefined>;
@@ -103,4 +106,31 @@ export function resolveFieldType(
   }
 
   return field?.type;
+}
+
+const IMAGE_COMPONENT = /image|photo/i;
+
+/** The value presentation implied by a field's type and author-facing semantics. */
+export function resolveFieldPresentation(
+  config: ChangeLabelConfig,
+  componentId: string,
+  propPath: string,
+  componentType?: string,
+): FieldPresentation {
+  const fieldType = resolveFieldType(config, componentId, propPath, componentType);
+  if (fieldType === 'richtext') return 'richtext';
+  if (fieldType === 'p1-media') return 'image';
+
+  const segments = pointerSegments(propPath);
+  const fieldName = [...segments].reverse().find((segment) => !/^\d+$/.test(segment));
+  if (fieldName === undefined || fieldType !== 'text') return 'default';
+  if (isDefaultMediaFieldName(fieldName)) return 'image';
+
+  const type = componentType ?? typeFromSlotId(componentId);
+  const component = type === null ? undefined : config.components?.[type];
+  if (fieldName === 'src' && IMAGE_COMPONENT.test(`${type ?? ''} ${component?.label ?? ''}`)) {
+    return 'image';
+  }
+
+  return 'default';
 }

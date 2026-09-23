@@ -1,6 +1,6 @@
 "use client";
 
-import { DEFAULT_MEDIA_PATTERNS } from "./patterns";
+import { isDefaultMediaFieldName } from "@pantheon-systems/puck-css/media-fields";
 import { MediaFieldRender } from "./components/media-field";
 import { MediaObjectFieldRender } from "./components/media-object-field";
 import { MediaConfigResolver, type GetAuthToken } from "./puck-css-bridge";
@@ -63,7 +63,9 @@ export interface MediaPluginOptions {
  * ```
  */
 export function createMediaPlugin(options: MediaPluginOptions) {
-  const patterns = options.fieldNamePatterns ?? DEFAULT_MEDIA_PATTERNS;
+  const matchesFieldName = options.fieldNamePatterns === undefined
+    ? isDefaultMediaFieldName
+    : (name: string) => options.fieldNamePatterns?.some((pattern) => pattern.test(name)) ?? false;
 
   return {
     name: "p1-media",
@@ -75,7 +77,7 @@ export function createMediaPlugin(options: MediaPluginOptions) {
           // Puck passes qualified names for array items (e.g. "slides[0].imageUrl").
           // Extract the last segment so patterns match the bare field name.
           const bareFieldName = name?.split(".").pop() ?? name;
-          const isMediaField = patterns.some((p: RegExp) => p.test(bareFieldName));
+          const isMediaField = matchesFieldName(bareFieldName);
 
           if (!isMediaField) {
             return <>{children}</>;

@@ -29,6 +29,9 @@
       "fields": [
         "./dist/data/fields.d.ts"
       ],
+      "media-fields": [
+        "./dist/data/media-field-name.d.ts"
+      ],
       "sanitize-richtext": [
         "./dist/data/sanitize-richtext.d.ts"
       ],
@@ -94,6 +97,11 @@
       "types": "./dist/data/fields.d.ts",
       "import": "./dist/data/fields.js",
       "default": "./dist/data/fields.js"
+    },
+    "./media-fields": {
+      "types": "./dist/data/media-field-name.d.ts",
+      "import": "./dist/data/media-field-name.js",
+      "default": "./dist/data/media-field-name.js"
     },
     "./routes": {
       "types": "./dist/data/route-templates.d.ts",
