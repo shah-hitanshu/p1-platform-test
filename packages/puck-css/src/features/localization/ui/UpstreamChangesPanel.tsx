@@ -1,11 +1,12 @@
 import type { ChangeClassification, ChangeSummaryEntry } from '@pantheon-systems/css-client';
-import { Button } from '@pantheon-systems/pds-toolkit-react';
+import { Icon, SectionMessage } from '@pantheon-systems/pds-toolkit-react';
 import { useState } from 'react';
 import { muted } from '../../../data/styles.js';
 import type { UpstreamDiff } from '../upstream-diff-query.js';
 import { dismissalKey, entryKey, type ReviewSession } from '../review-session.js';
 import { UpstreamChangeRow } from './UpstreamChangeRow.js';
 import styles from './UpstreamChanges.module.css';
+import { structuralSummary } from './upstream-change-presentation.js';
 
 export interface UpstreamChangesPanelProps {
   diff: Extract<UpstreamDiff, { state: 'ready' }>;
@@ -16,33 +17,54 @@ export interface UpstreamChangesPanelProps {
   session: ReviewSession;
 }
 
-const GROUPS: Record<ChangeClassification, { label: string; color: string; summary: string }> = {
+type ReportedClassification = Exclude<ChangeClassification, 'advisory'>;
+
+const GROUPS: Record<ReportedClassification, { label: string; color: string; summary: string }> = {
   needsTranslation: {
-    label: 'Content might need translation',
+    label: 'Needs translation',
     color: '#b45309',
-    summary: 'The source changed since this was translated.',
+    summary: 'The source changed after this was translated.',
   },
   autoApplied: {
-    label: 'Inherited values',
+    label: 'From source',
     color: '#16a34a',
-    summary: 'These source values can be adopted directly.',
+    summary: 'These follow the source locale.',
   },
   prop: {
     label: 'Field changes',
     color: '#2563eb',
     summary: 'The source changed these values.',
   },
-  advisory: {
-    label: 'Locale-managed',
-    color: '#6b7280',
-    summary: 'This page owns these values. Source changes are advisory only.',
-  },
   structural: {
     label: 'Page structure',
     color: '#7c3aed',
-    summary: 'Page blocks have changed on the source. Reconcile these on the canvas.',
+    summary: '',
   },
 };
+
+/**
+ * The drawer explains itself the first time a reader meets an out-of-sync page,
+ * then stays out of the way. Session storage rather than local: the explanation
+ * is worth repeating to someone who comes back tomorrow, not on every open.
+ */
+const NOTE_KEY = 'p1.localization.out-of-sync-note-seen';
+
+function noteSeen(): boolean {
+  try {
+    return sessionStorage.getItem(NOTE_KEY) === '1';
+  } catch {
+    // Storage is unreachable in private browsing, where nothing is remembered anyway.
+    return false;
+  }
+}
+
+function markNoteSeen(): void {
+  try {
+    sessionStorage.setItem(NOTE_KEY, '1');
+  } catch {
+    // Nothing to fall back to; the note shows again next time.
+  }
+}
 
 const STRUCTURAL_PREVIEW_COUNT = 3;
 
@@ -57,8 +79,31 @@ export function UpstreamChangesPanel({
   const summary = diff.summary;
   const changes = summary.changes.filter((entry) => !dismissed.has(dismissalKey(summary, entry)));
 
+  // Structural changes are reported, not reconciled here, so a page holding only
+  // those is not what the note is explaining.
+  const outOfSync = changes.some((entry) => entry.classification !== 'structural');
+  // The explanation is spent when a reader dismisses it, not when it is drawn:
+  // a drawer opened and closed on the way past has explained nothing. It tracks
+  // the list too, so a page that only later has changes to take still gets it.
+  const [noteDismissed, setNoteDismissed] = useState(noteSeen);
+  const noteOpen = outOfSync && !noteDismissed;
+
   return (
     <>
+      {noteOpen && (
+        <SectionMessage
+          className={styles.sessionNote}
+          data-testid="upstream-out-of-sync-note"
+          type="discovery"
+          isDismissible
+          onDismiss={() => {
+            setNoteDismissed(true);
+            markNoteSeen();
+          }}
+          title={'What "out of sync" means'}
+          message="The source changed after this locale was translated. Take the source wording with Replace with Source, or write your own, then Mark done."
+        />
+      )}
       {diff.staleReason !== null && (
         <p role="status" data-testid="upstream-refresh-failed">
           {diff.staleReason}. Showing the last list read.
@@ -69,7 +114,7 @@ export function UpstreamChangesPanel({
           Every reported change has been dealt with.
         </p>
       )}
-      {(Object.keys(GROUPS) as ChangeClassification[]).map((classification) => {
+      {(Object.keys(GROUPS) as ReportedClassification[]).map((classification) => {
         const entries = changes.filter((entry) => entry.classification === classification);
         if (!entries.length) return null;
 
@@ -97,9 +142,6 @@ export function UpstreamChangesPanel({
             <h3 className={styles.groupHead}>
               <span className={styles.groupDot} style={{ background: group.color }} />
               {group.label}
-              <span className={styles.groupCount} data-testid={`upstream-count-${classification}`}>
-                {entries.length}
-              </span>
             </h3>
             <p className={styles.groupSub}>{group.summary}</p>
             {entries.map((entry) => (
@@ -141,24 +183,21 @@ function StructuralChanges({ entries, group, summary, documentLocale, session }:
         <h3 className={styles.groupHead}>
           <span className={styles.groupDot} style={{ background: group.color }} />
           {group.label}
-          <span className={styles.groupCount} data-testid="upstream-count-structural">
-            {entries.length}
-          </span>
         </h3>
         {hiddenCount > 0 && (
-          <Button
-            label={label}
-            variant="subtle"
-            size="s"
-            iconName={expanded ? 'angleUp' : 'angleDown'}
-            displayType="icon-end"
+          <button
+            type="button"
+            className={styles.structuralToggle}
             aria-expanded={expanded}
             onClick={() => setExpanded((current) => !current)}
-          />
+          >
+            {label}
+            <Icon iconName={expanded ? 'angleUp' : 'angleDown'} size="xs" aria-hidden="true" />
+          </button>
         )}
       </div>
       <p className={styles.groupSub}>
-        Compared with the source version used to create this localization.
+        {structuralSummary(entries.length, summary.relationType === 'localization' ? 'source' : 'template')}
       </p>
       <div
         className={expanded ? styles.structuralListExpanded : undefined}

@@ -3,12 +3,17 @@ import { Button } from '@pantheon-systems/pds-toolkit-react';
 import isEqual from 'lodash.isequal';
 import type { ChangeSummary, ChangeSummaryEntry } from '@pantheon-systems/css-client';
 import { useP1PuckOptional } from '../../../core/P1PuckContext.js';
-import { PropValueDisplay } from '../../../versioning/components/version-compare/index.js';
 import { localeLabel } from '../locale-labels.js';
-import { resolveComponentLabel, resolveFieldLabel } from '../resolve-change-label.js';
+import { resolveComponentLabel, resolveFieldLabel, resolveFieldType } from '../resolve-change-label.js';
 import { entryKey, replacementState, type ReviewSession } from '../review-session.js';
-import { replaceReviewValue, useReviewTarget, useReviewValue } from '../review-editor.js';
+import {
+  replaceReviewValue,
+  revealReviewTarget,
+  useReviewTarget,
+  useReviewValue,
+} from '../review-editor.js';
 import styles from './UpstreamChanges.module.css';
+import { ReviewValue, structuralDescription } from './upstream-change-presentation.js';
 
 interface UpstreamChangeRowProps {
   entry: ChangeSummaryEntry;
@@ -35,9 +40,17 @@ export function UpstreamChangeRow({
   const recoveryValue = useReviewValue(entry.componentId, replacement?.pointer);
 
   const getEditor = useGetPuck();
-  const notifications = useP1PuckOptional()?.notifications;
+  const css = useP1PuckOptional();
+  const notifications = css?.notifications;
   const componentLabel = resolveComponentLabel(target.config, entry.componentId, target.type);
   const sourceLabel = summary.relationType === 'localization' ? 'Source' : 'Template';
+
+  // A canonical page carries no locale of its own until it is authored in one,
+  // so the source column names a market only when the source document holds it.
+  const sourceLocale = css?.documents.find(
+    (document) => document.id === summary.upstreamDocumentId,
+  )?.locale;
+  const sourceTag = sourceLocale == null ? null : localeLabel(sourceLocale).tag;
 
   if (entry.classification === 'structural') {
     return (
@@ -63,9 +76,13 @@ export function UpstreamChangeRow({
   const replacementBlocked = hasActiveReplacement && !hasNewSourceValue;
 
   const needsTranslation = entry.classification === 'needsTranslation';
-  const advisory = entry.classification === 'advisory';
   const locale = documentLocale === undefined ? null : localeLabel(documentLocale);
   const fieldLabel = resolveFieldLabel(target.config, entry.componentId, pointer, target.type);
+  const richtext = resolveFieldType(target.config, entry.componentId, pointer, target.type) === 'richtext';
+
+  // Previewing a replacement that is already in the field, or one the page has
+  // no field to take, would show the reader their own current value back.
+  const showsReplacement = needsTranslation && target.available && !replacementBlocked;
 
   const apply = () => {
     if (pending || (needsTranslation && replacementBlocked)) return;
@@ -73,12 +90,15 @@ export function UpstreamChangeRow({
     const inserted = entry.upstreamNewValue === undefined
       ? { exists: false as const }
       : { exists: true as const, value: entry.upstreamNewValue };
-    const operation = replaceReviewValue(getEditor(), entry.componentId, pointer, inserted);
+    const editor = getEditor();
+    const operation = replaceReviewValue(editor, entry.componentId, pointer, inserted);
 
     if (operation === null) {
-      notifications?.addError(`Nothing to update: this page no longer holds ${componentLabel}. Reconcile it on the canvas.`);
+      notifications?.addError(`Nothing to update: this page no longer holds ${componentLabel}. Add the block back on the canvas to take this change.`);
       return;
     }
+
+    revealReviewTarget(editor, entry.componentId);
 
     // Source wording is a starting point for translation, not a completed review.
     if (needsTranslation) {
@@ -110,27 +130,50 @@ export function UpstreamChangeRow({
       <div className={styles.field}>{componentLabel} · {fieldLabel}</div>
       <div className={styles.cols}>
         <div className={styles.col}>
-          <span className={styles.colLabel}>{sourceLabel} · v{summary.toVersion}</span>
+          <span className={styles.colLabel}>
+            {sourceLabel}
+            {sourceTag !== null && (
+              <> (<span className={styles.flag} data-testid="upstream-source-locale">{sourceTag}</span>)</>
+            )}
+            {' · '}v{summary.toVersion}
+          </span>
           <span
-            className={`${styles.value} ${advisory ? styles.valueMuted : ''}`}
+            className={styles.value}
             data-testid="upstream-new-value"
             dir="auto"
           >
-            <PropValueDisplay value={entry.upstreamNewValue} />
+            <ReviewValue value={entry.upstreamNewValue} richtext={richtext} />
           </span>
         </div>
         <div className={styles.col}>
-          <span className={styles.colLabel}>{locale === null ? 'Current page' : `Current ${locale.tag}`}</span>
+          <span className={styles.colLabel}>
+            {locale === null
+              ? 'Current page'
+              : <>Current <span className={styles.flag} data-testid="upstream-current-locale">{locale.tag}</span></>}
+            {' · '}v{summary.fromVersion} (out of sync)
+          </span>
           <span
-            className={styles.value}
+            className={`${styles.value} ${target.available ? styles.valueStale : ''}`}
             data-testid="upstream-current-value"
             dir={locale?.dir ?? 'auto'}
             lang={locale?.lang}
           >
             {target.available
-              ? <PropValueDisplay value={target.field.exists ? target.field.value : undefined} />
+              ? <ReviewValue value={target.field.exists ? target.field.value : undefined} richtext={richtext} />
               : 'Block unavailable'}
           </span>
+          {showsReplacement && (
+            <>
+              <span className={`${styles.colLabel} ${styles.replaceLabel}`}>Replace with</span>
+              <span
+                className={`${styles.value} ${styles.valueStale}`}
+                data-testid="upstream-replacement-preview"
+                dir="auto"
+              >
+                <ReviewValue value={entry.upstreamNewValue} richtext={richtext} />
+              </span>
+            </>
+          )}
         </div>
       </div>
       <div className={styles.actions}>
@@ -163,15 +206,6 @@ export function UpstreamChangeRow({
               />
             )}
           </>
-        ) : advisory ? (
-          <Button
-            data-testid="upstream-dismiss"
-            label="Dismiss"
-            variant="secondary"
-            size="s"
-            disabled={pending}
-            onClick={onResolve}
-          />
         ) : (
           <Button
             data-testid="upstream-apply"
@@ -198,20 +232,18 @@ function StructuralChange({ entry, componentLabel, sourceLabel }: {
   componentLabel: string;
   sourceLabel: string;
 }) {
-  const source = sourceLabel.toLowerCase();
-  const descriptions = {
-    added: `New ${componentLabel} added to the ${source} page.`,
-    removed: `${componentLabel} was removed from the ${source} page.`,
-    moved: `${componentLabel} was moved on the ${source} page.`,
-    changed: `${componentLabel} changed on the ${source} page.`,
-  };
-  const description = descriptions[entry.structuralKind ?? 'changed'];
+  const source = sourceLabel === 'Source' ? 'source' : 'template';
+  const kind = entry.structuralKind ?? 'changed';
+  const description = structuralDescription(kind, source);
 
   return (
     <div className={styles.row}>
-      <div className={styles.field}>{componentLabel}</div>
-      <p className={styles.note} data-testid="upstream-structural-note">
-        {description} Reconcile this on the canvas.
+      <div className={styles.field}>
+        {componentLabel}
+        <span className={styles.ownership} data-testid="upstream-structural-kind">{kind}</span>
+      </div>
+      <p className={`${styles.note} ${styles.structuralNote}`} data-testid="upstream-structural-note">
+        {description.prefix}<strong>{componentLabel}</strong>{description.suffix}
       </p>
     </div>
   );

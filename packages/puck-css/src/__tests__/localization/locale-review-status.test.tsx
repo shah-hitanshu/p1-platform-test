@@ -21,7 +21,7 @@ function setup() {
   const getUpstreamDiff = vi.fn(async (_site: string, _branch: string, document: string) => summary(document === 'fr' ? 'structural' : undefined));
   const client = { relations: { getUpstreamDiff } } as unknown as P1Client;
   const wrapper = ({ children }: { children: React.ReactNode }) => <P1SdkQueryClientContext.Provider value={queryClient}>{children}</P1SdkQueryClientContext.Provider>;
-  const hook = renderHook(({ open }) => useLocaleReviewStatus(client, 'site', 'branch', rows, open), { wrapper, initialProps: { open: false } });
+  const hook = renderHook(({ open }) => useLocaleReviewStatus(client, 'site', 'branch', rows, open, null), { wrapper, initialProps: { open: false } });
   return { ...hook, queryClient, getUpstreamDiff };
 }
 

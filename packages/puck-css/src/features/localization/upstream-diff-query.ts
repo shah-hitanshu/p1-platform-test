@@ -35,6 +35,22 @@ export function upstreamDiffQueryKey(
   return [UPSTREAM_DIFF_KEY, siteId, branchId, documentId, relationType];
 }
 
+/**
+ * A prop whose authority is `locale` keeps the derived page's value whatever the
+ * source does, so a change to one is not reported. Filtered on the read, which
+ * the count, the list and a locale's review state all share. Ownership is a
+ * locale's claim. Advisory changes have no review section, so every upstream
+ * edge excludes them before the count and list read the summary.
+ */
+function withoutLocaleOwned(
+  summary: ChangeSummary,
+): ChangeSummary {
+  const changes = summary.changes.filter((entry) => entry.classification !== 'advisory');
+  if (changes.length === summary.changes.length) return summary;
+
+  return { ...summary, changes, counts: { ...summary.counts, advisory: 0 } };
+}
+
 export function upstreamDiffQuery(
   client: P1Client,
   siteId: string,
@@ -49,7 +65,10 @@ export function upstreamDiffQuery(
 } {
   return {
     queryKey: upstreamDiffQueryKey(siteId, branchId, documentId, relationType),
-    queryFn: () => client.relations.getUpstreamDiff(siteId, branchId, documentId, relationType),
+    queryFn: async () =>
+      withoutLocaleOwned(
+        await client.relations.getUpstreamDiff(siteId, branchId, documentId, relationType),
+      ),
     retry: false,
     staleTime: DIFF_STALE_MS,
   };

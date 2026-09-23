@@ -19,8 +19,8 @@
   align-items: center;
   gap: var(--pds-spacing-2xs, 0.5rem);
   height: 2rem;
-  padding: 0.5rem 0.64rem;
-  background: transparent;
+  padding: 0 0.5625rem 0 0.6875rem;
+  background: var(--pds-color-surface-default-secondary, oklch(0.9702 0 0));
   border: 1px solid var(--pds-color-border-input, oklch(0.8853 0 0));
   border-radius: var(--pds-border-radius-button, 3.5rem);
   font-family: var(--pds-typography-ff-default, 'Inter', sans-serif);
@@ -36,7 +36,7 @@
 
 .trigger:hover,
 .trigger[aria-expanded='true'] {
-  background: oklch(0.96 0 0); /* bgSubtle */
+  background: oklch(0.94 0 0);
   border-color: oklch(0.75 0 0); /* borderStrong */
 }
 
@@ -55,10 +55,81 @@
   gap: var(--pds-spacing-2xs, 0.5rem);
 }
 
-/* The toolbar runs out of room before the header does: the language name goes
-   first, leaving the globe, the market badge, and the chevron. */
+/* The market flag is a decorative tag rather than a status, and no PDS token
+   carries this red. */
+.triggerBadge {
+  flex: none;
+  padding: var(--pds-spacing-5xs, 0.125rem) var(--pds-spacing-3xs, 0.375rem);
+  border-radius: var(--pds-border-radius-s, 0.25rem);
+  background: #e11d2a;
+  color: var(--pds-color-foreground-reverse, oklch(1 0 0));
+  font-size: var(--pds-typography-size-2xs, 0.6875rem);
+  font-weight: var(--pds-typography-fw-semibold, 600);
+  letter-spacing: 0.04em;
+}
+
+.triggerStatus {
+  flex: none;
+  margin-left: 3px;
+  padding-left: 9px;
+  border-left: 1px solid var(--pds-color-border-default, oklch(0.8853 0 0));
+}
+
+/* A page out of sync with its source states that on the trigger, in place of
+   its review status, and the trigger takes the warning tone with it. */
+.triggerChanged {
+  background: var(--pds-color-background-warning-subtle, oklch(0.96 0.03 55));
+  border-color: var(--pds-color-border-warning, oklch(0.86 0.06 55));
+  color: var(--pds-color-foreground-warning, oklch(0.47 0.13 45));
+}
+
+.triggerChanged:hover,
+.triggerChanged[aria-expanded='true'] {
+  background: var(--pds-color-background-warning, oklch(0.93 0.05 55));
+  border-color: var(--pds-color-border-warning, oklch(0.86 0.06 55));
+}
+
+.triggerDrift {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--pds-spacing-3xs, 0.375rem);
+  flex: none;
+  margin-left: 3px;
+  padding-left: 9px;
+  border-left: 1px solid var(--pds-color-border-default, oklch(0.8853 0 0));
+  font-weight: var(--pds-typography-fw-semibold, 600);
+}
+
+.triggerChanged .triggerDrift {
+  border-left-color: var(--pds-color-border-warning, oklch(0.86 0.06 55));
+}
+
+/* The toolbar runs out of room before the header does, so the trigger sheds
+   what it can spare: the status chip, then the language name, then the flag. */
+@media (max-width: 1120px) {
+  .triggerStatus {
+    display: none;
+  }
+
+  /* The glyph alone still says the page is out of sync. */
+  .triggerDriftLabel {
+    display: none;
+  }
+}
+
 @media (max-width: 1024px) {
   .triggerName {
+    display: none;
+  }
+}
+
+@media (max-width: 767px) {
+  .trigger {
+    padding: 0 7px;
+    gap: var(--pds-spacing-3xs, 0.375rem);
+  }
+
+  .triggerBadge {
     display: none;
   }
 }
@@ -82,42 +153,23 @@
   overflow: hidden;
 }
 
-.header {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 0.512rem;
-  padding: var(--pds-spacing-xs, 0.625rem);
-  border-bottom: 1px solid oklch(0.96 0 0); /* borderSubtle */
-  background: var(--pds-color-surface-default-secondary, oklch(0.9702 0 0));
-  font-family: var(--pds-typography-ff-default, 'Inter', sans-serif);
-}
-
-.headerTitle {
-  font-size: var(--pds-typography-size-s, 0.875rem);
-  font-weight: var(--pds-typography-fw-semibold, 600);
-  color: var(--pds-color-foreground-default, oklch(0.2046 0 0));
-}
-
-.headerCount {
-  font-size: var(--pds-typography-size-xs, 0.75rem);
-  color: var(--pds-color-foreground-default-secondary, oklch(0.5103 0 0));
-}
-
 /* ------------------------------------------------------------------
  * Rows — one per locale
  * ------------------------------------------------------------------ */
 .list {
   list-style: none;
   margin: 0;
-  padding: 0.41rem;
+  padding: var(--pds-spacing-3xs, 0.375rem);
   overflow-y: auto;
   max-height: 360px;
   flex: 1;
 }
 
 .groupLabel {
-  padding: 0.5rem 0.64rem 0.25rem;
+  margin-top: var(--pds-spacing-4xs, 0.25rem);
+  padding: var(--pds-spacing-3xs, 0.375rem) var(--pds-spacing-xs, 0.625rem)
+    var(--pds-spacing-5xs, 0.125rem);
+  border-top: 1px solid oklch(0.96 0 0); /* borderSubtle */
   font-size: var(--pds-typography-size-2xs, 0.6875rem);
   font-weight: var(--pds-typography-fw-semibold, 600);
   letter-spacing: 0.04em;
@@ -125,16 +177,32 @@
   color: var(--pds-color-foreground-default-secondary, oklch(0.5103 0 0));
 }
 
+.groupLabel:first-of-type {
+  margin-top: 0;
+  border-top: none;
+}
+
 .item {
   display: flex;
+  flex-direction: column;
+  border-radius: var(--pds-border-radius-default, 0.188rem);
+}
+
+/* One locale is one target: the row and the count under it light up together. */
+.item:hover {
+  background: var(--pds-color-surface-default-secondary, oklch(0.9702 0 0));
+}
+
+.item + .item {
+  margin-top: var(--pds-spacing-5xs, 0.125rem);
 }
 
 .row {
   display: flex;
-  align-items: center;
-  gap: 0.64rem;
+  flex-direction: column;
+  align-items: stretch;
   width: 100%;
-  padding: 0.41rem 0.64rem;
+  padding: 0.55rem 0.64rem;
   background: none;
   border: none;
   border-radius: var(--pds-border-radius-default, 0.188rem);
@@ -146,30 +214,36 @@
   transition: background 0.15s;
 }
 
-.row:hover {
-  background: var(--pds-color-surface-default-secondary, oklch(0.9702 0 0));
+/* The locale, its badge and its status share the row's first line. */
+.rowMain {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
 }
 
 .row[aria-current='true'] {
-  background: var(--pds-color-status-info-background, oklch(0.9683 0.0161 245.08));
-  color: var(--pds-color-interactive-link-default, oklch(0.5558 0.2372 267.79));
   font-weight: var(--pds-typography-fw-semibold, 600);
 }
 
-/* The market code, on the trigger and at the head of each row. */
+/* The market code at the head of each row. */
 .badge {
-  display: inline-grid;
+  display: grid;
   place-items: center;
   flex: none;
-  min-width: 1.5rem;
-  height: 1.5rem;
-  padding: 0 0.25rem;
-  border-radius: var(--pds-border-radius-default, 0.188rem);
+  width: 2rem;
+  height: 2rem;
+  border-radius: 9px;
   background: var(--pds-color-surface-default-secondary, oklch(0.9702 0 0));
   color: var(--pds-color-foreground-default-secondary, oklch(0.5103 0 0));
   font-size: var(--pds-typography-size-xs, 0.75rem);
   font-weight: var(--pds-typography-fw-semibold, 600);
   letter-spacing: 0.02em;
+}
+
+.badgeHeld {
+  background: var(--pds-color-status-critical-background, oklch(0.9629 0.0152 22.4));
+  color: #e11d2a;
 }
 
 .rowText {
@@ -183,7 +257,8 @@
 .rowName {
   display: flex;
   align-items: center;
-  gap: 0.25rem;
+  gap: var(--pds-spacing-2xs, 0.5rem);
+  font-weight: var(--pds-typography-fw-semibold, 600);
 }
 
 .rowSub {
@@ -206,6 +281,58 @@
 
 .status {
   flex: none;
+}
+
+/* The glyph sits on the text's baseline unless the mark is a flex box. */
+.current {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+}
+
+.rowDrift {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--pds-spacing-4xs, 0.25rem);
+  flex: none;
+  font-size: var(--pds-typography-size-xs, 0.75rem);
+  font-weight: var(--pds-typography-fw-semibold, 600);
+  color: var(--pds-color-foreground-warning, oklch(0.47 0.13 45));
+}
+
+/* The count and the way into the list, on the row's second line. */
+.review {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--pds-spacing-2xs, 0.5rem);
+  margin-top: var(--pds-spacing-3xs, 0.375rem);
+  /* Aligned with the row's text, past its badge. */
+  padding-left: calc(2rem + 11px);
+  font-size: var(--pds-typography-size-2xs, 0.6875rem);
+  color: var(--pds-color-foreground-warning, oklch(0.47 0.13 45));
+}
+
+.reviewNeutral {
+  color: var(--pds-color-foreground-default-secondary, oklch(0.5103 0 0));
+}
+
+.reviewLink {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--pds-spacing-4xs, 0.25rem);
+  font-weight: var(--pds-typography-fw-semibold, 600);
+}
+
+.row:hover .reviewLink {
+  text-decoration: underline;
+}
+
+/* The glyphs hold to the size of the text they sit in. */
+.review svg,
+.rowDrift svg {
+  width: 0.75rem;
+  height: 0.75rem;
 }
 
 .status :global(.pds-status-indicator__label) {

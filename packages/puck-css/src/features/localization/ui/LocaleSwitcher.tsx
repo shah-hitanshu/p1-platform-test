@@ -22,7 +22,18 @@ export const UNTAGGED_LABEL = 'Unset';
 /** What the source row reads as when the canonical carries no locale. */
 const SOURCE_UNSET_LABEL = 'Source locale unset';
 
-const MENU_WIDTH = 320;
+/** Wide enough for the count and the way into the list to share one line. */
+const MENU_WIDTH = 360;
+
+/** What the open page has yet to take from the page it was translated from. */
+export interface LocaleDrift {
+  /** Changes the page can take. Structural ones are reported rather than applied. */
+  outstanding: number;
+  /** The source's only changes were to add, move or remove blocks. */
+  structuralOnly: boolean;
+  /** Open the list of those changes. */
+  onReview: () => void;
+}
 
 export interface LocaleSwitcherProps {
   rows: LocaleRow[];
@@ -49,6 +60,8 @@ export interface LocaleSwitcherProps {
   onOpenLocale: (documentId: string) => void;
   /** Create a version of this page in a market that has none. */
   onAddLocale: (locale: string) => void;
+  /** How far the open page has drifted from its source, where it has one. */
+  drift?: LocaleDrift | null;
 }
 
 export function LocaleSwitcher({
@@ -63,8 +76,21 @@ export function LocaleSwitcher({
   onRetry,
   onOpenLocale,
   onAddLocale,
+  drift = null,
 }: LocaleSwitcherProps): React.ReactElement | null {
   const [menuStyle, setMenuStyle] = useState<React.CSSProperties>({});
+  const changed = drift !== null && (drift.outstanding > 0 || drift.structuralOnly);
+  // Blocks moving is not a translation falling behind: it is reported, and
+  // there is nothing to act on, so it is stated in the neutral tone.
+  const structural = drift?.structuralOnly === true;
+  const changedLabel = structural ? 'Structure changed' : 'Source changed';
+  const changeWord = drift?.outstanding === 1 ? 'change' : 'changes';
+  const reviewLabel = structural
+    ? 'Structure changed'
+    : `${String(drift?.outstanding ?? 0)} ${changeWord} since translation`;
+  const reviewDescription = structural
+    ? 'View structural changes from the source'
+    : `Review ${String(drift?.outstanding ?? 0)} ${changeWord} in the locale source`;
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -96,14 +122,23 @@ export function LocaleSwitcher({
   const choose = useCallback(
     (row: LocaleRow) => {
       setOpen(false);
-      if (row.state === 'current') return;
+      // The page is already open, so the changes waiting on it are what the row
+      // has left to offer.
+      if (row.state === 'current') {
+        if (!changed) return;
+        // The drawer hands focus back to whatever held it when it opened, and
+        // the menu is gone by then. The trigger is what outlasts it.
+        triggerRef.current?.focus();
+        drift?.onReview();
+        return;
+      }
       if (row.documentId !== null) {
         onOpenLocale(row.documentId);
         return;
       }
       if (row.locale !== null) onAddLocale(row.locale);
     },
-    [onOpenLocale, onAddLocale, setOpen],
+    [changed, drift, onOpenLocale, onAddLocale, setOpen],
   );
 
   // Pointerdown, and skipping the menu itself, so a row's click still lands
@@ -131,6 +166,26 @@ export function LocaleSwitcher({
 
   // Unknown is not the same as none, and a switcher that hid itself either way
   // would make a failed request look like a site that publishes in one locale.
+  // What the source did is known from the diff, which the market read has no
+  // part in. A page that has changes to take says so and keeps the way to them
+  // wherever the list of locales cannot be drawn.
+  const reviewRoute = changed && drift !== null
+    ? (
+        <button
+          type="button"
+          className={`${styles.trigger} ${structural ? '' : styles.triggerChanged}`}
+          data-testid="locale-switcher-drift-alone"
+          aria-label={reviewDescription}
+          onClick={drift.onReview}
+        >
+          <Icon iconName="rotate" size="s" aria-hidden="true" />
+          <span className={styles.triggerLabel}>
+            <span className={styles.triggerName}>{changedLabel}</span>
+          </span>
+        </button>
+      )
+    : null;
+
   if (failed) {
     return (
       <div className={styles.root}>
@@ -147,24 +202,38 @@ export function LocaleSwitcher({
             <span className={styles.triggerName}>Locales unavailable</span>
           </span>
         </button>
+        {reviewRoute}
       </div>
     );
   }
 
   const current = rows.find((r) => r.state === 'current');
 
+  if (loading) return null;
+
   // A site with no markets has no locale dimension to switch along: the only row
-  // would be the page already open.
-  if (loading || markets.length === 0) return null;
+  // would be the page already open. A page whose source has moved on still has
+  // changes to take, and rows cover the locales a document carries either way.
+  if (markets.length === 0 && !changed) return null;
 
   // Rows are measured against an open page, so without one there is nothing for
   // the trigger to name and nothing for the menu to list.
-  if (rows.length === 0) return null;
+  if (rows.length === 0) return reviewRoute && <div className={styles.root}>{reviewRoute}</div>;
 
   const currentLabel = current?.locale === null || current === undefined
     ? null
     : localeLabel(current.locale);
 
+  const currentReview = current?.documentId == null
+    ? undefined
+    : reviewStatus.get(current.documentId);
+  const currentStatus = currentReview === 'translated' || currentReview === 'needsReview'
+    ? currentReview
+    : undefined;
+
+  // The trigger carries one locale signal. A page whose source has moved on says
+  // so in place of its review status: the drift is what there is to act on, and
+  // the status it would show says no more than the drift already does.
   const sourceRow = rows.find((row) => row.isSource) ?? null;
   const otherRows = rows.filter((row) => !row.isSource);
   const rowsPerLocale = new Map<string, number>();
@@ -187,6 +256,9 @@ export function LocaleSwitcher({
     const key = row.documentId ?? locale;
     const testKey = path === null ? locale : `${locale}-${row.documentId ?? ''}`;
     const status = row.documentId === null ? undefined : reviewStatus.get(row.documentId);
+    // The row and the count under it lead to the same place, so they are one
+    // target: one thing to hover, one thing to click, one item in the menu.
+    const carriesReview = row.state === 'current' && changed && drift !== null;
 
     return (
       <li key={key} className={styles.item} role="none">
@@ -196,9 +268,19 @@ export function LocaleSwitcher({
           data-testid={`locale-row-${testKey}`}
           className={styles.row}
           aria-current={row.state === 'current' ? 'true' : undefined}
+          // The row states its locale and what it leads to. Left to its content,
+          // the name would be everything the two lines say.
+          aria-label={carriesReview
+            ? `${label === null ? UNTAGGED_LABEL : label.native}: ${reviewDescription}`
+            : undefined}
           onClick={() => choose(row)}
         >
-          <span className={styles.badge} data-testid={`locale-badge-${testKey}`} aria-hidden="true">
+        <span className={styles.rowMain}>
+          <span
+            className={`${styles.badge} ${row.state === 'available' ? '' : styles.badgeHeld}`}
+            data-testid={`locale-badge-${testKey}`}
+            aria-hidden="true"
+          >
             {label?.tag ?? '—'}
           </span>
           <span className={styles.rowText}>
@@ -214,7 +296,7 @@ export function LocaleSwitcher({
                 </span>
               )}
             </span>
-            {label !== null && section === 'other' && (
+            {label !== null && (
               <span className={styles.rowSub}>
                 {row.state === 'available' ? 'Not localized yet' : (path ?? label.english)}
               </span>
@@ -229,13 +311,21 @@ export function LocaleSwitcher({
                     Add {label?.tag}
                   </span>
                 )
-              : label !== null && (
+              : row.state === 'current' && changed
+                // Structural changes are said once, in the line under the row.
+                ? (!structural && (
+                    <span className={styles.rowDrift} data-testid={`locale-drift-${testKey}`}>
+                      <Icon iconName="rotate" size="s" aria-hidden="true" />
+                      {changedLabel}
+                    </span>
+                  ))
+                : label !== null && (
                   status === 'translated' || status === 'needsReview' ? (
                     <StatusIndicator
                       data-testid={`locale-status-${testKey}`}
                       className={styles.status}
                       type={status === 'needsReview' ? 'warning' : 'success'}
-                      label={status === 'needsReview' ? 'Needs review' : 'Translated'}
+                      label={status === 'needsReview' ? 'Needs review' : 'Up to date'}
                     />
                   ) : status === undefined || status === 'checking' ? (
                     <span
@@ -253,10 +343,27 @@ export function LocaleSwitcher({
                   )
                 )}
           {row.state === 'current' && (
-            <span data-testid={`locale-current-${testKey}`} aria-hidden="true">
-              <Icon iconName="circleCheck" size="xs" />
+            <span
+              className={styles.current}
+              data-testid={`locale-current-${testKey}`}
+              aria-hidden="true"
+            >
+              <Icon iconName="circleCheck" size="s" />
             </span>
           )}
+        </span>
+        {carriesReview && (
+          <span
+            className={`${styles.review} ${structural ? styles.reviewNeutral : ''}`}
+            data-testid="locale-review-changes"
+          >
+            <span>{reviewLabel}</span>
+            <span className={styles.reviewLink}>
+              Review changes
+              <Icon iconName="arrowRight" size="s" aria-hidden="true" />
+            </span>
+          </span>
+        )}
         </button>
       </li>
     );
@@ -268,7 +375,7 @@ export function LocaleSwitcher({
         ref={triggerRef}
         type="button"
         data-testid="locale-switcher-trigger"
-        className={styles.trigger}
+        className={`${styles.trigger} ${changed && !structural ? styles.triggerChanged : ''}`}
         title="Switch to another locale version of this page"
         aria-expanded={open}
         aria-haspopup="menu"
@@ -277,8 +384,25 @@ export function LocaleSwitcher({
         <Icon iconName="globe" size="xs" aria-hidden="true" />
         <span className={styles.triggerLabel}>
           <span className={styles.triggerName}>{currentLabel?.native ?? UNTAGGED_LABEL}</span>
-          {currentLabel !== null && <span className={styles.badge}>{currentLabel.tag}</span>}
-          <Icon iconName="angleDown" size="xs" aria-hidden="true" />
+          {currentLabel !== null && (
+            <span className={styles.triggerBadge}>{currentLabel.tag}</span>
+          )}
+          {changed ? (
+            <span className={styles.triggerDrift} data-testid="locale-switcher-drift">
+              <Icon iconName="rotate" size="s" aria-hidden="true" />
+              <span className={styles.triggerDriftLabel}>{changedLabel}</span>
+            </span>
+          ) : (
+            currentStatus !== undefined && (
+              <StatusIndicator
+                data-testid="locale-switcher-status"
+                className={styles.triggerStatus}
+                type={currentStatus === 'needsReview' ? 'warning' : 'success'}
+                label={currentStatus === 'needsReview' ? 'Needs review' : 'Up to date'}
+              />
+            )
+          )}
+          <Icon iconName="angleDown" size="s" aria-hidden="true" />
         </span>
       </button>
 
@@ -290,13 +414,6 @@ export function LocaleSwitcher({
             data-testid="locale-switcher-menu"
             style={menuStyle}
           >
-            <div className={styles.header}>
-              <span className={styles.headerTitle}>Locales</span>
-              <span className={styles.headerCount} data-testid="locale-switcher-count">
-                {markets.length} site {markets.length === 1 ? 'locale' : 'locales'}
-              </span>
-            </div>
-
             <ul className={styles.list} role="menu">
               {sourceRow !== null && (
                 <>

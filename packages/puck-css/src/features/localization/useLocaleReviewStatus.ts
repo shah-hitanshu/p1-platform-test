@@ -17,6 +17,8 @@ export function useLocaleReviewStatus(
   branchId: string | undefined,
   rows: LocaleRow[],
   enabled: boolean,
+  /** The open page, whose status the toolbar reports with the menu closed. */
+  currentDocumentId: string | null,
 ): ReadonlyMap<string, LocaleReviewStatus> {
   const queryClient = useP1SdkQueryClient();
   const translationIds = [...new Set(
@@ -28,7 +30,7 @@ export function useLocaleReviewStatus(
     queries: client && siteId && branchId
       ? translationIds.map((documentId) => ({
           ...upstreamDiffQuery(client, siteId, branchId, documentId, 'localization'),
-          enabled,
+          enabled: enabled || documentId === currentDocumentId,
         }))
       : [],
   }, queryClient);
@@ -42,10 +44,8 @@ export function useLocaleReviewStatus(
     if (query.error) return [documentId, 'unavailable'];
     if (!query.data) return [documentId, 'checking'];
 
-    // Advisory changes concern locale-owned values and require no source update.
-    const needsReview = query.data.changes.some(
-      (entry) => entry.classification !== 'advisory' && entry.classification !== 'structural',
-    );
+    // A page whose only changes are structural has nothing to translate.
+    const needsReview = query.data.changes.some((entry) => entry.classification !== 'structural');
     return [documentId, needsReview ? 'needsReview' : 'translated'];
   }));
 }

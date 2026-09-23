@@ -14,6 +14,7 @@ import { pointerSegments } from './prop-value.js';
 
 interface FieldConfig {
   label?: string;
+  type?: string;
   objectFields?: Record<string, FieldConfig | undefined>;
   arrayFields?: Record<string, FieldConfig | undefined>;
 }
@@ -79,4 +80,27 @@ export function resolveFieldLabel(
   }
 
   return labels.join(' → ') || 'All fields';
+}
+
+/** The declared Puck field type at a change entry's JSON Pointer. */
+export function resolveFieldType(
+  config: ChangeLabelConfig,
+  componentId: string,
+  propPath: string,
+  componentType?: string,
+): string | undefined {
+  const type = componentType ?? typeFromSlotId(componentId);
+  let fields = componentId === ROOT_SLOT_ID
+    ? config.root?.fields
+    : type === null ? undefined : config.components?.[type]?.fields;
+  let field: FieldConfig | undefined;
+
+  for (const segment of pointerSegments(propPath)) {
+    if (/^\d+$/.test(segment)) continue;
+
+    field = fields?.[segment];
+    fields = field?.objectFields ?? field?.arrayFields;
+  }
+
+  return field?.type;
 }

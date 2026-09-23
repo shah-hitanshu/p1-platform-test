@@ -214,26 +214,6 @@ describe('LocaleSwitcher', () => {
     expect(screen.queryByTestId('locale-switcher-menu')).toBeNull();
   });
 
-  it('counts the markets the site publishes in', () => {
-    renderSwitcher();
-    fireEvent.click(screen.getByTestId('locale-switcher-trigger'));
-
-    expect(screen.getByTestId('locale-switcher-count').textContent).toBe('2 site locales');
-  });
-
-  it('counts a single market in the singular', () => {
-    renderSwitcher({
-      markets: ['fr-FR'],
-      rows: [
-        { locale: null, documentId: 'doc-canonical', state: 'current', isSource: true },
-        { locale: 'fr-FR', documentId: 'doc-fr', state: 'exists', isSource: false },
-      ],
-    });
-    fireEvent.click(screen.getByTestId('locale-switcher-trigger'));
-
-    expect(screen.getByTestId('locale-switcher-count').textContent).toBe('1 site locale');
-  });
-
   it('names each market in its own language, with its English name beneath', () => {
     renderSwitcher();
     fireEvent.click(screen.getByTestId('locale-switcher-trigger'));
@@ -364,5 +344,150 @@ describe('LocaleSwitcher', () => {
     renderSwitcher({ reviewStatus: new Map([['doc-fr', 'unavailable']]) });
     fireEvent.click(screen.getByTestId('locale-switcher-trigger'));
     expect(screen.getByTestId('locale-status-fr-FR')).toHaveTextContent('Status unavailable');
+  });
+
+  it('states on the trigger that the source has moved on, in place of the review status', () => {
+    renderSwitcher({
+      reviewStatus: new Map([['doc-fr', 'needsReview']]),
+      drift: { outstanding: 3, structuralOnly: false, onReview: vi.fn() },
+    });
+
+    expect(screen.getByTestId('locale-switcher-drift')).toHaveTextContent('Source changed');
+    expect(screen.queryByTestId('locale-switcher-status')).toBeNull();
+  });
+
+  it('keeps the review status on the trigger while the source has not moved on', () => {
+    renderSwitcher({
+      reviewStatus: new Map([['doc-fr', 'translated']]),
+      drift: { outstanding: 0, structuralOnly: false, onReview: vi.fn() },
+    });
+
+    expect(screen.getByTestId('locale-switcher-status')).toHaveTextContent('Up to date');
+    expect(screen.queryByTestId('locale-switcher-drift')).toBeNull();
+  });
+
+  it('says the structure changed where the source only moved blocks', () => {
+    renderSwitcher({ drift: { outstanding: 0, structuralOnly: true, onReview: vi.fn() } });
+    fireEvent.click(screen.getByTestId('locale-switcher-trigger'));
+
+    expect(screen.getByTestId('locale-switcher-drift')).toHaveTextContent('Structure changed');
+    expect(screen.getByTestId('locale-review-changes')).toHaveTextContent('Structure changed');
+    // Said once on the row, under it, rather than twice.
+    expect(screen.queryByTestId('locale-drift-fr-FR')).toBeNull();
+  });
+
+  it('counts the changes under the locale open and opens the list', () => {
+    const onReview = vi.fn();
+    renderSwitcher({
+      reviewStatus: new Map([['doc-fr', 'needsReview']]),
+      drift: { outstanding: 3, structuralOnly: false, onReview },
+    });
+    fireEvent.click(screen.getByTestId('locale-switcher-trigger'));
+
+    expect(screen.getByTestId('locale-drift-fr-FR')).toHaveTextContent('Source changed');
+    expect(screen.queryByTestId('locale-status-fr-FR')).toBeNull();
+    expect(screen.getByTestId('locale-review-changes')).toHaveTextContent(
+      '3 changes since translation',
+    );
+
+    fireEvent.click(screen.getByTestId('locale-review-changes'));
+
+    expect(onReview).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId('locale-switcher-menu')).toBeNull();
+  });
+
+  it('counts a single change in the singular', () => {
+    renderSwitcher({ drift: { outstanding: 1, structuralOnly: false, onReview: vi.fn() } });
+    fireEvent.click(screen.getByTestId('locale-switcher-trigger'));
+
+    expect(screen.getByTestId('locale-review-changes')).toHaveTextContent(
+      '1 change since translation',
+    );
+  });
+
+  it('opens the list from anywhere on the row of the locale already open', () => {
+    const onReview = vi.fn();
+    const onOpenLocale = vi.fn();
+    renderSwitcher({
+      onOpenLocale,
+      drift: { outstanding: 3, structuralOnly: false, onReview },
+    });
+    fireEvent.click(screen.getByTestId('locale-switcher-trigger'));
+
+    fireEvent.click(screen.getByTestId('locale-row-fr-FR'));
+
+    expect(onReview).toHaveBeenCalledTimes(1);
+    expect(onOpenLocale).not.toHaveBeenCalled();
+  });
+
+  it('offers no list from a locale whose source has not moved on', () => {
+    renderSwitcher({ reviewStatus: new Map([['doc-fr', 'translated']]) });
+    fireEvent.click(screen.getByTestId('locale-switcher-trigger'));
+
+    expect(screen.queryByTestId('locale-review-changes')).toBeNull();
+    expect(screen.queryByTestId('locale-drift-fr-FR')).toBeNull();
+  });
+  it('carries no review status on a row whose only report is structural', () => {
+    renderSwitcher({
+      reviewStatus: new Map([['doc-fr', 'translated']]),
+      drift: { outstanding: 0, structuralOnly: true, onReview: vi.fn() },
+    });
+    fireEvent.click(screen.getByTestId('locale-switcher-trigger'));
+
+    expect(screen.queryByTestId('locale-status-fr-FR')).toBeNull();
+  });
+
+  it('counts one menu item per locale, whatever the row carries under it', () => {
+    renderSwitcher({ drift: { outstanding: 3, structuralOnly: false, onReview: vi.fn() } });
+    fireEvent.click(screen.getByTestId('locale-switcher-trigger'));
+
+    expect(screen.getAllByRole('menuitem')).toHaveLength(rows.length);
+  });
+
+  it('keeps the way to the changes where the site configures no markets', () => {
+    const onReview = vi.fn();
+    renderSwitcher({
+      markets: [],
+      drift: { outstanding: 3, structuralOnly: false, onReview },
+    });
+    fireEvent.click(screen.getByTestId('locale-switcher-trigger'));
+    fireEvent.click(screen.getByTestId('locale-review-changes'));
+
+    expect(onReview).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the way to the changes where the locales could not be read', () => {
+    const onReview = vi.fn();
+    renderSwitcher({
+      failed: true,
+      rows: [],
+      markets: [],
+      drift: { outstanding: 3, structuralOnly: false, onReview },
+    });
+
+    expect(screen.getByTestId('locale-switcher-retry')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('locale-switcher-drift-alone'));
+
+    expect(onReview).toHaveBeenCalledTimes(1);
+  });
+
+  it('states the structure changed in the neutral tone where there is no list to draw', () => {
+    renderSwitcher({
+      rows: [],
+      drift: { outstanding: 0, structuralOnly: true, onReview: vi.fn() },
+    });
+
+    expect(screen.getByTestId('locale-switcher-drift-alone')).toHaveTextContent(
+      'Structure changed',
+    );
+  });
+  it('leaves focus on the trigger when the list of changes is opened', () => {
+    renderSwitcher({ drift: { outstanding: 3, structuralOnly: false, onReview: vi.fn() } });
+    const trigger = screen.getByTestId('locale-switcher-trigger');
+    fireEvent.click(trigger);
+
+    fireEvent.click(screen.getByTestId('locale-review-changes'));
+
+    expect(document.activeElement).toBe(trigger);
   });
 });

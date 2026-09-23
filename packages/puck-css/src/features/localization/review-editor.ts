@@ -57,6 +57,30 @@ export function useReviewTarget(componentId: string, pointer: string | undefined
   return { available, field, type, config };
 }
 
+/**
+ * Selects the block a change belongs to and brings it into view on the canvas.
+ *
+ * Puck renders the page into an iframe, so the block is reached through that
+ * document rather than the editor's own. Selection is component-level: Puck
+ * exposes no way to put the caret in a single field.
+ */
+export function revealReviewTarget(editor: PuckApi, componentId: string): void {
+  // Root props belong to the page rather than to a block on it.
+  if (componentId === ROOT_SLOT_ID) return;
+
+  const selector = editor.getSelectorForId(componentId);
+  if (!selector) return;
+
+  editor.dispatch({ type: 'setUi', ui: { itemSelector: selector } });
+
+  if (typeof document === 'undefined') return;
+
+  const frame = document.querySelector('#preview-frame');
+  const canvas = frame instanceof HTMLIFrameElement ? frame.contentDocument : frame?.ownerDocument;
+  const block = canvas?.querySelector(`[data-puck-component="${componentId}"]`);
+  if (block instanceof HTMLElement) block.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
 interface AppliedReplacement {
   pointer: string;
   before: PropValue;

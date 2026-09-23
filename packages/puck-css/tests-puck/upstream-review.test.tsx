@@ -1,14 +1,17 @@
+import { useState } from 'react';
 import { describe, it, expect, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { Puck, createUsePuck, useGetPuck } from '@puckeditor/core';
 import type { Config, Data } from '@puckeditor/core';
 import type { PuckApi } from '@puckeditor/core';
 import { QueryClient } from '@tanstack/react-query';
-import type { ChangeSummary } from '@pantheon-systems/css-client';
+import type { ChangeSummary, P1Client } from '@pantheon-systems/css-client';
 import { P1PuckContext } from '../src/core/P1PuckContext.js';
 import type { P1PuckContextValue } from '../src/core/types.js';
 import { P1SdkQueryClientContext } from '../src/data/query-provider.js';
-import { UpstreamChangesControl } from '../src/features/localization/ui/UpstreamChangesControl.js';
+import type { UpstreamRelationType } from '../src/features/localization/upstream-diff-query.js';
+import { useUpstreamReview } from '../src/features/localization/useUpstreamReview.js';
+import { UpstreamChangesDrawer } from '../src/features/localization/ui/UpstreamChangesDrawer.js';
 
 const useEditor = createUsePuck();
 const config: Config = {
@@ -46,6 +49,29 @@ function EditorControls({ target, capture }: { target: string; capture: (getEdit
     <button onClick={() => getEditor().history.forward()}>Redo edit</button>
     <button onClick={() => getEditor().dispatch({ type: 'remove', index: 0,
       zone: 'root:default-zone' })}>Remove blocks</button>
+  </>;
+}
+
+/** Stands in for the switcher, which carries the way into the drawer in the editor. */
+function ReviewHost({ relationType, client, siteId, branchId, documentLocale }: {
+  relationType: UpstreamRelationType;
+  client: P1Client;
+  siteId: string;
+  branchId: string;
+  documentLocale: string | undefined;
+}) {
+  const [showing, setShowing] = useState(false);
+  const review = useUpstreamReview(client, siteId, branchId, 'translation', relationType);
+
+  return <>
+    <button data-testid="open-review" onClick={() => setShowing(true)}>Review changes</button>
+    <UpstreamChangesDrawer
+      review={review}
+      open={showing}
+      onClose={() => setShowing(false)}
+      documentPath="/fr"
+      documentLocale={documentLocale}
+    />
   </>;
 }
 
@@ -100,6 +126,7 @@ function setup(target = '__root__', options: ReviewOptions = {}) {
   const context = {
     client, siteId: 'site', branchId: 'workstream',
     currentDocument: { id: 'translation', path: '/fr', locale: 'fr-FR', localizedFromId: 'source', templateId: options.template ? 'template' : undefined },
+    documents: [{ id: 'source', path: '/', locale: null }],
     notifications: { addError: vi.fn() },
   } as unknown as P1PuckContextValue;
   const data = options.data ?? {
@@ -114,7 +141,14 @@ function setup(target = '__root__', options: ReviewOptions = {}) {
       <P1PuckContext.Provider value={{ ...context }}>
         <Puck config={config} data={data} iframe={{ enabled: false }}>
           <EditorControls target={target} capture={(getEditor) => { readEditor = getEditor; }} />
-          <UpstreamChangesControl relationType={options.template ? 'template' : 'localization'} />
+          <ReviewHost
+            key={`${context.siteId}:${context.branchId}:translation`}
+            relationType={options.template ? 'template' : 'localization'}
+            client={client as unknown as P1Client}
+            siteId={context.siteId}
+            branchId={context.branchId}
+            documentLocale="fr-FR"
+          />
         </Puck>
       </P1PuckContext.Provider>
     </P1SdkQueryClientContext.Provider>
@@ -133,7 +167,7 @@ function setup(target = '__root__', options: ReviewOptions = {}) {
 }
 
 async function open() {
-  fireEvent.click(await screen.findByTestId('upstream-changes-pill'));
+  fireEvent.click(await screen.findByTestId('open-review'));
   await screen.findByTestId('upstream-current-value');
 }
 
@@ -326,29 +360,18 @@ describe('Source review in the editor', () => {
     expect(client.relations.setUpstreamResolutions).toHaveBeenCalledTimes(1);
   });
 
-  it('keeps advisory wording and records its dismissal', async () => {
-    setup('__root__', { summary: { changes: [{ classification: 'advisory', componentId: '__root__', propPath: '/title', upstreamNewValue: 'Hello' }] } });
-    await open();
-    expect(screen.queryByTestId('upstream-apply')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByTestId('upstream-dismiss'));
-    await screen.findByTestId('upstream-all-clear');
-    expect(screen.getByLabelText('Translation')).toHaveValue('Bonjour');
-  });
-
   it('shows structural changes without offering an action', async () => {
     const { client } = setup('__root__', { summary: { changes: [
       { classification: 'structural', componentId: 'group', structuralKind: 'moved' },
     ] } });
-    fireEvent.click(await screen.findByTestId('upstream-structural-changes-pill'));
+    fireEvent.click(await screen.findByTestId('open-review'));
     await screen.findByTestId('upstream-structural-note');
 
     const disclosure = screen.getByTestId('upstream-structural-disclosure');
     expect(disclosure).not.toHaveAttribute('open');
     expect(screen.getByTestId('upstream-structural-note')).toBeInTheDocument();
     expect(screen.queryByTestId('upstream-structural-mark-done')).not.toBeInTheDocument();
-    expect(screen.getByTestId('upstream-structural-changes-pill')).toHaveTextContent(
-      'Structure changed',
-    );
+    expect(screen.getByTestId('upstream-changes-behind')).toHaveTextContent('Structure changed');
     expect(client.relations.setUpstreamResolutions).not.toHaveBeenCalled();
   });
 
@@ -454,7 +477,7 @@ describe('Source review in the editor', () => {
       { classification: 'needsTranslation', componentId: '__root__', propPath: '/title', upstreamNewValue: 'Hello' },
       { classification: 'needsTranslation', componentId: 'nested-heading', propPath: '/title', upstreamNewValue: 'Welcome' },
     ] } });
-    fireEvent.click(await screen.findByTestId('upstream-changes-pill'));
+    fireEvent.click(await screen.findByTestId('open-review'));
     await screen.findAllByTestId('upstream-current-value');
     const unchanged = screen.getAllByTestId('upstream-current-value')[1]!;
     const mutations: MutationRecord[] = [];
