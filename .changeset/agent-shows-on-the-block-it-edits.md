@@ -1,5 +1,5 @@
 ---
-"@pantheon-systems/puck-css": major
+"@pantheon-systems/puck-css": minor
 ---
 
 **[Breaking Change]** People editing a page can now see which blocks Zappy is working on, and stop it, right on the canvas. This replaces the agent chip in the subheader, so `AgentChip` and `P1EditorSubheader`'s `agents` and `onStopAgent` props are removed.

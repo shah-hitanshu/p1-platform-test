@@ -1,5 +1,5 @@
 ---
-"@pantheon-systems/puck-css": major
+"@pantheon-systems/puck-css": minor
 ---
 
 **[Breaking Change]** The editor now resolves the current user's role from the backend before rendering, rather than accepting it as a prop.

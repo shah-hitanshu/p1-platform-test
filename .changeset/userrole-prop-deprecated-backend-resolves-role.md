@@ -1,6 +1,6 @@
 ---
-"@pantheon-systems/puck-css": major
-"@pantheon-systems/p1-next-sdk": major
+"@pantheon-systems/puck-css": minor
+"@pantheon-systems/p1-next-sdk": minor
 ---
 
 **[Breaking Change]** The frontend role model is gone. `ContentRole`, the `userRole` prop, and the SDK's dev `RoleSwitcher` are removed. The editor gates every control on the `RolePermissions` flags the backend returns; the backend's role definitions are the only source of what a role can do.
