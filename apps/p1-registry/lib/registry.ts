@@ -53,3 +53,24 @@ export function loadCatalog(registryDir?: string): Catalog {
 
   return { items, byCategory };
 }
+
+export function getCatalogItem(name: string, registryDir?: string): CatalogItem | undefined {
+  return loadCatalog(registryDir).items.find((i) => i.name === name);
+}
+
+// The render component's source, straight from the built per-item registry
+// JSON — the same file shadcn's CLI serves to a consumer, so the detail
+// page's "Code" tab shows exactly what installing the block would copy.
+export function getComponentSource(name: string, registryDir?: string): string {
+  const dir = registryDir ?? join(process.cwd(), 'public', 'r');
+  const itemPath = join(dir, `${name}.json`);
+  if (!existsSync(itemPath)) return '';
+
+  const item = JSON.parse(readFileSync(itemPath, 'utf8')) as {
+    files?: { path: string; content?: string }[];
+  };
+  const file = item.files?.find(
+    (f) => f.path.endsWith(`${name}.tsx`) && !f.path.endsWith('.block.tsx'),
+  );
+  return file?.content ?? '';
+}

@@ -11,7 +11,7 @@ export default function ThemePage() {
     tokensJson.files?.find((f) => f.target === 'app/p1-tokens.css')?.content ?? '';
 
   return (
-    <>
+    <div className="p1-page">
       <div className="p1-catalog-intro">
         <h1>Design tokens</h1>
         <p>
@@ -20,6 +20,6 @@ export default function ThemePage() {
         </p>
       </div>
       <ThemePanel cssText={tokensCss} />
-    </>
+    </div>
   );
 }
