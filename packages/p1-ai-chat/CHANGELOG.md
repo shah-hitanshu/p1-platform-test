@@ -1,5 +1,63 @@
 # @pantheon-systems/p1-ai-chat
 
+## 0.8.0
+
+### Minor Changes
+
+- a807a5a: **[Feature]** Ask Zappy to add an image you attached to the chat, and it goes into the site's
+  media library.
+
+  ### What Changed
+  - Zappy confirms the alt text with you before adding an image, and the transcript shows the step
+    under the file's name. Images attached earlier in the conversation still count, not just the
+    ones on the current turn.
+  - Two attachments sharing a filename no longer collide: the second is named `photo-2.png` in the
+    composer, in the library, and in what Zappy is told, so it can act on the one you meant.
+  - An attachment stays usable when the media service is slow. Only sending the bytes is bounded at
+    three seconds; the small call that records them is now waited out in full, where before it could
+    be cut off and lose the image for the rest of the conversation.
+
+- 3abc827: **[Feature]** `createAIChatPlugin()` no longer has to be told where the chat agent is — it reaches the production agent by default.
+
+  ### What Changed
+  - `agentUrl` is optional, so `createAIChatPlugin()` now takes no required options at all.
+  - An `agentUrl` that is defined but empty or whitespace is treated as unset and falls back to the default, instead of being passed through as an unusable origin. An env file with a bare `NEXT_PUBLIC_AGENT_URL=` inlines to `""`, which is the case this covers.
+  - `PRODUCTION_AGENT_URL` and `resolveAgentUrl` are exported for callers that need to resolve the same value themselves.
+
+  ### Migration / Action Required
+
+  None. A passed `agentUrl` still wins, so existing wiring keeps working unchanged; drop it only if you want the default.
+
+  Keep passing it for any editor aimed at a non-production environment. An editor pointed at a non-production backend but left silent here will now reach the production agent rather than hiding the panel, and nothing reports the mismatch.
+
+### Patch Changes
+
+- 3dc18a5: **[Fix]** The chat panel is now Zappy, and its surfaces render in the editor's black-and-white palette instead of blue, so the panel no longer reads as a separate product sitting inside the editor chrome.
+
+  ### What Changed
+  - The assistant is called Zappy: the panel title reads "Zappy" and the composer placeholder reads "Ask Zappy…".
+  - The title shows a plain 16px sparkle icon in the default foreground colour, in place of a 12px glyph inside a filled blue chip.
+  - A divider separates the title and description from the scope row beneath them.
+  - Your own messages sit in a neutral grey bubble with default-foreground text, in place of white text on blue. Bubble shape, alignment, and the assistant's unbubbled prose are unchanged.
+
+  ### Migration / Action Required
+
+  Update anything that selects the panel by its old name — `getByText('Pantheon AI')` and the like — to "Zappy".
+
+  Nothing else is required, unless you were overriding `--pds-color-interactive-background-current` to tint the title chip or the message bubble — it no longer reaches either. They now read `--pds-color-foreground-default` and `--pds-color-surface-default-secondary`, which also apply well beyond the chat panel.
+
+- 9fad4f8: **[Fix]** The chat panel's Stop now ends the agent's turn, not just the panel's
+  view of it. It previously stopped the turn only in the browser, so with the
+  connection down it said "Stopped" while the agent kept working.
+
+  ### What Changed
+  - Stopping from the panel and stopping from the page are the same operation, so
+    they behave identically.
+  - A stopped turn still reads as stopped after a reload, and the step it
+    interrupted still reads as unfinished. Both were dropped when the conversation
+    was replayed, so a reopened panel showed the interrupted step as having
+    completed.
+
 ## 0.7.0
 
 ### Minor Changes

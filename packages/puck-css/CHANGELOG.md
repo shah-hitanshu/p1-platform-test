@@ -1,5 +1,388 @@
 # @pantheon-systems/puck-css
 
+## 0.16.0
+
+### Minor Changes
+
+- 4bc06b9: **[Breaking Change]** People editing a page can now see which blocks Zappy is working on, and stop it, right on the canvas. This replaces the agent chip in the subheader, so `AgentChip` and `P1EditorSubheader`'s `agents` and `onStopAgent` props are removed.
+
+  ### What Changed
+  - Blocks Zappy is working on are outlined with a Zappy badge. The outline clears when Zappy finishes.
+  - Selecting one of those blocks shows who asked Zappy for the change, with a Stop button.
+  - A block's toolbar is hidden while Zappy is working on it, so nobody can move, duplicate or delete the block mid-edit.
+  - The canvas follows Zappy to the block it is working on, unless that block is already in view.
+  - Agents are called "Zappy" everywhere in the editor, including avatars, the presence list and notifications.
+  - The page has a little more room around it in the canvas.
+
+  ### Migration / Action Required
+
+  If you render `AgentChip` yourself, remove it. If you render `P1EditorSubheader`, drop its agent props; the editor now shows and stops agents on the canvas for you.
+
+  ```diff
+   <P1EditorSubheader
+     context="branch"
+  -  agents={agents}
+  -  onStopAgent={stopAgent}
+     onPublish={publish}
+   />
+  ```
+
+  Code or tests that expect an agent's registered name from the editor now get "Zappy". Read the name from the agent's presence record instead.
+
+- acf6b6f: **[Breaking Change]** `@pantheon-systems/pds-toolkit-react` bumped to `2.0.0-alpha.87` (peer requirement raised to `>=2.0.0-alpha.86`), which redesigned the `Icon` size scale.
+
+  ### What Changed
+  - Every icon size name shifts to a new pixel value as of `pds-toolkit-react` `2.0.0-alpha.86`: old `s`→new `xs`, old `l`→new `xl`, old `xl`→new `2xl`, old `2xl`→new `4xl`; `m` is unchanged; old `3xl` (40px) has no exact replacement. All `Icon` usages inside this package have been migrated to keep their original visual size, with one exception below.
+  - The "choose a page" empty-state icon shrinks from 40px to 32px — its old size (`3xl`) no longer exists and the nearest available size is smaller.
+
+- 9fad4f8: **[Fix]** The editor's Stop now stops the agent. Previously it only took the
+  page back, so the agent asked for it again and carried on editing while the
+  button reported success.
+
+  ### What Changed
+  - Stop reaches an agent this browser tab has no connection to, so stopping
+    someone else's agent works the same as stopping your own.
+  - Stop reports whether there was anything to stop, instead of always reporting
+    success.
+
+  ### Migration / Action Required
+
+  The editor context gains `registerAgentCancel`, for a panel holding its own live
+  connection to an agent to contribute a cancel of its own. The registered
+  function is called with what is being stopped — an `ActorPresence`, or
+  `{ turnId }` — and decides for itself whether that is the turn it holds, since
+  every stop on the page reaches it. `stopAgent` accepts `{ turnId }` alongside an
+  agent id; existing calls are unaffected.
+
+  ### Known limits
+  - A stop takes effect on the agent's next call to the backend, so an operation
+    already in flight can still finish. What it cannot do is start another.
+  - Creating a page is the one such operation that is not itself refused; the turn
+    ends at the agent's next edit instead.
+  - A stop applies to the page it was made from. A turn working across several
+    pages is barred there, and ends when it next tries to write to that page.
+
+- cd7e72f: **[Feature]** Group source pages and translations in the locale switcher and make source-change review easier to follow and undo.
+
+  ### What Changed
+  - The locale switcher marks the current page and shows "Needs review" for translations with outstanding source changes, including structural changes. Unavailable status checks are shown explicitly.
+  - Source changes use component and field names, and the current-value column follows live edits.
+  - Replacing translated content with source wording can be rolled back after reopening the drawer, while later edits are protected from rollback.
+  - Review actions use design-system buttons, and change counts describe the source comparison rather than a version-number difference.
+  - Structural changes no longer trigger "Needs review" or inflate its actionable count
+  - Reconciled changes identify the exact source version shown, matching the CCR resolution API.
+
+- fa0efc1: **[Feature]** A site can publish a page in several markets, and keep each version in step with the page it came from.
+
+  ### Publishing a page in several markets
+  - A site declares the markets it publishes in, along with the policy for serving a page that has no version in a visitor's locale.
+  - The create-page modal takes a market, searchable by native name, English name or tag, so `Deutsch`, `German` and `de` all reach the same one.
+  - A fifth starting point in that modal brings an existing page into a market as a version of it, seeded from a copy of the page's content.
+  - The editor toolbar names the market the open page belongs to and lists the site's others. A market holding a version of the page opens it; a market holding none offers to create one. A page carrying no locale reads `Unset`.
+
+  ### Deciding what each version owns, field by field
+  - On a canonical page, a field can be marked non-translatable, holding it identical in every language, for things like product names and codes that should not be reworded.
+  - On a translation, a field can be given its own wording, breaking its link to the source page. Breaking is reversible: resetting the field puts it back under the source's control and discards the local wording.
+  - Both are set from a button on the field's own label, which says which of the three the field is: translated per language, held identical in every language, or written for this language alone. It stays out of sight until the field is hovered, as does the button that connects a field to data.
+  - A field with no setting of its own takes the one its slot's template declares, then the site's default, and otherwise follows the source page.
+  - Single-line, multi-line and rich text fields carry the setting, on a page's own fields and on the top-level fields of each component. A field nested in a group follows the group, and is set from the group's heading.
+
+  ### Seeing what changed on the source page
+  - The editor toolbar carries how far behind its source a translated page is, and only while there are changes to deal with.
+  - Opening it lists what changed on the source page since the last sync, grouped by who owns the value, with each source value set beside this page's. An inherited change can be applied outright, one needing translation can seed a draft to work from, and an advisory one can be dismissed.
+  - A value is marked with the language it is written in, so text in a right-to-left or non-Latin script is laid out and read as that language rather than as the page around it.
+  - Applying a change is an ordinary edit: it rides the page's autosave and can be undone like any other.
+  - Dealing with a change is recorded, so it stops being reported and progress survives a reload. Each change settles on its own, seeding a draft does not settle one, and a field the source page changes again is reported afresh.
+  - A record is scoped to the branch it was made on and pins the version the reconciler was shown, so a change made while they worked stays on the list. A change that could not be recorded stays on the list and says so.
+
+  ### Client API
+  - `sites.getSettings` reads a site's settings, including the locales it publishes in.
+  - `translations.create` makes a locale version of a page, linked to the page it came from, and takes a `mode` naming how its content is seeded. `translations.listVariants` lists every locale a page has been translated into.
+  - `getAuthorityOverrides`, `setAuthorityOverride` and `clearAuthorityOverride` read and change whether a prop on a translation follows the original or belongs to the translation, returning the template and site-wide fallbacks alongside.
+  - `relations.getUpstreamDiff` reports what has changed on the page a translation derives from, classifying each change as structural, a plain prop edit, one already applied for you, one needing translation, or advisory only. It works for pages derived from a template too.
+  - Per-change resolutions can be read, recorded and cleared, several at once, with the reconciled changes available alongside the outstanding ones.
+  - `Document.localizedFromId` names the canonical a translation derives from, and is null when a document derives from nothing. Pages carry an optional `locale`.
+
+  ### Fixed
+  - Text fields no longer carry a translation control on a site with no locales configured.
+  - Dropdown fields in the inspector no longer cut off the option they are showing.
+
+  ### Host-side change to be aware of
+
+  `onDocumentCreate` takes a fourth argument: `(path, template?, title?, locale?)`. `locale` is the market a new page is created in.
+
+  A host that implements the callback with three parameters keeps compiling and keeps working, but **drops the market silently** — pages created through the modal's locale field come out untagged, with no error raised anywhere. If your host forwards these arguments on, widen it to pass the fourth through:
+
+  ```ts
+  onDocumentCreate={(path, template, title, locale) =>
+    createDocument(path, template, title, locale)
+  }
+  ```
+
+- 80b84d3: **[Breaking Change]** The editor now resolves the current user's role from the backend before rendering, rather than accepting it as a prop.
+
+  ### What Changed
+  - `P1PuckProvider` calls `client.auth.getRole(siteId, branchId)` on mount and keeps the returned `RolePermissions` as the only authorization input.
+  - The editor stays in a loading state until the permission check completes. If the check returns `refused` or `unavailable`, `useP1Editor` surfaces an error instead of opening the canvas.
+  - `useP1Puck()` now exposes two new context values: `permissions` (`RolePermissions | null`) and `permissionsOutcome` (`'pending' | 'granted' | 'refused' | 'unavailable'`).
+
+  ### Migration / Action Required
+
+  If you passed a `userRole` prop to `P1PuckProvider` or `P1App` to control the editing role, remove it — the backend advisory endpoint is the authority and the prop no longer exists.
+
+  ```tsx
+  // Before
+  <P1App config={{ ...p1Config, userRole: 'editor' }} />
+
+  // After — role is resolved automatically; no prop needed
+  <P1App config={p1Config} />
+  ```
+
+  If you read `userRole` from `useP1Puck()` to gate UI, read the matching `permissions` flag instead (`canEditDocuments`, `canManageTemplates`, …). Wait for `permissionsOutcome === 'granted'` before acting on it if you need the settled value.
+
+- 6784005: **[Feature]** The richtext sanitizer moves out of the template into `@pantheon-systems/puck-css/sanitize-richtext`, so a tightened allowlist reaches existing projects on a package upgrade instead of only new ones.
+
+  ### What Changed
+  - `sanitizeRichtextHtml(html, options?)` is a new export from `@pantheon-systems/puck-css/sanitize-richtext`. It is the same DOMPurify wrapper the scaffold used to carry: it allows the inline formatting, lists and links the richtext editor produces, strips everything else, and holds links to `https:`, `http:`, `mailto:`, `tel:`, `ftp:` and relative or same-page hrefs. It runs under SSR and in the browser, and `isomorphic-dompurify` is now puck-css's dependency rather than each project's.
+  - It pairs with `richtextField` / `createRichtextField`, which produce the HTML it sanitizes. Those live in puck-css, so the allowlist that reads their output now versions with them.
+  - **`options` extends the allowlists and cannot narrow them.** `allowedTags` and `allowedAttrs` merge on top of the defaults for a block that needs a tag or attribute the defaults omit. Nothing removes a default, nothing widens the link-protocol allowlist, and additions that would let stored content run script — `<script>`, `<iframe>`, `<object>`, `<form>`, `<svg>`, any `on*` handler, `srcdoc`, `formaction` — are dropped rather than honoured. They are dropped instead of throwing so a bad option can't take a published page down.
+  - **Its own entry point, not part of `/fields`.** `/fields` is a client module that lazily pulls the editor toolbar; a block's render path is also evaluated on the server, and routing it through a client boundary would drag the subtree client-side.
+  - The starter's `components/puck/sanitize-richtext.ts` is gone and its blocks import the shared function. Scaffolds keep rendering the same markup.
+
+  ### Migration / Action Required
+
+  None to keep working — a project that still has the local copy keeps using it. To hand the sanitizer over to the package, delete `components/puck/sanitize-richtext.ts`, drop the `isomorphic-dompurify` dependency, and repoint the import:
+
+  ```tsx
+  - import { sanitizeRichtextHtml } from "./sanitize-richtext";
+  + import { sanitizeRichtextHtml } from "@pantheon-systems/puck-css/sanitize-richtext";
+  ```
+
+  One behaviour note for a project doing that swap: the shared defaults also allow `h2`, `h3`, `blockquote` and `mark`. The editor's schema can represent all four, so a paste carries them into the stored value, and the scaffold's narrower copy was discarding them at render. After the swap they render. A project that wants them gone should strip them on the way in rather than at the render boundary.
+
+  For a block that needs to render something the defaults omit:
+
+  ```tsx
+  sanitizeRichtextHtml(value, { allowedTags: ['figure', 'figcaption'] });
+  ```
+
+- b5dd1bf: **[Feature]** An agent mentioned in a comment thread now shows its work in the thread: a working line while it reads the page, then a comment or a proposal of page edits that a reader can accept, dismiss, or refine.
+
+  ### What Changed
+  - A comment now carries a `kind`: a plain `message`, an `agent_activity` line (`working` or `failed`, naming whose request it is on), or an `agent_proposal` with a summary and the proposed operations. `isAgentProposal` and `isAgentWorking` narrow a comment to those shapes.
+  - A proposal renders as a card with the summary, the number of changes, `Accept` and `Dismiss`, and a refine comment that posts back to the agent. Once decided, the card says who accepted or dismissed it.
+  - Accepting sends one request; the service puts the edits into the page as the person accepting, so the change reaches this editor and every other open one the way any edit does. A proposal the page refuses stays undecided and the refusal is reported.
+  - While the edits go in, the proposal's `status` is `applying`. A second accept arriving in that window, a retry of one whose acceptance was never recorded, and an agent rewriting the proposal are refused, so the edits cannot land twice. A claim an accept never finished is taken over after a minute.
+  - A proposal's operations must address the page data (`content`, `root` or `zones`); one aimed anywhere else is rejected when it is posted.
+  - The thread shows an agent as working the moment a comment mentions it, and reports that it did not respond if no comment arrives within a few seconds.
+  - `decideProposal(siteId, threadId, commentId, decision)` and `updateComment` are added to the threads client, and `postComment` accepts a structured `CommentContent` as well as a string. A `comment_updated` event replaces a comment already shown in the open thread.
+  - `useProposalDecision({ threadId })` and `ProposalCard` are exported for a host rendering its own thread panel.
+
+  ### Migration / Action Required
+
+  None. Existing comments are `message` kind and render as before.
+
+- c249b47: **[Feature]** The comment panel that opens from a block's comment trigger now has the shape of a thread: a header naming the block, a place for its comments, and a composer.
+
+  ### What Changed
+  - The panel header shows a block icon and the block's name — the same name the outline uses — with a `Resolved` badge when the thread has been resolved, and the close button.
+  - Below the header is the comment list, empty until threads are stored, and below that a composer: a text area for a new comment, a note on mentioning someone and posting from the keyboard, and a `Post` button that stays disabled until the draft says something.
+  - ⌘/Ctrl + Enter posts from the text area.
+  - `CommentTrigger` takes a `subject` (`{ label, icon? }`) naming the thing being discussed, and `resolved` for a thread that has been closed out. Without a `subject` the panel names the kind of thing instead — "Page", "Workstream". `BlockCommentTrigger` resolves the block's name itself.
+  - `CommentThread` takes an `onPost` callback that receives the trimmed draft. Nothing wires it yet: posting from a block's panel becomes real when threads are stored.
+
+  ### Migration / Action Required
+
+  None. The placeholder text the panel used to show is gone; anything selecting the panel should use its `data-context-type` and `data-context-id` attributes.
+
+- 87241d4: **[Feature]** A comment trigger on every block, as the first piece of commenting in the editor. It is off unless Pantheon has enabled threads for the site, and while off nothing about the editor changes.
+
+  ### What Changed
+  - With threads enabled, hovering or selecting a block shows a comment button pinned to the block's top right corner. A block with no thread shows a quiet button; a block with comments shows the count as a tally. Clicking it opens a placeholder panel beside the block, with a caret pointing back at the button that opened it — the thread itself lands in a later release.
+  - The trigger belongs to the block it is drawn on, so hovering one block while another is selected gives each its own trigger for its own block, and it stays a readable size however far the canvas is zoomed out.
+  - Only one thread is open at a time: opening a second closes the first, so two panels never sit on the canvas at once.
+  - An open thread keeps its block hovered, so the panel stays put and stays anchored once the pointer moves off to read it.
+  - An open panel is drawn over every block's overlay, so it stays readable where it reaches past its own block.
+  - Hovering the trigger keeps the block hovered, so the block's outline and the trigger hold steady instead of flickering while the pointer is on it.
+  - Block hover and drag behaviour are unchanged, and so is the block action bar.
+  - `BlockCommentTrigger` is exported for placing the same trigger on a block from a `componentOverlay` override of your own — pass the block's `componentId` as `blockId`.
+  - `CommentTrigger` is exported for placing a trigger on something other than a block: pass the `contextType` and `contextId` of the thing being discussed, optionally a `threadId` and `commentCount`, and an `onOpen` callback to render your own panel instead of the placeholder. `onOpenChange` reports the built-in panel opening and closing — including it being closed by another thread opening — for a host that has to keep the trigger on screen while it is up.
+  - `useP1Overrides` takes a `threadsEnabled` option, defaulting to off.
+
+  ### Migration / Action Required
+
+  None. An application passing its own `componentOverlay` override to Puck will replace the one `createP1Overrides` installs, and the comment trigger will not appear.
+
+- fb2b6c3: **[Feature]** Opening a block's comment thread now shows what has been said in it, and a comment posted from the thread appears in the list as soon as it lands.
+
+  ### What Changed
+  - Opening a thread asks for its comments and lists them oldest first, each with who said it, when, and the comment. A mention reads as the member's name. While the comments are on their way the panel says so; if they cannot be loaded it says that instead and offers to try again.
+  - A thread reopened within half a minute is shown from memory rather than asked for again.
+  - Posting from the thread adds the comment to the list without another request. While a comment is in flight the `Post` button is disabled, and a comment that does not land leaves the draft in place and says so, rather than losing what was typed.
+  - `CommentThread` takes `comments`, `loading`, `failed`, `onRetry`, `posting` and `postFailed`, so a host rendering its own panel can show the same states. `onPost` may now resolve to `false` to say the comment did not land, which keeps the draft.
+  - `useThreadComments(threadId)` is exported for a host that loads a thread for a panel of its own; pass `undefined` while the panel is closed and nothing is requested.
+  - `appendThreadComment` and `storeThread` are exported alongside `applyThreadEvent`, which now also folds a `comment_posted` event into the open thread.
+  - `usePostComment`'s `post` now resolves to whether the comment landed.
+
+  ### Migration / Action Required
+
+  None. A `CommentThread` rendered without the new props behaves as before, with an empty comment list.
+
+- 0a95233: **[Feature]** Count the mentions an agent never answers.
+
+  ### What Changed
+  - A thread that tells its reader a mentioned agent did not respond now reports that
+    once, so the share of mentions that go unanswered can be measured instead of guessed
+    at. Each report carries the thread, the comment that did the mentioning, the agent and
+    how long the reader waited — no comment text and nothing a user typed.
+  - `threads.reportUnansweredMention(siteId, threadId, report)` on the client, for a host
+    that renders its own thread view and wants the same signal. Viewing the thread is
+    enough permission, since a read-only reader sees the same line.
+
+  ### Migration / Action Required
+
+  None. Hosts using the built-in thread UI get this without changes.
+
+- b042b66: **[Breaking Change]** The frontend role model is gone. `ContentRole`, the `userRole` prop, and the SDK's dev `RoleSwitcher` are removed. The editor gates every control on the `RolePermissions` flags the backend returns; the backend's role definitions are the only source of what a role can do.
+
+  ### What Changed
+  - Removed from `@pantheon-systems/puck-css`: the `ContentRole` type, `getPermissionsForRole`, `canPerformStructuralAction`, `canEditProps`, `canOverrideUrl`, `mergePermissions`, `useContentRole`, `useTemplatePermissions`, `mapCssRoleToContentRole`, and the `userRole` prop on `P1PuckProvider`, `P1Config` and `createNextConfig`.
+  - `useResolveContentRole` is now `useResolvePermissions` and also returns `roleName`.
+  - `useP1Puck()` no longer exposes `userRole`. It exposes `permissions` (`RolePermissions | null`), `permissionsOutcome`, and `roleName` (`'ADMIN' | 'EDITOR' | 'VIEWER' | 'NO_ACCESS' | null`) for display and logging.
+  - `createPuckPermissions(template, canEditDocuments, isHistoricalVersion, canEditProps?)` takes the backend flag instead of a role string.
+  - Removed from `@pantheon-systems/p1-next-sdk`: `RoleSwitcher`, and the `userRole` and `roleSwitcher` options on `createP1EditorClient`.
+
+  ### Migration / Action Required
+  - Stop passing `userRole` and `roleSwitcher`. Nothing replaces them — the editor resolves its own permissions.
+  - Gate custom UI on flags, not names:
+
+  ```tsx
+  // Before
+  const { userRole } = useP1Puck();
+  const canPin = userRole === 'admin';
+
+  // After
+  const { permissions } = useP1Puck();
+  const canPin = permissions?.canManageTemplates ?? false;
+  ```
+
+  - To show the user's role, read `roleName` from `useP1Puck()`. Never branch behaviour on it.
+  - To test a role locally, grant that role on the site, or edit the `/auth/role` stub in your mock server.
+
+- d46bbc0: **[Feature]** Roles that cannot edit documents now see a fully locked canvas: props and structural controls are disabled, inline rich-text editing is suppressed, action-menu items requiring edit access are hidden, and any change that reaches the save layer is silently dropped.
+
+  ### What Changed
+  - The prop inspector, blocks drawer, drag handles, and insert/delete controls are all locked when `permissions.canEditDocuments` is `false`.
+  - `contentEditable` fields on the canvas are stripped so rich-text inline editing is unavailable.
+  - The action menu (`PublishControl`) filters per flag: Review requires `canProposeMerge`, Publish requires `canCreateCheckpoint`, Create workstream requires `canCreateBranch`, and Delete page requires `canEditDocuments`. Items are dropped entirely rather than shown disabled.
+  - A "You are viewing this page in read-only mode." banner appears above the canvas frame for read-only roles.
+  - Changes that reach `onChange` or the component registry while the role cannot edit are silently discarded as a backstop.
+
+  ### Migration / Action Required
+
+  No changes required. When `permissions` is absent from the P1 context, all behavior is unchanged (backward compatible).
+
+### Patch Changes
+
+- 77112dc: **[Fix]** A comment thread no longer says a mentioned agent "did not respond" while that agent
+  is still on its way to answering.
+
+  ### What Changed
+  - The thread now waits 10s, not 4s, before turning an agent's "working" line into a failure.
+    4s did not cover the round trip — the agent is told about the mention, acknowledges it, reads
+    the thread back, posts its reply, and only then does that reply reach the editor — so a
+    slow-but-successful answer was reported as a failure before it arrived.
+  - The deadline and the backend's 5s delivery timeout are now documented against each other on
+    both sides, including the part the delivery timeout does not cover, so the next change to
+    either one surfaces the constraint between them.
+
+- f526c7c: **[Fix]** The comment thread panel now scrolls to keep the latest message visible.
+
+  ### What Changed
+  - Opening a thread now starts scrolled to its most recent comment instead of the top.
+  - Posting a new comment, or an @mentioned agent's reply landing in an open thread, now smooth-scrolls that new comment into view instead of leaving it off-screen below the fold.
+
+- 81b215f: **[Fix]** The "Create a new page" modal's URL slug field no longer strips `:` while typing, so a dynamic route segment (e.g. `:category`) can be entered directly instead of only via the MCP/API.
+
+  ### What Changed
+  - `sanitizeSlug` in `CreatePageModal` allowed only `a-z0-9-`, silently dropping `:` on every keystroke. It now also allows `:`, matching the CCR backend's own path validation, which never restricted paths to alphanumerics-and-hyphen in the first place.
+
+- 3dc18a5: **[Fix]** The editor header's toggle is now labelled for Zappy, and takes the black-and-grey treatment of the header controls beside it, in place of blue.
+
+  ### What Changed
+  - The assistant is called Zappy; the icon-only toggle that opens it announces as "Zappy AI Assistant", replacing "Pantheon AI".
+  - Its icon is black in both states — the colour the neighbouring external-link button already used — and drops from 20px to 16px, so it no longer fills the button edge to edge.
+  - Active, the button sits on a neutral grey chip under that black icon, in place of a filled blue square under a white one. The chip matches the hover surface, so an active toggle and a hovered one now look alike.
+
+  ### Migration / Action Required
+
+  Update anything that selects the toggle by its old accessible name — `getByLabelText('Pantheon AI')`, `getByRole('button', { name: 'Pantheon AI' })` — to "Zappy AI Assistant". Its `data-testid="ai-panel-toggle"` and the `showAIPanelToggle` prop are unchanged.
+
+  Nothing else is required, unless you were overriding `--pds-color-interactive-background-current` to tint the toggle — it no longer reaches it. The toggle now reads `--pds-color-foreground-default` and `--pds-color-surface-default-secondary`, which also apply well beyond this button.
+
+- 3ab591c: **[Fix]** `P1App` now supplies the context `@pantheon-systems/pds-toolkit-react` overlays need, so a `Modal` rendered anywhere in the editor — including the chat attachment preview, or your own children — no longer crashes on versions before `2.0.0-alpha.42`.
+- a2f2f0d: **[Fix]** The editor toolbar's icon-only buttons now name themselves on hover.
+  The panel toggles and undo/redo showed nothing, and the two panel toggles use
+  the same icon, so there was no way to tell them apart. A disabled undo or redo
+  names itself too.
+- c1e45fc: **[Fix]** The right-hand page/description panel can now be reopened after closing it, even when the left panel is also closed.
+
+  ### What Changed
+  - Closing the right panel while the left panel was already closed left no visible control to bring it back — only Puck's own drag-to-resize edge worked, and it wasn't discoverable. The reopen button now gets the layout width it needs in that state too, so it stays visible and clickable.
+  - The editor's panel collapse/reopen controls now carry stable `data-testid` hooks, and the Blocks panel shell carries a `blocks-panel` id, so tests can target them without matching on Puck's per-build hashed class names.
+
+- afd9a61: **[Fix]** The List block's sidebar (Title, Subtitle, Teaser, Image, Icon) now shows the auto-detected field mapping instead of always showing "None" when no field has been explicitly chosen. Previously the dropdown displayed "None" regardless of whether the mapping was unset (auto-detected) or explicitly cleared by the user, so re-selecting "None" after touching the dropdown silently broke a working auto-detected mapping.
+- 9d67bce: **[Fix]** Presence polling now stands down when it has nothing to do.
+
+  ### What Changed
+  - `P1PuckProvider` stops polling `GET /branches/{id}/presence` once realtime presence updates are arriving. Previously the request kept firing every 5 seconds for the life of the editor session even with a live connection.
+  - Polling also pauses while the browser tab is hidden, and issues a single refresh when the tab becomes visible again.
+  - When a realtime connection drops, the presence list keeps the actors that connection last reported and is refreshed immediately, so it no longer briefly shows whoever was present the last time polling ran.
+  - `presencePollingInterval` now defaults to `10000` (was `5000`), matching the presence hooks. Pass the prop to keep the old cadence.
+  - `onPresenceChange` now fires for realtime presence changes as well as polled ones, instead of going quiet whenever a realtime connection was active.
+
+- 9633fff: **[Fix]** While a historical version is being previewed from Version History, the editor's Publish button is now greyed out and the "Changes pending publishing" badge is hidden, instead of offering to publish a read-only page and reporting pending changes that do not belong to the version on screen.
+
+  ### What Changed
+  - `PublishControl` takes a `disabled` prop that it forwards to the PDS `SplitButton`, which disables both the primary action and the more-actions menu.
+  - `P1EditorSubheader` exposes this as `publishDisabled`, and the editor toolbar sets it from the editor context's `isViewingHistoricalVersion`.
+  - The toolbar's badge state is suppressed during a preview for the same reason it is already suppressed off the Live branch: the published status describes the current version, not the previewed one, and a guessed state is worse than none.
+
+- e804afa: **[Fix]** A read-only role can no longer reorder or delete blocks from the Outline panel, drag new blocks out of the Blocks drawer, use undo/redo, or save and delete data sources.
+
+  ### What Changed
+  - Outline panel rows lose their drag handle and Delete button when the signed-in user cannot edit documents. Rows can still be selected to inspect a block.
+  - Blocks in the drawer cannot be picked up for a read-only user, matching how they already behave while previewing a historical version.
+  - The Undo and Redo toolbar buttons stay disabled for a read-only user, so local changes that were never going to save cannot be replayed.
+  - In the Data sources panel, "Save datasource" and "Delete" are disabled for a read-only user, with a note explaining that edit permission is required.
+
+  Previously these controls stayed interactive: the edits were applied on the canvas and then discarded before saving, which looked like editing that silently failed.
+
+- 76a866f: **[Fix]** Removed the right inspector panel's in-canvas "reopen strip", added in a prior release to work around the panel becoming unreachable when both side panels were collapsed.
+
+  ### What Changed
+  - The right panel now collapses fully to 0px width, the same as the left panel, instead of reserving 48px of canvas for a reopen button.
+  - Reopening the panel is done through the existing top toolbar "Toggle right panel" button, which already covered this case and predates the strip.
+
+- b7bd802: **[Fix]** A document row in the merge preview panel now responds to hover, and a document path is set in medium weight. New scaffolds no longer ship a standalone `/p1/merge` page.
+
+  ### What Changed
+  - `.merge-preview-document__row` gained a hover background, so a row that is already `cursor: pointer` also looks clickable.
+  - `.merge-preview-document__path` is now weighted to stand out from the rest of the row.
+  - The scaffold template no longer includes `app/p1/merge/`. Merge review is reached through the editor's built-in "Compare with Live" overlay, which needs no route of its own.
+
+  Both CSS rules apply to `MergePreviewPanel` — reachable via the exported component or `createMergePreviewPlugin`. They do not affect the "Compare with Live" overlay, which renders its own document list.
+
+  Existing projects are unaffected: an app that already has `app/p1/merge/` keeps it, and removing it is optional. If you do remove it, `/p1/merge` will not 404 — the editor mounts at an optional catch-all, so the URL falls through and opens the editor on a document at that path.
+
+- Updated dependencies [cd7e72f]
+- Updated dependencies [fa0efc1]
+- Updated dependencies [80b84d3]
+- Updated dependencies [9fad4f8]
+- Updated dependencies [b5dd1bf]
+- Updated dependencies [0a95233]
+  - @pantheon-systems/css-client@0.16.0
+
 ## 0.15.0
 
 ### Minor Changes

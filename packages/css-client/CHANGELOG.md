@@ -1,5 +1,130 @@
 # @pantheon-systems/css-client
 
+## 0.16.0
+
+### Minor Changes
+
+- fa0efc1: **[Feature]** A site can publish a page in several markets, and keep each version in step with the page it came from.
+
+  ### Publishing a page in several markets
+  - A site declares the markets it publishes in, along with the policy for serving a page that has no version in a visitor's locale.
+  - The create-page modal takes a market, searchable by native name, English name or tag, so `Deutsch`, `German` and `de` all reach the same one.
+  - A fifth starting point in that modal brings an existing page into a market as a version of it, seeded from a copy of the page's content.
+  - The editor toolbar names the market the open page belongs to and lists the site's others. A market holding a version of the page opens it; a market holding none offers to create one. A page carrying no locale reads `Unset`.
+
+  ### Deciding what each version owns, field by field
+  - On a canonical page, a field can be marked non-translatable, holding it identical in every language, for things like product names and codes that should not be reworded.
+  - On a translation, a field can be given its own wording, breaking its link to the source page. Breaking is reversible: resetting the field puts it back under the source's control and discards the local wording.
+  - Both are set from a button on the field's own label, which says which of the three the field is: translated per language, held identical in every language, or written for this language alone. It stays out of sight until the field is hovered, as does the button that connects a field to data.
+  - A field with no setting of its own takes the one its slot's template declares, then the site's default, and otherwise follows the source page.
+  - Single-line, multi-line and rich text fields carry the setting, on a page's own fields and on the top-level fields of each component. A field nested in a group follows the group, and is set from the group's heading.
+
+  ### Seeing what changed on the source page
+  - The editor toolbar carries how far behind its source a translated page is, and only while there are changes to deal with.
+  - Opening it lists what changed on the source page since the last sync, grouped by who owns the value, with each source value set beside this page's. An inherited change can be applied outright, one needing translation can seed a draft to work from, and an advisory one can be dismissed.
+  - A value is marked with the language it is written in, so text in a right-to-left or non-Latin script is laid out and read as that language rather than as the page around it.
+  - Applying a change is an ordinary edit: it rides the page's autosave and can be undone like any other.
+  - Dealing with a change is recorded, so it stops being reported and progress survives a reload. Each change settles on its own, seeding a draft does not settle one, and a field the source page changes again is reported afresh.
+  - A record is scoped to the branch it was made on and pins the version the reconciler was shown, so a change made while they worked stays on the list. A change that could not be recorded stays on the list and says so.
+
+  ### Client API
+  - `sites.getSettings` reads a site's settings, including the locales it publishes in.
+  - `translations.create` makes a locale version of a page, linked to the page it came from, and takes a `mode` naming how its content is seeded. `translations.listVariants` lists every locale a page has been translated into.
+  - `getAuthorityOverrides`, `setAuthorityOverride` and `clearAuthorityOverride` read and change whether a prop on a translation follows the original or belongs to the translation, returning the template and site-wide fallbacks alongside.
+  - `relations.getUpstreamDiff` reports what has changed on the page a translation derives from, classifying each change as structural, a plain prop edit, one already applied for you, one needing translation, or advisory only. It works for pages derived from a template too.
+  - Per-change resolutions can be read, recorded and cleared, several at once, with the reconciled changes available alongside the outstanding ones.
+  - `Document.localizedFromId` names the canonical a translation derives from, and is null when a document derives from nothing. Pages carry an optional `locale`.
+
+  ### Fixed
+  - Text fields no longer carry a translation control on a site with no locales configured.
+  - Dropdown fields in the inspector no longer cut off the option they are showing.
+
+  ### Host-side change to be aware of
+
+  `onDocumentCreate` takes a fourth argument: `(path, template?, title?, locale?)`. `locale` is the market a new page is created in.
+
+  A host that implements the callback with three parameters keeps compiling and keeps working, but **drops the market silently** — pages created through the modal's locale field come out untagged, with no error raised anywhere. If your host forwards these arguments on, widen it to pass the fourth through:
+
+  ```ts
+  onDocumentCreate={(path, template, title, locale) =>
+    createDocument(path, template, title, locale)
+  }
+  ```
+
+- 80b84d3: **[Feature]** Added `client.auth.getRole(siteId, branchId)` — an advisory endpoint that returns the calling user's role and permission flags on a branch.
+
+  ### What Changed
+  - New `AuthEndpoint` accessible as `client.auth`, with a single `getRole(siteId, branchId)` method.
+  - New exported types: `RoleName`, `RolePermissions`, and `ViewerRole`.
+  - The endpoint calls `GET /api/sites/{siteId}/branches/{branchId}/auth/role` and returns the server's view of the caller's permissions. It is advisory — the server enforces the same rules on every write regardless of what this endpoint returns.
+
+- 9fad4f8: **[Fix]** Stopping an editing agent now stops it. Previously the agent lost its
+  edit session, asked for another and carried on changing the page, while
+  `stopAgent` reported success.
+
+  ### What Changed
+  - A stopped turn cannot write to the document again, whether or not the agent
+    cooperates. A cooperating agent ends the turn as soon as it notices.
+  - Stop reports whether there was anything to stop, instead of always reporting
+    success.
+  - An agent's presence names the turn it is working on, so a panel holding a turn of
+    its own can tell whether a stop is aimed at that turn or at some other agent's.
+
+  ### Migration / Action Required
+
+  `stopAgent` takes either an agent id, as before, or `{ turnId }` to stop one
+  specific turn. Existing calls are unaffected.
+
+  Its result is now `{ success: false, reason: 'no_active_turn' }` when no agent
+  was running, where it previously returned `success: true`. Anything asserting
+  on that shape needs updating; treat it as "nothing to do", not an error.
+
+  ### Known limits
+  - A stop takes effect on the agent's next call to the backend, so an operation
+    already in flight can still finish. What it cannot do is start another.
+  - Creating a page is the one such operation that is not itself refused; the turn
+    ends at the agent's next edit instead.
+  - A stop applies to the page it was made from. A turn working across several
+    pages is barred there, and ends when it next tries to write to that page.
+
+- b5dd1bf: **[Feature]** An agent mentioned in a comment thread now shows its work in the thread: a working line while it reads the page, then a comment or a proposal of page edits that a reader can accept, dismiss, or refine.
+
+  ### What Changed
+  - A comment now carries a `kind`: a plain `message`, an `agent_activity` line (`working` or `failed`, naming whose request it is on), or an `agent_proposal` with a summary and the proposed operations. `isAgentProposal` and `isAgentWorking` narrow a comment to those shapes.
+  - A proposal renders as a card with the summary, the number of changes, `Accept` and `Dismiss`, and a refine comment that posts back to the agent. Once decided, the card says who accepted or dismissed it.
+  - Accepting sends one request; the service puts the edits into the page as the person accepting, so the change reaches this editor and every other open one the way any edit does. A proposal the page refuses stays undecided and the refusal is reported.
+  - While the edits go in, the proposal's `status` is `applying`. A second accept arriving in that window, a retry of one whose acceptance was never recorded, and an agent rewriting the proposal are refused, so the edits cannot land twice. A claim an accept never finished is taken over after a minute.
+  - A proposal's operations must address the page data (`content`, `root` or `zones`); one aimed anywhere else is rejected when it is posted.
+  - The thread shows an agent as working the moment a comment mentions it, and reports that it did not respond if no comment arrives within a few seconds.
+  - `decideProposal(siteId, threadId, commentId, decision)` and `updateComment` are added to the threads client, and `postComment` accepts a structured `CommentContent` as well as a string. A `comment_updated` event replaces a comment already shown in the open thread.
+  - `useProposalDecision({ threadId })` and `ProposalCard` are exported for a host rendering its own thread panel.
+
+  ### Migration / Action Required
+
+  None. Existing comments are `message` kind and render as before.
+
+- 0a95233: **[Feature]** Count the mentions an agent never answers.
+
+  ### What Changed
+  - A thread that tells its reader a mentioned agent did not respond now reports that
+    once, so the share of mentions that go unanswered can be measured instead of guessed
+    at. Each report carries the thread, the comment that did the mentioning, the agent and
+    how long the reader waited — no comment text and nothing a user typed.
+  - `threads.reportUnansweredMention(siteId, threadId, report)` on the client, for a host
+    that renders its own thread view and wants the same signal. Viewing the thread is
+    enough permission, since a read-only reader sees the same line.
+
+  ### Migration / Action Required
+
+  None. Hosts using the built-in thread UI get this without changes.
+
+### Patch Changes
+
+- cd7e72f: **[Fix]** Record upstream resolutions against the exact source version returned by the upstream diff.
+
+  ### What Changed
+  - `setUpstreamResolutions` now sends `upstreamVersionId`, allowing resolution requests to pass CCR validation and preserve changes published after the review began.
+
 ## 0.15.0
 
 ### Minor Changes

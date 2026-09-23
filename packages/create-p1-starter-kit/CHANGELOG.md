@@ -1,5 +1,117 @@
 # @pantheon-systems/create-p1-starter-kit
 
+## 0.16.0
+
+### Minor Changes
+
+- e6ebef6: **[Feature]** Scaffolding now asks whether to include the P1 component library, and either answer leaves the project ready to add blocks later.
+
+  ### What Changed
+  - A new prompt, `Include the P1 starter component library?`, defaulted to yes. `--blocks` and `--no-blocks` set it without the prompt, and `--yes` takes the default.
+  - Answering yes installs a library of marketing, editorial and layout blocks — heroes, pricing tables, FAQs, testimonials, feature grids — into `components/puck/blocks/`. They need no Tailwind, and the code is yours: edit it, restyle it, delete what you do not want.
+  - Answering no scaffolds exactly what it did before.
+  - Either way the project is configured for the `@p1` registry, so any block can be added later with one command and no URL to look up:
+
+    ```bash
+    pnpm dlx shadcn@latest add @p1/pricing
+    ```
+
+  - Registering a block is a few lines pasted into `components/puck/blocks/index.ts`, which your Puck config already spreads. The install prints them, and each block's catalog card carries the same lines:
+
+    ```ts
+    import { PricingBlock } from "./pricing/pricing.block";
+
+    P1Pricing: PricingBlock,  // add to p1Blocks
+
+    // in p1Categories — create the entry if it does not exist yet:
+    p1Convert: { title: "P1 Convert", components: ["P1Pricing"] },
+    // or, if p1Convert already exists, add to its components array (no duplicate key):
+    // p1Convert: { title: "P1 Convert", components: ["P1Pricing", "P1CTA"] },
+    ```
+
+  - The category line is what puts the block in the editor drawer. A block registered in `p1Blocks` alone still works, but stays out of the drawer with no error.
+  - Repeat for each block you want. A block's export name is at the top of `components/puck/blocks/<name>/<name>.block.tsx` and does not always match the directory — `@p1/logos` exports `LogoCloudBlock`.
+  - Your own blocks keep their names. Component keys are prefixed `P1` and categories `p1`, so nothing the starter kit ships is shadowed.
+  - To review our changes to a block you have already edited, name the file — an item's summary shows only its first few:
+
+    ```bash
+    pnpm dlx shadcn@latest add @p1/pricing --diff components/puck/blocks/pricing/pricing.tsx
+    ```
+
+  - A registry that cannot be reached warns and continues. The project still scaffolds, `components.json` is still written, and the two commands above finish the job whenever you are ready.
+
+  ### Migration / Action Required
+
+  _Only for projects scaffolded with an earlier version._ Nothing back-fills them, and `shadcn add @p1/…` fails with `Unknown registry "@p1"` until `components.json`, the `@/*` path alias and the blocks barrel are all in place. One command writes all three:
+
+  ```bash
+  npx @pantheon-systems/p1-next-sdk enable-registry
+  ```
+
+  It ships with `@pantheon-systems/p1-next-sdk` and skips anything already there. It does not touch `puck.config.tsx` — spread `p1Categories` and `p1Blocks` as the _first_ entry of `categories` and `components` yourself, since later keys win in an object literal and a spread placed last lets a registry category overwrite one of yours, leaving the blocks registered but absent from the drawer. The command prints the lines.
+
+### Patch Changes
+
+- 00d7175: **[Fix]** New scaffolds now pin `@pantheon-systems/pds-toolkit-react` to `2.0.0-alpha.67`, fixing a dropdown/menu that could render clipped past the right edge of the viewport.
+
+  ### What Changed
+  - The starter template's `pds-toolkit-react` dependency moved from `2.0.0-alpha.66` to `2.0.0-alpha.67`, which fixes viewport-edge clipping on several Dropdown/Select components.
+
+  ### Migration / Action Required
+
+  None for new scaffolds. Existing projects already scaffolded are unaffected (the template is copied at scaffold time); bump `@pantheon-systems/pds-toolkit-react` yourself to pick up the fix.
+
+- b7bd802: **[Fix]** A document row in the merge preview panel now responds to hover, and a document path is set in medium weight. New scaffolds no longer ship a standalone `/p1/merge` page.
+
+  ### What Changed
+  - `.merge-preview-document__row` gained a hover background, so a row that is already `cursor: pointer` also looks clickable.
+  - `.merge-preview-document__path` is now weighted to stand out from the rest of the row.
+  - The scaffold template no longer includes `app/p1/merge/`. Merge review is reached through the editor's built-in "Compare with Live" overlay, which needs no route of its own.
+
+  Both CSS rules apply to `MergePreviewPanel` — reachable via the exported component or `createMergePreviewPlugin`. They do not affect the "Compare with Live" overlay, which renders its own document list.
+
+  Existing projects are unaffected: an app that already has `app/p1/merge/` keeps it, and removing it is optional. If you do remove it, `/p1/merge` will not 404 — the editor mounts at an optional catch-all, so the URL falls through and opens the editor on a document at that path.
+
+- 6784005: **[Feature]** The richtext sanitizer moves out of the template into `@pantheon-systems/puck-css/sanitize-richtext`, so a tightened allowlist reaches existing projects on a package upgrade instead of only new ones.
+
+  ### What Changed
+  - `sanitizeRichtextHtml(html, options?)` is a new export from `@pantheon-systems/puck-css/sanitize-richtext`. It is the same DOMPurify wrapper the scaffold used to carry: it allows the inline formatting, lists and links the richtext editor produces, strips everything else, and holds links to `https:`, `http:`, `mailto:`, `tel:`, `ftp:` and relative or same-page hrefs. It runs under SSR and in the browser, and `isomorphic-dompurify` is now puck-css's dependency rather than each project's.
+  - It pairs with `richtextField` / `createRichtextField`, which produce the HTML it sanitizes. Those live in puck-css, so the allowlist that reads their output now versions with them.
+  - **`options` extends the allowlists and cannot narrow them.** `allowedTags` and `allowedAttrs` merge on top of the defaults for a block that needs a tag or attribute the defaults omit. Nothing removes a default, nothing widens the link-protocol allowlist, and additions that would let stored content run script — `<script>`, `<iframe>`, `<object>`, `<form>`, `<svg>`, any `on*` handler, `srcdoc`, `formaction` — are dropped rather than honoured. They are dropped instead of throwing so a bad option can't take a published page down.
+  - **Its own entry point, not part of `/fields`.** `/fields` is a client module that lazily pulls the editor toolbar; a block's render path is also evaluated on the server, and routing it through a client boundary would drag the subtree client-side.
+  - The starter's `components/puck/sanitize-richtext.ts` is gone and its blocks import the shared function. Scaffolds keep rendering the same markup.
+
+  ### Migration / Action Required
+
+  None to keep working — a project that still has the local copy keeps using it. To hand the sanitizer over to the package, delete `components/puck/sanitize-richtext.ts`, drop the `isomorphic-dompurify` dependency, and repoint the import:
+
+  ```tsx
+  - import { sanitizeRichtextHtml } from "./sanitize-richtext";
+  + import { sanitizeRichtextHtml } from "@pantheon-systems/puck-css/sanitize-richtext";
+  ```
+
+  One behaviour note for a project doing that swap: the shared defaults also allow `h2`, `h3`, `blockquote` and `mark`. The editor's schema can represent all four, so a paste carries them into the stored value, and the scaffold's narrower copy was discarding them at render. After the swap they render. A project that wants them gone should strip them on the way in rather than at the render boundary.
+
+  For a block that needs to render something the defaults omit:
+
+  ```tsx
+  sanitizeRichtextHtml(value, { allowedTags: ['figure', 'figcaption'] });
+  ```
+
+- 3abc827: **[Feature]** `NEXT_PUBLIC_AGENT_URL` is gone from the list of environment variables a new site has to set. The AI chatbot now finds the chat agent on its own.
+
+  ### Migration / Action Required
+
+  None. Sites that already set it keep working — the value is still honoured as an override for a site pointed at a non-production environment.
+
+- 7f1a3ad: **[Fix]** Removed the plain-text "List" block from the Typography category in the starter's block picker. It shared its label with the datasource-bound "List" block in the Data category, making the two indistinguishable when adding a block. The Data category's "List" block is unchanged.
+
+  The example SWAPI datasource no longer advertises a `markdownLinks` path. That token expanded to markdown link lines for the removed block's free-text items field, and no remaining starter block renders them as links. Use the `items` array with an Array field instead.
+
+  ### Migration / Action Required
+
+  None. This only affects newly scaffolded sites; an already-scaffolded site owns its own copy of `puck.config.tsx` and `lib/remote-datasources.ts` and is unaffected.
+
 ## 0.15.0
 
 ### Patch Changes

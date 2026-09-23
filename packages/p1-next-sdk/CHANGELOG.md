@@ -1,5 +1,165 @@
 # @pantheon-systems/p1-next-sdk
 
+## 0.16.0
+
+### Minor Changes
+
+- 209e42c: **[Feature]** The AI chatbot's rollout gate now lives in the SDK, behind a new
+  `@pantheon-systems/p1-next-sdk/chatbot` entry point, so an application no longer carries
+  feature-flag plumbing for it (`p1-migrate` applies the rewrite only to projects whose
+  installed P1 suite is at this version or newer).
+
+  ### What Changed
+  - `P1ChatbotProvider` and `useP1Chatbot` replace the flag provider, flag key and gating
+    helpers that starter projects used to keep in their own source. Whether the chatbot is
+    available to a site is Pantheon's decision, so there is nothing left to branch on: an
+    unavailable chatbot contributes no plugins, no `onGenerateWithAI` handler and an
+    unchanged `<Puck>` remount key.
+  - Retiring the rollout no longer requires a change to your project.
+  - `p1-migrate` applies this rewrite to `editor-client.tsx` as part of the editor-layout
+    migration, and bails rather than half-rewriting a file whose chatbot wiring you
+    customized. Its output imports the new entry point, so on an older installed suite it
+    says so and skips this one step, leaving your app-level gate in place and the rest of
+    the migration unchanged.
+  - Nothing to configure, and nothing new to opt out of: an editor that has not been given
+    an agent evaluates no rollout flag and initializes no rollout client.
+
+  ### Migration / Action Required
+
+  Only if your project carries the old app-level gate. Run `npx @pantheon-systems/p1-next-sdk p1-migrate`,
+  or apply it by hand:
+
+  **Before**
+
+  ```tsx
+  import { useFlags } from 'launchdarkly-react-client-sdk';
+  import { ChatbotFlagProvider } from '../../../../components/ChatbotFlagProvider';
+  import { shouldShowChatbot, CHATBOT_FLAG_KEY } from '../../../../lib/chatbot-flag/feature-gate';
+
+  const chatbotEnabled = shouldShowChatbot(useFlags()[CHATBOT_FLAG_KEY], agentUrl);
+  ```
+
+  **After**
+
+  ```tsx
+  import { P1ChatbotProvider, useP1Chatbot } from '@pantheon-systems/p1-next-sdk/chatbot';
+
+  const chatbot = useP1Chatbot({ onPageCreated: handlePageCreated });
+  ```
+
+  On `createP1EditorClient`, return that result from the `useExtensions` slot and pass
+  `wrapEditor: (editor) => <P1ChatbotProvider>{editor}</P1ChatbotProvider>`.
+
+  Then delete `lib/chatbot-flag/`, `components/ChatbotFlagProvider.tsx`, and the
+  `launchdarkly-react-client-sdk` and `@pantheon-systems/p1-ai-chat` entries in your
+  `package.json` — the codemod leaves those for you rather than deleting files it was not
+  asked to move.
+
+- 209e42c: **[Feature]** `createP1EditorClient` builds the editor shell, so a project's editor route becomes a short caller instead of a frozen copy of the wiring.
+
+  ### What Changed
+  - A new client export assembles the providers, document loading, branch-switch reload overlay, last-good-state handling and post-login redirect that every P1 editor needs. Improvements to any of it now reach an existing project on a package update rather than only new scaffolds.
+  - What actually differs per project flows in as options: the Puck config, a sign-in page, extra plugins and plugin options, editor overrides, and a wrapper around the editor.
+  - `useExtensions` is a hook slot for customization that has to be computed at render — a plugin built from a feature flag, an option derived from app state. It returns plugins, plugin options, override options and an optional editor key suffix, and is called inside the editor so it may use hooks of its own.
+  - One stylesheet entry point, `@pantheon-systems/p1-next-sdk/editor.css`, replaces the two `puck-css` imports an editor route used to carry. Import it from the route that mounts the editor; the SDK owns what goes in it from now on.
+  - The page stashed before sign-in is now honoured only when it resolves to this same origin, so a value written into browser storage by anything else on the origin cannot redirect the editor off-site after login. It is resolved with the URL parser rather than prefix-matched, because the parser discards tab, LF and CR and a value like `/\t/example.com` otherwise reads as a path while navigating away.
+
+- ab21a4d: **[Feature]** New `useP1ExperimentalFeatures` hook, so an application can ask whether a Pantheon feature that is still rolling out is available to the person and site in front of it.
+
+  ### What Changed
+  - `useP1ExperimentalFeatures({ userId, siteId })` returns `isEnabled(feature)` and `resolved`. `userId` may be null — while nobody is signed in, or before auth has answered, every feature reads as off.
+  - Availability is resolved once per user-and-site per page load and shared by every caller, so a page with many callers makes one rollout check rather than one each. Nothing polls, and a change to a rollout reaches a reader on their next page load.
+  - Everything reads as off until the check answers, and stays off if it cannot be reached, so an unfinished feature never flashes into view.
+  - `siteId` is optional; without it, availability is decided for the person alone.
+  - `NEXT_PUBLIC_LD_CLIENT_ID` set to an empty string opts a deployment out of rollout checks entirely, which leaves every experimental feature off.
+
+  ### Migration / Action Required
+
+  None. Nothing existing changes behaviour.
+
+- 80b84d3: **[Feature]** `roleSwitcher: true` now renders a role picker defaulting to `'editor'` when no `userRole` is passed to `createP1EditorClient`. Pass `userRole` explicitly to start the picker at a different role.
+- e6ebef6: **[Feature]** `p1-next-sdk` is now a unified dispatcher with two subcommands: `migrate` (was the standalone `p1-migrate` binary) and `enable-registry` (new).
+
+  ### What Changed
+  - `npx @pantheon-systems/p1-next-sdk enable-registry [dir]` writes `components.json`, creates `components/puck/blocks/index.ts`, and adds the `@/*` path alias to `tsconfig.json`, so `shadcn add @p1/…` works in a project scaffolded before the registry existed. Previously this was three files to write by hand.
+  - Your files are not rewritten. A `components.json` you already have gains only the `registries` entry for `@p1`, leaving every other key as it is; the barrel, `tsconfig.json` and `puck.config.tsx` are skipped when already in place. A second run reports what it found and changes nothing.
+  - `tailwind.css` points at the stylesheet your project actually has (`app/globals.css`, `src/app/globals.css` or `styles/globals.css`). When there is none to find, the command says so instead of naming a file that does not exist and leaving blocks unstyled.
+  - A `tsconfig.json` is edited as text rather than parsed and rewritten, so comments and formatting survive. One with no `paths` block to extend is reported with the lines to add, rather than restructured.
+  - `puck.config.tsx` is never touched — it is yours, and you have edited it. The two spreads to add are printed, along with why both must come first.
+  - `p1-migrate` is no longer a standalone binary. Use `p1-next-sdk migrate` instead.
+
+- b042b66: **[Breaking Change]** The frontend role model is gone. `ContentRole`, the `userRole` prop, and the SDK's dev `RoleSwitcher` are removed. The editor gates every control on the `RolePermissions` flags the backend returns; the backend's role definitions are the only source of what a role can do.
+
+  ### What Changed
+  - Removed from `@pantheon-systems/puck-css`: the `ContentRole` type, `getPermissionsForRole`, `canPerformStructuralAction`, `canEditProps`, `canOverrideUrl`, `mergePermissions`, `useContentRole`, `useTemplatePermissions`, `mapCssRoleToContentRole`, and the `userRole` prop on `P1PuckProvider`, `P1Config` and `createNextConfig`.
+  - `useResolveContentRole` is now `useResolvePermissions` and also returns `roleName`.
+  - `useP1Puck()` no longer exposes `userRole`. It exposes `permissions` (`RolePermissions | null`), `permissionsOutcome`, and `roleName` (`'ADMIN' | 'EDITOR' | 'VIEWER' | 'NO_ACCESS' | null`) for display and logging.
+  - `createPuckPermissions(template, canEditDocuments, isHistoricalVersion, canEditProps?)` takes the backend flag instead of a role string.
+  - Removed from `@pantheon-systems/p1-next-sdk`: `RoleSwitcher`, and the `userRole` and `roleSwitcher` options on `createP1EditorClient`.
+
+  ### Migration / Action Required
+  - Stop passing `userRole` and `roleSwitcher`. Nothing replaces them — the editor resolves its own permissions.
+  - Gate custom UI on flags, not names:
+
+  ```tsx
+  // Before
+  const { userRole } = useP1Puck();
+  const canPin = userRole === 'admin';
+
+  // After
+  const { permissions } = useP1Puck();
+  const canPin = permissions?.canManageTemplates ?? false;
+  ```
+
+  - To show the user's role, read `roleName` from `useP1Puck()`. Never branch behaviour on it.
+  - To test a role locally, grant that role on the site, or edit the `/auth/role` stub in your mock server.
+
+### Patch Changes
+
+- ae68f85: **[Feature]** Experimental features can be answered locally during development, so a feature can be worked on before its rollout flag exists.
+
+  ### What Changed
+  - `NEXT_PUBLIC_P1_FLAG_OVERRIDES` answers experimental feature flags in the browser: a comma-separated list of flag keys turns each of them on, and a JSON object of flag key to boolean can also force one off. An override wins over the rollout service, and when it answers for every flag no rollout client is initialized at all.
+  - The variable is read only outside a production build, so it is absent from a production bundle and cannot turn a feature on for a deployed site.
+
+- Updated dependencies [4bc06b9]
+- Updated dependencies [77112dc]
+- Updated dependencies [a807a5a]
+- Updated dependencies [acf6b6f]
+- Updated dependencies [3dc18a5]
+- Updated dependencies [9fad4f8]
+- Updated dependencies [3abc827]
+- Updated dependencies [f526c7c]
+- Updated dependencies [81b215f]
+- Updated dependencies [cd7e72f]
+- Updated dependencies [3dc18a5]
+- Updated dependencies [3ab591c]
+- Updated dependencies [9fad4f8]
+- Updated dependencies [a2f2f0d]
+- Updated dependencies [c1e45fc]
+- Updated dependencies [afd9a61]
+- Updated dependencies [cd7e72f]
+- Updated dependencies [fa0efc1]
+- Updated dependencies [80b84d3]
+- Updated dependencies [80b84d3]
+- Updated dependencies [9d67bce]
+- Updated dependencies [9633fff]
+- Updated dependencies [e804afa]
+- Updated dependencies [76a866f]
+- Updated dependencies [b7bd802]
+- Updated dependencies [6784005]
+- Updated dependencies [9fad4f8]
+- Updated dependencies [b5dd1bf]
+- Updated dependencies [c249b47]
+- Updated dependencies [87241d4]
+- Updated dependencies [fb2b6c3]
+- Updated dependencies [0a95233]
+- Updated dependencies [b042b66]
+- Updated dependencies [d46bbc0]
+  - @pantheon-systems/puck-css@0.16.0
+  - @pantheon-systems/p1-ai-chat@0.8.0
+  - @pantheon-systems/css-client@0.16.0
+
 ## 0.15.0
 
 ### Minor Changes
