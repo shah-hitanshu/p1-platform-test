@@ -104,6 +104,191 @@ function getExportName(name, filePath) {
   return match[1];
 }
 
+// Field/default values are free-form prose ("Everything you need, in one
+// place.") that routinely contains the very characters — commas, braces,
+// brackets — the scanners below balance on. Every scanner in this file skips
+// string literals wholesale so punctuation inside quotes is never mistaken
+// for structure.
+function skipStringLiteral(str, i) {
+  const quote = str[i];
+  let j = i + 1;
+  while (j < str.length) {
+    if (str[j] === '\\') { j += 2; continue; }
+    if (str[j] === quote) return j + 1;
+    j++;
+  }
+  return j;
+}
+
+// Finds the index of the `close` char balancing the `open` char at `startIdx`,
+// treating string contents as opaque. Returns -1 if unbalanced.
+function scanBalanced(str, startIdx, open, close) {
+  let depth = 0;
+  for (let i = startIdx; i < str.length; i++) {
+    const ch = str[i];
+    if (ch === '"' || ch === "'" || ch === '`') { i = skipStringLiteral(str, i) - 1; continue; }
+    if (ch === open) depth++;
+    else if (ch === close) {
+      depth--;
+      if (depth === 0) return i;
+    }
+  }
+  return -1;
+}
+
+// Slice out the `{ ... }` following `${key}:`, balancing braces so nested
+// objects don't terminate the slice early. Search starts at `fromIdx` so a
+// same-named key earlier in the file (there isn't one, but belt-and-braces)
+// can't be picked up instead.
+function extractObjectSource(content, fromIdx, key) {
+  const keyIdx = content.indexOf(`${key}:`, fromIdx);
+  if (keyIdx === -1) return undefined;
+  const braceIdx = content.indexOf('{', keyIdx);
+  const end = scanBalanced(content, braceIdx, '{', '}');
+  return content.slice(braceIdx, end + 1);
+}
+
+// Split the inner text of a `fields` (or `defaultProps`) object into
+// { key: rawValueSource } without evaluating anything. Puck array fields
+// carry TS-typed callbacks (e.g. `getItemSummary: (item: Card) => …`), which
+// `new Function` can't parse — so unlike parseMeta's braces, these are never
+// eval'd, only sliced.
+function parseTopLevelFieldMap(innerStr) {
+  const result = {};
+  const n = innerStr.length;
+  let pos = 0;
+  while (pos < n) {
+    while (pos < n && /[\s,]/.test(innerStr[pos])) pos++;
+    if (pos >= n) break;
+    const keyMatch = /^("[^"]+"|'[^']+'|[A-Za-z_$][\w$]*)\s*:/.exec(innerStr.slice(pos));
+    if (!keyMatch) break;
+    const rawKey = keyMatch[1].replace(/^['"]|['"]$/g, '');
+    pos += keyMatch[0].length;
+    while (pos < n && /\s/.test(innerStr[pos])) pos++;
+    const valStart = pos;
+    let depth = 0;
+    let j = pos;
+    for (; j < n; j++) {
+      const ch = innerStr[j];
+      if (ch === '"' || ch === "'" || ch === '`') { j = skipStringLiteral(innerStr, j) - 1; continue; }
+      if (ch === '{' || ch === '[' || ch === '(') depth++;
+      else if (ch === '}' || ch === ']' || ch === ')') depth--;
+      else if (ch === ',' && depth === 0) break;
+    }
+    result[rawKey] = innerStr.slice(valStart, j).trim();
+    pos = j + 1;
+  }
+  return result;
+}
+
+// A field's own `type: "…"` always precedes any nested field definition
+// (array fields' `arrayFields` sub-schema), so the first match in the raw
+// source is the field's own type, never a nested one.
+//
+// A few fields (paragraph/quote) are a bare `text: richtextField` — the
+// shared factory from @pantheon-systems/puck-css/fields, imported rather than
+// inlined, so there's no "type:" text to find at all.
+function extractFieldType(valueSrc) {
+  if (/^\w*[Rr]ichtext\w*Field$/.test(valueSrc.trim())) return 'richtext';
+  const m = /type\s*:\s*["']([^"']+)["']/.exec(valueSrc);
+  return m?.[1];
+}
+
+// Puck `select`/`radio` options are plain {label,value} data — safe to eval
+// in isolation even though the field's own raw source (with its typed
+// callbacks) is not.
+function extractOptions(valueSrc) {
+  const idx = valueSrc.indexOf('options:');
+  if (idx === -1) return undefined;
+  const bracketIdx = valueSrc.indexOf('[', idx);
+  if (bracketIdx === -1) return undefined;
+  const end = scanBalanced(valueSrc, bracketIdx, '[', ']');
+  if (end === -1) return undefined;
+  const arrStr = valueSrc.slice(bracketIdx, end + 1).replace(/,(\s*[}\]])/g, '$1');
+  try {
+
+    return new Function('return ' + arrStr)();
+  } catch {
+    return undefined;
+  }
+}
+
+function typeLabel(type, options) {
+  if ((type === 'select' || type === 'radio') && Array.isArray(options) && options.length) {
+    return options.map((o) => JSON.stringify(o.value)).join(' | ');
+  }
+  switch (type) {
+    case 'text':
+    case 'textarea':
+      return 'string';
+    case 'number':
+      return 'number';
+    case 'array':
+      return 'array';
+    case 'object':
+      return 'object';
+    case undefined:
+      return 'unknown';
+    default:
+      return type;
+  }
+}
+
+function defaultLabel(value) {
+  if (value === undefined) return 'none';
+  if (typeof value === 'string') {
+    const truncated = value.length > 40 ? `${value.slice(0, 40)}…` : value;
+    return JSON.stringify(truncated);
+  }
+  if (Array.isArray(value)) return 'array';
+  if (typeof value === 'object' && value !== null) return 'object';
+  return JSON.stringify(value);
+}
+
+// A default value is usually a literal, but some (e.g. `imageSrc: P1_ASSETS.LANDSCAPE`)
+// reference an imported constant that can't resolve in an isolated eval. Falls
+// back to the raw expression text itself, which is still meaningful in a props table.
+function defaultLabelFromSource(rawSrc) {
+  const objStr = rawSrc.replace(/\bas const\b/g, '').replace(/,(\s*[}\]])/g, '$1');
+  try {
+
+    return defaultLabel(new Function('return ' + objStr)());
+  } catch {
+    const trimmed = rawSrc.trim();
+    return trimmed.length > 40 ? `${trimmed.slice(0, 40)}…` : trimmed;
+  }
+}
+
+// Props reference for the catalog's block detail page: real Puck field
+// name/type/default, read straight from the block's own config so the table
+// can never drift from what the component actually accepts.
+function parseProps(exportName, filePath) {
+  const content = readFileSync(filePath, 'utf8');
+  const exportIdx = content.indexOf(`export const ${exportName}`);
+  if (exportIdx === -1) throw new Error(`Cannot find export const ${exportName} in ${filePath}`);
+
+  const fieldsSrc = extractObjectSource(content, exportIdx, 'fields');
+  const defaultsSrc = extractObjectSource(content, exportIdx, 'defaultProps');
+
+  // Parsed per-key rather than eval'd whole, so one unresolvable value (an
+  // imported constant, not a literal) can't blank out every other default.
+  const defaultRawMap = defaultsSrc ? parseTopLevelFieldMap(defaultsSrc.slice(1, -1)) : {};
+
+  if (!fieldsSrc) return [];
+
+  const fieldMap = parseTopLevelFieldMap(fieldsSrc.slice(1, -1));
+  return Object.entries(fieldMap).map(([name, valueSrc]) => {
+    const type = extractFieldType(valueSrc);
+    const options = type === 'select' || type === 'radio' ? extractOptions(valueSrc) : undefined;
+    const rawDefault = defaultRawMap[name];
+    return {
+      name,
+      type: typeLabel(type, options),
+      default: rawDefault !== undefined ? defaultLabelFromSource(rawDefault) : 'none',
+    };
+  });
+}
+
 // Derive the Puck component key from the export name: "HeroBlock" → "P1Hero".
 function toPuckKey(exportName) {
   return 'P1' + exportName.replace(/Block$/, '');
@@ -144,8 +329,9 @@ const blocks = blockNames.map((name) => {
   const meta = parseMeta(blockFile);
   const exportName = getExportName(name, blockFile);
   const category = (meta.categories?.[0] ?? 'other').toLowerCase();
+  const props = parseProps(exportName, blockFile);
 
-  return { name, exportName, category, meta };
+  return { name, exportName, category, meta, props };
 }).filter((b) => b.meta.published !== false);
 
 // ── Build category → [exportName] map ───────────────────────────────────────
@@ -210,6 +396,10 @@ const catalogDynamicEntries = blocks
   )
   .join('\n');
 
+const blockPropsEntries = blocks
+  .map(({ name, props }) => `  '${name}': ${JSON.stringify(props)},`)
+  .join('\n');
+
 const catalogGeneratedTsx = `${HEADER}
 import React from 'react';
 import dynamic from 'next/dynamic';
@@ -264,6 +454,27 @@ export const previewNames: string[] = [
 
 writeFileSync(join(REGISTRY_APP, 'lib', 'preview-names.ts'), previewNamesTsContent);
 console.log('  Generated apps/p1-registry/lib/preview-names.ts');
+
+// ── Generate apps/p1-registry/lib/block-props.generated.ts ──────────────────
+// Same reasoning as preview-names.ts: a plain data export, kept out of
+// catalog.generated.tsx. next/dynamic's CSS preloading pulls in a component's
+// CSS for any page that imports its module server-side, even unrendered —
+// so a page that only wants this data would otherwise drag in every block's
+// CSS (and, e.g., the Footer block's own .p1-footer/.p1-footer__tagline
+// classes collide with the site chrome's identically-named classes).
+
+const blockPropsTsContent = `${HEADER}
+// Kept free of component imports — see catalog.generated.tsx's previewComponents
+// for why. Puck field metadata per block — name, display type, and default
+// value — for the catalog's block detail page. Parsed from each block's own
+// \`fields\` and \`defaultProps\`, so it can't drift from what the component accepts.
+export const blockProps: Record<string, { name: string; type: string; default: string }[]> = {
+${blockPropsEntries}
+};
+`;
+
+writeFileSync(join(REGISTRY_APP, 'lib', 'block-props.generated.ts'), blockPropsTsContent);
+console.log('  Generated apps/p1-registry/lib/block-props.generated.ts');
 
 // ── Scaffold stories/<name>.stories.tsx for new blocks ───────────────────────
 // Never overwrites an existing file — the developer owns it once it exists.

@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@pantheon-systems/p1-starter-components": "workspace:*",
+    "lucide-react": "^1.47.0",
     "next": "^16.3.3",
     "react": "^19.2.5",
     "react-dom": "^19.2.5"

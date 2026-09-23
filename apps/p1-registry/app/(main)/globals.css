@@ -15,8 +15,11 @@
   --accent: var(--p1-purple);
   --radius-card: 0.75rem;
   --radius-pill: 9999px;
-  --font: var(--font-inter, Inter, system-ui, sans-serif);
-  --font-display: var(--font-poppins, Poppins, system-ui, sans-serif);
+  /* --font and --font-display are set on <html> by next/font/google in
+     layout.tsx — don't redeclare them here. :root and that generated class
+     both match <html> at equal specificity, so redeclaring shadows whichever
+     one loses the source-order tiebreak, silently falling back past the
+     actual webfont to a generic system font. */
 }
 
 body {
@@ -36,16 +39,17 @@ a { color: var(--accent); }
 .p1-header {
   background: var(--surface);
   border-bottom: 1px solid var(--border);
-  height: 4.5rem;
+  height: 4rem;
+  position: sticky;
+  top: 0;
+  z-index: 10;
 }
 
-/* Full-bleed bar like the editor toolbar: brand near the left edge, nav near
-   the right, not indented to the content container below. */
 .p1-header__inner {
   align-items: center;
   display: flex;
+  gap: 2rem;
   height: 100%;
-  justify-content: space-between;
   padding: 0 1.5rem;
   width: 100%;
 }
@@ -54,61 +58,48 @@ a { color: var(--accent); }
   align-items: center;
   color: var(--fg);
   display: flex;
-  gap: 0;
+  flex-shrink: 0;
   text-decoration: none;
 }
 
 .p1-header__logo {
   display: block;
-  height: 2.25rem;
+  height: 1.875rem;
   width: auto;
-}
-
-.p1-header__brand-divider {
-  background: var(--border-strong);
-  display: block;
-  flex-shrink: 0;
-  height: 1.25rem;
-  margin: 0 0.875rem;
-  width: 1px;
-}
-
-.p1-header__brand-label {
-  color: var(--fg);
-  font-family: var(--font-display);
-  font-size: 0.9375rem;
-  font-weight: 700;
-  letter-spacing: -0.02em;
 }
 
 .p1-header__nav {
   align-items: center;
   display: flex;
-  gap: 0;
+  gap: 1.5rem;
+  height: 100%;
+  overflow-x: auto;
 }
 
 .p1-header__nav a {
-  border-radius: 0.375rem;
+  align-items: center;
+  border-bottom: 2px solid transparent;
   color: var(--fg-muted);
-  font-size: 0.8125rem;
-  font-weight: 500;
-  padding: 0.25rem 0.375rem;
-  text-decoration: none;
-  transition: color 0.1s, background 0.1s;
-}
-.p1-header__nav a:hover { color: var(--fg); background: var(--surface-subtle); }
-
-.p1-header__nav-divider {
-  background: var(--border-strong);
-  display: block;
+  display: flex;
   flex-shrink: 0;
-  height: 1rem;
-  margin: 0 0.25rem;
-  width: 1px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  height: 100%;
+  text-decoration: none;
+  transition: color 0.1s;
+  white-space: nowrap;
 }
+.p1-header__nav a:hover { color: var(--fg); }
+.p1-header__nav a[data-active] { color: var(--fg); font-weight: 600; }
 
 .p1-main {
   flex: 1;
+  width: 100%;
+}
+
+/* Content pages (blocks list, detail, tokens) still want the old inset —
+   the home page manages its own full-bleed sections instead. */
+.p1-main > .p1-page {
   margin-inline: auto;
   max-width: 90rem;
   padding: 2.5rem 4rem 4rem;
@@ -116,20 +107,45 @@ a { color: var(--accent); }
 }
 
 .p1-footer {
-  border-top: 1px solid var(--border);
-  color: var(--fg-muted);
-  font-size: 0.8125rem;
-  padding: 1.25rem 4rem;
+  background: var(--p1-black);
+  padding: 1.5rem 4rem;
   text-align: center;
 }
+.p1-footer__tagline { color: rgb(255 255 255 / 0.55); font-size: 0.75rem; margin: 0 0 0.5rem; }
+.p1-footer__links { display: flex; gap: 1rem; justify-content: center; }
+.p1-footer__links a {
+  color: rgb(255 255 255 / 0.55);
+  font-size: 0.75rem;
+  text-decoration: underline;
+}
+.p1-footer__links a:hover { color: rgb(255 255 255 / 0.85); }
 
-/* ── Catalog intro ──────────────────────────── */
+/* ── Buttons ────────────────────────────────── */
+.p1-btn {
+  align-items: center;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  display: inline-flex;
+  font-family: inherit;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  gap: 0.5rem;
+  justify-content: center;
+  padding: 0.75rem 1.5rem;
+  text-decoration: none;
+  transition: opacity 0.1s, border-color 0.1s;
+}
+.p1-btn--brand { background: var(--p1-yellow); border: none; color: var(--p1-black); }
+.p1-btn--brand:hover { opacity: 0.88; }
+.p1-btn--secondary { background: var(--surface); border: 1px solid var(--border-strong); color: var(--fg); }
+.p1-btn--secondary:hover { border-color: var(--fg); }
+
+/* ── Catalog intro (blocks list / tokens page headers) ──────────────── */
 .p1-catalog-intro { margin-bottom: 2rem; }
 .p1-catalog-intro h1 {
   font-family: var(--font-display);
   font-size: clamp(1.75rem, 4vw, 2.75rem);
-  font-weight: 800;
-  letter-spacing: -0.03em;
+  font-weight: 600;
   margin: 0 0 0.5rem;
 }
 .p1-catalog-intro p { color: var(--fg-muted); margin: 0 0 1.5rem; max-width: 48rem; }
@@ -141,126 +157,82 @@ a { color: var(--accent); }
   padding: 0.1em 0.4em;
 }
 
-/* ── Install commands ───────────────────────── */
-.p1-install-commands {
-  align-items: flex-start;
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  max-width: 100%;
-}
-/* Each row hugs its command instead of stretching to a shared width. */
-.p1-install-commands__row {
+/* ── Command box: dark pill with a copy button ──────────────────────
+   Reused by the home hero install command and the detail page's install
+   box, so the two never drift in style. */
+.p1-cmd-box {
   align-items: center;
   background: var(--p1-black);
   border: none;
   border-radius: 0.5rem;
   display: flex;
   gap: 0.75rem;
-  justify-content: flex-start;
+  justify-content: space-between;
   max-width: 100%;
-  padding: 0.625rem 0.875rem;
+  padding: 0.5rem 0.5rem 0.5rem 0.875rem;
   width: fit-content;
 }
-.p1-install-commands__label {
-  color: #9b96b8;
-  flex-shrink: 0;
-  font-size: 0.6875rem;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-}
-.p1-install-commands__code {
-  background: none;
-  border: none;
+.p1-cmd-box--full { width: 100%; }
+.p1-cmd-box__code {
   color: #e8e4ff;
+  font-family: var(--font-code, ui-monospace, monospace);
   font-size: 0.8125rem;
   overflow: hidden;
-  padding: 0;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.p1-install-commands__copy {
+.p1-cmd-box__copy {
+  align-items: center;
   background: none;
   border: none;
+  border-radius: 0.375rem;
   color: #9b96b8;
   cursor: pointer;
+  display: flex;
   flex-shrink: 0;
-  font-size: 0.875rem;
-  line-height: 1;
+  height: 1.75rem;
+  justify-content: center;
   padding: 0;
+  width: 1.75rem;
 }
-.p1-install-commands__copy:hover { color: var(--p1-purple-light); }
+.p1-cmd-box__copy:hover { background: rgb(255 255 255 / 0.1); color: #fff; }
 
-/* ── Category filter ────────────────────────── */
-.p1-cat-filter {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.375rem;
-  margin-bottom: 1.5rem;
-}
-.p1-cat-filter__btn {
+/* Bordered quick-install chip — lighter weight than the command box, used
+   for the "ONE" / "ALL" shortcuts on the blocks list page. */
+.p1-quick-chip {
+  align-items: center;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius-pill);
+  border-radius: 0.5rem;
   cursor: pointer;
+  display: flex;
   font-family: inherit;
-  font-size: 0.8125rem;
+  gap: 0.625rem;
+  padding: 0.625rem 1.125rem;
+}
+.p1-quick-chip:hover { border-color: var(--border-strong); }
+.p1-quick-chip__label {
+  color: var(--fg);
+  flex-shrink: 0;
+  font-size: 0.6875rem;
   font-weight: 500;
-  padding: 0.3125rem 0.875rem;
-  text-transform: capitalize;
-  transition: background 0.1s, border-color 0.1s, color 0.1s;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
-.p1-cat-filter__btn:hover { border-color: var(--accent); color: var(--accent); }
-.p1-cat-filter__btn[data-active] {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
+.p1-quick-chip__code {
+  color: var(--fg-muted);
+  font-family: var(--font-code, ui-monospace, monospace);
+  font-size: 0.8125rem;
 }
 
-/* ── Block grid ─────────────────────────────── */
-.p1-block-grid {
-  display: grid;
-  gap: 1.25rem;
-  grid-template-columns: repeat(auto-fill, minmax(30rem, 1fr));
-}
-
-/* ── Block card ─────────────────────────────── */
-.p1-block-card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-card);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  transition: box-shadow 0.15s, border-color 0.15s;
-}
-.p1-block-card:hover { border-color: var(--border-strong); box-shadow: 0 4px 16px rgb(0 0 0 / 0.06); }
-
-/* Card bar: tag + title left, "Get code" right */
-.p1-block-card__bar {
-  align-items: center;
-  border-bottom: 1px solid var(--border);
-  display: flex;
-  gap: 0.75rem;
-  justify-content: space-between;
-  padding: 0.75rem 1rem;
-}
-.p1-block-card__bar-left {
-  align-items: center;
-  display: flex;
-  gap: 0.5rem;
-  min-width: 0;
-}
-/* Category pill. Shared by the card bar and the "Get code" modal so one
-   category reads the same colour in both places. */
+/* ── Category pill (block card / detail badge) ──────────────────────── */
 .p1-tag {
   background: var(--surface-subtle);
   border-radius: var(--radius-pill);
   color: var(--fg-muted);
   flex-shrink: 0;
   font-size: 0.6875rem;
-  font-weight: 600;
+  font-weight: 700;
   letter-spacing: 0.03em;
   padding: 0.125rem 0.625rem;
   text-transform: uppercase;
@@ -275,6 +247,217 @@ a { color: var(--accent); }
 .p1-tag[data-category="layout"]     { background: #f3f4f6; color: #374151; }
 .p1-tag[data-category="global"]     { background: #fef3c7; color: #92400e; }
 .p1-tag[data-category="other"]      { background: #f5f3ff; color: #6d28d9; }
+
+/* ══════════════════════════════════════════════════════════════════
+   Home page
+   ══════════════════════════════════════════════════════════════════ */
+.p1-hero {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3rem;
+  margin-inline: auto;
+  max-width: 75rem;
+  padding: 3.5rem 4rem 4.5rem;
+}
+.p1-hero__text { flex: 1 1 26rem; min-width: 18rem; }
+.p1-hero__text h1 {
+  font-family: var(--font-display);
+  font-size: clamp(2.25rem, 5vw, 3.5rem);
+  font-weight: 600;
+  margin: 0 0 0.75rem;
+}
+.p1-hero__text p {
+  color: var(--fg-muted);
+  font-size: 1.0625rem;
+  margin: 0 0 1.25rem;
+  max-width: 32rem;
+}
+.p1-hero__cmd { margin-bottom: 1.5rem; max-width: 28rem; }
+.p1-hero__actions { display: flex; flex-wrap: wrap; gap: 0.75rem; }
+.p1-hero__media { flex: 1 1 26rem; min-width: 0; }
+.p1-hero__media img { display: block; height: auto; width: 100%; }
+
+.p1-home-section { margin-inline: auto; max-width: 75rem; padding: 0 4rem 4.5rem; }
+.p1-home-section h2 {
+  font-family: var(--font-display);
+  font-size: clamp(1.75rem, 4vw, 2.25rem);
+  font-weight: 600;
+  margin: 0 0 1.75rem;
+}
+
+.p1-category-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+@media (max-width: 900px) { .p1-category-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .p1-category-grid { grid-template-columns: 1fr; } }
+
+.p1-category-card {
+  border: 1px solid var(--border);
+  border-radius: 0.625rem;
+  color: inherit;
+  display: block;
+  padding: 1.5rem;
+  text-decoration: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.p1-category-card:hover { border-color: var(--border-strong); box-shadow: 0 4px 16px rgb(0 0 0 / 0.06); }
+.p1-category-card__head { align-items: center; display: flex; gap: 0.625rem; margin-bottom: 0.875rem; }
+.p1-category-card__head svg { height: 1.25rem; width: 1.25rem; }
+.p1-category-card__name { font-size: 0.9375rem; font-weight: 600; }
+.p1-category-card__desc { color: var(--fg-muted); font-size: 0.8125rem; margin: 0 0 0.875rem; }
+.p1-category-card__count { color: var(--fg-muted); font-size: 0.75rem; }
+
+.p1-home-cta { background: var(--p1-black); padding: 3rem 4rem; }
+.p1-home-cta__inner {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  justify-content: space-between;
+  margin-inline: auto;
+  max-width: 56.25rem;
+  width: 100%;
+}
+.p1-home-cta h2 { color: #fff; font-family: var(--font-display); font-size: 1.75rem; font-weight: 600; margin: 0 0 0.375rem; }
+.p1-home-cta p { color: rgb(255 255 255 / 0.7); margin: 0; }
+
+/* ══════════════════════════════════════════════════════════════════
+   Blocks list page
+   ══════════════════════════════════════════════════════════════════ */
+.p1-quick-chips { display: flex; flex-wrap: wrap; gap: 0.875rem; margin-bottom: 2rem; }
+
+.p1-list-layout { align-items: flex-start; display: flex; gap: 2.5rem; }
+@media (max-width: 860px) { .p1-list-layout { flex-direction: column; } }
+
+.p1-list-sidebar { flex: 0 0 10.5rem; }
+.p1-list-sidebar__label {
+  color: var(--fg-muted);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.75rem;
+  text-transform: uppercase;
+}
+.p1-list-sidebar__list { display: flex; flex-direction: column; gap: 2px; }
+@media (max-width: 860px) {
+  .p1-list-sidebar { flex: 1 1 auto; width: 100%; }
+  .p1-list-sidebar__label { display: none; }
+  .p1-list-sidebar__list { flex-direction: row; overflow-x: auto; padding-bottom: 0.25rem; }
+}
+
+.p1-list-sidebar__item {
+  align-items: center;
+  background: none;
+  border: none;
+  border-radius: 0.5rem;
+  color: var(--fg-muted);
+  cursor: pointer;
+  display: flex;
+  flex-shrink: 0;
+  font-family: inherit;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  gap: 0.625rem;
+  padding: 0.625rem 0.875rem;
+  text-align: left;
+  white-space: nowrap;
+  width: 100%;
+}
+@media (max-width: 860px) { .p1-list-sidebar__item { border-radius: var(--radius-pill); width: auto; } }
+.p1-list-sidebar__item svg { flex-shrink: 0; height: 1rem; width: 1rem; }
+.p1-list-sidebar__item:hover { background: var(--surface-subtle); }
+.p1-list-sidebar__item[data-active] { background: var(--surface-subtle); color: var(--fg); font-weight: 600; }
+
+.p1-list-main { flex: 1; min-width: 0; }
+.p1-list-main__head {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  justify-content: space-between;
+  margin-bottom: 1.5rem;
+}
+.p1-list-main__title-group { align-items: baseline; display: flex; gap: 0.75rem; }
+.p1-list-main__title-group h1 {
+  font-family: var(--font-display);
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  font-weight: 600;
+  margin: 0;
+}
+.p1-list-main__count { color: var(--fg-muted); font-size: 0.8125rem; }
+.p1-list-main__tools { align-items: center; display: flex; gap: 0.75rem; }
+
+.p1-view-toggle { background: var(--surface-subtle); border-radius: 0.5rem; display: flex; gap: 2px; padding: 2px; }
+.p1-view-toggle__btn {
+  align-items: center;
+  background: none;
+  border: none;
+  border-radius: 0.375rem;
+  color: var(--fg-muted);
+  cursor: pointer;
+  display: flex;
+  height: 2rem;
+  justify-content: center;
+  width: 2rem;
+}
+.p1-view-toggle__btn svg { height: 1rem; width: 1rem; }
+.p1-view-toggle__btn[data-active] { background: var(--surface); box-shadow: 0 1px 2px rgb(0 0 0 / 0.08); color: var(--fg); }
+
+.p1-search { position: relative; width: 16.25rem; }
+@media (max-width: 480px) { .p1-search { width: 100%; } }
+.p1-search svg {
+  color: var(--fg-muted);
+  height: 1rem;
+  left: 0.75rem;
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 1rem;
+}
+.p1-search input {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  font-family: inherit;
+  font-size: 0.8125rem;
+  padding: 0.5rem 0.75rem 0.5rem 2.25rem;
+  width: 100%;
+}
+.p1-search input:focus { border-color: var(--accent); outline: none; }
+
+.p1-list-empty { color: var(--fg-muted); padding: 4rem 0; text-align: center; }
+
+/* ── Block grid (grid view) ─────────────────────────────────────────── */
+.p1-block-grid {
+  display: grid;
+  gap: 1.25rem;
+  grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr));
+}
+
+.p1-block-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  color: inherit;
+  display: block;
+  overflow: hidden;
+  text-decoration: none;
+  transition: box-shadow 0.15s, border-color 0.15s;
+}
+.p1-block-card:hover { border-color: var(--border-strong); box-shadow: 0 4px 16px rgb(0 0 0 / 0.06); }
+
+.p1-block-card__bar {
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  gap: 0.75rem;
+  justify-content: space-between;
+  padding: 0.875rem 1rem;
+}
+.p1-block-card__bar-left { align-items: center; display: flex; gap: 0.5rem; min-width: 0; }
 .p1-block-card__title {
   color: var(--fg);
   font-size: 0.875rem;
@@ -284,42 +467,24 @@ a { color: var(--accent); }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.p1-block-card__get-code {
-  background: var(--p1-black);
-  border: none;
-  border-radius: 0.375rem;
-  color: #fff;
-  cursor: pointer;
-  flex-shrink: 0;
-  font-family: inherit;
-  font-size: 0.75rem;
-  font-weight: 600;
-  padding: 0.3125rem 0.75rem;
-  transition: opacity 0.1s;
-}
-.p1-block-card__get-code:hover { opacity: 0.82; }
+.p1-block-card__bar svg { color: var(--fg-muted); flex-shrink: 0; height: 1rem; width: 1rem; }
 
-/* Large preview area */
 /*
  * iframe renders at 1600px wide, scaled to 0.5 → fills the card width (≥480px content).
- * height: 400px on preview = 800px iframe, giving a tall above-fold preview.
+ * height: 260px on preview = 520px iframe, giving a compact card thumbnail.
  */
 .p1-block-card__preview {
-  all: unset;
   background: var(--surface-subtle);
-  cursor: zoom-in;
   display: block;
-  height: 320px;
+  height: 260px;
   overflow: hidden;
   position: relative;
   width: 100%;
 }
-.p1-block-card__preview:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-
 .p1-block-card__preview iframe {
   border: none;
   display: block;
-  height: 640px;
+  height: 520px;
   left: 0;
   pointer-events: none;
   position: absolute;
@@ -328,7 +493,6 @@ a { color: var(--accent); }
   transform-origin: top left;
   width: 200%;
 }
-
 .p1-block-card__no-preview {
   align-items: center;
   background: var(--surface-subtle);
@@ -340,178 +504,210 @@ a { color: var(--accent); }
   width: 100%;
 }
 
-/* ── Full-size preview dialog ───────────────── */
-.p1-preview-dialog {
-  background: transparent;
-  border: none;
-  height: 100dvh;
-  max-height: 100dvh;
-  max-width: 100dvw;
-  padding: 0;
-  width: 100dvw;
-}
-.p1-preview-dialog::backdrop {
-  backdrop-filter: blur(4px);
-  background: rgb(0 0 0 / 0.65);
-}
-.p1-preview-dialog__inner {
-  background: var(--surface);
+/* ── Block list (list view) ──────────────────────────────────────────── */
+.p1-block-list {
+  border: 1px solid var(--border);
   border-radius: var(--radius-card);
-  box-shadow: 0 24px 64px rgb(0 0 0 / 0.3);
   display: flex;
   flex-direction: column;
-  height: 90dvh;
-  left: 50%;
-  max-width: 1200px;
   overflow: hidden;
-  position: fixed;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  width: 90dvw;
 }
-.p1-preview-dialog__toolbar {
+.p1-block-list__row {
   align-items: center;
-  border-bottom: 1px solid var(--border);
+  color: inherit;
   display: flex;
-  gap: 1rem;
+  gap: 0.75rem;
   justify-content: space-between;
-  padding: 0.75rem 1.25rem;
+  padding: 1rem 1.25rem;
+  text-decoration: none;
 }
-.p1-preview-dialog__title { font-size: 0.9375rem; font-weight: 700; }
-.p1-preview-dialog__close {
-  background: var(--surface-subtle);
-  border: 1px solid var(--border);
-  border-radius: 0.375rem;
+.p1-block-list__row:not(:last-child) { border-bottom: 1px solid var(--border); }
+.p1-block-list__row:hover { background: var(--surface-subtle); }
+.p1-block-list__row-left { align-items: center; display: flex; gap: 0.625rem; }
+.p1-block-list__row h2 { font-size: 0.875rem; font-weight: 600; margin: 0; }
+.p1-block-list__row svg { color: var(--fg-muted); flex-shrink: 0; height: 1rem; width: 1rem; }
+
+/* ══════════════════════════════════════════════════════════════════
+   Block detail page
+   ══════════════════════════════════════════════════════════════════ */
+.p1-breadcrumb {
+  align-items: center;
+  color: var(--fg-muted);
+  display: flex;
+  font-size: 0.8125rem;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+.p1-breadcrumb a { color: var(--fg-muted); flex-shrink: 0; text-decoration: none; }
+.p1-breadcrumb a:hover { color: var(--fg); text-decoration: underline; }
+.p1-breadcrumb span { flex-shrink: 0; }
+.p1-breadcrumb__current { color: var(--fg); flex-shrink: 0; font-weight: 600; }
+
+.p1-detail-head { align-items: center; display: flex; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 0.625rem; }
+.p1-detail-head h1 {
+  font-family: var(--font-display);
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  font-weight: 600;
+  margin: 0;
+}
+.p1-detail-desc { color: var(--fg-muted); margin: 0 0 1.75rem; max-width: 40rem; }
+
+.p1-detail-layout { align-items: flex-start; display: flex; gap: 3rem; }
+@media (max-width: 900px) { .p1-detail-layout { flex-direction: column; } }
+.p1-detail-main { flex: 1 1 40rem; min-width: 0; width: 100%; }
+.p1-detail-side { flex: 0 0 17.5rem; width: 100%; }
+@media (max-width: 900px) { .p1-detail-side { flex-basis: auto; } }
+
+.p1-detail-tabs { border-bottom: 1px solid var(--border); display: flex; gap: 1.5rem; margin-bottom: 1.5rem; }
+.p1-detail-tabs__btn {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
   color: var(--fg-muted);
   cursor: pointer;
   font-family: inherit;
-  font-size: 0.875rem;
-  line-height: 1;
-  padding: 0.375rem 0.625rem;
-}
-.p1-preview-dialog__close:hover { border-color: var(--border-strong); color: var(--fg); }
-.p1-preview-dialog__frame { flex: 1; overflow: hidden; }
-.p1-preview-dialog__frame iframe { border: none; display: block; height: 100%; width: 100%; }
-
-/* ── "Get code" dialog ──────────────────────── */
-.p1-code-dialog {
-  background: transparent;
-  border: none;
-  height: 100dvh;
-  max-height: 100dvh;
-  max-width: 100dvw;
-  padding: 0;
-  width: 100dvw;
-}
-.p1-code-dialog::backdrop {
-  backdrop-filter: blur(4px);
-  background: rgb(0 0 0 / 0.55);
-}
-.p1-code-dialog__inner {
-  background: var(--surface);
-  border-radius: var(--radius-card);
-  box-shadow: 0 16px 48px rgb(0 0 0 / 0.25);
-  left: 50%;
-  max-width: 480px;
-  padding: 1.5rem;
-  position: fixed;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  width: 90dvw;
-}
-.p1-code-dialog__header {
-  align-items: flex-start;
-  display: flex;
-  gap: 0.75rem;
-  justify-content: space-between;
-  margin-bottom: 1rem;
-}
-.p1-code-dialog__title { font-family: var(--font-display); font-size: 1.0625rem; font-weight: 700; margin: 0; }
-.p1-code-dialog__tag {
-  display: inline-block;
-  margin-top: 0.25rem;
-}
-.p1-code-dialog__close {
-  background: none;
-  border: none;
-  color: var(--fg-muted);
-  cursor: pointer;
-  flex-shrink: 0;
-  font-size: 1rem;
-  line-height: 1;
-  padding: 0.125rem;
-}
-.p1-code-dialog__close:hover { color: var(--fg); }
-.p1-code-dialog__desc { color: var(--fg-muted); font-size: 0.875rem; line-height: 1.55; margin: 0 0 1.25rem; }
-.p1-code-dialog__cmd-label {
-  color: var(--fg-muted);
-  font-size: 0.75rem;
+  font-size: 0.8125rem;
   font-weight: 600;
-  letter-spacing: 0.04em;
-  margin-bottom: 0.375rem;
+  padding: 0.625rem 0.125rem;
+}
+.p1-detail-tabs__btn[data-active] { border-bottom-color: var(--p1-black); color: var(--fg); }
+
+.p1-detail-preview {
+  background: var(--surface-subtle);
+  border-radius: var(--radius-card);
+  overflow: hidden;
+  padding: 2rem;
+}
+.p1-detail-preview iframe { background: #fff; border: none; border-radius: 0.5rem; display: block; height: 30rem; width: 100%; }
+.p1-detail-code {
+  background: var(--p1-black);
+  border-radius: var(--radius-card);
+  color: #e8e4ff;
+  font-size: 0.8125rem;
+  line-height: 1.6;
+  margin: 0;
+  max-height: 34rem;
+  overflow: auto;
+  padding: 1.5rem;
+  white-space: pre;
+}
+
+.p1-detail-main h2 {
+  font-family: var(--font-display);
+  font-size: 1.125rem;
+  font-weight: 600;
+  margin: 2.5rem 0 1rem;
+}
+.p1-props-table { border-collapse: collapse; width: 100%; }
+.p1-props-table th {
+  background: var(--surface-subtle);
+  color: var(--fg-muted);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  padding: 0.625rem 0.875rem;
+  text-align: left;
+}
+.p1-props-table td {
+  border-top: 1px solid var(--border);
+  font-family: var(--font-code, ui-monospace, monospace);
+  font-size: 0.8125rem;
+  padding: 0.625rem 0.875rem;
+  vertical-align: top;
+  word-break: break-word;
+}
+.p1-props-table td[data-muted] { color: var(--fg-muted); }
+
+.p1-detail-side__section { margin-bottom: 1.75rem; }
+.p1-detail-side__label {
+  color: var(--fg-muted);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.625rem;
   text-transform: uppercase;
 }
-/* Dark block, same treatment as the ONE/ALL install rows on the catalog page. */
-.p1-code-dialog__cmd {
-  align-items: center;
-  background: var(--p1-black);
-  border: none;
-  border-radius: 0.5rem;
-  display: flex;
-  gap: 0.75rem;
-  justify-content: space-between;
-  padding: 0.625rem 0.875rem;
-}
-.p1-code-dialog__cmd code {
-  color: #e8e4ff;
-  font-size: 0.8125rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-/* Same dark block as the install row, but multi-line: the label sits above and
-   the copy button beside a <pre> that keeps the snippet's own line breaks. */
-.p1-code-dialog__docs {
+.p1-register-box {
   align-items: flex-start;
   background: var(--p1-black);
   border-radius: 0.5rem;
   display: flex;
   gap: 0.75rem;
   justify-content: space-between;
-  margin-bottom: 1rem;
   padding: 0.625rem 0.875rem;
 }
-.p1-code-dialog__docs-code {
+.p1-register-box pre {
   color: #e8e4ff;
-  font-size: 0.8125rem;
+  font-size: 0.75rem;
   line-height: 1.5;
   margin: 0;
   overflow-x: auto;
   white-space: pre-wrap;
   word-break: break-word;
 }
-.p1-code-dialog__copy {
-  background: rgb(255 255 255 / 0.1);
+.p1-copy-agent {
+  background: none;
   border: none;
-  border-radius: 0.375rem;
-  color: #e8e4ff;
+  color: var(--fg-muted);
   cursor: pointer;
-  flex-shrink: 0;
   font-family: inherit;
   font-size: 0.75rem;
-  font-weight: 600;
-  padding: 0.375rem 0.75rem;
-  transition: background 0.1s, color 0.1s;
+  margin-top: 0.625rem;
+  padding: 0;
+  text-align: left;
+  text-decoration: underline;
 }
-.p1-code-dialog__copy:hover { background: rgb(255 255 255 / 0.18); color: #fff; }
-.p1-code-dialog__agent {
-  background: none; border: none; color: var(--fg-muted); cursor: pointer;
-  font-family: inherit; font-size: 0.75rem; margin-top: 0.625rem; padding: 0;
-  text-align: left; text-decoration: underline;
-}
-.p1-code-dialog__agent:hover { color: var(--accent); }
+.p1-copy-agent:hover { color: var(--accent); }
 
-/* ── Theme panel ────────────────────────────── */
+.p1-related-card {
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 0.625rem;
+  color: inherit;
+  display: flex;
+  justify-content: space-between;
+  padding: 0.875rem 1rem;
+  text-decoration: none;
+}
+.p1-related-card:hover { border-color: var(--border-strong); }
+.p1-related-card span { font-size: 0.8125rem; font-weight: 600; }
+.p1-related-card svg { color: var(--fg-muted); flex-shrink: 0; height: 1rem; width: 1rem; }
+
+/* ══════════════════════════════════════════════════════════════════
+   Documentation page
+   ══════════════════════════════════════════════════════════════════ */
+.p1-docs { max-width: 60rem; }
+.p1-docs h1 {
+  font-family: var(--font-display);
+  font-size: clamp(1.75rem, 4vw, 2.5rem);
+  font-weight: 600;
+  margin: 0 0 1.5rem;
+}
+.p1-docs__body { color: var(--fg-muted); line-height: 1.7; max-width: 60rem; }
+.p1-docs__body p { margin: 0 0 1.25rem; }
+.p1-docs__body a { text-decoration: underline; }
+.p1-docs__lead { color: var(--fg); font-weight: 600; margin: 0 0 0.75rem; }
+.p1-docs__body ul { margin: 0 0 1.25rem; padding-left: 1.25rem; }
+.p1-docs__body li { margin-bottom: 0.875rem; }
+.p1-docs__body h2 {
+  color: var(--fg);
+  font-family: var(--font-display);
+  font-size: 1.375rem;
+  font-weight: 600;
+  margin: 2.5rem 0 1rem;
+}
+.p1-docs__body h2:first-child { margin-top: 0; }
+.p1-docs__body h3 {
+  color: var(--fg);
+  font-family: var(--font-display);
+  font-size: 1.0625rem;
+  font-weight: 600;
+  margin: 1.75rem 0 0.75rem;
+}
+.p1-docs__cta { display: flex; justify-content: center; margin-top: 3rem; }
+
+/* ── Theme panel (unchanged) ────────────────────────────────── */
 .p1-theme-panel { max-width: 56rem; }
 .p1-theme-panel__toolbar {
   align-items: center;
@@ -544,8 +740,3 @@ a { color: var(--accent); }
   white-space: pre;
 }
 .p1-theme-panel__hint { color: var(--fg-muted); font-size: 0.875rem; margin-top: 1rem; }
-
-/* ── Catalog client wrapper ─────────────────── */
-.p1-catalog-client { }
-
-/* ── Add command (legacy, kept for compat) ──── */
