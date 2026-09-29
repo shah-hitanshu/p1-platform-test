@@ -7,7 +7,7 @@ import "./btn.css";
  * — matching the static, non-interactive style of the prototype's CanvasButton.
  * Shared utility — not a Puck block.
  */
-export type BtnVariant = "primary" | "secondary" | "yellow" | "purple";
+export type BtnVariant = "primary" | "secondary" | "yellow" | "purple" | "dark";
 
 export interface BtnProps {
   variant?: BtnVariant;

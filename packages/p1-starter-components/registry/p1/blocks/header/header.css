@@ -88,15 +88,11 @@
 }
 @media (width >= 40rem) { .p1-header__cta { display: inline-flex; } }
 
-.p1-header__cta[data-cta="primary"] {
-  background-color: var(--p1-surface-dark);
-  border-color: var(--p1-surface-dark);
-  color: var(--p1-fg-inverse);
-}
+.p1-header__cta[data-cta="primary"],
 .p1-header__cta[data-cta="yellow"] {
-  background-color: var(--p1-warning);
-  border-color: var(--p1-warning);
-  color: var(--p1-fg-default);
+  background-color: var(--p1-cta-bg);
+  border-color: var(--p1-cta-bg);
+  color: var(--p1-cta-fg);
 }
 .p1-header__cta[data-cta="purple"] {
   background-color: var(--p1-accent);

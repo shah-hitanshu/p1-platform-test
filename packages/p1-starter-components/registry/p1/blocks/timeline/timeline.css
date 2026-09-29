@@ -112,7 +112,7 @@
 
 /* Shared dot */
 .p1-timeline__dot {
-  background-color: var(--p1-warning);
+  background-color: var(--p1-highlight);
   block-size: 1rem;
   border: 3px solid var(--p1-accent);
   border-radius: var(--p1-radius-pill);

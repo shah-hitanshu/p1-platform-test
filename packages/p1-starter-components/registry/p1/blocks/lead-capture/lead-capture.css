@@ -19,8 +19,8 @@
   color: var(--p1-fg-inverse);
 }
 .p1-lead-capture__card[data-tone="yellow"] {
-  background-color: var(--p1-warning);
-  color: var(--p1-fg-default);
+  background-color: var(--p1-cta-bg);
+  color: var(--p1-cta-fg);
 }
 
 .p1-lead-capture__heading {

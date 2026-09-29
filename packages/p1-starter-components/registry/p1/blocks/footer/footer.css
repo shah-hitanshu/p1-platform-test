@@ -72,9 +72,9 @@
 
 .p1-footer__newsletter-btn {
   align-items: center;
-  background-color: var(--p1-warning);
+  background-color: var(--p1-cta-bg);
   border-radius: var(--p1-radius-pill);
-  color: var(--p1-fg-default);
+  color: var(--p1-cta-fg);
   display: inline-flex;
   font-size: var(--p1-text-sm);
   font-weight: var(--p1-weight-bold);

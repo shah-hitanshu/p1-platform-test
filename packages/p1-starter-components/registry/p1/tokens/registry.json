@@ -16,7 +16,7 @@
         "@import \"./p1-base.css\"": {}
       },
       "cssVars": {
-        "light": { "p1-accent": "oklch(0.55 0.21 280)" }
+        "light": { "p1-accent": "oklch(0.2178 0 0)" }
       },
       "docs": "Both files are yours. Override any --p1-* value in app/p1-tokens.css to retheme every block at once."
     }

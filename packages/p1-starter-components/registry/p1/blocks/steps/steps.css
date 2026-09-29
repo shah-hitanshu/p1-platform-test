@@ -19,7 +19,7 @@
   font-style: italic;
   margin-block-end: var(--p1-space-xs);
 }
-.p1-steps[data-tone="dark"] .p1-steps__eyebrow { color: var(--p1-warning); }
+.p1-steps[data-tone="dark"] .p1-steps__eyebrow { color: var(--p1-highlight); }
 
 .p1-steps__heading {
   font-size: var(--p1-text-2xl);
@@ -59,8 +59,8 @@
   place-content: center;
 }
 .p1-steps[data-tone="dark"] .p1-steps__number {
-  background-color: color-mix(in oklch, var(--p1-warning) 15%, transparent);
-  color: var(--p1-warning);
+  background-color: color-mix(in oklch, var(--p1-highlight) 15%, transparent);
+  color: var(--p1-highlight);
 }
 
 .p1-steps__item-title {

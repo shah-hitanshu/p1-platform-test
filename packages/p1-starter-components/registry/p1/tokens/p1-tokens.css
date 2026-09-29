@@ -7,7 +7,7 @@
  * This file is installed into your project by `shadcn add @p1/tokens` and it is
  * yours. Override anything:
  *
- *   :root { --p1-accent: #7c3aed; --p1-radius-card: 0; }
+ *   :root { --p1-accent: #111111; --p1-radius-card: 0; }
  *
  * Breakpoints are NOT tokens — the ladder is 40rem / 48rem / 64rem / 80rem,
  * applied literally in media queries.
@@ -24,15 +24,22 @@
   --p1-border: var(--pds-color-border-default, oklch(0.9401 0 0));
   --p1-border-strong: var(--pds-color-border-default-secondary, oklch(0.8853 0 0));
 
-  /* Dark surface — near-black with slight blue cast (the "dark" tone) */
-  --p1-surface-dark: oklch(0.17 0.01 270);
+  /* Dark surface — neutral near-black (the "dark" tone) */
+  --p1-surface-dark: oklch(0.17 0 0);
 
 
-  /* Accent — the tone every "branded" block variant resolves to. Replaces the
-     hard-coded indigo/purple the blocks used, which is why `tone: "indigo"`
-     becomes `tone: "accent"` in this phase. */
-  --p1-accent: var(--pds-color-interactive-link-default, oklch(0.55 0.21 280));
-  --p1-accent-hover: var(--pds-color-interactive-link-hover, oklch(0.48 0.20 280));
+  /* Accent — the tone every "branded" block variant resolves to. Grayscale by
+     default; CTAs use the yellow --p1-cta-* tokens below instead. */
+  --p1-accent: var(--pds-color-button-primary-background-default, oklch(0.2178 0 0));
+  --p1-accent-hover: var(--pds-color-button-primary-background-active, oklch(0.37 0 0));
+
+  /* Neutral highlight — eyebrows and numbers on dark, rules, badges and marks. */
+  --p1-highlight: oklch(0.72 0 0);
+
+  /* Call-to-action buttons — the PDS 2 brand (yellow) button. */
+  --p1-cta-bg: var(--pds-color-button-brand-background-default, oklch(0.8622 0.1681 88.31));
+  --p1-cta-bg-hover: var(--pds-color-button-brand-background-hover, oklch(0.8018 0.1553 87.86));
+  --p1-cta-fg: var(--pds-color-button-brand-foreground, oklch(0.2178 0 0));
   --p1-on-accent: var(--pds-color-foreground-reverse, oklch(1 0 0));
 
   /* Status */
@@ -41,9 +48,9 @@
   --p1-critical: var(--pds-color-status-critical-foreground, oklch(0.58 0.22 27));
 
   /* Gradient stops — for the gradient/banner tones */
-  --p1-gradient-from: oklch(0.65 0.27 329);
-  --p1-gradient-via: oklch(0.55 0.24 292);
-  --p1-gradient-to: oklch(0.34 0.18 265);
+  --p1-gradient-from: oklch(0.45 0 0);
+  --p1-gradient-via: oklch(0.32 0 0);
+  --p1-gradient-to: oklch(0.2 0 0);
 
   /* On-dark foreground hierarchy */
   --p1-fg-inverse-muted: oklch(1 0 0 / 0.65);

@@ -16,10 +16,10 @@ export interface CtaBannerProps {
 }
 
 const BTN_BY_TONE: Record<CtaBannerProps["tone"], BtnVariant> = {
-  yellow: "primary",
+  yellow: "dark",
   accent: "yellow",
   dark: "yellow",
-  light: "purple",
+  light: "primary",
   gradient: "yellow",
   outline: "primary",
 };

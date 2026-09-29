@@ -29,7 +29,7 @@
 @media (width >= 48rem) {
   .p1-stats__value { font-size: var(--p1-text-4xl); }
 }
-.p1-stats[data-tone="dark"] .p1-stats__value { color: var(--p1-warning); }
+.p1-stats[data-tone="dark"] .p1-stats__value { color: var(--p1-highlight); }
 
 .p1-stats__label {
   color: var(--p1-fg-muted);

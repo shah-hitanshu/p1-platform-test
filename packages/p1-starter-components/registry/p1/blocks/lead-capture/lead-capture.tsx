@@ -12,10 +12,10 @@ export interface LeadCaptureProps {
 }
 
 const BTN_BY_TONE: Record<LeadCaptureProps["tone"], BtnVariant> = {
-  light: "purple",
+  light: "primary",
   accent: "yellow",
   dark: "yellow",
-  yellow: "primary",
+  yellow: "dark",
 };
 
 export function LeadCaptureRender({

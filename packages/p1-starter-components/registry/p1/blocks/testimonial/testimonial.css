@@ -31,7 +31,7 @@
 }
 .p1-testimonial[data-tone="accent"] .p1-testimonial__mark,
 .p1-testimonial[data-tone="dark"] .p1-testimonial__mark {
-  color: var(--p1-warning);
+  color: var(--p1-highlight);
 }
 
 .p1-testimonial__quote {

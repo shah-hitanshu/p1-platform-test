@@ -64,7 +64,7 @@
   text-decoration: underline;
 }
 .p1-rich-text__inner mark {
-  background-color: color-mix(in oklch, var(--p1-warning) 40%, transparent);
+  background-color: color-mix(in oklch, var(--p1-highlight) 40%, transparent);
   border-radius: 0.125rem;
   padding-inline: 0.125rem;
 }

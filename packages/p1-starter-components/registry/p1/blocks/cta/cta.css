@@ -9,8 +9,8 @@
 
 /* Tones */
 .p1-cta__card[data-tone="yellow"] {
-  background-color: var(--p1-warning);
-  color: var(--p1-fg-default);
+  background-color: var(--p1-cta-bg);
+  color: var(--p1-cta-fg);
 }
 .p1-cta__card[data-tone="accent"] {
   background-color: var(--p1-accent);
@@ -110,8 +110,8 @@
   text-transform: uppercase;
 }
 .p1-cta__card[data-tone="yellow"] .p1-cta__eyebrow { color: var(--p1-accent); }
-.p1-cta__card[data-tone="accent"] .p1-cta__eyebrow { color: var(--p1-warning); }
-.p1-cta__card[data-tone="dark"] .p1-cta__eyebrow { color: var(--p1-warning); }
+.p1-cta__card[data-tone="accent"] .p1-cta__eyebrow { color: var(--p1-highlight); }
+.p1-cta__card[data-tone="dark"] .p1-cta__eyebrow { color: var(--p1-highlight); }
 
 .p1-cta__title {
   font-size: var(--p1-text-2xl);

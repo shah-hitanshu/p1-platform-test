@@ -57,7 +57,7 @@
 }
 
 .p1-pricing__badge {
-  background-color: var(--p1-warning);
+  background-color: var(--p1-highlight);
   border-radius: var(--p1-radius-pill);
   color: var(--p1-fg-default);
   font-size: 0.625rem;
@@ -110,7 +110,7 @@
   inline-size: 1rem;
   margin-block-start: 0.125rem;
 }
-.p1-pricing__card[data-featured="on"] .p1-pricing__check { color: var(--p1-warning); }
+.p1-pricing__card[data-featured="on"] .p1-pricing__check { color: var(--p1-highlight); }
 
 .p1-pricing__feature-text { color: var(--p1-fg-muted); }
 .p1-pricing__card[data-featured="on"] .p1-pricing__feature-text { color: var(--p1-fg-inverse-faint); }
