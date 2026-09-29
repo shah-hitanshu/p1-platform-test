@@ -20,8 +20,8 @@ export const P1_ASSETS = {
   FEATURE_MEDIA: `${ORIGIN}/p1_placeholders/feature-media.jpg`,
 } as const;
 
-// Gray P1 mark for logo-cloud samples; a transparent PNG, so it stays outside the .jpg-only P1_ASSETS.
-export const P1_LOGO = `${ORIGIN}/p1_placeholders/logo.png`;
+// The P1 mark for logo-cloud samples. It is the header logo SVG, so it stays outside the .jpg-only P1_ASSETS.
+export const P1_LOGO = `${ORIGIN}/images/p1_logo.svg`;
 
 // Inline SVG stand-ins FallbackImg shows when the matching P1_ASSETS photo fails to load.
 export const P1_FALLBACKS = {
