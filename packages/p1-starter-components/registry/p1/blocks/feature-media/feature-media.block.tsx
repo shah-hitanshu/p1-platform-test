@@ -73,7 +73,7 @@ export const FeatureMediaBlock: ComponentConfig<FeatureMediaProps> = {
       { text: "Publish in one click" },
     ],
     buttonLabel: "See how it works →",
-    imageSrc: P1_ASSETS.LANDSCAPE,
+    imageSrc: P1_ASSETS.FEATURE_MEDIA,
     mediaSide: "right",
     tone: "white",
   },

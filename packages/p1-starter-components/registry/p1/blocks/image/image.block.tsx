@@ -66,7 +66,7 @@ export const ImageBlock: ComponentConfig<ImageProps> = {
     },
   },
   defaultProps: {
-    src: P1_ASSETS.LANDSCAPE,
+    src: P1_ASSETS.IMAGE,
     alt: "Editorial photograph",
     width: "contained",
     ratio: "16 / 9",

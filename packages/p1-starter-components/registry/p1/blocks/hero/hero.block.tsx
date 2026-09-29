@@ -120,7 +120,7 @@ export const HeroBlock: ComponentConfig<HeroProps> = {
     secondaryLabel: "Book a demo →",
     tone: "accent",
     layout: "split",
-    imageSrc: P1_ASSETS.LANDSCAPE,
+    imageSrc: P1_ASSETS.HERO,
     imageSide: "right",
     imageFill: "card",
     splitRatio: "even",

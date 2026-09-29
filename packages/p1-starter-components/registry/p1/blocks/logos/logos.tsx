@@ -19,12 +19,10 @@ export function LogoCloudRender({ heading, style, height, logos }: LogoCloudProp
         <div className="p1-logo-cloud__list">
           {(logos || []).map((l, i) =>
             l.src ? (
-              <img
-                key={i}
-                src={l.src}
-                alt={l.label || ""}
-                className="p1-logo-cloud__img"
-              />
+              <div key={i} className="p1-logo-cloud__item">
+                <img src={l.src} alt="" className="p1-logo-cloud__img" />
+                {l.label && <span className="p1-logo-cloud__label">{l.label}</span>}
+              </div>
             ) : (
               <div key={i} className="p1-logo-cloud__placeholder">{l.label || "Logo"}</div>
             )

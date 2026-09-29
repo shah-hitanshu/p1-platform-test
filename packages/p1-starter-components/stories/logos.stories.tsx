@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
+import { P1_LOGO } from "@/registry/p1/internal/assets";
 import { LogoCloudBlock, type LogoCloudProps } from "@/registry/p1/blocks/logos/logos.block";
 
 const LogoCloudWrapper = (props: LogoCloudProps) => {
@@ -22,14 +23,14 @@ type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   args: {
-    heading: "Featured in",
+    heading: "Trusted by teams like",
     style: "mono",
     height: "medium",
     logos: [
-      { src: "", label: "NPR" },
-      { src: "", label: "PBS" },
-      { src: "", label: "REUTERS" },
-      { src: "", label: "NATURE" },
+      { src: P1_LOGO, label: "Company 1" },
+      { src: P1_LOGO, label: "Company 2" },
+      { src: P1_LOGO, label: "Company 3" },
+      { src: P1_LOGO, label: "Company 4" },
     ],
   },
 };

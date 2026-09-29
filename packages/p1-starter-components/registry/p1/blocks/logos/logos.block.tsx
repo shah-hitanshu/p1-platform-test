@@ -1,5 +1,6 @@
 import type { ComponentConfig } from "@puckeditor/core";
 import { defineMeta } from '@/registry/p1/internal/define-meta';
+import { P1_LOGO } from '@/registry/p1/internal/assets';
 import { LogoCloudRender, type LogoCloudProps, type LogoItem } from "./logos";
 export type { LogoCloudProps, LogoItem };
 
@@ -45,14 +46,14 @@ export const LogoCloudBlock: ComponentConfig<LogoCloudProps> = {
     },
   },
   defaultProps: {
-    heading: "Featured in",
+    heading: "Trusted by teams like",
     style: "mono",
     height: "medium",
     logos: [
-      { src: "", label: "NPR" },
-      { src: "", label: "PBS" },
-      { src: "", label: "REUTERS" },
-      { src: "", label: "NATURE" },
+      { src: P1_LOGO, label: "Company 1" },
+      { src: P1_LOGO, label: "Company 2" },
+      { src: P1_LOGO, label: "Company 3" },
+      { src: P1_LOGO, label: "Company 4" },
     ],
   },
   render: LogoCloudRender,

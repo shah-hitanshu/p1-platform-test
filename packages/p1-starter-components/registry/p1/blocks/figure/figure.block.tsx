@@ -65,7 +65,7 @@ export const FigureBlock: ComponentConfig<FigureProps> = {
     },
   },
   defaultProps: {
-    src: P1_ASSETS.LANDSCAPE,
+    src: P1_ASSETS.FIGURE,
     alt: "The team reviewing a preview together",
     caption: "The team reviews a preview link before anything reaches Live.",
     credit: "Photo — Pantheon",

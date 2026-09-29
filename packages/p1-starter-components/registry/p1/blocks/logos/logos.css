@@ -21,6 +21,19 @@
   justify-content: center;
 }
 
+.p1-logo-cloud__item {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+}
+
+.p1-logo-cloud__label {
+  color: var(--p1-fg-muted);
+  font-size: var(--p1-text-lg);
+  font-weight: var(--p1-weight-medium);
+}
+
 .p1-logo-cloud__img {
   inline-size: auto;
   max-inline-size: 11.25rem;
